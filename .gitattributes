@@ -2,3 +2,13 @@
 # (rebuild + `git diff --exit-code`) can never fail on line endings and
 # Windows contributors don't see CRLF churn. No tracked binaries exist.
 * text=auto eol=lf
+
+# Generated files (AGENTS.md, "Generated vs hand-maintained"): GitHub folds these in PR
+# diffs and leaves them out of language stats. Reviewers can still expand them; CI's
+# rebuild-and-diff is what actually enforces that they match the build.
+data/*.json linguist-generated=true
+reference/domains/*.md linguist-generated=true
+wiki/*.html linguist-generated=true
+plugins/gs-superadmin/reference/** linguist-generated=true
+plugins/gs-superadmin/scripts/extract-catalog.mjs linguist-generated=true
+plugins/gs-superadmin/scripts/render-cheatsheet.mjs linguist-generated=true

@@ -13,10 +13,15 @@ the installed `@gainsight/gs-admin-cli` package's own manifests. The reference d
 wiki, the plugin's cheatsheet, its mutation guard, and its `permissions.ask` rules are
 all **generated from the catalog**. That has two consequences:
 
-1. A large fraction of the repo's files must never be hand-edited. Each generated file
-   carries a "GENERATED FILE — do not edit by hand" banner naming its regenerate
-   command, and CI enforces the split by rebuilding and diffing. The full table is in
-   [AGENTS.md](AGENTS.md).
+1. A large fraction of the repo's files must never be hand-edited: everything under
+   `data/`, `reference/domains/`, `wiki/*.html`, `plugins/gs-superadmin/reference/`,
+   and the two verbatim script copies under `plugins/gs-superadmin/scripts/`. Each
+   generated file carries a "GENERATED FILE — do not edit by hand" banner naming its
+   regenerate command, and CI enforces the split by rebuilding and diffing — a PR whose
+   committed output does not match the build fails `git diff --exit-code`. The full
+   table, and the derived-generator commands that rebuild everything except the catalog
+   without the CLI installed, are in [AGENTS.md](AGENTS.md). `.gitattributes` marks the
+   generated set `linguist-generated`, so GitHub folds those files in PR diffs.
 2. New behavior should derive from the catalog too. The guard hook knows what's mutating
    because the catalog says so — if you find yourself hardcoding a command list, you're
    probably at the wrong altitude.
@@ -155,10 +160,16 @@ released surface that marketplace users clone.
 - **Branch off `dev`, PR to `dev`.** Never push or PR `main` directly — releases reach
   `main` only via a short-lived `release/vX.Y.Z` branch cut from `dev`, on which
   dev-branch-only content (the `dev-canary` skill, the `dev/` directory) is stripped
-  first. Never merge `main` back into `dev`. CI flags the targeting rule: a PR
-  aimed at `main` from anything but a `release/*` branch fails the `pr-target-guard`
-  workflow with a pointer back to this section (advisory until the repo's branch
-  protections mark that check required).
+  first. Never merge `main` back into `dev`. CI enforces the targeting rule: a PR
+  aimed at `main` from anything but a `release/*` branch fails the required `guard`
+  check (`pr-target-guard.yml`), and the check's message says the fix — change the
+  PR's base branch to `dev` (**Edit** next to the PR title, then the base dropdown).
+- **Opening the PR from a fork? Start from this link**, which opens GitHub's compare
+  form with `dev` already selected as the base:
+  <https://github.com/BradleyDB/gs-admin-cli-docs/compare/dev...?quick_pull=1> — then
+  "compare across forks", pick your fork and branch, and create the PR. GitHub otherwise
+  pre-fills the base with `main` (the repository's default branch, which the plugin
+  marketplace installs from), so the default lands on the one branch that rejects it.
 - Cross-session feedback (tester findings, fix status) flows through `dev/FEEDBACK.md`
   (statuses OPEN → FIXED → VERIFIED | WONTFIX); deferred live checks are banked in
   `dev/VALIDATION.md`.
@@ -174,6 +185,9 @@ released surface that marketplace users clone.
   any user-visible plugin change, and add a matching entry to
   `plugins/gs-superadmin/CHANGELOG.md`; docs-only changes need neither. The marketplace
   doesn't pin versions.
+- **Every release gets a GitHub Release** on its tag, its notes the CHANGELOG entries since
+  the previous released tag behind the intro in `.github/release-intro.md` — watching the
+  repo's Releases is the notification channel, since the marketplace announces nothing.
 - **Changes to `hooks/gs-admin-guard.mjs` or to the ask-rules generation are
   safety-boundary changes.** Say so explicitly in the PR description; they get extra
   review scrutiny, and "asks became denies" or "asks disappeared" are the specific
