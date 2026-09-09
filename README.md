@@ -209,6 +209,10 @@ rules-of-record: which files are generated, the design tenets that look like bug
 the verification commands. Security issues (e.g. a guard-hook bypass) go through
 [SECURITY.md](SECURITY.md) — privately, not as public issues.
 
+Pull requests target `dev`, never `main`. From a fork, start from
+[this compare link](https://github.com/BradleyDB/gs-admin-cli-docs/compare/dev...?quick_pull=1) — it
+pre-selects `dev` as the base branch, which GitHub's own "Contribute" button does not.
+
 Bug reports, documentation corrections, and feature asks each have their own issue form
 under **New issue**; the doc form asks for your CLI version, because the reference here is
 generated from one pinned version and a mismatch is often a version difference. Everyone

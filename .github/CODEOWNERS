@@ -1,0 +1,5 @@
+# Auto-requests the maintainer's review on every pull request. This works with no
+# ruleset involvement. `require_code_owner_review` stays OFF on both branch rulesets on
+# purpose: a sole owner cannot approve their own PRs, so turning it on would make every
+# maintainer-authored PR unmergeable without a bypass.
+* @BradleyDB
