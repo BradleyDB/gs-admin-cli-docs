@@ -1,19 +1,17 @@
 name: validate-plugin
 
 on:
+  # F-448: NO paths filter here. The main ruleset requires `manifests` and the
+  # three `validate` legs, and a workflow a trigger-level `paths:` filter skips
+  # reports no check run at all — GitHub leaves the required contexts "Expected"
+  # and the PR stays BLOCKED with every reported check green (the 2026-09-09
+  # docs-only release PR #7). The same path decision now lives in the `changes`
+  # job below, where a skipped job reports Success to the ruleset.
   pull_request:
-    paths:
-      - "plugins/**"
-      - ".claude-plugin/**"
-      - "build/build-plugin-gs-superadmin.mjs"
-      - "build/lib.mjs"
-      - "build/extract-catalog.mjs"
-      - "build/render-cheatsheet.mjs"
-      - "data/catalog.json"
-      - "test/**"
-      - ".github/workflows/validate-plugin.yml"
-  # F-266: same paths filter as pull_request, so a bus-only commit (dev/FEEDBACK.md
-  # and friends) starts no matrix at all.
+  # F-266: the push trigger keeps its paths filter — push events gate no merge,
+  # and not starting a run at all on a bus-only commit is the point. This list
+  # and the pathspec list in the `changes` job are the same fact twice; keep
+  # them equal (F-448).
   push:
     branches: [main, dev]
     paths:
@@ -56,7 +54,50 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # F-448: the path gate the pull_request trigger used to be. Decides once,
+  # from the PR's own diff, whether the plugin battery has anything to judge;
+  # `validate` and `manifests` are conditioned on it, and a job skipped by
+  # `if:` reports Success — which is what the main ruleset needs from a
+  # required check on a docs-only release PR. PRs to main always run: the
+  # release gate wants the full battery whatever changed. Non-PR events
+  # (push already path-filtered, schedule, dispatch) always run.
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      run: ${{ steps.decide.outputs.run }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # A pull_request checkout is the merge commit; its first parent is the
+          # base tip, so depth 2 reaches everything the diff below needs.
+          fetch-depth: 2
+      - name: Decide whether any plugin-affecting path changed
+        id: decide
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE: ${{ github.base_ref }}
+        run: |
+          if [ "$EVENT" != "pull_request" ] || [ "$BASE" = "main" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            echo "run: event=$EVENT base=$BASE"
+            exit 0
+          fi
+          # Same list as the push trigger's paths filter above (F-448: keep equal).
+          changed=$(git diff --name-only HEAD~1 HEAD -- \
+            plugins .claude-plugin build/build-plugin-gs-superadmin.mjs build/lib.mjs \
+            build/extract-catalog.mjs build/render-cheatsheet.mjs data/catalog.json test \
+            .github/workflows/validate-plugin.yml)
+          if [ -n "$changed" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            printf 'run: plugin-affecting paths changed:\n%s\n' "$changed"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "skip: no plugin-affecting path changed - validate and manifests report Skipped, which the ruleset reads as Success"
+          fi
+
   validate:
+    needs: changes
+    if: needs.changes.outputs.run == 'true'
     # OS-portability wave 5 (plan PR G): the whole battery runs on all three
     # OSes. This matrix depends on the repo-root .gitattributes
     # (* text=auto eol=lf) staying pinned — it beats the Windows runner's
@@ -188,6 +229,8 @@ jobs:
   # JSON (CI-cost round, 2026-08-27). One ubuntu job now carries it,
   # whatever the matrix runs.
   manifests:
+    needs: changes
+    if: needs.changes.outputs.run == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
