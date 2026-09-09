@@ -1,0 +1,1 @@
+GP-12 ruleset verification: scratch PR into main; the guard check must fail and the ruleset must show it required. Closed unmerged.
