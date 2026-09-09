@@ -137,7 +137,42 @@ what the gate counts (F-444). The gate refuses both. Sections from F-360 on; the
 rule also reads the archive.
 
 
-Under test: dev · seed · 2026-09-09
+Under test: dev · hb-20260909-01 · 2026-09-09
+Blind spots (hb-20260909-01): the skipped-path arm of F-448 (a docs-only PR to dev where validate and manifests report Skipped) was not exercised — nothing is required on dev besides drift (full), so it gates nothing today; it is measured the first time a docs-only PR to dev opens. No tester round ran this cut (docs-only payload, zero live findings before F-448; the release PR's own required-check rollup was F-448's judge).
+
+<!-- builder 2026-09-09 (docs-only promotion to main RELEASED — post-release housekeeping):
+     Payload: the contributor-onboarding surfaces (#6: compare link, guard message, PR template,
+       linguist-generated, CODEOWNERS), the GP-14 CONTRIBUTING bullet (#4), and the F-448 CI fix (#8).
+       No plugin bytes changed: no version bump, no tag, no GitHub Release (AGENTS.md docs-only rule);
+       plugin stays 0.37.0. Staged versions folded in: none.
+     Gate 1 (bus): zero live sections before the cut (seeded empty); F-448 logged and FIXED during the
+       cut; open PRs to dev: none.
+     Gate 2 (review): /code-review low over origin/main...dev — 0 findings; /security-review skipped:
+       no hook, spawn, or tenant-reading path touched, the workflow change is a literal inside an
+       existing echo. Tie-break applied: the first cut (032d645) was BLOCKED on main's required
+       validate-plugin contexts; the full_matrix dispatch was tried and refuted; root cause fixed on
+       dev (#8, F-448) and the branch recut rather than the ruleset loosened for one merge.
+     Cut: release/2026-09-09-contributor-surfaces from dev @ 198f40e, ONE commit beyond (the strip,
+       19349c9); stripped tree: both strict validates PASS; battery verbatim 52/52 on the first strip
+       (032d645), and on the recut 7/7 for the gates that read the only files that changed since
+       (validate-plugin.yml, the stripped bus) plus both validates.
+     CI on the release PR #7, QUOTED per job after completion:
+         validate-plugin 34402673242: changes success / manifests success / validate ubuntu success /
+           windows success / macos success
+         docs-drift 34402673243: drift (full) success
+         pr-target-guard 34402673241: guard success
+     Merged by Bradley (main @ 756579e); no tag (docs-only); release branch deleted local+remote;
+       checkout back on dev.
+     Housekeeping: nothing archived (F-448 stays live, FIXED, awaiting the other role's verdict);
+       Under test + canary → dev · hb-20260909-01. Next free number F-449. Released: nothing versioned;
+       dev stages nothing.
+     Now live from main: validate-plugin.yml's pull_request trigger without its paths filter (the
+       changes job gate, F-448); .github/CODEOWNERS for PRs targeting main; the PR template callouts;
+       the guard's rewritten message; README/CONTRIBUTING compare link. Dependabot policy: unchanged.
+     GitHub Release: none (docs-only; the release rule applies to plugin versions).
+     Consumer refresh: nothing to refresh — plugin bytes identical to 0.37.0.
+     Carried forward (not in this release): F-448 verdict by the other role; the skipped-path arm
+       (Blind spots above). -->
 
 ## F-448 — FIXED
 Reported: 2026-09-09 (builder, at the 2026-09-09 docs-only cut)
@@ -146,4 +181,5 @@ What: the main ruleset requires manifests and validate (ubuntu-latest | windows-
 Repro: open a PR to main from a release/* branch whose changed files are outside the paths list; gh pr checks lists only drift (full), guard, GitGuardian; gh pr view --json mergeStateStatus reads BLOCKED.
 Tried and refuted at this cut: gh workflow run validate-plugin.yml --ref <release branch> -f full_matrix=true. All four jobs succeeded on the same head sha (run 34401015130), but GitHub's PR rollup counts only check suites raised by the PR's own events — the dispatch suite never appears in gh pr checks and the PR stayed BLOCKED. The bus header's "release-grade recheck" dispatch is evidence, never a gate.
 Fix: 2026-09-09 (builder) — GitHub's documented shape for a required check behind a path filter (docs: "Handling skipped but required checks" — a workflow skipped by paths leaves its checks Pending; a job skipped by a job-level if reports Success). The pull_request trigger loses its paths filter; a new first job `changes` decides from the PR's own diff (git diff --name-only HEAD~1 HEAD against the same pathspec list) and always answers run=true when the base is main or the event is not a pull_request; `validate` and `manifests` carry needs: changes + if: needs.changes.outputs.run == 'true'. Docs-only PRs to dev still start no runner for the battery (the jobs skip); PRs to main always run the full matrix. The push trigger keeps its paths filter (push events gate no merge, and not starting a run at all is F-266's point) — that list and the pathspec list in `changes` are the same fact in two homes, each commented to name the other. Cost of the root cause over a workaround: one CI-touching PR to dev and a recut of the release branch; the alternative (removing the four contexts from the ruleset for one merge) weakens the gate and leaves no trace in the repo.
-Judge: the recut release PR's own required-check rollup — gh pr checks on the new head lists manifests and the three validate legs with the ruleset satisfied (mergeStateStatus not BLOCKED), or the fix is wrong; independent of anything the fixer asserts. Sibling: docs-drift.yml carries no paths filter (it always runs), pr-target-guard is branch-filtered to PRs targeting main, where it is the only place it is required — no other required context sits behind a trigger-level filter.
+Judge: the recut release PR's own required-check rollup — gh pr checks on the new head lists manifests and the three validate legs with the ruleset satisfied (mergeStateStatus not BLOCKED), or the fix is wrong; independent of anything the fixer asserts.
+Judge fired 2026-09-09 (builder): PR #7 recut head 19349c9 — gh pr checks listed changes, manifests, validate (ubuntu-latest | windows-latest | macos-latest), drift (full), guard, all SUCCESS (validate-plugin run 34402673242); mergeStateStatus CLEAN; merged by Bradley as 756579e. Live arm on the fix PR itself (#8, run 34402234627): the changes job printed "run: plugin-affecting paths changed:" and validate (ubuntu-latest) + manifests ran rather than skipped. Verdict of record still owed by the other role. Sibling: docs-drift.yml carries no paths filter (it always runs), pr-target-guard is branch-filtered to PRs targeting main, where it is the only place it is required — no other required context sits behind a trigger-level filter.

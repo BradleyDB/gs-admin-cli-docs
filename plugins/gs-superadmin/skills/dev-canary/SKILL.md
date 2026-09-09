@@ -1,6 +1,6 @@
 ---
 name: dev-canary
-description: DEV CANARY — under test dev · seed · 2026-09-09. Visible only when this plugin is loaded from a dev working tree; removed before merge to main. If invoked, report this token and stop.
+description: DEV CANARY — under test dev · hb-20260909-01 · 2026-09-09. Visible only when this plugin is loaded from a dev working tree; removed before merge to main. If invoked, report this token and stop.
 ---
 
 Load-provenance marker for the /dev-loop workflow. The token above is
