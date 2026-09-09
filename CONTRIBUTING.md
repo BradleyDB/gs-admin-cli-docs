@@ -174,6 +174,9 @@ released surface that marketplace users clone.
   any user-visible plugin change, and add a matching entry to
   `plugins/gs-superadmin/CHANGELOG.md`; docs-only changes need neither. The marketplace
   doesn't pin versions.
+- **Every release gets a GitHub Release** on its tag, its notes the CHANGELOG entries since
+  the previous released tag behind the intro in `.github/release-intro.md` — watching the
+  repo's Releases is the notification channel, since the marketplace announces nothing.
 - **Changes to `hooks/gs-admin-guard.mjs` or to the ask-rules generation are
   safety-boundary changes.** Say so explicitly in the PR description; they get extra
   review scrutiny, and "asks became denies" or "asks disappeared" are the specific
