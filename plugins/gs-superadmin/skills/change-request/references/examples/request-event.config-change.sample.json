@@ -1,0 +1,26 @@
+{
+  "schema": "request-event/v1",
+  "id": "req-slack-20260630-c360",
+  "source": "slack",
+  "source_link": "https://acme.slack.com/archives/C0CSOPS/p1751284800123456",
+  "requester": { "name": "Priya Nair", "role": "CSM Manager", "team": "Enterprise CS" },
+  "requested_at": "2026-06-30T15:02:00Z",
+  "wanted_by": "2026-07-10",
+  "summary": "Add churn-reason field to C360 offboarding section",
+  "body": "Churn retros keep stalling because nobody recorded the reason at offboarding time. Can we add a churn-reason picklist to the C360 offboarding section?",
+  "justification": {
+    "text": "Churn retros keep stalling because nobody recorded the reason at offboarding time.",
+    "stated_by": "requester"
+  },
+  "accounts": [],
+  "category": "config-change",
+  "repeat_of": [
+    { "ref": "req-slack-20260612-9d02", "date": "2026-06-12" }
+  ],
+  "requester_context": {
+    "role_tier": "manager",
+    "book_arr_band": "$5M–$10M",
+    "segment": "Enterprise"
+  },
+  "status": "ticketed"
+}

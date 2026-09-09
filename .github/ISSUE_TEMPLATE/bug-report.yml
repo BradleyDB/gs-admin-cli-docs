@@ -1,0 +1,128 @@
+name: Bug report (gs-superadmin plugin)
+description: Something in the Claude Code plugin — a skill, the mutation guard, setup — misbehaves.
+title: "[bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. Two things before you fill this in:
+
+        **Issues are public — never paste tenant data.** Replace tenant slugs, base URLs,
+        asset names, ids, and counts with placeholders; the docs use the fictional
+        `acme-prod` / `acme.gainsightcloud.com` pattern for exactly this.
+
+        **Wrong place?** A defect in the `gs-admin` CLI itself belongs with Gainsight, not
+        here (the CLI is their product; this project only drives it). A guard bypass — any
+        mutating command reaching execution without an approval prompt — is a security
+        report: use a private advisory per `SECURITY.md`, not this form.
+
+  - type: input
+    id: plugin-version
+    attributes:
+      label: Plugin version
+      description: >-
+        From `/plugin` inside Claude Code, or `.claude-plugin/plugin.json` in an installed
+        copy. If the install itself is what failed, write "install failed" and describe it
+        below.
+      placeholder: "0.0.0"
+    validations:
+      required: true
+
+  - type: input
+    id: cli-version
+    attributes:
+      label: gs-admin CLI version
+      description: Output of `gs-admin --version`. Say "not installed" if that is the situation.
+      placeholder: "0.0.0"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: workspace
+    attributes:
+      label: Is there a bootstrapped workspace?
+      description: >-
+        The plugin is inert outside a workspace, so this decides which half of the plugin
+        the bug can even be in.
+      options:
+        - "Yes — the directory has a .gs-superadmin/ folder"
+        - "No — plain directory, setup has not completed here"
+        - "Not sure"
+    validations:
+      required: true
+
+  - type: input
+    id: surface
+    attributes:
+      label: Which skill or command?
+      description: The slash command you ran, or the `gs-admin` command that triggered it.
+      placeholder: "/gs-superadmin:refresh --document"
+    validations:
+      required: true
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened, and what did you expect instead?
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: >-
+        Numbered steps from a state someone else can reach. If it only reproduces against a
+        tenant, describe the shape of the data (e.g. "a program with no participant source")
+        rather than naming the assets.
+      placeholder: |
+        1. In an empty directory, run /gs-superadmin:setup
+        2. ...
+        3. ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: output
+    attributes:
+      label: Relevant output
+      description: >-
+        Error text, the approval prompt you did or didn't get, journal lines. Scrub tenant
+        identifiers first. This block renders as a code block — no formatting needed.
+      render: shell
+    validations:
+      required: false
+
+  - type: input
+    id: environment
+    attributes:
+      label: OS and Node version
+      placeholder: "Windows 11 / Node 22.4.0"
+    validations:
+      required: false
+
+  - type: dropdown
+    id: reliability
+    attributes:
+      label: How reliably does it reproduce?
+      options:
+        - "Every time"
+        - "Intermittently"
+        - "Saw it once, could not reproduce"
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: hygiene
+    attributes:
+      label: Before submitting
+      options:
+        - label: >-
+            I removed tenant-identifying data (tenant slugs and URLs, asset names, ids,
+            counts) from everything above.
+          required: true
+        - label: >-
+            This is not a security vulnerability. Guard bypasses and anything that lets a
+            mutating command run unprompted go through a private advisory instead.
+          required: true

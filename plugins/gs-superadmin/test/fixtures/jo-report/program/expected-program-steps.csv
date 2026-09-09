@@ -1,0 +1,7 @@
+program_id,program_name,order,step_type,step_name,detail
+prog-1,"Renewal Outreach | Enterprise",1,START,Start,
+prog-1,"Renewal Outreach | Enterprise",2,ACTION,Send Email,email: Main Template — subject: Hello there {Bound Label} (+1 variant template(s))
+prog-1,"Renewal Outreach | Enterprise",3,TIMER,Wait,timer: 3 days
+prog-1,"Renewal Outreach | Enterprise",4,ACTION,Send Missing,email: Gone Template (no KB doc)
+prog-1,"Renewal Outreach | Enterprise",5,ACTION,Variant Only,email (variant-mapped only): Alt Template — subject: Alt subject
+prog-1,"Renewal Outreach | Enterprise",6,END,End,

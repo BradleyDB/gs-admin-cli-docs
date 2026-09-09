@@ -1,0 +1,13 @@
+{
+  "name": "gs-admin-cli-docs",
+  "owner": { "name": "BradleyDB" },
+  "description": "Plugins for running Gainsight administration with Claude and the gs-admin CLI.",
+  "plugins": [
+    {
+      "name": "gs-superadmin",
+      "source": "./plugins/gs-superadmin",
+      "description": "Persistent Gainsight admin workspace — bootstrap, index, and document a tenant via the gs-admin CLI.",
+      "category": "productivity"
+    }
+  ]
+}

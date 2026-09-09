@@ -1,0 +1,285 @@
+<!doctype html>
+<!-- GENERATED FILE — do not edit by hand.
+     Built by build/build-comparison-html.mjs from reference/comparison-guide.md.
+     Regenerate: npm run build:comparison -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Connecting AI to Gainsight: gs-admin CLI + Plugin vs M2M OAuth</title>
+<style>
+  :root {
+    --ground: #f6f8f8; --surface: #ffffff; --ink: #1c2628; --ink-soft: #4c5a5c;
+    --border: #dbe3e2;
+    --lane-a: #0e7c7b; --lane-a-soft: #e3f0ef;      /* CLI + plugin */
+    --lane-b: #a65a2e; --lane-b-soft: #f4e9e1;      /* M2M OAuth */
+    --lane-ab: #5b5f8a; --lane-ab-soft: #e9eaf3;    /* both */
+    --code-bg: #eef2f1;
+    --serif: "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
+    --sans: "Segoe UI", -apple-system, BlinkMacSystemFont, Roboto, "Helvetica Neue", Arial, sans-serif;
+    --mono: "Cascadia Code", Consolas, "SF Mono", Menlo, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ground: #101617; --surface: #182022; --ink: #e4ecea; --ink-soft: #9fb0ae;
+      --border: #2b3739; --lane-a: #45bdb2; --lane-a-soft: #14302f;
+      --lane-b: #dd9a62; --lane-b-soft: #33251a; --lane-ab: #9ba0d4;
+      --lane-ab-soft: #23253a; --code-bg: #1d2729;
+    }
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+  body { background: var(--ground); color: var(--ink); font-family: var(--sans); font-size: 16px; line-height: 1.65; }
+  .page { max-width: 46rem; margin: 0 auto; padding: 3.5rem 1.5rem 5rem; }
+  .masthead { margin-bottom: 3rem; }
+  .eyebrow { font-size: .72rem; letter-spacing: .14em; text-transform: uppercase; color: var(--ink-soft); margin-bottom: .9rem; }
+  h1 { font-family: var(--serif); font-size: 2.3rem; line-height: 1.15; font-weight: 600; text-wrap: balance; margin-bottom: 1rem; }
+  .standfirst { color: var(--ink-soft); font-size: 1.05rem; max-width: 40rem; }
+  .lane-key { display: flex; flex-wrap: wrap; gap: .6rem; margin-top: 1.4rem; }
+  .pill { display: inline-block; font-size: .74rem; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; padding: .22rem .7rem; border-radius: 2px; white-space: nowrap; }
+  .pill.a  { background: var(--lane-a-soft);  color: var(--lane-a); }
+  .pill.b  { background: var(--lane-b-soft);  color: var(--lane-b); }
+  .pill.ab { background: var(--lane-ab-soft); color: var(--lane-ab); }
+  section { margin-top: 3.2rem; }
+  h2 { font-family: var(--serif); font-size: 1.55rem; font-weight: 600; line-height: 1.25; text-wrap: balance; padding-bottom: .5rem; border-bottom: 1px solid var(--border); margin-bottom: 1.2rem; }
+  h3 { font-family: var(--serif); font-size: 1.18rem; font-weight: 600; margin: 1.8rem 0 .6rem; text-wrap: balance; }
+  h4, h5, h6 { font-family: var(--serif); font-size: 1.02rem; font-weight: 600; margin: 1.4rem 0 .5rem; text-wrap: balance; }
+  p { margin-bottom: .9rem; max-width: 42rem; }
+  p:last-child { margin-bottom: 0; }
+  ul, ol { margin: 0 0 .9rem 1.2rem; max-width: 42rem; }
+  li ul, li ol { margin: .45rem 0 0 1.2rem; }
+  li { margin-bottom: .45rem; }
+  strong { font-weight: 650; }
+  a { color: var(--lane-a); }
+  a:focus-visible { outline: 2px solid var(--lane-a); outline-offset: 2px; }
+  code { font-family: var(--mono); font-size: .84em; background: var(--code-bg); padding: .1em .35em; border-radius: 3px; }
+  pre { background: var(--code-bg); border: 1px solid var(--border); border-radius: 6px; padding: 1rem 1.2rem; overflow-x: auto; margin-bottom: .9rem; }
+  pre code { background: none; padding: 0; font-size: .82rem; line-height: 1.55; }
+  .table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); margin: 1.1rem 0; }
+  table { border-collapse: collapse; width: 100%; font-size: .9rem; }
+  th, td { text-align: left; vertical-align: top; padding: .65rem .85rem; border-bottom: 1px solid var(--border); }
+  tr:last-child > td { border-bottom: none; }
+  thead th { font-size: .74rem; letter-spacing: .07em; text-transform: uppercase; color: var(--ink-soft); background: var(--ground); border-bottom: 1px solid var(--border); }
+  thead th.col-a { color: var(--lane-a); box-shadow: inset 0 3px 0 var(--lane-a); }
+  thead th.col-b { color: var(--lane-b); box-shadow: inset 0 3px 0 var(--lane-b); }
+  thead th.col-ab { color: var(--lane-ab); box-shadow: inset 0 3px 0 var(--lane-ab); }
+  td.rowlabel { font-weight: 650; min-width: 11rem; }
+  tbody tr:nth-child(even) { background: color-mix(in srgb, var(--ground) 55%, var(--surface)); }
+  .usecase { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 1.15rem 1.3rem; margin-bottom: 1rem; }
+  .usecase-head { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; flex-wrap: wrap; margin-bottom: .55rem; }
+  .usecase-head h3 { margin: 0; font-size: 1.08rem; }
+  .usecase p { font-size: .94rem; }
+  .note { border-left: 3px solid var(--lane-a); background: var(--surface); border-radius: 0 6px 6px 0; padding: .8rem 1.1rem; margin: 1.1rem 0; font-size: .94rem; color: var(--ink-soft); }
+  .note strong { color: var(--ink); }
+  footer { margin-top: 4rem; padding-top: 1.2rem; border-top: 1px solid var(--border); font-size: .85rem; color: var(--ink-soft); font-style: italic; }
+  footer.notice { font-style: normal; font-size: .88rem; }
+  footer.notice .eyebrow { margin-bottom: .6rem; }
+  footer.notice p { max-width: none; }
+  footer.notice strong { color: var(--ink); }
+  footer.notice + footer { margin-top: 1.5rem; }
+  @media (max-width: 560px) { h1 { font-size: 1.8rem; } .page { padding-top: 2.2rem; } }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <header class="masthead">
+    <p class="eyebrow">Integration guide</p>
+    <h1>Connecting AI to Gainsight: gs-admin CLI + Plugin vs M2M OAuth</h1>
+    <p class="standfirst">A practical guide for choosing between two approaches to giving an AI assistant (or automation) access to your Gainsight tenant. If you are setting up a new integration, this document will help you pick the right tool — and explain how to combine both when you need to.</p>
+    <div class="lane-key" aria-label="Color key">
+      <span class="pill a">gs-admin CLI + plugin</span>
+      <span class="pill b">M2M OAuth</span>
+      <span class="pill ab">Plugin + M2M</span>
+    </div>
+  </header>
+
+  <p>The &quot;assisted&quot; side of this comparison is a <strong>stack</strong>, not a single tool: the <code>gs-admin</code> CLI is the foundation, and the <strong>gs-superadmin Claude Code plugin</strong> is an optional layer on top that adds a per-tenant knowledge base, approval guardrails on writes, and ready-made admin skills. You can adopt the foundation alone; the plugin assumes the foundation.</p>
+
+  <section id="quick-answer">
+    <h2>Quick answer</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>What you're trying to do</th><th>Use this</th><th>Why</th></tr></thead>
+        <tbody>
+          <tr><td class="rowlabel">Interactive work with an AI assistant — explore schema, validate builds, inspect configs</td><td><span class="pill a">gs-admin CLI</span></td><td>Typed tools, no credentials exposed to the model, purpose-built for AI</td></tr>
+          <tr><td class="rowlabel">Ongoing tenant administration — impact analysis, reviewable change plans, audits, email/schedule reports</td><td><span class="pill a">CLI + gs-superadmin plugin</span></td><td>Adds a local KB of your tenant, human approval on catalog-mutating commands, and a change journal</td></tr>
+          <tr><td class="rowlabel">Automated pipelines, bulk data extraction, feeding a BI tool on a schedule</td><td><span class="pill b">M2M OAuth</span></td><td>Service identity, runs headless, handles large data volumes</td></tr>
+          <tr><td class="rowlabel">AI-assisted admin work AND automated data pipelines</td><td><span class="pill ab">Plugin + M2M, side by side</span></td><td>They serve different layers; neither replaces the other</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="what-each-approach-is">
+    <h2>What each approach is</h2>
+    <h3>The gs-admin CLI <span class="pill a">the foundation</span></h3>
+    <p><code>gs-admin</code> is a Gainsight admin tool that runs in two modes from the same binary: a command-line tool for humans, and — when an AI host like Claude launches it — an <strong>MCP server</strong>, a process that accepts tool calls over a pipe and returns structured JSON results. Either way it is the same CLI underneath, and this guide just calls it &quot;the CLI.&quot; The AI never sees a password or token; the CLI holds your credentials internally and handles every API call on the model's behalf.</p>
+    <p>The action surface covers all eight Gainsight domains (Data Management, Journey Orchestrator, Rules Engine, Scorecards, and more), exposed two ways from the same handlers: <strong>182 named operations</strong> as MCP tools, and <strong>188 CLI commands</strong>. The AI knows exactly what each action does, what parameters it takes, and what it returns. In MCP mode it cannot call anything outside that defined set; when it drives the CLI through a shell instead, what constrains it is the AI host's permission model rather than a tool schema — the prompt-injection section below is precise about the difference.</p>
+    <p>Authentication uses the PKCE flow: a human logs in once via <code>gs-admin login</code>, and tokens are stored in the OS keychain. No persistent secret to store or rotate.</p>
+    <h3>The gs-superadmin plugin <span class="pill a">the workspace layer</span></h3>
+    <p>The <a href="../plugins/gs-superadmin/README.md">gs-superadmin plugin</a> is a Claude Code plugin that turns the raw CLI into a persistent, per-tenant admin workspace. It drives the same <code>gs-admin</code> binary and inherits its auth story — it adds no credentials of its own. On top of the foundation it provides:</p>
+    <ul>
+      <li><strong>A local knowledge base of your tenant.</strong> Setup indexes every rule, journey, scorecard, report, connector, and data designer, and documents them as markdown the AI can cite. Questions like &quot;which rules write to the Company object?&quot; are answered from documented facts, not guesses.</li>
+      <li><strong>A safety net on writes.</strong> Every command the CLI catalog marks as mutating triggers a <strong>human approval prompt</strong> before it runs; reads run freely. Approved changes are recorded in a <strong>change journal</strong>, and change-request work is traceable back to the originating ticket. Read the plugin README's &quot;How the plugin protects your tenant&quot; section before you lean on this: the gate follows the catalog's <code>mutating</code> flag, and that flag is not the same thing as &quot;writes to the tenant&quot; — the commands it mislabels are neither prompted nor journaled, and the skills that use them carry their own approval step instead.</li>
+      <li><strong>Everyday admin skills.</strong> Reviewable change plans built from KB citations, tenant-wide dependency/impact analysis (&quot;what breaks if I change this field?&quot;), Journey Orchestrator email &amp; schedule reports, naming audits, drift detection, and vendor-ready CLI bug reports.</li>
+    </ul>
+    <div class="note"><strong>One honest scoping note:</strong> the CLI's MCP mode works with any MCP-capable host, but the plugin layer (guard, KB, skills) is specific to <strong>Claude Code</strong>.</div>
+    <h3>M2M OAuth <span class="pill b">direct API</span></h3>
+    <p>Machine-to-machine (M2M) OAuth uses a <strong>client ID and client secret</strong> that you generate in Gainsight's Connectors 2.0 settings. Your program trades those credentials for a short-lived Bearer token, then calls the Gainsight REST API directly on every request.</p>
+    <p>The program — whether a Python script, a dbt model, or an AI assistant — handles the token and constructs each API call itself. There is no defined tool surface: the program can call any Gainsight endpoint that the authorizing admin's permissions allow.</p>
+    <p>This is the right model for <strong>automated, headless integrations</strong> — scheduled jobs, ETL pipelines, BI connectors — where no human is present at runtime.</p>
+  </section>
+
+  <section id="side-by-side-comparison">
+    <h2>Side-by-side comparison</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th></th><th class="col-a">gs-admin CLI + plugin</th><th class="col-b">M2M OAuth (direct API)</th></tr></thead>
+        <tbody>
+          <tr><td class="rowlabel">How it's invoked</td><td>AI host launches the process; model calls named tools (or runs CLI commands)</td><td>HTTP client calls the Gainsight REST API with a Bearer token</td></tr>
+          <tr><td class="rowlabel">Auth flow</td><td>PKCE — human logs in once, tokens in OS keychain</td><td>Client credentials — program holds client ID + secret, exchanges for token</td></tr>
+          <tr><td class="rowlabel">Who drives it</td><td>An AI assistant interactively, with a human approving writes</td><td>A script, pipeline, or AI assistant with the token in context</td></tr>
+          <tr><td class="rowlabel">Credentials to manage</td><td>None persistent — PKCE has no client secret</td><td>Client secret (long-lived; must be stored securely and rotated)</td></tr>
+          <tr><td class="rowlabel">Credential visible to the AI</td><td>No — the CLI holds it internally</td><td>Potentially yes — the token may be in the model's context</td></tr>
+          <tr><td class="rowlabel">Tool/endpoint surface</td><td>182 MCP tools with typed input schemas (188 CLI commands for the same actions)</td><td>Any Gainsight REST endpoint within the authorizing admin's permissions</td></tr>
+          <tr><td class="rowlabel">Guardrails on writes</td><td>With the plugin: every catalog-mutating command asks a human first and is journaled — but the catalog mislabels part of the write surface, and those commands do neither</td><td>None built in — whatever your program enforces</td></tr>
+          <tr><td class="rowlabel">Tenant context available to the AI</td><td>With the plugin: a documented local KB of every asset, citable and grep-able</td><td>None — each call starts from zero</td></tr>
+          <tr><td class="rowlabel">Bulk data extraction</td><td>Limited — spot queries, 50-row default, manual pagination</td><td>Full control — stream, paginate, and land data wherever you need</td></tr>
+          <tr><td class="rowlabel">Runs headless (no human)</td><td>No — PKCE requires an initial human login; the plugin's write guard assumes a human</td><td>Yes — designed for service-to-service with no user present</td></tr>
+          <tr><td class="rowlabel">Audit log identity</td><td>Logged as the admin who authenticated; the plugin adds a local change journal, tied to tickets, covering the commands it prompts on</td><td>Logged as the connector/app name</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="use-case-guide">
+    <h2>Use-case guide</h2>
+    <div class="usecase">
+      <div class="usecase-head"><h3>Exploring your data architecture — objects, fields, schema</h3><span class="pill a">gs-admin CLI</span></div>
+      <p>There is a single tool, <code>data_management_list_and_describe_objects</code>, that lists every object in your tenant and returns full field metadata for each in one call. The AI can reason over that output immediately — naming fields, describing types, surfacing dropdowns. This is exactly what the tool was built for. Doing the same with M2M would require you to discover and chain multiple API endpoints yourself.</p>
+      <p>Why the bare CLI and not the plugin? Schema questions want <strong>live tenant state</strong>, and the CLI answers from the live API in one call — the plugin's KB is a documented snapshot, which is the wrong source of truth for &quot;what does this field look like right now.&quot; The plugin still adds value <em>around</em> the lookup — if the KB is built, the AI can also cite what each object is used by — but the lookup itself needs nothing beyond the CLI.</p>
+    </div>
+    <div class="usecase">
+      <div class="usecase-head"><h3>Build validation</h3><span class="pill a">gs-admin CLI</span></div>
+      <p>Validating a build means asking questions: does this object have the right fields? What depends on it? Is this rule configured correctly? The AI calls tools like <code>data_management_describe_object</code> or <code>data_management_object_dependencies</code> and reasons over the results. This is interactive, AI-assisted work — the CLI's defined tool surface is the right fit.</p>
+      <p>Same reasoning as schema exploration: validation checks <strong>live config</strong>, so the CLI is the source of truth and needs no layer on top. Add the plugin when validation grows into an ongoing practice — its KB gives you a documented baseline to diff against, and the <code>refresh</code> skill turns one-off validation into drift detection.</p>
+    </div>
+    <div class="usecase">
+      <div class="usecase-head"><h3>Impact analysis before a change</h3><span class="pill a">gs-superadmin plugin</span></div>
+      <p>&quot;What breaks if I rename this field?&quot; is a cross-domain question — rules, reports, journeys, connector jobs, and data designers can all depend on one object or field. The plugin's <code>deps-report</code> skill answers it from the indexed KB in one pass, naming every documented dependent with its dependency kind and status, and can reconcile against the CLI's live dependency check. Raw CLI calls can fetch the pieces, but the plugin has already assembled and documented them.</p>
+    </div>
+    <div class="usecase">
+      <div class="usecase-head"><h3>Executing a config change with review</h3><span class="pill a">gs-superadmin plugin</span></div>
+      <p>The <code>change-request</code> skill turns a ticket or a prose request into a reviewable implementation plan with KB citations — impacted assets, exact command sequence, test-mode verification, rollback — and executes it only step by step, with the journal recording what actually ran. The plan itself is the gate: it names which of its commands will hit the mutation-guard prompt and which will not, so approving it is an informed decision rather than a rubber stamp. This is the workflow gap that raw tool access leaves open: capable hands, no process.</p>
+    </div>
+    <div class="usecase">
+      <div class="usecase-head"><h3>Recurring admin reporting — emails, schedules, naming drift</h3><span class="pill a">gs-superadmin plugin</span></div>
+      <p>Read-only questions admins answer weekly — &quot;which emails mention this phrase?&quot;, &quot;what's scheduled to send right now?&quot;, &quot;which assets violate our naming convention?&quot; — are packaged as skills (<code>email-report</code>, <code>audit</code>, <code>refresh</code>) that produce markdown/CSV reports from the KB. No pipeline to build, nothing mutated.</p>
+    </div>
+    <div class="usecase">
+      <div class="usecase-head"><h3>Surfacing Gainsight data for external dashboards and decks</h3><span class="pill b">M2M OAuth</span></div>
+      <p>This is a data extraction job, not an AI reasoning job. You need to pull records from Gainsight, often in volume, on a schedule or on demand. The M2M approach gives you full control over pagination, field selection, and where the data lands. The CLI's query tool works for spot checks but is not designed for bulk extraction pipelines.</p>
+    </div>
+    <div class="usecase">
+      <div class="usecase-head"><h3>Combining Gainsight data with data from other platforms</h3><span class="pill b">M2M OAuth</span></div>
+      <p>Joining Gainsight data with your CRM, data warehouse, or another platform is a pipeline problem. The right tool is a script or transformation layer (Python, dbt, etc.) that pulls data from each source and combines them. M2M credentials drop cleanly into any HTTP client. The gs-admin CLI is not designed for this layer.</p>
+    </div>
+    <div class="usecase">
+      <div class="usecase-head"><h3>Building a data dictionary</h3><span class="pill ab">plugin + M2M</span></div>
+      <p>To <em>build</em> the dictionary — exploring objects, understanding field types, reading descriptions, identifying relationships — use the gs-admin CLI (or let the plugin's KB do it as a by-product of setup: the indexed, documented asset base <em>is</em> a data dictionary the AI maintains).</p>
+      <p>To <em>sync</em> that dictionary to a BI platform or share it as a live artifact, write a small M2M script that pulls the same metadata on a schedule and pushes it to your catalog tool. That part runs headless, with no AI needed.</p>
+    </div>
+  </section>
+
+  <section id="security-comparison">
+    <h2>Security comparison</h2>
+    <h3>The most important difference: what credential exists</h3>
+    <p>The CLI's PKCE flow <strong>has no client secret</strong>. There is nothing persistent to steal, rotate, or accidentally commit to a repository. Tokens live in the OS keychain (the most secure option) or an encrypted local file. The plugin adds no credentials of its own.</p>
+    <p>M2M OAuth has a client secret that must live somewhere — a <code>.env</code> file, a secrets vault, or environment variables. If it leaks, anyone can mint tokens until you rotate it. Rotation requires updating every integration that uses that secret.</p>
+    <h3>What the AI can see</h3>
+    <p>With the gs-admin CLI, the AI model <strong>never sees a token</strong>. The CLI holds credentials internally and only surfaces tool results. Nothing in the model's context can be echoed back, logged, or extracted by an adversarial prompt.</p>
+    <p>With M2M OAuth, if the Bearer token is in the model's context (so the AI can attach it to requests), it is also in any logs, in any output the model produces, and reachable by a prompt injection attack.</p>
+    <h3>Prompt injection risk</h3>
+    <p>This is a practical concern when AI assistants call APIs on your behalf.</p>
+    <p>In <strong>MCP mode</strong>, the AI can only call the 182 MCP tools with their defined parameters. A malicious prompt that tries to get the AI to &quot;call this other endpoint&quot; simply cannot succeed — that endpoint is not in the tool surface. That guarantee is real, and it is a property of the MCP transport.</p>
+    <p>Be precise about the other path, because it is the one the plugin uses: when the AI drives <code>gs-admin</code> as a <strong>shell command</strong>, it is composing command lines, and a shell is not a constrained surface. What limits it there is the AI host's own permission model plus the plugin's guard — not a typed tool schema. If the typed-surface guarantee is the property you are buying, run the CLI in MCP mode.</p>
+    <p>The plugin adds a second, independent layer: a command the catalog marks <strong>mutating</strong> cannot run without a <strong>human approving that specific command</strong> at a prompt showing exactly what will execute. A prompt-injected <code>sc update</code> has to get past a person, not just a schema. Commands the catalog doesn't recognize are treated as potentially mutating and ask too (fail-closed), so a newer CLI's mutations don't slip through silently.</p>
+    <p>The limit worth knowing before you rely on it: the guard reads the catalog's <code>mutating</code> flag. Since CLI 1.0.8 that flag is a written contract in the CLI's own artifact schema (true iff the action can produce a server-side side effect, regardless of HTTP verb), and upstream closed the class this paragraph used to warn about: commands flagged non-mutating while declaring a PUT/DELETE/PATCH endpoint went 29 → 0 at 1.0.8, the <code>re r</code> rule-authoring and scheduling surface and <code>dd t</code> template edits all prompt from the catalog now, and at v1.0.9 the 20 non-mutating commands still carrying a POST endpoint are read-shaped fetches (list/describe/fetch-data/validate) reviewed command-by-command upstream. The residual risk is a future mislabel, not a standing population: the guard fail-closes on unknown commands, and a hand-maintained ask-override list (empty since 1.0.8; the mechanism is kept) forces the prompt on any newly verified mislabel. The guard is a layer of risk reduction at the command-parsing level, not a boundary.</p>
+    <p>With M2M OAuth (direct), the AI can call any endpoint within scope. A crafted input could, in principle, redirect it to a destructive operation it was never intended to reach.</p>
+    <h3>Audit trail</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th></th><th class="col-a">gs-admin CLI + plugin</th><th class="col-b">M2M OAuth</th></tr></thead>
+        <tbody>
+          <tr><td class="rowlabel">Appears in Gainsight logs as</td><td>The admin who ran <code>gs-admin login</code></td><td>The connector app name</td></tr>
+          <tr><td class="rowlabel">Human accountability</td><td>Yes — tied to a named user; the plugin journal ties each prompted change to the approving session and, for planned work, the originating ticket</td><td>No — service identity only</td></tr>
+          <tr><td class="rowlabel">Best for</td><td>Interactive admin work with a person in the loop</td><td>Automated pipelines where service identity is correct</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <h3>Summary</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Risk</th><th class="col-a">gs-admin CLI + plugin</th><th class="col-b">M2M OAuth</th></tr></thead>
+        <tbody>
+          <tr><td class="rowlabel">Persistent credential to protect</td><td>None</td><td>Client secret</td></tr>
+          <tr><td class="rowlabel">Token visible to the AI model</td><td>No</td><td>Potentially yes</td></tr>
+          <tr><td class="rowlabel">Blast radius of a leaked credential</td><td>None (no persistent secret)</td><td>Anyone can mint tokens until rotated</td></tr>
+          <tr><td class="rowlabel">Rogue AI behavior</td><td>In MCP mode, constrained to the 182 MCP tools; over a shell, constrained by the AI host's permission model. With the plugin, catalog-mutating commands additionally require per-command human approval and are journaled</td><td>Can reach any endpoint in scope</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="using-the-plugin-and-m2m-together">
+    <h2>Using the plugin and M2M together</h2>
+    <p>The two approaches are not competitors — they serve different layers. The right architecture uses both, each where it fits.</p>
+    <h3>For AI-assisted work: two tool sets, one AI</h3>
+    <p>Register <strong>gs-admin</strong> and a small custom M2M-powered server as MCP servers in your AI host config. The AI sees a combined tool surface and routes automatically based on what each tool does — no explicit decision logic needed.</p>
+    <ul>
+      <li><strong>gs-admin tools</strong> handle schema inspection, config validation, admin operations, and anything in the eight Gainsight domains.</li>
+      <li><strong>A small custom M2M-powered server</strong> exposes bulk query and export tools backed by your M2M credentials.</li>
+    </ul>
+    <p>The AI calls the right tool for the job. You don't have to tell it which one to use.</p>
+    <p>The gs-superadmin plugin is not part of that config. It is a <strong>Claude Code plugin</strong>, not an MCP server — you install it from the plugin marketplace, not under <code>mcpServers</code> — and you layer it on in Claude Code when you want the KB, the approval guard, and the admin skills. One caveat if you run both lanes: mutating MCP tool calls do trigger the guard's approval prompt, but the change journal covers the <strong>CLI lane only</strong>, so an approved mutation made through an MCP tool is prompted and not journaled.</p>
+    <h3>For automated pipelines: M2M stays outside Claude</h3>
+    <p>Scheduled BI feeds, nightly exports, and ETL jobs run as scripts with M2M credentials. Claude is not involved. These pipelines are stable, auditable, and don't need AI judgment to run correctly.</p>
+    <h3>The combined config (example)</h3>
+    <pre><code>{
+  &quot;mcpServers&quot;: {
+    &quot;gs-admin&quot;: {
+      &quot;command&quot;: &quot;gs-admin&quot;,
+      &quot;env&quot;: { &quot;GS_BASE_URL&quot;: &quot;https://your-tenant.gainsightcloud.com&quot; }
+    },
+    &quot;gs-data&quot;: {
+      &quot;command&quot;: &quot;node&quot;,
+      &quot;args&quot;: [&quot;gs-data-server.js&quot;],
+      &quot;env&quot;: {
+        &quot;GS_BASE_URL&quot;: &quot;https://your-tenant.gainsightcloud.com&quot;,
+        &quot;GS_CLIENT_ID&quot;: &quot;your-client-id&quot;,
+        &quot;GS_CLIENT_SECRET&quot;: &quot;your-client-secret&quot;
+      }
+    }
+  }
+}</code></pre>
+    <p><code>gs-data-server.js</code> is a small custom MCP server — roughly 200 lines — that holds your M2M credentials, manages token refresh, and exposes tools like <code>gainsight_bulk_query</code> and <code>gainsight_export_object</code>. The AI never sees the credentials directly.</p>
+  </section>
+
+  <section id="recommendation">
+    <h2>Recommendation</h2>
+    <p>Start with <strong>the gs-admin CLI, read-only</strong>. It covers schema exploration, build validation, config inspection, and interactive data dictionary work without requiring you to manage any credentials beyond an initial login.</p>
+    <p>If you administer the tenant day to day from Claude Code, add the <strong>gs-superadmin plugin</strong> next: one setup run builds the tenant KB, and from then on impact analysis, change plans, audits, and email reports run against documented facts — with catalog-mutating commands gated behind an approval prompt and journaled.</p>
+    <p>It is still the better path to <em>adding write access safely</em> — a documented KB, an approval step inside every write-capable skill, and a change journal beat an unguarded read-write surface. Its guard also got stronger at CLI 1.0.8: upstream fixed the mislabeled-writer class (29 strict cases → 0), so every verified writer now prompts from the catalog itself, and at v1.0.9 the 20 non-mutating commands still carrying POST endpoints are read-shaped fetches reviewed upstream. Adopt it knowing the guard is command-parsing risk reduction plus a fail-closed prompt on unknown commands, not a boundary — the skills that drive writes still make their own approval step the gate. The plugin README's &quot;How the plugin protects your tenant&quot; section has the details.</p>
+    <p>Once you have validated your use cases, add <strong>M2M OAuth</strong> specifically for bulk data extraction and any automated pipeline that needs to run without a human present. Create one M2M application per integration — not one shared key — so you can rotate or revoke any single one without disrupting the others.</p>
+    <p>Treat the M2M client secret like a password: store it in a secrets vault or local <code>.env</code> file, never in a shared document, a support ticket, or a chat message.</p>
+  </section>
+
+  <footer class="notice"><p class="eyebrow">Notice</p><p><strong>Currency.</strong> This document was last updated on 2026-09-08 (against <code>@gainsight/gs-admin-cli@1.0.9</code>) with reference to Gainsight's then-current pre-built and generally available Admin CLI package. Gainsight may have updated its documentation and available Admin CLI package since then. You can always find the latest version of Gainsight's documentation and Admin CLI package at <a href="https://support.gainsight.com">support.gainsight.com</a>.</p><p>Because this process wasn't built or endorsed by Gainsight, it's possible that a later update to the Admin CLI package will interfere with the intended function set forth in this document. You can always check <a href="https://support.gainsight.com">support.gainsight.com</a> for the latest information and Admin CLI package.</p><p><strong>Unaffiliated community project.</strong> This project is not affiliated with, endorsed by, or supported by Gainsight, Inc. &quot;Gainsight&quot;, <code>gs-admin</code>, and <code>@gainsight/gs-admin-cli</code> are products and/or trademarks of Gainsight, Inc., named here only to describe what this project documents and drives. It is not a copy of the CLI and does nothing on its own: everything here works against the <code>@gainsight/gs-admin-cli</code> package that <em>you</em> install, license, and authenticate, and the reference material is generated from that installed package's own command manifests.</p></footer>
+
+  <footer>Keep your M2M client secret private. Anyone who has it can authenticate as that connector.</footer>
+
+</div>
+</body>
+</html>

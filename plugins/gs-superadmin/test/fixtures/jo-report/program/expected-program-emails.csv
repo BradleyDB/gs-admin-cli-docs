@@ -1,0 +1,5 @@
+program_id,program_name,step_order,step_name,role,template_id,template_title,subject,survey_bound,survey_name,survey_id,body_chars,kb_doc_path
+prog-1,"Renewal Outreach | Enterprise",2,Send Email,primary,tpl-main,Main Template,Hello there {Bound Label},true,Renewal Survey,SVY-9,84,fixture-tenant/journey-email-templates/tpl-main.md
+prog-1,"Renewal Outreach | Enterprise",2,Send Email,variant,tpl-alt,Alt Template,Alt subject,true,Renewal Survey,SVY-9,52,fixture-tenant/journey-email-templates/tpl-alt.md
+prog-1,"Renewal Outreach | Enterprise",4,Send Missing,primary,tpl-gone,Gone Template,,false,,,,
+prog-1,"Renewal Outreach | Enterprise",5,Variant Only,variant,tpl-alt,Alt Template,Alt subject,false,,,52,fixture-tenant/journey-email-templates/tpl-alt.md

@@ -1,0 +1,52 @@
+name: pr-target-guard
+
+# Enforces the dev-first flow (CONTRIBUTING.md, "Submitting changes"): `main`
+# only ever receives short-lived release/* branches; every other PR targets
+# `dev`. The `branches: [main]` filter means this workflow never runs on a PR
+# to dev — the guard only judges PRs that aim at main.
+#
+# DORMANT until the repo is public and the GP-12 ruleset exists: until the
+# ruleset names this check as required, a red run here reports but does not
+# block the merge. Keep the workflow name and job id stable — the required
+# check will be registered under the job name "guard".
+#
+# Scope: this is a routing/convention check, not an access control — anyone
+# can name a branch release/* and pass it. What actually restricts who may
+# change main is the branch ruleset (required reviews, required checks); this
+# guard exists to fail fast with a helpful message on honest mis-targets.
+#
+# Trigger stays `pull_request`, never `pull_request_target`: the job needs no
+# secrets and no write token, and it never checks out or executes PR code.
+# `edited` is included because re-targeting an existing PR (base changed from
+# dev to main in the UI) arrives as that activity type — without it the guard
+# would never run on the exact mistake it exists to catch.
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, edited]
+
+permissions:
+  contents: read
+
+jobs:
+  guard:
+    runs-on: ubuntu-latest
+    steps:
+      # github.head_ref is attacker-named (it is the fork's branch name), so
+      # it is passed via env, never interpolated into the script text — and
+      # kept out of the ::error:: workflow command too, where the runner's
+      # percent-decoding would let a crafted branch name forge annotations.
+      - name: Only release/* branches may merge to main
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+        run: |
+          printf 'PR head branch: %s\n' "$HEAD_REF"
+          case "$HEAD_REF" in
+            release/*)
+              echo "Head is a release branch - merging to main is the release flow."
+              ;;
+            *)
+              echo "::error::This PR targets 'main' from a non-release branch. PRs must target 'dev'; only short-lived release/* branches merge to main. Re-target this PR to 'dev' - see CONTRIBUTING.md, section 'Submitting changes'."
+              exit 1
+              ;;
+          esac

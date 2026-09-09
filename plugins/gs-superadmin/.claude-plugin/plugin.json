@@ -1,0 +1,17 @@
+{
+  "name": "gs-superadmin",
+  "version": "0.37.0",
+  "description": "Persistent Gainsight Admin CLI workspace — bootstrap, index, and operate on a Gainsight tenant via gs-admin.",
+  "author": {
+    "name": "BradleyDB"
+  },
+  "repository": "https://github.com/BradleyDB/gs-admin-cli-docs",
+  "homepage": "https://github.com/BradleyDB/gs-admin-cli-docs",
+  "license": "MIT",
+  "keywords": [
+    "gainsight",
+    "gs-admin",
+    "customer-success",
+    "admin-cli"
+  ]
+}

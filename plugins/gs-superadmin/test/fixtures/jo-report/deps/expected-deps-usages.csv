@@ -1,0 +1,3 @@
+program_id,program_name,status,status_source,source,usage_class,object,field,label,matched_term,matched_how,detail
+prog-filter,Filter Program,PROCESSING,kb,Src A,filter,Company,Arr__gc,ARR,ARR,exact,"operator GREATER_THAN, alias F1"
+prog-filter,Filter Program,PROCESSING,kb,Src A,filter,Company,Status__gc,Company Status,Company,exact,"operator EQUALS, alias A"

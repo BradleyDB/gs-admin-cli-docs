@@ -1,0 +1,39 @@
+{
+  // GP-B5 DS-42: the JSDoc-contract type gate — `tsc --noEmit` with checkJs over
+  // every tracked .mjs (the include derives the file set from the tree: build/,
+  // test/, plugins/ today). Rules of record — the checker-only devDependency
+  // carve-out, its bright lines, and the NON-STRICT decision — live in
+  // AGENTS.md tenet 5. Not checked here: build/wiki-assets/app.js, a browser
+  // (DOM) asset inlined into the wiki and covered by the wiki fixtures.
+  // Strictness is STATED below (strict: false), never the compiler's default; the strictNullChecks ratchet
+  // is the SECOND config beside this one — tsconfig.strict.json, an explicit
+  // files list that only grows (AGENTS.md tenet 5; GP-B5 W8/DS-46) — never a
+  // tree-wide flip of this one.
+  "compilerOptions": {
+    // The NON-STRICT decision, STATED — never inherited from the compiler's
+    // default. TypeScript 7 flipped that default to strict, and Dependabot's
+    // first bump (PR #119, 2026-09-02) reported 2,483 tree-wide errors that
+    // were the policy reversal, not the compatibility cost (which measured 2).
+    // The strictNullChecks ratchet (tsconfig.strict.json) re-enables exactly
+    // one strict flag over its own file list; a recorded decision rides here.
+    "strict": false,
+    // GP-B4 close-out (2026-09-05): the one generic-lint class this gate did
+    // not already cover. Measured before adding: ESLint's core rules over every
+    // tracked .mjs found 34 findings in ~50k lines — none of them fallthrough,
+    // undefined, unreachable, or duplicate-key; the only class worth a standing
+    // check was unused declarations, and this flag IS that check with no new
+    // dependency. Not a strictness flag — the NON-STRICT decision above stands.
+    // noUnusedParameters stays off: its three hits were positional callback
+    // arguments (one in the guard), and renaming them buys nothing.
+    "noUnusedLocals": true,
+    "allowJs": true,
+    "checkJs": true,
+    "noEmit": true,
+    "target": "es2022",
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "types": ["node"],
+    "skipLibCheck": true
+  },
+  "include": ["**/*.mjs"]
+}

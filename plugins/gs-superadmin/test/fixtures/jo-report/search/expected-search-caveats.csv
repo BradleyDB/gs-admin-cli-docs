@@ -1,0 +1,6 @@
+caveat
+"4 template doc(s) predate token metadata (no ""## Tokens"" section) — template-side token labels are unavailable for them (program-side bindings still resolve where a program is in context). Backfill via the skill's gap-fill flow (mark the docs stale → describe-batch re-fetches them)."
+"2 template id(s) referenced by programs have no KB doc and were NOT searched — fetch each with `gs-admin --json jo email template --id '<id>'` (first 2: tpl-missing-1, tpl-missing-2; full list in the index under gaps.referencedTemplatesMissing)."
+1 KB template doc(s) are metadata-only (no captured body) — searched on title/subject only.
+"1 program doc(s) are stubs (steps unknown) — ""used by"" program lists may be incomplete."
+KB scope: only the 4 template(s) with KB docs were searched — tenant templates never captured by a crawl are invisible here except via program references.

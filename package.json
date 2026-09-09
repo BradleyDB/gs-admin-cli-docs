@@ -1,0 +1,21 @@
+{
+  "name": "gs-admin-explorer",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Interactive wiki + in-repo knowledge base for the @gainsight/gs-admin-cli package. Zero runtime/build dependencies.",
+  "scripts": {
+    "build": "node build/extract-catalog.mjs && node build/build-reference.mjs && node build/build-wiki.mjs && node build/build-comparison-html.mjs && node build/build-plugin-gs-superadmin.mjs && node build/emit-reader-shapes.mjs",
+    "build:catalog": "node build/extract-catalog.mjs",
+    "build:reader-shapes": "node build/emit-reader-shapes.mjs",
+    "build:reference": "node build/build-reference.mjs",
+    "build:wiki": "node build/build-wiki.mjs",
+    "build:comparison": "node build/build-comparison-html.mjs",
+    "build:plugin:gs-superadmin": "node build/build-plugin-gs-superadmin.mjs",
+    "typecheck": "tsc -p tsconfig.json && node build/check-strict-list.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "20.19.43",
+    "typescript": "7.0.2"
+  }
+}

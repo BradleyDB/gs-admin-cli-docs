@@ -1,0 +1,74 @@
+name: Feature request
+description: Propose a new skill, a new capability, or a change to how something works.
+title: "[feature] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Ideas are welcome. Some context that will save you time — a few properties of this
+        project are deliberate and won't be traded away, and proposals that assume otherwise
+        tend to stall:
+
+        - **The mutation guard asks, it never blocks.** The approval prompt *is* the override
+          path; nothing here will refuse a command outright on the user's behalf.
+        - **Zero dependencies.** Node built-ins only, everywhere — build scripts, hook, tests
+          (the one carve-out is a checker-only type-check gate; nothing at runtime resolves
+          from a package).
+        - **Behavior derives from the CLI catalog**, not from hardcoded command lists.
+        - **The plugin stays inert outside a workspace** and never countermands plain
+          `gs-admin` use.
+
+        The reasoning behind each is in `AGENTS.md` (design tenets) and `CONTRIBUTING.md`.
+
+        **Issues are public — never paste tenant data** when illustrating your use case.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem are you hitting?
+      description: >-
+        The situation, not the solution — what you were trying to do as an admin, and where
+        the current behavior left you.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What should happen instead?
+      description: Sketch the behavior. If it's a new skill, what would you type and what would it produce?
+    validations:
+      required: true
+
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Which part of the project?
+      options:
+        - "A plugin skill (new or existing)"
+        - "The mutation guard / safety model"
+        - "The per-tenant knowledge base or its structure"
+        - "Reference docs or the wiki"
+        - "Build and generation tooling"
+        - "Something else / not sure"
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: What do you do today instead?
+      description: >-
+        Current workaround, or the alternatives you considered and why they fall short. Useful
+        for judging whether this needs new machinery or just documentation.
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: contribution
+    attributes:
+      label: Optional
+      options:
+        - label: I'd be willing to open a pull request for this.
+          required: false

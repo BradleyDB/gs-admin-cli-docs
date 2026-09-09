@@ -1,0 +1,17 @@
+{
+  "schema": "request-event/v1",
+  "id": "req-manual-20260702-qbr1",
+  "source": "manual",
+  "source_link": "unknown",
+  "requester": { "name": "Sam Ortiz", "role": null, "team": null },
+  "requested_at": "2026-07-02T09:00:00Z",
+  "wanted_by": null,
+  "summary": "Add a churn-reason field to the offboarding checklist",
+  "body": "Sam asked in standup whether the offboarding checklist could capture why the customer churned.",
+  "justification": null,
+  "accounts": [],
+  "category": null,
+  "repeat_of": [],
+  "requester_context": null,
+  "status": "new"
+}

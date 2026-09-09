@@ -1,0 +1,7 @@
+{
+  "_comment": "OPTIONAL local override (git-ignored). Copy to gs-admin-explorer.config.json and fill in only the fields you need.",
+  "pkgRoot": "/absolute/path/to/node_modules/@gainsight/gs-admin-cli",
+  "mcpServerName": "gs-admin",
+  "_privateInstancePatterns": "Extra case-insensitive regexes for build/check-instance-data.mjs: org-specific strings (your real tenant slugs, org names) that must never appear in this repo. They live only in the git-ignored config so the detection patterns themselves never enter git history; CI runs the generic built-in patterns only.",
+  "privateInstancePatterns": ["your-real-tenant-slug", "your-org-name"]
+}

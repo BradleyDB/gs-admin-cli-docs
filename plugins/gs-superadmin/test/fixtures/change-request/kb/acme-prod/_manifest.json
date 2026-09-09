@@ -1,0 +1,41 @@
+{
+  "slug": "acme-prod",
+  "baseUrl": "https://acme.gainsightcloud.com",
+  "environment": "production",
+  "created": "2026-06-20T15:00:00.000Z",
+  "last_refresh": "2026-06-28T09:30:00.000Z",
+  "inventory": {
+    "rules-engine/rul-9f3e21": {
+      "id": "rul-9f3e21",
+      "name": "DATA|COMPANY|IMPORT NPS from Survey Responses",
+      "domain": "rules-engine",
+      "modified_date": "2026-05-14T11:02:00.000Z",
+      "status": "documented",
+      "last_verified": "2026-06-28T09:41:00.000Z"
+    },
+    "rules-engine/rul-4b7d10": {
+      "id": "rul-4b7d10",
+      "name": "CTA|DRIVE|CSM Low Health Score Risk Alert",
+      "domain": "rules-engine",
+      "modified_date": "2026-04-02T16:45:00.000Z",
+      "status": "documented",
+      "last_verified": "2026-06-28T09:43:00.000Z"
+    },
+    "scorecard/sc-72aa08": {
+      "id": "sc-72aa08",
+      "name": "Customer Health Scorecard",
+      "domain": "scorecard",
+      "modified_date": "2026-03-19T10:12:00.000Z",
+      "status": "documented",
+      "last_verified": "2026-06-28T09:47:00.000Z"
+    },
+    "report/rep-5c19e4": {
+      "id": "rep-5c19e4",
+      "name": "NPS Trend by Segment",
+      "domain": "report",
+      "modified_date": "2026-06-10T08:20:00.000Z",
+      "status": "documented",
+      "last_verified": "2026-06-28T09:49:00.000Z"
+    }
+  }
+}

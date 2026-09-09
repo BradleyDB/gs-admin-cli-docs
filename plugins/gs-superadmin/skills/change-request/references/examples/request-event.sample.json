@@ -1,0 +1,27 @@
+{
+  "schema": "request-event/v1",
+  "id": "req-slack-20260630-b81c",
+  "source": "slack",
+  "source_link": "https://acme.slack.com/archives/C0CSOPS/p1751284800123456",
+  "requester": { "name": "Priya Nair", "role": "CSM Manager", "team": "Enterprise CS" },
+  "requested_at": "2026-06-30T14:20:00Z",
+  "wanted_by": "2026-07-10",
+  "summary": "Fix the renewal-stage report to show Enterprise accounts past stage 3",
+  "body": "The renewal pipeline report still filters out anything past stage 3, so my team is tracking Enterprise renewals in a spreadsheet again. Can we get that fixed before QBR prep?",
+  "justification": {
+    "text": "QBR prep starts July 14 and the whole Enterprise team works around this report weekly.",
+    "stated_by": "requester"
+  },
+  "accounts": [],
+  "category": "report-request",
+  "repeat_of": [
+    { "ref": "req-slack-20260512-77e0", "date": "2026-05-12" },
+    { "ref": "CSOPS-88", "date": "2026-04-02" }
+  ],
+  "requester_context": {
+    "role_tier": "manager",
+    "book_arr_band": "$5M–$10M",
+    "segment": "Enterprise"
+  },
+  "status": "triaged"
+}

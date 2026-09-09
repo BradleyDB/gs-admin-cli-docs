@@ -1,0 +1,28 @@
+{
+  // GP-B5 W8/DS-46: the strictNullChecks RATCHET — the second config beside
+  // tsconfig.json. The base's compiler options plus strictNullChecks, over an
+  // EXPLICIT files list. "include": [] is load-bearing: an extending config
+  // that sets only "files" keeps the base's tree-wide "**/*.mjs" include, and
+  // the whole tree would go strict — measured, not assumed (DS-46).
+  // The list IS the strict surface, and build/check-strict-list.mjs proves it
+  // (review round, W8): tsc checks every file a listed one imports, so a
+  // transitive file is admitted by NAMING it here — journal-lib.mjs is listed
+  // because capture.mjs imports it — and the gate fails the moment the strict
+  // program's files differ from this list in either direction.
+  // Ratchet rule (AGENTS.md tenet 5): a file enters this list and NEVER
+  // leaves; the gate's STRICT_FLOOR is that rule as data. The list only
+  // grows, one file per small change, each admission re-verifying that
+  // file's T-1/T-2 nullability claims against the emitter. Run by
+  // `npm run typecheck` (through the gate) after the base config.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "strictNullChecks": true
+  },
+  "include": [],
+  "files": [
+    "plugins/gs-superadmin/scripts/doc-lib.mjs",
+    "plugins/gs-superadmin/scripts/capture.mjs",
+    "plugins/gs-superadmin/scripts/journal-lib.mjs",
+    "plugins/gs-superadmin/scripts/manifest.mjs"
+  ]
+}

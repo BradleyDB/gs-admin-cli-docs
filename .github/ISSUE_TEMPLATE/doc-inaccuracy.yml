@@ -1,0 +1,89 @@
+name: Documentation inaccuracy (knowledge base, reference, wiki)
+description: A command, flag, tool name, endpoint, or explanation here does not match reality.
+title: "[docs] "
+labels: ["documentation"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this when the docs and the CLI disagree — a flag that doesn't exist, a wrong MCP
+        tool name or endpoint, a workflow step that fails, an explanation that misleads.
+
+        **Read this first, it decides what a fix looks like.** The per-domain reference, the
+        catalog, and the wiki are *generated* from the manifests inside one **pinned** version
+        of `@gainsight/gs-admin-cli`. So a mismatch is one of two very different things:
+
+        - **Version drift** — your CLI is newer than the pinned one and genuinely changed.
+          Still worth reporting: it tells the maintainer an upgrade pass is due.
+        - **A real extraction or writing bug** — the pinned CLI says one thing and the docs
+          say another. That's a defect in a generator (`build/`) or in a hand-written page.
+
+        Telling us your CLI version is what separates the two, so please fill that in.
+
+        **Issues are public — never paste tenant data.** Scrub tenant slugs, base URLs, and
+        asset names; the docs use the fictional `acme-prod` pattern for examples.
+
+  - type: input
+    id: where
+    attributes:
+      label: Where is it?
+      description: File path, or the wiki page plus the section heading.
+      placeholder: "reference/domains/journey.md — 'jo p publish' flags"
+    validations:
+      required: true
+
+  - type: textarea
+    id: says
+    attributes:
+      label: What the docs say
+      description: Quote the line or paste the snippet.
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: What is actually true, and how you know
+      description: >-
+        The correct flag/name/endpoint/behavior, plus how you verified it — `gs-admin <cmd>
+        --help` output, an observed error, or a documented vendor change.
+    validations:
+      required: true
+
+  - type: input
+    id: cli-version
+    attributes:
+      label: Your gs-admin CLI version
+      description: >-
+        Output of `gs-admin --version`. Write "not installed" if you spotted this while
+        reading the docs — that is a perfectly good report, it just means the mismatch has
+        to be judged against the pinned version instead (it's in `data/catalog.json` under
+        `meta.cliVersion`).
+      placeholder: "0.0.0"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Which surface?
+      description: Best guess is fine — "not sure" is a perfectly good answer.
+      options:
+        - "Generated: per-domain reference, catalog, or the wiki"
+        - "Hand-written: architecture / auth / MCP / Lane 2 / output-formats concept doc"
+        - "Hand-written: a workflow walkthrough"
+        - "Hand-written: README, CLAUDE.md, or the comparison guide"
+        - "Plugin docs: the plugin README or a skill's own instructions"
+        - "Not sure"
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: hygiene
+    attributes:
+      label: Before submitting
+      options:
+        - label: >-
+            I removed tenant-identifying data (tenant slugs and URLs, asset names, ids,
+            counts) from everything above.
+          required: true

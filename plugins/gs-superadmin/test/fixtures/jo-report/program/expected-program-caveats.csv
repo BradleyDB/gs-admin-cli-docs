@@ -1,0 +1,5 @@
+caveat
+"1 template doc(s) predate token metadata (no ""## Tokens"" section) — template-side token labels are unavailable for them (program-side bindings still resolve where a program is in context). Backfill via the skill's gap-fill flow (mark the docs stale → describe-batch re-fetches them)."
+1 referenced template(s) have no KB doc — bodies not available; fetch each with `gs-admin --json jo email template --id '<id>'` (ids: tpl-gone).
+1 of 1 resolved program status(es) are KB-cached (no or partial live sweep) — verify before acting on active/inactive.
+shallow report (default): email bodies omitted — re-run with `--deep` for full subject/body/variant content.

@@ -1,0 +1,7 @@
+caveat
+"5 of 6 program statuses are KB-cached (partial live sweep) — the audited set is scoped by status, so it may include stopped programs or miss newly-activated ones; verify before acting."
+1 active program(s) exist live but have no KB doc (gaps.liveOnly) — not auditable here; gap-fill via `jo p describe` and re-index.
+1 audited program doc(s) are stubs — schedules and steps unknown for those rows.
+"1 schedule row(s) carry a cron the humanizer does not recognize — shown raw and labeled, never guessed."
+2 audited program(s) have no schedule captured in the KB payload.
+"Recurring/one-time is derived from the cron expression (only `type:""CRON""` was observed in schedule data; literal ONE-TIME/RECURRING would be honored verbatim). Per-step send counts are not available via CLI."

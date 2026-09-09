@@ -1,0 +1,25 @@
+# OS / editor noise
+.DS_Store
+Thumbs.db
+.vscode/
+*.log
+
+# Local machine override for where @gainsight/gs-admin-cli is installed (never commit)
+gs-admin-explorer.config.json
+.env
+.env.local
+
+# Local session-handoff notes (contain machine-specific paths — never commit)
+handoffs/
+
+# Claude Code local state (per-machine permission grants, worktrees — never commit)
+.claude/settings.local.json
+.claude/*.lock
+.claude/worktrees/
+
+# Generated artifacts (catalog.json, wiki/index.html, reference/domains/*) are
+# intentionally COMMITTED — they are the deliverables.
+
+# Checker-only devDependencies (typescript + @types/node — the tsc --noEmit gate,
+# AGENTS.md tenet 5 carve-out). Nothing at runtime resolves from here.
+node_modules/

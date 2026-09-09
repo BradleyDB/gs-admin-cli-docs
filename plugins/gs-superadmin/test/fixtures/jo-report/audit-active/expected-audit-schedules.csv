@@ -1,0 +1,5 @@
+program_id,program_name,status,status_source,type,schedule,cron,cron_recognized,next_run,last_success,last_run_success,running_now,timezone,job_type
+prog-daily,Daily Drip,PROCESSING,live,recurring,Daily at 08:00 Asia/Kolkata,0 0 8 1/1 * ? *,true,2026-07-13 08:00:00 Asia/Kolkata,2026-07-12 08:00:00 Asia/Kolkata,true,false,Asia/Kolkata,ADVANCED_OUTREACH_SCHEDULE
+prog-nosched,No Schedule,PROCESSING,kb,no schedule captured,,,,,,,,,
+prog-stub,Stub Program,PROCESSING,kb,no schedule captured,,,,,,,,,
+prog-weird,Weird Cron,PROCESSING,kb,CRON,`0 0 8 L * ? *` (raw cron - pattern not recognized),0 0 8 L * ? *,false,2026-07-13 02:30:00 UTC,2026-07-12 02:30:00 UTC,true,false,,ADVANCED_OUTREACH_SCHEDULE

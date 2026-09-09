@@ -1,0 +1,198 @@
+name: docs-drift
+
+# Always-on companion to validate-plugin.yml, which runs only on plugin-affecting
+# paths. This job runs on EVERY pull request so a "docs-only" PR can't merge a
+# hand-edit to a GENERATED file unchecked: it rebuilds everything derived from
+# the committed data/catalog.json and fails if the committed output differs.
+#
+# extract-catalog.mjs is deliberately not run here — it needs the pinned
+# @gainsight/gs-admin-cli installed globally. The committed data/catalog.json
+# is the source of truth this check regenerates from.
+
+# dev is in the push list because work reaches it two ways: by PR to dev (caught
+# by the pull_request trigger) and by direct push / local merge, which the
+# dev-loop still uses for maintainer-side work. Without the push trigger, that
+# second path would sit unchecked until the release PR weeks later.
+on:
+  pull_request:
+  push:
+    branches: [main, dev]
+  # CI-1 in dev/VALIDATION.md: banked recheck as one `gh workflow run` command.
+  # No paths filter on push, deliberately (F-266 left this trigger alone): this
+  # single ubuntu job (~1 billed minute) carries the instance-data gate, the only
+  # automated scan of bus prose on a direct dev push.
+  workflow_dispatch:
+  # The weekly cron the stripped-tree rehearsal arm's matrix gate has always
+  # keyed on (release-gate round: the gate tested for the 'schedule' event but
+  # this workflow declared no schedule trigger, so the promised weekly
+  # rehearsal never fired — only manual dispatches ran it). Same slot as
+  # validate-plugin.yml's cron; a schedule run executes on the default branch,
+  # where the strip step below is a no-op and the arm still proves the
+  # battery on the (already-stripped) release-shaped tree.
+  schedule:
+    - cron: "0 6 * * 1"
+
+# Public-repo supply-chain hygiene (GP-5): the default GITHUB_TOKEN is
+# read-only for every job — nothing here writes to the repo.
+permissions:
+  contents: read
+
+# F-266: a push superseding one seconds earlier cancels the in-flight run for
+# the same ref instead of leaving two running.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  drift:
+    # Stripped-tree rehearsal (release-gate wrinkle, 2026-08-25): a release
+    # branch differs from dev by exactly the dev-only strip (dev/ + the
+    # dev-canary skill), and the first battery run on such a tree used to
+    # happen at the release PR itself — where a latent tree-shape assumption
+    # in a fixture suite crashed the v0.31.9 gate. The weekly cron and every
+    # manual dispatch now run the SAME steps a second time on a stripped
+    # checkout (one extra ubuntu job, ~1 billed minute), so a new
+    # stripped-tree assumption surfaces within a week of landing instead of
+    # mid-release. Ordinary pushes and PRs stay single-arm.
+    strategy:
+      fail-fast: false
+      matrix:
+        tree: ${{ (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+          && fromJSON('["full","stripped"]')
+          || fromJSON('["full"]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 20
+          # Keyed on package-lock.json (DS-42): the two checker-only pins are
+          # exact, so `npm ci` below is a cache restore on every run.
+          cache: npm
+      # Same removal (worktree + index) the release strip commit performs, so
+      # `git ls-files`-driven checks see exactly the release tree. No commit
+      # is made — the checks read the index, not history. --ignore-unmatch:
+      # a dispatch or the cron can land on main (the default ref), where both
+      # paths are already stripped — the arm must rehearse that tree, not go
+      # red on an empty pathspec (release-gate round).
+      - name: Strip dev-only content (release-tree rehearsal arm)
+        if: matrix.tree == 'stripped'
+        run: git rm -r -q --ignore-unmatch dev plugins/gs-superadmin/skills/dev-canary
+      # GP-B5 DS-42: the JSDoc-contract type gate (AGENTS.md tenet 5 is the
+      # canon for the checker-only devDependency carve-out and the base
+      # config's non-strict decision) — and, since GP-B5 W8/DS-46, the
+      # strictNullChecks RATCHET behind it: `npm run typecheck` runs the base
+      # config, then build/check-strict-list.mjs runs tsconfig.strict.json once
+      # and proves its list equals the strict program (closure) and that no
+      # floor file left it. Full arm only: the strip removes no file tsc reads
+      # (dev/ holds no .mjs; the canary is a SKILL.md), so the stripped arm's
+      # verdict would be identical. That claim is held to the tree by
+      # build/check-doc-drift.mjs check 17 (no tracked .mjs under a strip
+      # path) rather than by a file count here — the count it used to carry
+      # rotted 65 → 67 within one wave (W8.5 review).
+      - name: Install the checker-only devDependencies (typescript, @types/node)
+        if: matrix.tree == 'full'
+        run: npm ci
+      - name: JSDoc contracts type-check (tsc --noEmit, checkJs) + the strictNullChecks ratchet
+        if: matrix.tree == 'full'
+        run: npm run typecheck
+      # The strict-list gate is pinned like every other gate (DS-18 pattern):
+      # an unlisted transitive import and a dropped floor file must go red.
+      - name: Strict-list gate fixtures
+        if: matrix.tree == 'full'
+        run: node build/test-check-strict-list.mjs
+      - name: Regenerate everything derived from the committed catalog
+        run: |
+          node build/build-reference.mjs
+          node build/build-wiki.mjs
+          node build/build-comparison-html.mjs
+          node build/build-plugin-gs-superadmin.mjs
+          node build/emit-reader-shapes.mjs
+      - name: Committed generated files match the build
+        run: git diff --exit-code
+      # The rebuild-and-diff above cannot catch stable-but-mangled output from
+      # the comparison-HTML generator; its parsing behaviors are pinned by
+      # fixtures instead.
+      - name: Comparison-HTML generator fixtures
+        run: node build/test-comparison-html.mjs
+      # Same rationale for the wiki generator (F-079): its parsing behaviors —
+      # and that every outbound anchor the wiki emits resolves to a shipped
+      # file — are pinned by fixtures the rebuild-and-diff cannot express.
+      - name: Wiki generator fixtures
+        run: node build/test-wiki-html.mjs
+      # The cheatsheet emitter is shared between the repo build and the plugin's
+      # workspace lane (GP-2); these fixtures pin the two lanes' byte parity.
+      - name: Cheatsheet renderer fixtures
+        run: node build/test-render-cheatsheet.mjs
+      # Hand-maintained prose cites the CLI version and command/tool counts;
+      # those don't self-update on rebuild, so check them against catalog meta.
+      - name: Hand-maintained docs agree with catalog meta
+        run: node build/check-stale-facts.mjs
+      # The READMEs describe the plugin's skill surface by hand; check the skill
+      # lists, invocation labels, and test-suite list against the actual tree,
+      # and keep dev-branch-only content out of user-facing docs.
+      - name: Hand-maintained docs agree with the plugin tree
+        run: node build/check-doc-drift.mjs
+      # The import topology (lanes, zero-import files, dual-lane import-free
+      # rule) is declared as data in the check itself and enforced against the
+      # real import statements tree-wide (GP-B5 DS-14).
+      - name: Import graph matches the layer declaration
+        run: node build/check-imports.mjs
+      # The import-graph gate itself is pinned by its committed self-test
+      # (GP-B5 DS-18): lexer decoys add no edges, lane/RESTRICTED violations
+      # and declaration rot all go red — the W0 mutation battery, committed.
+      - name: Import-graph gate fixtures
+        run: node build/test-check-imports.mjs
+      # The defect-class detectors (build/defect-classes.mjs, check 19's rows)
+      # are judged in memory first (GP-B5 W10 / B15, F-364): every decision
+      # point of detectRow/callClose fed lines directly, milliseconds; the
+      # scratch-tree suite below keeps only the consumer pins.
+      - name: Defect-class detector fixtures
+        run: node build/test-defect-classes.mjs
+      # The doc-drift gate itself is pinned the same way (GP-B5 DS-18): green
+      # baseline on the real tree copied into a scratch repo, then per-check
+      # mutants must go red with the check's own message.
+      - name: Doc-drift gate fixtures
+        run: node build/test-check-doc-drift.mjs
+      # F-402 (Gate 2 for 0.36.2): the read-surface emitter suite — committed
+      # data/reader-shapes.json equals a fresh emission, byte-stable, and the
+      # tracer's floor / enumeration / dropped-reader / recognized mutants red
+      # from outside. Listed in AGENTS.md's battery since GP-B5 W10; never run
+      # here until F-402 (the regenerate step above only spawns the tracer).
+      - name: Reader-shapes emitter fixtures
+        run: node build/test-emit-reader-shapes.mjs
+      # The dual-lane catalog emitter: fixture-package derivations + T-1
+      # contract conformance on the committed catalog (GP-B5 DS-18/DS-22 —
+      # extract-catalog.mjs itself needs no pinned CLI here: the suite feeds
+      # it a synthetic fixture package via GS_ADMIN_PKG).
+      - name: Catalog emitter fixtures
+        run: node build/test-extract-catalog.mjs
+      # Dev-branch-only content (the dev-canary skill, dev/) must never reach
+      # main — this mechanizes the release invariant in CLAUDE.md, so a release
+      # PR that forgot to strip them cannot merge. dev-targeted PRs are unaffected.
+      - name: No dev-only content on main
+        if: github.base_ref == 'main' || github.ref == 'refs/heads/main'
+        run: |
+          fail=0
+          if [ -e plugins/gs-superadmin/skills/dev-canary ]; then
+            echo "plugins/gs-superadmin/skills/dev-canary exists — strip it on the release branch"; fail=1
+          fi
+          if [ -e dev ]; then
+            echo "dev/ exists — strip it on the release branch"; fail=1
+          fi
+          exit $fail
+      # Nothing tenant-, instance-, or org-specific may be committed (the repo may
+      # be open-sourced). Fixtures use fictional tenants; live findings stay out
+      # of git. See "Data hygiene" in AGENTS.md.
+      - name: No instance data committed
+        run: node build/check-instance-data.mjs
+      # The gate itself is pinned by fixtures (F-178): UTF-16 files are decoded
+      # and scanned rather than skipped as binary, and skipped-binary files are
+      # counted and named so the success message never overstates coverage.
+      - name: Instance-data gate fixtures
+        run: node build/test-check-instance-data.mjs
+      # The stale-facts gate is pinned by fixtures too (F-275): the live bus's
+      # code contexts (fenced/indented verbatim quotes) are exempt from the
+      # citation checks, prose stays in scope, and the exemption is bus-only.
+      - name: Stale-facts gate fixtures
+        run: node build/test-check-stale-facts.mjs

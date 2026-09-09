@@ -1,0 +1,4 @@
+# All build scripts emit LF; normalize everywhere so the CI drift check
+# (rebuild + `git diff --exit-code`) can never fail on line endings and
+# Windows contributors don't see CRLF churn. No tracked binaries exist.
+* text=auto eol=lf

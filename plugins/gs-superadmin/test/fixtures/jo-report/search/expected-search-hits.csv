@@ -1,0 +1,3 @@
+template_id,template_title,subject,terms_matched,title_matched,subject_matched,body_matched,variants_matched,title_snippet,subject_snippet,body_snippet,variant_snippets
+tpl-stopped,Stopped Template,subj,zebra,false,false,true,false,,,zebra appears here too,
+tpl-hello,Welcome Hello,Your renewal is due,zebra,false,false,false,true,,,,"variant ""Variant B"" body: the zebra keyword lives in this variant body only."

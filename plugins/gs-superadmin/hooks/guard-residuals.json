@@ -1,0 +1,52 @@
+{
+  "_what": "The guard's KNOWN RESIDUALS — spellings that run a mutating gs-admin command WITHOUT the approval prompt and WITHOUT a journal entry. This file is the single source of record for that set (F-246). It is documentation data, NOT runtime input: hooks/gs-admin-guard.mjs never reads it, and adding it changed nothing about how the guard decides.",
+  "_who_reads_it": [
+    "test/guard-fixtures.mjs — derives the residual PINS from `pinnedExample`, so a residual that gets closed reds the suite instead of silently outliving its documentation.",
+    "build/check-doc-drift.mjs — asserts this set matches the id list anchored in the plugin README's 'The parsing boundary, in full' block, exactly and in both directions."
+  ],
+  "_why_it_exists": "Before F-246 the set lived in three hand-synced copies (the hook's NESTED_SHELLS comment, the fixture pins, and the README). Only two were locked, so the README could silently keep promising a gap that had been closed — and F-247 demonstrated the hazard live by requiring all three to be edited by hand in one change. The hook comment now points here instead of restating the list.",
+  "_membership_rule": "A residual is a spelling where a mutation EXECUTES unseen. Things that merely fail to run (bash's `-C` is noclobber, not a command flag) and things that still ask (an unquoted `cmd /c` payload draws the F-051 operand-position caveat but DOES prompt) are not residuals and do not belong here — they are explanatory notes in the hook comment.",
+  "_pin_rule": "Every entry is either pinned by a fixture or carries `notPinnedWhy` stating why it is not. An unpinned residual is allowed; an unpinned residual with no stated reason is not, and test/guard-fixtures.mjs rejects it (F-252: this sentence used to credit check-doc-drift, which contains no reference to `pinnedExample` or `notPinnedWhy` at all - the misattribution sent a maintainer to the wrong file to relax or extend the rule, inside the very file created to BE the single source of record). PIN INTEGRITY (F-251): a `pinnedExample` must actually CONCEAL A MUTATING COMMAND, or its silence proves nothing — an example carrying no mutating subcommand stays silent even when the residual is CLOSED, which is exactly what made the first `encoded-command` pin decorative (its base64 decoded to the bare binary name). So every pinned entry also declares `pinnedExampleConceals` (the plain-text command the example hides) and `pinnedExampleEncoding` (how it hides it), and test/guard-fixtures.mjs asserts THREE things, not one: the example is silent, the concealed command spelled plainly ASKS, and the example is EXACTLY what `pinnedExampleTemplate` plus the encoded command produce (an equality, not a substring test, so extra text cannot ride along). Drop any one and a decorative pin can return.",
+  "residuals": [
+    {
+      "id": "encoded-command",
+      "summary": "PowerShell -EncodedCommand: the payload is base64, not shell text, so re-scanning it finds nothing. It is concealed EARLIER than the parser, which is the part a fixing session hits first: the cheap pre-gate at the top of the hook (`if (!/gs-admin/i.test(raw)) process.exit(0)`) exits before the boundary regex, the workspace gate and the catalog, and an encoded command never contains the literal binary name — so closing this means widening that line too, not just the payload rule. Decoding base64 is a different problem from parsing a command line, and one the guard deliberately does not take on.",
+      "readmeMarker": "-EncodedCommand",
+      "pinnedExample": "powershell -EncodedCommand ZwBzAC0AYQBkAG0AaQBuACAAagBvACAAcAAgAHMAYQB2AGUA",
+      "pinnedExampleTemplate": "powershell -EncodedCommand {payload}",
+      "pinnedExampleConceals": "gs-admin jo p save",
+      "pinnedExampleEncoding": "base64-utf16le",
+      "notPinnedWhy": null
+    },
+    {
+      "id": "nesting-depth",
+      "summary": "Nested interpreter payloads are re-scanned recursively but bounded at NESTED_SCAN_DEPTH (3). A mutation buried deeper than that falls back to pre-F-194 behavior.",
+      "readmeMarker": "three levels of nesting",
+      "pinnedExample": null,
+      "pinnedExampleTemplate": null,
+      "pinnedExampleConceals": null,
+      "pinnedExampleEncoding": null,
+      "notPinnedWhy": "A 4-level nested payload needs four alternating quote layers built from two quote characters, and the spellings that survive tokenization are exactly the ones that would pass the assertion for the wrong reason — the M60 trap (see F-247). The bound is covered instead by mutating NESTED_SCAN_DEPTH to 0, which reproduces pre-fix behavior across the whole nested-shell block; that mutant is the real lock on this constant."
+    },
+    {
+      "id": "variable-payload",
+      "summary": "An interpreter whose payload is a VARIABLE, not a string: the mutation is stored first (`s='gs-admin jo p save'`, `$s = 'gs-admin jo p save'`, or a PowerShell here-string `$s = @'…'@`) and evaluated later (`eval \"$s\"`, `bash -c \"$s\"`, `iex $s`, `Invoke-Expression -Command $s`). A quoted string in an assignment is data — the same reading that keeps `echo 'gs-admin jo p save'` silent — and the eval's payload rule re-scans a string operand, but a variable name carries no text to re-scan. Closing this means following dataflow (which assignment the variable last took, across lines and shells), which is a different problem from parsing a command line and one the guard deliberately does not take on. Measured at the 0.37.0 cut (2026-09-08): seven spellings of the class silent with 0 journal rows in both shells; the SAME command with a literal payload (`iex @'…'@`, `eval '…'`) asks, and a here-string piped to `iex` draws the pipe-safety deny — so the residual is the variable, not the here-string.",
+      "readmeMarker": "stored in a variable",
+      "pinnedExample": "$s = @'\ngs-admin jo p save\n'@\niex $s",
+      "pinnedExampleTemplate": "$s = @'\n{payload}\n'@\niex $s",
+      "pinnedExampleConceals": "gs-admin jo p save",
+      "pinnedExampleEncoding": "verbatim",
+      "notPinnedWhy": null
+    },
+    {
+      "id": "stdin-payload",
+      "summary": "An interpreter that reads its commands from a FILE or from ANOTHER PROGRAM'S OUTPUT: `bash script.sh`, `bash < script.sh`, `cat script.sh | bash`, `curl … | sh`. The line carries no command text to re-scan — only a file name or an upstream program — so the guard cannot see what runs. The readable stdin shapes are closed at the 0.37.0 cut: a here-string's target (`bash <<< 'gs-admin jo p save'`) and the words of the upstream pipeline stage (`echo 'gs-admin jo p save' | bash`) are re-scanned as the interpreter's payload, and a heredoc body was already data of the command that opened it. What remains is the same indirection as variable-payload: text that reaches the interpreter without appearing on the line.",
+      "readmeMarker": "from a file or another program's output",
+      "pinnedExample": null,
+      "pinnedExampleTemplate": null,
+      "pinnedExampleConceals": null,
+      "pinnedExampleEncoding": null,
+      "notPinnedWhy": "The concealed command is a file's contents, which no single command line carries — the pin grammar (an example equal to a template plus the concealed command) cannot express it. Pinned instead by test/guard-oracle.mjs, whose `cat script.sh | bash`, `bash < script.sh` and `bash script.sh` rows write the file, run the line through real bash, and require the guard to stay SILENT on them (a closed residual reds there)."
+    }
+  ]
+}

@@ -1,0 +1,2341 @@
+{
+  "_generated": "GENERATED FILE — do not edit by hand. Regenerate with: npm run build:reader-shapes (build/emit-reader-shapes.mjs).",
+  "schemaVersion": 3,
+  "cliVersion": "1.0.9",
+  "what": "The plugin's READ SURFACE: for each CLI command whose JSON output a KB reader indexes, the payload keys the readers dereference — measured by running every reader over the shared fixture corpus under a recording Proxy with a deletion closure (plugins/gs-superadmin/test/trace-reader-shapes.mjs). Consumed by the gs-fortress CLI-watch audit (impact-checklist item 11): a key here that an upstream release projects away, renames or re-nests is a silent zero in the plugin — unless `alternates` names a surviving fallback, and unless the key is in `alternatesUnmeasured`, where the absence of a fallback was never measured. `recognized` names what a reader matches without dereferencing. `fields` describes every field; `residuals` states what the measurement cannot see.",
+  "pathGrammar": {
+    "a.b.c": "object keys, dot-joined, from the payload root — every named segment is one the reader's code dereferences (recorded even when absent from the fixture)",
+    "a.items[]": "an array element (every element is one path; the index is collapsed)",
+    "a.cfg{}": "the object PARSED from the JSON string at a.cfg (embedded JSON the reader JSON.parses)",
+    "a.*": "the reader enumerated a's keys (Object.keys / entries / spread / JSON.stringify) — a walk: every key under a is read; a segment spelled `*` mid-path was reached only through such a walk (the fixture's names for it are under `enumerated`)",
+    "[]": "the payload root is itself an array",
+    "<name>": "a caller-supplied or tenant-recorded name the reader dereferences (the KB manifest's <idField>, an --items-path's <itemsPath>) — the reader reads whatever was recorded; the literal is never a contract"
+  },
+  "fields": {
+    "file": {
+      "_generated": "the GENERATED banner (regenerate with npm run build:reader-shapes)",
+      "schemaVersion": "this file's structure version — a cross-repo contract; refuse a version you do not know",
+      "cliVersion": "the CLI pin the corpus and the readers were measured against (data/catalog.json meta.cliVersion)",
+      "what": "one paragraph: what this file is and who reads it",
+      "pathGrammar": "how `keys`, `floor`, `embedded` and `pluginKeys` are spelled",
+      "fields": "this dictionary",
+      "commands": "one row per CLI command whose output a KB reader indexes (see `row`)",
+      "ruleOuts": "scripts that parse JSON but read no tenant CLI output, each with why — the enumeration's complement",
+      "enumeration": "the JSON-parsing-script enumeration: pattern, dirs, files — every file is a row's module or a rule-out (closure proved by the tracer)",
+      "residuals": "the measurement's stated limits — read before trusting a row"
+    },
+    "row": {
+      "command": "the catalog shortPath (`re r describe`) — or a symbolic command: `*indexed-list` (every indexed list command) / `*paginated-list` (every paginated capture)",
+      "catalog": "the command's catalog join: id, actionKey (the manifest action — resolve its handler in the audited package), mcpTool, endpoints; null for a symbolic command",
+      "readers": "the reader functions and helper chains that produced the row (prose, for humans)",
+      "modules": "the plugin script files this row covers in the enumeration closure",
+      "keys": "the read surface: CONCRETE paths the code dereferences, plus walk markers (`a.*`); a `*` segment mid-path is a walk-derived hop. A key here projected away, renamed or re-nested upstream is a break unless an alternate survives",
+      "walks": "the subset of keys that are walk markers",
+      "enumerated": "per walk marker, the fixture keys the enumeration touched — the corpus's names, not the code's; a name-set reader (membership over Object.keys) shows its recognized names here",
+      "alternates": "path → the paths the reader fell back to when that path was absent (measured by deletion, credited against the run the path was present in — a child gets its own credit); both sides are spelled exactly as keys are, so they join by string equality. A rename that leaves an alternate standing is survivable at that site",
+      "alternatesUnmeasured": "named keys no run ever deleted (absent from every fixture): for these, an empty alternates entry means NOT MEASURED, never 'no fallback' — read the reader before calling one a break",
+      "recognized": "how the row's reader recognizes keys WITHOUT dereferencing them, read off its source: kind name-set (the Sets and every name — each asserted under enumerated), prefix (a rename keeping the prefix is read), value-predicate (the literal). Invisible to the trace by construction; here so a Set that grows goes red until the corpus carries the name. A DECLARED SUBSET, not a closed enumeration — an empty or absent `recognized` does NOT mean the row's reader has no recognizer; see residuals for what is known undeclared",
+      "embedded": "paths whose STRING value the reader JSON.parses (spelled with {} in keys)",
+      "pluginAuthored": "path prefixes the PLUGIN writes into the KB doc body (never CLI output)",
+      "pluginKeys": "reads under pluginAuthored prefixes — kept out of keys; never compare an upstream diff against them",
+      "floor": "the finding-backed keys the tracer's own suite refuses to lose (natural spelling; satisfied by name or under the walk that enumerates it)",
+      "floorMissing": "floor keys the current measurement does NOT satisfy — always empty in a committed file (the emitter refuses otherwise)",
+      "note": "row-specific caveats (optional)",
+      "probes": "fixtures traced, reader runs (populated + deletion + bare), and unprobed paths (always 0 in a committed file)"
+    }
+  },
+  "commands": [
+    {
+      "command": "re r describe",
+      "catalog": {
+        "id": "rules-engine:rules:describe",
+        "actionKey": "describe-rule",
+        "mcpTool": "rules_engine_describe_rule",
+        "endpoints": [
+          {
+            "name": "fetch",
+            "method": "GET",
+            "path": "/v1/rulesengine/v2/{{ruleId}}"
+          },
+          {
+            "name": "configTasks",
+            "method": "GET",
+            "path": "/v1/bionicreporting/config-ui/{{configId}}/tasks"
+          },
+          {
+            "name": "configTask",
+            "method": "GET",
+            "path": "/v1/bionicreporting/config-ui/{{configId}}/task/{{taskId}}"
+          },
+          {
+            "name": "taskOutputs",
+            "method": "GET",
+            "path": "/v2/rulesengine/{{ruleId}}/taskOutputs"
+          }
+        ]
+      },
+      "readers": [
+        "tenant-deps.mjs extractRuleUsages (→ conditionsOf, condRow, normalizeCondition, parseSummaryObject)",
+        "relationships-build.mjs findRuleDetails (spawn-traced)"
+      ],
+      "modules": [
+        "scripts/relationships-build.mjs",
+        "scripts/tenant-deps.mjs"
+      ],
+      "keys": [
+        "*",
+        "_flatMappings",
+        "data",
+        "data.*",
+        "data._flatMappings",
+        "data.criteriaDetails",
+        "data.criteriaDetails[].*",
+        "data.criteriaDetails[]._flatMappings",
+        "data.criteriaDetails[].conditions",
+        "data.criteriaDetails[].criteriaId",
+        "data.criteriaDetails[].criteriaName",
+        "data.criteriaDetails[].filters",
+        "data.criteriaDetails[].filters.*",
+        "data.criteriaDetails[].filters._flatMappings",
+        "data.criteriaDetails[].filters.conditions",
+        "data.criteriaDetails[].filters.conditions[].*",
+        "data.criteriaDetails[].filters.conditions[]._flatMappings",
+        "data.criteriaDetails[].filters.conditions[].alias",
+        "data.criteriaDetails[].filters.conditions[].comparisonOperator",
+        "data.criteriaDetails[].filters.conditions[].fieldLabel",
+        "data.criteriaDetails[].filters.conditions[].fieldName",
+        "data.criteriaDetails[].filters.conditions[].filterAlias",
+        "data.criteriaDetails[].filters.conditions[].leftOperand",
+        "data.criteriaDetails[].filters.conditions[].leftOperand.*",
+        "data.criteriaDetails[].filters.conditions[].leftOperand._flatMappings",
+        "data.criteriaDetails[].filters.conditions[].leftOperand.fieldLabel",
+        "data.criteriaDetails[].filters.conditions[].leftOperand.fieldName",
+        "data.criteriaDetails[].filters.conditions[].leftOperand.label",
+        "data.criteriaDetails[].filters.conditions[].leftOperand.objectLabel",
+        "data.criteriaDetails[].filters.conditions[].leftOperand.objectName",
+        "data.criteriaDetails[].filters.conditions[].objectLabel",
+        "data.criteriaDetails[].filters.conditions[].objectName",
+        "data.gsRuleMetaActionDetails",
+        "data.gsRuleMetaActionDetails[].*",
+        "data.gsRuleMetaActionDetails[].*.*",
+        "data.gsRuleMetaActionDetails[].*.*[].*",
+        "data.gsRuleMetaActionDetails[].*.*[]._flatMappings",
+        "data.gsRuleMetaActionDetails[].*.*[].params",
+        "data.gsRuleMetaActionDetails[].*.*[].source",
+        "data.gsRuleMetaActionDetails[].*.*[].source.*",
+        "data.gsRuleMetaActionDetails[].*.*[].source._flatMappings",
+        "data.gsRuleMetaActionDetails[].*.*[].source.field",
+        "data.gsRuleMetaActionDetails[].*.*[].source.field.*",
+        "data.gsRuleMetaActionDetails[].*.*[].source.field._flatMappings",
+        "data.gsRuleMetaActionDetails[].*.*[].source.field.connectionId",
+        "data.gsRuleMetaActionDetails[].*.*[].source.field.connectionType",
+        "data.gsRuleMetaActionDetails[].*.*[].source.field.params",
+        "data.gsRuleMetaActionDetails[].*.*[].source.field.source",
+        "data.gsRuleMetaActionDetails[].*.*[].source.params",
+        "data.gsRuleMetaActionDetails[].*.*[].source.source",
+        "data.gsRuleMetaActionDetails[].*._flatMappings",
+        "data.gsRuleMetaActionDetails[].*.params",
+        "data.gsRuleMetaActionDetails[].*.params.*",
+        "data.gsRuleMetaActionDetails[].*.params.configId",
+        "data.gsRuleMetaActionDetails[].*.params.connectionId",
+        "data.gsRuleMetaActionDetails[].*.params.params",
+        "data.gsRuleMetaActionDetails[].*.params.source",
+        "data.gsRuleMetaActionDetails[].*.source",
+        "data.gsRuleMetaActionDetails[]._flatMappings",
+        "data.gsRuleMetaActionDetails[].params",
+        "data.gsRuleMetaActionDetails[].source",
+        "data.ruleDetails",
+        "data.ruleDetails.*",
+        "data.ruleDetails._configTasks",
+        "data.ruleDetails._flatMappings",
+        "data.ruleDetails._flatMappings[].actionType",
+        "data.ruleDetails._flatMappings[].areaName",
+        "data.ruleDetails._flatMappings[].srcField",
+        "data.ruleDetails._flatMappings[].srcField{}.*",
+        "data.ruleDetails._flatMappings[].srcField{}.data",
+        "data.ruleDetails._flatMappings[].srcObject",
+        "data.ruleDetails._flatMappings[].tgtField",
+        "data.ruleDetails._flatMappings[].tgtObject",
+        "data.ruleDetails.active",
+        "data.ruleDetails.ruleId",
+        "data.ruleDetails.ruleName",
+        "data.ruleDetails.taskDetails",
+        "data.ruleDetails.taskDetails[].*",
+        "data.ruleDetails.taskDetails[]._connType",
+        "data.ruleDetails.taskDetails[]._flatMappings",
+        "data.ruleDetails.taskDetails[]._object",
+        "data.ruleDetails.taskDetails[]._taskName",
+        "data.ruleDetails.taskDetails[].connectionType",
+        "data.ruleDetails.taskDetails[].object",
+        "data.ruleDetails.taskDetails[].objectLabel",
+        "data.ruleDetails.taskDetails[].taskId",
+        "data.ruleDetails.taskDetails[].taskName",
+        "data.ruleDetails.taskDetails[].taskType",
+        "data.ruleDetails.taskDetails[].type"
+      ],
+      "walks": [
+        "*",
+        "data.*",
+        "data.criteriaDetails[].*",
+        "data.criteriaDetails[].filters.*",
+        "data.criteriaDetails[].filters.conditions[].*",
+        "data.criteriaDetails[].filters.conditions[].leftOperand.*",
+        "data.gsRuleMetaActionDetails[].*",
+        "data.gsRuleMetaActionDetails[].*.*",
+        "data.gsRuleMetaActionDetails[].*.*[].*",
+        "data.gsRuleMetaActionDetails[].*.*[].source.*",
+        "data.gsRuleMetaActionDetails[].*.*[].source.field.*",
+        "data.gsRuleMetaActionDetails[].*.params.*",
+        "data.ruleDetails.*",
+        "data.ruleDetails._flatMappings[].srcField{}.*",
+        "data.ruleDetails.taskDetails[].*"
+      ],
+      "enumerated": {
+        "*": [
+          "result"
+        ],
+        "data.criteriaDetails[].filters.*": [
+          "expression"
+        ],
+        "data.gsRuleMetaActionDetails[].*": [
+          "actionInfo",
+          "actionType"
+        ],
+        "data.gsRuleMetaActionDetails[].*.*": [
+          "mappings"
+        ],
+        "data.gsRuleMetaActionDetails[].*.*[].source.field.*": [
+          "fieldName"
+        ],
+        "data.gsRuleMetaActionDetails[].*.params.*": [
+          "url"
+        ],
+        "data.ruleDetails._flatMappings[].srcField{}.*": [
+          "sc-1"
+        ],
+        "data.ruleDetails.taskDetails[].*": [
+          "parents"
+        ]
+      },
+      "alternates": {
+        "data": [
+          "*",
+          "_flatMappings"
+        ],
+        "data.criteriaDetails[].criteriaName": [
+          "data.criteriaDetails[].criteriaId"
+        ],
+        "data.criteriaDetails[].filters": [
+          "data.criteriaDetails[].conditions"
+        ],
+        "data.criteriaDetails[].filters.conditions": [
+          "data.criteriaDetails[].conditions"
+        ],
+        "data.criteriaDetails[].filters.conditions[].filterAlias": [
+          "data.criteriaDetails[].filters.conditions[].alias"
+        ],
+        "data.ruleDetails": [
+          "*",
+          "_flatMappings",
+          "data._flatMappings",
+          "data.criteriaDetails",
+          "data.criteriaDetails[]._flatMappings",
+          "data.criteriaDetails[].criteriaName",
+          "data.criteriaDetails[].filters",
+          "data.criteriaDetails[].filters.*",
+          "data.criteriaDetails[].filters._flatMappings",
+          "data.criteriaDetails[].filters.conditions",
+          "data.criteriaDetails[].filters.conditions[]._flatMappings",
+          "data.criteriaDetails[].filters.conditions[].comparisonOperator",
+          "data.criteriaDetails[].filters.conditions[].filterAlias",
+          "data.criteriaDetails[].filters.conditions[].leftOperand",
+          "data.criteriaDetails[].filters.conditions[].leftOperand._flatMappings",
+          "data.criteriaDetails[].filters.conditions[].leftOperand.fieldName",
+          "data.criteriaDetails[].filters.conditions[].leftOperand.label",
+          "data.criteriaDetails[].filters.conditions[].leftOperand.objectLabel",
+          "data.criteriaDetails[].filters.conditions[].leftOperand.objectName",
+          "data.gsRuleMetaActionDetails",
+          "data.gsRuleMetaActionDetails[].*",
+          "data.gsRuleMetaActionDetails[].*.*",
+          "data.gsRuleMetaActionDetails[].*.*[]._flatMappings",
+          "data.gsRuleMetaActionDetails[].*.*[].source",
+          "data.gsRuleMetaActionDetails[].*.*[].source._flatMappings",
+          "data.gsRuleMetaActionDetails[].*.*[].source.field",
+          "data.gsRuleMetaActionDetails[].*.*[].source.field.*",
+          "data.gsRuleMetaActionDetails[].*.*[].source.field._flatMappings",
+          "data.gsRuleMetaActionDetails[].*.*[].source.field.connectionId",
+          "data.gsRuleMetaActionDetails[].*.*[].source.field.connectionType",
+          "data.gsRuleMetaActionDetails[].*._flatMappings",
+          "data.gsRuleMetaActionDetails[]._flatMappings"
+        ],
+        "data.ruleDetails._flatMappings": [
+          "*",
+          "_flatMappings",
+          "data._flatMappings",
+          "data.criteriaDetails",
+          "data.criteriaDetails[]._flatMappings",
+          "data.criteriaDetails[].criteriaName",
+          "data.criteriaDetails[].filters",
+          "data.criteriaDetails[].filters.*",
+          "data.criteriaDetails[].filters._flatMappings",
+          "data.criteriaDetails[].filters.conditions",
+          "data.criteriaDetails[].filters.conditions[]._flatMappings",
+          "data.criteriaDetails[].filters.conditions[].comparisonOperator",
+          "data.criteriaDetails[].filters.conditions[].filterAlias",
+          "data.criteriaDetails[].filters.conditions[].leftOperand",
+          "data.criteriaDetails[].filters.conditions[].leftOperand._flatMappings",
+          "data.criteriaDetails[].filters.conditions[].leftOperand.fieldName",
+          "data.criteriaDetails[].filters.conditions[].leftOperand.label",
+          "data.criteriaDetails[].filters.conditions[].leftOperand.objectLabel",
+          "data.criteriaDetails[].filters.conditions[].leftOperand.objectName",
+          "data.gsRuleMetaActionDetails",
+          "data.gsRuleMetaActionDetails[].*",
+          "data.gsRuleMetaActionDetails[].*.*",
+          "data.gsRuleMetaActionDetails[].*.*[]._flatMappings",
+          "data.gsRuleMetaActionDetails[].*.*[].source",
+          "data.gsRuleMetaActionDetails[].*.*[].source._flatMappings",
+          "data.gsRuleMetaActionDetails[].*.*[].source.field",
+          "data.gsRuleMetaActionDetails[].*.*[].source.field.*",
+          "data.gsRuleMetaActionDetails[].*.*[].source.field._flatMappings",
+          "data.gsRuleMetaActionDetails[].*.*[].source.field.connectionId",
+          "data.gsRuleMetaActionDetails[].*.*[].source.field.connectionType",
+          "data.gsRuleMetaActionDetails[].*._flatMappings",
+          "data.gsRuleMetaActionDetails[]._flatMappings",
+          "data.ruleDetails.ruleId",
+          "data.ruleDetails.taskDetails",
+          "data.ruleDetails.taskDetails[].*",
+          "data.ruleDetails.taskDetails[]._flatMappings",
+          "data.ruleDetails.taskDetails[].connectionType",
+          "data.ruleDetails.taskDetails[].object",
+          "data.ruleDetails.taskDetails[].objectLabel",
+          "data.ruleDetails.taskDetails[].taskId",
+          "data.ruleDetails.taskDetails[].taskName",
+          "data.ruleDetails.taskDetails[].taskType"
+        ],
+        "data.ruleDetails.taskDetails": [
+          "data.ruleDetails._configTasks"
+        ],
+        "data.ruleDetails.taskDetails[].connectionType": [
+          "data.ruleDetails.taskDetails[]._connType"
+        ],
+        "data.ruleDetails.taskDetails[].taskName": [
+          "data.ruleDetails.taskDetails[]._taskName",
+          "data.ruleDetails.taskDetails[].taskId"
+        ]
+      },
+      "alternatesUnmeasured": [
+        "_flatMappings",
+        "data._flatMappings",
+        "data.criteriaDetails[]._flatMappings",
+        "data.criteriaDetails[].conditions",
+        "data.criteriaDetails[].criteriaId",
+        "data.criteriaDetails[].filters._flatMappings",
+        "data.criteriaDetails[].filters.conditions[]._flatMappings",
+        "data.criteriaDetails[].filters.conditions[].alias",
+        "data.criteriaDetails[].filters.conditions[].fieldLabel",
+        "data.criteriaDetails[].filters.conditions[].fieldName",
+        "data.criteriaDetails[].filters.conditions[].leftOperand._flatMappings",
+        "data.criteriaDetails[].filters.conditions[].leftOperand.fieldLabel",
+        "data.criteriaDetails[].filters.conditions[].objectLabel",
+        "data.criteriaDetails[].filters.conditions[].objectName",
+        "data.gsRuleMetaActionDetails[].*.*[]._flatMappings",
+        "data.gsRuleMetaActionDetails[].*.*[].params",
+        "data.gsRuleMetaActionDetails[].*.*[].source._flatMappings",
+        "data.gsRuleMetaActionDetails[].*.*[].source.field._flatMappings",
+        "data.gsRuleMetaActionDetails[].*.*[].source.field.params",
+        "data.gsRuleMetaActionDetails[].*.*[].source.field.source",
+        "data.gsRuleMetaActionDetails[].*.*[].source.params",
+        "data.gsRuleMetaActionDetails[].*.*[].source.source",
+        "data.gsRuleMetaActionDetails[].*._flatMappings",
+        "data.gsRuleMetaActionDetails[].*.params.params",
+        "data.gsRuleMetaActionDetails[].*.params.source",
+        "data.gsRuleMetaActionDetails[].*.source",
+        "data.gsRuleMetaActionDetails[]._flatMappings",
+        "data.gsRuleMetaActionDetails[].params",
+        "data.gsRuleMetaActionDetails[].source",
+        "data.ruleDetails._configTasks",
+        "data.ruleDetails._flatMappings[].srcField{}.data",
+        "data.ruleDetails.taskDetails[]._connType",
+        "data.ruleDetails.taskDetails[]._flatMappings",
+        "data.ruleDetails.taskDetails[]._object",
+        "data.ruleDetails.taskDetails[]._taskName",
+        "data.ruleDetails.taskDetails[].type"
+      ],
+      "recognized": [],
+      "embedded": [
+        "data.ruleDetails._flatMappings[].srcField"
+      ],
+      "pluginAuthored": [],
+      "pluginKeys": [],
+      "floor": [
+        "data.criteriaDetails[].filters.conditions[].leftOperand.fieldName",
+        "data.gsRuleMetaActionDetails[].actionInfo.params.configId",
+        "data.ruleDetails._flatMappings[].tgtField",
+        "data.ruleDetails.ruleId",
+        "data.ruleDetails.taskDetails[].connectionType",
+        "data.ruleDetails.taskDetails[].object"
+      ],
+      "floorMissing": [],
+      "probes": {
+        "fixtures": 7,
+        "runs": 464,
+        "unprobed": 0
+      }
+    },
+    {
+      "command": "re c describe",
+      "catalog": {
+        "id": "rules-engine:chains:describe",
+        "actionKey": "describe-chain",
+        "mcpTool": "rules_engine_describe_chain",
+        "endpoints": [
+          {
+            "name": "ruleDetail",
+            "method": "GET",
+            "path": "/v1/rulesengine/v2/{{ruleId}}"
+          },
+          {
+            "name": "all",
+            "method": "GET",
+            "path": "/v1/rulesengine/workflow/all"
+          }
+        ]
+      },
+      "readers": [
+        "relationships-build.mjs chain walk (spawn-traced)"
+      ],
+      "modules": [
+        "scripts/relationships-build.mjs"
+      ],
+      "keys": [
+        "*",
+        "_ruleName",
+        "data",
+        "data.*",
+        "data.*.*",
+        "data.*.*[].*",
+        "data.*.*[]._ruleName",
+        "data.*.*[].name",
+        "data.*.*[].type",
+        "data.*._ruleName",
+        "data.*.type",
+        "data._ruleName",
+        "data.type",
+        "type"
+      ],
+      "walks": [
+        "*",
+        "data.*",
+        "data.*.*",
+        "data.*.*[].*"
+      ],
+      "enumerated": {
+        "data.*": [
+          "chainDetails"
+        ],
+        "data.*.*": [
+          "name",
+          "tasks"
+        ]
+      },
+      "alternates": {},
+      "alternatesUnmeasured": [
+        "_ruleName",
+        "data.*._ruleName",
+        "data.*.type",
+        "data._ruleName",
+        "data.type",
+        "type"
+      ],
+      "recognized": [
+        {
+          "kind": "value-predicate",
+          "source": "scripts/relationships-build.mjs",
+          "literal": "type === \"BIONIC_RULE\"",
+          "where": "the chain walk names a task from `_ruleName`, else from `name` when `type` equals the literal"
+        }
+      ],
+      "embedded": [],
+      "pluginAuthored": [],
+      "pluginKeys": [],
+      "floor": [
+        "data.chainDetails.tasks[]._ruleName",
+        "data.chainDetails.tasks[].name",
+        "data.chainDetails.tasks[].type"
+      ],
+      "floorMissing": [],
+      "probes": {
+        "fixtures": 0,
+        "runs": 53,
+        "unprobed": 0
+      }
+    },
+    {
+      "command": "re r describe-external-action",
+      "catalog": {
+        "id": "rules-engine:rules:describe-external-action",
+        "actionKey": "describe-external-action",
+        "mcpTool": "rules_engine_describe_external_action",
+        "endpoints": [
+          {
+            "name": "fetch",
+            "method": "GET",
+            "path": "/v1/api/callout/config/all"
+          }
+        ]
+      },
+      "readers": [
+        "tenant-deps.mjs extractExternalAction"
+      ],
+      "modules": [
+        "scripts/tenant-deps.mjs"
+      ],
+      "keys": [
+        "config",
+        "config.connectionId",
+        "configId",
+        "connectionId",
+        "data",
+        "data.config",
+        "data.config.connectionId",
+        "data.configId",
+        "data.connectionId",
+        "data.name",
+        "name"
+      ],
+      "walks": [],
+      "enumerated": {},
+      "alternates": {
+        "config": [
+          "connectionId"
+        ],
+        "config.connectionId": [
+          "connectionId"
+        ],
+        "data": [
+          "configId",
+          "name"
+        ],
+        "data.config": [
+          "data.connectionId"
+        ],
+        "data.config.connectionId": [
+          "data.connectionId"
+        ]
+      },
+      "alternatesUnmeasured": [
+        "connectionId",
+        "data.connectionId"
+      ],
+      "recognized": [],
+      "embedded": [],
+      "pluginAuthored": [],
+      "pluginKeys": [],
+      "floor": [
+        "config.connectionId",
+        "configId",
+        "data.config.connectionId",
+        "data.configId"
+      ],
+      "floorMissing": [],
+      "probes": {
+        "fixtures": 3,
+        "runs": 35,
+        "unprobed": 0
+      }
+    },
+    {
+      "command": "rp describe",
+      "catalog": {
+        "id": "report:describe",
+        "actionKey": "describe-report",
+        "mcpTool": "report_describe_report",
+        "endpoints": [
+          {
+            "name": "list",
+            "method": "GET",
+            "path": "/v3/bi/integrations/list/reports"
+          },
+          {
+            "name": "fetch",
+            "method": "GET",
+            "path": "/v3/bi/integrations/report"
+          }
+        ]
+      },
+      "readers": [
+        "tenant-deps.mjs extractReportUsages (→ inner fieldRows walk, conditionsOf, condRow)"
+      ],
+      "modules": [
+        "scripts/tenant-deps.mjs"
+      ],
+      "keys": [
+        "data",
+        "data.deleted",
+        "data.drillDownFields",
+        "data.groupByFields",
+        "data.groupByFields[].displayName",
+        "data.groupByFields[].expressionDetails",
+        "data.groupByFields[].fieldAlias",
+        "data.groupByFields[].fieldName",
+        "data.groupByFields[].label",
+        "data.groupByFields[].objectLabel",
+        "data.groupByFields[].objectName",
+        "data.havingFilters",
+        "data.orderByFields",
+        "data.reportId",
+        "data.reportName",
+        "data.showFields",
+        "data.showFields[].displayName",
+        "data.showFields[].expressionDetails",
+        "data.showFields[].expressionDetails.expression",
+        "data.showFields[].expressionDetails.expression.arguments",
+        "data.showFields[].expressionDetails.expression.arguments[].displayName",
+        "data.showFields[].expressionDetails.expression.arguments[].expressionDetails",
+        "data.showFields[].expressionDetails.expression.arguments[].fieldAlias",
+        "data.showFields[].expressionDetails.expression.arguments[].fieldName",
+        "data.showFields[].expressionDetails.expression.arguments[].label",
+        "data.showFields[].expressionDetails.expression.arguments[].objectLabel",
+        "data.showFields[].expressionDetails.expression.arguments[].objectName",
+        "data.showFields[].fieldAlias",
+        "data.showFields[].fieldName",
+        "data.showFields[].label",
+        "data.showFields[].objectLabel",
+        "data.showFields[].objectName",
+        "data.sourceDetails",
+        "data.sourceDetails.connectionId",
+        "data.sourceDetails.connectionType",
+        "data.sourceDetails.dataStoreType",
+        "data.sourceDetails.objectLabel",
+        "data.sourceDetails.objectName",
+        "data.whereFilters",
+        "data.whereFilters.conditions",
+        "data.whereFilters.conditions[].alias",
+        "data.whereFilters.conditions[].comparisonOperator",
+        "data.whereFilters.conditions[].fieldLabel",
+        "data.whereFilters.conditions[].fieldName",
+        "data.whereFilters.conditions[].filterAlias",
+        "data.whereFilters.conditions[].leftOperand",
+        "data.whereFilters.conditions[].leftOperand.fieldLabel",
+        "data.whereFilters.conditions[].leftOperand.fieldName",
+        "data.whereFilters.conditions[].leftOperand.label",
+        "data.whereFilters.conditions[].leftOperand.objectLabel",
+        "data.whereFilters.conditions[].leftOperand.objectName",
+        "data.whereFilters.conditions[].objectLabel",
+        "data.whereFilters.conditions[].objectName",
+        "data.whereFilters.filters"
+      ],
+      "walks": [],
+      "enumerated": {},
+      "alternates": {
+        "data.groupByFields[].label": [
+          "data.groupByFields[].displayName"
+        ],
+        "data.showFields[].expressionDetails.expression.arguments[].label": [
+          "data.showFields[].expressionDetails.expression.arguments[].displayName"
+        ],
+        "data.showFields[].label": [
+          "data.showFields[].displayName"
+        ],
+        "data.whereFilters.conditions[].filterAlias": [
+          "data.whereFilters.conditions[].alias"
+        ]
+      },
+      "alternatesUnmeasured": [
+        "data.drillDownFields",
+        "data.groupByFields[].displayName",
+        "data.groupByFields[].expressionDetails",
+        "data.groupByFields[].fieldAlias",
+        "data.groupByFields[].objectLabel",
+        "data.havingFilters",
+        "data.orderByFields",
+        "data.showFields[].displayName",
+        "data.showFields[].expressionDetails.expression.arguments[].displayName",
+        "data.showFields[].expressionDetails.expression.arguments[].expressionDetails",
+        "data.showFields[].expressionDetails.expression.arguments[].fieldAlias",
+        "data.showFields[].expressionDetails.expression.arguments[].objectLabel",
+        "data.showFields[].objectLabel",
+        "data.whereFilters.conditions[].alias",
+        "data.whereFilters.conditions[].fieldLabel",
+        "data.whereFilters.conditions[].fieldName",
+        "data.whereFilters.conditions[].leftOperand.fieldLabel",
+        "data.whereFilters.conditions[].objectLabel",
+        "data.whereFilters.conditions[].objectName",
+        "data.whereFilters.filters"
+      ],
+      "recognized": [],
+      "embedded": [],
+      "pluginAuthored": [],
+      "pluginKeys": [],
+      "floor": [
+        "data.reportId",
+        "data.showFields[].expressionDetails.expression.arguments[].fieldName",
+        "data.showFields[].fieldName",
+        "data.sourceDetails.objectName",
+        "data.whereFilters.conditions[].leftOperand.fieldName"
+      ],
+      "floorMissing": [],
+      "probes": {
+        "fixtures": 2,
+        "runs": 198,
+        "unprobed": 0
+      }
+    },
+    {
+      "command": "dd t describe",
+      "catalog": {
+        "id": "data-designer:templates:describe",
+        "actionKey": "describe-template",
+        "mcpTool": "data_designer_describe_template",
+        "endpoints": [
+          {
+            "name": "header",
+            "method": "GET",
+            "path": "/v1/bionicreporting/designTemplates/{{templateId}}"
+          },
+          {
+            "name": "tasks",
+            "method": "GET",
+            "path": "/v1/bionicreporting/designTemplates/{{templateId}}/tasks"
+          }
+        ]
+      },
+      "readers": [
+        "tenant-deps.mjs extractDesignerUsages (→ parseSummaryObject, conditionsOf, condRow; doc-lib designerDocProgress / designerTaskFieldLabels)",
+        "describe-batch.mjs designer doc-mode: the --task-id drilldown (Object.entries over the level's body, the _task* prefix) and the --field detail (_taskFieldDetail) — spawn-traced with the fake CLI",
+        "doc-lib.mjs designerTaskFieldLabels (the drilldown's tables → field labels; describe-batch calls it)"
+      ],
+      "modules": [
+        "scripts/describe-batch.mjs",
+        "scripts/tenant-deps.mjs"
+      ],
+      "keys": [
+        "*",
+        "_taskCount",
+        "_taskDetailRows",
+        "_taskShowFields",
+        "_taskUnionMerged",
+        "_taskUnionOther",
+        "_tasks",
+        "_tasks[]._connType",
+        "_tasks[]._fieldCount",
+        "_tasks[]._filterCount",
+        "_tasks[]._object",
+        "_tasks[].connectionDetails",
+        "_tasks[].connectionDetails.connectionId",
+        "_tasks[].connectionDetails.connectionName",
+        "_tasks[].connectionDetails.connectionType",
+        "_tasks[].id",
+        "_tasks[].name",
+        "_tasks[].objectLabel",
+        "_tasks[].queryInfo",
+        "_tasks[].queryInfo.criteria",
+        "_tasks[].queryInfo.criteria.conditions",
+        "_tasks[].queryInfo.criteria.conditions[].alias",
+        "_tasks[].queryInfo.criteria.conditions[].comparisonOperator",
+        "_tasks[].queryInfo.criteria.conditions[].fieldLabel",
+        "_tasks[].queryInfo.criteria.conditions[].fieldName",
+        "_tasks[].queryInfo.criteria.conditions[].filterAlias",
+        "_tasks[].queryInfo.criteria.conditions[].leftOperand",
+        "_tasks[].queryInfo.criteria.conditions[].leftOperand.fieldLabel",
+        "_tasks[].queryInfo.criteria.conditions[].leftOperand.fieldName",
+        "_tasks[].queryInfo.criteria.conditions[].leftOperand.label",
+        "_tasks[].queryInfo.criteria.conditions[].leftOperand.objectLabel",
+        "_tasks[].queryInfo.criteria.conditions[].leftOperand.objectName",
+        "_tasks[].queryInfo.criteria.conditions[].objectLabel",
+        "_tasks[].queryInfo.criteria.conditions[].objectName",
+        "_tasks[].queryInfo.criteria.filters",
+        "_tasks[].queryInfo.objectName",
+        "_tasks[].queryInfo.show",
+        "_tasks[].queryInfo.show[].fieldName",
+        "_tasks[].queryInfo.show[].label",
+        "_tasks[].queryInfo.show[].objectLabel",
+        "_tasks[].queryInfo.show[].objectName",
+        "_tasks[].taskId",
+        "_tasks[].taskName",
+        "_tasks[].taskType",
+        "_tasks[].type",
+        "data",
+        "data.*",
+        "data.*[].*",
+        "data._taskCount",
+        "data._taskDetailRows",
+        "data._taskDetailRows[].*",
+        "data._taskDetailRows[]._key",
+        "data._taskDetailRows[]._value",
+        "data._taskFieldDetail",
+        "data._taskFieldDetail[].*",
+        "data._taskShowFields",
+        "data._taskShowFields[].*",
+        "data._taskShowFields[]._field",
+        "data._taskUnionMerged",
+        "data._taskUnionOther",
+        "data._tasks",
+        "data._tasks[].*",
+        "data._tasks[]._connType",
+        "data._tasks[]._fieldCount",
+        "data._tasks[]._filterCount",
+        "data._tasks[]._object",
+        "data._tasks[].connectionDetails",
+        "data._tasks[].connectionDetails.connectionId",
+        "data._tasks[].connectionDetails.connectionName",
+        "data._tasks[].connectionDetails.connectionType",
+        "data._tasks[].id",
+        "data._tasks[].name",
+        "data._tasks[].objectLabel",
+        "data._tasks[].queryInfo",
+        "data._tasks[].queryInfo.criteria",
+        "data._tasks[].queryInfo.criteria.conditions",
+        "data._tasks[].queryInfo.criteria.conditions[].alias",
+        "data._tasks[].queryInfo.criteria.conditions[].comparisonOperator",
+        "data._tasks[].queryInfo.criteria.conditions[].fieldLabel",
+        "data._tasks[].queryInfo.criteria.conditions[].fieldName",
+        "data._tasks[].queryInfo.criteria.conditions[].filterAlias",
+        "data._tasks[].queryInfo.criteria.conditions[].leftOperand",
+        "data._tasks[].queryInfo.criteria.conditions[].leftOperand.fieldLabel",
+        "data._tasks[].queryInfo.criteria.conditions[].leftOperand.fieldName",
+        "data._tasks[].queryInfo.criteria.conditions[].leftOperand.label",
+        "data._tasks[].queryInfo.criteria.conditions[].leftOperand.objectLabel",
+        "data._tasks[].queryInfo.criteria.conditions[].leftOperand.objectName",
+        "data._tasks[].queryInfo.criteria.conditions[].objectLabel",
+        "data._tasks[].queryInfo.criteria.conditions[].objectName",
+        "data._tasks[].queryInfo.criteria.filters",
+        "data._tasks[].queryInfo.objectName",
+        "data._tasks[].queryInfo.show",
+        "data._tasks[].queryInfo.show[].fieldName",
+        "data._tasks[].queryInfo.show[].label",
+        "data._tasks[].queryInfo.show[].objectLabel",
+        "data._tasks[].queryInfo.show[].objectName",
+        "data._tasks[].taskId",
+        "data._tasks[].taskName",
+        "data._tasks[].taskType",
+        "data._tasks[].type",
+        "data.name",
+        "data.templateId",
+        "name",
+        "templateId"
+      ],
+      "walks": [
+        "*",
+        "data.*",
+        "data.*[].*",
+        "data._taskDetailRows[].*",
+        "data._taskFieldDetail[].*",
+        "data._taskShowFields[].*",
+        "data._tasks[].*"
+      ],
+      "enumerated": {
+        "*": [
+          "result"
+        ],
+        "data.*": [
+          "_taskCriteriaConditions",
+          "_taskCriteriaExpressionRows",
+          "_taskFieldCase",
+          "_taskFieldFormula",
+          "_taskJoinConditions",
+          "_taskPivotColumns",
+          "_taskPivotConditions",
+          "_taskS3Export",
+          "_taskS3FieldOrder",
+          "description",
+          "folderId",
+          "modifiedByName",
+          "modifiedDateStr"
+        ],
+        "data.*[].*": [
+          "_alias",
+          "_expr",
+          "_index",
+          "_left",
+          "_lhsField",
+          "_lhsType",
+          "_op",
+          "_operator",
+          "_rhsType",
+          "_rhsValue",
+          "_right"
+        ],
+        "data._taskFieldDetail[].*": [
+          "_key",
+          "_value"
+        ],
+        "data._taskShowFields[].*": [
+          "_calc",
+          "_index",
+          "_type"
+        ],
+        "data._tasks[].*": [
+          "_groupByCount",
+          "_parents"
+        ]
+      },
+      "alternates": {
+        "_tasks[].queryInfo": [
+          "_tasks[]._fieldCount",
+          "_tasks[]._filterCount"
+        ],
+        "_tasks[].queryInfo.criteria.conditions[].filterAlias": [
+          "_tasks[].queryInfo.criteria.conditions[].alias"
+        ],
+        "_tasks[].type": [
+          "_tasks[].taskType"
+        ],
+        "data": [
+          "_taskCount",
+          "_taskDetailRows",
+          "_taskShowFields",
+          "_taskUnionMerged",
+          "_taskUnionOther",
+          "_tasks",
+          "name",
+          "templateId"
+        ],
+        "data._tasks[]._connType": [
+          "data._tasks[].connectionDetails.connectionType"
+        ],
+        "data._tasks[]._object": [
+          "data._tasks[].queryInfo.objectName"
+        ],
+        "data._tasks[].queryInfo": [
+          "data._tasks[]._fieldCount",
+          "data._tasks[]._filterCount"
+        ],
+        "data._tasks[].queryInfo.criteria.conditions[].filterAlias": [
+          "data._tasks[].queryInfo.criteria.conditions[].alias"
+        ],
+        "data._tasks[].taskId": [
+          "data._tasks[].id"
+        ],
+        "data._tasks[].taskName": [
+          "data._tasks[].name"
+        ],
+        "data._tasks[].type": [
+          "data._tasks[].queryInfo.objectName",
+          "data._tasks[].taskType"
+        ]
+      },
+      "alternatesUnmeasured": [
+        "_taskCount",
+        "_taskDetailRows",
+        "_taskShowFields",
+        "_taskUnionMerged",
+        "_taskUnionOther",
+        "_tasks[]._connType",
+        "_tasks[]._fieldCount",
+        "_tasks[]._filterCount",
+        "_tasks[]._object",
+        "_tasks[].connectionDetails.connectionName",
+        "_tasks[].objectLabel",
+        "_tasks[].queryInfo.criteria.conditions[].alias",
+        "_tasks[].queryInfo.criteria.conditions[].fieldLabel",
+        "_tasks[].queryInfo.criteria.conditions[].fieldName",
+        "_tasks[].queryInfo.criteria.conditions[].leftOperand.fieldLabel",
+        "_tasks[].queryInfo.criteria.conditions[].objectLabel",
+        "_tasks[].queryInfo.criteria.conditions[].objectName",
+        "_tasks[].queryInfo.criteria.filters",
+        "_tasks[].queryInfo.show[].objectLabel",
+        "_tasks[].taskId",
+        "_tasks[].taskName",
+        "_tasks[].taskType",
+        "data._tasks[].connectionDetails.connectionName",
+        "data._tasks[].objectLabel",
+        "data._tasks[].queryInfo.criteria.conditions[].alias",
+        "data._tasks[].queryInfo.criteria.conditions[].fieldLabel",
+        "data._tasks[].queryInfo.criteria.conditions[].fieldName",
+        "data._tasks[].queryInfo.criteria.conditions[].leftOperand.fieldLabel",
+        "data._tasks[].queryInfo.criteria.conditions[].objectLabel",
+        "data._tasks[].queryInfo.criteria.conditions[].objectName",
+        "data._tasks[].queryInfo.criteria.filters",
+        "data._tasks[].queryInfo.show[].objectLabel"
+      ],
+      "recognized": [
+        {
+          "kind": "prefix",
+          "source": "scripts/describe-batch.mjs",
+          "literal": "k.startsWith(\"_task\")",
+          "prefix": "_task",
+          "where": "the --task-id level's top-level keys (Object.entries, minus _tasks and _taskCount) — a rename that keeps the prefix is read, one that drops it is not"
+        }
+      ],
+      "embedded": [],
+      "pluginAuthored": [
+        "_kb",
+        "data._kb"
+      ],
+      "pluginKeys": [
+        "_kb",
+        "data._kb",
+        "data._kb.fieldDetails",
+        "data._kb.fieldDetails.*",
+        "data._kb.fieldDetails.t1",
+        "data._kb.fieldDetails.t1.*",
+        "data._kb.fieldDetails.t1.*[]._key",
+        "data._kb.fieldDetails.t1.*[]._value",
+        "data._kb.fieldDetails.t2",
+        "data._kb.fieldDetails.t3",
+        "data._kb.fieldDetails.t3.*",
+        "data._kb.fieldDetails.t3.*[]._key",
+        "data._kb.fieldDetails.t3.*[]._value",
+        "data._kb.fieldDetails.t4",
+        "data._kb.fields",
+        "data._kb.fields.*",
+        "data._kb.fields.t1",
+        "data._kb.fields.t1.*",
+        "data._kb.fields.t1.*.duplicates",
+        "data._kb.fields.t1.*.error",
+        "data._kb.fields.t1.*.permanent",
+        "data._kb.fields.t1.*.status",
+        "data._kb.fields.t2",
+        "data._kb.fields.t3",
+        "data._kb.fields.t3.*",
+        "data._kb.fields.t3.*.duplicates",
+        "data._kb.fields.t3.*.status",
+        "data._kb.fields.t4",
+        "data._kb.fields.t4.*",
+        "data._kb.taskDetails",
+        "data._kb.taskDetails.*",
+        "data._kb.taskDetails.t1",
+        "data._kb.taskDetails.t1._taskCriteriaConditions",
+        "data._kb.taskDetails.t1._taskCriteriaConditions[]._alias",
+        "data._kb.taskDetails.t1._taskCriteriaConditions[]._lhsField",
+        "data._kb.taskDetails.t1._taskCriteriaConditions[]._operator",
+        "data._kb.taskDetails.t1._taskCriteriaConditions[]._rhsType",
+        "data._kb.taskDetails.t1._taskDetailRows",
+        "data._kb.taskDetails.t1._taskDetailRows[]._key",
+        "data._kb.taskDetails.t1._taskJoinConditions",
+        "data._kb.taskDetails.t1._taskShowFields",
+        "data._kb.taskDetails.t1._taskShowFields[]._field",
+        "data._kb.taskDetails.t1._taskUnionMerged",
+        "data._kb.taskDetails.t1._taskUnionOther",
+        "data._kb.taskDetails.t2",
+        "data._kb.taskDetails.t3",
+        "data._kb.taskDetails.t3._taskCriteriaConditions",
+        "data._kb.taskDetails.t3._taskCriteriaConditions[]._alias",
+        "data._kb.taskDetails.t3._taskCriteriaConditions[]._lhsField",
+        "data._kb.taskDetails.t3._taskCriteriaConditions[]._operator",
+        "data._kb.taskDetails.t3._taskCriteriaConditions[]._rhsType",
+        "data._kb.taskDetails.t3._taskCriteriaConditions[]._rhsValue",
+        "data._kb.taskDetails.t3._taskDetailRows",
+        "data._kb.taskDetails.t3._taskDetailRows[]._key",
+        "data._kb.taskDetails.t3._taskDetailRows[]._value",
+        "data._kb.taskDetails.t3._taskJoinConditions",
+        "data._kb.taskDetails.t3._taskJoinConditions[]._left",
+        "data._kb.taskDetails.t3._taskJoinConditions[]._op",
+        "data._kb.taskDetails.t3._taskJoinConditions[]._right",
+        "data._kb.taskDetails.t3._taskShowFields",
+        "data._kb.taskDetails.t3._taskUnionMerged",
+        "data._kb.taskDetails.t3._taskUnionOther",
+        "data._kb.taskDetails.t4",
+        "data._kb.taskDetails.t4._taskCriteriaConditions",
+        "data._kb.taskDetails.t4._taskDetailRows",
+        "data._kb.taskDetails.t4._taskDetailRows[]._key",
+        "data._kb.taskDetails.t4._taskDetailRows[]._value",
+        "data._kb.taskDetails.t4._taskJoinConditions",
+        "data._kb.taskDetails.t4._taskJoinConditions[]._left",
+        "data._kb.taskDetails.t4._taskJoinConditions[]._op",
+        "data._kb.taskDetails.t4._taskJoinConditions[]._right",
+        "data._kb.taskDetails.t4._taskShowFields",
+        "data._kb.taskDetails.t4._taskUnionMerged",
+        "data._kb.taskDetails.t4._taskUnionOther",
+        "data._kb.tasks",
+        "data._kb.tasks.*",
+        "data._kb.tasks.t1",
+        "data._kb.tasks.t1.fieldListUnparsed",
+        "data._kb.tasks.t1.status",
+        "data._kb.tasks.t2",
+        "data._kb.tasks.t2.error",
+        "data._kb.tasks.t2.fieldListUnparsed",
+        "data._kb.tasks.t2.status",
+        "data._kb.tasks.t3",
+        "data._kb.tasks.t3.fieldListUnparsed",
+        "data._kb.tasks.t3.status",
+        "data._kb.tasks.t4",
+        "data._kb.tasks.t4.fieldListUnparsed",
+        "data._kb.tasks.t4.status",
+        "data._kb.templateFingerprint",
+        "data._kb.version"
+      ],
+      "floor": [
+        "_tasks[].connectionDetails.connectionType",
+        "_tasks[].queryInfo.objectName",
+        "data._taskDetailRows[]._key",
+        "data._taskDetailRows[]._value",
+        "data._taskFieldDetail",
+        "data._taskShowFields[]._field",
+        "data._tasks[]._connType",
+        "data._tasks[]._object",
+        "data._tasks[].taskId",
+        "data._tasks[].taskName",
+        "data._tasks[].taskType",
+        "data.templateId"
+      ],
+      "floorMissing": [],
+      "note": "The `_kb` composite under the template body is written by describe-batch (renderDesignerDoc) from the drilldown levels — plugin-authored, never CLI output; its reads are in pluginKeys. The drilldown's fourteen `_task*` tables are read by a prefix walk (see enumerated under `data.*`) and four of them by name (floor).",
+      "probes": {
+        "fixtures": 7,
+        "runs": 530,
+        "unprobed": 0
+      }
+    },
+    {
+      "command": "cn jobs",
+      "catalog": {
+        "id": "connectors:jobs",
+        "actionKey": "list-connector-jobs",
+        "mcpTool": "connectors_list_connector_jobs",
+        "endpoints": [
+          {
+            "name": "connections",
+            "method": "GET",
+            "path": "/v2/api/duct/connection/connections"
+          },
+          {
+            "name": "jobs",
+            "method": "GET",
+            "path": "/v1/api/connector/job"
+          },
+          {
+            "name": "fetch",
+            "method": "GET",
+            "path": "/v1/api/connector/job/{{jobId}}"
+          }
+        ]
+      },
+      "readers": [
+        "tenant-deps.mjs extractJobUsages"
+      ],
+      "modules": [
+        "scripts/tenant-deps.mjs"
+      ],
+      "keys": [
+        "_jobName",
+        "connectionDetails",
+        "connectionDetails.connectionId",
+        "connectionDetails.connectionName",
+        "connectionDetails.connectionStatus",
+        "connectionDetails.connectorType",
+        "disabled",
+        "jobId",
+        "jobName",
+        "properties",
+        "properties.APPLICATION_DATA_TARGET_OBJECT",
+        "properties.APPLICATION_DATA_TARGET_OBJECT_NAME",
+        "taskInfo",
+        "taskInfo[].fieldInfoList",
+        "taskInfo[].fieldInfoList[].fieldAlias",
+        "taskInfo[].fieldInfoList[].fieldName",
+        "taskInfo[].fieldInfoList[].label",
+        "taskInfo[].objectName",
+        "taskInfo[].taskId",
+        "taskInfo[].taskName"
+      ],
+      "walks": [],
+      "enumerated": {},
+      "alternates": {
+        "jobName": [
+          "_jobName"
+        ],
+        "taskInfo[].taskName": [
+          "taskInfo[].taskId"
+        ]
+      },
+      "alternatesUnmeasured": [
+        "_jobName"
+      ],
+      "recognized": [],
+      "embedded": [],
+      "pluginAuthored": [],
+      "pluginKeys": [],
+      "floor": [
+        "connectionDetails.connectionId",
+        "jobId",
+        "properties.APPLICATION_DATA_TARGET_OBJECT_NAME",
+        "taskInfo[].fieldInfoList[].fieldName",
+        "taskInfo[].objectName"
+      ],
+      "floorMissing": [],
+      "probes": {
+        "fixtures": 2,
+        "runs": 58,
+        "unprobed": 0
+      }
+    },
+    {
+      "command": "cn list",
+      "catalog": {
+        "id": "connectors:list",
+        "actionKey": "list-connectors",
+        "mcpTool": "connectors_list_connectors",
+        "endpoints": [
+          {
+            "name": "all",
+            "method": "GET",
+            "path": "/v2/api/duct/connection/connections"
+          }
+        ]
+      },
+      "readers": [
+        "tenant-deps.mjs extractConnection (walks CONNECTION_SHAPES — nested pnpConnectionsInfo at CLI 1.0.8, flat at 1.0.9; F-388)"
+      ],
+      "modules": [
+        "scripts/tenant-deps.mjs"
+      ],
+      "keys": [
+        "authorizationType",
+        "connectionId",
+        "connectionName",
+        "connectionStatus",
+        "connectionType",
+        "pnpConnectionsInfo",
+        "pnpConnectionsInfo.authorizationType",
+        "pnpConnectionsInfo.connectionId",
+        "pnpConnectionsInfo.connectionName",
+        "pnpConnectionsInfo.connectionStatus",
+        "pnpConnectionsInfo.connectionType"
+      ],
+      "walks": [],
+      "enumerated": {},
+      "alternates": {
+        "pnpConnectionsInfo": [
+          "connectionId",
+          "connectionName"
+        ]
+      },
+      "alternatesUnmeasured": [],
+      "recognized": [],
+      "embedded": [],
+      "pluginAuthored": [],
+      "pluginKeys": [],
+      "floor": [
+        "connectionId",
+        "connectionName",
+        "connectionType",
+        "pnpConnectionsInfo.connectionId",
+        "pnpConnectionsInfo.connectionName",
+        "pnpConnectionsInfo.connectionType"
+      ],
+      "floorMissing": [],
+      "note": "Both row shapes are read as data since F-388 (plugin 0.36.1): the nested 1.0.8 row and the flat 1.0.9 row. The flat keys are floor.",
+      "probes": {
+        "fixtures": 4,
+        "runs": 35,
+        "unprobed": 0
+      }
+    },
+    {
+      "command": "jo dd list",
+      "catalog": {
+        "id": "journey:data-designer:list",
+        "actionKey": "list-data-designer-objects",
+        "mcpTool": "journey_list_data_designer_objects",
+        "endpoints": [
+          {
+            "name": "list",
+            "method": "GET",
+            "path": "/v1/journey/object/list"
+          }
+        ]
+      },
+      "readers": [
+        "tenant-deps.mjs extractDatasetUsages"
+      ],
+      "modules": [
+        "scripts/tenant-deps.mjs"
+      ],
+      "keys": [
+        "fieldCount",
+        "fields",
+        "fields[].displayName",
+        "fields[].fieldName",
+        "label",
+        "objectName"
+      ],
+      "walks": [],
+      "enumerated": {},
+      "alternates": {},
+      "alternatesUnmeasured": [],
+      "recognized": [],
+      "embedded": [],
+      "pluginAuthored": [],
+      "pluginKeys": [],
+      "floor": [
+        "fields[].displayName",
+        "fields[].fieldName",
+        "objectName"
+      ],
+      "floorMissing": [],
+      "probes": {
+        "fixtures": 1,
+        "runs": 9,
+        "unprobed": 0
+      }
+    },
+    {
+      "command": "jo p describe",
+      "catalog": {
+        "id": "journey:programs:describe",
+        "actionKey": "describe-program",
+        "mcpTool": "journey_describe_program",
+        "endpoints": [
+          {
+            "name": "fetch",
+            "method": "POST",
+            "path": "/v1/journey/program/{{programId}}/fetch"
+          }
+        ]
+      },
+      "readers": [
+        "jo-report.mjs parseJourneyDoc (→ embedded, classicStep / nodeStep, normCondition, normSchedule)",
+        "doc-lib.mjs renderProgramDoc (→ compactProgramPayload; the writer's read)",
+        "relationships-build.mjs program token scan (spawn-traced)"
+      ],
+      "modules": [
+        "scripts/doc-lib.mjs",
+        "scripts/jo-report.mjs",
+        "scripts/relationships-build.mjs"
+      ],
+      "keys": [
+        "*",
+        "advancedOutreach",
+        "advancedOutreachId",
+        "advancedOutreachModel",
+        "advancedOutreachModelName",
+        "advancedOutreachName",
+        "advancedOutreachStartDate",
+        "advancedOutreachStatus",
+        "aoConfiguration",
+        "data",
+        "data.*",
+        "data.advancedOutreach",
+        "data.advancedOutreach.*",
+        "data.advancedOutreach.advancedOutreachId",
+        "data.advancedOutreach.advancedOutreachModel",
+        "data.advancedOutreach.advancedOutreachModelName",
+        "data.advancedOutreach.advancedOutreachName",
+        "data.advancedOutreach.advancedOutreachStartDate",
+        "data.advancedOutreach.advancedOutreachStatus",
+        "data.advancedOutreach.aoConfiguration",
+        "data.advancedOutreach.aoConfiguration{}.scheduleInfo",
+        "data.advancedOutreach.aoConfiguration{}.scheduleInfo.schedules",
+        "data.advancedOutreach.aoConfiguration{}.scheduleInfo.schedules[].cronExpression",
+        "data.advancedOutreach.aoConfiguration{}.scheduleInfo.schedules[].jobType",
+        "data.advancedOutreach.aoConfiguration{}.scheduleInfo.schedules[].lastRunSuccess",
+        "data.advancedOutreach.aoConfiguration{}.scheduleInfo.schedules[].lastSuccessTime",
+        "data.advancedOutreach.aoConfiguration{}.scheduleInfo.schedules[].nextRunTime",
+        "data.advancedOutreach.aoConfiguration{}.scheduleInfo.schedules[].runningNow",
+        "data.advancedOutreach.aoConfiguration{}.scheduleInfo.schedules[].scheduleType",
+        "data.advancedOutreach.aoConfiguration{}.scheduleInfo.schedules[].timeZoneName",
+        "data.advancedOutreach.aoConfiguration{}.scheduleInfo.schedules[].type",
+        "data.advancedOutreach.id",
+        "data.advancedOutreach.name",
+        "data.advancedOutreach.participantSourceConfigurations",
+        "data.advancedOutreach.participantSourceConfigurations[].*",
+        "data.advancedOutreach.participantSourceConfigurations[].config",
+        "data.advancedOutreach.participantSourceConfigurations[].config{}.filters",
+        "data.advancedOutreach.participantSourceConfigurations[].config{}.filters.conditions",
+        "data.advancedOutreach.participantSourceConfigurations[].config{}.filters.conditions[].alias",
+        "data.advancedOutreach.participantSourceConfigurations[].config{}.filters.conditions[].comparisonOperator",
+        "data.advancedOutreach.participantSourceConfigurations[].config{}.filters.conditions[].fieldLabel",
+        "data.advancedOutreach.participantSourceConfigurations[].config{}.filters.conditions[].fieldName",
+        "data.advancedOutreach.participantSourceConfigurations[].config{}.filters.conditions[].filterAlias",
+        "data.advancedOutreach.participantSourceConfigurations[].config{}.filters.conditions[].leftOperand",
+        "data.advancedOutreach.participantSourceConfigurations[].config{}.filters.conditions[].leftOperand.fieldLabel",
+        "data.advancedOutreach.participantSourceConfigurations[].config{}.filters.conditions[].leftOperand.fieldName",
+        "data.advancedOutreach.participantSourceConfigurations[].config{}.filters.conditions[].leftOperand.label",
+        "data.advancedOutreach.participantSourceConfigurations[].config{}.filters.conditions[].leftOperand.objectName",
+        "data.advancedOutreach.participantSourceConfigurations[].config{}.filters.conditions[].objectName",
+        "data.advancedOutreach.participantSourceConfigurations[].customMappings",
+        "data.advancedOutreach.participantSourceConfigurations[].customMappings{}.*",
+        "data.advancedOutreach.participantSourceConfigurations[].customMappings{}.*.*",
+        "data.advancedOutreach.participantSourceConfigurations[].customMappings{}.advancedOutreach",
+        "data.advancedOutreach.participantSourceConfigurations[].customMappings{}.advancedOutreachId",
+        "data.advancedOutreach.participantSourceConfigurations[].customMappings{}.advancedOutreachModel",
+        "data.advancedOutreach.participantSourceConfigurations[].customMappings{}.advancedOutreachModelName",
+        "data.advancedOutreach.participantSourceConfigurations[].customMappings{}.advancedOutreachName",
+        "data.advancedOutreach.participantSourceConfigurations[].customMappings{}.advancedOutreachStartDate",
+        "data.advancedOutreach.participantSourceConfigurations[].customMappings{}.advancedOutreachStatus",
+        "data.advancedOutreach.participantSourceConfigurations[].customMappings{}.aoConfiguration",
+        "data.advancedOutreach.participantSourceConfigurations[].customMappings{}.data",
+        "data.advancedOutreach.participantSourceConfigurations[].customMappings{}.id",
+        "data.advancedOutreach.participantSourceConfigurations[].customMappings{}.participantSourceConfigurations",
+        "data.advancedOutreach.participantSourceConfigurations[].customMappings{}.programId",
+        "data.advancedOutreach.participantSourceConfigurations[].customMappings{}.scheduleInfo",
+        "data.advancedOutreach.participantSourceConfigurations[].customMappings{}.stepJson",
+        "data.advancedOutreach.participantSourceConfigurations[].gsid",
+        "data.advancedOutreach.participantSourceConfigurations[].mappingInformation",
+        "data.advancedOutreach.participantSourceConfigurations[].participantOperationType",
+        "data.advancedOutreach.participantSourceConfigurations[].participantSourceCollectionId",
+        "data.advancedOutreach.participantSourceConfigurations[].participantSourceConfigurationId",
+        "data.advancedOutreach.participantSourceConfigurations[].participantSourceName",
+        "data.advancedOutreach.participantSourceConfigurations[].participantSourceType",
+        "data.advancedOutreach.participantSourceConfigurations[].scheduleInfo",
+        "data.advancedOutreach.participantSourceConfigurations[].scheduleInfo{}.*",
+        "data.advancedOutreach.participantSourceConfigurations[].scheduleInfo{}.advancedOutreach",
+        "data.advancedOutreach.participantSourceConfigurations[].scheduleInfo{}.advancedOutreachId",
+        "data.advancedOutreach.participantSourceConfigurations[].scheduleInfo{}.advancedOutreachModel",
+        "data.advancedOutreach.participantSourceConfigurations[].scheduleInfo{}.advancedOutreachModelName",
+        "data.advancedOutreach.participantSourceConfigurations[].scheduleInfo{}.advancedOutreachName",
+        "data.advancedOutreach.participantSourceConfigurations[].scheduleInfo{}.advancedOutreachStartDate",
+        "data.advancedOutreach.participantSourceConfigurations[].scheduleInfo{}.advancedOutreachStatus",
+        "data.advancedOutreach.participantSourceConfigurations[].scheduleInfo{}.aoConfiguration",
+        "data.advancedOutreach.participantSourceConfigurations[].scheduleInfo{}.data",
+        "data.advancedOutreach.participantSourceConfigurations[].scheduleInfo{}.participantSourceConfigurations",
+        "data.advancedOutreach.participantSourceConfigurations[].scheduleInfo{}.scheduleInfo",
+        "data.advancedOutreach.participantSourceConfigurations[].scheduleInfo{}.schedules",
+        "data.advancedOutreach.participantSourceConfigurations[].scheduleInfo{}.schedules[].cronExpression",
+        "data.advancedOutreach.participantSourceConfigurations[].scheduleInfo{}.schedules[].jobType",
+        "data.advancedOutreach.participantSourceConfigurations[].scheduleInfo{}.schedules[].lastRunSuccess",
+        "data.advancedOutreach.participantSourceConfigurations[].scheduleInfo{}.schedules[].lastSuccessTime",
+        "data.advancedOutreach.participantSourceConfigurations[].scheduleInfo{}.schedules[].nextRunTime",
+        "data.advancedOutreach.participantSourceConfigurations[].scheduleInfo{}.schedules[].runningNow",
+        "data.advancedOutreach.participantSourceConfigurations[].scheduleInfo{}.schedules[].scheduleType",
+        "data.advancedOutreach.participantSourceConfigurations[].scheduleInfo{}.schedules[].timeZoneName",
+        "data.advancedOutreach.participantSourceConfigurations[].scheduleInfo{}.schedules[].type",
+        "data.advancedOutreach.participantSourceConfigurations[].scheduleInfo{}.stepJson",
+        "data.advancedOutreach.programId",
+        "data.advancedOutreach.programName",
+        "data.advancedOutreach.scheduleInfo",
+        "data.advancedOutreach.stepJson",
+        "data.advancedOutreach.stepJson{}.*",
+        "data.advancedOutreach.stepJson{}.nodes",
+        "data.advancedOutreach.stepJson{}.nodes[].*",
+        "data.advancedOutreach.stepJson{}.nodes[].*.*",
+        "data.advancedOutreach.stepJson{}.nodes[].actionConfig",
+        "data.advancedOutreach.stepJson{}.nodes[].actionConfig{}.emailTemplateId",
+        "data.advancedOutreach.stepJson{}.nodes[].actionConfig{}.emailTemplateName",
+        "data.advancedOutreach.stepJson{}.nodes[].actionConfig{}.globalConfigInfo",
+        "data.advancedOutreach.stepJson{}.nodes[].actionConfig{}.globalConfigInfo.surveyInfo",
+        "data.advancedOutreach.stepJson{}.nodes[].actionConfig{}.globalConfigInfo.surveyInfo.surveyId",
+        "data.advancedOutreach.stepJson{}.nodes[].actionConfig{}.globalConfigInfo.surveyInfo.surveyName",
+        "data.advancedOutreach.stepJson{}.nodes[].actionConfig{}.surveyIdFromEmailActionV2",
+        "data.advancedOutreach.stepJson{}.nodes[].actionConfig{}.variantMappings",
+        "data.advancedOutreach.stepJson{}.nodes[].actionConfig{}.variantMappings[].templateId",
+        "data.advancedOutreach.stepJson{}.nodes[].actionConfig{}.variantMappings[].variantTokenMapping",
+        "data.advancedOutreach.stepJson{}.nodes[].actionConfig{}.variantMappings[].variantTokenMapping[].id",
+        "data.advancedOutreach.stepJson{}.nodes[].actionConfig{}.variantMappings[].variantTokenMapping[].name",
+        "data.advancedOutreach.stepJson{}.nodes[].actionConfig{}.variantMappings[].variantTokenMapping[].surveyToken",
+        "data.advancedOutreach.stepJson{}.nodes[].actionConfig{}.variantMappings[].variantTokenMapping[].surveyToken.surveyId",
+        "data.advancedOutreach.stepJson{}.nodes[].actionConfig{}.variantMappings[].variantTokenMapping[].surveyToken.surveyName",
+        "data.advancedOutreach.stepJson{}.nodes[].actionConfig{}.variantMappings[].variantTokenMapping[].tokenKey",
+        "data.advancedOutreach.stepJson{}.nodes[].actionConfig{}.variantMappings[].variantTokenMapping[].tokenMapping",
+        "data.advancedOutreach.stepJson{}.nodes[].actionConfig{}.variantMappings[].variantTokenMapping[].tokenMapping.name",
+        "data.advancedOutreach.stepJson{}.nodes[].actionConfig{}.variantMappings[].variantTokenMapping[].tokenMapping.value",
+        "data.advancedOutreach.stepJson{}.nodes[].actionConfig{}.variantMappings[].variantTokenMapping[].tokenMapping.value.field",
+        "data.advancedOutreach.stepJson{}.nodes[].actionConfig{}.variantMappings[].variantTokenMapping[].tokenMapping.value.fieldConfig",
+        "data.advancedOutreach.stepJson{}.nodes[].actionConfig{}.variantMappings[].variantTokenMapping[].tokenMapping.value.fieldConfig.field",
+        "data.advancedOutreach.stepJson{}.nodes[].actionConfig{}.variantMappings[].variantTokenMapping[].tokenMapping.value.fieldConfig.fieldId",
+        "data.advancedOutreach.stepJson{}.nodes[].actionConfig{}.variantMappings[].variantTokenMapping[].tokenMapping.value.fieldConfig.objectName",
+        "data.advancedOutreach.stepJson{}.nodes[].actionConfig{}.variantMappings[].variantTokenMapping[].tokenMapping.value.fieldLabel",
+        "data.advancedOutreach.stepJson{}.nodes[].actionConfig{}.variantMappings[].variantTokenMapping[].tokenMapping.value.fieldName",
+        "data.advancedOutreach.stepJson{}.nodes[].actionConfig{}.variantMappings[].variantTokenMapping[].tokenMapping.value.label",
+        "data.advancedOutreach.stepJson{}.nodes[].actionConfig{}.variantMappings[].variantTokenMapping[].tokenMapping.value.object",
+        "data.advancedOutreach.stepJson{}.nodes[].actionConfig{}.variantMappings[].variantTokenMapping[].tokenMapping.value.objectName",
+        "data.advancedOutreach.stepJson{}.nodes[].actionConfig{}.variantMappings[].variantTokenMapping[].tokenMapping.value.type",
+        "data.advancedOutreach.stepJson{}.nodes[].actionConfig{}.variantMappings[].variantTokenMapping[].tokenType",
+        "data.advancedOutreach.stepJson{}.nodes[].actionConfig{}.variantMappings[].variantTokenMapping[].value",
+        "data.advancedOutreach.stepJson{}.nodes[].actionType",
+        "data.advancedOutreach.stepJson{}.nodes[].exitTimer",
+        "data.advancedOutreach.stepJson{}.nodes[].id",
+        "data.advancedOutreach.stepJson{}.nodes[].name",
+        "data.advancedOutreach.stepJson{}.nodes[].nodeType",
+        "data.advancedOutreach.stepJson{}.nodes[].order",
+        "data.advancedOutreach.stepJson{}.nodes[].surveyIdFromEmailActionV2",
+        "data.advancedOutreach.stepJson{}.nodes[].type",
+        "data.advancedOutreach.stepJson{}[].*",
+        "data.advancedOutreach.stepJson{}[].actionType",
+        "data.advancedOutreach.stepJson{}[].emailActionJson",
+        "data.advancedOutreach.stepJson{}[].emailActionJson{}.*",
+        "data.advancedOutreach.stepJson{}[].emailActionJson{}.emailTemplateId",
+        "data.advancedOutreach.stepJson{}[].emailActionJson{}.emailTemplateName",
+        "data.advancedOutreach.stepJson{}[].emailActionJson{}.globalConfigInfo",
+        "data.advancedOutreach.stepJson{}[].emailActionJson{}.surveyIdFromEmailActionV2",
+        "data.advancedOutreach.stepJson{}[].emailActionJson{}.variantMappings",
+        "data.advancedOutreach.stepJson{}[].emailActionJson{}.variantMappings[].*",
+        "data.advancedOutreach.stepJson{}[].emailActionJson{}.variantMappings[].templateId",
+        "data.advancedOutreach.stepJson{}[].emailActionJson{}.variantMappings[].variantTokenMapping",
+        "data.advancedOutreach.stepJson{}[].emailActionJson{}.variantMappings[].variantTokenMapping.*",
+        "data.advancedOutreach.stepJson{}[].emailActionJson{}.variantMappings[].variantTokenMapping.surveyTokenMappings",
+        "data.advancedOutreach.stepJson{}[].emailActionJson{}.variantMappings[].variantTokenMapping.surveyTokenMappings[].*",
+        "data.advancedOutreach.stepJson{}[].emailActionJson{}.variantMappings[].variantTokenMapping.surveyTokenMappings[].id",
+        "data.advancedOutreach.stepJson{}[].emailActionJson{}.variantMappings[].variantTokenMapping.surveyTokenMappings[].name",
+        "data.advancedOutreach.stepJson{}[].emailActionJson{}.variantMappings[].variantTokenMapping.surveyTokenMappings[].surveyToken",
+        "data.advancedOutreach.stepJson{}[].emailActionJson{}.variantMappings[].variantTokenMapping.surveyTokenMappings[].surveyToken.*",
+        "data.advancedOutreach.stepJson{}[].emailActionJson{}.variantMappings[].variantTokenMapping.surveyTokenMappings[].surveyToken.surveyId",
+        "data.advancedOutreach.stepJson{}[].emailActionJson{}.variantMappings[].variantTokenMapping.surveyTokenMappings[].surveyToken.surveyName",
+        "data.advancedOutreach.stepJson{}[].emailActionJson{}.variantMappings[].variantTokenMapping.surveyTokenMappings[].tokenKey",
+        "data.advancedOutreach.stepJson{}[].emailActionJson{}.variantMappings[].variantTokenMapping.surveyTokenMappings[].tokenMapping",
+        "data.advancedOutreach.stepJson{}[].emailActionJson{}.variantMappings[].variantTokenMapping.surveyTokenMappings[].tokenType",
+        "data.advancedOutreach.stepJson{}[].emailActionJson{}.variantMappings[].variantTokenMapping.surveyTokenMappings[].value",
+        "data.advancedOutreach.stepJson{}[].emailActionJson{}.variantMappings[].variantTokenMapping.templateId",
+        "data.advancedOutreach.stepJson{}[].emailActionJson{}.variantMappings[].variantTokenMapping.tokenMapping",
+        "data.advancedOutreach.stepJson{}[].emailActionJson{}.variantMappings[].variantTokenMapping.tokenMapping.*",
+        "data.advancedOutreach.stepJson{}[].emailActionJson{}.variantMappings[].variantTokenMapping.tokenMapping.tokens",
+        "data.advancedOutreach.stepJson{}[].emailActionJson{}.variantMappings[].variantTokenMapping.tokenMapping.tokens[].*",
+        "data.advancedOutreach.stepJson{}[].emailActionJson{}.variantMappings[].variantTokenMapping.tokenMapping.tokens[].id",
+        "data.advancedOutreach.stepJson{}[].emailActionJson{}.variantMappings[].variantTokenMapping.tokenMapping.tokens[].name",
+        "data.advancedOutreach.stepJson{}[].emailActionJson{}.variantMappings[].variantTokenMapping.tokenMapping.tokens[].surveyToken",
+        "data.advancedOutreach.stepJson{}[].emailActionJson{}.variantMappings[].variantTokenMapping.tokenMapping.tokens[].tokenKey",
+        "data.advancedOutreach.stepJson{}[].emailActionJson{}.variantMappings[].variantTokenMapping.tokenMapping.tokens[].tokenMapping",
+        "data.advancedOutreach.stepJson{}[].emailActionJson{}.variantMappings[].variantTokenMapping.tokenMapping.tokens[].tokenType",
+        "data.advancedOutreach.stepJson{}[].emailActionJson{}.variantMappings[].variantTokenMapping.tokenMapping.tokens[].value",
+        "data.advancedOutreach.stepJson{}[].emailActionJson{}.variantMappings[].variantTokenMapping.tokenMapping.tokens[].value.*",
+        "data.advancedOutreach.stepJson{}[].emailActionJson{}.variantMappings[].variantTokenMapping.tokenMapping.tokens[].value.field",
+        "data.advancedOutreach.stepJson{}[].emailActionJson{}.variantMappings[].variantTokenMapping.tokenMapping.tokens[].value.fieldConfig",
+        "data.advancedOutreach.stepJson{}[].emailActionJson{}.variantMappings[].variantTokenMapping.tokenMapping.tokens[].value.fieldLabel",
+        "data.advancedOutreach.stepJson{}[].emailActionJson{}.variantMappings[].variantTokenMapping.tokenMapping.tokens[].value.fieldName",
+        "data.advancedOutreach.stepJson{}[].emailActionJson{}.variantMappings[].variantTokenMapping.tokenMapping.tokens[].value.label",
+        "data.advancedOutreach.stepJson{}[].emailActionJson{}.variantMappings[].variantTokenMapping.tokenMapping.tokens[].value.object",
+        "data.advancedOutreach.stepJson{}[].emailActionJson{}.variantMappings[].variantTokenMapping.tokenMapping.tokens[].value.objectName",
+        "data.advancedOutreach.stepJson{}[].emailActionJson{}.variantMappings[].variantTokenMapping.tokenMapping.tokens[].value.type",
+        "data.advancedOutreach.stepJson{}[].order",
+        "data.advancedOutreach.stepJson{}[].outboundAction",
+        "data.advancedOutreach.stepJson{}[].stepId",
+        "data.advancedOutreach.stepJson{}[].stepName",
+        "data.advancedOutreach.stepJson{}[].stepType",
+        "data.advancedOutreach.stepJson{}[].timerType",
+        "data.advancedOutreach.stepJson{}[].timerValue",
+        "data.advancedOutreach.stepJson{}[].uiTimerValue",
+        "data.advancedOutreachId",
+        "data.advancedOutreachModel",
+        "data.advancedOutreachModelName",
+        "data.advancedOutreachName",
+        "data.advancedOutreachStartDate",
+        "data.advancedOutreachStatus",
+        "data.aoConfiguration",
+        "data.id",
+        "data.name",
+        "data.participantSourceConfigurations",
+        "data.programId",
+        "data.programName",
+        "data.scheduleInfo",
+        "data.stepJson",
+        "id",
+        "participantSourceConfigurations",
+        "programId",
+        "scheduleInfo",
+        "stepJson"
+      ],
+      "walks": [
+        "*",
+        "data.*",
+        "data.advancedOutreach.*",
+        "data.advancedOutreach.participantSourceConfigurations[].*",
+        "data.advancedOutreach.participantSourceConfigurations[].customMappings{}.*",
+        "data.advancedOutreach.participantSourceConfigurations[].customMappings{}.*.*",
+        "data.advancedOutreach.participantSourceConfigurations[].scheduleInfo{}.*",
+        "data.advancedOutreach.stepJson{}.*",
+        "data.advancedOutreach.stepJson{}.nodes[].*",
+        "data.advancedOutreach.stepJson{}.nodes[].*.*",
+        "data.advancedOutreach.stepJson{}[].*",
+        "data.advancedOutreach.stepJson{}[].emailActionJson{}.*",
+        "data.advancedOutreach.stepJson{}[].emailActionJson{}.variantMappings[].*",
+        "data.advancedOutreach.stepJson{}[].emailActionJson{}.variantMappings[].variantTokenMapping.*",
+        "data.advancedOutreach.stepJson{}[].emailActionJson{}.variantMappings[].variantTokenMapping.surveyTokenMappings[].*",
+        "data.advancedOutreach.stepJson{}[].emailActionJson{}.variantMappings[].variantTokenMapping.surveyTokenMappings[].surveyToken.*",
+        "data.advancedOutreach.stepJson{}[].emailActionJson{}.variantMappings[].variantTokenMapping.tokenMapping.*",
+        "data.advancedOutreach.stepJson{}[].emailActionJson{}.variantMappings[].variantTokenMapping.tokenMapping.tokens[].*",
+        "data.advancedOutreach.stepJson{}[].emailActionJson{}.variantMappings[].variantTokenMapping.tokenMapping.tokens[].value.*"
+      ],
+      "enumerated": {
+        "*": [
+          "result"
+        ],
+        "data.advancedOutreach.participantSourceConfigurations[].customMappings{}.*": [
+          "f5ewvo27"
+        ],
+        "data.advancedOutreach.participantSourceConfigurations[].customMappings{}.*.*": [
+          "fieldName"
+        ],
+        "data.advancedOutreach.stepJson{}.*": [
+          "edges"
+        ],
+        "data.advancedOutreach.stepJson{}.nodes[].*": [
+          "properties"
+        ],
+        "data.advancedOutreach.stepJson{}.nodes[].*.*": [
+          "x",
+          "y"
+        ],
+        "data.advancedOutreach.stepJson{}[].*": [
+          "enable"
+        ],
+        "data.advancedOutreach.stepJson{}[].emailActionJson{}.variantMappings[].*": [
+          "defaultTemplate"
+        ],
+        "data.advancedOutreach.stepJson{}[].emailActionJson{}.variantMappings[].variantTokenMapping.*": [
+          "templateName"
+        ],
+        "data.advancedOutreach.stepJson{}[].emailActionJson{}.variantMappings[].variantTokenMapping.surveyTokenMappings[].surveyToken.*": [
+          "language",
+          "tokenType"
+        ],
+        "data.advancedOutreach.stepJson{}[].emailActionJson{}.variantMappings[].variantTokenMapping.tokenMapping.tokens[].value.*": [
+          "fieldType",
+          "value",
+          "valueType"
+        ]
+      },
+      "alternates": {
+        "data": [
+          "advancedOutreach",
+          "advancedOutreachId",
+          "advancedOutreachModel",
+          "advancedOutreachModelName",
+          "advancedOutreachName",
+          "advancedOutreachStartDate",
+          "advancedOutreachStatus",
+          "aoConfiguration",
+          "id",
+          "participantSourceConfigurations",
+          "programId",
+          "scheduleInfo",
+          "stepJson"
+        ],
+        "data.advancedOutreach": [
+          "data.advancedOutreachId",
+          "data.advancedOutreachModel",
+          "data.advancedOutreachModelName",
+          "data.advancedOutreachName",
+          "data.advancedOutreachStartDate",
+          "data.advancedOutreachStatus",
+          "data.aoConfiguration",
+          "data.participantSourceConfigurations",
+          "data.scheduleInfo",
+          "data.stepJson"
+        ],
+        "data.advancedOutreach.advancedOutreachId": [
+          "data.advancedOutreach.id",
+          "data.advancedOutreach.programId"
+        ],
+        "data.advancedOutreach.advancedOutreachName": [
+          "data.advancedOutreach.name",
+          "data.advancedOutreach.programName"
+        ],
+        "data.advancedOutreach.participantSourceConfigurations[].config{}.filters.conditions[].filterAlias": [
+          "data.advancedOutreach.participantSourceConfigurations[].config{}.filters.conditions[].alias"
+        ],
+        "data.advancedOutreach.participantSourceConfigurations[].participantSourceConfigurationId": [
+          "data.advancedOutreach.participantSourceConfigurations[].gsid"
+        ],
+        "data.advancedOutreach.stepJson{}.nodes[].actionConfig{}.variantMappings[].variantTokenMapping[].id": [
+          "data.advancedOutreach.stepJson{}.nodes[].actionConfig{}.variantMappings[].variantTokenMapping[].name",
+          "data.advancedOutreach.stepJson{}.nodes[].actionConfig{}.variantMappings[].variantTokenMapping[].tokenKey",
+          "data.advancedOutreach.stepJson{}.nodes[].actionConfig{}.variantMappings[].variantTokenMapping[].tokenMapping.name"
+        ],
+        "data.advancedOutreach.stepJson{}.nodes[].actionConfig{}.variantMappings[].variantTokenMapping[].tokenMapping": [
+          "data.advancedOutreach.stepJson{}.nodes[].actionConfig{}.variantMappings[].variantTokenMapping[].value"
+        ],
+        "data.advancedOutreach.stepJson{}.nodes[].actionConfig{}.variantMappings[].variantTokenMapping[].tokenMapping.value": [
+          "data.advancedOutreach.stepJson{}.nodes[].actionConfig{}.variantMappings[].variantTokenMapping[].value"
+        ],
+        "data.advancedOutreach.stepJson{}.nodes[].actionConfig{}.variantMappings[].variantTokenMapping[].tokenMapping.value.fieldConfig": [
+          "data.advancedOutreach.stepJson{}.nodes[].actionConfig{}.variantMappings[].variantTokenMapping[].tokenMapping.value.field",
+          "data.advancedOutreach.stepJson{}.nodes[].actionConfig{}.variantMappings[].variantTokenMapping[].tokenMapping.value.fieldName",
+          "data.advancedOutreach.stepJson{}.nodes[].actionConfig{}.variantMappings[].variantTokenMapping[].tokenMapping.value.object",
+          "data.advancedOutreach.stepJson{}.nodes[].actionConfig{}.variantMappings[].variantTokenMapping[].tokenMapping.value.objectName"
+        ],
+        "data.advancedOutreach.stepJson{}.nodes[].actionConfig{}.variantMappings[].variantTokenMapping[].tokenMapping.value.fieldConfig.field": [
+          "data.advancedOutreach.stepJson{}.nodes[].actionConfig{}.variantMappings[].variantTokenMapping[].tokenMapping.value.field",
+          "data.advancedOutreach.stepJson{}.nodes[].actionConfig{}.variantMappings[].variantTokenMapping[].tokenMapping.value.fieldName"
+        ],
+        "data.advancedOutreach.stepJson{}.nodes[].actionConfig{}.variantMappings[].variantTokenMapping[].tokenMapping.value.fieldConfig.objectName": [
+          "data.advancedOutreach.stepJson{}.nodes[].actionConfig{}.variantMappings[].variantTokenMapping[].tokenMapping.value.object",
+          "data.advancedOutreach.stepJson{}.nodes[].actionConfig{}.variantMappings[].variantTokenMapping[].tokenMapping.value.objectName"
+        ],
+        "data.advancedOutreach.stepJson{}.nodes[].surveyIdFromEmailActionV2": [
+          "data.advancedOutreach.stepJson{}.nodes[].actionConfig{}.surveyIdFromEmailActionV2"
+        ],
+        "data.advancedOutreach.stepJson{}.nodes[].type": [
+          "data.advancedOutreach.stepJson{}.nodes[].nodeType"
+        ],
+        "data.advancedOutreach.stepJson{}[].emailActionJson{}.variantMappings[].variantTokenMapping": [
+          "data.advancedOutreach.stepJson{}[].emailActionJson{}.variantMappings[].templateId"
+        ],
+        "data.advancedOutreach.stepJson{}[].emailActionJson{}.variantMappings[].variantTokenMapping.surveyTokenMappings[].id": [
+          "data.advancedOutreach.stepJson{}[].emailActionJson{}.variantMappings[].variantTokenMapping.surveyTokenMappings[].name",
+          "data.advancedOutreach.stepJson{}[].emailActionJson{}.variantMappings[].variantTokenMapping.surveyTokenMappings[].tokenKey",
+          "data.advancedOutreach.stepJson{}[].emailActionJson{}.variantMappings[].variantTokenMapping.surveyTokenMappings[].tokenMapping"
+        ],
+        "data.advancedOutreach.stepJson{}[].emailActionJson{}.variantMappings[].variantTokenMapping.surveyTokenMappings[].surveyToken": [
+          "data.advancedOutreach.stepJson{}[].emailActionJson{}.variantMappings[].variantTokenMapping.surveyTokenMappings[].tokenMapping",
+          "data.advancedOutreach.stepJson{}[].emailActionJson{}.variantMappings[].variantTokenMapping.surveyTokenMappings[].value"
+        ],
+        "data.advancedOutreach.stepJson{}[].emailActionJson{}.variantMappings[].variantTokenMapping.templateId": [
+          "data.advancedOutreach.stepJson{}[].emailActionJson{}.variantMappings[].templateId"
+        ],
+        "data.advancedOutreach.stepJson{}[].emailActionJson{}.variantMappings[].variantTokenMapping.tokenMapping.tokens[].value.field": [
+          "data.advancedOutreach.stepJson{}[].emailActionJson{}.variantMappings[].variantTokenMapping.tokenMapping.tokens[].value.fieldName"
+        ],
+        "data.advancedOutreach.stepJson{}[].emailActionJson{}.variantMappings[].variantTokenMapping.tokenMapping.tokens[].value.fieldLabel": [
+          "data.advancedOutreach.stepJson{}[].emailActionJson{}.variantMappings[].variantTokenMapping.tokenMapping.tokens[].value.label"
+        ],
+        "data.advancedOutreach.stepJson{}[].emailActionJson{}.variantMappings[].variantTokenMapping.tokenMapping.tokens[].value.objectName": [
+          "data.advancedOutreach.stepJson{}[].emailActionJson{}.variantMappings[].variantTokenMapping.tokenMapping.tokens[].value.object"
+        ]
+      },
+      "alternatesUnmeasured": [
+        "advancedOutreach",
+        "advancedOutreachId",
+        "advancedOutreachModel",
+        "advancedOutreachModelName",
+        "advancedOutreachName",
+        "advancedOutreachStartDate",
+        "advancedOutreachStatus",
+        "aoConfiguration",
+        "data.advancedOutreach.aoConfiguration{}.scheduleInfo.schedules[].scheduleType",
+        "data.advancedOutreach.id",
+        "data.advancedOutreach.name",
+        "data.advancedOutreach.participantSourceConfigurations[].config{}.filters.conditions[].alias",
+        "data.advancedOutreach.participantSourceConfigurations[].config{}.filters.conditions[].fieldLabel",
+        "data.advancedOutreach.participantSourceConfigurations[].config{}.filters.conditions[].fieldName",
+        "data.advancedOutreach.participantSourceConfigurations[].config{}.filters.conditions[].leftOperand.fieldLabel",
+        "data.advancedOutreach.participantSourceConfigurations[].config{}.filters.conditions[].objectName",
+        "data.advancedOutreach.participantSourceConfigurations[].customMappings{}.advancedOutreach",
+        "data.advancedOutreach.participantSourceConfigurations[].customMappings{}.advancedOutreachId",
+        "data.advancedOutreach.participantSourceConfigurations[].customMappings{}.advancedOutreachModel",
+        "data.advancedOutreach.participantSourceConfigurations[].customMappings{}.advancedOutreachModelName",
+        "data.advancedOutreach.participantSourceConfigurations[].customMappings{}.advancedOutreachName",
+        "data.advancedOutreach.participantSourceConfigurations[].customMappings{}.advancedOutreachStartDate",
+        "data.advancedOutreach.participantSourceConfigurations[].customMappings{}.advancedOutreachStatus",
+        "data.advancedOutreach.participantSourceConfigurations[].customMappings{}.aoConfiguration",
+        "data.advancedOutreach.participantSourceConfigurations[].customMappings{}.data",
+        "data.advancedOutreach.participantSourceConfigurations[].customMappings{}.id",
+        "data.advancedOutreach.participantSourceConfigurations[].customMappings{}.participantSourceConfigurations",
+        "data.advancedOutreach.participantSourceConfigurations[].customMappings{}.programId",
+        "data.advancedOutreach.participantSourceConfigurations[].customMappings{}.scheduleInfo",
+        "data.advancedOutreach.participantSourceConfigurations[].customMappings{}.stepJson",
+        "data.advancedOutreach.participantSourceConfigurations[].gsid",
+        "data.advancedOutreach.participantSourceConfigurations[].scheduleInfo{}.advancedOutreach",
+        "data.advancedOutreach.participantSourceConfigurations[].scheduleInfo{}.advancedOutreachId",
+        "data.advancedOutreach.participantSourceConfigurations[].scheduleInfo{}.advancedOutreachModel",
+        "data.advancedOutreach.participantSourceConfigurations[].scheduleInfo{}.advancedOutreachModelName",
+        "data.advancedOutreach.participantSourceConfigurations[].scheduleInfo{}.advancedOutreachName",
+        "data.advancedOutreach.participantSourceConfigurations[].scheduleInfo{}.advancedOutreachStartDate",
+        "data.advancedOutreach.participantSourceConfigurations[].scheduleInfo{}.advancedOutreachStatus",
+        "data.advancedOutreach.participantSourceConfigurations[].scheduleInfo{}.aoConfiguration",
+        "data.advancedOutreach.participantSourceConfigurations[].scheduleInfo{}.data",
+        "data.advancedOutreach.participantSourceConfigurations[].scheduleInfo{}.participantSourceConfigurations",
+        "data.advancedOutreach.participantSourceConfigurations[].scheduleInfo{}.scheduleInfo",
+        "data.advancedOutreach.participantSourceConfigurations[].scheduleInfo{}.schedules[].lastRunSuccess",
+        "data.advancedOutreach.participantSourceConfigurations[].scheduleInfo{}.schedules[].lastSuccessTime",
+        "data.advancedOutreach.participantSourceConfigurations[].scheduleInfo{}.schedules[].nextRunTime",
+        "data.advancedOutreach.participantSourceConfigurations[].scheduleInfo{}.schedules[].runningNow",
+        "data.advancedOutreach.participantSourceConfigurations[].scheduleInfo{}.schedules[].scheduleType",
+        "data.advancedOutreach.participantSourceConfigurations[].scheduleInfo{}.stepJson",
+        "data.advancedOutreach.programId",
+        "data.advancedOutreach.programName",
+        "data.advancedOutreach.scheduleInfo",
+        "data.advancedOutreach.stepJson{}.nodes[].actionConfig{}.surveyIdFromEmailActionV2",
+        "data.advancedOutreach.stepJson{}.nodes[].actionConfig{}.variantMappings[].variantTokenMapping[].name",
+        "data.advancedOutreach.stepJson{}.nodes[].actionConfig{}.variantMappings[].variantTokenMapping[].surveyToken.surveyId",
+        "data.advancedOutreach.stepJson{}.nodes[].actionConfig{}.variantMappings[].variantTokenMapping[].surveyToken.surveyName",
+        "data.advancedOutreach.stepJson{}.nodes[].actionConfig{}.variantMappings[].variantTokenMapping[].tokenKey",
+        "data.advancedOutreach.stepJson{}.nodes[].actionConfig{}.variantMappings[].variantTokenMapping[].tokenMapping.value.field",
+        "data.advancedOutreach.stepJson{}.nodes[].actionConfig{}.variantMappings[].variantTokenMapping[].tokenMapping.value.fieldLabel",
+        "data.advancedOutreach.stepJson{}.nodes[].actionConfig{}.variantMappings[].variantTokenMapping[].tokenMapping.value.fieldName",
+        "data.advancedOutreach.stepJson{}.nodes[].actionConfig{}.variantMappings[].variantTokenMapping[].tokenMapping.value.object",
+        "data.advancedOutreach.stepJson{}.nodes[].actionConfig{}.variantMappings[].variantTokenMapping[].tokenMapping.value.objectName",
+        "data.advancedOutreach.stepJson{}.nodes[].actionConfig{}.variantMappings[].variantTokenMapping[].value",
+        "data.advancedOutreach.stepJson{}.nodes[].actionType",
+        "data.advancedOutreach.stepJson{}.nodes[].exitTimer",
+        "data.advancedOutreach.stepJson{}.nodes[].order",
+        "data.advancedOutreach.stepJson{}[].emailActionJson{}.globalConfigInfo",
+        "data.advancedOutreach.stepJson{}[].emailActionJson{}.surveyIdFromEmailActionV2",
+        "data.advancedOutreach.stepJson{}[].emailActionJson{}.variantMappings[].templateId",
+        "data.advancedOutreach.stepJson{}[].emailActionJson{}.variantMappings[].variantTokenMapping.surveyTokenMappings[].name",
+        "data.advancedOutreach.stepJson{}[].emailActionJson{}.variantMappings[].variantTokenMapping.surveyTokenMappings[].tokenKey",
+        "data.advancedOutreach.stepJson{}[].emailActionJson{}.variantMappings[].variantTokenMapping.surveyTokenMappings[].tokenMapping",
+        "data.advancedOutreach.stepJson{}[].emailActionJson{}.variantMappings[].variantTokenMapping.surveyTokenMappings[].tokenType",
+        "data.advancedOutreach.stepJson{}[].emailActionJson{}.variantMappings[].variantTokenMapping.surveyTokenMappings[].value",
+        "data.advancedOutreach.stepJson{}[].emailActionJson{}.variantMappings[].variantTokenMapping.tokenMapping.tokens[].id",
+        "data.advancedOutreach.stepJson{}[].emailActionJson{}.variantMappings[].variantTokenMapping.tokenMapping.tokens[].surveyToken",
+        "data.advancedOutreach.stepJson{}[].emailActionJson{}.variantMappings[].variantTokenMapping.tokenMapping.tokens[].tokenKey",
+        "data.advancedOutreach.stepJson{}[].emailActionJson{}.variantMappings[].variantTokenMapping.tokenMapping.tokens[].tokenMapping",
+        "data.advancedOutreach.stepJson{}[].emailActionJson{}.variantMappings[].variantTokenMapping.tokenMapping.tokens[].tokenType",
+        "data.advancedOutreach.stepJson{}[].emailActionJson{}.variantMappings[].variantTokenMapping.tokenMapping.tokens[].value.fieldConfig",
+        "data.advancedOutreach.stepJson{}[].emailActionJson{}.variantMappings[].variantTokenMapping.tokenMapping.tokens[].value.object",
+        "data.advancedOutreach.stepJson{}[].uiTimerValue",
+        "data.advancedOutreachId",
+        "data.advancedOutreachModel",
+        "data.advancedOutreachModelName",
+        "data.advancedOutreachName",
+        "data.advancedOutreachStartDate",
+        "data.advancedOutreachStatus",
+        "data.aoConfiguration",
+        "data.id",
+        "data.name",
+        "data.participantSourceConfigurations",
+        "data.programId",
+        "data.programName",
+        "data.scheduleInfo",
+        "data.stepJson",
+        "id",
+        "participantSourceConfigurations",
+        "programId",
+        "scheduleInfo",
+        "stepJson"
+      ],
+      "recognized": [],
+      "embedded": [
+        "data.advancedOutreach.aoConfiguration",
+        "data.advancedOutreach.participantSourceConfigurations[].config",
+        "data.advancedOutreach.participantSourceConfigurations[].customMappings",
+        "data.advancedOutreach.participantSourceConfigurations[].mappingInformation",
+        "data.advancedOutreach.participantSourceConfigurations[].scheduleInfo",
+        "data.advancedOutreach.stepJson",
+        "data.advancedOutreach.stepJson{}.nodes[].actionConfig",
+        "data.advancedOutreach.stepJson{}[].emailActionJson"
+      ],
+      "pluginAuthored": [],
+      "pluginKeys": [],
+      "floor": [
+        "data.advancedOutreach.advancedOutreachId",
+        "data.advancedOutreach.participantSourceConfigurations[].config{}.filters.conditions[].leftOperand.fieldName",
+        "data.advancedOutreach.stepJson"
+      ],
+      "floorMissing": [],
+      "probes": {
+        "fixtures": 3,
+        "runs": 906,
+        "unprobed": 0
+      }
+    },
+    {
+      "command": "jo e template",
+      "catalog": {
+        "id": "journey:email:template",
+        "actionKey": "get-email-template",
+        "mcpTool": "journey_get_email_template",
+        "endpoints": [
+          {
+            "name": "fetch",
+            "method": "GET",
+            "path": "/v1/api/templates/{{templateId}}"
+          }
+        ]
+      },
+      "readers": [
+        "doc-lib.mjs renderTemplateDoc (→ bodyOf, templateTokens, dateOf; template-doc.mjs and describe-batch.mjs call it)"
+      ],
+      "modules": [
+        "scripts/doc-lib.mjs"
+      ],
+      "keys": [
+        "data",
+        "data.emailTemplate",
+        "data.emailTemplate._tokens",
+        "data.emailTemplate._tokens[].defaultValue",
+        "data.emailTemplate._tokens[].displayName",
+        "data.emailTemplate._tokens[].tokenKey",
+        "data.emailTemplate._tokens[].tokenType",
+        "data.emailTemplate._tokens[].variant",
+        "data.emailTemplate.active",
+        "data.emailTemplate.builderVersion",
+        "data.emailTemplate.createdByName",
+        "data.emailTemplate.createdDate",
+        "data.emailTemplate.createdDateStr",
+        "data.emailTemplate.editorContent",
+        "data.emailTemplate.folderId",
+        "data.emailTemplate.htmlContent",
+        "data.emailTemplate.modifiedByName",
+        "data.emailTemplate.modifiedDate",
+        "data.emailTemplate.modifiedDateStr",
+        "data.emailTemplate.plainTextContent",
+        "data.emailTemplate.published",
+        "data.emailTemplate.subject",
+        "data.emailTemplate.system",
+        "data.emailTemplate.templateId",
+        "data.emailTemplate.title",
+        "data.emailTemplate.tokenMappings",
+        "data.emailTemplate.tokenMappings.*",
+        "data.emailTemplate.tokenMappings.*.*",
+        "data.emailTemplate.tokenMappings.*.*.surveyToken",
+        "data.emailTemplate.tokenMappings.*.*.surveyToken.surveyId",
+        "data.emailTemplate.tokenMappings.*.*.surveyToken.surveyName",
+        "data.emailTemplate.transactional",
+        "data.emailTemplate.variantCount",
+        "data.tokenMappings",
+        "data.variants",
+        "data.variants[].editorContent",
+        "data.variants[].htmlContent",
+        "data.variants[].name",
+        "data.variants[].plainTextContent",
+        "data.variants[].subject",
+        "data.variants[].variantName"
+      ],
+      "walks": [
+        "data.emailTemplate.tokenMappings.*",
+        "data.emailTemplate.tokenMappings.*.*"
+      ],
+      "enumerated": {
+        "data.emailTemplate.tokenMappings.*": [
+          "MDA"
+        ],
+        "data.emailTemplate.tokenMappings.*.*": [
+          "gs-t2"
+        ]
+      },
+      "alternates": {
+        "data.emailTemplate.createdDateStr": [
+          "data.emailTemplate.createdDate"
+        ],
+        "data.emailTemplate.htmlContent": [
+          "data.emailTemplate.editorContent"
+        ],
+        "data.emailTemplate.modifiedDateStr": [
+          "data.emailTemplate.modifiedDate"
+        ],
+        "data.emailTemplate.plainTextContent": [
+          "data.emailTemplate.editorContent",
+          "data.emailTemplate.htmlContent"
+        ],
+        "data.emailTemplate.tokenMappings": [
+          "data.tokenMappings"
+        ],
+        "data.variants[].htmlContent": [
+          "data.variants[].editorContent"
+        ],
+        "data.variants[].plainTextContent": [
+          "data.variants[].htmlContent"
+        ],
+        "data.variants[].variantName": [
+          "data.variants[].name"
+        ]
+      },
+      "alternatesUnmeasured": [
+        "data.emailTemplate.modifiedDate",
+        "data.tokenMappings",
+        "data.variants[].name"
+      ],
+      "recognized": [],
+      "embedded": [],
+      "pluginAuthored": [],
+      "pluginKeys": [],
+      "floor": [
+        "data.emailTemplate.plainTextContent",
+        "data.emailTemplate.subject",
+        "data.emailTemplate.templateId"
+      ],
+      "floorMissing": [],
+      "probes": {
+        "fixtures": 4,
+        "runs": 166,
+        "unprobed": 0
+      }
+    },
+    {
+      "command": "sc measures",
+      "catalog": {
+        "id": "scorecard:measures",
+        "actionKey": "get-scorecard-measures",
+        "mcpTool": "scorecard_get_scorecard_measures",
+        "endpoints": [
+          {
+            "name": "list",
+            "method": "GET",
+            "path": "/v1/scorecards"
+          },
+          {
+            "name": "fetch",
+            "method": "GET",
+            "path": "/v1/scorecards/measures/{{scorecardId}}/mapping"
+          },
+          {
+            "name": "schemes",
+            "method": "GET",
+            "path": "/v1/scorecards/schemes"
+          }
+        ]
+      },
+      "readers": [
+        "doc-lib.mjs collectScorecardMeasures (any-depth walk; tenant-deps and relationships-build call it)"
+      ],
+      "modules": [
+        "scripts/doc-lib.mjs",
+        "scripts/relationships-build.mjs"
+      ],
+      "keys": [
+        "*",
+        "[].*",
+        "[].*[].*",
+        "[].*[].children",
+        "[].*[].children[].*",
+        "[].*[].children[].children",
+        "[].*[].children[].levelType",
+        "[].*[].children[].measureId",
+        "[].*[].children[].name",
+        "[].*[].levelType",
+        "[].*[].measureId",
+        "[].*[].name",
+        "[].measureId",
+        "data",
+        "data[].*",
+        "data[].children",
+        "data[].children[].*",
+        "data[].children[].children",
+        "data[].children[].levelType",
+        "data[].children[].measureId",
+        "data[].children[].name",
+        "data[].levelType",
+        "data[].measureId",
+        "data[].name",
+        "measureId"
+      ],
+      "walks": [
+        "*",
+        "[].*",
+        "[].*[].*",
+        "[].*[].children[].*",
+        "data[].*",
+        "data[].children[].*"
+      ],
+      "enumerated": {
+        "[].*": [
+          "children",
+          "name"
+        ]
+      },
+      "alternates": {},
+      "alternatesUnmeasured": [
+        "[].*[].children[].children",
+        "[].measureId",
+        "data[].children[].children",
+        "measureId"
+      ],
+      "recognized": [],
+      "embedded": [],
+      "pluginAuthored": [],
+      "pluginKeys": [],
+      "floor": [
+        "[].children[].levelType",
+        "[].children[].measureId",
+        "[].children[].name"
+      ],
+      "floorMissing": [],
+      "probes": {
+        "fixtures": 2,
+        "runs": 76,
+        "unprobed": 0
+      }
+    },
+    {
+      "command": "dm deps check",
+      "catalog": {
+        "id": "data-management:dependencies:check",
+        "actionKey": "object-dependencies",
+        "mcpTool": "data_management_object_dependencies",
+        "endpoints": [
+          {
+            "name": "fetch",
+            "method": "POST",
+            "path": "/v1/meta/dependency/async/{{objectName}}"
+          }
+        ]
+      },
+      "readers": [
+        "doc-lib.mjs parseLiveDepsAreas (strict envelope; tenant-deps --live-deps, jo-report-deps --live-deps, capture --wait via depsCaptureReadiness)"
+      ],
+      "modules": [
+        "scripts/capture.mjs",
+        "scripts/doc-lib.mjs",
+        "scripts/jo-report-deps.mjs"
+      ],
+      "keys": [
+        "data",
+        "data.dependents",
+        "data.dependents.*",
+        "data.dependents.*[].columnReferences",
+        "data.dependents.*[].columnReferences[].displayName",
+        "data.dependents.*[].columnReferences[].fieldName",
+        "data.dependents.*[].columnReferences[].name",
+        "data.dependents.*[].entityId",
+        "data.dependents.*[].entityName",
+        "data.objectName",
+        "data.progressStatus",
+        "data.progressStatus.overallStatus"
+      ],
+      "walks": [
+        "data.dependents.*"
+      ],
+      "enumerated": {
+        "data.dependents.*": [
+          "C360",
+          "JOURNEY_ORCHESTRATOR",
+          "REPORT",
+          "RULE"
+        ]
+      },
+      "alternates": {
+        "data.dependents.*[].columnReferences[].displayName": [
+          "data.dependents.*[].columnReferences[].fieldName",
+          "data.dependents.*[].columnReferences[].name"
+        ]
+      },
+      "alternatesUnmeasured": [
+        "data.dependents.*[].columnReferences[].fieldName",
+        "data.dependents.*[].columnReferences[].name"
+      ],
+      "recognized": [],
+      "embedded": [],
+      "pluginAuthored": [],
+      "pluginKeys": [],
+      "floor": [
+        "data.dependents",
+        "data.dependents.*[].entityId",
+        "data.dependents.*[].entityName",
+        "data.objectName",
+        "data.progressStatus.overallStatus"
+      ],
+      "floorMissing": [],
+      "probes": {
+        "fixtures": 1,
+        "runs": 54,
+        "unprobed": 0
+      }
+    },
+    {
+      "command": "*indexed-list",
+      "catalog": null,
+      "readers": [
+        "doc-lib.mjs findItemsArray + extractIds (the KB indexer: manifest.mjs upsert-batch; domain-candidates.mjs check)"
+      ],
+      "modules": [
+        "scripts/doc-lib.mjs",
+        "scripts/manifest.mjs"
+      ],
+      "keys": [
+        "*",
+        "data",
+        "data.*",
+        "data.*[].<idField>",
+        "data.<itemsPath>",
+        "data.<itemsPath>[].<idField>"
+      ],
+      "walks": [
+        "*",
+        "data.*"
+      ],
+      "enumerated": {
+        "data.*": [
+          "decoys",
+          "rows"
+        ]
+      },
+      "alternates": {
+        "data.*": [
+          "data.*[].<idField>"
+        ]
+      },
+      "alternatesUnmeasured": [],
+      "recognized": [],
+      "embedded": [],
+      "pluginAuthored": [],
+      "pluginKeys": [],
+      "floor": [
+        "data.*[].<idField>",
+        "data.<itemsPath>[].<idField>"
+      ],
+      "floorMissing": [],
+      "note": "Every indexed list command, handler-less ones included (jo p list selects its row keys via the manifest endpoint.body.showFields). The row keys are tenant-recorded (idField / nameField / dateField in the KB _manifest.json) and the rows array is the recorded itemsPath — spelled <idField> / <itemsPath>: the reader dereferences whatever the manifest recorded, so the literal is never a contract; the envelope walk is the fixed part.",
+      "probes": {
+        "fixtures": 1,
+        "runs": 13,
+        "unprobed": 0
+      }
+    },
+    {
+      "command": "*paginated-list",
+      "catalog": null,
+      "readers": [
+        "doc-lib.mjs scanListEnvelope / decideEntryArray (capture.mjs --paginate; er-count.mjs)"
+      ],
+      "modules": [
+        "scripts/capture.mjs",
+        "scripts/doc-lib.mjs"
+      ],
+      "keys": [
+        "*",
+        "data",
+        "data.*",
+        "data.*.*",
+        "data.<itemsPath>"
+      ],
+      "walks": [
+        "*",
+        "data.*",
+        "data.*.*"
+      ],
+      "enumerated": {
+        "*": [
+          "_total"
+        ],
+        "data.*": [
+          "data",
+          "lastPage",
+          "limit",
+          "liteObjects",
+          "nextAvailable",
+          "nextPage",
+          "pageInfo",
+          "pageNumber",
+          "rows",
+          "totalCount",
+          "totalNumberOfObjects",
+          "totalPages"
+        ],
+        "data.*.*": [
+          "pageSize",
+          "returned",
+          "totalAfterFilters",
+          "totalRecords"
+        ]
+      },
+      "alternates": {},
+      "alternatesUnmeasured": [],
+      "recognized": [
+        {
+          "kind": "name-set",
+          "source": "scripts/doc-lib.mjs",
+          "sets": {
+            "ROW_TOTAL_KEYS": [
+              "totalRecords",
+              "totalAfterFilters",
+              "totalCount",
+              "_total",
+              "totalNumberOfObjects"
+            ],
+            "PAGE_SIGNAL_KEYS": [
+              "totalPages",
+              "lastPage",
+              "nextAvailable",
+              "nextPage",
+              "pageNumber"
+            ],
+            "PAGEINFO_ONLY_KEYS": [
+              "returned",
+              "limit",
+              "pageSize"
+            ]
+          },
+          "names": [
+            "_total",
+            "lastPage",
+            "limit",
+            "nextAvailable",
+            "nextPage",
+            "pageNumber",
+            "pageSize",
+            "returned",
+            "totalAfterFilters",
+            "totalCount",
+            "totalNumberOfObjects",
+            "totalPages",
+            "totalRecords"
+          ],
+          "where": "scanListEnvelope — totals and continuation signals anywhere on the spine; returned / limit / pageSize only inside a pageInfo object"
+        }
+      ],
+      "embedded": [],
+      "pluginAuthored": [],
+      "pluginKeys": [],
+      "floor": [
+        "data.lastPage",
+        "data.nextAvailable",
+        "data.nextPage",
+        "data.pageInfo.pageSize",
+        "data.pageInfo.totalRecords",
+        "data.pageNumber",
+        "data.totalPages"
+      ],
+      "floorMissing": [],
+      "note": "Any paginated list capture: the envelope spine (root, data, pageInfo) and the total / page-signal key sets scanListEnvelope recognizes by NAME-SET membership over Object.keys — `recognized` carries the three Sets read off doc-lib's source, every name is asserted present under enumerated, and the rows array a caller names is <itemsPath>.",
+      "probes": {
+        "fixtures": 4,
+        "runs": 74,
+        "unprobed": 0
+      }
+    }
+  ],
+  "ruleOuts": [
+    {
+      "file": "scripts/extract-catalog.mjs",
+      "why": "reads the installed PACKAGE's manifests (the catalog), not tenant output — impact-checklist item 5's territory"
+    },
+    {
+      "file": "scripts/render-cheatsheet.mjs",
+      "why": "renders the catalog"
+    },
+    {
+      "file": "scripts/er-count.mjs",
+      "why": "the ER index's page counter — its list-page read is decideEntryArray (the *paginated-list entry)"
+    },
+    {
+      "file": "scripts/er-gaps.mjs",
+      "why": "the ER index's gap work-list — reads the index, never a payload"
+    },
+    {
+      "file": "scripts/jo-report-program.mjs",
+      "why": "reads the C1 index parseJourneyDoc builds — never a payload"
+    },
+    {
+      "file": "scripts/jo-report-search.mjs",
+      "why": "reads the C1 index"
+    },
+    {
+      "file": "scripts/jo-report-audit-active.mjs",
+      "why": "reads the C1 index"
+    },
+    {
+      "file": "scripts/journal.mjs",
+      "why": "the guard journal"
+    },
+    {
+      "file": "scripts/journal-lib.mjs",
+      "why": "the guard journal's writer"
+    },
+    {
+      "file": "scripts/plugin-link.mjs",
+      "why": "the SessionStart hook — parses its OWN child's summary (scaffold.mjs check --json, F-396), never tenant output; the child hashes template files and parses no JSON at all"
+    },
+    {
+      "file": "hooks/gs-admin-guard.mjs",
+      "why": "hook stdin + the catalog — never tenant output"
+    }
+  ],
+  "enumeration": {
+    "pattern": "JSON\\.parse|parseDocJson|extractFencedJson|parseLiveDepsAreas",
+    "dirs": [
+      "plugins/gs-superadmin/scripts",
+      "plugins/gs-superadmin/hooks"
+    ],
+    "files": [
+      "hooks/gs-admin-guard.mjs",
+      "scripts/capture.mjs",
+      "scripts/describe-batch.mjs",
+      "scripts/doc-lib.mjs",
+      "scripts/er-count.mjs",
+      "scripts/extract-catalog.mjs",
+      "scripts/jo-report-deps.mjs",
+      "scripts/jo-report-program.mjs",
+      "scripts/jo-report-search.mjs",
+      "scripts/jo-report.mjs",
+      "scripts/manifest.mjs",
+      "scripts/plugin-link.mjs",
+      "scripts/relationships-build.mjs",
+      "scripts/render-cheatsheet.mjs",
+      "scripts/tenant-deps.mjs"
+    ]
+  },
+  "residuals": [
+    "Coverage is the fixture corpus plus the probes (single-deletion lineages to depth 3 in-process; one deletion per path for the spawn-traced scripts; bare {} / []): a branch no fixture and no probe reaches is unobserved. A reader that reads a key only from a payload shape no fixture carries is invisible until its fixture exists in test/fixtures/reader-payloads.mjs.",
+    "A walk (`.*`) reads every key at that depth; `enumerated` lists the fixture keys it touched — those names are the corpus's, not the code's. A key under a walk that the code ALSO names stays concrete.",
+    "`alternates` come from deletion, credited against the run in which the deleted path was present (never a running union): they name what the reader fell back to when that path was absent — a rename that leaves an alternate standing is survivable at that site, not necessarily elsewhere. Both sides are spelled exactly as `keys` are, so they join by string equality. `alternatesUnmeasured` lists the named keys no run ever deleted (absent from every fixture — a key that is itself a fallback is usually one): for those, 'no alternates' means NOT MEASURED, not 'none'.",
+    "`pluginKeys` are reads of plugin-authored subtrees (the designer `_kb` composite) that live in the KB doc body, never in CLI output; an upstream diff is never compared against them.",
+    "A reader that recognizes keys WITHOUT dereferencing them — by NAME-SET membership (scanListEnvelope's three Sets), by a PREFIX (describe-batch's `_task` walk), by a VALUE predicate (the chain walk's `type === \"BIONIC_RULE\"`) — is invisible to the Proxy: the trace shows the walk and the fixture's names under `enumerated`. `recognized` carries the set / prefix / predicate read off the reader's SOURCE (asserted present — a rename fails loudly), and for a name-set every name is asserted under `enumerated`, so a Set that grows reds until the corpus carries the new name.",
+    "`recognized` is a DECLARED SUBSET, not a closed enumeration: unlike `keys`, whose JSON-parsing-script enumeration closes both ways, the recognizers are a hand list (RECOGNIZED in test/trace-reader-shapes.mjs) with no census proving it complete, so an ABSENT recognizer is not evidence a row has none. Known undeclared today (F-399): doc-lib's compactProgramPayload, which the `jo p describe` row runs, recognizes payload keys by a 42-name geometry Set and a `.toLowerCase()` (doc-lib.mjs:503), by the regex `/powerlist/i` that decides what is kept verbatim (:499), and by the suffix rule `/json$/i` that decides which string values are parsed as embedded JSON (:514, mitigated — jo-report.mjs:397 also names `stepJson` explicitly); also ID_NAME_KEYS (:565) and VOLATILE_KEY (:240), and relationships-build's POP_TYPES (:427) / KNOWN_REST_AREAS (:455), which degrade loudly by that script's never-silently-drop rule. These cannot be declared as `name-set` today because that kind asserts every name under `enumerated` and the corpus carries 2 of 42 and 0 of 6.",
+    "A caller-supplied or tenant-recorded name the reader dereferences (an --items-path, the manifest's idField) is spelled `<name>`: the literal the tracer passed is never a payload contract.",
+    "A reader that deep-clones a sub-object through JSON.stringify/JSON.parse attributes the clone's reads to the payload root.",
+    "Every recorded path was probed (unprobed = 0 on every row)."
+  ]
+}

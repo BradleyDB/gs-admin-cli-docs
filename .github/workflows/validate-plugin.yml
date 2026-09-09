@@ -1,0 +1,202 @@
+name: validate-plugin
+
+on:
+  pull_request:
+    paths:
+      - "plugins/**"
+      - ".claude-plugin/**"
+      - "build/build-plugin-gs-superadmin.mjs"
+      - "build/lib.mjs"
+      - "build/extract-catalog.mjs"
+      - "build/render-cheatsheet.mjs"
+      - "data/catalog.json"
+      - "test/**"
+      - ".github/workflows/validate-plugin.yml"
+  # F-266: same paths filter as pull_request, so a bus-only commit (dev/FEEDBACK.md
+  # and friends) starts no matrix at all.
+  push:
+    branches: [main, dev]
+    paths:
+      - "plugins/**"
+      - ".claude-plugin/**"
+      - "build/build-plugin-gs-superadmin.mjs"
+      - "build/lib.mjs"
+      - "build/extract-catalog.mjs"
+      - "build/render-cheatsheet.mjs"
+      - "data/catalog.json"
+      - "test/**"
+      - ".github/workflows/validate-plugin.yml"
+  # F-266: the weekly cron bounds how long an OS-specific break can hide now
+  # that dev activity runs ubuntu-only (see the matrix gate below).
+  schedule:
+    - cron: "0 6 * * 1"
+  # CI-1 in dev/VALIDATION.md: banked recheck as one `gh workflow run` command.
+  # CI-cost round (2026-08-27): a bare dispatch now runs ubuntu-only — the
+  # dev-loop dispatches at handoff points to stand in for PR suites that
+  # [skip ci] bus commits suppress, and those runs were paying the
+  # windows(x2)+macos(x10) multipliers for evidence the local verbatim
+  # battery already provides. A banked-recheck-style dispatch that really
+  # wants all legs passes -f full_matrix=true.
+  workflow_dispatch:
+    inputs:
+      full_matrix:
+        description: "Run all three OS legs (release-grade recheck); default is ubuntu-only"
+        type: boolean
+        default: false
+
+# Public-repo supply-chain hygiene (GP-5): the default GITHUB_TOKEN is
+# read-only for every job — nothing here writes to the repo.
+permissions:
+  contents: read
+
+# F-266: a push superseding one seconds earlier cancels the in-flight run for
+# the same ref instead of leaving two full batteries running.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    # OS-portability wave 5 (plan PR G): the whole battery runs on all three
+    # OSes. This matrix depends on the repo-root .gitattributes
+    # (* text=auto eol=lf) staying pinned — it beats the Windows runner's
+    # core.autocrlf=true, so checkouts are LF everywhere and the
+    # rebuild-and-diff step can never fail on line endings alone.
+    #
+    # F-266: the full three-OS matrix is held to the release gate (PR to main),
+    # the weekly cron, and a dispatch that OPTS IN via full_matrix=true (the
+    # CI-cost round narrowed F-266's dispatch arm: the dev-loop's
+    # handoff-point dispatches had made 3-OS runs routine again — one wave
+    # day billed ~182 weighted minutes, 64% of it the macOS leg). Ordinary
+    # dev pushes, PRs to dev, and bare dispatches run ubuntu-only:
+    # OS-portability regressions are structural and rare, dev is not a
+    # consumed artifact, and windows(x2)+macos(x10) billing multipliers
+    # made every dev round cost ~25 billed minutes. The macOS leg is gated, not
+    # dropped — it is the only case-insensitive-POSIX coverage and stays
+    # blocking wherever the matrix runs.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: ${{ (github.base_ref == 'main' || github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.full_matrix))
+                && fromJSON('["ubuntu-latest","windows-latest","macos-latest"]')
+                || fromJSON('["ubuntu-latest"]') }}
+    runs-on: ${{ matrix.os }}
+    # All three legs are blocking (the wave-5 canary rollout ran the
+    # windows/macos legs continue-on-error until each had a green run).
+    defaults:
+      run:
+        # Git Bash on the Windows runner — the existing POSIX steps (glob
+        # loops, `[ -f ... ]`) run unmodified on every leg.
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 20
+      # Zero-dependency checks first — fail fast before the npm install below
+      - name: Guard hook fixtures
+        run: node plugins/gs-superadmin/test/guard-fixtures.mjs
+      # The shell-as-oracle differential (F-436, third pass): generated spellings
+      # run through real bash — and PowerShell on the Windows leg — with a
+      # recording shim; the guard must ask on every line the shell executed.
+      - name: Guard shell-oracle differential
+        run: node plugins/gs-superadmin/test/guard-oracle.mjs
+      - name: Manifest init fixtures
+        run: node plugins/gs-superadmin/test/manifest-init.mjs
+      - name: Manifest ops fixtures (crawl/stub/depth/remove)
+        run: node plugins/gs-superadmin/test/manifest-ops.mjs
+      - name: Domain-candidate gate fixtures (diff/check/exclude)
+        run: node plugins/gs-superadmin/test/domain-candidates.mjs
+      - name: Describe-batch fixtures
+        run: node plugins/gs-superadmin/test/describe-batch.mjs
+      - name: Relationships-build fixtures
+        run: node plugins/gs-superadmin/test/relationships-build.mjs
+      - name: Template doc generator fixtures
+        run: node plugins/gs-superadmin/test/template-doc.mjs
+      - name: Program doc generator fixtures
+        run: node plugins/gs-superadmin/test/program-doc.mjs
+      - name: Journal ops fixtures (change-start/change-end/journal-append)
+        run: node plugins/gs-superadmin/test/journal-ops.mjs
+      - name: Change-request fixtures
+        run: node plugins/gs-superadmin/test/change-request-fixtures.mjs
+      - name: Report-bug skill fixtures
+        run: node plugins/gs-superadmin/test/report-bug-fixtures.mjs
+      # Glob on purpose: jo-report mode modules (search/program/audit-active/deps)
+      # land in parallel sessions — their test files run here without workflow
+      # edits. The pairing check keeps the repo's script↔test convention
+      # enforced: a jo-report script cannot ship without its mirror test.
+      - name: JO email-report fixtures (jo-report*.mjs)
+        run: |
+          for s in plugins/gs-superadmin/scripts/jo-report*.mjs; do
+            t="plugins/gs-superadmin/test/$(basename "$s")"
+            [ -f "$t" ] || { echo "missing mirror test for $s (house rule: tests mirror scripts one-to-one)"; exit 1; }
+          done
+          for t in plugins/gs-superadmin/test/jo-report*.mjs; do
+            node "$t" || exit 1
+          done
+      - name: Tenant-wide deps fixtures (tenant-deps.mjs)
+        run: node plugins/gs-superadmin/test/tenant-deps.mjs
+      # Email-report's gap helpers, shipped from the skill's inline
+      # transcriptions (GP-B5 DS-29): the page-entry counter and the gap
+      # work-list builder.
+      - name: Email-report gap-helper fixtures (er-count.mjs, er-gaps.mjs)
+        run: |
+          node plugins/gs-superadmin/test/er-count.mjs
+          node plugins/gs-superadmin/test/er-gaps.mjs
+      # The shipped capture helper (GP-B5 DS-17): clean UTF-8-no-BOM writes,
+      # UTF-16/BOM normalize, failure honesty, and the shared read-only gate
+      # in its capture-shaped parameterization.
+      - name: Capture helper fixtures (capture.mjs)
+        run: node plugins/gs-superadmin/test/capture.mjs
+      # Direct suite for doc-lib — the portability layer + shared helpers
+      # (GP-B5 DS-18; kills the F-113 BOM-strip mutant class at the
+      # definition site instead of relying on transitive consumer fixtures).
+      - name: Doc-lib direct fixtures
+        run: node plugins/gs-superadmin/test/doc-lib-fixtures.mjs
+      # Executes the frozen T-1/T-2 contracts against produced artifacts
+      # (GP-B5 DS-18): manifest verbs in a temp workspace, bundled catalog
+      # key sets.
+      - name: Contract conformance fixtures (T-1/T-2)
+        run: node plugins/gs-superadmin/test/contract-conformance.mjs
+      # The workspace plugin-link writer (GP-B5 DS-43): the SessionStart hook
+      # and setup's first-run fence maintain `.gs-superadmin/plugin` → the
+      # loaded plugin root; every leg proves create / repoint / refuse /
+      # target-survives-removal on its own link type (junction on windows,
+      # directory symlink elsewhere).
+      - name: Plugin-link writer fixtures
+        run: node plugins/gs-superadmin/test/plugin-link.mjs
+      # The workspace scaffold writer (bus F-396): template copies with a
+      # vintage record under .gs-superadmin/scaffold/, the refresh-or-offer
+      # decision per file, and the read-only check the SessionStart hook spawns.
+      - name: Scaffold writer fixtures
+        run: node plugins/gs-superadmin/test/scaffold.mjs
+      # F-402 (Gate 2 for 0.36.2): the reader-shape MEASUREMENT with its engine
+      # self-tests and assertions (enumeration closure both ways, floors,
+      # recognized-name sets) — the CLI-adoption arm of AGENTS.md's battery,
+      # never run in CI before F-402 (docs-drift spawns it in --json mode, which
+      # now also asserts and exits 1 on a failure).
+      - name: Reader-shape trace (trace-reader-shapes.mjs)
+        run: node plugins/gs-superadmin/test/trace-reader-shapes.mjs
+      - name: Committed plugin artifacts match the build
+        run: |
+          node build/build-plugin-gs-superadmin.mjs
+          git diff --exit-code plugins/gs-superadmin
+
+  # Manifest schema validation is OS-independent, but it used to ride the
+  # matrix job — so every windows(x2)/macos(x10) leg paid the ~1-2 min
+  # `npm install -g @anthropic-ai/claude-code` just to re-check the same
+  # JSON (CI-cost round, 2026-08-27). One ubuntu job now carries it,
+  # whatever the matrix runs.
+  manifests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 20
+      - name: Install Claude Code
+        run: npm install -g @anthropic-ai/claude-code
+      - name: Validate plugin + marketplace manifests
+        run: |
+          claude plugin validate ./plugins/gs-superadmin --strict
+          claude plugin validate . --strict

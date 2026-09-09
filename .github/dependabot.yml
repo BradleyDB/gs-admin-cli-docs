@@ -1,0 +1,56 @@
+# The repo has zero RUNTIME npm dependencies (AGENTS.md design tenet 5), so
+# the pinnable dependency surfaces are (1) GitHub Actions — the workflows pin
+# every action to a full commit SHA — and (2) since GP-B5 DS-42, the two
+# checker-only devDependencies (typescript, @types/node) pinned exact in
+# package.json + package-lock.json for the tsc --noEmit gate. Dependabot
+# proposes the pin bumps for both so neither rots. (validate-plugin.yml
+# additionally installs the Claude Code CLI from npm without a pin — that
+# install has no manifest Dependabot can watch, so it is outside this file's
+# coverage, not covered by it.)
+#
+# target-branch dev: all work lands on dev (dev-first flow, CONTRIBUTING.md
+# "Submitting changes"). Without it Dependabot would open PRs against the
+# default branch, and pr-target-guard rejects any non-release/* PR to main.
+# Dependabot reads this config from the default branch, so it activates once
+# a release carries it there; the pins it maintains live on dev.
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    target-branch: "dev"
+    schedule:
+      interval: "weekly"
+    # One PR per bump wave, not one per action — the surface is two actions.
+    groups:
+      github-actions:
+        patterns: ["*"]
+  - package-ecosystem: "npm"
+    directory: "/"
+    target-branch: "dev"
+    schedule:
+      interval: "monthly"
+    # The two checker-only devDependencies (AGENTS.md tenet 5 carve-out) — one
+    # PR per bump wave, monthly (Bradley, 2026-09-01): nothing at runtime
+    # resolves from them, so a bump is a gate change only (rerun `npm run
+    # typecheck`) and is never urgent; @types/node patches would otherwise
+    # arrive most weeks.
+    #
+    # Majors are NOT ignored and NOT grouped (B12, 2026-09-02, after PR #119
+    # bundled two majors into one red PR): a major changes the gate's
+    # semantics (TypeScript 7 flipped `strict` on by default) and is adopted
+    # deliberately, on its own PR, against a measured error count — never
+    # merged on green by habit, never silenced either, since majors are where
+    # fixes eventually only land. So: minors + patches travel together and
+    # merge on green; a major arrives alone and gets a decision.
+    groups:
+      checker-devdeps:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+    ignore:
+      # The ONE principled ignore: the Node typings major tracks the Node
+      # major the gate runs on (setup-node `node-version: 20` in both
+      # workflows). This is a pin to the runtime, not a skipped update — lift
+      # it in the same change that moves CI's Node major; build/check-imports.mjs
+      # holds the two majors equal (W8.5 review), so moving one alone goes red.
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]

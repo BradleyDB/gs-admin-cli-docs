@@ -1,0 +1,20 @@
+# Issue chooser configuration.
+#
+# Blank issues stay ENABLED deliberately: SECURITY.md tells a reporter who cannot use
+# private advisories to open an issue saying only "security report — please provide a
+# private channel". The forms below all ask for details, which is exactly what that
+# reporter must not post, so the blank-issue escape hatch has to stay open.
+#
+# No security contact_link here on purpose: GitHub surfaces the repository's own security
+# policy in this chooser by itself, and a hand-written advisory URL would hardcode the
+# owner/repo path and rot the moment either changes. The bug-report form also names
+# SECURITY.md directly, since a guard bypass is the likeliest thing to arrive misfiled.
+blank_issues_enabled: true
+
+contact_links:
+  - name: Bug in the gs-admin CLI itself (not this project)
+    url: https://www.npmjs.com/package/@gainsight/gs-admin-cli
+    about: >-
+      This is an unaffiliated community project; it documents and drives the CLI but does
+      not publish it. CLI defects go to Gainsight through your normal support channel —
+      the plugin's /gs-superadmin:report-bug skill drafts a vendor-ready report for you.
