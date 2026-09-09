@@ -55,8 +55,9 @@ note on that branch, and RE-STAMPS that comment whenever the branch's statuses c
 The same comment claims any finding NUMBER the branch consumes, at logging time — and
 a session picking a next number takes the max across both '^## F-' section headers and
 header-comment claims, after a fresh pull. Rule of record: AGENTS.md § Review-gate rules.
-CI-dispatch hint (CI-cost round 2026-08-27; repo is PRIVATE, minutes are billed —
-macOS legs are 10x): the local verbatim battery is the mid-wave evidence, NOT CI.
+CI-dispatch hint (CI-cost round 2026-08-27; the repo has been PUBLIC since 2026-09-09, so
+Actions minutes are free — the discipline stands because the 3-OS matrix is slow and its
+signal is per handoff, not per edit): the local verbatim battery is the mid-wave evidence, NOT CI.
 Dispatch workflows only at HANDOFF POINTS — once on the tip a tester round will load
 (because a [skip ci] bus commit at the head suppresses the PR suite) and once on dev
 after a merge — never per fix batch. A bare `gh workflow run` is ubuntu-only by
