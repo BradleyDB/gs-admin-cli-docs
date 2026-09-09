@@ -1,1 +1,0 @@
-# VALIDATION — deferred live checks
