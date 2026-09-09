@@ -1,0 +1,34 @@
+#!/bin/sh
+# dev-loop pre-push hook for this repo — install: cp dev/hooks/pre-push .git/hooks/pre-push
+# (LF endings, no extension; a worktree shares the main checkout's hooks). Tracked here on
+# dev, never shipped (dev/ is stripped at release). Override the main guard: ALLOW_MAIN_PUSH=1.
+#
+#   main  — blocked outright (release = PR from a release/* branch).
+#   dev   — the three fast zero-dep doc gates run before publishing.
+#   EVERY ref (the default arm, F-423) — the instance-data gate runs, because tester verdict
+#           rounds land on feature branches and bus prose is where tenant identifiers
+#           accumulate; a leak pushed to any ref is irreversible in the same way. The
+#           checker resolves its private-pattern config from the main checkout when run
+#           from a worktree and warns on its own line when no private pattern loaded.
+# Skip everything with: git push --no-verify (say so on the bus).
+while read local_ref local_sha remote_ref remote_sha; do
+  case "$remote_ref" in
+    refs/heads/main)
+      # The override lifts THIS guard only — the instance-data gate below still runs for
+      # every other ref in the same push (release-gate review of 0.37.0, F-435).
+      [ "$ALLOW_MAIN_PUSH" = "1" ] && continue
+      echo "pre-push: direct push to main blocked (dev-loop). PR from dev instead, or ALLOW_MAIN_PUSH=1." >&2
+      exit 1;;
+    refs/heads/dev)
+      echo "pre-push: running fast checks before publishing to dev..." >&2
+      node build/check-doc-drift.mjs >&2 || { echo "pre-push: check-doc-drift failed — fix or push --no-verify" >&2; exit 1; }
+      node build/check-stale-facts.mjs >&2 || { echo "pre-push: check-stale-facts failed — fix or push --no-verify" >&2; exit 1; }
+      node build/check-instance-data.mjs >&2 || { echo "pre-push: check-instance-data failed — fix or push --no-verify" >&2; exit 1; }
+      ;;
+    *)
+      echo "pre-push: instance-data gate on $remote_ref (F-423: every ref)..." >&2
+      node build/check-instance-data.mjs >&2 || { echo "pre-push: check-instance-data failed — redact, then push again (or --no-verify and say so on the bus)" >&2; exit 1; }
+      ;;
+  esac
+done
+exit 0
