@@ -5,10 +5,11 @@ name: pr-target-guard
 # `dev`. The `branches: [main]` filter means this workflow never runs on a PR
 # to dev — the guard only judges PRs that aim at main.
 #
-# DORMANT until the repo is public and the GP-12 ruleset exists: until the
-# ruleset names this check as required, a red run here reports but does not
-# block the merge. Keep the workflow name and job id stable — the required
-# check will be registered under the job name "guard".
+# LIVE since the repo went public (2026-09-09): the `main` ruleset names this
+# job as a required status check, so a red run here blocks the merge. Keep the
+# workflow name and job id stable — the required check is registered under the
+# job name "guard", and renaming either leaves every release PR waiting on a
+# check that never reports.
 #
 # Scope: this is a routing/convention check, not an access control — anyone
 # can name a branch release/* and pass it. What actually restricts who may
@@ -46,7 +47,7 @@ jobs:
               echo "Head is a release branch - merging to main is the release flow."
               ;;
             *)
-              echo "::error::This PR targets 'main' from a non-release branch. PRs must target 'dev'; only short-lived release/* branches merge to main. Re-target this PR to 'dev' - see CONTRIBUTING.md, section 'Submitting changes'."
+              echo "::error::This PR targets 'main', which only accepts short-lived release/* branches. FIX: click 'Edit' next to the PR title and change the base branch to 'dev' - the checks re-run by themselves and nothing else about the PR needs to change. Details: CONTRIBUTING.md, 'Submitting changes'."
               exit 1
               ;;
           esac
