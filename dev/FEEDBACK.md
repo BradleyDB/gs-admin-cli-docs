@@ -47,6 +47,13 @@ archive, which ended at F-447, is not carried, so dev/FEEDBACK-archive.md does n
 and the NEXT FREE NUMBER is F-448 — numbering continues rather than restarting, so new
 findings never collide with the F-numbers cited in shipped code (CONTRIBUTING, "Reading the
 citations in code comments").
+Issues hint (2026-09-10): this bus is NOT the whole picture of open work. A finding a
+stranger could act on without a design conversation first is filed as a GitHub Issue
+instead of a bus section; issues consume no F-number, so the NEXT FREE NUMBER rule above
+is unaffected by them. Read `gh issue list` alongside this file. Open from the 2026-09-10
+multi-tenant round: #10 (the capture fences spell their page placeholder unquoted, which
+PowerShell eats — good first issue) and #11 (recover list-invisible email templates from
+program payloads already in the KB — help wanted).
 Round-assessment hint (F-161, extended by F-223): ANY status transition — a fix, a
 verdict, a WONTFIX, a flip back to OPEN — may ride an UNMERGED PR. Assess a round with
 `gh pr list` as well as the dev log. The role landing a transition on an unmerged
