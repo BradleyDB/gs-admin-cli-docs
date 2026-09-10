@@ -183,3 +183,59 @@ Tried and refuted at this cut: gh workflow run validate-plugin.yml --ref <releas
 Fix: 2026-09-09 (builder) — GitHub's documented shape for a required check behind a path filter (docs: "Handling skipped but required checks" — a workflow skipped by paths leaves its checks Pending; a job skipped by a job-level if reports Success). The pull_request trigger loses its paths filter; a new first job `changes` decides from the PR's own diff (git diff --name-only HEAD~1 HEAD against the same pathspec list) and always answers run=true when the base is main or the event is not a pull_request; `validate` and `manifests` carry needs: changes + if: needs.changes.outputs.run == 'true'. Docs-only PRs to dev still start no runner for the battery (the jobs skip); PRs to main always run the full matrix. The push trigger keeps its paths filter (push events gate no merge, and not starting a run at all is F-266's point) — that list and the pathspec list in `changes` are the same fact in two homes, each commented to name the other. Cost of the root cause over a workaround: one CI-touching PR to dev and a recut of the release branch; the alternative (removing the four contexts from the ruleset for one merge) weakens the gate and leaves no trace in the repo.
 Judge: the recut release PR's own required-check rollup — gh pr checks on the new head lists manifests and the three validate legs with the ruleset satisfied (mergeStateStatus not BLOCKED), or the fix is wrong; independent of anything the fixer asserts.
 Judge fired 2026-09-09 (builder): PR #7 recut head 19349c9 — gh pr checks listed changes, manifests, validate (ubuntu-latest | windows-latest | macos-latest), drift (full), guard, all SUCCESS (validate-plugin run 34402673242); mergeStateStatus CLEAN; merged by Bradley as 756579e. Live arm on the fix PR itself (#8, run 34402234627): the changes job printed "run: plugin-affecting paths changed:" and validate (ubuntu-latest) + manifests ran rather than skipped. Verdict of record still owed by the other role. Sibling: docs-drift.yml carries no paths filter (it always runs), pr-target-guard is branch-filtered to PRs targeting main, where it is the only place it is required — no other required context sits behind a trigger-level filter.
+
+## F-449 — OPEN
+Reported: 2026-09-10 (tester — first live multi-tenant setup, a second tenant added to an existing workspace)
+Severity: high — a wrong-answer surface in deps-report, which exists to answer "what breaks if I change object X"; buried assets return a confident "nothing depends on this"
+What: Phase 4's candidate gate measures overlap correctly and then permits a conclusion its own measurement refutes. On the sandbox tenant, `report list-objects` was excluded 2026-08-09 with this recorded reason:
+
+    Redundant plus schema reference. 0 of 586 rows match by objectId, but 253 match by
+    objectName against data-management, which indexes 591 objects keyed by name. The BI
+    source-object schema surface is already covered there, and more completely.
+
+253 of 586 is 43%. "More completely" appears to rest on 591 > 586, which says nothing about overlap. Result: roughly 333 MDA objects indexed nowhere on that tenant since 2026-08-09. The prod tenant hit the same shape this round (246 of 589) and correctly adopted the command as a `report-objects` domain of 589 assets — the same skill reaching opposite verdicts on near-identical evidence, which locates the defect in the decision rule, not the measurement.
+A threshold pass over all 38 exclusions across both tenants found this is the only failure. Every other exclusion either accounts for 100% of rows (4 of 4, 3 of 3, 59 of 59), accounts for the remainder explicitly (3 of 6 indexed plus 3 named sentinel ids), or declares itself a judgment call (0 of 33 folders, "recorded not to be reopened").
+Second half, same root: exclusions carry only `decidedAt` while blocks carry `recheckAfter`. The reversible decision gets a review date; the permanent one does not. The sandbox tenant's block `recheckAfter: 2026-09-09` also lapsed with nothing surfacing it.
+Evidence basis — INFERRED, not re-measured: the refutation rests entirely on the two numbers written into the exclusion reason itself (253 matched of 586 rows, against a 591-object domain). The sandbox tenant's `report list-objects` was NOT re-run live this round, so "roughly 333 buried" is arithmetic on the record rather than a fresh count. A live re-run is the confirming measurement and has not happened.
+Expected: an exclusion whose stated ground is "covered by another domain" cannot be recorded unless the recorded match count supports it — a rule binding the verdict to the number, not prose that cites one. And a permanent exclusion carries at least the review affordance a temporary block does.
+
+## F-450 — OPEN
+Reported: 2026-09-10 (tester — first live multi-tenant setup)
+Severity: normal — all three were invisible on a single-tenant workspace and went live the moment a second tenant existed
+What: three facts are stored at a scope that does not match what they describe. One class, three instances.
+(a) `.gs-superadmin/CONVENTIONS.md` declares itself "Tenant-specific — fill in as patterns emerge" but lives at workspace scope, shared by every tenant. `jo-report-deps.mjs:188` hardcodes `join(wsDir, ".gs-superadmin", "CONVENTIONS.md")`, and `deps-report/SKILL.md:60` states both halves in one sentence — "the tenant's field-aliasing convention from the workspace's `.gs-superadmin/CONVENTIONS.md`". Fill it in for one tenant and the other's deps-report, email-report and audit silently adopt it. Nothing was lost this round only because the file is still the pristine template.
+(b) Hard-required-flag exclusions (`--topic is required`, `ruleId or ruleName is required`, `--object-name … is required`) and the two server-side blocks are properties of the pinned CLI, not of a tenant, yet they live in `<slug>/_manifest.json`. The second tenant re-derived every one by live-failing three attempts per blocked domain, and the two tenants now disagree about what is physically enumerable.
+(c) Scope limits are absent from the manifest entirely: `domains_indexed["journey-email-templates"]` carries the same six fields as a fully-enumerable domain, so any consumer reading the manifest sees the count as complete. The limitation exists only as prose in `skills/setup/references/index-scope-notes.md`.
+Expected: one decision about where each kind of fact lives — per-tenant, per-workspace, or per-CLI-version — with readers deriving from that home rather than three independent placements.
+
+## F-451 — OPEN
+Reported: 2026-09-10 (tester — first live multi-tenant setup)
+Severity: normal — silently removes assets from change detection; the KB looks current and is not
+What: on the sandbox tenant, 557 of 1,180 `journey-email-templates` entries carry no `modified_date` and 560 carry no `name` — the entries registered by the list-invisible recovery path. /refresh detects change by comparing dates, so those entries have nothing to compare and are permanently invisible to staleness: documented once in July, never flagged again. The missing `name` means inventory-side name lookups return null for them.
+The reach is wider than the recovery path, and this is the part that needs answering before a fix is scoped. Entries with no `modified_date`:
+
+    report                    1696 (sandbox) / 1754 (prod)
+    journey-email-templates    557 (sandbox)
+    journey-data-designer       69 (sandbox)
+    connectors-chains            4 (sandbox)
+
+The whole `report` domain is dateless on both tenants. The manifest supports an explicit-none `dateField`, so this may be a handled state with a documented fallback — or it may mean the entire report inventory sits outside change detection.
+Expected: either a documented fallback /refresh applies to dateless entries, or an honest statement in the refresh report naming what it could not check — never silence.
+
+## F-452 — OPEN
+Reported: 2026-09-10 (tester — first live multi-tenant setup)
+Severity: normal — the confusion lands on the one question Phase 4 asks the user to answer
+What: Phase 4's closing relay instructs the model to ask "whether the totals match the user's sense of the tenant before Phase 5 spends the documentation budget" — while several relayed counts structurally cannot match, and nothing in the relay says so. A `journey-email-templates` count reads as a tenant total; it is a CLI-reachable subset (the list flattens one folder level and hides some top-level templates). The scope facts exist in `skills/setup/references/index-scope-notes.md` but are never surfaced at the moment the user is asked to validate the numbers.
+Expected: at the end of Phase 4, scope-limited domains are named in the relay with their limit and the fact that the remainder can be added later — so the "do these totals look right?" question is answerable.
+
+## F-453 — OPEN
+Reported: 2026-09-10 (tester — first live multi-tenant setup)
+Severity: polish — correct fail-closed behaviour; the cost is friction and an undocumented workaround
+What: a Phase 4 loop that built its `gs-admin` subcommand from a shell variable was refused by the mutation guard, which cannot verify a command it cannot read. The refusal is correct. But it fired on a read-only enumeration loop during setup, and the resolution — spell the subcommands literally — appears nowhere in the skills; the session derived it. A user without that instinct is stuck on a correct refusal with no stated remedy.
+Expected: wherever the skills instruct building a list of commands to run, the literal-spelling requirement is stated, so the guard's refusal is anticipated rather than debugged.
+
+## F-454 — OPEN
+Reported: 2026-09-10 (tester — first live multi-tenant setup)
+Severity: polish — a reporting discrepancy, no data effect observed
+What: the Phase 4 relay reported "4,487 assets across 16 domains" while the manifest held 17 `domains_indexed` at that moment, and the inventory carried 17 domains with at least one asset (18 after a further adoption later in the same run). Unexplained — possibly an empty-adopted domain counted differently by `report` than by `domains_indexed`, which is exactly the distinction the empty stamp exists to preserve.
+Expected: the relayed domain count and the manifest's domain count agree, or the report states which one it is counting.
