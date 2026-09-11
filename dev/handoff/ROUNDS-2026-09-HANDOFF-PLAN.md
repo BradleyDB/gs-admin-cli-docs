@@ -465,8 +465,7 @@ Not frozen: thresholds (the 5-failure limit, lookback days), message wording, pr
 **Session ledger** — the executing agent appends one line per session
 (`date · items · branch/PR · token · deferred validations`).
 
-- 2026-09-11 · EX-1 · `f449-evidence-bound-exclusions` → PR to dev (number in the bus
-  comment on dev) · token on the bus Under test line · 1 deferred validation
+- 2026-09-11 · EX-1 · `f449-evidence-bound-exclusions` → [PR #16](https://github.com/BradleyDB/gs-admin-cli-docs/pull/16) (unmerged) · token on the bus Under test line · 1 deferred validation
   (dev/VALIDATION.md § F-449) · plugin 0.38.0 · open for Bradley: the journey-data-designer
   verdict (EX-1 question).
 
