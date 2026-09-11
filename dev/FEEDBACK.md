@@ -51,11 +51,11 @@ Issues hint (2026-09-10): this bus is NOT the whole picture of open work. A find
 stranger could act on without a design conversation first is filed as a GitHub Issue
 instead of a bus section; issues consume no F-number, so the NEXT FREE NUMBER rule above
 is unaffected by them. Read `gh issue list` alongside this file. Open from the 2026-09-10
-multi-tenant round: #10 (the capture fences spell their page placeholder unquoted, which
-PowerShell eats — good first issue), #11 (recover list-invisible email templates from
-program payloads already in the KB — help wanted) and #12 (deep ingest is serial and
-re-serialises the whole manifest per asset; concurrency plus batched marks would bring a
-full run inside one token lifetime — help wanted).
+multi-tenant round: #10 unquoted page placeholder in the capture fences, which PowerShell
+eats (good first issue); #11 recover list-invisible email templates from program payloads
+(help wanted); #12 deep-ingest performance — concurrent describes and batched marks, to
+bring a full run inside one token lifetime (help wanted); #13 abort a domain after 5
+consecutive retryable failures (good first issue).
 Round-assessment hint (F-161, extended by F-223): ANY status transition — a fix, a
 verdict, a WONTFIX, a flip back to OPEN — may ride an UNMERGED PR. Assess a round with
 `gh pr list` as well as the dev log. The role landing a transition on an unmerged
