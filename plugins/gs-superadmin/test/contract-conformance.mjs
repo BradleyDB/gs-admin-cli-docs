@@ -160,7 +160,7 @@ try {
   check("T-2: GsExclusion without a check is exactly {reason, decidedAt, noCheck}",
     excl && Object.keys(excl).sort().join(",") === "decidedAt,noCheck,reason" && ISO.test(excl.decidedAt), excl);
   const checkFile = join(dir, "check-evidence.json");
-  writeFileSync(checkFile, JSON.stringify({ ok: true, rows: 3, idsExtracted: 3, unresolvedRows: 0, partial: false, uniqueIds: 3, alreadyIndexed: 3, allIndexed: true, noneIndexed: false, matchedByDomain: { "rules-engine-rules": 3 }, sampleMatches: [], warnings: [] }));
+  writeFileSync(checkFile, JSON.stringify({ ok: true, command: "connectors jobs list", checkedAt: new Date().toISOString(), rows: 3, idsExtracted: 3, unresolvedRows: 0, partial: false, uniqueIds: 3, alreadyIndexed: 3, allIndexed: true, noneIndexed: false, matchedByDomain: { "rules-engine-rules": 3 }, sampleMatches: [], warnings: [] }));
   r = verb("exclude", ["--command", "connectors jobs list", "--reason", "fixture: covered", "--check", checkFile, "--covered-by", "rules-engine-rules", "--recheck-after", "2030-01-01"]);
   check("exclude with --check --covered-by exits 0", r.status === 0, r.stderr);
   m = readM();

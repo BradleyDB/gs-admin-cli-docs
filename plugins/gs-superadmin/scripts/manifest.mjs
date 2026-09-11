@@ -178,17 +178,21 @@
 //                 exclusion was recorded on 253 of 586 rows, burying ~333
 //                 objects, while the same evidence on another tenant was
 //                 correctly adopted): a record write takes exactly one of
-//                 --check (the file `domain-candidates.mjs check --out` wrote —
-//                 its rows/uniqueIds/alreadyIndexed/matchedByDomain are copied
-//                 into the entry as `evidence`) or --no-check (an explicit
-//                 reason no check could run, e.g. the payload carries no items
-//                 array; stored as `noCheck`). --covered-by <domain> is the
-//                 coverage claim and is REFUSED unless the check says every
-//                 unique id is indexed under that one domain; conversely a
-//                 check that says exactly that is refused WITHOUT --covered-by
-//                 (the claim is structural in both directions). A partial
-//                 check is refused outright. --recheck-after gives the
-//                 permanent decision the same review affordance a block has.
+//                 --check (the file `domain-candidates.mjs check --command
+//                 <path> --out` wrote for THIS command — its `command` must
+//                 match, so a check is evidence only for the candidate it
+//                 measured; rows/uniqueIds/alreadyIndexed/matchedByDomain are
+//                 copied into the entry as `evidence`) or --no-check (an
+//                 explicit reason no check could run: the payload carries no
+//                 items array, or the list command failed at runtime; stored
+//                 as `noCheck`). --covered-by <domain> is the coverage claim
+//                 and is REFUSED unless the check says that one domain holds
+//                 every unique id; conversely a check where some domain does
+//                 is refused WITHOUT --covered-by (the claim is structural in
+//                 both directions). A partial check is refused outright.
+//                 --recheck-after gives the permanent decision the same
+//                 review affordance a block has. The summary's `kind` reads
+//                 coverage | judgment | no-check (the diff adds legacy).
 //   block         --command "<canonical path>" (--reason "<why>"
 //                 [--recheck-after YYYY-MM-DD] | --remove)
 //                 persist "this candidate COULD NOT be evaluated" (F-218):
@@ -344,8 +348,12 @@ const VERBS = new Set(["init", "upsert-batch", "mark", "next", "stub", "crawl", 
 // and report goes blind to the domain (F-215, the write-side sibling of the
 // F-168 lookups). Reject at the door — same shape as exclude's canonical-path
 // rule — in every verb that WRITES a domain (upsert-batch, stub).
+// The ONE domain-name grammar: every verb that writes a domain (upsert-batch,
+// stub) and every flag that NAMES one (exclude --covered-by, F-449) reads it
+// from here, so a name upsert-batch accepted can never be unnameable elsewhere.
+const DOMAIN_NAME_RE = /^[a-z][a-z0-9_-]*$/i;
 function domainOrFail(domain) {
-  if (!/^[a-z][a-z0-9_-]*$/i.test(domain)) {
+  if (!DOMAIN_NAME_RE.test(domain)) {
     fail(
       `--domain must be a plain domain name (letters/digits/hyphen/underscore, starting with a letter, ` +
         `e.g. "rules-engine-external-actions") — got "${String(domain).slice(0, 40)}"`
@@ -1562,6 +1570,14 @@ if (verb === "init") {
   if (argv.includes("--recheck-after") && remove) {
     fail(`--recheck-after applies only when recording ${verb === "exclude" ? "an exclusion" : "a block"} (${verb} --command ... --reason ...), never with --remove`);
   }
+  // The F-449 evidence flags belong to an exclusion RECORD write only. On a
+  // block, or on --remove, they would be silently dropped — and a dropped
+  // --check reads to the operator as "the block carries the numbers".
+  for (const f of ["--check", "--no-check", "--covered-by"]) {
+    if (argv.includes(f) && (verb !== "exclude" || remove)) {
+      fail(`${f} applies only when recording an exclusion (exclude --command ... --reason ...), never ${remove ? "with --remove" : "on a block — a block is not a decision and carries no evidence"}`);
+    }
+  }
   if (remove) {
     if (reason !== undefined) fail(`--remove lifts ${verb === "exclude" ? "an exclusion" : "a block"}; it takes no --reason`);
     const existed = Object.hasOwn(map, command);
@@ -1578,11 +1594,9 @@ if (verb === "init") {
           : 'block requires --reason "<why this candidate could not be evaluated>" (or --remove to lift a block)'
       );
     }
-    // Untrusted-input tenet: the reason is stored in the manifest and echoed by
-    // reports and the diff verb — printable ASCII only, hard length cap.
-    if (!/^[\x20-\x7e]+$/.test(reason)) {
-      fail("--reason must be printable ASCII (it is stored in the manifest and echoed by reports)");
-    }
+    // Untrusted-input tenet: a reason is stored in the manifest and echoed by
+    // reports and the diff verb — printable ASCII only, hard length cap. ONE
+    // rule for every stored reason string (--reason, and --no-check from F-449).
     // The cap exists only to stop a pasted payload or a runaway generation from
     // landing in the manifest, so it must sit clear of the working distribution
     // rather than inside it. At 300 it sat inside: on the first real tenant,
@@ -1592,7 +1606,11 @@ if (verb === "init") {
     // required. A second operator's block reasons then landed at 277/289 without
     // ever being told how close they were. REASON_MAX is ~3.4x that observed
     // maximum: still a hard bound, but one only abuse can reach (F-222).
-    if (reason.length > REASON_MAX) fail(`--reason too long (${reason.length} chars, max ${REASON_MAX})`);
+    const storedReasonOrFail = (value, flag) => {
+      if (!/^[\x20-\x7e]+$/.test(value)) fail(`${flag} must be printable ASCII (it is stored in the manifest and echoed by reports)`);
+      if (value.length > REASON_MAX) fail(`${flag} too long (${value.length} chars, max ${REASON_MAX})`);
+    };
+    storedReasonOrFail(reason, "--reason");
     const recheckAfter = opt("--recheck-after");
     if (recheckAfter !== undefined && !/^\d{4}-\d{2}-\d{2}$/.test(recheckAfter)) {
       fail(`--recheck-after must be a YYYY-MM-DD date (got "${String(recheckAfter).slice(0, 20)}")`);
@@ -1630,13 +1648,11 @@ if (verb === "init") {
             `check was possible>" (e.g. the payload carries no items array) — the decision records its evidence`
         );
       }
-      if (coveredBy !== undefined && !/^[a-z0-9][a-z0-9-]{0,99}$/.test(coveredBy)) {
-        fail(`--covered-by must be a manifest domain name (lowercase words joined by "-"; got "${coveredBy.slice(0, 40)}")`);
+      if (coveredBy !== undefined && !DOMAIN_NAME_RE.test(coveredBy)) {
+        fail(`--covered-by must be a manifest domain name (the grammar upsert-batch --domain accepts; got "${coveredBy.slice(0, 40)}")`);
       }
       if (noCheck !== undefined) {
-        if (!/^[\x20-\x7e]+$/.test(noCheck) || noCheck.length > REASON_MAX) {
-          fail(`--no-check must be a printable ASCII reason (max ${REASON_MAX} chars) — it is stored in the manifest as noCheck`);
-        }
+        storedReasonOrFail(noCheck, "--no-check");
         if (coveredBy !== undefined) {
           fail(
             `--covered-by is a coverage claim and needs the check's numbers — run ` +
@@ -1653,15 +1669,29 @@ if (verb === "init") {
         } catch (e) {
           fail(`cannot parse --check ${checkFile}: ${e instanceof Error ? e.message : String(e)}`);
         }
+        // The shape `domain-candidates.mjs check --out` writes — every field
+        // this branch reads must be PRESENT, not merely truthy when present: a
+        // hand-assembled or pre-F-216 file with no `partial` key would
+        // otherwise pass as complete evidence. `command` is the binding: the
+        // file is evidence for the candidate it measured and no other.
         const isCheck =
           c && typeof c === "object" && !Array.isArray(c) && c.ok === true &&
+          typeof c.command === "string" && typeof c.checkedAt === "string" &&
           Number.isInteger(c.rows) && Number.isInteger(c.uniqueIds) && Number.isInteger(c.alreadyIndexed) &&
+          Number.isInteger(c.unresolvedRows) && typeof c.partial === "boolean" &&
           (c.allIndexed === null || typeof c.allIndexed === "boolean") &&
           c.matchedByDomain && typeof c.matchedByDomain === "object" && !Array.isArray(c.matchedByDomain);
         if (!isCheck) {
           fail(
-            `--check ${checkFile} is not a domain-candidates.mjs check output (expected ok, rows, uniqueIds, ` +
-              `alreadyIndexed, allIndexed, matchedByDomain) — write it with check --out <file>`
+            `--check ${checkFile} is not a domain-candidates.mjs check output (expected ok, command, checkedAt, rows, ` +
+              `uniqueIds, alreadyIndexed, unresolvedRows, partial, allIndexed, matchedByDomain) — write it with ` +
+              `check --command "<canonical path>" --out <file>`
+          );
+        }
+        if (c.command !== command) {
+          fail(
+            `--check ${checkFile} measured "${String(c.command).replace(/[^\x20-\x7e]/g, "?").slice(0, 60)}", not "${command}" — a check is evidence only ` +
+              `for the candidate it ran on; run check --command "${command}" --out <file> for this one`
           );
         }
         if (c.partial === true) {
@@ -1675,9 +1705,16 @@ if (verb === "init") {
         for (const [d, n] of Object.entries(c.matchedByDomain)) if (Number.isInteger(n)) matchedByDomain[d] = n;
         evidence = { rows: c.rows, uniqueIds: c.uniqueIds, alreadyIndexed: c.alreadyIndexed, matchedByDomain };
         const domains = Object.keys(matchedByDomain);
+        // Coverage is ONE domain holding every unique id (matchedByDomain counts
+        // unique ids per domain). The rule is symmetric on that predicate: a
+        // claimed domain must satisfy it, and a check where some domain does is
+        // refused without the claim — whether or not other domains overlap too.
+        // Ids spread so that no single domain holds them all are a judgment
+        // exclusion, and the evidence records where they sit.
+        const covers = (d) => c.uniqueIds > 0 && matchedByDomain[d] === c.uniqueIds;
         const spread = domains.map((d) => `${d}: ${matchedByDomain[d]}`).join(", ");
         if (coveredBy !== undefined) {
-          if (c.allIndexed !== true || matchedByDomain[coveredBy] !== c.uniqueIds) {
+          if (c.allIndexed !== true || !covers(coveredBy)) {
             fail(
               `"${command}" is NOT covered by ${coveredBy}: the check says ${c.alreadyIndexed} of ${c.uniqueIds} unique ` +
                 `id(s) are indexed anywhere${spread ? ` (${spread})` : ""}` +
@@ -1686,11 +1723,14 @@ if (verb === "init") {
                 `tenant assets — exclude it as a judgment call: --reason without --covered-by.`
             );
           }
-        } else if (c.allIndexed === true && domains.length === 1) {
-          fail(
-            `the check says every id (${c.uniqueIds} of ${c.uniqueIds}) is already indexed under ${domains[0]} — ` +
-              `that is a coverage exclusion; record it as one: --covered-by ${domains[0]}`
-          );
+        } else {
+          const covering = domains.filter(covers);
+          if (covering.length) {
+            fail(
+              `the check says every id (${c.uniqueIds} of ${c.uniqueIds}) is already indexed under ${covering.join(" and under ")} — ` +
+                `that is a coverage exclusion; record it as one: --covered-by ${covering[0]}`
+            );
+          }
         }
       }
       // Excluding a blocked command lifts the block in the same write: the
@@ -1709,7 +1749,7 @@ if (verb === "init") {
       save(m);
       out({
         ok: true, command, updated: prev != null, previousReason: prev?.reason ?? null, blockLifted,
-        kind: coveredBy !== undefined ? "coverage" : "judgment",
+        kind: coveredBy !== undefined ? "coverage" : noCheck !== undefined ? "no-check" : "judgment",
       });
     }
   }
