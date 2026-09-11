@@ -327,6 +327,16 @@ commands and output are still in this session.
   without `--json`. The success path exits 0 cleanly. **Parse stderr for the `Error:`
   line rather than trusting the exit code**; treat exit 127 from `gs-admin` as "check
   stderr", never as "the CLI is not installed" (observed live on 1.0.9; ledger KI-017).
+- **`re rules topics` and `jo email connectors` always fail server-side** — `Error: Server
+  Error Occurred, Please contact support` and `Error: HTTP 500` respectively, with a fresh
+  Gainsight Request ID on every call (8 attempts across two tokens and two shells, on two
+  independent tenants; 0 successes). Both are non-mutating tenant-wide list commands with no
+  required flags, so there is no alternate spelling to try and no workaround. Both also abort
+  on the libuv assertion above, so the exit code is a crash code (127 under Git Bash, 255
+  under PowerShell), **not** an auth or server status — do not mistake it for the token
+  half-life defect and do not loop on re-login. Record such a command as **blocked with a
+  re-check date, never excluded**: "returns 500 today" is not a durable reason to bury a
+  domain (observed live on 1.0.8 and 1.0.9; ledger KI-018).
 - **General rule**: any "No stored token found" while `whoami` succeeds is this bug class,
   not a logged-out state. Prefer a sequential variant of the command or `gs-admin login`
   to mint a fresh token; do not conclude auth is broken or loop on re-login.
