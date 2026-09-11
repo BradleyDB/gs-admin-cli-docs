@@ -235,7 +235,10 @@ new or renamed list command lands here as a new candidate rather than as silence
 Report `blocked` candidates by name too, with their recorded reasons: a block means
 "could not be evaluated" (the list command fails server-side), not "decided", and a
 refresh is exactly the later run that should retry — if the command now succeeds, say
-so and direct the user to setup to decide it and lift the block.
+so and direct the user to setup to decide it and lift the block. Report by name any
+`excluded` or `blocked` entry whose `recheckDue` is true (its `recheckAfter` date has
+passed — the diff's `warnings` say so too): the decision is due for a re-look, which is
+setup work, never a refresh-run edit.
 Deciding index-or-exclude is setup work (describe recipes, stubs, documentation):
 direct the user to run `/gs-superadmin:setup`, whose Phase 4 gates its report on zero
 undecided — never silently skip them, and never adopt a new domain from a refresh run.

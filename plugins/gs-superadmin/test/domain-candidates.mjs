@@ -223,11 +223,16 @@ checkThat("diff: --require-decided exits 1 while candidates are undecided", r.co
 });
 
 // ── exclusions ───────────────────────────────────────────────────────────────
-r = manifest("exclude", ["--command", "rules-engine rules list-rest-connections", "--reason", "subsumed by the connectors domain"]);
+r = manifest("exclude", ["--command", "rules-engine rules list-rest-connections", "--reason", "subsumed by the connectors domain", "--no-check", "fixture: decided without a capture"]);
 checkThat("exclude: records a decision", r.code === 0 && r.json?.ok === true && r.json?.updated === false, r);
 r = diff();
 const excl = (r.json?.excluded ?? []).find((e) => e.path === "rules-engine rules list-rest-connections");
 checkThat("diff: excluded candidate carries its reason and decidedAt", excl?.reason === "subsumed by the connectors domain" && typeof excl?.decidedAt === "string", excl);
+checkThat(
+  "diff: an exclusion recorded with --no-check reads kind judgment, carrying noCheck and null evidence/coveredBy (F-449)",
+  excl?.kind === "judgment" && excl?.noCheck === "fixture: decided without a capture" && excl?.evidence === null && excl?.coveredBy === null && excl?.recheckAfter === null && excl?.recheckDue === false,
+  excl
+);
 checkThat("diff: excluded candidate is no longer undecided", !(r.json?.undecided ?? []).some((u) => u.path === "rules-engine rules list-rest-connections"), r.json?.undecided);
 
 // ── legacy domain (no listCommand) arms the gate + name collision ────────────
@@ -265,10 +270,10 @@ checkThat("diff: backfilled domain leaves the legacy list and maps to its candid
 const schemesFile = join(ROOT, "sc-schemes.json");
 writeFileSync(schemesFile, JSON.stringify({ data: [{ schemeId: "s-1" }, { schemeId: "s-2" }] }));
 manifest("upsert-batch", ["--file", schemesFile, "--domain", "scorecard-schemes", "--id-field", "schemeId", "--no-date-field", "--items-path", "data", "--list-command", "gs-admin --json sc sch list"]);
-manifest("exclude", ["--command", "rules-engine rules topics", "--reason", "reference data - platform topic registry, not tenant-owned assets"]);
-manifest("exclude", ["--command", "connectors widgets", "--reason", "organizational containers with no dependency surface"]);
-manifest("exclude", ["--command", "rules-engine rules executions", "--reason", "per-asset sublist - runtime error 'ruleId or ruleName is required'"]);
-manifest("exclude", ["--command", "rules-engine rules sources", "--reason", "source schema reference lists - not tenant-owned assets"]);
+manifest("exclude", ["--command", "rules-engine rules topics", "--reason", "reference data - platform topic registry, not tenant-owned assets", "--no-check", "fixture"]);
+manifest("exclude", ["--command", "connectors widgets", "--reason", "organizational containers with no dependency surface", "--no-check", "fixture"]);
+manifest("exclude", ["--command", "rules-engine rules executions", "--reason", "per-asset sublist - runtime error 'ruleId or ruleName is required'", "--no-check", "fixture"]);
+manifest("exclude", ["--command", "rules-engine rules sources", "--reason", "source schema reference lists - not tenant-owned assets", "--no-check", "fixture"]);
 r = diff(["--require-decided"]);
 checkThat("diff: gate passes once every candidate is decided and no domain is legacy", r.code === 0 && r.json?.undecidedCount === 0, {
   code: r.code,
@@ -371,8 +376,15 @@ checkThat(
   { code: r.code, blk: topicsBlk, warnings: r.json?.warnings }
 );
 // a later round that CAN look decides it — the exclude lifts the block
-r = manifest("exclude", ["--command", "rules-engine rules topics", "--reason", "reference data - platform topic registry, not tenant-owned assets"]);
+r = manifest("exclude", ["--command", "rules-engine rules topics", "--reason", "reference data - platform topic registry, not tenant-owned assets", "--no-check", "fixture", "--recheck-after", "2020-01-01"]);
 checkThat("exclude: deciding a blocked candidate lifts the block (blockLifted)", r.code === 0 && r.json?.blockLifted === true, r);
+r = diff(["--require-decided"]);
+const topicsExcl = (r.json?.excluded ?? []).find((e) => e.path === "rules-engine rules topics");
+checkThat(
+  "diff: an exclusion past its re-check date flags recheckDue and warns by name, gate still passes (F-449)",
+  r.code === 0 && topicsExcl?.recheckAfter === "2020-01-01" && topicsExcl?.recheckDue === true && (r.json?.warnings ?? []).some((w) => w.includes("excluded candidate") && w.includes("re-check date") && w.includes("re r topics")),
+  { code: r.code, excl: topicsExcl, warnings: r.json?.warnings }
+);
 r = diff();
 checkThat("diff: decided candidate leaves blocked and reads excluded", r.json?.blockedCount === 0 && (r.json?.excluded ?? []).some((e) => e.path === "rules-engine rules topics"), r.json);
 // stale block (command retired from the catalog) warns, record kept
@@ -406,6 +418,35 @@ checkThat(
   r.code === 0 && r.json?.alreadyIndexed === 4 && r.json?.allIndexed === true && r.json?.matchedByDomain?.connectors === 4,
   r.json
 );
+// ── F-449: check --out is the evidence file exclude --check reads ────────────
+// The verdict is bound to the numbers this run measured: the file is the
+// printed JSON byte-for-byte, and the exclude verb copies its numbers into the
+// ledger entry — never a re-typed count.
+const restCheck = join(ROOT, "check-rest.json");
+r = check(["--file", restFile, "--id-field", "pnpConnectionsInfo.connectionId", "--items-path", "data", "--out", restCheck]);
+checkThat("check --out: writes the printed JSON to the file", r.code === 0 && JSON.stringify(JSON.parse(readFileSync(restCheck, "utf8"))) === JSON.stringify(r.json), { stdout: r.json });
+r = manifest("exclude", ["--command", "rules-engine rules list-rest-connections", "--reason", "filtered view of the connectors domain", "--check", restCheck]);
+checkThat("exclude: a check proving coverage is refused without --covered-by (F-449)", r.code === 1 && /--covered-by connectors/.test(r.stderr), r);
+r = manifest("exclude", ["--command", "rules-engine rules list-rest-connections", "--reason", "filtered view of the connectors domain", "--check", restCheck, "--covered-by", "connectors"]);
+checkThat("exclude: --covered-by connectors accepted on 4 of 4 (kind coverage)", r.code === 0 && r.json?.kind === "coverage" && r.json?.updated === true, r);
+r = diff();
+const covExcl = (r.json?.excluded ?? []).find((e) => e.path === "rules-engine rules list-rest-connections");
+checkThat(
+  "diff: a coverage exclusion reads kind coverage with coveredBy and the check's evidence, noCheck null",
+  covExcl?.kind === "coverage" && covExcl?.coveredBy === "connectors" && covExcl?.evidence?.uniqueIds === 4 && covExcl?.evidence?.alreadyIndexed === 4 && covExcl?.evidence?.matchedByDomain?.connectors === 4 && covExcl?.noCheck === null,
+  covExcl
+);
+{
+  // A pre-F-449 entry (neither evidence nor noCheck) is tolerated and named
+  // legacy — readers never guess its kind from the prose.
+  const raw = JSON.parse(readFileSync(M, "utf8"));
+  raw.domains_excluded["rules-engine rules list-rest-connections"] = { reason: "subsumed by the connectors domain", decidedAt: "2020-01-01T00:00:00.000Z" };
+  writeFileSync(M, JSON.stringify(raw, null, 2));
+}
+r = diff();
+const legacyExcl = (r.json?.excluded ?? []).find((e) => e.path === "rules-engine rules list-rest-connections");
+checkThat("diff: a pre-evidence exclusion reads kind legacy (evidence, noCheck, coveredBy all null)", legacyExcl?.kind === "legacy" && legacyExcl?.evidence === null && legacyExcl?.noCheck === null && legacyExcl?.coveredBy === null, legacyExcl);
+manifest("exclude", ["--command", "rules-engine rules list-rest-connections", "--reason", "filtered view of the connectors domain", "--check", restCheck, "--covered-by", "connectors"]);
 r = check(["--file", restFile, "--id-field", "id", "--items-path", "data"]);
 checkThat("check: id field resolving to no value on every row fails loudly, naming the nested shape", r.code === 1 && /pnpConnectionsInfo/.test(r.stderr), {
   code: r.code,
@@ -502,8 +543,11 @@ checkThat(
 );
 const freshFile = join(ROOT, "fresh.json");
 writeFileSync(freshFile, JSON.stringify({ data: [{ id: "x-1" }, { id: "x-2" }] }));
-r = check(["--file", freshFile, "--id-field", "id", "--items-path", "data"]);
+const freshCheck = join(ROOT, "check-fresh.json");
+r = check(["--file", freshFile, "--id-field", "id", "--items-path", "data", "--out", freshCheck]);
 checkThat("check: 0-of-N rows indexed anywhere reads noneIndexed", r.json?.alreadyIndexed === 0 && r.json?.noneIndexed === true && r.json?.allIndexed === false, r.json);
+r = manifest("exclude", ["--command", "connectors widgets", "--reason", "covered by connectors", "--check", freshCheck, "--covered-by", "connectors"]);
+checkThat("exclude: --covered-by on a 0-of-2 check is refused end-to-end through the real check file (F-449)", r.code === 1 && /NOT covered by connectors/.test(r.stderr) && /0 of 2/.test(r.stderr), r);
 // ── F-224: zero-row honesty — the pre-fix hardwired allowEmpty=true turned a
 // typo'd --items-path into rows:0 + a confident `noneIndexed: true` at exit 0,
 // and setup Phase 4 maps noneIndexed to the ADOPT branch: a permanent ledger

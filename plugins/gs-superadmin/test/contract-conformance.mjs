@@ -148,14 +148,27 @@ try {
   m = readM();
   check("T-2: crawl_mode key spelled crawl_mode (v2 delta 1)", m.crawl_mode === "deep" && !("crawl" in m));
 
-  // GsExclusion: exactly {reason, decidedAt}.
-  r = verb("exclude", ["--command", "connectors jobs list", "--reason", "fixture: considered and declined"]);
+  // GsExclusion (F-449): {reason, decidedAt} plus EXACTLY ONE of evidence /
+  // noCheck on every entry the verb writes; coveredBy and recheckAfter
+  // conditional. A legacy entry (neither evidence nor noCheck) is tolerated
+  // by readers, never produced.
+  r = verb("exclude", ["--command", "connectors jobs list", "--reason", "fixture: considered and declined", "--no-check", "fixture: no capture in this suite"]);
   check("exclude exits 0", r.status === 0, r.stderr);
   m = readM();
   const excl = m.domains_excluded?.["connectors jobs list"];
   check("T-2: exclusion keyed by canonical command path", !!excl, m.domains_excluded);
-  check("T-2: GsExclusion is exactly {reason, decidedAt}",
-    excl && Object.keys(excl).sort().join(",") === "decidedAt,reason" && ISO.test(excl.decidedAt), excl);
+  check("T-2: GsExclusion without a check is exactly {reason, decidedAt, noCheck}",
+    excl && Object.keys(excl).sort().join(",") === "decidedAt,noCheck,reason" && ISO.test(excl.decidedAt), excl);
+  const checkFile = join(dir, "check-evidence.json");
+  writeFileSync(checkFile, JSON.stringify({ ok: true, rows: 3, idsExtracted: 3, unresolvedRows: 0, partial: false, uniqueIds: 3, alreadyIndexed: 3, allIndexed: true, noneIndexed: false, matchedByDomain: { "rules-engine-rules": 3 }, sampleMatches: [], warnings: [] }));
+  r = verb("exclude", ["--command", "connectors jobs list", "--reason", "fixture: covered", "--check", checkFile, "--covered-by", "rules-engine-rules", "--recheck-after", "2030-01-01"]);
+  check("exclude with --check --covered-by exits 0", r.status === 0, r.stderr);
+  m = readM();
+  const cov = m.domains_excluded?.["connectors jobs list"];
+  check("T-2: GsExclusion with a check is exactly {reason, decidedAt, coveredBy, evidence, recheckAfter} — noCheck absent",
+    cov && Object.keys(cov).sort().join(",") === "coveredBy,decidedAt,evidence,reason,recheckAfter" && ISO.test(cov.decidedAt), cov);
+  check("T-2: GsCheckEvidence is exactly {rows, uniqueIds, alreadyIndexed, matchedByDomain}",
+    cov?.evidence && Object.keys(cov.evidence).sort().join(",") === "alreadyIndexed,matchedByDomain,rows,uniqueIds", cov?.evidence);
 
   // GsBlock: decidedAt present (freeze delta 5); recheckAfter conditional.
   r = verb("block", ["--command", "scorecard measures list", "--reason", "fixture: could not look"]);
