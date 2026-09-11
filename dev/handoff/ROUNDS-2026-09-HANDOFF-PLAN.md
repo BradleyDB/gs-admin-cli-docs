@@ -87,11 +87,12 @@ Value / Build notes / Done when / Open design questions.**
   Fix/Judge lines and `dev/VALIDATION.md` § F-449 for the live arm.
 - **Done when:** tester round verdict VERIFIED (live arm: the sandbox's `report list-objects`
   re-decided through the new verb; step 4 of the banked check exits 1 on fresh numbers).
-- **Open design questions:** *(one for Bradley, not the executor)* the journey-data-designer
-  instance on F-449's Sibling sweep line — prod excluded `journey data-designer list` as
-  covered by data-management (59 of 59), the sandbox adopted it as a domain of 69 whose ids
-  and names all sit in data-management. Which tenant decided correctly? Deciding question:
-  does `jo data-designer get` carry a dependency surface `dm objects describe` lacks?
+- **Open design questions:** none — *(ruled 2026-09-11, Bradley)* the journey-data-designer
+  instance: the rows are Data Designer output datasets (data management; listed under
+  journey because a program can source from one); `jo data-designer get` is a strict subset
+  of `dm objects describe`, measured on the sandbox KB. Prod's coverage exclusion was
+  right; the sandbox's re-decision through the ACCEPT path is banked in
+  `dev/VALIDATION.md` (second F-449 section) and rides Session A-V.
 - **As shipped (A, 2026-09-11):** as described in What; plugin 0.38.0; contract T-2
   (GsExclusion) extended in manifest.mjs's header and pinned by
   `test/contract-conformance.mjs`. Adoption (`upsert-batch`) is NOT bound to the check —
@@ -282,6 +283,11 @@ Value / Build notes / Done when / Open design questions.**
   question. Also measured: `connectors-chains` records a date field on the sandbox and
   none on prod at the same pin — one recording is wrong; name it in the Fix note as the
   same class and fix the recording rule if the cause is in upsert-batch.
+- **Note (from A, 2026-09-11):** `index-scope-notes.md` says which data-management objects
+  are Data Designer outputs is "not determinable from CLI data". `jo data-designer list`
+  IS that determination for the status it filters on (measured: its rows are the DD
+  output datasets, keyed by objectName, all present in data-management). Correct the
+  note under (c) and say the list is a membership signal, not a domain.
 - **Done when:** each of (a)(b)(c) has one home; the diff on both real manifests (local)
   shows the four `re rules` sublists as not-enumerable without a per-tenant exclusion; the
   stamp's `scope` round-trips through report; F-450 FIXED as ONE entry (all three instances).

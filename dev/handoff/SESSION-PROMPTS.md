@@ -39,13 +39,22 @@ state. Confirm the SANDBOX tenant is the one logged in (gs-admin whoami) and sho
 me which tenant it is; do not run anything until I confirm. Prod cannot host this
 arm — it already adopted the command.
 
-State the pass bar BEFORE measuring: F-449's Fix note claim plus the banked check
-in dev/VALIDATION.md § F-449. Run that section's five steps exactly as written
-(tenant READS only; the manifest writes are local). The verdict is: step 4 exits 1
-quoting the fresh "<matched> of <unique>" numbers → VERIFIED; step 4 exits 0 →
-REOPENED (back to OPEN, dated note). Record the fresh numbers; a count different
-from 253 of 586 is expected. Also read the manifest afterwards and confirm the
-diff reads the new entry as kind judgment/coverage, never legacy. Walk the changed
+State the pass bar BEFORE measuring: F-449's Fix note claim plus the TWO banked
+sections in dev/VALIDATION.md for F-449. Arm 1 (the refuse path): run the first
+section's five steps exactly as written (tenant READS only; the manifest writes
+are local). Its verdict: step 4 exits 1 quoting the fresh "<matched> of <unique>"
+numbers → pass; step 4 exits 0 → REOPENED (back to OPEN, dated note). A count
+different from 253 of 586 is expected. Arm 2 (the accept path, ruled by Bradley
+2026-09-11): run the second section's eight steps — de-register the sandbox's
+journey-data-designer domain through the plugin's own verbs, delete its docs,
+capture `jo data-designer list` fresh, check it against data-management by
+objectName, and exclude it with --covered-by data-management. Its verdict: step 6
+reads allIndexed true with data-management holding every id, step 7 exits 0 with
+kind coverage, step 8's diff exits 0 and lists it as coverage with evidence. If
+step 6 reads fewer than all ids under data-management, STOP and record the
+numbers — do not exclude. F-449 is VERIFIED only when both arms pass. Also read
+the manifest afterwards and confirm the diff reads both new entries as kind
+judgment/coverage, never legacy. Walk the changed
 skill prose once: setup Phase 4 steps 2–3 (the check --out fence and the two
 exclude fences) — setup is slash-only, so I type /gs-superadmin:setup when you ask
 and you record the first artifact or first ask. Record one guard-wiring line
