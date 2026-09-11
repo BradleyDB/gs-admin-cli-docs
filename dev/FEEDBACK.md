@@ -146,8 +146,8 @@ what the gate counts (F-444). The gate refuses both. Sections from F-360 on; the
 rule also reads the archive.
 
 
-Under test: f449-evidence-bound-exclusions · hb-20260911-02 · 2026-09-11
-Blind spots (hb-20260911-02): the sandbox live arm in dev/VALIDATION.md section F-449 - lift the August exclusion, capture fresh, check --out, the verb must refuse --covered-by data-management on the fresh numbers, then adopt; the builder session has no plugin loaded and never writes to the consumer workspace. Also unmeasured by design: the ADOPT direction, the journey-data-designer instance on the F-449 Sibling sweep line, which is a decision for Bradley rather than a measurement
+Under test: f449-evidence-bound-exclusions · hb-20260911-03 · 2026-09-11
+Blind spots (hb-20260911-03): the two sandbox live arms in dev/VALIDATION.md, both F-449 sections: the refuse path (lift the August exclusion, capture fresh, check --out, the verb must refuse --covered-by data-management on the fresh numbers, then adopt) and the accept path (de-register the sandbox journey-data-designer duplicate through the plugin verbs, capture fresh, check by objectName, exclude with --covered-by data-management). The builder session has no plugin loaded and never writes to the consumer workspace; the ruling behind the second arm was measured on the sandbox KB, not on a live call.
 
 <!-- builder 2026-09-09 (docs-only promotion to main RELEASED — post-release housekeeping):
      Payload: the contributor-onboarding surfaces (#6: compare link, guard message, PR template,
