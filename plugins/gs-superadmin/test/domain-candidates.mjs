@@ -229,8 +229,8 @@ r = diff();
 const excl = (r.json?.excluded ?? []).find((e) => e.path === "rules-engine rules list-rest-connections");
 checkThat("diff: excluded candidate carries its reason and decidedAt", excl?.reason === "subsumed by the connectors domain" && typeof excl?.decidedAt === "string", excl);
 checkThat(
-  "diff: an exclusion recorded with --no-check reads kind judgment, carrying noCheck and null evidence/coveredBy (F-449)",
-  excl?.kind === "judgment" && excl?.noCheck === "fixture: decided without a capture" && excl?.evidence === null && excl?.coveredBy === null && excl?.recheckAfter === null && excl?.recheckDue === false,
+  "diff: an exclusion recorded with --no-check reads kind no-check, carrying noCheck and null evidence/coveredBy (F-449)",
+  excl?.kind === "no-check" && excl?.noCheck === "fixture: decided without a capture" && excl?.evidence === null && excl?.coveredBy === null && excl?.recheckAfter === null && excl?.recheckDue === false,
   excl
 );
 checkThat("diff: excluded candidate is no longer undecided", !(r.json?.undecided ?? []).some((u) => u.path === "rules-engine rules list-rest-connections"), r.json?.undecided);
@@ -424,7 +424,13 @@ checkThat(
 // ledger entry — never a re-typed count.
 const restCheck = join(ROOT, "check-rest.json");
 r = check(["--file", restFile, "--id-field", "pnpConnectionsInfo.connectionId", "--items-path", "data", "--out", restCheck]);
-checkThat("check --out: writes the printed JSON to the file", r.code === 0 && JSON.stringify(JSON.parse(readFileSync(restCheck, "utf8"))) === JSON.stringify(r.json), { stdout: r.json });
+checkThat("check --out: refused without --command — the evidence file names the candidate it measured", r.code === 1 && /--out requires --command/.test(r.stderr), r);
+r = check(["--file", restFile, "--id-field", "pnpConnectionsInfo.connectionId", "--items-path", "data", "--command", "gs-admin --json re r list-rest-connections", "--out", restCheck]);
+checkThat("check --command: a full command line is refused — canonical path only", r.code === 1 && /canonical command path/.test(r.stderr), r);
+r = check(["--file", restFile, "--id-field", "pnpConnectionsInfo.connectionId", "--items-path", "data", "--command", "rules-engine rules list-rest-connections", "--out", restCheck]);
+checkThat("check --out: writes the printed JSON to the file, stamped with command and checkedAt", r.code === 0 && r.json?.command === "rules-engine rules list-rest-connections" && typeof r.json?.checkedAt === "string" && JSON.stringify(JSON.parse(readFileSync(restCheck, "utf8"))) === JSON.stringify(r.json), { stdout: r.json });
+r = check(["--file", restFile, "--id-field", "pnpConnectionsInfo.connectionId", "--items-path", "data"]);
+checkThat("check: without --command the printed command is null (no file, no binding needed)", r.code === 0 && r.json?.command === null, r.json);
 r = manifest("exclude", ["--command", "rules-engine rules list-rest-connections", "--reason", "filtered view of the connectors domain", "--check", restCheck]);
 checkThat("exclude: a check proving coverage is refused without --covered-by (F-449)", r.code === 1 && /--covered-by connectors/.test(r.stderr), r);
 r = manifest("exclude", ["--command", "rules-engine rules list-rest-connections", "--reason", "filtered view of the connectors domain", "--check", restCheck, "--covered-by", "connectors"]);
@@ -445,7 +451,7 @@ checkThat(
 }
 r = diff();
 const legacyExcl = (r.json?.excluded ?? []).find((e) => e.path === "rules-engine rules list-rest-connections");
-checkThat("diff: a pre-evidence exclusion reads kind legacy (evidence, noCheck, coveredBy all null)", legacyExcl?.kind === "legacy" && legacyExcl?.evidence === null && legacyExcl?.noCheck === null && legacyExcl?.coveredBy === null, legacyExcl);
+checkThat("diff: a pre-evidence exclusion reads kind legacy (evidence, noCheck, coveredBy all null) and is counted", legacyExcl?.kind === "legacy" && legacyExcl?.evidence === null && legacyExcl?.noCheck === null && legacyExcl?.coveredBy === null && r.json?.excludedLegacyCount === 1, legacyExcl);
 manifest("exclude", ["--command", "rules-engine rules list-rest-connections", "--reason", "filtered view of the connectors domain", "--check", restCheck, "--covered-by", "connectors"]);
 r = check(["--file", restFile, "--id-field", "id", "--items-path", "data"]);
 checkThat("check: id field resolving to no value on every row fails loudly, naming the nested shape", r.code === 1 && /pnpConnectionsInfo/.test(r.stderr), {
@@ -544,10 +550,12 @@ checkThat(
 const freshFile = join(ROOT, "fresh.json");
 writeFileSync(freshFile, JSON.stringify({ data: [{ id: "x-1" }, { id: "x-2" }] }));
 const freshCheck = join(ROOT, "check-fresh.json");
-r = check(["--file", freshFile, "--id-field", "id", "--items-path", "data", "--out", freshCheck]);
+r = check(["--file", freshFile, "--id-field", "id", "--items-path", "data", "--command", "connectors widgets", "--out", freshCheck]);
 checkThat("check: 0-of-N rows indexed anywhere reads noneIndexed", r.json?.alreadyIndexed === 0 && r.json?.noneIndexed === true && r.json?.allIndexed === false, r.json);
 r = manifest("exclude", ["--command", "connectors widgets", "--reason", "covered by connectors", "--check", freshCheck, "--covered-by", "connectors"]);
 checkThat("exclude: --covered-by on a 0-of-2 check is refused end-to-end through the real check file (F-449)", r.code === 1 && /NOT covered by connectors/.test(r.stderr) && /0 of 2/.test(r.stderr), r);
+r = manifest("exclude", ["--command", "connectors jobs", "--reason", "x", "--check", freshCheck]);
+checkThat("exclude: the real check file passed for a different candidate is refused (measured connectors widgets)", r.code === 1 && /measured "connectors widgets", not "connectors jobs"/.test(r.stderr), r);
 // ── F-224: zero-row honesty — the pre-fix hardwired allowEmpty=true turned a
 // typo'd --items-path into rows:0 + a confident `noneIndexed: true` at exit 0,
 // and setup Phase 4 maps noneIndexed to the ADOPT branch: a permanent ledger

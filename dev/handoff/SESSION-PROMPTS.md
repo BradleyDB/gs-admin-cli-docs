@@ -2,7 +2,9 @@
 
 One prompt per session-map row in
 [ROUNDS-2026-09-HANDOFF-PLAN.md](./ROUNDS-2026-09-HANDOFF-PLAN.md). Paste the block into a
-fresh session opened in the named checkout. Build sessions (B, C1, C2, D, E) open in the
+fresh session opened in the named checkout. `<repo>` is this repo's checkout path and
+`<workspace>` the consumer workspace's; substitute both before pasting (real machine paths
+are never committed — the instance-data gate refuses them). Build sessions (B, C1, C2, D, E) open in the
 repo; verdict sessions (`*-V`) open in the consumer workspace with the plugin loaded from
 the working tree. Dependent sessions assume the prior round's PR is merged to `dev` and its
 finding VERIFIED — each prompt tells the agent to stop and report if not.
@@ -20,11 +22,11 @@ unmerged; `dev-utils handoff`; ledger + As-shipped.
 
 ## Session A-V — verify EX-1 (F-449) — LIVE REQUIRED (sandbox, reads only)
 
-Open in the consumer workspace: `claude --plugin-dir C:\Users\bradl\Desktop\ClaudeCode\Projects\gs-admin-cli-docs\plugins\gs-superadmin`, with the repo checkout ON the branch named on the bus `Under test:` line.
+Open in the consumer workspace: `claude --plugin-dir <repo>\plugins\gs-superadmin`, with the repo checkout ON the branch named on the bus `Under test:` line.
 
 ```
 /dev-loop recheck feedback. Read
-C:\Users\bradl\Desktop\ClaudeCode\Projects\gs-admin-cli-docs\dev\handoff\ROUNDS-2026-09-HANDOFF-PLAN.md
+<repo>\dev\handoff\ROUNDS-2026-09-HANDOFF-PLAN.md
 (the full file, including the Session ledger). This is verdict session A-V for work
 item EX-1 (bus finding F-449) ONLY — do not verify or log anything else; anything
 else you notice goes in your report to me, not on the bus.
@@ -66,7 +68,7 @@ Session B's merge.
 Open in the repo checkout.
 
 ```
-Read C:\Users\bradl\Desktop\ClaudeCode\Projects\gs-admin-cli-docs\dev\handoff\ROUNDS-2026-09-HANDOFF-PLAN.md
+Read <repo>\dev\handoff\ROUNDS-2026-09-HANDOFF-PLAN.md
 (the full file, including the Session ledger at the bottom for prior-session
 state). You are executing work items DB-1, DB-2, DB-3, DB-4 ONLY — do not start
 any other items. BL-2 (concurrency, batched marks) is out of scope even though it
@@ -130,7 +132,7 @@ Open in the consumer workspace with the plugin loaded from the working tree, on 
 
 ```
 /dev-loop recheck feedback. Read
-C:\Users\bradl\Desktop\ClaudeCode\Projects\gs-admin-cli-docs\dev\handoff\ROUNDS-2026-09-HANDOFF-PLAN.md
+<repo>\dev\handoff\ROUNDS-2026-09-HANDOFF-PLAN.md
 (full file, including the ledger). This is verdict session B-V for DB-1..DB-4
 (bus F-456, F-458; issues #10, #13) ONLY. This is a RE-VERIFICATION round: deliver
 the verdict on those, and stop — anything else goes in your report to me.
@@ -162,7 +164,7 @@ me whether B is clear to merge.
 ## Session C1 — RP-1, RP-2, RP-3 (report carries depth, domain counts, dateless honesty)
 
 ```
-Read C:\Users\bradl\Desktop\ClaudeCode\Projects\gs-admin-cli-docs\dev\handoff\ROUNDS-2026-09-HANDOFF-PLAN.md
+Read <repo>\dev\handoff\ROUNDS-2026-09-HANDOFF-PLAN.md
 (the full file, including the Session ledger). You are executing work items RP-1,
 RP-2, RP-3 ONLY — do not start any other items. FH-1 and RP-4 are Session C2;
 fingerprint-based staleness is BL-2 and is NOT built here.
@@ -180,7 +182,7 @@ Live systems are NOT connected: build against test/manifest-ops.mjs (add a fixtu
 manifest carrying full / metadata / list-only ("none" describeCommand) / legacy
 (no describeCommand) / pending entries, and domains with recorded-none dateField,
 null dates under a recorded field, and healthy dates) and against LOCAL reads of
-the two real manifests in C:\Users\bradl\Desktop\ClaudeCode\Projects\Gainsight_Workspace\<slug>\_manifest.json
+the two real manifests in <workspace>\<slug>\_manifest.json
 (read-only; never write there): the prod report must read every list-only domain
 as listOnly and none as metadata; the counts in the bus entries for F-451 (prod
 report 1754 dateless, sandbox templates 557) must reproduce. The report's output
@@ -209,7 +211,7 @@ setup/refresh walks — both slash-only).
 
 ```
 /dev-loop recheck feedback. Read the plan
-(C:\Users\bradl\Desktop\ClaudeCode\Projects\gs-admin-cli-docs\dev\handoff\ROUNDS-2026-09-HANDOFF-PLAN.md,
+(<repo>\dev\handoff\ROUNDS-2026-09-HANDOFF-PLAN.md,
 full file). Verdict session C1-V for RP-1, RP-2, RP-3 (bus F-455, F-454, F-451)
 ONLY; re-verification round — verdict, then stop.
 
@@ -228,7 +230,7 @@ the branch under test, ledger line, and tell me whether C1 is clear to merge.
 ## Session C2 — FH-1, RP-4 (where each kind of fact lives; the relay names scope limits)
 
 ```
-Read C:\Users\bradl\Desktop\ClaudeCode\Projects\gs-admin-cli-docs\dev\handoff\ROUNDS-2026-09-HANDOFF-PLAN.md
+Read <repo>\dev\handoff\ROUNDS-2026-09-HANDOFF-PLAN.md
 (the full file, including the Session ledger). You are executing work items FH-1
 and RP-4 ONLY — do not start any other items. F-450 is ONE bus entry with three
 instances (a)(b)(c): it flips FIXED only when all three have a home.
@@ -250,7 +252,7 @@ tenant exclusion; the enum pair must keep its existing requiredEnumFlags path),
 test/manifest-ops.mjs (the scope field round-trips upsert-batch → report),
 test/jo-report-deps.mjs (the conventions lookup under the ruled home, with the
 fallback notice), and LOCAL read-only runs of the diff over both real manifests
-in C:\Users\bradl\Desktop\ClaudeCode\Projects\Gainsight_Workspace. The stamp
+in <workspace>. The stamp
 typedef (T-2) gains a field ADDITIVELY — update the typedef and the conformance
 pin in this PR. Check-stale-facts must gain a tripwire for the per-pin list at CLI
 adoption (the same pattern as READ_VERB_EXACT's version stamp). Bank any live arm
@@ -292,7 +294,7 @@ record the relay's scope-limited lines). One guard-wiring line. Verdicts on the 
 ## Session D — DC-1, DC-2, DC-3 (prose and one message; may ride B or C2)
 
 ```
-Read C:\Users\bradl\Desktop\ClaudeCode\Projects\gs-admin-cli-docs\dev\handoff\ROUNDS-2026-09-HANDOFF-PLAN.md
+Read <repo>\dev\handoff\ROUNDS-2026-09-HANDOFF-PLAN.md
 (the full file, including the Session ledger). You are executing work items DC-1,
 DC-2, DC-3 ONLY. If the ledger says a prior session folded any of them in, skip
 those and tell me.
@@ -340,7 +342,7 @@ and quote the second prompt's text — ask me what rendered). Verdicts `@ <token
 ## Session E — GD-1, GD-2, GD-3 (the mutation guard; its own round)
 
 ```
-Read C:\Users\bradl\Desktop\ClaudeCode\Projects\gs-admin-cli-docs\dev\handoff\ROUNDS-2026-09-HANDOFF-PLAN.md
+Read <repo>\dev\handoff\ROUNDS-2026-09-HANDOFF-PLAN.md
 (the full file, including the Session ledger). You are executing work items GD-1,
 GD-2, GD-3 ONLY. This round touches the safety surface: nothing else rides it.
 

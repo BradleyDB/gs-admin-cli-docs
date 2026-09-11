@@ -22,8 +22,8 @@ session loaded from the working tree issues the verdict of record.
 
 | Repo | Owner | What it is today |
 |---|---|---|
-| `C:\Users\bradl\Desktop\ClaudeCode\Projects\gs-admin-cli-docs` (BradleyDB/gs-admin-cli-docs, public) | Bradley | plugin 0.38.0 staged on `dev` (0.37.0 released; 0.37.1 and 0.38.0 unreleased). Read `CLAUDE.md` then `AGENTS.md` before touching anything — several files are generated (table in AGENTS.md). CLI pinned at 1.0.9. |
-| Consumer workspace `C:\Users\bradl\Desktop\ClaudeCode\Projects\Gainsight_Workspace` | Bradley | two tenants indexed (a sandbox and a prod). Tester sessions run here with `claude --plugin-dir <repo>\plugins\gs-superadmin`. Builder sessions read its manifests locally for design facts and never write to it. |
+| `<repo>` (BradleyDB/gs-admin-cli-docs, public) | Bradley | plugin 0.38.0 staged on `dev` (0.37.0 released; 0.37.1 and 0.38.0 unreleased). Read `CLAUDE.md` then `AGENTS.md` before touching anything — several files are generated (table in AGENTS.md). CLI pinned at 1.0.9. |
+| Consumer workspace `<workspace>` | Bradley | two tenants indexed (a sandbox and a prod). Tester sessions run here with `claude --plugin-dir <repo>\plugins\gs-superadmin`. Builder sessions read its manifests locally for design facts and never write to it. |
 
 **House rules (follow them):**
 1. **Branch off `dev`, PR to `dev`, never `main`** (CLAUDE.md; a local pre-push hook
