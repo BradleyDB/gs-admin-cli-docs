@@ -114,7 +114,7 @@ const verb = argv[0];
 
 // Shared argv helpers (F-238) — the F-165/F-171 last-token rule lives in
 // doc-lib now; booleans are read with argv.includes, never opt().
-const { opt, fail, out, finish } = makeCliHelpers("domain-candidates.mjs", argv);
+const { opt, fail, finish } = makeCliHelpers("domain-candidates.mjs", argv);
 
 if (verb !== "diff" && verb !== "check") {
   fail("usage: domain-candidates.mjs <diff|check> --manifest <path> [...]");
