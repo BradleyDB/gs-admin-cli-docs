@@ -149,18 +149,26 @@ rule also reads the archive.
 Under test: dev · hb-20260911-04 · 2026-09-11
 Blind spots (hb-20260911-04): post-merge close-out of PR 16 on dev: nothing new is under test; the F-449 arms were measured on the sandbox by the tester round (both CLEARED). Still unmeasured on any tenant: everything the next rounds bank (Session B onward, dev/handoff/), and F-459 (documented entries with no doc_path) which is OPEN for Session C1 and reproducible only on the three July-crawled sandbox domains
 
-<!-- builder 2026-09-11 (F-449 round, UNMERGED): F-449 FIXED rides branch f449-evidence-bound-exclusions -> PR #16
-     (base dev, unmerged). Under test on that branch: f449-evidence-bound-exclusions · hb-20260911-03 · 2026-09-11;
-     its Blind spots line names the two sandbox live arms (dev/VALIDATION.md, both F-449 sections): the refuse
-     path and, ruled by Bradley 2026-09-11, the accept path re-deciding the sandbox journey-data-designer duplicate. Carried to the next rounds, in this round's
-     scope at kickoff and left OPEN: F-453 (polish, Session D) and F-454 (polish, Session C1) per dev/handoff/.
-     Also staged on the branch: plugin 0.38.0 (CHANGELOG), dev/handoff/ (round plan, session prompts, cleanup plan
-     for rounds B-E). No new finding numbers claimed. Re-stamped when statuses on the branch change. 
-     Dispatch evidence (F-340), PR suite on the minted tip 7b54eb8, QUOTED after completion:
-         validate-plugin 34651853167: changes success / manifests success / validate (ubuntu-latest) success
-         docs-drift 34651853155: drift (full) success
-         PR #16 mergeStateStatus CLEAN.
-     -->
+<!-- builder 2026-09-11 (F-449 round CLOSED OUT — MERGED):
+     Payload: F-449 (high) — the Phase 4 exclusion verdict bound to the overlap check's numbers (manifest.mjs exclude
+       --check/--no-check/--covered-by/--recheck-after; domain-candidates.mjs check --command --out; diff kinds), plugin 0.38.0
+       staged (CHANGELOG), dev/handoff/ (round plan, session prompts, cleanup plan for rounds B-E), dev/VALIDATION.md.
+     Branch f449-evidence-bound-exclusions -> PR #16, base dev, MERGED by Bradley 2026-09-11 (dev @ e919333); branch deleted
+       local + remote. Review: /code-review medium, 8 finders — 7 CONFIRMED fixed on the branch, 1 PLAUSIBLE skipped with
+       mitigation (--no-check stays free text, now its own kind).
+     Verdict: F-449 VERIFIED @ hb-20260911-03 (tester, Session A-V, sandbox) — both banked arms PASS (refuse path 253 of 588
+       refused then adopted as report-objects; accept path 69 of 69 excluded as coverage); both dev/VALIDATION.md sections
+       CLEARED; setup and refresh walked; guard wiring recorded (ask rendered, accepted by the user). Ruling recorded on the
+       Sibling sweep line: the journey-side dataset list is a duplicate view of data-management (prod was right).
+     Logged by the round: F-459 (normal) — documented entries with no doc_path; scheduled as RP-5 in Session C1 (dev/handoff/).
+     Carried, OPEN polish in this round's scope at kickoff: F-453 (Session D), F-454 (Session C1).
+     Dispatch evidence (F-340), on dev after the merge, tip 2130d59, QUOTED after completion:
+         validate-plugin 34655779573: changes success / manifests success / validate (ubuntu-latest) success
+         docs-drift 34655781022: drift (stripped) success / drift (full) success
+       (two earlier dispatches on e919333 and the push-event runs on 2130d59 were cancelled by concurrency as later
+       pushes landed; the pair above is the evidence that was read.)
+     Under test + canary -> dev · hb-20260911-04. Next free number F-460. Released: nothing (dev stages 0.37.1, 0.38.0).
+     Next: Session B per dev/handoff/SESSION-PROMPTS.md. -->
 
 <!-- builder 2026-09-09 (docs-only promotion to main RELEASED — post-release housekeeping):
      Payload: the contributor-onboarding surfaces (#6: compare link, guard message, PR template,
