@@ -146,8 +146,8 @@ what the gate counts (F-444). The gate refuses both. Sections from F-360 on; the
 rule also reads the archive.
 
 
-Under test: f449-evidence-bound-exclusions · hb-20260911-03 · 2026-09-11
-Blind spots (hb-20260911-03): the two sandbox live arms in dev/VALIDATION.md, both F-449 sections: the refuse path (lift the August exclusion, capture fresh, check --out, the verb must refuse --covered-by data-management on the fresh numbers, then adopt) and the accept path (de-register the sandbox journey-data-designer duplicate through the plugin verbs, capture fresh, check by objectName, exclude with --covered-by data-management). The builder session has no plugin loaded and never writes to the consumer workspace; the ruling behind the second arm was measured on the sandbox KB, not on a live call.
+Under test: dev · hb-20260911-04 · 2026-09-11
+Blind spots (hb-20260911-04): post-merge close-out of PR 16 on dev: nothing new is under test; the F-449 arms were measured on the sandbox by the tester round (both CLEARED). Still unmeasured on any tenant: everything the next rounds bank (Session B onward, dev/handoff/), and F-459 (documented entries with no doc_path) which is OPEN for Session C1 and reproducible only on the three July-crawled sandbox domains
 
 <!-- builder 2026-09-11 (F-449 round, UNMERGED): F-449 FIXED rides branch f449-evidence-bound-exclusions -> PR #16
      (base dev, unmerged). Under test on that branch: f449-evidence-bound-exclusions · hb-20260911-03 · 2026-09-11;
