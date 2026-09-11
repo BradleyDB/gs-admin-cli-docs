@@ -246,3 +246,18 @@ Reported: 2026-09-10 (tester — first live multi-tenant setup)
 Severity: polish — a reporting discrepancy, no data effect observed
 What: the Phase 4 relay reported "4,487 assets across 16 domains" while the manifest held 17 `domains_indexed` at that moment, and the inventory carried 17 domains with at least one asset (18 after a further adoption later in the same run). Unexplained — possibly an empty-adopted domain counted differently by `report` than by `domains_indexed`, which is exactly the distinction the empty stamp exists to preserve.
 Expected: the relayed domain count and the manifest's domain count agree, or the report states which one it is counting.
+
+## F-455 — OPEN
+Reported: 2026-09-10 (tester — first live multi-tenant setup, during a shallow crawl with per-domain deep ingests)
+Severity: normal — no stored data is wrong and no stub misrepresents itself; what is wrong is the completion signal the user is asked to act on, and downstream decisions (rebuilding relationship maps, trusting a deps-report answer) rest on it
+What: `manifest.mjs report` is the deterministic account of KB state, and its schema carries no depth at all. A metadata stub and a full describe are both counted as `documented`, in `byStatus` and in every `byDomain` row, so the report cannot distinguish a documented domain from an ingested one:
+
+    "byStatus": { "documented": 5076 }
+    "byDomain": { "rules-engine": { "documented": 497 },
+                  "report": { "documented": 1754 }, ... }
+
+Zero pending, zero stale, everything "documented" — while a tally of the `depth` field the manifest already stores, taken at 2026-09-10 17:08 local, read 1381 full against 3695 stubs across the same 5076 entries, `crawl_mode` shallow.
+Consequence observed live: after one domain's deep ingest completed, the user was told the deep crawl was finished and that every domain was at full depth except the list-only ones and `journey-email-templates`. Eight further domains were entirely stubs at that moment, and a further domain's deep ingest began afterwards. This was not a careless relay — the report contains no fact that could have contradicted the claim, so the model had nothing to check itself against and the user had nothing to check the model against.
+Note the same conflation is deliberate and correct elsewhere: Phase 6's precondition counts stubs as documented on purpose, because a stub never blocks synthesis. The defect is that the one mechanical statement of state offers no depth anywhere, so a human-facing completion claim cannot be grounded in it.
+Second, smaller point found while measuring this: the manifest is rewritten continuously during a run, so a tally taken mid-ingest is a snapshot of a moving target and will disagree with one taken a minute later. A completeness check is only meaningful at a quiescent point. (The reporter made exactly this mistake while drafting the entry — a mid-run sample showed one asset short of a domain's full ingest, which the next read showed complete.)
+Expected: depth is part of the mechanical account, not something a reader reconstructs. `report` (or a sibling verb) carries a per-domain full/stub/list-only breakdown derived from the `depth` the manifest already stores, with list-only domains reported complete by definition rather than as stubs, so the three states stay distinguishable. And every place a skill states that documentation is complete, or that a domain is fully ingested, derives that statement from the script's output rather than from its own narrative — one invocation, quoted, at a point where nothing is still writing.
