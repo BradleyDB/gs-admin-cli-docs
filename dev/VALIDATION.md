@@ -7,7 +7,16 @@ line on dev/FEEDBACK.md names the section by its heading and token. When a check
 append its verdict here with the date and the token, and copy the measurement into the
 finding's verdict on the bus; a spent check is marked CLEARED (or retired, with why).
 
-## F-449 — sandbox live arm: re-decide `report list-objects` through the evidence-bound verb (banked 2026-09-11, builder — OPEN)
+## F-449 — sandbox live arm: re-decide `report list-objects` through the evidence-bound verb (banked 2026-09-11, builder — CLEARED 2026-09-11 @ hb-20260911-03)
+
+CLEARED 2026-09-11 (tester, Session A-V) @ hb-20260911-03 — PASS. Fresh capture 588 rows;
+check: uniqueIds 588, alreadyIndexed 253, matchedByDomain data-management 253 (plus the
+duplicate journey-side domain 69, since removed by the second arm); step 4 EXITED 1 quoting
+"253 of 588"; adopted as `report-objects`. Full record on the bus under F-449 (Verified:
+line). Builder note: step 3 as banked lacked `--command "report list-objects"`, which the
+review round made mandatory after the arm was written — the verb refused the banked form
+and the tester re-ran with the flag (the shipped fence carries it). Corrected below so the
+record is runnable as written.
 
 Owed by: the tester round on the token the F-449 handoff mints (see the Under test line).
 Tenant: the sandbox, which still carries the 2026-08-09 exclusion
@@ -20,7 +29,7 @@ Steps (from the consumer workspace, plugin loaded from the working tree):
 1. `node .gs-superadmin/plugin/scripts/manifest.mjs exclude --manifest <sandbox-slug>/_manifest.json --command "report list-objects" --remove`
 2. Capture `gs-admin --json report list-objects` fresh through the capture helper
    (Phase 4's invocation shape) to a tmp file.
-3. `node .gs-superadmin/plugin/scripts/domain-candidates.mjs check --manifest <sandbox-slug>/_manifest.json --file <tmp> --id-field objectName --out .gs-superadmin/tmp/check-report-list-objects.json`
+3. `node .gs-superadmin/plugin/scripts/domain-candidates.mjs check --manifest <sandbox-slug>/_manifest.json --file <tmp> --id-field objectName --command "report list-objects" --out .gs-superadmin/tmp/check-report-list-objects.json`
    (objectName is the key data-management is indexed by — the recorded reason's own
    basis; a check by objectId reads 0 matched, as the reason says).
 4. Attempt the 2026-08-09 decision: `manifest.mjs exclude … --command "report list-objects" --reason "covered by data-management" --check .gs-superadmin/tmp/check-report-list-objects.json --covered-by data-management`.
@@ -35,7 +44,16 @@ indexed. A verdict that step 4 exited 0 REOPENS F-449. Record the fresh numbers 
 Blind spot this arm does not cover: the ADOPT direction — ruled 2026-09-11 (Bradley) and
 banked as the second section below.
 
-## F-449 sibling — sandbox re-decision of `journey data-designer list` through the coverage-ACCEPT path (banked 2026-09-11, builder — OPEN)
+## F-449 sibling — sandbox re-decision of `journey data-designer list` through the coverage-ACCEPT path (banked 2026-09-11, builder — CLEARED 2026-09-11 @ hb-20260911-03)
+
+CLEARED 2026-09-11 (tester, Session A-V) @ hb-20260911-03 — PASS. Steps 1–4 de-registered
+the duplicate domain through the plugin's verbs (`removed: 69`); fresh capture 69 rows; check:
+allIndexed true, data-management 69 (and the newly adopted `report-objects` 69 — the
+symmetry rule decided coverage on the named domain); step 7 exited 0 with kind coverage;
+step 8's diff lists it as coverage with evidence. `deps-report` still answers for one of the
+69 names through data-management. Surfaced F-459: step 2's `docPaths` read 0 on this
+domain because its July entries carry no `doc_path` — the docs were deleted by folder.
+Step 2's sentence below is therefore not reliable on legacy domains until F-459 lands.
 
 Owed by: the same tester round as the section above (Session A-V).
 Ruling (Bradley, 2026-09-11; measured by the builder on the sandbox KB): the rows are Data
