@@ -146,8 +146,8 @@ what the gate counts (F-444). The gate refuses both. Sections from F-360 on; the
 rule also reads the archive.
 
 
-Under test: dev · hb-20260909-01 · 2026-09-09
-Blind spots (hb-20260909-01): the skipped-path arm of F-448 (a docs-only PR to dev where validate and manifests report Skipped) was not exercised — nothing is required on dev besides drift (full), so it gates nothing today; it is measured the first time a docs-only PR to dev opens. No tester round ran this cut (docs-only payload, zero live findings before F-448; the release PR's own required-check rollup was F-448's judge).
+Under test: f449-evidence-bound-exclusions · hb-20260911-01 · 2026-09-11
+Blind spots (hb-20260911-01): the sandbox live arm in dev/VALIDATION.md section F-449 - lift the August exclusion, capture fresh, check --out, the verb must refuse --covered-by data-management on the fresh numbers, then adopt; the builder session has no plugin loaded and never writes to the consumer workspace. Also unmeasured by design: the ADOPT direction, the journey-data-designer instance on the F-449 Sibling sweep line, which is a decision for Bradley rather than a measurement
 
 <!-- builder 2026-09-09 (docs-only promotion to main RELEASED — post-release housekeeping):
      Payload: the contributor-onboarding surfaces (#6: compare link, guard message, PR template,
