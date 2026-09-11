@@ -150,7 +150,7 @@ Under test: dev · hb-20260909-01 · 2026-09-09
 Blind spots (hb-20260909-01): the skipped-path arm of F-448 (a docs-only PR to dev where validate and manifests report Skipped) was not exercised — nothing is required on dev besides drift (full), so it gates nothing today; it is measured the first time a docs-only PR to dev opens. No tester round ran this cut (docs-only payload, zero live findings before F-448; the release PR's own required-check rollup was F-448's judge).
 
 <!-- builder 2026-09-11 (F-449 round, UNMERGED): F-449 FIXED rides branch f449-evidence-bound-exclusions -> PR #16
-     (base dev, unmerged). Under test on that branch: f449-evidence-bound-exclusions · hb-20260911-01 · 2026-09-11;
+     (base dev, unmerged). Under test on that branch: f449-evidence-bound-exclusions · hb-20260911-02 · 2026-09-11;
      its Blind spots line names the sandbox live arm (dev/VALIDATION.md, F-449 section) and the ADOPT-direction
      instance (journey-data-designer) that is a decision for Bradley. Carried to the next rounds, in this round's
      scope at kickoff and left OPEN: F-453 (polish, Session D) and F-454 (polish, Session C1) per dev/handoff/.
