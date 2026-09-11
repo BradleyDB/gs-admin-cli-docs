@@ -5,6 +5,23 @@ marketplace doesn't pin versions — users get main — so entries describe what
 user who updates, not internal refactors. Entries before 0.8.0 were reconstructed from git
 history when this file was introduced.
 
+## 0.37.1 — 2026-09-10
+
+Operating model gains one Known CLI issue. What a user gets by updating: a note that
+`re rules topics` and `jo email connectors` fail server-side on every call, so a session
+that hits one stops re-trying it and records it correctly.
+
+Both return a server error with a fresh Gainsight Request ID on every attempt — measured
+across two independent tenants and two CLI versions, with no successes — and both then abort
+on the libuv assertion (ledger KI-017), so the process exits with a crash code rather than a
+server status. The note exists mainly to stop that being read as the token half-life defect
+and answered with a re-login loop, and to say that such a command is recorded as **blocked
+with a re-check date, never excluded**: "returns 500 today" is not a durable reason to bury a
+domain from the KB. Ledger KI-018.
+
+Template change only — no script or skill behaviour moves. Existing workspaces pick it up
+through the scaffold's `.new` flow at the next setup or refresh.
+
 ## 0.37.0 — 2026-09-08
 
 CLI pin 1.0.8 → 1.0.9 (gs-fortress audit-1.0.9, kickoff E2: CP-1 + CP-5). What a user gets by
