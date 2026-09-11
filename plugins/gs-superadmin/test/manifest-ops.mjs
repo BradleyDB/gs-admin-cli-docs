@@ -981,10 +981,12 @@ check("fingerprint: malformed value rejected (exit 1)", r.code === 1 && /40-char
 
   // exclude: the durable index-or-exclude record (domains_excluded)
   r = run("exclude", ["--manifest", M, "--command", "rules-engine rules list-rest-connections", "--reason", "subsumed by the connectors domain"]);
-  check("exclude: records {reason, decidedAt} keyed by canonical path", r.code === 0 && r.json?.updated === false && lj().domains_excluded?.["rules-engine rules list-rest-connections"]?.reason === "subsumed by the connectors domain" && typeof lj().domains_excluded?.["rules-engine rules list-rest-connections"]?.decidedAt === "string", r);
+  check("exclude: a record write without --check or --no-check is refused — the decision records its evidence (F-449, exit 1)", r.code === 1 && /exactly one of --check/.test(r.stderr) && !Object.hasOwn(lj().domains_excluded ?? {}, "rules-engine rules list-rest-connections"), r);
+  r = run("exclude", ["--manifest", M, "--command", "rules-engine rules list-rest-connections", "--reason", "subsumed by the connectors domain", "--no-check", "fixture: no capture"]);
+  check("exclude: records {reason, decidedAt, noCheck} keyed by canonical path (kind no-check)", r.code === 0 && r.json?.updated === false && r.json?.kind === "no-check" && lj().domains_excluded?.["rules-engine rules list-rest-connections"]?.reason === "subsumed by the connectors domain" && lj().domains_excluded?.["rules-engine rules list-rest-connections"]?.noCheck === "fixture: no capture" && typeof lj().domains_excluded?.["rules-engine rules list-rest-connections"]?.decidedAt === "string", r);
   r = run("report", ["--manifest", M]);
   check("report: domains_excluded exposed", r.json?.domains_excluded?.["rules-engine rules list-rest-connections"]?.reason === "subsumed by the connectors domain", r.json?.domains_excluded);
-  r = run("exclude", ["--manifest", M, "--command", "rules-engine rules list-rest-connections", "--reason", "filtered view of an already-indexed list"]);
+  r = run("exclude", ["--manifest", M, "--command", "rules-engine rules list-rest-connections", "--reason", "filtered view of an already-indexed list", "--no-check", "fixture: no capture"]);
   check("exclude: re-excluding updates and reports the previous reason", r.code === 0 && r.json?.updated === true && r.json?.previousReason === "subsumed by the connectors domain", r);
   r = run("exclude", ["--manifest", M, "--command", "rules-engine rules list-rest-connections"]);
   check("exclude: missing --reason rejected (exit 1)", r.code === 1 && /--reason/.test(r.stderr), r);
@@ -996,7 +998,7 @@ check("fingerprint: malformed value rejected (exit 1)", r.code === 1 && /40-char
   // F-227: the word ceiling is an anti-garbage bound, not a mirror of the
   // catalog's current max path (5 words) — the old {0,4} ceiling equalled that
   // max, so the first 6-word CLI path would have been undecidable entirely.
-  r = run("exclude", ["--manifest", M, "--command", "one two three four five six", "--reason", "ceiling probe - six words must be recordable"]);
+  r = run("exclude", ["--manifest", M, "--command", "one two three four five six", "--reason", "ceiling probe - six words must be recordable", "--no-check", "fixture"]);
   check("exclude: 6-word canonical path accepted — ceiling sits above the catalog max (F-227)", r.code === 0 && r.json?.ok === true, r);
   run("exclude", ["--manifest", M, "--command", "one two three four five six", "--remove"]);
   r = run("exclude", ["--manifest", M, "--command", "w1 w2 w3 w4 w5 w6 w7 w8 w9 w10 w11", "--reason", "x"]);
@@ -1010,13 +1012,13 @@ check("fingerprint: malformed value rejected (exit 1)", r.code === 1 && /40-char
   // the live ledger actually produced, and one at the cap itself — so a future
   // tightening turns the suite red instead of silently trimming the rationales
   // that need the most explanation.
-  r = run("exclude", ["--manifest", M, "--command", "connectors list", "--reason", "x".repeat(292)]);
+  r = run("exclude", ["--manifest", M, "--command", "connectors list", "--reason", "x".repeat(292), "--no-check", "fixture"]);
   check(
     "exclude: a 292-char reason (the live ledger's longest) is accepted — F-222",
     r.code === 0 && lj().domains_excluded?.["connectors list"]?.reason.length === 292,
     r
   );
-  r = run("exclude", ["--manifest", M, "--command", "connectors list", "--reason", "y".repeat(1000)]);
+  r = run("exclude", ["--manifest", M, "--command", "connectors list", "--reason", "y".repeat(1000), "--no-check", "fixture"]);
   check("exclude: a reason exactly at the cap is accepted — F-222", r.code === 0, r);
   r = run("block", ["--manifest", M, "--command", "connectors activity", "--reason", "z".repeat(900)]);
   check(
@@ -1055,18 +1057,92 @@ check("fingerprint: malformed value rejected (exit 1)", r.code === 1 && /40-char
   r = run("block", ["--manifest", M, "--command", "__proto__", "--reason", "x"]);
   check("block: prototype-polluting key rejected by the path shape (exit 1)", r.code === 1 && /canonical command path/.test(r.stderr), r);
   // a block must never overwrite a decision
-  run("exclude", ["--manifest", M, "--command", "connectors widgets", "--reason", "organizational containers"]);
+  run("exclude", ["--manifest", M, "--command", "connectors widgets", "--reason", "organizational containers", "--no-check", "fixture"]);
   r = run("block", ["--manifest", M, "--command", "connectors widgets", "--reason", "x"]);
   check("block: blocking an EXCLUDED command rejected — a block cannot overwrite a decision (exit 1)", r.code === 1 && /already EXCLUDED/.test(r.stderr), r);
   // a decision supersedes a block: exclude lifts it in the same write
-  r = run("exclude", ["--manifest", M, "--command", "journey emails connectors", "--reason", "looked at last - genuinely reference data"]);
+  r = run("exclude", ["--manifest", M, "--command", "journey emails connectors", "--reason", "looked at last - genuinely reference data", "--no-check", "fixture"]);
   check(
     "exclude: excluding a blocked command lifts the block in the same write (blockLifted)",
     r.code === 0 && r.json?.blockLifted === true && !Object.hasOwn(lj().domains_blocked ?? {}, "journey emails connectors") && lj().domains_excluded?.["journey emails connectors"]?.reason === "looked at last - genuinely reference data",
     r
   );
-  r = run("exclude", ["--manifest", M, "--command", "connectors list", "--reason", "x", "--recheck-after", "2027-01-01"]);
-  check("exclude: --recheck-after rejected — belongs to block only (exit 1)", r.code === 1 && /applies only when recording a block/.test(r.stderr), r);
+  r = run("exclude", ["--manifest", M, "--command", "connectors list", "--reason", "x", "--no-check", "fixture", "--recheck-after", "2027-01-01"]);
+  check("exclude: --recheck-after recorded on an exclusion — the permanent decision gets the review affordance a block has (F-449)", r.code === 0 && lj().domains_excluded?.["connectors list"]?.recheckAfter === "2027-01-01", r);
+  r = run("exclude", ["--manifest", M, "--command", "connectors list", "--reason", "x", "--no-check", "fixture", "--recheck-after", "soon"]);
+  check("exclude: malformed --recheck-after rejected (exit 1)", r.code === 1 && /YYYY-MM-DD/.test(r.stderr), r);
+  r = run("exclude", ["--manifest", M, "--command", "connectors list", "--remove", "--recheck-after", "2027-01-01"]);
+  check("exclude: --recheck-after with --remove rejected (exit 1)", r.code === 1 && /never with --remove/.test(r.stderr), r);
+  check("exclude: rejected --remove left the record in place", Object.hasOwn(lj().domains_excluded ?? {}, "connectors list"), lj().domains_excluded);
+
+  // F-449 — the verdict is bound to the check's numbers. The check outputs
+  // below are the shape domain-candidates.mjs check --out writes (pinned in
+  // test/domain-candidates.mjs; this suite exercises what exclude DOES with
+  // them). The live instance: 253 of 586 recorded as "covered by
+  // data-management, more completely".
+  const checkOf = (name, o) => {
+    const p = join(dirname(M), `check-${name}.json`);
+    writeFileSync(p, JSON.stringify({ ok: true, command: o.command, checkedAt: new Date().toISOString(), rows: o.rows, idsExtracted: o.rows, unresolvedRows: o.unresolved ?? 0, partial: o.partial ?? false, uniqueIds: o.rows, alreadyIndexed: o.matched, allIndexed: o.partial || o.rows === 0 ? null : o.matched === o.rows, noneIndexed: o.partial || o.rows === 0 ? null : o.matched === 0, matchedByDomain: o.byDomain ?? {}, sampleMatches: [], warnings: [] }));
+    return p;
+  };
+  const partial253 = checkOf("partial-253", { command: "report list-objects", rows: 586, matched: 253, byDomain: { "data-management": 253 } });
+  r = run("exclude", ["--manifest", M, "--command", "journey data-designer list", "--reason", "x", "--check", partial253]);
+  check("exclude: a check that measured ANOTHER command is refused — evidence is bound to its candidate", r.code === 1 && /measured "report list-objects", not "journey data-designer list"/.test(r.stderr), r);
+  r = run("block", ["--manifest", M, "--command", "report list-objects", "--reason", "x", "--check", partial253]);
+  check("block: --check refused — a block carries no evidence (exit 1)", r.code === 1 && /applies only when recording an exclusion/.test(r.stderr) && !Object.hasOwn(lj().domains_blocked ?? {}, "report list-objects"), r);
+  r = run("exclude", ["--manifest", M, "--command", "report list-objects", "--remove", "--covered-by", "data-management"]);
+  check("exclude: --covered-by with --remove refused (exit 1)", r.code === 1 && /never with --remove/.test(r.stderr), r);
+  r = run("exclude", ["--manifest", M, "--command", "report list-objects", "--reason", "Redundant plus schema reference - covered more completely by data-management", "--check", partial253, "--covered-by", "data-management"]);
+  check("exclude: --covered-by on a partial overlap is REFUSED, quoting the numbers (the live F-449 instance)", r.code === 1 && /NOT covered by data-management/.test(r.stderr) && /253 of 586/.test(r.stderr) && /Adopt the candidate/.test(r.stderr) && !Object.hasOwn(lj().domains_excluded ?? {}, "report list-objects"), r);
+  r = run("exclude", ["--manifest", M, "--command", "report list-objects", "--reason", "judgment: rows are a schema reference feed", "--check", partial253]);
+  check("exclude: the same check without --covered-by records a judgment exclusion carrying the evidence", r.code === 0 && r.json?.kind === "judgment" && lj().domains_excluded?.["report list-objects"]?.evidence?.alreadyIndexed === 253 && lj().domains_excluded?.["report list-objects"]?.evidence?.uniqueIds === 586 && lj().domains_excluded?.["report list-objects"]?.evidence?.matchedByDomain?.["data-management"] === 253 && !Object.hasOwn(lj().domains_excluded?.["report list-objects"] ?? {}, "coveredBy") && !Object.hasOwn(lj().domains_excluded?.["report list-objects"] ?? {}, "noCheck"), r);
+  run("exclude", ["--manifest", M, "--command", "report list-objects", "--remove"]);
+  const all59 = checkOf("all-59", { command: "journey data-designer list", rows: 59, matched: 59, byDomain: { "data-management": 59 } });
+  r = run("exclude", ["--manifest", M, "--command", "journey data-designer list", "--reason", "filtered view of data-management", "--check", all59]);
+  check("exclude: a check that proves coverage is REFUSED without --covered-by (the claim is structural both ways)", r.code === 1 && /record it as one: --covered-by data-management/.test(r.stderr), r);
+  r = run("exclude", ["--manifest", M, "--command", "journey data-designer list", "--reason", "filtered view of data-management", "--check", all59, "--covered-by", "rules-engine"]);
+  check("exclude: --covered-by naming a domain the check did not match is refused", r.code === 1 && /NOT covered by rules-engine/.test(r.stderr), r);
+  r = run("exclude", ["--manifest", M, "--command", "journey data-designer list", "--reason", "filtered view of data-management", "--check", all59, "--covered-by", "data-management"]);
+  check("exclude: --covered-by accepted when every id sits under that one domain; kind coverage, evidence recorded", r.code === 0 && r.json?.kind === "coverage" && lj().domains_excluded?.["journey data-designer list"]?.coveredBy === "data-management" && lj().domains_excluded?.["journey data-designer list"]?.evidence?.rows === 59, r);
+  const split = checkOf("split", { command: "data-designer sources list", rows: 6, matched: 6, byDomain: { connectors: 3, "data-designer": 3 } });
+  r = run("exclude", ["--manifest", M, "--command", "data-designer sources list", "--reason", "3 connections plus 3 sentinel rows split across two domains", "--check", split]);
+  check("exclude: all-indexed but NO single domain holds every id is a judgment exclusion — allowed without --covered-by", r.code === 0 && r.json?.kind === "judgment", r);
+  r = run("exclude", ["--manifest", M, "--command", "data-designer sources list", "--reason", "x", "--check", split, "--covered-by", "connectors"]);
+  check("exclude: --covered-by one of two partial domains is refused (3 of 6 under it)", r.code === 1 && /NOT covered by connectors/.test(r.stderr) && /connectors: 3, data-designer: 3/.test(r.stderr), r);
+  // Symmetry: one domain holds EVERY id and a second overlaps part of the set —
+  // still coverage, so the claim is required (review round: the old rule keyed
+  // on "exactly one domain matched" and let this shape file as judgment).
+  const fullPlusOverlap = checkOf("full-plus-overlap", { command: "rules-engine rules templates list", rows: 3, matched: 3, byDomain: { "data_designer": 3, "rules-engine": 1 } });
+  r = run("exclude", ["--manifest", M, "--command", "rules-engine rules templates list", "--reason", "x", "--check", fullPlusOverlap]);
+  check("exclude: one domain holding every id plus a second partial overlap is STILL coverage — refused without --covered-by", r.code === 1 && /--covered-by data_designer/.test(r.stderr), r);
+  r = run("exclude", ["--manifest", M, "--command", "rules-engine rules templates list", "--reason", "x", "--check", fullPlusOverlap, "--covered-by", "data_designer"]);
+  check("exclude: --covered-by accepts the manifest's own domain grammar (underscore) and the full-cover domain", r.code === 0 && r.json?.kind === "coverage", r);
+  const partialExtract = checkOf("partial-extract", { command: "connectors px", rows: 10, matched: 4, unresolved: 6, partial: true, byDomain: { connectors: 4 } });
+  r = run("exclude", ["--manifest", M, "--command", "connectors px", "--reason", "x", "--check", partialExtract]);
+  check("exclude: a PARTIAL check is refused outright — it answers for the resolvable subset only", r.code === 1 && /PARTIAL/.test(r.stderr) && /6 row\(s\)/.test(r.stderr), r);
+  const empty = checkOf("empty", { command: "connectors px", rows: 0, matched: 0 });
+  r = run("exclude", ["--manifest", M, "--command", "connectors px", "--reason", "empty on this tenant - 0 rows", "--check", empty, "--recheck-after", "2030-06-01"]);
+  check("exclude: a 0-row check (answer withheld) still records a judgment exclusion with its evidence and a recheck date", r.code === 0 && r.json?.kind === "judgment" && lj().domains_excluded?.["connectors px"]?.evidence?.rows === 0 && lj().domains_excluded?.["connectors px"]?.recheckAfter === "2030-06-01", r);
+  r = run("exclude", ["--manifest", M, "--command", "connectors px", "--reason", "x", "--check", empty, "--covered-by", "connectors"]);
+  check("exclude: --covered-by on a withheld (0-row) check is refused, naming the withheld answer", r.code === 1 && /answer is withheld \(0 rows\)/.test(r.stderr), r);
+  r = run("exclude", ["--manifest", M, "--command", "connectors px", "--reason", "x", "--no-check", "no items array", "--covered-by", "connectors"]);
+  check("exclude: --covered-by with --no-check is refused — a coverage claim needs the numbers", r.code === 1 && /needs the check's numbers/.test(r.stderr), r);
+  r = run("exclude", ["--manifest", M, "--command", "connectors px", "--reason", "x", "--no-check", "n", "--check", empty]);
+  check("exclude: --check and --no-check together refused", r.code === 1 && /exactly one of --check/.test(r.stderr), r);
+  const notCheck = join(dirname(M), "check-not-a-check.json");
+  writeFileSync(notCheck, JSON.stringify({ data: [{ id: 1 }] }));
+  r = run("exclude", ["--manifest", M, "--command", "connectors px", "--reason", "x", "--check", notCheck]);
+  check("exclude: a --check file that is not a check output (a captured list) is refused", r.code === 1 && /not a domain-candidates.mjs check output/.test(r.stderr), r);
+  writeFileSync(notCheck, JSON.stringify({ ok: true, command: "connectors px", checkedAt: "2026-01-01T00:00:00.000Z", rows: 253, uniqueIds: 253, alreadyIndexed: 253, allIndexed: true, matchedByDomain: { connectors: 253 } }));
+  r = run("exclude", ["--manifest", M, "--command", "connectors px", "--reason", "x", "--check", notCheck, "--covered-by", "connectors"]);
+  check("exclude: a hand-assembled check lacking partial/unresolvedRows is refused — every read field must be present", r.code === 1 && /not a domain-candidates.mjs check output/.test(r.stderr), r);
+  writeFileSync(notCheck, "{not json");
+  r = run("exclude", ["--manifest", M, "--command", "connectors px", "--reason", "x", "--check", notCheck]);
+  check("exclude: an unparseable --check file is refused", r.code === 1 && /cannot parse --check/.test(r.stderr), r);
+  r = run("exclude", ["--manifest", M, "--command", "connectors px", "--reason", "x", "--check", empty, "--covered-by", "Data Management"]);
+  check("exclude: --covered-by must be a domain name (exit 1)", r.code === 1 && /must be a manifest domain name/.test(r.stderr), r);
+  r = run("exclude", ["--manifest", M, "--command", "connectors px", "--reason", "x", "--no-check", "référence"]);
+  check("exclude: --no-check shares --reason's printable-ASCII rule (exit 1)", r.code === 1 && /--no-check must be printable ASCII/.test(r.stderr), r);
   r = run("block", ["--manifest", M, "--command", "connectors list", "--remove", "--recheck-after", "2027-01-01"]);
   check("block: --recheck-after with --remove rejected (exit 1)", r.code === 1 && /applies only when recording a block/.test(r.stderr), r);
   run("block", ["--manifest", M, "--command", "connectors jobs", "--reason", "x"]);

@@ -337,8 +337,9 @@ then work through them in the order printed. A candidate flagged `likelyPerAsset
 is probably a per-asset sublist whose required flag the catalog does not declare (the
 filter drops only *declared* required flags): expect its tenant-wide run to fail with a
 runtime "X is required" error, and when it does, exclude it as a per-asset sublist
-citing that error — the flag is advisory, so still run it once rather than excluding on
-the hint alone. A candidate carrying a non-null `requiredEnumFlags` is runnable
+citing that error (no capture exists, so no overlap check can run: pass
+`--no-check "<the runtime error>"` in place of `--check`, step 3) — the flag is
+advisory, so still run it once rather than excluding on the hint alone. A candidate carrying a non-null `requiredEnumFlags` is runnable
 tenant-wide only through those enum flags (e.g. `--type` over `MDA|SFDC`): to evaluate
 or adopt it, run the list once per enum value and combine the captures — a decision on
 such a candidate covers every value, and its reason should say so.
@@ -364,8 +365,14 @@ such a candidate covers every value, and its reason should say so.
    inventory?"**, never "does a domain of this name exist" (a filtered view of an
    already-indexed list matches under a *different* domain than its namespace suggests):
    ```
-   node .gs-superadmin/plugin/scripts/domain-candidates.mjs check --manifest <slug>/_manifest.json --file <tmp-file> --id-field <idField>
+   node .gs-superadmin/plugin/scripts/domain-candidates.mjs check --manifest <slug>/_manifest.json --file <tmp-file> --id-field <idField> --command "<path>" --out <check-file>
    ```
+   `<path>` is the exact `path` value the diff printed for this candidate (the same value
+   step 3's `exclude --command` takes); `<check-file>` is a tmp path of your choosing
+   (e.g. `.gs-superadmin/tmp/check-<n>.json`, one per candidate). The script writes the
+   same JSON it prints, stamped with the command, and step 3's `exclude` takes that file
+   as the decision's evidence — it refuses a file that measured a different command, so
+   a reused path fails loudly rather than deciding one candidate on another's numbers.
    `<idField>` is a dot path into each row (pass `--items-path <dot.path>` when the items
    array needs locating, as for `upsert-batch`). A connection-shaped payload's id path
    follows the endpoint and the CLI version that captured it — `cn list` nests it
@@ -389,21 +396,38 @@ such a candidate covers every value, and its reason should say so.
    0-row answer must be decided from the payload itself — inspect the capture first
    (a typo'd `--items-path` and a captured error body both look like "empty"), and
    only if the tenant's list is genuinely empty, adopt it as an empty domain
-   (`upsert-batch --allow-empty`, stamp-only) or exclude it with a reason:
+   (`upsert-batch --allow-empty`, stamp-only) or exclude it as a judgment call (the
+   second fence below, with `--recheck-after` — an empty list can fill):
    - `noneIndexed` and the rows are owned/configured assets (the "What counts" rule
      above) → **adopt**: `upsert-batch` it under the diff's `suggestedName` — or another
      non-colliding name when `nameCollision` is flagged — never a bare namespace, never
      an existing domain's name (naming rule above). A tiny row count is not a failed
      crawl: some real domains are small, config-shaped lists.
-   - `allIndexed` → a filtered view of an already-indexed list: **exclude**, naming the
-     covering domain (the check's `matchedByDomain`) in the reason.
+   - `allIndexed` → a filtered view of an already-indexed list: **exclude as covered**,
+     naming the covering domain (the check's `matchedByDomain`) as the `--covered-by` flag:
+   ```
+   node .gs-superadmin/plugin/scripts/manifest.mjs exclude --manifest <slug>/_manifest.json --command "<path>" --reason "<why>" --check <check-file> --covered-by <domain>
+   ```
    - Otherwise — partial overlap, activity/history feeds, execution records,
      lookup/reference data, organizational containers with no dependency surface —
-     **exclude** with the item's own specific reason (a blanket "reference data" is often
-     wrong; record what a future re-run needs in order to not re-litigate the call):
+     **exclude as a judgment call** with the item's own specific reason (a blanket
+     "reference data" is often wrong; record what a future re-run needs in order to not
+     re-litigate the call). A **partial overlap is never "covered"**: rows the covering
+     domain does not hold are indexed nowhere, and `deps-report` answers "nothing depends
+     on this" for every one of them — so 253 of 586 is an adopt, not an exclude:
    ```
-   node .gs-superadmin/plugin/scripts/manifest.mjs exclude --manifest <slug>/_manifest.json --command "<path>" --reason "<why>"
+   node .gs-superadmin/plugin/scripts/manifest.mjs exclude --manifest <slug>/_manifest.json --command "<path>" --reason "<why>" --check <check-file>
    ```
+   The verb binds the verdict to the check's numbers, not to the prose: `--covered-by` is
+   refused unless that one domain holds every unique id, and a check where some domain
+   does is refused without `--covered-by`. Exactly two cases have no check to pass, and
+   they pass `--no-check "<why-no-check>"` in place of `--check`, where
+   `<why-no-check>` is the cause and nothing else: the payload carries no items array
+   (as `journey cta options`), or the list command failed at runtime with a required-flag
+   error (step 1's per-asset sublists). Add `--recheck-after <YYYY-MM-DD>` when the
+   reason rests on a tenant state that can change (a 0-row list, "empty on this tenant")
+   rather than on the payload's shape — the diff surfaces the exclusion by name once the
+   date passes, as it does a block's.
    `<path>` is the exact `path` value the diff printed for the candidate; `<why>` is the
    specific reason just decided.
 4. Re-run the diff with `--require-decided` — it must exit 0 before Phase 4 reports:
