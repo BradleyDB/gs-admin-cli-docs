@@ -93,6 +93,7 @@ import {
   idPathHint,
   ZERO_RESOLVE_HEAD,
   readJsonFile,
+  writeFileAtomicSync,
   findItemsArray,
   extractIds,
   makeCliHelpers,
@@ -285,11 +286,20 @@ if (verb === "diff") {
     }
     return byPath;
   };
-  // canonical path → { reason, decidedAt }
+  // canonical path → { reason, decidedAt, coveredBy, evidence, noCheck, recheckAfter }
+  // — the F-449 evidence fields ride along so the diff can say what KIND of
+  // decision each exclusion is (coverage / judgment / legacy) from the record,
+  // never from its prose.
   const excludedByPath = loadDecisionMap(manifest.domains_excluded, {
     label: "excluded",
     lift: "lift it (exclude --remove)",
     keepNote: "record kept",
+    extraFields: {
+      coveredBy: (v) => (typeof v === "string" ? v : null),
+      evidence: (v) => (v && typeof v === "object" && !Array.isArray(v) ? v : null),
+      noCheck: (v) => (typeof v === "string" ? v : null),
+      recheckAfter: (v) => (typeof v === "string" ? v : null),
+    },
   });
   // canonical path → { reason, decidedAt, recheckAfter }
   const blockedByPath = loadDecisionMap(manifest.domains_blocked, {
@@ -343,7 +353,23 @@ if (verb === "diff") {
     if (inDomains) {
       indexed.push({ path: c.path, shortPath: c.shortPath ?? null, domains: [...inDomains].sort() });
     } else if (excl) {
-      excluded.push({ path: c.path, shortPath: c.shortPath ?? null, reason: excl.reason, decidedAt: excl.decidedAt });
+      // kind is derived from the RECORD (F-449): coverage carries the flag
+      // the numbers supported; judgment carries evidence or an explicit
+      // no-check reason; legacy predates evidence and its prose is all there is.
+      const kind = excl.coveredBy ? "coverage" : excl.evidence || excl.noCheck ? "judgment" : "legacy";
+      const recheckDue = excl.recheckAfter != null && excl.recheckAfter <= today;
+      excluded.push({
+        path: c.path, shortPath: c.shortPath ?? null, reason: excl.reason, decidedAt: excl.decidedAt,
+        kind, coveredBy: excl.coveredBy, evidence: excl.evidence, noCheck: excl.noCheck,
+        recheckAfter: excl.recheckAfter, recheckDue,
+      });
+      if (recheckDue) {
+        warnings.push(
+          `excluded candidate "${c.shortPath ?? c.path}" passed its re-check date (${excl.recheckAfter}) — ` +
+            `re-run its list command and the overlap check, then re-decide: adopt it (exclude --remove, then ` +
+            `upsert-batch) or re-exclude with the fresh --check`
+        );
+      }
     } else {
       // Undecided AND blocked candidates both carry the full identification an
       // adoption needs (namespace, summary, suggested name): a blocked
@@ -508,7 +534,7 @@ if (verb === "diff") {
         `(upsert-batch --allow-empty, stamp-only) or exclude with a reason`
     );
   }
-  out({
+  const result = {
     ok: true,
     rows: items.length,
     idsExtracted: ids.length,
@@ -524,5 +550,11 @@ if (verb === "diff") {
     matchedByDomain,
     sampleMatches: matches.slice(0, 5),
     warnings,
-  });
+  };
+  // --out (F-449): the same JSON, written to a file `manifest.mjs exclude
+  // --check` reads as the decision's evidence — so the numbers the verdict is
+  // bound to are the numbers this run measured, never a re-typed copy.
+  const outPath = opt("--out");
+  if (outPath !== undefined) writeFileAtomicSync(resolve(outPath), JSON.stringify(result, null, 2) + "\n");
+  out(result);
 }

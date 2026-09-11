@@ -364,8 +364,11 @@ such a candidate covers every value, and its reason should say so.
    inventory?"**, never "does a domain of this name exist" (a filtered view of an
    already-indexed list matches under a *different* domain than its namespace suggests):
    ```
-   node .gs-superadmin/plugin/scripts/domain-candidates.mjs check --manifest <slug>/_manifest.json --file <tmp-file> --id-field <idField>
+   node .gs-superadmin/plugin/scripts/domain-candidates.mjs check --manifest <slug>/_manifest.json --file <tmp-file> --id-field <idField> --out <check-file>
    ```
+   `<check-file>` is a tmp path of your choosing (e.g. `.gs-superadmin/tmp/check-<n>.json`,
+   one per candidate): the script writes the same JSON it prints, and step 3's `exclude`
+   takes that file as the decision's evidence.
    `<idField>` is a dot path into each row (pass `--items-path <dot.path>` when the items
    array needs locating, as for `upsert-batch`). A connection-shaped payload's id path
    follows the endpoint and the CLI version that captured it — `cn list` nests it
@@ -395,15 +398,29 @@ such a candidate covers every value, and its reason should say so.
      non-colliding name when `nameCollision` is flagged — never a bare namespace, never
      an existing domain's name (naming rule above). A tiny row count is not a failed
      crawl: some real domains are small, config-shaped lists.
-   - `allIndexed` → a filtered view of an already-indexed list: **exclude**, naming the
-     covering domain (the check's `matchedByDomain`) in the reason.
+   - `allIndexed` → a filtered view of an already-indexed list: **exclude as covered**,
+     naming the covering domain (the check's `matchedByDomain`) as the `--covered-by` flag:
+   ```
+   node .gs-superadmin/plugin/scripts/manifest.mjs exclude --manifest <slug>/_manifest.json --command "<path>" --reason "<why>" --check <check-file> --covered-by <domain>
+   ```
    - Otherwise — partial overlap, activity/history feeds, execution records,
      lookup/reference data, organizational containers with no dependency surface —
-     **exclude** with the item's own specific reason (a blanket "reference data" is often
-     wrong; record what a future re-run needs in order to not re-litigate the call):
+     **exclude as a judgment call** with the item's own specific reason (a blanket
+     "reference data" is often wrong; record what a future re-run needs in order to not
+     re-litigate the call). A **partial overlap is never "covered"**: rows the covering
+     domain does not hold are indexed nowhere, and `deps-report` answers "nothing depends
+     on this" for every one of them — so 253 of 586 is an adopt, not an exclude:
    ```
-   node .gs-superadmin/plugin/scripts/manifest.mjs exclude --manifest <slug>/_manifest.json --command "<path>" --reason "<why>"
+   node .gs-superadmin/plugin/scripts/manifest.mjs exclude --manifest <slug>/_manifest.json --command "<path>" --reason "<why>" --check <check-file>
    ```
+   The verb binds the verdict to the check's numbers, not to the prose: `--covered-by` is
+   refused unless every unique id is indexed under that one domain, and a check that
+   proves exactly that is refused without `--covered-by`. A candidate no check could run
+   for (the payload carries no items array, as `journey cta options`) passes
+   `--no-check "<why>"` in place of `--check`. Add `--recheck-after <YYYY-MM-DD>` when the
+   reason rests on a tenant state that can change (a 0-row list, "empty on this tenant")
+   rather than on the payload's shape — the diff surfaces the exclusion by name once the
+   date passes, as it does a block's.
    `<path>` is the exact `path` value the diff printed for the candidate; `<why>` is the
    specific reason just decided.
 4. Re-run the diff with `--require-decided` — it must exit 0 before Phase 4 reports:

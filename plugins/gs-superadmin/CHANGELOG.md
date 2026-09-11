@@ -5,6 +5,26 @@ marketplace doesn't pin versions — users get main — so entries describe what
 user who updates, not internal refactors. Entries before 0.8.0 were reconstructed from git
 history when this file was introduced.
 
+## 0.38.0 — 2026-09-11
+
+Setup Phase 4's index-or-exclude decision is bound to the overlap check's numbers. What a
+user gets by updating: `manifest.mjs exclude` refuses to record "covered by another domain"
+unless the check it now takes as evidence says every row is indexed under that domain — and
+refuses to record a check that proves coverage as anything else. On one tenant a
+"redundant, covered more completely" exclusion was recorded over a check that read 253 of
+586, leaving roughly 333 objects indexed nowhere and `deps-report` answering "nothing
+depends on this" for each of them; the same evidence on a second tenant was adopted. The
+rule was prose; it is now the verb.
+
+- `domain-candidates.mjs check --out <file>` writes the check JSON it prints.
+- `manifest.mjs exclude` takes exactly one of `--check <file>` or `--no-check "<why>"`
+  (a record write without evidence is refused — this is the breaking change), the coverage
+  claim as `--covered-by <domain>`, and `--recheck-after` like `block`.
+- Exclusion entries carry `evidence` (or `noCheck`), `coveredBy`, `recheckAfter`; existing
+  entries are untouched and the diff reports them as `legacy`. The diff's `excluded` rows
+  gain `kind` and `recheckDue`, warning by name when an exclusion's re-check date passes.
+- Setup Phase 4 and refresh prose follow the verb. Existing workspaces need no migration.
+
 ## 0.37.1 — 2026-09-10
 
 Operating model gains one Known CLI issue. What a user gets by updating: a note that
