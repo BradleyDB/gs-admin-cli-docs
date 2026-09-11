@@ -155,7 +155,12 @@ Blind spots (hb-20260909-01): the skipped-path arm of F-448 (a docs-only PR to d
      path and, ruled by Bradley 2026-09-11, the accept path re-deciding the sandbox journey-data-designer duplicate. Carried to the next rounds, in this round's
      scope at kickoff and left OPEN: F-453 (polish, Session D) and F-454 (polish, Session C1) per dev/handoff/.
      Also staged on the branch: plugin 0.38.0 (CHANGELOG), dev/handoff/ (round plan, session prompts, cleanup plan
-     for rounds B-E). No new finding numbers claimed. Re-stamped when statuses on the branch change. -->
+     for rounds B-E). No new finding numbers claimed. Re-stamped when statuses on the branch change. 
+     Dispatch evidence (F-340), PR suite on the minted tip 7b54eb8, QUOTED after completion:
+         validate-plugin 34651853167: changes success / manifests success / validate (ubuntu-latest) success
+         docs-drift 34651853155: drift (full) success
+         PR #16 mergeStateStatus CLEAN.
+     -->
 
 <!-- builder 2026-09-09 (docs-only promotion to main RELEASED — post-release housekeeping):
      Payload: the contributor-onboarding surfaces (#6: compare link, guard message, PR template,
