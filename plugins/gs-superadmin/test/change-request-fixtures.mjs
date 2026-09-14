@@ -218,6 +218,28 @@ check("operating model states the set-source fact with the same terms as SKILL.m
   operatingModel.includes('"Select an Object"') && skillDoc.includes('"Select an Object"') &&
     operatingModel.includes("set-source-template") && operatingModel.includes("Prepare Dataset"), null);
 
+// 6b — the admin's reading (plugin 0.39.0): the plan's Before-building section is
+// taught in SKILL.md step 4, rendered by the template with its honest empty line,
+// surfaced in the step-7 chat summary, and grounded in the operating model's Role
+// section — all four load into the same session, so the section must exist in every
+// one of them or the LLM drafts it from whichever copy it read last.
+const EMPTY_READ = "Nothing to add — the change as asked is the direct way to do it, and nothing the ticket left out would change this plan.";
+check("plan template carries the Before building section and its honest empty line",
+  planTemplate.includes("## Before building") && planTemplate.includes(EMPTY_READ), null);
+check("plan template ties a guessed purpose to the header's AI-inferred tag",
+  planTemplate.includes("`AI-inferred`"), null);
+check("SKILL.md step 4 teaches the one test for what the reading writes",
+  skillDoc.includes("*Before building*") &&
+    skillDoc.includes("can you point to the line of the plan, or the thing") &&
+    skillDoc.includes('"would a thorough consultant mention this?"'), null);
+check("SKILL.md step-7 summary fence carries the Heads-up line",
+  /```\n✓ change-request plan drafted[\s\S]*?\n  Heads-up:  <[\s\S]*?```/.test(skillDoc), null);
+check("operating model Role carries the admin's job and the session's",
+  operatingModel.includes("### The admin's job, and yours") &&
+    operatingModel.includes("Your job is the same job, one level down."), null);
+check("expected plan demonstrates the Before building section",
+  expectedPlan.includes("## Before building") && !expectedPlan.includes(EMPTY_READ), null);
+
 // 7 — journal outcome wording: the operating model quotes the hook's outcome
 // strings verbatim; lock doc and hook together so a rewording in either file
 // fails here instead of stranding the other.
