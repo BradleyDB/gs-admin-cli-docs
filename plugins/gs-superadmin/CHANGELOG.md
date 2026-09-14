@@ -5,6 +5,38 @@ marketplace doesn't pin versions — users get main — so entries describe what
 user who updates, not internal refactors. Entries before 0.8.0 were reconstructed from git
 history when this file was introduced.
 
+## 0.39.0 — 2026-09-14
+
+The operating model's Role section gains *The admin's job, and yours*, and the
+change-request plan gains a **Before building** section that comes from it. What a user
+gets by updating: every session is told how a good CS Ops admin thinks about a change —
+not just whether the tenant can build it, but what it does to the CS team's strategy, the
+CSMs who'll work it, the data it depends on, and the customers on the other end — and that
+its own job is to do that thinking with the KB open, ask the questions a newer admin might
+not think to, and tell the admin where the build as asked doesn't fit and what the better
+version costs, in as few lines as the change deserves, leaving the decision with the
+admin. The plan carries that between the impact analysis and the assets, held to one test:
+would the admin build or say something different after reading it? If the tenant already
+has a way to do this, the section cites the KB doc and says what that way gives up; where
+the ticket left something open, it says which way the plan went and asks; a ticket that
+says what it's for and asks for the right thing gets one line saying so. The plan is
+written on the ask as stated whatever the section says, and the chat summary's `Heads-up:`
+line shows the one line the admin most needs before opening the file.
+
+- `templates/operating-model.md` Role: the one canonical statement; the skill points at
+  it. Existing workspaces pick it up through the scaffold's `.new` flow at the next setup
+  or refresh.
+- `skills/change-request/SKILL.md` step 4 teaches the thinking and the one test for what
+  gets written; step 7's summary gains the `Heads-up:` line.
+- `references/plan-template.md`: the section, its render rule, and its exact empty line
+  (`Nothing to add — the change as asked is the direct way to do it, and nothing the
+  ticket left out would change this plan.`).
+- `test/change-request-fixtures.mjs` locks the section across the four documents that
+  teach, render, summarize, and ground it; the expected plan demonstrates it (the
+  fixture's playbook decision moves from Risk notes into the reading, where it belonged).
+- Skill prose only — no script, hook, or guard behaviour moves. The tester walk is owed
+  (no tenant in the contributor session); see the PR.
+
 ## 0.38.0 — 2026-09-11
 
 Setup Phase 4's index-or-exclude decision is bound to the overlap check's numbers. What a

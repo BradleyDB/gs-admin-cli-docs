@@ -40,6 +40,31 @@ KB fresh for all cited assets (last refresh 2026-06-28, within TTL). Field names
 `NPS_Score__gc` / `Segment__gc` are KB-confirmed but must be re-verified live at execution
 time (step 1 below) since this plan was drafted without CLI access.
 
+## Before building
+
+- `NPS_Score__gc` is each company's latest survey response, however old
+  (`rules-engine/rul-9f3e21.md` loads the most recent response every night, with its date
+  in `NPS_Response_Date__gc`). So as written, the rule opens a CTA today for a detractor
+  score from any past survey — and, since the score is still below 6 after the CSM closes
+  the CTA, opens it again the next morning. A CSM who closes the same alert three mornings
+  running stops reading alerts. The plan builds what was asked (any current score below
+  6); if a detractor has to be recent to count, step 6 gets a fourth condition on
+  `NPS_Response_Date__gc`, and the requester should say how recent.
+- The ticket says what it's for and asks for a rule of its own; this plan builds that. The
+  tenant already has a Risk CTA rule on these companies — `CTA|DRIVE|CSM Low Health Score
+  Risk Alert` (`rules-engine/rul-4b7d10.md`) — and the NPS check could go in there as a
+  second action with its own reason: one rule, one schedule. The downside: you'd be
+  editing a rule that's already opening CTAs in production, you couldn't test or roll back
+  the NPS piece on its own, and the NPS alert would run on that rule's 05:00 UTC schedule.
+- Either way, Enterprise CSMs get a second stream of Risk CTAs: an account whose NPS drops
+  can end up with two open Risk CTAs for one problem, one for health and one for NPS. The
+  requester should expect that, or say which one should win.
+- Two choices the ticket left to the plan: no playbook attached (attaching the existing
+  "Risk Mitigation" playbook changes step 7's action flags and the due date from +5 to +0
+  days; a Risk CTA with nothing to do attached is the kind CSMs close without reading),
+  and "Enterprise" read as the `Segment__gc` picklist value alone (an ARR threshold adds a
+  condition in step 6 and a field to verify).
+
 ## Assets to create / modify
 
 1. **CREATE** Rules Engine rule: `CTA|DRIVE|CSM Enterprise NPS Below 6 Risk Alert` — opens a
@@ -68,9 +93,6 @@ time (step 1 below) since this plan was drafted without CLI access.
   `executions`) are catalog-non-mutating and pass silently. Those prompts confirm each
   command; explicit user approval of this plan is the gate. Commands are run one at a
   time, only after that approval, only from this list.
-- **Open decision for the reviewer:** attach the existing "Risk Mitigation" playbook (then
-  due date +0 days per convention) or run playbook-less with the default +5-day due date?
-  The request doesn't say; the plan assumes **no playbook** until the reviewer decides.
 
 ## Command sequence
 

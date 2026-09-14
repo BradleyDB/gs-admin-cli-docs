@@ -33,6 +33,15 @@ Render rules — read before the fence:
   documented assets in gs-rules; run /gs-superadmin:refresh"⟩` when none). The *Assets to
   create/modify* list, *Command sequence* steps, *Manual (UI-only) steps*, and *Rollback*
   steps likewise repeat once per item, keeping their numbering continuous.
+- *Before building* holds what step 4 turned up — only what would change what the admin
+  builds or says to the requester, in as few lines as it takes. If it names a way the
+  tenant can already do this, it cites the KB doc and says what that way gives up; if it
+  raises a choice the plan made where the ask was silent, it says which way the plan went;
+  if it guesses at what the ticket is for, it says so, and the header's `Justification:`
+  tag reads `AI-inferred`. When nothing would change, the section is exactly `Nothing to
+  add — the change as asked is the direct way to do it, and nothing the ticket left out
+  would change this plan.` Whatever the section says, the plan is written on the ask as
+  stated; nothing here holds up drafting.
 - In the command sequence, values that can only be resolved against the live tenant at
   execution time stay as `⟨resolve live: what and how⟩` — that is the one placeholder form
   that legitimately survives into the plan file (it is resolved at execution, not at
@@ -72,6 +81,10 @@ Render rules — read before the fence:
 | ⟨name⟩ | ⟨domain⟩ | ⟨reads/writes same field, overlapping CTA identifiers, downstream consumer, …⟩ | ⟨kb path⟩ (⟨date⟩) |
 
 ⟨freshness caveats: docs past TTL, undocumented domains, refresh recommendation — or "KB fresh for all cited assets"⟩
+
+## Before building
+
+⟨what step 4 turned up, in as few lines as it takes — only what would change what the admin builds or says to the requester — or exactly "Nothing to add — the change as asked is the direct way to do it, and nothing the ticket left out would change this plan."⟩
 
 ## Assets to create / modify
 
