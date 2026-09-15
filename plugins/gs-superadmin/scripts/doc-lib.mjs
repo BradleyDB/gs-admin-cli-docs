@@ -1705,12 +1705,69 @@ export function indexedElsewhere(inventory, ids, excludeDomain = null) {
 // `jo dd get`, `jo s get`, the two `list-and-describe` combos, and the six
 // scheduling/Events-Framework reads added at 1.0.6 — and is re-audited by
 // hand at each CLI adoption (check-stale-facts pins the version stamp in
-// this sentence). Callers COMPOSE on it: describe-batch adds the
-// describe-shape regex; capture adds list shapes and `check`.
+// this sentence). Callers COMPOSE on it through isDescribeRead below:
+// describe-batch uses that predicate as its whole policy; capture adds list
+// shapes and `check`.
 export const READ_VERB_EXACT = new Set([
   "template", "measures", "get", "list-and-describe",
   "schedules", "topics", "events", "s3-tasks", "event-curl",
 ]);
+// The describe-shaped read predicate BOTH spawn-capable scripts compose on
+// (F-456). The gate hands it the resolved path's trailing word AND the
+// matched catalog entry; until F-456 only the word was read, so a per-item
+// describe whose path ends in a noun — `cn chain`, actionKey
+// describe-job-chain — was refused by describe-batch and capture alike,
+// leaving no sanctioned route to document the domain. The catalog's
+// `actionKey` is the action's own name (generated from the manifests,
+// semantically stable), so a describe-shaped key admits on its own merits.
+// The trailing word stays a second admit, not a fallback only: the
+// allowlisted reads carry non-describe keys (`jo e template` is
+// get-email-template, `sc measures` get-scorecard-measures — measured at
+// the pin, 2026-09-14), so "key instead of word" would refuse them. A
+// hand-trimmed workspace catalog carries no actionKey, and there the word
+// decides alone. `describe` is matched as a whole segment (`describe` or
+// `describe-…`), never as a prefix of a longer word. Never keyed on
+// `mutating` (F-456: two upstream mislabelled writers carried false); the
+// shared gate's endpoint check backstops every admit either way.
+export const DESCRIBE_SHAPE_RE = /^describe(-|$)/;
+/**
+ * @param {string | undefined} verb  the resolved catalog path's trailing word
+ * @param {{actionKey?: unknown} | null | undefined} cmd  the matched catalog entry (fields absent on trimmed catalogs)
+ * @returns {boolean}
+ */
+export function isDescribeRead(verb, cmd) {
+  const key = cmd && typeof cmd === "object" && typeof cmd.actionKey === "string" ? cmd.actionKey : null;
+  if (key !== null && DESCRIBE_SHAPE_RE.test(key)) return true;
+  return typeof verb === "string" && (DESCRIBE_SHAPE_RE.test(verb) || READ_VERB_EXACT.has(verb));
+}
+
+// The CLI's re-login instruction — the sentence every auth-path throw in the
+// v1.0.9 package's dist/core/auth/index.js ends with (F-458). Four literals,
+// all session-wide (the CLI cannot obtain a bearer token; no command after
+// them succeeds until `gs-admin login`): "No stored token found. Run
+// `gs-admin login` to authenticate."; "Access token has expired and no
+// refresh token is available. Run `gs-admin login` to re-authenticate.";
+// "Token expired and silent refresh failed (<cause>). Run `gs-admin login`
+// to re-authenticate." — the half-life case setup Phase 1's pre-flight
+// names; "Token refresh failed (<status>). Run `gs-admin login` to
+// re-authenticate.". Pinned on the shared sentence, not on a cause, so all
+// four classify the same way (ruled 2026-09-14). Other CLI mentions of login
+// ("Run: gs-admin login", "run 'gs-admin login'") are worded differently and
+// do not match. Classified only on a FAILED spawn — the CLI's shared handler
+// (dist/commands/base.js BaseCommand.catch) writes `Error: <message>` to
+// stderr and exits 1 for every thrown error, so a successful command is
+// never reclassified by its stderr. One home for both spawn-capable scripts
+// (describe-batch stops its loop on it; capture may classify the same death
+// later): the version citation is the adoption-time tripwire
+// (check-stale-facts, FACT_CARRIERS) — re-read that file at the next pin.
+export const AUTH_DEATH = /Run `gs-admin login` to (re-)?authenticate/;
+/**
+ * @param {{ok: boolean, stdout: string, stderr: string}} r  a spawn result
+ * @returns {boolean}
+ */
+export function isAuthDeath(r) {
+  return !r.ok && (AUTH_DEATH.test(r.stderr) || AUTH_DEATH.test(r.stdout));
+}
 
 // Argv hygiene for a command a spawn-capable script is about to run — shared
 // for the same F-284 reason as the gate below (review round: the first-token

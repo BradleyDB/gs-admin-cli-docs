@@ -35,7 +35,7 @@ import {
   makeCommandResolver, listMdFiles, direntIsDirectory, replaceFileSync, removeFileSync,
   decode, htmlToText, templateTokens, compactProgramPayload, renderProgramDoc,
   renderTemplateDoc, STUB_MARKER, STUB_MARKER_RE, escapeRe, sleepMs, scanListEnvelope, decideEntryArray, entryDecisionReason,
-  parseDocJson, docMeta, docH1, NO_NAME, assertReadOnlyCommand, readKbIdentity,
+  parseDocJson, docMeta, docH1, NO_NAME, assertReadOnlyCommand, isDescribeRead, readKbIdentity,
   resolveRecordedDomains, recordedDomainsByPath, indexedElsewhere, RECORDED_LANES, laneTable,
 } from "../scripts/doc-lib.mjs";
 // List-page envelope docs and the indexer payload live in the shared reader
@@ -120,6 +120,38 @@ function check(label, cond, detail) {
   } finally {
     removeTempDir(dir);
   }
+}
+
+// ── isDescribeRead — the read-shape predicate both spawn-capable scripts compose on (F-456) ──
+// Decision points enumerated from the function (the unpinned-arm recipe): the
+// actionKey clause fires only on a STRING actionKey that is describe-shaped
+// (`describe` alone or `describe-…` — a segment boundary, never a prefix of a
+// longer word); everything else falls to the trailing-word rule (describe
+// shape or the exact allowlist). A non-describe actionKey never REFUSES a
+// verb the trailing-word rule admits: at 1.0.9 twelve allowlisted commands
+// carry keys like get-email-template, so "actionKey instead of the verb"
+// would have refused them all.
+{
+  /** @type {Array<[string, string | undefined, {actionKey?: unknown} | null | undefined, boolean]>} */
+  const arms = [
+    ["describe-shaped actionKey, noun verb (cn chain)", "chain", { actionKey: "describe-job-chain" }, true],
+    ["actionKey exactly `describe`", "chain", { actionKey: "describe" }, true],
+    ["actionKey `described-x` is NOT describe-shaped (segment boundary)", "chain", { actionKey: "described-x" }, false],
+    ["non-describe actionKey, allowlisted verb (jo e template)", "template", { actionKey: "get-email-template" }, true],
+    ["non-describe actionKey, describe verb", "describe", { actionKey: "get-thing" }, true],
+    ["list actionKey, list verb", "list", { actionKey: "list-rules" }, false],
+    ["no actionKey, describe verb (trimmed catalog)", "describe", {}, true],
+    ["no actionKey, noun verb (trimmed catalog)", "chain", {}, false],
+    ["null entry, describe verb", "describe", null, true],
+    ["undefined entry, noun verb", "chain", undefined, false],
+    ["non-string actionKey falls to the verb — number, noun verb", "chain", { actionKey: 7 }, false],
+    ["non-string actionKey falls to the verb — number, describe verb", "describe", { actionKey: 7 }, true],
+    ["undefined verb, describe actionKey", undefined, { actionKey: "describe-x" }, true],
+    ["undefined verb, no actionKey", undefined, {}, false],
+    ["allowlisted verb `measures` under a get- actionKey", "measures", { actionKey: "get-scorecard-measures" }, true],
+    ["hyphenated allowlisted verb `s3-tasks`", "s3-tasks", { actionKey: "s3-tasks" }, true],
+  ];
+  for (const [label, verb, cmd, want] of arms) check(`isDescribeRead: ${label} → ${want}`, isDescribeRead(verb, cmd) === want, { verb, cmd });
 }
 
 // ── STUB_MARKER / STUB_MARKER_RE / escapeRe — the T-3 single source (DS-13) ──

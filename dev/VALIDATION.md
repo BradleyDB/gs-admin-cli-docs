@@ -89,3 +89,60 @@ premise (every dataset is a dm object) does not hold on today's sandbox — reco
 numbers on the bus and do not exclude. Relationship maps are unaffected (the domain is
 not one of the five lanes); note in the verdict whether `deps-report` on the sandbox still
 answers for one of the 69 names through data-management.
+
+## F-456 — live deep-ingest of the connectors-chains lane through the RECORDED describe, no manual fallback (banked 2026-09-14, builder, Session B)
+
+Owed by: the tester round on the token the Session B handoff mints (see the Under test line).
+Tenant: either; the sandbox is preferred (fewer chains). Reads only against the tenant; the
+writes are to the local workspace manifest and the domain's KB folder.
+Precondition: the workspace's connectors-chains domain records `describeCommand` as
+`gs-admin --json cn chain --id {id}` (the lane the finding measured) — confirm with a local
+read of `<slug>/_manifest.json` `domains_indexed`. If the July fallback left it recorded as
+`none`, re-record the template first: `manifest.mjs upsert-batch --describe-command
+"gs-admin --json cn chain --id {id}"` over a fresh list capture of that domain.
+
+Steps (from the consumer workspace, plugin loaded from the working tree; token pre-flight per
+setup Phase 1 first):
+1. `node .gs-superadmin/plugin/scripts/describe-batch.mjs --manifest <slug>/_manifest.json --domain <chains-domain> --out-dir <slug>/<chains-domain> --limit 3 --upgrade`
+   — with NO `--command`: the recorded template must clear the gate on its own merits.
+2. Read the summary: `commandSource: "recorded"`, `documented ≥ 1`, no `aborted`; one chain's
+   doc under `<slug>/<chains-domain>/` with `doc_path` recorded on its entry (local read).
+3. The other sanctioned route, one chain through the capture helper:
+   `node .gs-superadmin/plugin/scripts/capture.mjs --out .gs-superadmin/tmp/chain-probe.json -- gs-admin --json cn chain --id <one id from the manifest>`
+   — exit 0 and a JSON file, with no `--normalize` and no bare redirect anywhere.
+
+Pass bar: both scripts admit the lane; no manual per-asset path, no redirect-then-normalize.
+A gate refusal on either ("not a describe-shaped read" / "not a capture-shaped read")
+REOPENS F-456. Record the documented count and the chain id shape on the bus.
+
+## F-458 / #13 — one batch run PAST the token half-life: summary + manifest (banked 2026-09-14, builder, Session B)
+
+Owed by: the same tester round (Session B-V).
+Tenant: the sandbox. Reads only against the tenant; the writes are the local manifest and docs.
+Rig: the binding deadline must be the TOKEN, not the harness — run the batch from a terminal
+(not the tool shell's ~2-minute timeout) on a domain with more undocumented or
+`--upgrade`-eligible assets than the token's usable life covers at the observed rate (setup
+Phase 1's pre-flight formula; at ~3 s/asset a fresh token's usable life covers roughly 600
+describes, so `--limit 800` on the largest stub domain runs past it).
+
+Steps:
+1. `gs-admin login` fresh; note `whoami`'s remaining seconds.
+2. Run describe-batch on that domain with the oversized `--limit` and let it stop on its own.
+3. Read the summary: `aborted.reason: "auth"`, `aborted.lastError` carrying the CLI's
+   re-login sentence, `failures: []`, `failed: 0`, `documented: N`; stderr showed
+   `ABORTED after <N+1> entries (auth)`.
+4. Read the manifest locally: every entry the run reached is `documented` or at its prior
+   status; the count of entries with `status === "failed"` whose `error` contains
+   `gs-admin login` is 0.
+5. `gs-admin login`, re-invoke the same command: the run resumes; the entry that was in
+   flight documents normally.
+6. (#13's live confirmation, optional, harmless) on a SMALL domain, run describe-batch with
+   `--command` naming a describe whose id space cannot match — e.g. `gs-admin --json re r
+   describe --id {id}` over the scorecard domain, `--limit 10`: the run must stop after
+   exactly 5 spawns with `aborted.reason: "consecutive-failures"`, `after: 5`, five entries
+   marked `failed`; then restore them (`manifest.mjs mark --status stale` on each key, or
+   re-run the domain with its recorded command).
+
+Pass bar: steps 3–5 as stated (step 6 as stated if run). Any entry marked `failed` whose
+recorded error is the re-login sentence REOPENS F-458; a walk of the asset list past five
+consecutive identical failures REOPENS #13.

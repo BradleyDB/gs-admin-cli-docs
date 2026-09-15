@@ -520,6 +520,11 @@ const FACT_CARRIERS = [
       // The read-verb allowlist is re-audited by hand at each adoption; pinning
       // the audit note's version stamp forces that re-audit when the pin moves.
       { re: /read actions in the v(\d+\.\d+\.\d+) catalog/, expect: meta.cliVersion, what: "read-verb allowlist audit version" },
+      // The auth-death sentence the spawn-capable scripts classify a token
+      // death by (F-458) is the CLI's own re-login instruction, read from the
+      // installed package's auth module; the version stamp beside it forces
+      // a re-read of that file when the pin moves.
+      { re: /\/\/ v(\d+\.\d+\.\d+) package's dist\/core\/auth\/index\.js/, expect: meta.cliVersion, what: "auth-death literal audit version" },
     ],
   },
 ];

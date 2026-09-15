@@ -5,6 +5,33 @@ marketplace doesn't pin versions — users get main — so entries describe what
 user who updates, not internal refactors. Entries before 0.8.0 were reconstructed from git
 history when this file was introduced.
 
+## 0.39.0 — 2026-09-14
+
+The describe loop stops itself, and says why. What a user gets by updating: a dead token
+or a wrong `describeCommand` no longer walks the whole asset list — `describe-batch.mjs`
+aborts a domain after five consecutive failed marks (issue #13) and aborts on the first
+auth failure with nothing marked (F-458), reporting either as one new summary field,
+`aborted: { reason: "consecutive-failures" | "auth", after, lastError }` (absent on a run
+that did not stop early; `budgetExhausted`, `moreRemaining` and `failures` are unchanged).
+A run that ended because the token died therefore never records that death as an asset's
+`failed` state: on one live run seventeen healthy assets carried it with the auth error as
+their reason; the entry in flight now keeps its status and is simply re-offered after
+`gs-admin login` (real describe failures earlier in the same run still stand).
+
+- The read-only gate in `describe-batch.mjs` and `capture.mjs` admits a per-item describe
+  on its catalog `actionKey` as well as on the path's trailing word (F-456): `cn chain`
+  (`describe-job-chain`) and `re r execution` (`describe-execution`) are now describable
+  and capturable through both scripts, so the connectors-chains lane needs no manual
+  fallback. A committed sweep over the shipped catalog names any future refusal at
+  adoption time.
+- Every `capture.mjs --paginate` fence in the skills quotes its `--out` value: Windows
+  PowerShell consumed the unquoted `{page}` placeholder and the command failed (issue #10).
+  The helper's refusal for a missing placeholder now names that cause.
+- Setup Phase 5: the stop rule names the within-run limit and both `aborted` reasons; the
+  batch-sizing guidance names the nearer of the shell timeout and the token's usable life
+  as the binding deadline, and says to size against the slow end of observed rates. The
+  manual per-asset path carries the same auth exception.
+
 ## 0.38.0 — 2026-09-11
 
 Setup Phase 4's index-or-exclude decision is bound to the overlap check's numbers. What a

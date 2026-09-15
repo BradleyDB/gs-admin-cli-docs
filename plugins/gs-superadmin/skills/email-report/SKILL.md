@@ -87,7 +87,7 @@ without a payload ever entering context (rule canon: setup Phase 4's "List
 exhaustively"; clean UTF-8, no BOM, any shell; never a bare shell redirect):
 
 ```
-node .gs-superadmin/plugin/scripts/capture.mjs --paginate --page-flag page --out .gs-superadmin/tmp/er-plist-{page}.json -- gs-admin --json jo p list --limit 200
+node .gs-superadmin/plugin/scripts/capture.mjs --paginate --page-flag page --out '.gs-superadmin/tmp/er-plist-{page}.json' -- gs-admin --json jo p list --limit 200
 ```
 
 `{page}` is literal — the script substitutes it, one file per page (`er-plist-1.json`

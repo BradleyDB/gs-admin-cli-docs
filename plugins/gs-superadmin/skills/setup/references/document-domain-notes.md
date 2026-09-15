@@ -139,7 +139,10 @@ the doc (skips what is captured, retries what failed). Size `--limit` at **1–2
 templates per invocation and keep re-invoking until `moreRemaining: false`; the
 stderr progress line shows `(spawns used/budget)`. A budget-cut run reports
 `documented: 0` with an EMPTY `failures` list — that is progress, not the stop
-rule's "same failures twice" signal; the stop rule keys on named failures only. A
+rule's "same failures twice" signal; the stop rule keys on named failures only.
+A run carrying `aborted` has the same shape and is NOT progress: the token died
+(`aborted.reason: "auth"` — log in, then re-invoke) or five entries in a row failed
+(`"consecutive-failures"`) — the rule is setup Phase 5's stop-rule paragraph. A
 template with a RETRYABLE failure (timeout, transport, unexpected output) after
 every item was attempted is marked `failed` with the count (its doc stays on disk
 and still yields its summary rows) and the stop rule applies as usual; a field the
