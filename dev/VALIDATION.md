@@ -90,9 +90,9 @@ numbers on the bus and do not exclude. Relationship maps are unaffected (the dom
 not one of the five lanes); note in the verdict whether `deps-report` on the sandbox still
 answers for one of the 69 names through data-management.
 
-## F-456 — live deep-ingest of the connectors-chains lane through the RECORDED describe, no manual fallback (banked 2026-09-14, builder, Session B)
+## F-456 — live deep-ingest of the connectors-chains lane through the RECORDED describe, no manual fallback (banked 2026-09-14, builder, Session B @ hb-20260914-01)
 
-Owed by: the tester round on the token the Session B handoff mints (see the Under test line).
+Owed by: the tester round @ hb-20260914-01 (Session B-V; branch round-b-describe-loop, PR #19).
 Tenant: either; the sandbox is preferred (fewer chains). Reads only against the tenant; the
 writes are to the local workspace manifest and the domain's KB folder.
 Precondition: the workspace's connectors-chains domain records `describeCommand` as
@@ -115,9 +115,9 @@ Pass bar: both scripts admit the lane; no manual per-asset path, no redirect-the
 A gate refusal on either ("not a describe-shaped read" / "not a capture-shaped read")
 REOPENS F-456. Record the documented count and the chain id shape on the bus.
 
-## F-458 / #13 — one batch run PAST the token half-life: summary + manifest (banked 2026-09-14, builder, Session B)
+## F-458 / #13 — one batch run PAST the token half-life: summary + manifest (banked 2026-09-14, builder, Session B @ hb-20260914-01)
 
-Owed by: the same tester round (Session B-V).
+Owed by: the same tester round @ hb-20260914-01 (Session B-V; branch round-b-describe-loop, PR #19).
 Tenant: the sandbox. Reads only against the tenant; the writes are the local manifest and docs.
 Rig: the binding deadline must be the TOKEN, not the harness — run the batch from a terminal
 (not the tool shell's ~2-minute timeout) on a domain with more undocumented or
