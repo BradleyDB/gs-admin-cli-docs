@@ -169,3 +169,55 @@ Steps:
 Pass bar: steps 3–5 as stated (step 6 as stated if run). Any entry marked `failed` whose
 recorded error is the re-login sentence REOPENS F-458; a walk of the asset list past five
 consecutive identical failures REOPENS #13.
+
+## F-459 — reconcile-docs over the sandbox's three legacy domains, plus the report reads for F-455 / F-454 / F-451 (banked 2026-09-15, builder, Session C1 @ hb-20260915-01)
+
+Owed by: the tester round @ hb-20260915-01 (Session C1-V; branch round-c1-report-truth, PR #20).
+Tenant: none needed — no gs-admin call in this arm. The sandbox WORKSPACE is written (its
+`_manifest.json`, `doc_path` fields only); prod is read as a control. Plugin loaded from
+the working tree; every command below runs from the workspace root with a RELATIVE
+`--manifest <slug>/_manifest.json` (reconcile-docs refuses a working directory the
+recorded paths do not resolve from — that refusal, if it fires, is the arm's first
+finding, not a rig problem).
+Precondition (local read, before anything): the sandbox's `report` shows
+`docPathsUnknown` 20 in total, spread over three July-crawled domains (the data-designer
+domain 3, the rules-engine-chains domain 14, the scorecard domain 3 at the builder's
+read on 2026-09-15 — the B-V round had re-marked five chain entries since the 25 logged);
+prod shows 0. A different total is not a failure — record it — but a domain outside those
+three is.
+
+Steps:
+1. `node .gs-superadmin/plugin/scripts/manifest.mjs report --manifest <slug>/_manifest.json`
+   on BOTH tenants; hold the output to the Fix notes' claims: prod — every `none`
+   domain reads `describeState: list-only` with its stubs under `byDepth.listOnly`,
+   `byDepth.metadata` 0 and `byDepth.unrecorded` 0 tenant-wide, `domains.report`
+   reads `changeDetection: none` with `datelessEntries` 1754; sandbox — `domainCounts`
+   18 / 17 / 1 with the surveys domain in `emptyDomains`, five legacy stamps reading
+   `describeState: unrecorded`, the templates domain `changeDetection: date` with
+   `datelessEntries` 557, `byDomain` rows numbers-only, `docPathsUnknown` per the
+   precondition. Quote the numbers on the bus.
+2. For each of the three domains, `manifest.mjs reconcile-docs --manifest
+   <slug>/_manifest.json --domain <d> --dry-run --out .gs-superadmin/tmp/reconcile-<d>.json`
+   — read `recorded`, `recordedMissing`, `unmatchedDocumented`, `orphanFiles`; the
+   manifest is byte-identical after a dry run.
+3. The same three without `--dry-run`. Expected: `recorded` sums to the precondition's
+   total, `unmatchedDocumented` 0 (every legacy stub is still on disk), `orphanFiles`
+   named if any (a rekey or a removed entry left them — list them, delete nothing).
+4. `report` again: `docPathsUnknown` 0 on the sandbox, and for one of the three domains
+   read its `domains.<d>` row and its entries' `doc_path` values (local read of the
+   manifest) — every documented entry now names a file that exists.
+5. Re-run step 3 once more: `recorded` 0, `alreadyRecorded` = step 3's `recorded`,
+   manifest byte-identical (idempotent).
+
+Pass bar: `docPathsUnknown` reaches 0 on the sandbox with every difference explained
+by `unmatchedDocumented` or `orphanFiles` by name; prod reads 0 before and needs no
+reconcile; the report reads in step 1 hold. A `docPathsUnknown` that does not reach 0
+without such an explanation, a reconcile that writes a `doc_path` pointing at no file,
+or a report row that contradicts step 1's claims REOPENS the matching entry (F-459 /
+F-455 / F-454 / F-451).
+Walks (slash-only, the user types them): `/gs-superadmin:setup` — the Phase 4 relay
+must quote `domainCounts.indexed` and name `emptyDomains`; if the run reaches Phase 5's
+close or the final report it must quote ONE `report`'s `byDepth` with the `Depth:` and
+`Not complete:` lines, never a narrative; decline any ask. `/gs-superadmin:refresh` —
+its report must end with the `Not checked for change this run:` block naming the
+`none` domains and the dateless count (or `none`), never silently at "Unchanged".
