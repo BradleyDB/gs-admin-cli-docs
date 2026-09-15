@@ -146,8 +146,8 @@ what the gate counts (F-444). The gate refuses both. Sections from F-360 on; the
 rule also reads the archive.
 
 
-Under test: dev · hb-20260914-02 · 2026-09-14
-Blind spots (hb-20260914-02): post-merge close-out of PR 19 on dev: nothing new is under test; the Session B arms were measured on the sandbox by the tester round (F-456 and F-458 CLEARED). Still unmeasured on any tenant, all fixture-only: the tester's own blind spots — F-456's --upgrade selection over a metadata-depth chain and the refuse direction (trimmed catalog, PUT twin); F-458's designer mid-drilldown death, the three sibling auth literals, and an oversized-batch rig from a fresh token. F-459 (section logged today, OPEN) awaits Session C1, plus everything Sessions C1 onward bank.
+Under test: round-c1-report-truth · hb-20260915-01 · 2026-09-15
+Blind spots (hb-20260915-01): no live tenant call was needed and none was made: the report reads over both real manifests were measured locally (read-only) and the counts reproduced, but the ONE manifest write this round adds — reconcile-docs over the sandbox's three legacy domains (20 pathless entries today) — is the tester's, banked in dev/VALIDATION.md; the setup and refresh walks (both slash-only) are unwalked — no CI executes skill prose, so the quoted-report relay shapes rest on the fixtures and the prose; the mark refusal's only reachable route (a hand-run documented mark on a pathless legacy entry) and the reconcile CWD-mismatch refusal are fixture-only; the win32 folder-case arm ran on this host only, the Linux/macOS legs rest on CI
 
 <!-- builder 2026-09-14 (Session B round CLOSED OUT — MERGED):
      Payload: DB-1..DB-4 of the September round plan — #10 ({page} quoted in every paginate fence; capture's refusal names
