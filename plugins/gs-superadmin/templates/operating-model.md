@@ -437,7 +437,15 @@ When you discover new relationships (e.g., a rule writes to a field that a score
 ## Build standards
 
 Refer to `.gs-superadmin/CONVENTIONS.md` before authoring or modifying any Gainsight asset
-(rules, journeys, reports, scorecards). If `.gs-superadmin/conventions/` exists (the adopted
+(rules, journeys, reports, scorecards). That file is **workspace-wide**: every tenant
+indexed here reads it, unless a `<slug>/CONVENTIONS.md` exists beside that tenant's KB
+folder — then that file replaces it for that tenant alone (the exception, not the norm:
+one company, one set of conventions; copy the workspace file into `<slug>/` and edit it
+only when a tenant genuinely differs). Every reader, scripted or prose, looks for the
+tenant file first and says which one it used; an adopted `.gs-superadmin/conventions/`
+pack stays workspace-wide and sits BETWEEN the two — a tenant file's filled-in section
+wins over the pack, the pack over the workspace file's section — and an existing tenant
+file is never completed from the workspace file (two files never read as one). If `.gs-superadmin/conventions/` exists (the adopted
 build-standards pack), consult `conventions/index.md` and load **only** the topic file
 relevant to the current task — `naming.md` for names/renames/audits, `query-building.md`
 for any dataset work (building or editing a query in Rules, Data Designer, or JO Programs;

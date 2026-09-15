@@ -210,20 +210,31 @@ try {
   const T2_REPORT_KEYS = [
     "ok", "slug", "baseUrl", "environment", "total", "last_refresh", "byStatus", "byDomain", "lookback", "lookbackDefault",
     "domains_indexed", "domains_excluded", "domains_blocked", "emptyDomains",
-    "byDepth", "domainCounts", "docPathsUnknown", "domains",
+    "byDepth", "domainCounts", "docPathsUnknown", "domains", "pinFacts",
   ].sort().join(",");
-  check("T-2 v3: report carries exactly the typedef keys (v2 set + byDepth/domainCounts/docPathsUnknown/domains)", Object.keys(rep).sort().join(",") === T2_REPORT_KEYS, Object.keys(rep).sort());
+  check("T-2 v4: report carries exactly the typedef keys (v2 set + byDepth/domainCounts/docPathsUnknown/domains + pinFacts)", Object.keys(rep).sort().join(",") === T2_REPORT_KEYS, Object.keys(rep).sort());
   const T2_DEPTH_KEYS = "full,listOnly,metadata,unrecorded";
   check("T-2 v3: byDepth is exactly {full, metadata, listOnly, unrecorded}, all numbers", Object.keys(rep.byDepth).sort().join(",") === T2_DEPTH_KEYS && Object.values(rep.byDepth).every((v) => typeof v === "number"), rep.byDepth);
   check("T-2 v3: domainCounts is exactly {indexed, withAssets, empty}", Object.keys(rep.domainCounts).sort().join(",") === "empty,indexed,withAssets", rep.domainCounts);
   check("T-2 v3: docPathsUnknown is a number", typeof rep.docPathsUnknown === "number", rep.docPathsUnknown);
-  const T2_DOMAIN_ROW_KEYS = "byDepth,changeDetection,datelessEntries,describeState,docPathsUnknown,stamped";
-  check("T-2 v3: one domains row per stamped or populated domain, each exactly {stamped, describeState, byDepth, changeDetection, datelessEntries, docPathsUnknown}",
+  const T2_DOMAIN_ROW_KEYS = "byDepth,changeDetection,datelessEntries,describeState,docPathsUnknown,scope,stamped";
+  check("T-2 v4: one domains row per stamped or populated domain, each exactly {stamped, describeState, byDepth, changeDetection, datelessEntries, docPathsUnknown, scope}",
     Object.keys(rep.domains).sort().join(",") === [...new Set([...Object.keys(rep.byDomain), ...Object.keys(rep.domains_indexed)])].sort().join(",") &&
       Object.values(rep.domains).every((d) => Object.keys(d).sort().join(",") === T2_DOMAIN_ROW_KEYS && Object.keys(d.byDepth).sort().join(",") === T2_DEPTH_KEYS),
     rep.domains);
   check("T-2 v3: describeState ∈ describable|list-only|unrecorded and changeDetection ∈ date|none|unrecorded on every row",
     Object.values(rep.domains).every((d) => ["describable", "list-only", "unrecorded"].includes(d.describeState) && ["date", "none", "unrecorded"].includes(d.changeDetection) && typeof d.stamped === "boolean"), rep.domains);
+  // v4 (F-450 c): scope is DERIVED from the stamp's recorded listCommand
+  // through doc-lib's per-pin table — the templates stamp above recorded
+  // `jo email templates`, a scope-limited command at the pin; the rules
+  // stamp recorded nothing. pinFacts says the table applied (the scratch
+  // dir has no workspace catalog, so the bundled one — at the pin — is read).
+  check("T-2 v4: pinFacts is exactly {stamped, catalogVersion, applied, why} and applied against the bundled catalog",
+    Object.keys(rep.pinFacts ?? {}).sort().join(",") === "applied,catalogVersion,stamped,why" && rep.pinFacts.applied === true && rep.pinFacts.why === null && rep.pinFacts.stamped === rep.pinFacts.catalogVersion, rep.pinFacts);
+  check("T-2 v4: scope is {key, path, limit} on the scope-limited templates domain (key = catalog id, path = canonical path) and null on the others",
+    rep.domains["journey-email-templates"]?.scope?.key === "journey:email:templates" && rep.domains["journey-email-templates"].scope.path === "journey email templates" && typeof rep.domains["journey-email-templates"].scope.limit === "string" && rep.domains["journey-email-templates"].scope.limit.length > 0 &&
+      Object.keys(rep.domains["journey-email-templates"].scope).sort().join(",") === "key,limit,path" && rep.domains["rules-engine-rules"]?.scope === null && rep.domains["legacy-domain"]?.scope === null,
+    Object.fromEntries(Object.entries(rep.domains).map(([k, d]) => [k, d.scope])));
   check("T-2 v3: byDomain rows are numbers only — nothing new was nested into them", Object.values(rep.byDomain).every((row) => Object.values(row).every((v) => typeof v === "number")), rep.byDomain);
   check("T-2 v3: the fixture's recorded-none domain reads changeDetection none; the recorded-field domain reads date; the legacy string-stamp domain reads unrecorded",
     rep.domains["rules-engine-rules"]?.changeDetection === "none" && rep.domains["journey-email-templates"]?.changeDetection === "date" && rep.domains["legacy-domain"]?.changeDetection === "unrecorded", Object.fromEntries(Object.entries(rep.domains).map(([k, d]) => [k, d.changeDetection])));

@@ -607,6 +607,53 @@ try {
     } finally { snap.restore(); }
   }
 
+  // ── check 23 · the scope-limit canon and the per-pin table agree both ways (F-450 c) ─
+  {
+    const NOTES = "plugins/gs-superadmin/skills/setup/references/index-scope-notes.md";
+    const DOCLIB = "plugins/gs-superadmin/scripts/doc-lib.mjs";
+    const snap = snapshotFiles([at(NOTES), at(DOCLIB)]);
+    try {
+      mutate(NOTES, (s) => s.replace("### journey surveys list", "### journey surveys listing"));
+      const res = run();
+      check("check 23a: a table entry whose canon subsection is missing (heading respelled) goes red naming the command and the file",
+        res.status === 1 && /check 23: .*scope entry for "journey surveys list" but .*index-scope-notes\.md has no "### journey surveys list" subsection/.test(res.stderr) && /"### journey surveys listing" subsection .* has no scope entry/.test(res.stderr), res.stderr);
+    } finally { snap.restore(); }
+    try {
+      mutate(NOTES, (s) => s.replace("## Recovering list-invisible email templates", "### connectors chains\n\nA limit nobody tabled.\n\n## Recovering list-invisible email templates"));
+      const res = run();
+      check("check 23b: a canon subsection with no table entry goes red naming the subsection",
+        res.status === 1 && /check 23: .*"### connectors chains" subsection under "Scope-limited domains" but doc-lib's CLI_PIN_FACTS has no scope entry/.test(res.stderr), res.stderr);
+    } finally { snap.restore(); }
+    try {
+      mutate(NOTES, (s) => s.replace("## Recovering list-invisible email templates", "## Recovering\n\n### journey surveys list\n\n## Recovering list-invisible email templates").replace("### journey surveys list\n\nHardcodes", "### journey surveys list (moved)\n\nHardcodes"));
+      const res = run();
+      check("check 23c: a subsection outside the Scope-limited section does not count as the canon",
+        res.status === 1 && /has no "### journey surveys list" subsection/.test(res.stderr), res.stderr);
+    } finally { snap.restore(); }
+    try {
+      mutate(DOCLIB, (s) => s.replace("export const CLI_PIN_FACTS = Object.freeze({", "export const CLI_PIN_FACTS = Object.freeze(Object.assign({}, {"));
+      const res = run();
+      check("check 23d: the table's opener changing shape goes red at the reader, not silently as an empty sweep — and ONLY at the reader (no spurious per-subsection failures)",
+        res.status === 1 && /check 23: could not read the scope entries out of/.test(res.stderr) && (res.stderr.match(/check 23:/g) ?? []).length === 1, res.stderr);
+    } finally { snap.restore(); }
+    try {
+      mutate(NOTES, (s) => s.replace("### journey surveys list", "```markdown\n### journey fenceprobe list\n```\n\n### journey surveys list"));
+      const res = run();
+      check("check 23f: a heading-shaped line inside a fenced example is neither canon nor a terminator (the file's fence grammar)", res.status === 0, res.stderr);
+    } finally { snap.restore(); }
+    try {
+      mutate(NOTES, (s) => s.replace("## Recovering list-invisible email templates", "# Appendix\n\n### journey appendix list\n\n## Recovering list-invisible email templates"));
+      const res = run();
+      check("check 23g: a level-1 heading ends the section — a ### under a later # Appendix is not canon", res.status === 0, res.stderr);
+    } finally { snap.restore(); }
+    try {
+      mutate(NOTES, (s) => s.replace("## Scope-limited domains — paging cannot fix these", "## Scope limits — paging cannot fix these"));
+      const res = run();
+      check("check 23e: the section heading itself renamed goes red naming the file (the anchor is read, F-439 class)",
+        res.status === 1 && /check 23: .*index-scope-notes\.md has no "## Scope-limited domains" section/.test(res.stderr), res.stderr);
+    } finally { snap.restore(); }
+  }
+
   // ── check 11: guard-residuals anchor drift ─────────────────────────────────
   {
     const snap = snapshotFiles([at(PLUGIN_README)]);

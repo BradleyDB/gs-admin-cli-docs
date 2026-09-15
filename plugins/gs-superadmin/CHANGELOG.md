@@ -5,6 +5,61 @@ marketplace doesn't pin versions — users get main — so entries describe what
 user who updates, not internal refactors. Entries before 0.8.0 were reconstructed from git
 history when this file was introduced.
 
+## 0.41.0 — 2026-09-15
+
+One decision per kind of fact (F-450): three facts that lived at the wrong scope now each
+have one home, and the Phase 4 relay can finally ask an answerable question (F-452). What
+a user gets by updating:
+
+- **Per-CLI facts ship with the plugin, not per tenant.** doc-lib's `CLI_PIN_FACTS` is a
+  version-stamped table (keyed by catalog command id, applied only while the workspace
+  catalog is at that pin — the ask-overrides precedent; `check-stale-facts` refuses a
+  stale stamp) of what the installed CLI does that its catalog does not declare:
+  - `domain-candidates.mjs diff` reports the four `re rules` sublists (events,
+    executions, s3-tasks, schedules — list-shaped, no declared required flag, refuse to
+    run bare) under a new `notEnumerableBare` bucket with the flag each needs, before any
+    tenant decision: they never gate, and a tenant exclusion or block recorded against one
+    (the pre-table route: three runtime failures, then an exclusion, re-derived on every
+    new tenant) is reported inert on the entry and dropped from the decisions in force.
+    `pinFacts` in the output says whether the table applied; under another pin every
+    sublist is ordinary undecided work again, with a warning.
+  - `manifest.mjs report` derives `domains.<domain>.scope` — `{ key, path, limit }` — for
+    every domain whose recorded `listCommand` is a scope-limited command (`jo email
+    templates` flattens a folder level and hides some templates; `jo surveys list` is
+    PUBLISH-only; `jo data-designer list` is one dataset type — a membership signal over
+    data-management, not a domain), plus a top-level `pinFacts`. Nothing is recorded per
+    tenant and nothing is backfilled: existing workspaces read their limits on the next
+    report. The canon stays prose — one subsection per command in setup's
+    index-scope-notes.md, headed by the command's canonical path, which `check-doc-drift`
+    holds to the table both ways.
+  - The setup Phase 4 relay names every scope-limited domain from `scope` with its
+    limit and the fact that the remainder can be added later, BEFORE asking whether the
+    totals look right (F-452: a CLI-reachable subset used to read as a tenant total at the
+    one moment the user was asked to validate it).
+- **CONVENTIONS.md is workspace-wide by default, with a per-tenant override.** The file is
+  shared by every tenant of the workspace (one company, one set of conventions); a tenant
+  that differs gets its own `<slug>/CONVENTIONS.md` beside its KB, which the deps-report
+  and email-report scripts read first (an existing tenant file is the home whatever it
+  says — never completed from the workspace file) and name in the report header and, when
+  it declares nothing, in the exact-only caveat (so a tenant file that shadows a workspace
+  declaration is named, not silently in force); the precedence everywhere is tenant file >
+  adopted `conventions/` pack > workspace file, stated once in the operating model and
+  followed by the audit, change-request and deprecate prose. The "Tenant-specific" banner
+  had promised what the readers did not do.
+- **A blank date string is not a date.** `upsert-batch` stores an empty-string
+  modified-date value as null (the row is present-but-valueless, counted by report's
+  `datelessEntries`), warns once when EVERY row of a full list is blank (`cn chains` at
+  CLI 1.0.9 emits `modifiedDateStr` as `""`) with the `--no-date-field --allow-redate`
+  remedy, clears a blank stored before this rule on the next upsert (`blankDatesCleared`
+  in the summary — before the baseline branch, so adoption over stored blanks baselines
+  instead of flipping stale), and `report` counts a stored blank as dateless before any
+  upsert repairs it. Two workspaces had recorded the same command
+  differently — one the field, one none — and the one carrying the field showed four
+  "dated" chains that could never change.
+- Contract: T-2 v4 — `scope` on every `GsReportDomain` row and `pinFacts` on `GsReport`,
+  additive, pinned by `test/contract-conformance.mjs`; the diff's output gains
+  `notEnumerableBare`, `notEnumerableBareCount` and `pinFacts`.
+
 ## 0.40.0 — 2026-09-15
 
 The report is the account of KB state, and it now says how deep that state goes. What a

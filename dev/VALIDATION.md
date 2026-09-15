@@ -274,3 +274,46 @@ the PULL-REQUEST suite on the PR head; a `[skip ci]` verdict commit at the tip r
 `gh workflow run` dispatch does not join the PR rollup, and neither an empty commit nor a
 close/reopen fired the suite (no check suite was created for a commit with no file changes).
 This line is the content change that re-runs the suite on the head; nothing else moved.
+
+## F-450 / F-452 — the C2 arms: scope with no backfill, inert per-pin records, the tenant conventions override, and the sandbox connectors-chains redate (banked 2026-09-15, builder, Session C2)
+
+Owed by: the tester round on the token the C2 handoff mints (branch round-c2-fact-homes;
+PR number on the bus's dev comment). Tenant reads: NONE for the scope arm — `scope` is
+derived from each manifest's recorded list commands and the shipped per-pin table, so both
+workspaces read it today without re-listing anything. The walks (setup to the Phase 4
+relay; deps-report; refresh if run) read the tenant the way walks always do. The ONE
+manifest write is step 4, sandbox only.
+1. Read-only, both tenants, from the workspace root: `manifest.mjs report --manifest
+   <slug>/_manifest.json` — `pinFacts.applied` true; `domains.<d>.scope` non-null on exactly
+   the domains recorded from `jo email templates` and `jo surveys list` (builder's local
+   read: two per tenant, journey-email-templates and journey-surveys; no domain recorded
+   from `jo data-designer list` remains on either), each `{ key, path, limit }` with `path`
+   naming a `###` subsection of setup's index-scope-notes.md; every other row `scope: null`.
+   Then `domain-candidates.mjs diff --manifest <slug>/_manifest.json --require-decided`:
+   exit 0, `notEnumerableBareCount` 4 (the four `re rules` sublists), each
+   `tenantRecord: "excluded"` with one inert warning apiece, `undecidedCount` 0,
+   `excludedCount` 17 (the six per-CLI records no longer counted — 21 before). Both
+   manifests byte-identical before and after (sha256). A scope on any other domain, a
+   sublist under `undecided`, or a changed manifest REOPENS F-450.
+2. Setup walk (slash-only, Bradley types it) on the sandbox, to the Phase 4 relay: the
+   relay carries the exclusion ledger with the diff's `excludedCount`, names
+   `notEnumerableBareCount` separately, and lists one scope line per non-null `scope` row —
+   limit and path quoted from THAT run's report — BEFORE the totals question. A relay that
+   asks first, restates a limit from memory, or names a limit for a row whose `scope` is null
+   REOPENS F-452.
+3. deps-report walk with the override, one tenant only: copy the workspace
+   `.gs-superadmin/CONVENTIONS.md` to `<sandbox-slug>/CONVENTIONS.md` and declare a
+   task-alias prefix THERE only; run deps-report with a `--field` term on the sandbox (the
+   header reads "from the tenant conventions — the tenant's own CONVENTIONS.md override")
+   and on prod (exact-only caveat naming the workspace file, or the workspace's own pattern
+   if one is declared there — never the sandbox's); delete the copy afterwards. A prod run
+   adopting the sandbox's pattern REOPENS F-450 (a).
+4. The connectors-chains redate (sandbox; the one write). First a plain re-upsert of a
+   fresh `cn chains` capture with the recorded field (no flags): summary
+   `blankDatesCleared: 4`, `dateResolvedRows: 0`, one warning naming the all-blank shape
+   and the remedy — the builder measured all four rows carrying `modifiedDateStr: ""` on
+   three captures (July, August, September). Then `--no-date-field --allow-redate` on the
+   same capture, and `report`: `domains.connectors-chains.changeDetection` `none`,
+   `datelessEntries` 4. Prod needs nothing (already recorded none). A summary without
+   `blankDatesCleared`, or a chain still reading dated after the first upsert, REOPENS
+   F-450.

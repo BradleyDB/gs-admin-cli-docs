@@ -447,7 +447,9 @@ editing session has unsaved changes (the Journey cache is keyed by program id, n
                             `node .gs-superadmin/plugin/scripts/<x>.mjs`; created by setup,
                             repointed at every plugin session start, never a copy
   operating-model.md        Claude's always-on instructions (yours to edit)
-  CONVENTIONS.md            Build standards entry point (yours to fill in)
+  CONVENTIONS.md            Build standards entry point (yours to fill in; workspace-wide —
+                            a `<slug>/CONVENTIONS.md` beside a tenant's KB overrides it
+                            for that tenant alone)
   conventions/              Opt-in build-standards pack (yours to edit or delete)
   catalog.json              Generated from the installed CLI's manifests (bundled
                             snapshot if generation fails)
