@@ -149,6 +149,23 @@ rule also reads the archive.
 Under test: dev · hb-20260911-04 · 2026-09-11
 Blind spots (hb-20260911-04): post-merge close-out of PR 16 on dev: nothing new is under test; the F-449 arms were measured on the sandbox by the tester round (both CLEARED). Still unmeasured on any tenant: everything the next rounds bank (Session B onward, handoffs/ — local-only, untracked), and F-459 (documented entries with no doc_path) which is OPEN for Session C1 and reproducible only on the three July-crawled sandbox domains
 
+<!-- builder 2026-09-14 (Session B — describe loop and its fences; UNMERGED, riding a branch):
+     Payload: DB-1..DB-4 of the September round plan — #10 ({page} quoted in every paginate fence, capture's refusal names
+       the shell cause, check-doc-drift check 14 holds the quoting), F-456 (one exported read-shape predicate, doc-lib
+       isDescribeRead, admitting a describe-shaped actionKey — cn chain and the unlisted sibling re r execution — composed
+       by describe-batch AND capture; catalog sweep test pins the admitted set at the pin), #13 + F-458 (describe-batch
+       aborts after 5 consecutive failed marks, and on the FIRST auth death with nothing marked — doc-lib isAuthDeath on the
+       CLI's re-login sentence, version-stamped; one additive summary field aborted { reason, after, lastError }). Plugin
+       0.39.0 staged (CHANGELOG). Rulings recorded in the Fix notes (Bradley, 2026-09-14).
+     Branch round-b-describe-loop -> PR #19, base dev, UNMERGED. Transitions on the branch: F-456 OPEN -> FIXED,
+       F-458 OPEN -> FIXED (both with Class/Judge/Sibling sweep). Claims no new F-number. #10 and #13 close on merge.
+     Review: /code-review medium, 8 finders + 3 file-batched verifiers — 8 findings, all fixed on the branch (F-458 Fix note).
+     Under test on the branch: hb-20260914-01; blind spots = the two live arms banked in dev/VALIDATION.md (Session B
+       sections) plus the skill walks (setup slash-only; fence-only edits in audit, deprecate, email-report, refresh).
+     Carried, not in scope: PR #17 (draft, also stages 0.39.0 — the second to merge rebases its bump); OPEN polish F-453
+       (Session D) and F-454 (Session C1) stay with their scheduled rounds.
+     Next: Session B-V (tester, consumer workspace) on the branch; then C1/C2 per handoffs/ (local-only). -->
+
 <!-- builder 2026-09-14 (bus pointer fix — no handoff; nothing under test changed):
      Payload: the four pointers to the rounds B-E handoff set (Blind spots line above, 09-11 block below) named a
        tracked-looking dev/handoff/ that a fresh clone does not have — the set was untracked on 2026-09-11. They now name
