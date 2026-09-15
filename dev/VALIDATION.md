@@ -238,7 +238,7 @@ writes beyond the one reconcile. Still owed at the next C1 handoff: F-459's inva
 next report's `changeDetection`; unreached this round: the final report's `Depth:` /
 `Not complete:` lines (setup stops at Phase 5 on pending).
 
-## F-459 / F-451 — second arm after the C1-V reopens: the doc-existence invariant over both manifests, and the refresh block held to a fresh report (banked 2026-09-15, builder, Session C1 second round)
+## F-459 / F-451 — second arm after the C1-V reopens: the doc-existence invariant over both manifests, and the refresh block held to a fresh report (banked 2026-09-15, builder, Session C1 second round — CLEARED 2026-09-15 @ hb-20260915-02)
 
 Owed by: the next tester round on branch round-c1-report-truth (PR #20). No tenant call;
 no manifest write — both steps are read-only (`--dry-run` writes nothing; pinned).
@@ -257,3 +257,15 @@ no manifest write — both steps are read-only (`--dry-run` writes nothing; pinn
    "detection starts next refresh", `unrecorded` ↔ "still unrecorded". The sandbox's
    report-objects domain (recorded none by the C1-V walk) must land on the first line. A
    state word that disagrees with the fresh report REOPENS F-451.
+
+CLEARED 2026-09-15 (tester, Session C1-V second round) @ hb-20260915-02 — PASS on both steps.
+Step 1: prod 18 and sandbox 18 domains, 0 violations, 0 refusals, every row `recorded` 0 ≤
+`docPathsUnknown` 0, both manifests byte-identical before and after; the positive direction
+rests on the fixture (no pathless ever-documented entry remains live). Step 2: the refresh
+walk's fresh report after step 3 agreed with every `Not checked` line — connectors, report
+and report-objects on the first line (fresh `none`), journey-email-templates on the dateless
+line (fresh `date`, 557 of 1180), journey-surveys no line (empty); the legacy-stamp lines
+were not produced (no `unrecorded` domain left on either tenant). Deviation: the walk's step
+3 read the tenant (18 lists) and wrote the sandbox manifest (33 upserts, no status change),
+under the C1-V ruling that walks run to their judged artifact. Full record on the bus under
+F-459 and F-451 (Verified: lines).
