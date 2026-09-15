@@ -148,6 +148,37 @@ rule also reads the archive.
 
 Under test: dev · hb-20260914-02 · 2026-09-14
 Blind spots (hb-20260914-02): post-merge close-out of PR 19 on dev: nothing new is under test; the Session B arms were measured on the sandbox by the tester round (F-456 and F-458 CLEARED). Still unmeasured on any tenant, all fixture-only: the tester's own blind spots — F-456's --upgrade selection over a metadata-depth chain and the refuse direction (trimmed catalog, PUT twin); F-458's designer mid-drilldown death, the three sibling auth literals, and an oversized-batch rig from a fresh token. F-459 (section logged today, OPEN) awaits Session C1, plus everything Sessions C1 onward bank.
+
+<!-- builder 2026-09-14 (Session B round CLOSED OUT — MERGED):
+     Payload: DB-1..DB-4 of the September round plan — #10 ({page} quoted in every paginate fence; capture's refusal names
+       the shell cause; check-doc-drift check 14 holds the quoting, mutant 14j), F-456 (one exported read-shape predicate,
+       doc-lib isDescribeRead, composed by describe-batch and capture; cn chain and the unlisted sibling re r execution
+       admitted; catalog sweep pins the admitted set at the pin), #13 + F-458 (describe-batch aborts after 5 consecutive
+       failed marks, and on the FIRST auth death with nothing marked — doc-lib isAuthDeath, version-stamped; one additive
+       summary field aborted { reason, after, lastError }); KI-017's exit code corrected to the raw Windows status
+       0xC0000409 beside the shell-displayed codes (tester side observation, folded in before the merge). Plugin 0.39.0
+       staged (CHANGELOG). Rulings (Bradley, 2026-09-14) recorded in the Fix notes.
+     Branch round-b-describe-loop -> PR #19, base dev, MERGED by the builder on Bradley's instruction 2026-09-14
+       (dev @ d23f890); branch deleted local + remote. Review: /code-review medium, 8 finders + 3 file-batched verifiers
+       — 8 findings, all fixed on the branch (F-458 Fix note).
+     Verdict: F-456 VERIFIED and F-458 VERIFIED @ hb-20260914-01 (tester, Session B-V, sandbox) — both banked
+       dev/VALIDATION.md sections CLEARED (F-456: the recorded cn chain describe admitted by both scripts, no fallback;
+       F-458: a token death past the half-life aborted with reason auth, failures empty, zero auth-failed marks, resume
+       after login; #13 confirmed live — a mismatched describe stopped at exactly 5 spawns). Walk (hb-20260914-01) on
+       the header line: setup (Phases 1-4; Phase 5 prose exercised through the arms, not walked in setup), audit,
+       deprecate, refresh, email-report; guard wiring recorded (ask rendered and DECLINED). Tester blind spots (fixture-
+       only): F-456's --upgrade selection and refuse direction; F-458's designer mid-drilldown death, the three sibling
+       literals, an oversized-batch rig — carried on the hb-20260914-02 Blind spots line.
+     Issues: #10 and #13 CLOSED by comment (a Closes keyword fires only on a merge into main; the fix is on dev).
+     Bus repair: F-459 (documented entries with no doc_path) logged today as OPEN — the A-V round claimed the number in
+       its close-out comment but never appended the section; Session C1 (RP-5) expects it.
+     Dispatch evidence (F-340), on dev after the merge, tip d8a4c5f, QUOTED after completion:
+         validate-plugin 34938967980: changes success / manifests success / validate (ubuntu-latest) success
+         docs-drift 34938970568: drift (full) success / drift (stripped) success
+     Under test + canary -> dev · hb-20260914-02. Next free number F-460. Released: nothing (dev stages 0.37.1, 0.38.0,
+       0.39.0). Carried, not in scope: PR #17 (draft, also stages 0.39.0 — rebases its bump); OPEN polish F-453 (Session D)
+       and F-454 (Session C1); OPEN normal F-450, F-451, F-452, F-455, F-457, F-459 with their scheduled rounds.
+     Next: Session C1 per handoffs/SESSION-PROMPTS.md (local-only, untracked). -->
 Walk (hb-20260914-01): 2026-09-14 (tester) — 2026-09-14 (tester, Session B-V) — five SKILL.md walked in the consumer workspace, the plugin loaded from the working tree. Slash-only, each typed once by Bradley: setup — Phases 1-3 executed (plugin link current; manifest init existed; scaffold apply refreshed operating-model.md with 0 offers; catalog and cheatsheet generated at 1.0.9, 188 commands, all three post-conditions pass; §4-§7 already in place, no ask), paused by Bradley's choice through the F-458 timed run, then Phase 4 executed: 18 exhaustive sweeps (12 reconciled, 6 unverified with no payload total) and 18 upserts, 17 ok; FIRST ASK = the scorecard-schemes refusal (recorded modifiedAt is a per-call generated timestamp, KI-016; remedy --no-date-field --allow-redate) — DECLINED by Bradley, walk stopped there; the candidate diff also held 4 undecided (data-designer sources fields/objects, rules-engine rules sources fields/objects). Phase 5 (this round's changed stop-rule and batch-sizing prose) NOT walked in setup itself — its describe-batch behaviour was exercised through the F-456/F-458 arms instead. audit — first ask: depth (syntax); the changed rules fence ran verbatim on Windows PowerShell 5.1, reconciled 477 of 477 over 3 correctly named page files; report written, stopped before renames. deprecate — first ask: the required asset argument; the changed live-search fence ran verbatim on PowerShell 5.1 (reconciled 1 of 1, exact match to the KB key); plan presented and DECLINED at the approval gate, so step 4's schedule fence is unwalked. refresh — no ask; the changed exhaustive fence ran verbatim on PowerShell 5.1 for re chains list (reconciled 19 of 19) and its upsert returned unchanged 19, warnings [] — stopped at that first artifact. Model-invocable, invoked by the tester: email-report audit-active — the quoted program-list fence ran verbatim on PowerShell 5.1, reconciled 1084 of 1084 over 6 page files; report written. Guard wiring: `gs-admin re r delete-schedule --id guard-wiring-probe-hb-20260914-01` drew the hook's ask (rendered text relayed by Bradley, naming both tenants and the PRODUCTION warning) — DECLINED, never executed; separately the hook refused a sweep loop whose gs-admin subcommand sat in a shell variable, with its spell-it-literally hint, before anything ran.
 
 <!-- tester 2026-09-14 (Session B-V — verdict round @ hb-20260914-01; UNMERGED, riding a branch):
