@@ -277,8 +277,8 @@ This line is the content change that re-runs the suite on the head; nothing else
 
 ## F-450 / F-452 — the C2 arms: scope with no backfill, inert per-pin records, the tenant conventions override, and the sandbox connectors-chains redate (banked 2026-09-15, builder, Session C2)
 
-Owed by: the tester round on the token the C2 handoff mints (branch round-c2-fact-homes;
-PR number on the bus's dev comment). Tenant reads: NONE for the scope arm — `scope` is
+Owed by: the tester round on the token the C2 handoff mints (branch round-c2-fact-homes,
+PR #21). Tenant reads: NONE for the scope arm — `scope` is
 derived from each manifest's recorded list commands and the shipped per-pin table, so both
 workspaces read it today without re-listing anything. The walks (setup to the Phase 4
 relay; deps-report; refresh if run) read the tenant the way walks always do. The ONE
