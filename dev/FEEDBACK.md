@@ -149,6 +149,28 @@ rule also reads the archive.
 Under test: dev · hb-20260915-03 · 2026-09-15
 Blind spots (hb-20260915-03): post-merge close-out of PR 20 on dev: nothing new is under test; the Session C1 arms were measured on the sandbox by two tester rounds (both VALIDATION sections CLEARED). Still fixture-only on any tenant: the positive stale-with-doc direction of docPathsUnknown, remove's count, a non-zero docsForUndocumented, the three legacy-stamp refresh lines, setup's Depth / Not-complete lines and the --deep relay, the mark pathless refusal, the reconcile CWD-mismatch and win32 folder-case refusals. Everything Sessions C2 onward bank.
 
+<!-- builder 2026-09-15 (Session C2 round HANDED OFF — UNMERGED):
+     Payload: FH-1 and RP-4 of the September round plan — F-450 (one home per kind of fact: doc-lib CLI_PIN_FACTS,
+       a version-stamped, self-retiring per-pin table keyed by catalog id; domain-candidates diff buckets the four
+       re rules sublists as notEnumerableBare with inert tenant records; report DERIVES domains.<d>.scope + pinFacts
+       from each stamp's recorded listCommand — T-2 v4, additive, no backfill; CONVENTIONS.md workspace-wide by
+       default with a <slug>/CONVENTIONS.md override, precedence tenant file > adopted pack > workspace file; a
+       blank date string is not a date — the connectors-chains cause, fixed across upsert/newerThan/baseline/report)
+       and F-452 (the Phase 4 relay names every scope-limited domain from scope, with its limit, before the totals
+       question). Rulings (Bradley, 2026-09-15) in the F-450 Fix note and the plan's As-shipped notes: (c) DERIVED,
+       not the plan's stamp field. Plugin 0.41.0 staged (CHANGELOG).
+     Branch round-c2-fact-homes -> PR #21, base dev, UNMERGED. Statuses on the branch: F-450 FIXED, F-452 FIXED
+       (Fix / Judge lines; F-450 additionally a Sibling sweep line by hand, no registry key). Review: /code-review
+       medium, 8 finders + 5 file-batched verifiers — 14 candidates, 8 confirmed and fixed on the branch, 2 refuted.
+     Under test on the branch: hb-20260915-04; blind spots = no tenant in the builder session (deps-report override
+       walk, the relay's rendering, the sandbox connectors-chains redate), the per-pin table under a non-1.0.9
+       workspace catalog rests on the fixture, the sublists' runtime errors quoted from the tenants' recorded reasons.
+     Owed: dev/VALIDATION.md § F-450 / F-452 (four steps; the scope arm needs NO tenant read — both manifests read
+       locally; the one write is the sandbox redate). Numbers claimed by the branch: none (no new findings logged).
+       Next free number F-460. Carried, not in scope: OPEN polish F-453 and OPEN normal F-457 (Session D); draft
+       PR #17 (stages 0.39.0 — rebases its bump against 0.41.0 when it lands).
+     Next: Session C2-V (verify F-450, F-452) in the consumer workspace on hb-20260915-04. -->
+
 <!-- builder 2026-09-15 (Session C1 round CLOSED OUT — MERGED):
      Payload: RP-1, RP-2, RP-3, RP-5 of the September round plan — F-455 (report carries byDepth in total and per
        domain; every setup completeness statement quotes ONE quiescent report), F-454 (domainCounts; the Phase 4
