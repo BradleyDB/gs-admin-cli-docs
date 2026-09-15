@@ -149,6 +149,28 @@ rule also reads the archive.
 Under test: dev · hb-20260911-04 · 2026-09-11
 Blind spots (hb-20260911-04): post-merge close-out of PR 16 on dev: nothing new is under test; the F-449 arms were measured on the sandbox by the tester round (both CLEARED). Still unmeasured on any tenant: everything the next rounds bank (Session B onward, handoffs/ — local-only, untracked), and F-459 (documented entries with no doc_path) which is OPEN for Session C1 and reproducible only on the three July-crawled sandbox domains
 
+<!-- tester 2026-09-14 (Session B-V — verdict round @ hb-20260914-01; UNMERGED, riding a branch):
+     Branch round-b-describe-loop -> PR #19, base dev, UNMERGED; verdicts pushed on the branch at 7779664.
+       Transitions on the branch: F-456 FIXED -> VERIFIED, F-458 FIXED -> VERIFIED (#13 confirmed live in the same arm).
+       Both Session B sections of dev/VALIDATION.md CLEARED @ hb-20260914-01 on the branch. Claims no new F-number.
+     Load: consumer workspace, --plugin-dir on the working tree (measured by process path), canary hb-20260914-01 matched,
+       checkout clean at 2686ae5 before the verdict commit. Tenant: sandbox, CLI 1.0.9.
+     Measured: F-456 — the recorded cn chain describe admitted by describe-batch (documented 3, commandSource recorded) and
+       by capture (exit 0, no BOM). F-458 — a token death past the half-life aborted with reason auth, failures [], zero
+       auth-failed marks, the in-flight entry unmarked and documented on the resume after login; #13 — a mismatched describe
+       stopped after exactly 5 spawns (five distinct request ids), marks restored.
+     Rig deviations (Bradley, before the runs): F-456 used --statuses documented (no metadata-depth chain on either tenant);
+       F-458 used a timed start (no domain holds ~600 eligible entries); step 6 used rules-engine-chains (scorecard has 4).
+     Walks + guard wiring: the branch bus's Walk (hb-20260914-01) line — email-report, audit, deprecate, refresh fences ran
+       verbatim on Windows PowerShell 5.1; setup walked to Phase 4's first refusal (scorecard-schemes generated date,
+       declined), Phase 5 not walked in setup; guard ask rendered on a delete-schedule probe and was declined.
+     Blind spots (tester): no refusal exercised live on the read-shape gate (fixtures only); the designer lane's auth death
+       and the three sibling auth literals not produced live; one auth death on one domain; deprecate step 4's schedule
+       fence unwalked (declined at approval); prod not run.
+     Noticed, not logged (not in this round's scope): the live auth sentence reads "re-authenticate" with backticks, not the
+       Fix note's "(re-)authenticate" literal, and matched anyway; the libuv abort exits 3221226505 here, not the 127 the
+       operating model's KI-017 text states; the candidate diff holds 4 undecided sources-fields/objects commands. -->
+
 <!-- builder 2026-09-14 (Session B — describe loop and its fences; UNMERGED, riding a branch):
      Payload: DB-1..DB-4 of the September round plan — #10 ({page} quoted in every paginate fence, capture's refusal names
        the shell cause, check-doc-drift check 14 holds the quoting), F-456 (one exported read-shape predicate, doc-lib
