@@ -149,6 +149,19 @@ rule also reads the archive.
 Under test: dev · hb-20260914-02 · 2026-09-14
 Blind spots (hb-20260914-02): post-merge close-out of PR 19 on dev: nothing new is under test; the Session B arms were measured on the sandbox by the tester round (F-456 and F-458 CLEARED). Still unmeasured on any tenant, all fixture-only: the tester's own blind spots — F-456's --upgrade selection over a metadata-depth chain and the refuse direction (trimmed catalog, PUT twin); F-458's designer mid-drilldown death, the three sibling auth literals, and an oversized-batch rig from a fresh token. F-459 (section logged today, OPEN) awaits Session C1, plus everything Sessions C1 onward bank.
 
+<!-- builder 2026-09-15 (Session C1 — VERDICTS IN; UNMERGED, riding a branch, ready to merge on Bradley's call):
+     Branch round-c1-report-truth -> PR #20, base dev, UNMERGED; tip 2c42de8 (the tester's second verdict commit).
+       Transitions on the branch since the re-stamp below: F-451 FIXED -> VERIFIED and F-459 FIXED -> VERIFIED
+       (tester, Session C1-V second round @ hb-20260915-02); F-454 and F-455 VERIFIED @ hb-20260915-01 stand.
+       All four of the round's findings are VERIFIED; both dev/VALIDATION.md Session C1 sections CLEARED.
+     Measured by the tester: F-459's invariant (dry-run recorded <= docPathsUnknown) held on all 36 domains of both
+       manifests at 0 <= 0, both files byte-identical, and an independent raw-inventory tally read every remaining
+       pathless entry as never documented; F-451's refresh walk held every Not-checked line to its domain's fresh
+       changeDetection, report-objects on the first line. Tester blind spots (fixture-only now): the positive
+       stale-with-doc direction, remove's count, a non-zero docsForUndocumented, the three legacy-stamp block lines.
+     PR #20 is MERGEABLE / CLEAN, every check green. Merge is the maintainer's call; nothing else is owed by C1.
+     Carried, not in scope: unchanged (PR #17; F-453 -> Session D; F-450, F-452 -> C2; F-457 -> D). -->
+
 <!-- builder 2026-09-15 (Session C1, RE-STAMPED after C1-V — second round; UNMERGED, riding a branch):
      Branch round-c1-report-truth -> PR #20, base dev, UNMERGED; tip 75b5633. Transitions on the branch since the
        comment below: C1-V (tester @ hb-20260915-01) — F-454 FIXED -> VERIFIED, F-455 FIXED -> VERIFIED, F-451 and
