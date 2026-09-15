@@ -149,6 +149,16 @@ rule also reads the archive.
 Under test: dev · hb-20260914-02 · 2026-09-14
 Blind spots (hb-20260914-02): post-merge close-out of PR 19 on dev: nothing new is under test; the Session B arms were measured on the sandbox by the tester round (F-456 and F-458 CLEARED). Still unmeasured on any tenant, all fixture-only: the tester's own blind spots — F-456's --upgrade selection over a metadata-depth chain and the refuse direction (trimmed catalog, PUT twin); F-458's designer mid-drilldown death, the three sibling auth literals, and an oversized-batch rig from a fresh token. F-459 (section logged today, OPEN) awaits Session C1, plus everything Sessions C1 onward bank.
 
+<!-- builder 2026-09-15 (Session C1 — merge-tip evidence addendum; UNMERGED):
+     PR #20 tip is now 6d6e1a6 (two CI-only commits after the verdicts: an empty commit that fired nothing, then a
+       one-line dev/VALIDATION.md CI note — dev's ruleset requires drift (full) from the PULL-REQUEST suite on the
+       head, and the tester's [skip ci] verdict commit carried none; dispatch runs do not join the PR rollup, and
+       neither an empty commit nor a close/reopen created a suite). No plugin or doc byte changed after 2c42de8.
+     PR-suite evidence on 6d6e1a6, QUOTED after completion: docs-drift 35005417091 drift (full) success;
+       validate-plugin 35005417133 changes success / manifests success / validate (ubuntu-latest) success.
+       mergeStateStatus CLEAN. Lesson for the next verdict round: end a verdict commit WITHOUT [skip ci] when it
+       will be the merge tip (the /dev-loop skill's ceremony is the home for that rule — outside this repo). -->
+
 <!-- builder 2026-09-15 (Session C1 — VERDICTS IN; UNMERGED, riding a branch, ready to merge on Bradley's call):
      Branch round-c1-report-truth -> PR #20, base dev, UNMERGED; tip 2c42de8 (the tester's second verdict commit).
        Transitions on the branch since the re-stamp below: F-451 FIXED -> VERIFIED and F-459 FIXED -> VERIFIED
