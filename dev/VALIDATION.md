@@ -92,6 +92,14 @@ answers for one of the 69 names through data-management.
 
 ## F-456 — live deep-ingest of the connectors-chains lane through the RECORDED describe, no manual fallback (banked 2026-09-14, builder, Session B @ hb-20260914-01)
 
+CLEARED 2026-09-14 (tester, Session B-V) @ hb-20260914-01 — PASS, with one rig deviation. Precondition held:
+domains_indexed["connectors-chains"].describeCommand is `gs-admin --json cn chain --id {id}` on both tenants.
+Step 1 as written selects 0 — all 4 chains are depth full on the sandbox and on prod — so --statuses documented
+replaced --upgrade (Bradley, before the run); the gate decision under test is unchanged. Steps 1–2: commandSource
+recorded, selected 3, documented 3, failed 0, failures [], no aborted; each of the 3 entries carries doc_path, the
+doc on disk, and a fingerprint. Step 3: capture exit 0, 1447 bytes, no BOM, no --normalize, no redirect. Chain id
+shape: 36-character UUID (the payload's jobExecutionSetId). Verdict on the bus: F-456 VERIFIED.
+
 Owed by: the tester round @ hb-20260914-01 (Session B-V; branch round-b-describe-loop, PR #19).
 Tenant: either; the sandbox is preferred (fewer chains). Reads only against the tenant; the
 writes are to the local workspace manifest and the domain's KB folder.
@@ -116,6 +124,21 @@ A gate refusal on either ("not a describe-shaped read" / "not a capture-shaped r
 REOPENS F-456. Record the documented count and the chain id shape on the bus.
 
 ## F-458 / #13 — one batch run PAST the token half-life: summary + manifest (banked 2026-09-14, builder, Session B @ hb-20260914-01)
+
+CLEARED 2026-09-14 (tester, Session B-V) @ hb-20260914-01 — PASS on steps 3–5 and on step 6 (run), with two rig
+deviations decided by Bradley before the runs. Rig: no sandbox domain holds ~600 eligible entries, so the batch was a
+TIMED start — a background shell (no harness timeout) ran describe-batch --domain report --statuses documented
+--if-changed --limit 200 (recorded describe) at 23:26:06 with whoami at 1913s; it stopped at 23:28:02 with whoami
+still reading valid (1797s). Step 3: aborted.reason auth, after 80, lastError carrying the CLI's re-login sentence
+(live wording: "Run `gs-admin login` to re-authenticate"), documented 79, failed 0, failures []; stderr
+"ABORTED after 80 entries (auth)". Step 4 (against a manifest copy taken before any live arm): 79 report entries
+re-verified, 0 status changes, the in-flight 80th entry still documented at its July last_verified, 0 failed entries
+tenant-wide, 0 carrying the re-login sentence. Step 5: after gs-admin login the same command resumed; the in-flight
+entry documented normally (documented/full, new last_verified, doc on disk, fingerprint, no error). Step 6: the
+scorecard domain holds only 4 selectable entries, so rules-engine-chains (19) took the mismatched
+`re r describe --id {id}`: aborted consecutive-failures after 5, failed 5, five distinct server Request IDs, entries
+6–10 untouched; restored with the recorded command (19 of 19 documented, 0 failed). Verdict on the bus: F-458 VERIFIED;
+#13 confirmed live.
 
 Owed by: the same tester round @ hb-20260914-01 (Session B-V; branch round-b-describe-loop, PR #19).
 Tenant: the sandbox. Reads only against the tenant; the writes are the local manifest and docs.
