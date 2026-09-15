@@ -453,11 +453,19 @@ Then:
 ```
 node .gs-superadmin/plugin/scripts/manifest.mjs report --manifest <slug>/_manifest.json
 ```
-Relay the **per-domain counts** from the report, not just the total: "Indexed N assets
-across M domains (domain: count, …). X pending, Y stale, Z documented." Include the
-report's `emptyDomains` explicitly ("domain: 0 — listed, tenant has none") and the
-exclusion ledger ("K list commands deliberately excluded — reasons recorded in
-`domains_excluded`"). Treat any domain whose count lands exactly on a common default
+Relay the **per-domain counts** from the report, not just the total, and take every
+domain count from the report's `domainCounts` — `indexed` (coverage stamps),
+`withAssets`, `empty` — never from a count of `byDomain`'s keys (F-454: a key count
+omits every listed-but-empty domain and can include an unstamped one, so it is not the
+manifest's domain count): "Indexed N assets across M domains — M =
+`domainCounts.indexed`, of which W hold assets and E are listed but empty (domain:
+count, …). X pending, Y stale, Z documented." When W + E exceeds M, a domain holds
+entries with no coverage stamp (a `--partial` registration into a never-listed domain):
+find it as the `domains` row with `stamped: false` and name it separately ("domain:
+count — registered, never listed; no coverage stamp"), never folded into W. Name each
+of the report's `emptyDomains` explicitly ("domain: 0 — listed,
+tenant has none") and the exclusion ledger ("K list commands deliberately excluded —
+reasons recorded in `domains_excluded`"). Treat any domain whose count lands exactly on a common default
 page size (20, 25, 50) as **suspect** — re-verify its pagination was exhausted before
 continuing — and ask the user whether the totals match their sense of the tenant
 before Phase 5 spends the documentation budget.
@@ -505,7 +513,15 @@ block Phase 6, and the report names them "list-only (complete)", never
 **`--deep <domain>` runs** — select the stubs awaiting full ingest with the
 `next --upgrade` invocation (`references/document-mechanics.md` §2), then follow
 the standard describe path below, overwriting each stub file (the entry's
-`doc_path`) and marking `--status documented --depth full`.
+`doc_path`) and marking `--status documented --depth full` — with `--doc-path`, per
+`references/document-mechanics.md` §3 (a legacy stub may carry no recorded path, and
+`mark` refuses a pathless documented mark; the batch script passes it itself). When
+the run's last batch has exited, the statement that the domain is fully ingested is
+the quiescent `report` quoted at the close of this phase (below), read at
+`domains.<domain>.byDepth` — the row must show no stubs left awaiting `--deep` and
+nothing unrecorded; that close states the exact bucket test. Relay the row, never a
+narrative "deep crawl finished" (F-455: eight domains were entirely stubs when that
+sentence was last relayed from memory).
 
 **All other domains (and deep crawl) — describe each entry in the batch.** Default
 execution is the sanctioned batch script (below); the manual per-asset path it
@@ -586,19 +602,36 @@ first two and the three-level composite doc for designers.
 preference from the top of this phase — if the user opted in, pause and verify before
 starting the next domain.
 
-After hitting the budget limit, report per the shapes in
-`references/document-mechanics.md` §4 — keep documented / remaining / permanently
-failed as separate counts (`failed` is a terminal state the skill deliberately
-produces, not work still queued), and never advertise `--deep` for a list-only
-domain.
+**Every completeness statement comes from ONE `report` invocation at a quiescent
+point** (F-455). When the last `describe-batch` or `stub` invocation of this run has
+exited and nothing is still writing the manifest, run the report once:
+```
+node .gs-superadmin/plugin/scripts/manifest.mjs report --manifest <slug>/_manifest.json
+```
+and quote it rather than narrating: `byDepth` is the tenant's depth truth over
+documented entries — `full` (describe docs), `metadata` (stubs awaiting `--deep`),
+`listOnly` (stubs of a domain recorded `none`: complete by definition), `unrecorded`
+(stubs of a domain with no describe recording: completeness unknown until Phase 4
+records a template or `none`) — and `domains.<domain>.byDepth` is the same per
+domain. "Documented" alone never means complete (a stub is documented); a domain is
+fully ingested only when its row reads `metadata: 0` and `unrecorded: 0` with no
+`pending` or `stale` in `byDomain`. A tally taken while a batch is still running is
+a snapshot of a moving target — never quote one, and never re-derive these numbers
+from `byStatus` or from what this run wrote.
 
-**If any `pending` or `stale` entries remain, stop here.** Skip Phase 6 — relationship synthesis from partial data would produce misleading maps. Phase 6 runs automatically on the run that clears them, which is the same condition Phase 6 states as its precondition. Persistent `failed` entries do **not** block Phase 6: they are terminal, the `next` selection re-offers them so the remaining count would never clear on its own, and the maps' coverage headers report them ("N asset(s) failed describe and are not represented").
+After hitting the budget limit, report per the shapes in
+`references/document-mechanics.md` §4 — every count in them comes from that one
+quoted report; keep documented / remaining / permanently failed as separate counts
+(`failed` is a terminal state the skill deliberately produces, not work still
+queued), and never advertise `--deep` for a list-only domain.
+
+**If the quoted report's `byStatus` carries any `pending` or `stale`, stop here.** Skip Phase 6 — relationship synthesis from partial data would produce misleading maps. Phase 6 runs automatically on the run that clears them, which is the same condition Phase 6 states as its precondition. Persistent `failed` entries do **not** block Phase 6: they are terminal, the `next` selection re-offers them so the remaining count would never clear on its own, and the maps' coverage headers report them ("N asset(s) failed describe and are not represented").
 
 ---
 
 ## Phase 6 — Synthesize
 
-**Precondition**: only run if all inventory entries are `documented` or `failed` (no `pending` or `stale` remaining). Metadata stubs count as documented — they never block this phase.
+**Precondition**: only run if all inventory entries are `documented` or `failed` (no `pending` or `stale` remaining) — read from the quiescent `report` quoted at Phase 5's close, never re-tallied: its `byStatus` carries no `pending` and no `stale` key. Metadata stubs count as documented — they never block this phase (every `byDepth` bucket — `full`, `metadata`, `listOnly`, `unrecorded` — is a documented entry; the maps' coverage headers say which domains are stub-only).
 
 Build or refresh `<slug>/relationships/` — **default mechanics is the sanctioned
 script** (same rationale as describe-batch: deterministic parsing work, and the bulk
@@ -647,11 +680,21 @@ a pointer from the relationships file if useful), never inline in generated file
 
 ## Final report
 
+Every number below is read from the quiescent `report` quoted at Phase 5's close
+(never from a running tally): `N` and `M` from `byStatus`; on the `Depth:` line
+substitute `F` · `S` · `L` · `U` with `byDepth.full` · `byDepth.metadata` ·
+`byDepth.listOnly` · `byDepth.unrecorded` respectively, each spelled even when 0,
+leaving the words that follow each number exactly as written; the `Not complete:` line lists
+every domain whose `domains.<domain>.byDepth` has `metadata > 0` or `unrecorded > 0`,
+as `<domain> (<n> metadata stubs)` or `<domain> (<n> unrecorded — record a describe
+command or none)`, comma-separated, or the word `none` when no domain qualifies.
 ```
 ✓ gs-superadmin setup complete
-  Tenant:     <slug> (<baseUrl>)
-  Documented: N assets
-  Remaining:  M pending/stale
-  KB folder:  <slug>/
-  Next steps: /gs-superadmin:refresh to detect changes
+  Tenant:       <slug> (<baseUrl>)
+  Documented:   N assets
+  Depth:        F full · S metadata (awaiting --deep) · L list-only (complete) · U unrecorded (completeness unknown)
+  Not complete: <domains, or none>
+  Remaining:    M pending/stale
+  KB folder:    <slug>/
+  Next steps:   /gs-superadmin:refresh to detect changes
 ```

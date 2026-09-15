@@ -28,7 +28,7 @@ import { pathToFileURL, fileURLToPath } from "node:url";
 import { dirname } from "node:path";
 import { makeTempDir, removeTempDir, writeFiles, runNode } from "../../../test/rig.mjs";
 import {
-  stripBom, normalizeText, readJsonFile, codePointSlice, docBaseName, docNameClaimer,
+  stripBom, normalizeText, readJsonFile, codePointSlice, docBaseName, docNameClaimer, docNameMatcher, docPathFor, docDirNorm,
   canonicalFingerprint, getPath, extractIds, findItemsArray, makeCliHelpers, requireKbDir,
   sq, shq, needsPosixQuoteCaveat, normTerm, termKey, cmpName, cmpKey,
   stripLauncherSuffix, extractFencedJson, topBullets, findWorkspaceCatalog, findWorkspaceDir,
@@ -258,6 +258,110 @@ check("normalizeText: interior BOM preserved (F-113)", normalizeText("a" + BOM +
     // Missing dir → nothing on disk to respect (lazy snapshot must not throw).
     const claim2 = docNameClaimer(join(dir, "not-created-yet"));
     check("claimer: missing dir claims plain", claim2("anything") === "anything");
+  } finally {
+    removeTempDir(dir);
+  }
+}
+
+// ── docNameMatcher — the claimer's read-side twin (F-459 reconcile-docs) ─────
+// Decision points, each pinned: exact stem on disk and unclaimed → match;
+// a DIFFERENT spelling on disk → "-dup" hop (the claimer's foreignOnDisk);
+// a stem claimed in-run (case-insensitively) → "-dup" hop; a free stem with
+// no file → null; claim() of a recorded path excludes it from replay;
+// unclaimed() is the orphan list; a missing folder matches nothing and orphans
+// nothing; the hop bound stops a pathological chain.
+{
+  const dir = makeTempDir("doclib-matcher");
+  try {
+    // What a claimer-driven writer left behind: Co.md then co-dup.md for the
+    // colliding pair, Own.md, and a stray file no id owns.
+    writeFileSync(join(dir, "Co.md"), "x");
+    writeFileSync(join(dir, "co-dup.md"), "x");
+    writeFileSync(join(dir, "Own.md"), "x");
+    writeFileSync(join(dir, "stray.md"), "x");
+    writeFileSync(join(dir, "notes.txt"), "x"); // not a doc — never a stem
+    const mm = docNameMatcher(dir);
+    check("matcher: exact on-disk stem matches and is claimed", mm.match("Own") === "Own");
+    check("matcher: a second id resolving to a claimed exact stem hops to -dup and finds nothing", mm.match("own") === null);
+    check("matcher: no file under the writer's first free choice → null", mm.match("Missing") === null);
+    check("matcher: case-different spelling on disk forces the -dup hop, which finds co-dup", mm.match("co") === "co-dup");
+    check("matcher: the exact-case owner still matches its own file after the pair's other half", mm.match("Co") === "Co");
+    check("matcher: unclaimed() lists the orphans only, sorted, .md stems only", JSON.stringify(mm.unclaimed()) === JSON.stringify(["stray"]), mm.unclaimed());
+    // claim() of a recorded path: the replay must not re-attribute it.
+    const m2 = docNameMatcher(dir);
+    m2.claim("Own");
+    check("matcher: a pre-claimed recorded stem is not re-attributed by the replay", m2.match("Own") === null);
+    check("matcher: unclaimed() excludes pre-claimed stems", !m2.unclaimed().includes("Own") && m2.unclaimed().includes("stray"));
+    // Call order decides the byte-identical-name residual, as it does for
+    // the claimer: a hash-suffixed spelling of another id's clean output.
+    writeFileSync(join(dir, `${docBaseName("a/b")}.md`), "x");
+    // The snapshot is taken at construction (one read per reconcile): both
+    // matchers below are built AFTER the file exists.
+    const m3 = docNameMatcher(dir);
+    const m4 = docNameMatcher(dir);
+    check("matcher: sanitized id matches its hash-suffixed file", m4.match("a/b") === docBaseName("a/b"));
+    check("matcher: an id spelled as another's sanitized output loses to the earlier call (documented residual)", m4.match(docBaseName("a/b")) === null && m3.match(docBaseName("a/b")) === docBaseName("a/b"));
+    // Missing folder: matches nothing, orphans nothing, never throws.
+    const m5 = docNameMatcher(join(dir, "not-created-yet"));
+    check("matcher: missing dir → null and no orphans", m5.match("anything") === null && m5.unclaimed().length === 0);
+    // The -dup chain resolves as far as files go (six stacked spellings on
+    // disk, six ids resolving to them), and the hop bound stops a chain that
+    // never frees: 64 stems claimed in-run (no files needed — a claimed stem
+    // hops exactly like a foreign spelling) and the next match returns null
+    // instead of spinning. (Stacking 65 suffixes as FILES would exceed the
+    // 255-character filename limit on Windows and NTFS, so the bound is
+    // proved through claims.)
+    const deep = makeTempDir("doclib-matcher-deep");
+    try {
+      let stem = "d";
+      for (let i = 0; i < 6; i++) { writeFileSync(join(deep, `${stem}.md`), "x"); stem += "-dup"; }
+      const m6 = docNameMatcher(deep);
+      let last = null;
+      for (let i = 0; i < 6; i++) last = m6.match("d");
+      check("matcher: six ids resolve down the six-file -dup chain", last === "d" + "-dup".repeat(5), last);
+      check("matcher: the seventh finds no file past the chain → null", m6.match("d") === null);
+      const m7 = docNameMatcher(deep);
+      let claimedStem = "d";
+      for (let i = 0; i < 64; i++) { m7.claim(claimedStem); claimedStem += "-dup"; }
+      check("matcher: 64 claimed stems resolve past the chain to a name no file carries → null, terminating", m7.match("d") === null);
+    } finally {
+      removeTempDir(deep);
+    }
+    // Review round (F-459): the matcher records its claim on a null too, as the
+    // writer did — so a deleted doc's collision partner is still found. Writer
+    // order "co" then "Co" (the replay's cmpKey order): co.md, Co-dup.md; then
+    // co.md is deleted (the regeneration signal). Replay: co → null (claimed),
+    // Co → hops past the claimed "co" → Co-dup — its real file; no orphans.
+    const gone = makeTempDir("doclib-matcher-gone");
+    try {
+      const w = docNameClaimer(gone);
+      writeFileSync(join(gone, `${w("co")}.md`), "x");
+      writeFileSync(join(gone, `${w("Co")}.md`), "x");
+      rmSync(join(gone, "co.md"));
+      const m8 = docNameMatcher(gone);
+      const first = m8.match("co");
+      const second = m8.match("Co");
+      check("matcher: a null read still claims the stem — the collision partner's -dup doc is attributed, not orphaned", first === null && second === "Co-dup" && m8.unclaimed().length === 0, { first, second, unclaimed: m8.unclaimed() });
+    } finally {
+      removeTempDir(gone);
+    }
+    // Extension agreement with listMdFiles: a `.MD` file is no stem (every
+    // writer emits `.md`; every reader lists `.md`), so the matcher neither
+    // attributes it nor records a `.md` path for a file spelled otherwise.
+    const ext = makeTempDir("doclib-matcher-ext");
+    try {
+      writeFileSync(join(ext, "Foo.MD"), "x");
+      writeFileSync(join(ext, "bar.md"), "x");
+      const m9 = docNameMatcher(ext);
+      check("matcher: .MD is invisible (listMdFiles agreement) — Foo → null, bar matches, no .MD orphan", m9.match("Foo") === null && m9.match("bar") === "bar" && m9.unclaimed().length === 0, m9.unclaimed());
+    } finally {
+      removeTempDir(ext);
+    }
+    // The ONE doc_path spelling (docPathFor): folder as passed, forward
+    // slashes, no trailing slash, then /<stem>.md — the writers' exact form.
+    const BSL = String.fromCharCode(92);
+    check("docPathFor: backslashes folded, trailing slash dropped", docPathFor(`acme${BSL}dom${BSL}`, "a-1") === "acme/dom/a-1.md" && docPathFor("acme/dom/", "a-1") === "acme/dom/a-1.md" && docPathFor("acme/dom", "a-1") === "acme/dom/a-1.md");
+    check("docPathFor: degenerate folders keep the writers' spelling (root and empty)", docPathFor("/", "x") === "/x.md" && docPathFor("", "x") === "/x.md" && docDirNorm("C:/") === "C:");
   } finally {
     removeTempDir(dir);
   }

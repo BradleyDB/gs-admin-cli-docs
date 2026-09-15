@@ -169,3 +169,108 @@ Steps:
 Pass bar: steps 3–5 as stated (step 6 as stated if run). Any entry marked `failed` whose
 recorded error is the re-login sentence REOPENS F-458; a walk of the asset list past five
 consecutive identical failures REOPENS #13.
+
+## F-459 — reconcile-docs over the sandbox's three legacy domains, plus the report reads for F-455 / F-454 / F-451 (banked 2026-09-15, builder, Session C1 @ hb-20260915-01 — OPEN after C1-V @ hb-20260915-01)
+
+Owed by: the tester round @ hb-20260915-01 (Session C1-V; branch round-c1-report-truth, PR #20).
+Tenant: none needed — no gs-admin call in this arm. The sandbox WORKSPACE is written (its
+`_manifest.json`, `doc_path` fields only); prod is read as a control. Plugin loaded from
+the working tree; every command below runs from the workspace root with a RELATIVE
+`--manifest <slug>/_manifest.json` (reconcile-docs refuses a working directory the
+recorded paths do not resolve from — that refusal, if it fires, is the arm's first
+finding, not a rig problem).
+Precondition (local read, before anything): the sandbox's `report` shows
+`docPathsUnknown` 20 in total, spread over three July-crawled domains (the data-designer
+domain 3, the rules-engine-chains domain 14, the scorecard domain 3 at the builder's
+read on 2026-09-15 — the B-V round had re-marked five chain entries since the 25 logged);
+prod shows 0. A different total is not a failure — record it — but a domain outside those
+three is.
+
+Steps:
+1. `node .gs-superadmin/plugin/scripts/manifest.mjs report --manifest <slug>/_manifest.json`
+   on BOTH tenants; hold the output to the Fix notes' claims: prod — every `none`
+   domain reads `describeState: list-only` with its stubs under `byDepth.listOnly`,
+   `byDepth.metadata` 0 and `byDepth.unrecorded` 0 tenant-wide, `domains.report`
+   reads `changeDetection: none` with `datelessEntries` 1754; sandbox — `domainCounts`
+   18 / 17 / 1 with the surveys domain in `emptyDomains`, five legacy stamps reading
+   `describeState: unrecorded`, the templates domain `changeDetection: date` with
+   `datelessEntries` 557, `byDomain` rows numbers-only, `docPathsUnknown` per the
+   precondition. Quote the numbers on the bus.
+2. For each of the three domains, `manifest.mjs reconcile-docs --manifest
+   <slug>/_manifest.json --domain <d> --dry-run --out .gs-superadmin/tmp/reconcile-<d>.json`
+   — read `recorded`, `recordedMissing`, `unmatchedDocumented`, `orphanFiles`; the
+   manifest is byte-identical after a dry run.
+3. The same three without `--dry-run`. Expected: `recorded` sums to the precondition's
+   total, `unmatchedDocumented` 0 (every legacy stub is still on disk), `orphanFiles`
+   named if any (a rekey or a removed entry left them — list them, delete nothing).
+4. `report` again: `docPathsUnknown` 0 on the sandbox, and for one of the three domains
+   read its `domains.<d>` row and its entries' `doc_path` values (local read of the
+   manifest) — every documented entry now names a file that exists.
+5. Re-run step 3 once more: `recorded` 0, `alreadyRecorded` = step 3's `recorded`,
+   manifest byte-identical (idempotent).
+
+Pass bar: `docPathsUnknown` reaches 0 on the sandbox with every difference explained
+by `unmatchedDocumented` or `orphanFiles` by name; prod reads 0 before and needs no
+reconcile; the report reads in step 1 hold. A `docPathsUnknown` that does not reach 0
+without such an explanation, a reconcile that writes a `doc_path` pointing at no file,
+or a report row that contradicts step 1's claims REOPENS the matching entry (F-459 /
+F-455 / F-454 / F-451).
+Walks (slash-only, the user types them): `/gs-superadmin:setup` — the Phase 4 relay
+must quote `domainCounts.indexed` and name `emptyDomains`; if the run reaches Phase 5's
+close or the final report it must quote ONE `report`'s `byDepth` with the `Depth:` and
+`Not complete:` lines, never a narrative; decline any ask. `/gs-superadmin:refresh` —
+its report must end with the `Not checked for change this run:` block naming the
+`none` domains and the dateless count (or `none`), never silently at "Unchanged".
+
+Result (tester, Session C1-V, 2026-09-15 @ hb-20260915-01) — OPEN. Steps 1-5 ran as
+written from the workspace root with a relative `--manifest`: step 1 holds on both tenants
+(numbers quoted on the bus under F-455 / F-454 / F-451 / F-459); steps 2-3 recorded
+3 / 14 / 4 = 21 against the precondition's 20, `unmatchedDocumented` 0, `orphanFiles` 0,
+no CWD refusal; step 4 `docPathsUnknown` 0 and all 26 `doc_path` values resolve; step 5
+recorded 0 with the manifest byte-identical. What failed: the extra path is a `stale`
+scorecard entry with its doc on disk, which `docPathsUnknown` (counting `documented`
+only) never declared — F-459 REOPENED. Walks: setup's Phase 4 relay and Phase 5 close
+pass (F-454, F-455 VERIFIED); refresh's block is present but its legacy-stamp line says
+"detection starts next refresh" on a `none` recording — F-451 REOPENED. Rig deviation
+(Bradley): the walks ran to their judged artifacts, adding their own sandbox manifest
+writes beyond the one reconcile. Still owed at the next C1 handoff: F-459's invariant
+(per domain, reconcile `recorded` ≤ report `docPathsUnknown`) and F-451's line held to the
+next report's `changeDetection`; unreached this round: the final report's `Depth:` /
+`Not complete:` lines (setup stops at Phase 5 on pending).
+
+## F-459 / F-451 — second arm after the C1-V reopens: the doc-existence invariant over both manifests, and the refresh block held to a fresh report (banked 2026-09-15, builder, Session C1 second round — CLEARED 2026-09-15 @ hb-20260915-02)
+
+Owed by: the next tester round on branch round-c1-report-truth (PR #20). No tenant call;
+no manifest write — both steps are read-only (`--dry-run` writes nothing; pinned).
+1. F-459 invariant, from the workspace root with a RELATIVE `--manifest`, on BOTH tenants:
+   `manifest.mjs report --manifest <slug>/_manifest.json`, then for EVERY domain in its
+   `domains` map `manifest.mjs reconcile-docs --manifest <slug>/_manifest.json --domain <d>
+   --dry-run`. Pass bar: on every row `recorded` ≤ `domains.<d>.docPathsUnknown`; a
+   refusal, or a row where `recorded` exceeds the count, REOPENS F-459. The builder's own
+   run read 18 + 18 domains, 0 violations, both files byte-identical before and after;
+   record your counts. (The sandbox's stale-with-doc entry was recorded by C1-V's
+   reconcile, so that live case rests on the fixture now: `docsForUndocumented` and the
+   stale arm in test/manifest-ops.mjs.)
+2. F-451, the refresh walk (slash-only, the user types it): after step 3, take the fresh
+   `report` step 4 now prescribes and hold every `Not checked for change this run:` line to
+   that domain's fresh `changeDetection` — `none` ↔ "outside change detection", `date` ↔
+   "detection starts next refresh", `unrecorded` ↔ "still unrecorded". The sandbox's
+   report-objects domain (recorded none by the C1-V walk) must land on the first line. A
+   state word that disagrees with the fresh report REOPENS F-451.
+
+CLEARED 2026-09-15 (tester, Session C1-V second round) @ hb-20260915-02 — PASS on both steps.
+Step 1: prod 18 and sandbox 18 domains, 0 violations, 0 refusals, every row `recorded` 0 ≤
+`docPathsUnknown` 0, both manifests byte-identical before and after; the positive direction
+rests on the fixture (no pathless ever-documented entry remains live). Step 2: the refresh
+walk's fresh report after step 3 agreed with every `Not checked` line — connectors, report
+and report-objects on the first line (fresh `none`), journey-email-templates on the dateless
+line (fresh `date`, 557 of 1180), journey-surveys no line (empty); the legacy-stamp lines
+were not produced (no `unrecorded` domain left on either tenant). Deviation: the walk's step
+3 read the tenant (18 lists) and wrote the sandbox manifest (33 upserts, no status change),
+under the C1-V ruling that walks run to their judged artifact. Full record on the bus under
+F-459 and F-451 (Verified: lines).
+CI note (2026-09-15, builder, after the second verdict): dev's ruleset requires `drift (full)` from
+the PULL-REQUEST suite on the PR head; a `[skip ci]` verdict commit at the tip reads BLOCKED, a
+`gh workflow run` dispatch does not join the PR rollup, and neither an empty commit nor a
+close/reopen fired the suite (no check suite was created for a commit with no file changes).
+This line is the content change that re-runs the suite on the head; nothing else moved.

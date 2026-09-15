@@ -178,7 +178,7 @@ import {
   renderDesignerDoc, designerDocProgress, designerDrilldownStats, designerTaskFieldLabels, splitTrailingGroup,
   parseDocJson, normalizeText, writeFileAtomicSync,
   readJsonFile, makeCliHelpers, findWorkspaceCatalog, makeCommandResolver,
-  assertReadOnlyCommand, assertPlainGsAdminCommand, resolveCliArgv, isDescribeRead, isAuthDeath, DESCRIBE_NONE, RECORDED_LANES } from "./doc-lib.mjs";
+  assertReadOnlyCommand, assertPlainGsAdminCommand, resolveCliArgv, isDescribeRead, isAuthDeath, docPathFor, DESCRIBE_NONE, RECORDED_LANES } from "./doc-lib.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const MANIFEST_SCRIPT = join(here, "manifest.mjs");
@@ -739,7 +739,7 @@ for (const entry of batch.entries) {
   // recorded doc_path yet, and the claimer's exact-case reuse is how the next
   // run finds it.
   const base = claimBaseName(entry.id);
-  const relPath = `${outDir.replace(/\\/g, "/").replace(/\/$/, "")}/${base}.md`;
+  const relPath = docPathFor(outDir, base); // the ONE doc_path spelling (doc-lib; stub and reconcile-docs record the same)
   // The full-depth documented mark, one spelling for the raw/template/program
   // path and the designer composite (A-1); a success resets the within-run
   // failure count (issue #13).

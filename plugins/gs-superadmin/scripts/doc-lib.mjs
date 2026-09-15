@@ -245,6 +245,17 @@ export function canonicalFingerprint(payload) {
   return createHash("sha1").update(JSON.stringify(canon(payload))).digest("hex");
 }
 
+// The doc_path SPELLING every writer records and every reader resolves against
+// the CWD (T-2 GsInventoryEntry.doc_path): the folder as passed, forward
+// slashes, no trailing slash, then `/<stem>.md`. One home (review round of
+// F-459: stub, describe-batch, the template writer and reconcile-docs each
+// carried the same two-replace chain) — a path reconciled from disk is
+// byte-identical to one a writer recorded because both call this.
+/** @param {string} dir */
+export const docDirNorm = (dir) => dir.replace(/\\/g, "/").replace(/\/$/, "");
+/** @param {string} dir @param {string} stem */
+export const docPathFor = (dir, stem) => `${docDirNorm(dir)}/${stem}.md`;
+
 // Doc filename for an asset id — the single copy; import, never re-implement.
 // Beyond the charset whitelist, two Windows filename-legality rules force the
 // hash suffix (F-126): reserved DOS device names (NUL/CON/COM1/…, with or
@@ -294,38 +305,114 @@ export function docBaseName(id) {
 // prefix collision between two clean ids. Narrow, but silent when it lands: the
 // exact-case disk match reads the second id's write as the first id's own doc
 // and reuses the name.
+// The doc stems in a folder — lower-cased stem -> the exact spellings on disk.
+// ONE snapshot reader for the claimer (write side) and the matcher (read side,
+// F-459): both see the same files the same way, so a name the matcher
+// attributes is a name the claimer would have chosen.
+/** @param {string} dir @returns {Map<string, Set<string>>} */
+function readDocStems(dir) {
+  /** @type {Map<string, Set<string>>} */
+  const disk = new Map();
+  let names = [];
+  try {
+    names = readdirSync(dir);
+  } catch {
+    /* dir not created yet — nothing on disk to respect */
+  }
+  for (const n of names) {
+    // The same extension test as listMdFiles (the readers' listing): a doc is
+    // `<stem>.md`, exact case — every writer emits that, and a `.MD` file is
+    // invisible to every reader, so it must be no stem here either (review
+    // round: the matcher would have recorded `<stem>.md` for a file spelled
+    // `.MD`, a path that exists on Windows only).
+    if (!n.endsWith(".md")) continue;
+    const stem = n.slice(0, -3);
+    const lower = stem.toLowerCase();
+    if (!disk.has(lower)) disk.set(lower, new Set());
+    // The line above guarantees the key; the cast states that to the
+    // strictNullChecks ratchet (Map.get is `| undefined` by signature).
+    /** @type {Set<string>} */ (disk.get(lower)).add(stem);
+  }
+  return disk;
+}
+// The ONE suffix grammar (F-125/F-156; review round of F-459): starting from
+// docBaseName(id), append "-dup" while the stem is claimed in-run
+// (case-insensitively) or a DIFFERENT spelling of it sits on disk, and stop
+// at the first stem that is free — which is either this id's own exact-case
+// file (reuse) or a name no file carries (a fresh write). The write side
+// (docNameClaimer) and the read side (docNameMatcher) both resolve through
+// this function and both record the claim, so a replay lands on the stem
+// the writer chose. Termination: each hop lengthens the stem, and both the
+// disk snapshot and the claim set are finite. Not exported — the grammar
+// has no third home (check-doc-drift check 9 refuses a copy in any script).
+/**
+ * @param {Map<string, Set<string>>} disk  lower-cased stem -> exact on-disk stems
+ * @param {Set<string>} claimedLower       lower-cased stems claimed this run
+ * @param {string} id
+ * @returns {string}
+ */
+function resolveStem(disk, claimedLower, id) {
+  let base = docBaseName(id);
+  for (;;) {
+    const spellings = disk.get(base.toLowerCase());
+    const foreignOnDisk = spellings != null && !spellings.has(base);
+    if (!claimedLower.has(base.toLowerCase()) && !foreignOnDisk) break;
+    base += "-dup";
+  }
+  return base;
+}
 export function docNameClaimer(dir) {
   const claimedLower = new Set();
   /** @type {Map<string, Set<string>> | null} */
   let disk = null; // lower-cased stem -> Set of exact on-disk stems
   return (id) => {
-    if (disk === null) {
-      disk = new Map();
-      let names = [];
-      try {
-        names = readdirSync(dir);
-      } catch {
-        /* dir not created yet — nothing on disk to respect */
-      }
-      for (const n of names) {
-        if (!/\.md$/i.test(n)) continue;
-        const stem = n.slice(0, -3);
-        const lower = stem.toLowerCase();
-        if (!disk.has(lower)) disk.set(lower, new Set());
-        // The line above guarantees the key; the cast states that to the
-        // strictNullChecks ratchet (Map.get is `| undefined` by signature).
-        /** @type {Set<string>} */ (disk.get(lower)).add(stem);
-      }
-    }
-    let base = docBaseName(id);
-    for (;;) {
-      const spellings = disk.get(base.toLowerCase());
-      const foreignOnDisk = spellings != null && !spellings.has(base);
-      if (!claimedLower.has(base.toLowerCase()) && !foreignOnDisk) break;
-      base += "-dup";
-    }
+    if (disk === null) disk = readDocStems(dir);
+    const base = resolveStem(disk, claimedLower, id);
     claimedLower.add(base.toLowerCase());
     return base;
+  };
+}
+
+// The claimer's READ-side twin (F-459, manifest.mjs reconcile-docs): which file
+// on disk did a writer running the claimer's rule give this id? It resolves
+// through the same resolveStem and answers with that stem when the file exists
+// (exact case) or null when the writer's choice is a name no file carries (no
+// doc for this id) — and it records the claim EITHER way, exactly as the
+// writer did, so a later id whose stem collides hops past it even when the
+// earlier id's doc was deleted (review round: a matcher that skipped the claim
+// on a null read a deleted doc's collision partner as an orphan). Callers
+// claim() the stems of RECORDED paths first, so a replay never re-attributes
+// a doc whose owner is a fact; unclaimed() is what remains — the orphans.
+// Residual, shared with the claimer: the replay agrees with the writer only
+// in the writer's claim ORDER — two ids whose docBaseName output collides
+// case-insensitively were named in list-payload order, and manifest.mjs
+// replays in key order; the pair resolves to the same two files either way
+// when both docs exist, and to the surviving file when one was deleted only
+// if the replay order matches the writing order. Exact-name residual as the
+// claimer's (byte-identical docBaseName output resolves in call order).
+/**
+ * @param {string} dir
+ * @returns {{ match: (id: string) => string|null, claim: (stem: string) => void, unclaimed: () => string[] }}
+ */
+export function docNameMatcher(dir) {
+  const disk = readDocStems(dir);
+  /** @type {Set<string>} */
+  const claimed = new Set();
+  /** @type {Set<string>} */
+  const claimedLower = new Set();
+  /** @param {string} stem */
+  const claim = (stem) => {
+    claimed.add(stem);
+    claimedLower.add(stem.toLowerCase());
+  };
+  return {
+    claim,
+    match(id) {
+      const base = resolveStem(disk, claimedLower, id);
+      claim(base);
+      return disk.get(base.toLowerCase())?.has(base) ? base : null;
+    },
+    unclaimed: () => [...disk.values()].flatMap((s) => [...s]).filter((stem) => !claimed.has(stem)).sort(),
   };
 }
 
@@ -1328,7 +1415,7 @@ export function runDocGenerator({ scriptName, render, argv }) {
       const base = claimName(id);
       const path = resolve(outDir, `${base}.md`);
       writeFileSync(path, doc, "utf8");
-      written.push({ id, path: `${outDir.replace(/\\/g, "/").replace(/\/$/, "")}/${base}.md`, bytes: Buffer.byteLength(doc) });
+      written.push({ id, path: docPathFor(outDir, base), bytes: Buffer.byteLength(doc) });
     } catch (e) {
       failed.push({ file, error: e instanceof Error ? e.message : String(e) });
     }
