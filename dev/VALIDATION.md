@@ -269,3 +269,8 @@ were not produced (no `unrecorded` domain left on either tenant). Deviation: the
 3 read the tenant (18 lists) and wrote the sandbox manifest (33 upserts, no status change),
 under the C1-V ruling that walks run to their judged artifact. Full record on the bus under
 F-459 and F-451 (Verified: lines).
+CI note (2026-09-15, builder, after the second verdict): dev's ruleset requires `drift (full)` from
+the PULL-REQUEST suite on the PR head; a `[skip ci]` verdict commit at the tip reads BLOCKED, a
+`gh workflow run` dispatch does not join the PR rollup, and neither an empty commit nor a
+close/reopen fired the suite (no check suite was created for a commit with no file changes).
+This line is the content change that re-runs the suite on the head; nothing else moved.
