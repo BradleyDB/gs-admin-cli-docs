@@ -149,6 +149,33 @@ rule also reads the archive.
 Under test: dev · hb-20260914-02 · 2026-09-14
 Blind spots (hb-20260914-02): post-merge close-out of PR 19 on dev: nothing new is under test; the Session B arms were measured on the sandbox by the tester round (F-456 and F-458 CLEARED). Still unmeasured on any tenant, all fixture-only: the tester's own blind spots — F-456's --upgrade selection over a metadata-depth chain and the refuse direction (trimmed catalog, PUT twin); F-458's designer mid-drilldown death, the three sibling auth literals, and an oversized-batch rig from a fresh token. F-459 (section logged today, OPEN) awaits Session C1, plus everything Sessions C1 onward bank.
 
+<!-- builder 2026-09-15 (Session C1, RE-STAMPED after C1-V — second round; UNMERGED, riding a branch):
+     Branch round-c1-report-truth -> PR #20, base dev, UNMERGED; tip 75b5633. Transitions on the branch since the
+       comment below: C1-V (tester @ hb-20260915-01) — F-454 FIXED -> VERIFIED, F-455 FIXED -> VERIFIED, F-451 and
+       F-459 FIXED -> REOPENED, each on one named invariant; second round (builder) — F-451 and F-459 back to FIXED.
+     F-459 reopen: docPathsUnknown gated on status, so a stale entry with its July doc on disk and no doc_path was
+       invisible (the sandbox scorecard domain reconciled 4 paths against a count of 3). Fixed: one predicate,
+       everDocumented (documented now, or last_verified / depth present), decides the count in report and remove, and
+       reconcile-docs records a path only for that set — so per domain dry-run recorded <= docPathsUnknown by
+       construction; a never-documented entry's stray file is reported as docsForUndocumented, claimed, not recorded.
+       Measured read-only over both real manifests from the workspace root: 36 domains, 0 violations, files untouched.
+     F-451 reopen: the refresh block's legacy-stamp line said "detection starts next refresh" for a domain the run had
+       just recorded as having NO date field. Fixed (prose): the block is derived from a FRESH report after step 3,
+       compared with step 1's, one literal line per transition (explicit-none now reads "outside change detection
+       from now on"), with the tester's check as an instruction — each line's state word must equal the domain's
+       fresh changeDetection.
+     Arms: manifest-ops "c1 reopen" (+6; 4 red against the pre-fix script). Second arm banked: dev/VALIDATION.md
+       (F-459 / F-451, read-only — the invariant over both manifests + the refresh walk held to a fresh report).
+     Under test on the branch: hb-20260915-02; blind spots = the live stale-with-doc case can no longer be produced
+       on the sandbox (C1-V's reconcile recorded it — fixture-only now), the fresh-report block is unwalked, the win32
+       folder-case and CWD-mismatch refusals are fixture-only, setup's Depth / Not-complete lines and the --deep relay
+       are unwalked (no metadata stubs on either tenant).
+     Dispatch evidence (F-340), on the branch tip 75b5633, QUOTED after completion:
+         validate-plugin 35002383860: changes success / manifests success / validate (ubuntu-latest) success
+         docs-drift 35002384483: drift (full) success
+     Carried, not in scope: unchanged from the comment below (PR #17; F-453; F-450, F-452, F-457).
+     Next: C1-V second verdict round (tester, consumer workspace, no tenant call) on the branch. -->
+
 <!-- builder 2026-09-15 (Session C1 — the report is the account of KB state; UNMERGED, riding a branch):
      Payload: RP-1, RP-2, RP-3, RP-5 of the September round plan — F-455 (manifest.mjs report carries byDepth
        { full, metadata, listOnly, unrecorded } over documented entries, in total and per domain under a new
