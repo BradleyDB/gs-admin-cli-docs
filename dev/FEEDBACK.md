@@ -194,7 +194,14 @@ Blind spots (hb-20260915-04): no tenant in the builder session: the deps-report 
        scaffold refresh unmeasured; two untriaged observations (a stdin guard probe from the REPO cwd exited 0 with
        no decision — tenet 7, the guard is inert outside a .gs-superadmin workspace; a first Phase 4 sweep passed
        --page-flag page-number before re-running with --page).
-     Next: merge PR #21 (maintainer), then Session D (DC-1, DC-2, DC-3; carries OPEN polish F-453 and OPEN normal F-457). -->
+     MERGED 2026-09-15 by the builder on Bradley's instruction: PR #21 -> dev @ f6f8d86 (merge commit); branch
+       round-c2-fact-homes deleted local + remote. Dispatch evidence (F-340), on dev after the merge, QUOTED after
+       completion:
+         validate-plugin 35028354676: changes success / manifests success / validate (ubuntu-latest) success
+         docs-drift 35028356629: drift (full) success / drift (stripped) success
+     Released: nothing (dev stages 0.37.1, 0.38.0, 0.39.0, 0.40.0, 0.41.0). Next free number F-460.
+     Next: Session D (DC-1, DC-2, DC-3; carries OPEN polish F-453 and OPEN normal F-457; walks the four skills C2-V
+       left unwalked — audit, change-request, deprecate, refresh). -->
 
 <!-- builder 2026-09-15 (Session C1 round CLOSED OUT — MERGED):
      Payload: RP-1, RP-2, RP-3, RP-5 of the September round plan — F-455 (report carries byDepth in total and per
