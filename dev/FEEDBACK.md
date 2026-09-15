@@ -146,8 +146,8 @@ what the gate counts (F-444). The gate refuses both. Sections from F-360 on; the
 rule also reads the archive.
 
 
-Under test: round-c1-report-truth · hb-20260915-02 · 2026-09-15
-Blind spots (hb-20260915-02): second round after C1-V: no tenant call; the F-459 invariant (dry-run recorded ≤ docPathsUnknown, every domain) was measured read-only over both real manifests with 0 violations, but the live stale-with-doc case can no longer be produced on the sandbox (C1-V's reconcile recorded it) and rests on the fixture; F-451's fresh-report block is prose and unwalked — the refresh walk is the judge; the win32 folder-case and CWD-mismatch refusals remain fixture-only; setup's final-report Depth/Not-complete lines and the --deep relay remain unwalked (no metadata stubs on either tenant)
+Under test: dev · hb-20260915-03 · 2026-09-15
+Blind spots (hb-20260915-03): post-merge close-out of PR 20 on dev: nothing new is under test; the Session C1 arms were measured on the sandbox by two tester rounds (both VALIDATION sections CLEARED). Still fixture-only on any tenant: the positive stale-with-doc direction of docPathsUnknown, remove's count, a non-zero docsForUndocumented, the three legacy-stamp refresh lines, setup's Depth / Not-complete lines and the --deep relay, the mark pathless refusal, the reconcile CWD-mismatch and win32 folder-case refusals. Everything Sessions C2 onward bank.
 
 <!-- builder 2026-09-15 (Session C1 round CLOSED OUT — MERGED):
      Payload: RP-1, RP-2, RP-3, RP-5 of the September round plan — F-455 (report carries byDepth in total and per
