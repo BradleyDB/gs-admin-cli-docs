@@ -170,7 +170,7 @@ Pass bar: steps 3–5 as stated (step 6 as stated if run). Any entry marked `fai
 recorded error is the re-login sentence REOPENS F-458; a walk of the asset list past five
 consecutive identical failures REOPENS #13.
 
-## F-459 — reconcile-docs over the sandbox's three legacy domains, plus the report reads for F-455 / F-454 / F-451 (banked 2026-09-15, builder, Session C1 @ hb-20260915-01)
+## F-459 — reconcile-docs over the sandbox's three legacy domains, plus the report reads for F-455 / F-454 / F-451 (banked 2026-09-15, builder, Session C1 @ hb-20260915-01 — OPEN after C1-V @ hb-20260915-01)
 
 Owed by: the tester round @ hb-20260915-01 (Session C1-V; branch round-c1-report-truth, PR #20).
 Tenant: none needed — no gs-admin call in this arm. The sandbox WORKSPACE is written (its
@@ -221,3 +221,19 @@ close or the final report it must quote ONE `report`'s `byDepth` with the `Depth
 `Not complete:` lines, never a narrative; decline any ask. `/gs-superadmin:refresh` —
 its report must end with the `Not checked for change this run:` block naming the
 `none` domains and the dateless count (or `none`), never silently at "Unchanged".
+
+Result (tester, Session C1-V, 2026-09-15 @ hb-20260915-01) — OPEN. Steps 1-5 ran as
+written from the workspace root with a relative `--manifest`: step 1 holds on both tenants
+(numbers quoted on the bus under F-455 / F-454 / F-451 / F-459); steps 2-3 recorded
+3 / 14 / 4 = 21 against the precondition's 20, `unmatchedDocumented` 0, `orphanFiles` 0,
+no CWD refusal; step 4 `docPathsUnknown` 0 and all 26 `doc_path` values resolve; step 5
+recorded 0 with the manifest byte-identical. What failed: the extra path is a `stale`
+scorecard entry with its doc on disk, which `docPathsUnknown` (counting `documented`
+only) never declared — F-459 REOPENED. Walks: setup's Phase 4 relay and Phase 5 close
+pass (F-454, F-455 VERIFIED); refresh's block is present but its legacy-stamp line says
+"detection starts next refresh" on a `none` recording — F-451 REOPENED. Rig deviation
+(Bradley): the walks ran to their judged artifacts, adding their own sandbox manifest
+writes beyond the one reconcile. Still owed at the next C1 handoff: F-459's invariant
+(per domain, reconcile `recorded` ≤ report `docPathsUnknown`) and F-451's line held to the
+next report's `changeDetection`; unreached this round: the final report's `Depth:` /
+`Not complete:` lines (setup stops at Phase 5 on pending).
