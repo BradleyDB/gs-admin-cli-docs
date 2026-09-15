@@ -1674,6 +1674,17 @@ for (const name of skills) {
     lines.forEach((l, i) => {
       for (const t of helperCodeTexts(l, inFence(i))) {
         if (!t.includes("capture.mjs") || !t.includes("--paginate")) continue;
+        // Issue #10 (rung 5 — copies held to a shape): an --out carrying the
+        // {page} placeholder must be QUOTED. Windows PowerShell consumes the
+        // braces of an unquoted value (measured 2026-09-14: argv arrives as
+        // `…-`), and the shipped fences are the only home of that fact.
+        const outVal = /--out\s+(\S+)/.exec(t)?.[1] ?? "";
+        if (outVal.includes("{page}") && !/^(['"]).*\1$/.test(outVal)) {
+          fail(
+            `${rel}:${i + 1}: paginate fence's --out carries {page} unquoted — Windows PowerShell consumes the braces; ` +
+              `quote the value ('<path>-{page}.json') (issue #10)`,
+          );
+        }
         const cmd = t.split(/\s--\s/)[1] ?? "";
         for (const [needle, path] of Object.entries(PAGINATE_STATED_PATHS)) {
           if (new RegExp("(^|\\s)" + needle.replace(/ /g, "\\s+") + "(\\s|$)").test(cmd) && !t.includes(`--items-path ${path}`)) {

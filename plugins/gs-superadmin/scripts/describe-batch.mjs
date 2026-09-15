@@ -120,7 +120,45 @@
 //
 // Output: one JSON summary on stdout (including `domainProgress`, the domain's
 // documented/total counts after the batch). Non-zero exit + stderr message on
-// error. While the batch runs, a stderr progress line is emitted every few
+// error.
+//
+// Within-run abort (issue #13, F-458): two ways a run stops before its batch
+// is exhausted, both reported as ONE additive summary field —
+//   `aborted: { reason: "consecutive-failures" | "auth", after: <n>, lastError }`
+// — ABSENT on a run that did not abort (the setup skill branches on the one
+// field; `budgetExhausted`, `moreRemaining` and `failures` keep their shapes
+// and meanings, and this is a contract: never remove or re-type them).
+// `after` is the number of entries this run ATTEMPTED, the aborting one
+// included — per top-level entry, never per drilldown spawn. Exit stays 0:
+// the run completed and its summary is honest; `moreRemaining` reads true.
+//   "consecutive-failures" — CONSECUTIVE_FAILURE_LIMIT entries in a row ended
+//     in a `failed` mark (every markFailed class: a failed or timed-out
+//     spawn, unexpected output, a renderer refusal, a missing {name}; a
+//     designer entry counts ONCE whatever its drilldown count). A documented
+//     or skipped-unchanged entry resets the count; a PERMANENT designer field
+//     gap never marks failed and so never counts; budget exhaustion is not a
+//     failure. The marks already written stand exactly as written (they were
+//     real describe failures) — the loop stops so a dead describeCommand or a
+//     wrong id field costs five spawns, not the whole asset list. The limit
+//     is a constant, not a flag (ruled 2026-09-14: the issue's number, high
+//     enough that a handful of broken assets in a healthy domain never trips
+//     it). The skill's BETWEEN-invocation stop rule is unchanged.
+//   "auth" — the CLI could not obtain a bearer token. Every describe after
+//     that fails identically until the user logs in, so the FIRST sighting
+//     aborts and NOTHING is marked: the in-flight entry keeps its status,
+//     like the budget-exhaustion path. `failed` means "the CLI could not
+//     describe this asset", never "the run ended while this asset was in
+//     flight" (F-458: 17 healthy assets carried that wrong durable state).
+//     Classified only inside the failure branch — non-zero exit or spawn
+//     error; the CLI's shared handler (dist/commands/base.js,
+//     BaseCommand.catch) writes `Error: <message>` to stderr and exits 1 for
+//     every thrown error, so a successful describe is never reclassified by
+//     its stderr (ruled 2026-09-14) — by the CLI's own re-login instruction
+//     on stderr or stdout: doc-lib's isAuthDeath (shared with capture.mjs,
+//     the other script that spawns this CLI). `domainProgress` is re-read
+//     at an abort so the summary's counts include the aborting entry's mark.
+//
+// While the batch runs, a stderr progress line is emitted every few
 // describes (`[describe-batch] 45/120 in batch — domain 380/473 documented`)
 // so long chunks are never silent. On --upgrade runs the depth is the metric,
 // not the status — metadata stubs already count as documented, so
@@ -140,7 +178,7 @@ import {
   renderDesignerDoc, designerDocProgress, designerDrilldownStats, designerTaskFieldLabels, splitTrailingGroup,
   parseDocJson, normalizeText, writeFileAtomicSync,
   readJsonFile, makeCliHelpers, findWorkspaceCatalog, makeCommandResolver,
-  assertReadOnlyCommand, assertPlainGsAdminCommand, resolveCliArgv, READ_VERB_EXACT, DESCRIBE_NONE, RECORDED_LANES } from "./doc-lib.mjs";
+  assertReadOnlyCommand, assertPlainGsAdminCommand, resolveCliArgv, isDescribeRead, isAuthDeath, DESCRIBE_NONE, RECORDED_LANES } from "./doc-lib.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const MANIFEST_SCRIPT = join(here, "manifest.mjs");
@@ -286,16 +324,19 @@ const { cmd: matched, rest } = makeCommandResolver(catalog).resolveTokens(tokens
 // still pin them through it (A-6). What stays HERE is this script's POLICY —
 // the describe-shaped read predicate:
 //
-// The exact-name allowlist (READ_VERB_EXACT) is shared from doc-lib — its
-// rationale, the audited catalog-version stamp, and the adoption-time
-// re-audit tripwire live there (review round, B5 W4: two copies meant the
-// tripwire pinned only one). This script's policy composes the describe
-// shape onto it and refuses everything else; the shared gate's endpoint
-// check still backstops any future write that happens to be named `get`.
-const isReadVerb = (n) => typeof n === "string" && (/^describe(-|$)/.test(n) || READ_VERB_EXACT.has(n));
+// The predicate is doc-lib's isDescribeRead (F-456): a describe-shaped
+// actionKey admits on its own merits (`cn chain` is describe-job-chain — its
+// path ends in a noun and the old trailing-word test refused it, and capture
+// with it), the trailing word admits on the describe shape or the shared
+// exact-name allowlist (READ_VERB_EXACT — its rationale, the audited
+// catalog-version stamp, and the adoption-time re-audit tripwire live in
+// doc-lib; review round, B5 W4: two copies meant the tripwire pinned only
+// one), and a hand-trimmed catalog with no actionKey decides on the word
+// alone. Everything else is refused; the shared gate's endpoint check still
+// backstops any future write that happens to be named `get`.
 assertReadOnlyCommand({
   matched, rest, hooksDir: join(here, "..", "hooks"), fail, printable,
-  isRead: isReadVerb,
+  isRead: isDescribeRead,
   shapeNoun: "a describe-shaped read",
   runsNoun: "read-only describes",
 });
@@ -496,6 +537,25 @@ const spawnCli = (args) => {
 // else — timeout, transport, exit without that sentence — is retryable.
 const FIELD_NOT_FOUND = /No field found on task/;
 
+// ── Within-run abort (issue #13, F-458 — the header's contract) ─────────────
+// The auth classifier (the CLI's re-login sentence, version-stamped) is
+// doc-lib's isAuthDeath — one home for both spawn-capable scripts.
+const CONSECUTIVE_FAILURE_LIMIT = 5;
+let attempted = 0; // top-level entries this run attempted, the aborting one included
+let consecutiveFailures = 0;
+/** @type {{reason: "consecutive-failures" | "auth", after: number, lastError: string} | null} */
+let aborted = null;
+/** @param {"consecutive-failures" | "auth"} reason  @param {string} lastError */
+const abort = (reason, lastError) => {
+  aborted = { reason, after: attempted, lastError: printable(lastError, 200) };
+  // Never silent: the summary carries the field, stderr says it as it happens.
+  console.error(`[describe-batch] ABORTED after ${attempted} ${attempted === 1 ? "entry" : "entries"} (${reason}): ${aborted.lastError}`);
+  // The loop stops between progress ticks, so the last snapshot may predate
+  // the aborting entry's own mark (review round): re-read once, best-effort.
+  const dp = domainProgress();
+  if (dp) lastProgress = dp;
+};
+
 // ── Designer mode: the per-entry three-level drilldown with resume ──────────
 // Returns "documented" | "failed" | "budget". Writes the composite doc after
 // EVERY spawn (doc-lib renderDesignerDoc; atomic temp+rename) so the doc on
@@ -534,12 +594,19 @@ function runDesignerEntry({ entry, payload, core, fp, base, args, prior }) {
       renderDesignerDoc({ name: entry.name ?? null, key: entry.key, id: String(entry.id), payload, envelope: core !== payload, kb, capturedAt: new Date().toISOString() })
     );
   write(); // the template level is captured even if the budget ends here
+  // The token died mid-entry (F-458): set by drillSpawn, read by the loops
+  // below, which then stop like the budget and record NO item outcome.
+  /** @type {string | null} */
+  let authDead = null;
   // One spawn of either lower level: budget-charged, parsed, unwrapped, and
   // validated by the caller's `pick`. Returns { value } | { why, notFound }.
   const drillSpawn = (level, extra, pick) => {
     budgetLeft--; drill.spawns[level]++;
     const r = spawnCli([...args, ...extra]);
-    if (!r.ok) return { value: null, why: printable(r.why, 200), notFound: FIELD_NOT_FOUND.test(r.stderr) || FIELD_NOT_FOUND.test(r.stdout) };
+    if (!r.ok) {
+      if (isAuthDeath(r)) authDead = printable(r.why, 200);
+      return { value: null, why: printable(r.why, 200), notFound: FIELD_NOT_FOUND.test(r.stderr) || FIELD_NOT_FOUND.test(r.stdout) };
+    }
     let value = null;
     try { value = pick(unwrapOnce(JSON.parse(r.stdout))); } catch { /* non-JSON: reported below */ }
     return value === null ? { value: null, why: `${level} output is not the expected JSON shape`, notFound: false } : { value, why: null, notFound: false };
@@ -549,6 +616,7 @@ function runDesignerEntry({ entry, payload, core, fp, base, args, prior }) {
     if (kb.tasks[tid].status !== "ok") {
       if (budgetLeft <= 0) { stopped = true; break; }
       const r = drillSpawn("task", [DESIGNER_FLAGS.task, tid], (d) => (isRecord(d) ? d : null));
+      if (authDead !== null) { stopped = true; break; }
       if (!r.value) {
         kb.tasks[tid] = { status: "failed", error: r.why };
         drill.thisRun.tasksFailed++;
@@ -595,6 +663,7 @@ function runDesignerEntry({ entry, payload, core, fp, base, args, prior }) {
       for (const spelling of spellings) {
         if (budgetLeft <= 0) { stopped = true; break; }
         const r = drillSpawn("field", [DESIGNER_FLAGS.task, tid, DESIGNER_FLAGS.field, spelling], (d) => (isRecord(d) && Array.isArray(d._taskFieldDetail) ? d._taskFieldDetail : null));
+        if (authDead !== null) { stopped = true; break; }
         if (r.value) { outcome = { rows: r.value, spelling }; break; }
         outcome = { why: r.why, notFound: r.notFound };
         if (!r.notFound) break; // retryable (timeout/transport): do not spend the alternate spelling
@@ -614,6 +683,7 @@ function runDesignerEntry({ entry, payload, core, fp, base, args, prior }) {
     if (stopped) break;
   }
   const s = designerDrilldownStats(kb);
+  if (authDead !== null) return { outcome: "auth", error: authDead, stats: s };
   if (stopped) return { outcome: "budget", stats: s };
   if (s.complete) return { outcome: "documented", stats: s };
   const n = s.tasksFailed + s.fieldsFailed;
@@ -622,13 +692,21 @@ function runDesignerEntry({ entry, payload, core, fp, base, args, prior }) {
 }
 
 for (const entry of batch.entries) {
+  // The previous entry's failed mark may have tripped the limit (markFailed
+  // below records the abort after writing that mark); stop before spawning.
+  if (aborted) break;
   // Designer mode: a fresh entry needs its template describe AND at least
   // one drilldown to make progress (the floor on --spawn-budget says why).
   if (docMode === "designer" && budgetLeft <= 0) { budgetExhausted = true; break; }
+  attempted++;
   const markFailed = (msg, extra = []) => {
     runManifest(["mark", "--key", entry.key, "--status", "failed", "--error", printable(msg, 200), ...extra]);
     failures.push({ key: entry.key, error: printable(msg, 200) });
     progress();
+    // Issue #13: every failed mark counts toward the within-run limit; the
+    // documented and skipped-unchanged marks reset it. Checked HERE so the
+    // aborting entry's own mark is already written when the loop stops.
+    if (++consecutiveFailures >= CONSECUTIVE_FAILURE_LIMIT) abort("consecutive-failures", msg);
   };
   if (tokens.includes("{name}") && (entry.name == null || entry.name === "")) {
     markFailed("no name recorded in manifest — cannot substitute {name}");
@@ -638,6 +716,8 @@ for (const entry of batch.entries) {
   if (docMode === "designer") { budgetLeft--; drill.spawns.template++; }
   const res = spawnCli(args);
   if (!res.ok) {
+    // F-458: the token died, not the asset — nothing marked, the run stops.
+    if (isAuthDeath(res)) { abort("auth", res.why); break; }
     markFailed(res.why);
     continue;
   }
@@ -660,6 +740,17 @@ for (const entry of batch.entries) {
   // run finds it.
   const base = claimBaseName(entry.id);
   const relPath = `${outDir.replace(/\\/g, "/").replace(/\/$/, "")}/${base}.md`;
+  // The full-depth documented mark, one spelling for the raw/template/program
+  // path and the designer composite (A-1); a success resets the within-run
+  // failure count (issue #13).
+  const markDocumented = () => {
+    const markArgs = ["mark", "--key", entry.key, "--status", "documented", "--depth", "full", "--doc-path", relPath];
+    if (fp) markArgs.push("--fingerprint", fp);
+    runManifest(markArgs);
+    consecutiveFailures = 0;
+    docs.push(relPath);
+    progress();
+  };
   // Designer resume state: the composite already on disk for this entry, if
   // any — under the recorded doc_path, else under the claimed name (an
   // unmarked budget-cut doc; the two usually coincide, so the list is
@@ -695,6 +786,7 @@ for (const entry of batch.entries) {
     // same template content — a summary-only doc from an earlier plugin
     // version, or a budget-cut partial, documents normally instead.
     runManifest(["mark", "--key", entry.key, "--status", "documented"]);
+    consecutiveFailures = 0;
     skippedUnchanged++;
     unchangedKeys.push(entry.key);
     progress();
@@ -750,17 +842,23 @@ for (const entry of batch.entries) {
       progress();
       break;
     }
+    if (result.outcome === "auth") {
+      // The token died inside a drilldown (F-458, one level down): the
+      // composite on disk records no outcome for it — the item stays
+      // pending — nothing is marked, and the run stops; the next invocation
+      // resumes from the doc exactly as after a budget cut. The top-level
+      // `aborted` is the one record of it (no per-entry counter: a template-
+      // spawn death takes the same route one level up).
+      abort("auth", result.error);
+      break;
+    }
     if (result.outcome === "failed") {
       drill.entries.failed++;
       markFailed(result.error, existsSync(resolve(outDir, `${base}.md`)) ? ["--doc-path", relPath] : []);
       continue;
     }
     drill.entries.documented++;
-    const markArgs = ["mark", "--key", entry.key, "--status", "documented", "--depth", "full", "--doc-path", relPath];
-    if (fp) markArgs.push("--fingerprint", fp);
-    runManifest(markArgs);
-    docs.push(relPath);
-    progress();
+    markDocumented();
     continue;
   } else {
     // Describe payloads commonly wrap the asset in a `data` envelope.
@@ -774,14 +872,12 @@ for (const entry of batch.entries) {
     });
   }
   writeFileSync(resolve(outDir, `${base}.md`), doc, "utf8");
-  const markArgs = ["mark", "--key", entry.key, "--status", "documented", "--depth", "full", "--doc-path", relPath];
-  if (fp) markArgs.push("--fingerprint", fp);
-  runManifest(markArgs);
-  docs.push(relPath);
-  progress();
+  markDocumented();
 }
 
-const more = runManifest(selectionArgs(1));
+// The moreRemaining probe is one more manifest.mjs spawn; a run that stopped
+// early already knows the answer, so it is not spawned (review round).
+const more = budgetExhausted || aborted !== null ? { count: 1 } : runManifest(selectionArgs(1));
 console.log(
   JSON.stringify(
     {
@@ -789,6 +885,9 @@ console.log(
       domain,
       docMode,
       commandSource,
+      // ADDITIVE (issue #13, F-458): present only on a run that stopped early
+      // — { reason, after, lastError }; see the header's contract.
+      ...(aborted ? { aborted } : {}),
       selected: batch.count,
       documented: docs.length,
       skippedUnchanged,
@@ -798,7 +897,7 @@ console.log(
       docs,
       ...(docMode === "designer" ? { drilldowns: { budget: spawnBudget, spawnsUsed: spawnBudget - budgetLeft, budgetExhausted, ...drill } } : {}),
       domainProgress: lastProgress ?? domainProgress(),
-      moreRemaining: more.count > 0 || budgetExhausted,
+      moreRemaining: more.count > 0 || budgetExhausted || aborted !== null,
     },
     null,
     2

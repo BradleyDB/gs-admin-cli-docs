@@ -64,6 +64,10 @@ node ".gs-superadmin/plugin/scripts/manifest.mjs" next --manifest <slug>/_manife
 
 If the describe command fails for an asset:
 `… mark --manifest <slug>/_manifest.json --key <key> --status failed --error "<short message>"` — then continue with the next asset.
+Exception: a failure carrying the CLI's re-login instruction (`Run gs-admin login to
+re-authenticate`) is the session's token, not the asset — mark nothing, have the user
+log in, and retry the same asset (the batch script draws the same line: its summary
+reports `aborted.reason: "auth"` and leaves the entry's status untouched).
 
 ## §4 Budget-report shapes (after Phase 5 hits the budget limit)
 

@@ -176,10 +176,13 @@ reconciliation, and the suspect-round-count honesty (this and the next paragraph
 the canonical statements of the capture and pagination rules — the other capturing and
 sweeping skills carry a one-line paraphrase pointing here):
 ```
-node .gs-superadmin/plugin/scripts/capture.mjs --paginate --page-flag page --out .gs-superadmin/tmp/<ns>-<list-cmd>-{page}.json -- gs-admin --json <ns> <list-cmd> --limit 200
+node .gs-superadmin/plugin/scripts/capture.mjs --paginate --page-flag page --out '.gs-superadmin/tmp/<ns>-<list-cmd>-{page}.json' -- gs-admin --json <ns> <list-cmd> --limit 200
 ```
 `{page}` is literal — the SCRIPT substitutes it (one file per page; keep every page
-file). The helper spawns the CLI itself (argv, no shell) and writes clean UTF-8 with no
+file). Keep the `--out` value quoted as the fence spells it: Windows PowerShell
+consumes an unquoted `{page}` (the script then refuses the run — the placeholder is
+gone — rather than writing a mis-named file), and single quotes are literal in both
+shells the tools use, PowerShell and bash. The helper spawns the CLI itself (argv, no shell) and writes clean UTF-8 with no
 BOM on every shell — never capture with a bare shell redirect, whose encoding is the
 shell's choice (an ill-encoded file is one the manifest script's JSON parser rejects).
 If a payload was ever captured by hand with a redirect, re-encode it before parsing:
@@ -540,7 +543,14 @@ safe unquoted (substitution rules and identifier cases:
 content fingerprint per documented entry, which `/gs-superadmin:refresh
 --document` passes `--if-changed` against so a later re-describe rewrites a doc
 only when the payload genuinely changed. Size `--limit` so one invocation
-finishes inside the harness's ~2-minute shell timeout (**~10–15 describes** is
+finishes inside the **nearer** of two deadlines — the harness's ~2-minute shell
+timeout, and the token's usable life from the Phase 1 pre-flight (a token that
+dies mid-batch ends the run, not the assets: the script reports it as
+`aborted.reason: "auth"`, below, and marks nothing) — and size against the
+**slow end** of the rates you have observed, because a small sample under-predicts
+a large batch (measured on 1.0.9, one tenant: 2.36 s/asset over 25 assets, 2.77
+over 275, 3.09 over 311 — a batch sized from the 25-asset rate overran the token).
+Within the shell timeout, **~10–15 describes** is
 the norm, journey programs included; `journey-email-templates` alone runs ~50;
 `data-designer` runs **1–2** templates because each costs 1 + tasks + fields calls
 under the script's own per-invocation spawn budget — sizing rationale in the
@@ -556,6 +566,17 @@ stop re-invoking — those failures are deterministic; report the failed keys wi
 their recorded errors instead of looping. A run that documents 0 with an EMPTY
 `failures` list and `budgetExhausted: true` (the designer doc-mode's spawn budget
 ran out mid-template) is progress — its doc grew on disk — so re-invoke.
+The script also enforces a **within-run** limit and names it in the summary's
+`aborted` field (absent when the run did not stop early; the fields above keep
+their meanings): `aborted.reason: "consecutive-failures"` — five entries in a row
+ended in a `failed` mark and the loop stopped with those marks standing; the
+untried entries are still queued, so re-invoke once, and a second run that aborts
+the same way on the same keys is the stop rule above firing (check the recorded
+`describeCommand` and id field before anything else). `aborted.reason: "auth"` —
+the CLI could not obtain a token: the in-flight entry was NOT marked and keeps its
+status (any `failures` listed are real describe failures from EARLIER in the same
+run and stand); have the user run `gs-admin login`, then re-invoke, and never
+count that run as a stop-rule sample.
 On `--deep` runs add `--upgrade` (a failed stub keeps depth `metadata`, stays in the
 upgrade queue, and is retried the same way). Email templates, journey programs, and
 data designers run through this same batch script — it writes compact docs for the

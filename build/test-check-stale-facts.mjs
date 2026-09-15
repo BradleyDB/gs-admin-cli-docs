@@ -81,9 +81,11 @@ function runRig(files) {
     );
     // All three F-280 carriers live in doc-lib since the shared-gate hoist
     // (B5 W4/DS-17 + its review round).
+    // …plus the auth-death literal's audit stamp (F-458), same home.
     writeFileSync(
       join(rig, "plugins", "gs-superadmin", "scripts", "doc-lib.mjs"),
-      `// strict writers went 29 → 0; POST reads 59 → 0\n// read actions in the v${PIN} catalog audited\n`,
+      `// strict writers went 29 → 0; POST reads 59 → 0\n// read actions in the v${PIN} catalog audited\n` +
+        `// the sentence every auth-path throw in the\n// v${PIN} package's dist/core/auth/index.js ends with\n`,
     );
     // Coverage floor (F-101): the checker requires ≥40 tracked .md files with
     // some nested — filler carries no version/count/flag tokens.

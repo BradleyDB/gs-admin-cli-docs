@@ -91,7 +91,7 @@ the shipped capture helper (clean UTF-8, no BOM, any shell; never a bare shell
 redirect — rule canon: setup Phase 4; prefer a scratch `.mjs` file over a `node -e`
 one-liner when processing the files):
 ```
-node .gs-superadmin/plugin/scripts/capture.mjs --paginate --page-flag page --out .gs-superadmin/tmp/<ns>-<list-cmd>-{page}.json -- gs-admin --json <ns> <list-cmd> --limit 200
+node .gs-superadmin/plugin/scripts/capture.mjs --paginate --page-flag page --out '.gs-superadmin/tmp/<ns>-<list-cmd>-{page}.json' -- gs-admin --json <ns> <list-cmd> --limit 200
 ```
 Add `--items-path <dotted>` for a command whose envelope carries a second array beside
 the rows (`rp list`: `--items-path data.data` — its root `alerts` block fills on a

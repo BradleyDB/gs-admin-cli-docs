@@ -80,9 +80,9 @@ with `--json`, captured **to a file** through the shipped capture helper (bulk p
 never enter context; the helper writes clean UTF-8 — no BOM — on any shell; never a
 bare shell redirect. Rule canon: setup Phase 4):
 ```
-node .gs-superadmin/plugin/scripts/capture.mjs --paginate --page-flag page --out .gs-superadmin/tmp/audit-rules-{page}.json -- gs-admin --json re r list --limit 200
-node .gs-superadmin/plugin/scripts/capture.mjs --paginate --page-flag page --items-path data.data --out .gs-superadmin/tmp/audit-reports-{page}.json -- gs-admin --json rp list --limit 200
-node .gs-superadmin/plugin/scripts/capture.mjs --paginate --page-flag none --out .gs-superadmin/tmp/audit-scorecards.json -- gs-admin --json sc list --limit 10000
+node .gs-superadmin/plugin/scripts/capture.mjs --paginate --page-flag page --out '.gs-superadmin/tmp/audit-rules-{page}.json' -- gs-admin --json re r list --limit 200
+node .gs-superadmin/plugin/scripts/capture.mjs --paginate --page-flag page --items-path data.data --out '.gs-superadmin/tmp/audit-reports-{page}.json' -- gs-admin --json rp list --limit 200
+node .gs-superadmin/plugin/scripts/capture.mjs --paginate --page-flag none --out '.gs-superadmin/tmp/audit-scorecards.json' -- gs-admin --json sc list --limit 10000
 ```
 
 **Page each domain to exhaustion — a single default call is never the inventory.** The

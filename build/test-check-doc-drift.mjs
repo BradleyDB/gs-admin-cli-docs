@@ -1110,6 +1110,24 @@ try {
           res.status === 1 && /rp list.*does not state its rows path/.test(res.stderr) && /--items-path data\.data/.test(res.stderr), res.stderr);
       } finally { snap.restore(); }
     }
+    // (j) issue #10: a paginate fence whose --out carries {page} UNQUOTED must
+    // go red — Windows PowerShell consumes the braces, and nothing but the
+    // fence carries the quoting. Mutant: strip the quotes from the audit rules
+    // fence.
+    {
+      const auditRel = "plugins/gs-superadmin/skills/audit/SKILL.md";
+      const snap = snapshotFiles([at(auditRel)]);
+      try {
+        mutate(auditRel, (s) => {
+          const q = "--out '.gs-superadmin/tmp/audit-rules-{page}.json'";
+          if (!s.includes(q)) throw new Error("audit rules fence no longer carries the quoted {page} --out — fixture stale");
+          return s.replace(q, "--out .gs-superadmin/tmp/audit-rules-{page}.json");
+        });
+        const res = run();
+        check("check 14j: a paginate fence with an UNQUOTED {page} --out goes red (issue #10)",
+          res.status === 1 && /audit\/SKILL\.md:\d+: paginate fence's --out carries \{page\} unquoted/.test(res.stderr), res.stderr);
+      } finally { snap.restore(); }
+    }
   }
 
   // ── check 10i (F-394): the BARE placeholder spelling inside a fence ────────
