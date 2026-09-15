@@ -149,6 +149,42 @@ rule also reads the archive.
 Under test: dev · hb-20260914-02 · 2026-09-14
 Blind spots (hb-20260914-02): post-merge close-out of PR 19 on dev: nothing new is under test; the Session B arms were measured on the sandbox by the tester round (F-456 and F-458 CLEARED). Still unmeasured on any tenant, all fixture-only: the tester's own blind spots — F-456's --upgrade selection over a metadata-depth chain and the refuse direction (trimmed catalog, PUT twin); F-458's designer mid-drilldown death, the three sibling auth literals, and an oversized-batch rig from a fresh token. F-459 (section logged today, OPEN) awaits Session C1, plus everything Sessions C1 onward bank.
 
+<!-- builder 2026-09-15 (Session C1 — the report is the account of KB state; UNMERGED, riding a branch):
+     Payload: RP-1, RP-2, RP-3, RP-5 of the September round plan — F-455 (manifest.mjs report carries byDepth
+       { full, metadata, listOnly, unrecorded } over documented entries, in total and per domain under a new
+       domains.<d> row; describeStateOf shared by the stub banner and the report; setup's Phase 5 close, --deep relay,
+       Phase 6 precondition, final report and the §4 shapes quote ONE report at a quiescent point), F-454
+       (domainCounts { indexed, withAssets, empty }; the Phase 4 relay quotes indexed and names emptyDomains and a
+       stamped:false domain), F-451 (per-domain changeDetection date|none|unrecorded + datelessEntries; refresh's
+       report ends with a Not-checked-for-change block, never silence), F-459 (mark refuses a pathless documented
+       mark and a blank --doc-path; report and remove carry docPathsUnknown; new verb reconcile-docs backfills
+       doc_path through doc-lib's docNameMatcher — the claimer's read-side twin on ONE resolveStem core; docPathFor
+       is the one doc_path spelling). Report's output is T-2 v3 (GsReport, additive), pinned by contract-conformance.
+       Plugin 0.40.0 staged (CHANGELOG). Rulings (Bradley, 2026-09-15) recorded in the Fix notes and the plan's
+       As-shipped notes: four-state byDepth in a per-domain block; refuse in mark, count in report/remove, backfill
+       as its own verb (report stays read-only).
+     Branch round-c1-report-truth -> PR #20, base dev, UNMERGED. Transitions on the branch: F-455 OPEN -> FIXED,
+       F-454 OPEN -> FIXED, F-451 OPEN -> FIXED, F-459 OPEN -> FIXED (all Class: outcome-from-proxy, with Judge and
+       Sibling sweep lines). Claims no new F-number. Review: /code-review medium, 8 finders + 5 file-batched
+       verifiers — 16 findings, all fixed on the branch (F-459 Fix note lists them; the one real bug: the matcher
+       skipped its claim on a null read, orphaning a deleted doc's collision partner).
+     Measured locally, read-only, over both real manifests: prod 6 list-only domains read listOnly (722), none
+       metadata, report 1754 dateless under none; sandbox domainCounts 18/17/1, five legacy stamps unrecorded,
+       templates 557 dateless under date, docPathsUnknown 20 (3 + 14 + 3; the B-V #13 arm re-marked five since 25).
+     Under test on the branch: hb-20260915-01; blind spots = the one manifest write (the tester's reconcile over the
+       sandbox's three legacy domains, dev/VALIDATION.md F-459 section), the setup and refresh walks (slash-only),
+       the mark refusal and the CWD-mismatch refusal (fixture-only), the win32 folder-case arm (this host only).
+     Dispatch evidence (F-340), on the branch tip 4598121 (the [skip ci] handoff/bank commits suppress the PR suite),
+       QUOTED after completion:
+         validate-plugin 34994813724: changes success / manifests success / validate (ubuntu-latest) success
+         docs-drift 34994817096: drift (full) success / drift (stripped) success
+       PR-event runs on 3d556ba (the review-round tip): validate-plugin 34994653331 success (all three jobs);
+       docs-drift 34994653222 drift (full) success.
+     Carried, not in scope: PR #17 (draft, stages 0.39.0 — rebases its bump on merge); OPEN polish F-453 (Session D);
+       OPEN normal F-450, F-452 (Session C2), F-457 (Session D). Sibling named, not closed: upsert-batch's `unchanged`
+       folds dateless rows in (F-451 sweep line). Carried design: a manifest quiescence sequence for F-455.
+     Next: Session C1-V (tester, consumer workspace, no tenant call) on the branch per handoffs/SESSION-PROMPTS.md. -->
+
 <!-- builder 2026-09-14 (Session B round CLOSED OUT — MERGED):
      Payload: DB-1..DB-4 of the September round plan — #10 ({page} quoted in every paginate fence; capture's refusal names
        the shell cause; check-doc-drift check 14 holds the quoting, mutant 14j), F-456 (one exported read-shape predicate,
