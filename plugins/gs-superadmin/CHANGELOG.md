@@ -27,6 +27,9 @@ their reason; the entry in flight now keeps its status and is simply re-offered 
 - Every `capture.mjs --paginate` fence in the skills quotes its `--out` value: Windows
   PowerShell consumed the unquoted `{page}` placeholder and the command failed (issue #10).
   The helper's refusal for a missing placeholder now names that cause.
+- Operating model, Known CLI issue KI-017: the libuv-abort exit code is named as the raw Windows
+  status 0xC0000409 (3221226505) beside the codes Git Bash (127) and PowerShell (255) display —
+  a caller reading the raw status from a spawn saw a number the note did not mention.
 - Setup Phase 5: the stop rule names the within-run limit and both `aborted` reasons; the
   batch-sizing guidance names the nearer of the shell timeout and the token's usable life
   as the binding deadline, and says to size against the slow end of observed rates. The
