@@ -149,6 +149,22 @@ rule also reads the archive.
 Under test: dev · hb-20260915-03 · 2026-09-15
 Blind spots (hb-20260915-03): post-merge close-out of PR 20 on dev: nothing new is under test; the Session C1 arms were measured on the sandbox by two tester rounds (both VALIDATION sections CLEARED). Still fixture-only on any tenant: the positive stale-with-doc direction of docPathsUnknown, remove's count, a non-zero docsForUndocumented, the three legacy-stamp refresh lines, setup's Depth / Not-complete lines and the --deep relay, the mark pathless refusal, the reconcile CWD-mismatch and win32 folder-case refusals. Everything Sessions C2 onward bank.
 
+<!-- tester 2026-09-15 (Session C2-V verdict round — UNMERGED; re-stamps the builder comment below):
+     Branch round-c2-fact-homes -> PR #21, base dev, still UNMERGED; head now b714ecd (the verdict commit, no [skip ci],
+       so the PR suite runs on the head). Statuses on the branch: F-450 VERIFIED, F-452 VERIFIED @ hb-20260915-04.
+     Measured (dev/VALIDATION.md § F-450 / F-452, all four steps, CLEARED on the branch): step 1 read-only over both
+       manifests — scope on the two journey domains only, notEnumerableBare 4 with inert records, gate green, sha256
+       unchanged; step 2 the sandbox setup walk's Phase 4 relay — two scope lines quoted verbatim from that run's report,
+       before the totals question; step 3 the tenant CONVENTIONS.md override read for the sandbox only (deps-report and
+       email-report), prod on the workspace file, override deleted; step 4 the one write — sandbox connectors-chains
+       blankDatesCleared 4, then --no-date-field --allow-redate and report changeDetection none, datelessEntries 4.
+     Guard wiring: a mutating jo p pause drew the plugin's PreToolUse ask in the consumer-workspace session (declined).
+     Blind spots: on F-450's verdict — slash-only audit / change-request / deprecate / refresh not typed; the scaffold
+       refresh of the workspace CONVENTIONS.md unmeasured against a filled-in value; the guard's silent direct-stdin exit.
+     CI on the head b714ecd (quoted after conclusion): run 35025828196 validate-plugin: success — changes=success,
+       manifests=success, validate (ubuntu-latest)=success; run 35025828203 docs-drift: success — drift (full)=success.
+     Numbers claimed: none (next free F-460). Next: merging PR #21 is Bradley's call. -->
+
 <!-- builder 2026-09-15 (Session C2 round HANDED OFF — UNMERGED):
      Payload: FH-1 and RP-4 of the September round plan — F-450 (one home per kind of fact: doc-lib CLI_PIN_FACTS,
        a version-stamped, self-retiring per-pin table keyed by catalog id; domain-candidates diff buckets the four
