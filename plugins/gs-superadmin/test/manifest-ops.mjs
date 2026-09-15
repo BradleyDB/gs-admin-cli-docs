@@ -1703,6 +1703,40 @@ check("fingerprint: malformed value rejected (exit 1)", r.code === 1 && /40-char
     m.inventory["legacy-dom/Co"].doc_path = `${fwd(legacyDir)}/Co.md`;
     writeFileSync(MC, JSON.stringify(m, null, 2));
   }
+  // F-459 reopen (C1-V): STATUS cannot stand in for "a doc may exist on disk".
+  // A stale entry that keeps its documented mark's last_verified / depth and
+  // its July doc, with no doc_path, is counted unknown and reconciled; a
+  // pending entry that was never documented is not counted, and a stray file
+  // carrying its name is reported (claimed, not recorded), never an orphan.
+  // The invariant the tester named, pinned per domain: dry-run recorded ≤
+  // report docPathsUnknown.
+  {
+    const m = djC();
+    m.inventory["legacy-dom/Co"].status = "stale";           // documented in July, flipped stale by a refresh; doc still on disk (Co.md)
+    delete m.inventory["legacy-dom/Co"].doc_path;
+    m.inventory["legacy-dom/l-3"].status = "stale";          // stale, no doc on disk (l-3.md was deleted above)
+    delete m.inventory["legacy-dom/l-3"].doc_path;
+    writeFileSync(MC, JSON.stringify(m, null, 2));
+    const pendList = rows("pend", [{ id: "p-new", name: "Never documented", modifiedDate: null }]);
+    run("upsert-batch", ["--manifest", MC, "--file", pendList, "--domain", "legacy-dom", "--id-field", "id", "--name-field", "name", "--partial"]);
+    writeFileSync(join(legacyDir, "p-new.md"), "# stray doc for a pending entry\n");
+    r = run("report", ["--manifest", MC]);
+    check("c1 reopen report: a stale entry with last_verified and no doc_path counts unknown; the never-documented pending entry does not (2: stale Co + stale l-3)", r.json?.domains?.["legacy-dom"]?.docPathsUnknown === 2 && r.json.byDomain["legacy-dom"].pending === 1, r.json?.domains?.["legacy-dom"]);
+    const unknownBefore = r.json?.domains?.["legacy-dom"]?.docPathsUnknown;
+    r = run("reconcile-docs", ["--manifest", MC, "--domain", "legacy-dom", "--dry-run"]);
+    check("c1 reopen invariant: dry-run recorded ≤ docPathsUnknown (1 ≤ 2); the stale doc-less entry is unmatchedDocumented; the pending entry's stray file is docsForUndocumented, not an orphan", r.code === 0 && r.json?.recorded === 1 && r.json.recorded <= unknownBefore && r.json.unmatchedDocumented === 1 && r.json.docsForUndocumented === 1 && r.json.samples.docsForUndocumented[0] === "legacy-dom/p-new" && !r.json.samples.orphanFiles.includes("p-new.md"), r.json);
+    r = run("reconcile-docs", ["--manifest", MC, "--domain", "legacy-dom"]);
+    const inv2 = djC().inventory;
+    check("c1 reopen reconcile: the stale entry's doc_path is recorded; the pending entry stays pathless", r.json?.recorded === 1 && /\/Co\.md$/.test(inv2["legacy-dom/Co"].doc_path) && inv2["legacy-dom/p-new"].doc_path === undefined, { Co: inv2["legacy-dom/Co"].doc_path, p: inv2["legacy-dom/p-new"].doc_path });
+    r = run("remove", ["--manifest", MC, "--key", "legacy-dom/l-3"]);
+    check("c1 reopen remove: a stale pathless entry with documentation history counts docPathsUnknown 1, never docPaths []", r.code === 0 && r.json?.docPathsUnknown === 1 && r.json.docPaths.length === 0, r.json);
+    r = run("remove", ["--manifest", MC, "--key", "legacy-dom/p-new"]);
+    check("c1 reopen remove (control): a never-documented pending entry is not an unknown doc", r.code === 0 && r.json?.docPathsUnknown === 0, r.json);
+    rmSync(join(legacyDir, "p-new.md"));
+    // Restore the rig for the arms below (Co documented with its path).
+    const m3 = djC(); m3.inventory["legacy-dom/Co"].status = "documented"; writeFileSync(MC, JSON.stringify(m3, null, 2));
+  }
+  { const m = djC(); delete m.inventory["legacy-dom/l-1"].doc_path; writeFileSync(MC, JSON.stringify(m, null, 2)); } // one pathless documented entry for the arm below
   r = run("reconcile-docs", ["--manifest", MC, "--domain", "legacy-dom", "--dir", join(ROOT, "acme-c1", "no-such-folder")]);
   check("c1 reconcile --dir on a missing folder: dirExists false, nothing recorded, the pathless documented entry named — never an error that hides the state", r.code === 0 && r.json?.dirExists === false && r.json.recorded === 0 && r.json.unmatchedDocumented === 1, r.json);
   r = run("reconcile-docs", ["--manifest", MC]);

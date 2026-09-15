@@ -28,9 +28,11 @@ quiescent point instead of narrating.
   "Unchanged" now says what it could see). Honest statement only — fingerprint-based
   staleness for those rows is issue #12 territory.
 - `docPathsUnknown` (F-459), in `report` (per domain and total) and beside `remove`'s
-  `docPaths`: documented entries with no recorded `doc_path` (docs written before path
-  recording existed) are counted, so a cleanup list can never read 0 as "no docs" when the
-  truth is "unknown". `mark --status documented` now refuses an entry that has no recorded
+  `docPaths`: entries that were ever documented — documented now, or stale/failed still
+  carrying `last_verified` or `depth` — with no recorded `doc_path` (docs written before
+  path recording existed) are counted, so a cleanup list can never read 0 as "no docs"
+  when the truth is "unknown"; `reconcile-docs` records paths for exactly that set, and
+  names a never-documented entry's stray file as `docsForUndocumented`. `mark --status documented` now refuses an entry that has no recorded
   `doc_path` when none is passed (stub, describe-batch and the manual path always pass
   one). New verb `manifest.mjs reconcile-docs --domain <d> [--dir <folder>] [--out <file>]
   [--dry-run]` backfills `doc_path` from the docs on disk through the writers' own naming

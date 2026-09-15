@@ -107,9 +107,11 @@
 //                 delete inventory entries (e.g. rekey orphans); reports the
 //                 removed entries' doc_path values so stale docs can be
 //                 cleaned up — the script never deletes doc files itself —
-//                 and `docPathsUnknown`, the removed entries that were
-//                 documented with NO doc_path recorded (F-459: legacy docs
-//                 written before path recording existed), so an empty
+//                 and `docPathsUnknown`, the removed entries that were EVER
+//                 documented (documented now, or stale/failed still carrying
+//                 last_verified or depth) with NO doc_path recorded (F-459:
+//                 legacy docs written before path recording existed; the
+//                 reopen: a stale entry's July doc was invisible), so an empty
 //                 `docPaths` can never read as "no docs" when the truth is
 //                 "unknown"; reconcile-docs (below) records those paths
 //                 | --domain <name> [--allow-populated]
@@ -274,12 +276,18 @@
 //                 are left as recorded (a recorded path whose file is gone is
 //                 reported under recordedMissing, never rewritten — a deleted
 //                 doc is the operator's regeneration signal). Reports, by
-//                 count with samples and in full under --out: recorded,
-//                 alreadyRecorded, recordedMissing, unmatchedDocumented
-//                 (documented entries with no doc on disk — the docs are
-//                 gone; re-document or remove, a decision, never automatic)
-//                 and orphanFiles (docs no entry claims — a rekey or a
-//                 removed entry left them; cleanup is the caller's). Never
+//                 count with samples and in full under --out: recorded (only
+//                 entries that were ever documented take a path — the set
+//                 report counts as docPathsUnknown, so recorded ≤ that count
+//                 per domain, the F-459 reopen's invariant), alreadyRecorded,
+//                 recordedMissing, unmatchedDocumented (ever-documented
+//                 entries with no doc on disk — the docs are gone;
+//                 re-document or remove, a decision, never automatic),
+//                 docsForUndocumented (never-documented entries whose name a
+//                 file carries — claimed, not recorded; the describe that
+//                 documents them overwrites that file) and orphanFiles (docs
+//                 no entry claims — a rekey or a removed entry left them;
+//                 cleanup is the caller's). Never
 //                 writes or deletes a doc file. --dry-run computes everything
 //                 and writes nothing.
 //
@@ -396,7 +404,11 @@
  *                                or no stamp — refresh derives it once
  * @property {number} datelessEntries  entries with no modified_date (null or
  *                                absent), whatever changeDetection says
- * @property {number} docPathsUnknown  documented entries with no doc_path
+ * @property {number} docPathsUnknown  entries ever documented (documented now,
+ *                                or stale/failed carrying last_verified or
+ *                                depth) with no doc_path — the set
+ *                                reconcile-docs can record for, so its
+ *                                `recorded` never exceeds this (F-459 reopen)
  *
  * @typedef {object} GsReport
  * @property {true} ok
@@ -516,6 +528,18 @@ function describeStateOf(stamp) {
 // usable doc_path is a non-blank string; anything else is unknown.
 /** @param {GsInventoryEntry} e @returns {e is GsInventoryEntry & {doc_path: string}} */
 const hasDocPath = (e) => typeof e.doc_path === "string" && e.doc_path.trim() !== "";
+// "A doc may exist on disk for this entry" — the entry was documented at some
+// point: documented now, or a stale / failed entry that still carries the
+// last_verified stamp or the depth its documented mark wrote (refresh flips
+// documented → stale without touching either; a failed re-describe keeps
+// them too). STATUS alone cannot decide it (F-459 reopen: a stale entry with
+// its July doc on disk and no doc_path was invisible to docPathsUnknown, so
+// reconcile recorded 4 paths against a count of 3). A pending entry that was
+// never documented has neither field. The invariant this buys: for every
+// domain, reconcile-docs's `recorded` ≤ report's `docPathsUnknown`, because
+// both are drawn from exactly this set.
+/** @param {GsInventoryEntry} e */
+const everDocumented = (e) => e.status === "documented" || e.last_verified != null || e.depth != null;
 // The describe-state → byDepth bucket for a metadata stub (F-455): frozen and
 // null-prototype (F-225 tenet) — the stub banner says the same three things.
 /** @type {Readonly<Record<"list-only"|"describable"|"unrecorded", "listOnly"|"metadata"|"unrecorded">>} */
@@ -1684,8 +1708,8 @@ if (verb === "init") {
   for (const e of entries) {
     const row = domains[e.domain];
     if (e.modified_date == null) row.datelessEntries++;
+    if (everDocumented(e) && !hasDocPath(e)) { row.docPathsUnknown++; docPathsUnknown++; }
     if (e.status !== "documented") continue;
-    if (!hasDocPath(e)) { row.docPathsUnknown++; docPathsUnknown++; }
     // A metadata stub's completeness is its DOMAIN's recorded describe state
     // (STUB_BUCKET — the stub banner says the same three things); a full doc
     // is full wherever it sits; no depth at all = a pre-depth-field doc = full
@@ -2035,7 +2059,7 @@ if (verb === "init") {
     }
     const e = m.inventory[k];
     if (hasDocPath(e)) docPaths.push(e.doc_path);
-    else if (e.status === "documented") docPathsUnknown++;
+    else if (everDocumented(e)) docPathsUnknown++;
     delete m.inventory[k];
     removed++;
   }
@@ -2081,6 +2105,8 @@ if (verb === "init") {
   /** @type {string[]} */ const recordedKeys = [];
   /** @type {string[]} */ const recordedMissing = [];
   /** @type {string[]} */ const unmatchedDocumented = [];
+  /** @type {string[]} never-documented entries (pending, no history) whose name a file on disk carries — claimed, never recorded */
+  const docsForUndocumented = [];
   let alreadyRecorded = 0;
   /** @type {string[]} recorded paths that do not resolve from this CWD while their file sits in the folder */
   const cwdMismatch = [];
@@ -2124,9 +2150,16 @@ if (verb === "init") {
     if (hasDocPath(e)) continue;
     const match = matcher.match(e.id);
     if (match === null) {
-      if (e.status === "documented") unmatchedDocumented.push(k);
+      if (everDocumented(e)) unmatchedDocumented.push(k);
       continue;
     }
+    // Only an entry that was ever documented takes a path — the same set
+    // report counts as docPathsUnknown, so `recorded` can never exceed that
+    // count (the F-459 reopen's invariant). A never-documented entry whose
+    // name a file carries (a re-listed asset whose old doc survived) is
+    // reported, its stem claimed so the file is not an orphan, and left for
+    // the describe that will overwrite it under the same claimed name.
+    if (!everDocumented(e)) { docsForUndocumented.push(k); continue; }
     if (!dryRun) e.doc_path = docPathFor(dirArg, match);
     recordedKeys.push(k);
   }
@@ -2146,11 +2179,12 @@ if (verb === "init") {
     alreadyRecorded,
     recordedMissing: recordedMissing.length,
     unmatchedDocumented: unmatchedDocumented.length,
+    docsForUndocumented: docsForUndocumented.length,
     orphanFiles: orphanFiles.length,
-    samples: { recorded: sample(recordedKeys), recordedMissing: sample(recordedMissing), unmatchedDocumented: sample(unmatchedDocumented), orphanFiles: sample(orphanFiles) },
+    samples: { recorded: sample(recordedKeys), recordedMissing: sample(recordedMissing), unmatchedDocumented: sample(unmatchedDocumented), docsForUndocumented: sample(docsForUndocumented), orphanFiles: sample(orphanFiles) },
     detailFile: detailOut ?? null,
   };
   // Full lists go to a file, never through model context (bulk-data rule).
-  if (detailOut) writeFileAtomicSync(resolve(detailOut), JSON.stringify({ ...summary, lists: { recorded: recordedKeys, recordedMissing, unmatchedDocumented, orphanFiles } }, null, 2) + "\n");
+  if (detailOut) writeFileAtomicSync(resolve(detailOut), JSON.stringify({ ...summary, lists: { recorded: recordedKeys, recordedMissing, unmatchedDocumented, docsForUndocumented, orphanFiles } }, null, 2) + "\n");
   out(summary);
 }

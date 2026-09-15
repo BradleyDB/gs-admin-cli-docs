@@ -237,3 +237,23 @@ writes beyond the one reconcile. Still owed at the next C1 handoff: F-459's inva
 (per domain, reconcile `recorded` ≤ report `docPathsUnknown`) and F-451's line held to the
 next report's `changeDetection`; unreached this round: the final report's `Depth:` /
 `Not complete:` lines (setup stops at Phase 5 on pending).
+
+## F-459 / F-451 — second arm after the C1-V reopens: the doc-existence invariant over both manifests, and the refresh block held to a fresh report (banked 2026-09-15, builder, Session C1 second round)
+
+Owed by: the next tester round on branch round-c1-report-truth (PR #20). No tenant call;
+no manifest write — both steps are read-only (`--dry-run` writes nothing; pinned).
+1. F-459 invariant, from the workspace root with a RELATIVE `--manifest`, on BOTH tenants:
+   `manifest.mjs report --manifest <slug>/_manifest.json`, then for EVERY domain in its
+   `domains` map `manifest.mjs reconcile-docs --manifest <slug>/_manifest.json --domain <d>
+   --dry-run`. Pass bar: on every row `recorded` ≤ `domains.<d>.docPathsUnknown`; a
+   refusal, or a row where `recorded` exceeds the count, REOPENS F-459. The builder's own
+   run read 18 + 18 domains, 0 violations, both files byte-identical before and after;
+   record your counts. (The sandbox's stale-with-doc entry was recorded by C1-V's
+   reconcile, so that live case rests on the fixture now: `docsForUndocumented` and the
+   stale arm in test/manifest-ops.mjs.)
+2. F-451, the refresh walk (slash-only, the user types it): after step 3, take the fresh
+   `report` step 4 now prescribes and hold every `Not checked for change this run:` line to
+   that domain's fresh `changeDetection` — `none` ↔ "outside change detection", `date` ↔
+   "detection starts next refresh", `unrecorded` ↔ "still unrecorded". The sandbox's
+   report-objects domain (recorded none by the C1-V walk) must land on the first line. A
+   state word that disagrees with the fresh report REOPENS F-451.

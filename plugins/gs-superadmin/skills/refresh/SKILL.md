@@ -41,9 +41,10 @@ node .gs-superadmin/plugin/scripts/manifest.mjs report --manifest <slug>/_manife
 ```
 If the manifest does not exist, or `total` is 0 with `last_refresh` null (setup was
 interrupted before Phase 4 completed), tell the user to run `/gs-superadmin:setup` first and stop.
-Keep this report's `domains` block: step 4 reads its `changeDetection` (`date` /
-`none` / `unrecorded`) and `datelessEntries` to name every domain whose changes this
-run could not check (F-451) — the glossary and the per-line rules are at step 4.
+Keep this report's `domains` block: step 4 compares its `changeDetection` (`date` /
+`none` / `unrecorded`) against a fresh report taken after step 3, and reads
+`datelessEntries`, to name every domain whose changes this run could not check
+(F-451) — the glossary and the per-line rules are at step 4.
 
 **Environment backfill** (once per legacy manifest): if `report` above shows
 `environment: null` (a manifest that predates the field, or one initialised without it),
@@ -250,25 +251,35 @@ passing `--list-command` on this refresh's upserts (above) is the backfill.
 
 ### 4 — Report
 
-The `Not checked for change this run:` block is read from step 1's report `domains`
-block, one line per qualifying domain, domains sorted by name within each kind:
-- `changeDetection: none` (recorded-none: no date field, the whole domain sits outside
-  change detection) — the first line.
-- `changeDetection: unrecorded` (a legacy stamp: no date field when this run started,
-  so nothing could be compared this run) — whether the field got recorded THIS run is
-  not knowable from step 1's report; read that domain's step 3 `upsert-batch` output:
-  `dateFieldSource: "explicit"` or `"explicit-none"` = recorded this run, emit the
-  second line with `<field>` = the field name, or the word `none` for
-  `"explicit-none"`; `"unrecorded"`, or no step 3 upsert for that domain at all = still
-  unrecorded, emit the third line (it will appear in this block next run too).
-- `changeDetection: date` with `datelessEntries > 0` (rows the comparison could not
-  see — the list-invisible recovery path registers such entries) — the fourth line.
+The `Not checked for change this run:` block states each domain's change-detection
+state AS THE NEXT RUN WILL READ IT (F-451 reopen: a line that said "detection starts
+next refresh" for a domain this run had just recorded as having no date field was a
+proxy claim). So it is read from a FRESH report taken after step 3's last upsert —
+run the step 1 invocation once more, at a quiescent point — and compared against step
+1's report for the same domain. One line per qualifying domain, sorted by name within
+each kind:
+- fresh `changeDetection: none` and step 1 read `none` too (recorded-none from before
+  this run: the whole domain sits outside change detection) — the first line.
+- step 1 read `unrecorded` (a legacy stamp: nothing could be compared this run) and
+  the fresh report reads `date` (step 3 recorded a field) — the second line, `<field>`
+  = the fresh `domains_indexed.<domain>.dateField`.
+- step 1 read `unrecorded` and the fresh report reads `none` (step 3 recorded
+  `--no-date-field`) — the third line: outside change detection from now on, never
+  "starts next refresh".
+- the fresh report still reads `unrecorded` (no upsert this run, or one that passed
+  neither flag) — the fourth line; it returns next run.
+- fresh `changeDetection: date` with `datelessEntries > 0` (rows the comparison
+  could not see — the list-invisible recovery path registers such entries) — the
+  fifth line.
 `<n>` is that domain's `datelessEntries`; `<t>` is the sum of that domain's `byDomain`
 row values (`byDomain.<domain>` is a status→count map and carries no total key). A
 domain in `emptyDomains` has no `byDomain` row — it holds zero entries — and gets no
 line at all. When no domain qualifies the block is the single word `none` — never
 omitted, never silence: "Unchanged" above counts only what the date comparison could
-see (F-451).
+see (F-451). Check before relaying: every line's state word ("outside change
+detection" / "detection starts next refresh" / "still unrecorded") must equal that
+domain's fresh `changeDetection` (`none` / `date` / `unrecorded`); a line that does
+not is wrong, whatever step 3 printed.
 ```
 ✓ gs-superadmin refresh complete
   Lookback:  <N> days
@@ -278,6 +289,7 @@ see (F-451).
   Not checked for change this run:
     <domain> — no date field recorded; <t> entries outside change detection
     <domain> — no date field when this run started (legacy stamp); recorded this run as <field>; detection starts next refresh
+    <domain> — no date field when this run started (legacy stamp); recorded this run as none; <t> entries outside change detection from now on
     <domain> — no date field recorded (legacy stamp); still unrecorded — this run's upsert passed neither --date-field nor --no-date-field
     <domain> — <n> of <t> entries carry no date under the recorded field
 ```
