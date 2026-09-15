@@ -146,8 +146,8 @@ what the gate counts (F-444). The gate refuses both. Sections from F-360 on; the
 rule also reads the archive.
 
 
-Under test: dev · hb-20260915-03 · 2026-09-15
-Blind spots (hb-20260915-03): post-merge close-out of PR 20 on dev: nothing new is under test; the Session C1 arms were measured on the sandbox by two tester rounds (both VALIDATION sections CLEARED). Still fixture-only on any tenant: the positive stale-with-doc direction of docPathsUnknown, remove's count, a non-zero docsForUndocumented, the three legacy-stamp refresh lines, setup's Depth / Not-complete lines and the --deep relay, the mark pathless refusal, the reconcile CWD-mismatch and win32 folder-case refusals. Everything Sessions C2 onward bank.
+Under test: round-c2-fact-homes · hb-20260915-04 · 2026-09-15
+Blind spots (hb-20260915-04): no tenant in the builder session: the deps-report walk with a tenant override present on one tenant only, the setup Phase 4 relay's rendering of scope lines (no CI executes skill prose), and the sandbox connectors-chains redate rest on the fixtures until C2-V; the per-pin table under a real workspace catalog at another CLI version rests on the synthetic 9.9.9 fixture; the four sublists' runtime errors in CLI_PIN_FACTS are quoted from both tenants' recorded exclusion reasons, not re-run; the scope arm needs NO tenant read (derived from the manifests' recorded list commands, both read locally)
 
 <!-- builder 2026-09-15 (Session C1 round CLOSED OUT — MERGED):
      Payload: RP-1, RP-2, RP-3, RP-5 of the September round plan — F-455 (report carries byDepth in total and per
