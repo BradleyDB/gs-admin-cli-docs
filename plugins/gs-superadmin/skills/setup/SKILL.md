@@ -239,12 +239,14 @@ script cannot make:
   exists) — never presented as complete.
 - Reconciliation proves **paging** completeness against the payload's own post-filter
   total — never inventory completeness (scope-limited domains, next bullet).
-- **Scope-limited domains — paging cannot fix these.** Several journey-side list
-  commands cannot see the whole tenant (`jo email templates`, `jo surveys list`,
-  `jo data-designer list`; Data Designer *designs* have no list command at all, and
-  are not identifiable among dm objects). Before indexing any of those — or reasoning
-  about their coverage, or recovering list-invisible templates from user-supplied
-  ids — read `references/index-scope-notes.md`: the per-command limits, the
+- **Scope-limited domains — paging cannot fix these.** Some list commands cannot see
+  the whole tenant; which ones, at the pinned CLI, is shipped data (doc-lib's per-pin
+  table), and `report` names each such domain's limit on its `domains.<domain>.scope`
+  row — never a list carried from memory. (Data Designer *designs* have no list command
+  at all, and are not identifiable among dm objects.) Before indexing a journey-side
+  domain — or reasoning about its coverage, or recovering list-invisible templates from
+  user-supplied ids — read `references/index-scope-notes.md`: the per-command limits
+  (one subsection per limited command, the canon a `scope.path` points at), the
   "CLI-reachable subset" annotation and UI-vs-CLI gap rules, and the recovery flow.
 
 Consult `.gs-superadmin/cheatsheet.md` for the exact commands. Skip `query` (no list
@@ -334,15 +336,24 @@ node .gs-superadmin/plugin/scripts/domain-candidates.mjs diff --manifest <slug>/
 The script derives every candidate mechanically from the workspace catalog (artifact-lane,
 non-mutating, tenant-wide list commands — never from recall) and maps each against the
 manifest: **indexed** (a `domains_indexed` entry's recorded `listCommand` matches),
-**excluded** (recorded in `domains_excluded`), or **undecided**. Surface the undecided
-candidates to the user **by name** — the decisions are tenant policy, not bookkeeping —
-then work through them in the order printed. A candidate flagged `likelyPerAsset: true`
-is probably a per-asset sublist whose required flag the catalog does not declare (the
-filter drops only *declared* required flags): expect its tenant-wide run to fail with a
-runtime "X is required" error, and when it does, exclude it as a per-asset sublist
-citing that error (no capture exists, so no overlap check can run: pass
-`--no-check "<the runtime error>"` in place of `--check`, step 3) — the flag is
-advisory, so still run it once rather than excluding on the hint alone. A candidate carrying a non-null `requiredEnumFlags` is runnable
+**excluded** (recorded in `domains_excluded`), or **undecided** — after setting aside
+`notEnumerableBare`: the commands the pinned CLI is known to refuse without a
+per-asset flag its catalog never declares (the plugin ships that fact, version-stamped;
+each entry names the flag it needs and the runtime error). Those are NOT work: no
+decision is recorded for them, they never gate, and a tenant exclusion or block found
+against one is reported inert (`tenantRecord`) and not counted — lift it or leave it.
+Surface the undecided candidates to the user **by name** — the decisions are tenant
+policy, not bookkeeping — then work through them in the order printed. A candidate
+flagged `likelyPerAsset: true` outside that list is probably a per-asset sublist whose
+required flag the catalog does not declare (the filter drops only *declared* required
+flags): expect its tenant-wide run to fail with a runtime "X is required" error, and
+when it does, exclude it as a per-asset sublist citing that error (no capture exists,
+so no overlap check can run: pass `--no-check "<the runtime error>"` in place of
+`--check`, step 3) — the flag is advisory, so still run it once rather than excluding
+on the hint alone, and report the command so the shipped list can carry it at the next
+pin. If the diff warns that the shipped list was not applied (`pinFacts.applied` false —
+the workspace catalog is at another CLI version), relay the warning: every sublist is
+then ordinary undecided work again until the plugin is updated. A candidate carrying a non-null `requiredEnumFlags` is runnable
 tenant-wide only through those enum flags (e.g. `--type` over `MDA|SFDC`): to evaluate
 or adopt it, run the list once per enum value and combine the captures — a decision on
 such a candidate covers every value, and its reason should say so.
@@ -427,7 +438,8 @@ such a candidate covers every value, and its reason should say so.
    they pass `--no-check "<why-no-check>"` in place of `--check`, where
    `<why-no-check>` is the cause and nothing else: the payload carries no items array
    (as `journey cta options`), or the list command failed at runtime with a required-flag
-   error (step 1's per-asset sublists). Add `--recheck-after <YYYY-MM-DD>` when the
+   error (a step-1 per-asset sublist the shipped `notEnumerableBare` list does not already
+   name). Add `--recheck-after <YYYY-MM-DD>` when the
    reason rests on a tenant state that can change (a 0-row list, "empty on this tenant")
    rather than on the payload's shape — the diff surfaces the exclusion by name once the
    date passes, as it does a block's.
@@ -464,8 +476,23 @@ entries with no coverage stamp (a `--partial` registration into a never-listed d
 find it as the `domains` row with `stamped: false` and name it separately ("domain:
 count — registered, never listed; no coverage stamp"), never folded into W. Name each
 of the report's `emptyDomains` explicitly ("domain: 0 — listed,
-tenant has none") and the exclusion ledger ("K list commands deliberately excluded —
-reasons recorded in `domains_excluded`"). Treat any domain whose count lands exactly on a common default
+tenant has none"), the exclusion ledger ("K list commands deliberately excluded —
+reasons recorded in `domains_excluded`", K = the diff's `excludedCount`) and, separately,
+the diff's `notEnumerableBareCount` ("N list commands the CLI cannot run bare — no
+decision needed"). Then, **before** asking about totals, name every scope-limited domain
+— each `domains` row of the report whose `scope` is not null — with its limit, so the
+question is answerable (F-452: a CLI-reachable subset otherwise reads as a tenant
+total): one line per such row,
+`<domain>: <count> — CLI-reachable subset: <scope.limit>; the remainder can be added later (references/index-scope-notes.md § <scope.path>)`,
+where `<domain>` is the row's key in `domains`, `<scope.limit>` and `<scope.path>` are
+quoted from that row verbatim (the reference's subsection headed by `<scope.path>` is
+the canon — never restate a limit from memory), `<count>` is the domain's `byDomain`
+total — `0` for a row that has no `byDomain` entry because it is in `emptyDomains`,
+whose scope line then REPLACES its "listed, tenant has none" line (one line per domain,
+never two) — and a row whose `scope` is null gets no line. If the report's
+`pinFacts.applied` is false, write "scope limits not evaluated: <pinFacts.why>" in place
+of the lines, `<pinFacts.why>` quoted from the report verbatim — never "none".
+Treat any domain whose count lands exactly on a common default
 page size (20, 25, 50) as **suspect** — re-verify its pagination was exhausted before
 continuing — and ask the user whether the totals match their sense of the tenant
 before Phase 5 spends the documentation budget.

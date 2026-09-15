@@ -6,9 +6,11 @@ argument-hint: "<name-or-id> [--domain rules|data-designer|reports] [--ticket RE
 
 # /gs-superadmin:deprecate
 
-Deprecate an asset per this workspace's deprecation process (default source:
-`.gs-superadmin/conventions/deprecation.md`; fall back to any deprecation guidance in
-`.gs-superadmin/CONVENTIONS.md`). If neither defines a process, tell the user and stop —
+Deprecate an asset per this workspace's deprecation process (in order: deprecation
+guidance in the tenant's `<slug>/CONVENTIONS.md` when that file exists, else
+`.gs-superadmin/conventions/deprecation.md`, else `.gs-superadmin/CONVENTIONS.md` —
+the precedence is the operating model's "Build standards" rule). If none defines a
+process, tell the user and stop —
 never invent a deprecation convention.
 
 ## Arguments

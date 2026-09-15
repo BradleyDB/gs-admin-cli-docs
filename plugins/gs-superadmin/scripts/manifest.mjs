@@ -374,7 +374,9 @@
  * @property {string} [recheckAfter]  YYYY-MM-DD
  *
  * ── report's output (T-2 v3, Session C1 2026-09-15 — ADDITIVE over the v2
- *    shape; every key below is frozen once a skill quotes it). Readers: the
+ *    shape; v4, Session C2 2026-09-15, ADDITIVE again — `scope` on every domain
+ *    row and `pinFacts` at the top, F-450 c; every key below is frozen once a
+ *    skill quotes it). Readers: the
  *    setup skill (Phase 4 relay, Phase 5 close, Phase 6 precondition, --deep
  *    relay), the refresh skill (step 1 / step 4), describe-batch's progress
  *    probe (byDomain ONLY — it sums a row's values, so a byDomain row carries
@@ -409,6 +411,20 @@
  *                                depth) with no doc_path — the set
  *                                reconcile-docs can record for, so its
  *                                `recorded` never exceeds this (F-459 reopen)
+ * @property {?{key: string, path: string, limit: string}} scope  (v4, F-450 c)
+ *                                the LIST COMMAND's scope limit at the pinned
+ *                                CLI — a per-CLI fact read from doc-lib's
+ *                                CLI_PIN_FACTS through the stamp's recorded
+ *                                listCommand, never recorded per tenant: key =
+ *                                the catalog command id, path = its canonical
+ *                                path (the `###` subsection of setup's
+ *                                index-scope-notes.md that carries the canon),
+ *                                limit = the one-line paraphrase. null = no
+ *                                limit known for the command at this pin, or
+ *                                nothing resolvable (no recording, no
+ *                                catalog, an unresolvable line) — read
+ *                                `pinFacts.applied` before reading null as
+ *                                "no limit"
  *
  * @typedef {object} GsReport
  * @property {true} ok
@@ -433,6 +449,13 @@
  *                                an unstamped domain holds entries (v3)
  * @property {number} docPathsUnknown         tenant total (v3)
  * @property {Object<string, GsReportDomain>} domains  keyed by domain name (v3)
+ * @property {{stamped: string, catalogVersion: ?string, applied: boolean, why: ?string}} pinFacts
+ *                                (v4) whether doc-lib's per-pin CLI facts were
+ *                                applied to this report: stamped = the table's
+ *                                version, catalogVersion = the catalog's (null
+ *                                when none was found), applied = equal; why
+ *                                names the mismatch, null when applied. When
+ *                                false every `scope` is null by construction
  */
 import { writeFileSync, mkdirSync, existsSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
@@ -440,7 +463,7 @@ import { fileURLToPath } from "node:url";
 // Doc filename for an asset id — the shared copy every doc writer imports
 // (sanitized ids get a short raw-id hash so distinct ids that clean to the
 // same base can never collide).
-import { docNameClaimer, docNameMatcher, docPathFor, docDirNorm, readJsonFile, writeFileAtomicSync, cmpKey, getPath as get, findItemsArray, extractIds, makeCliHelpers, STUB_MARKER, DESCRIBE_NONE, idPathHint, ZERO_RESOLVE_HEAD, findWorkspaceCatalog, makeCommandResolver } from "./doc-lib.mjs";
+import { docNameClaimer, docNameMatcher, docPathFor, docDirNorm, readJsonFile, writeFileAtomicSync, cmpKey, getPath as get, findItemsArray, extractIds, makeCliHelpers, STUB_MARKER, DESCRIBE_NONE, idPathHint, ZERO_RESOLVE_HEAD, findWorkspaceCatalog, makeCommandResolver, pinFactsFor } from "./doc-lib.mjs";
 const here = dirname(fileURLToPath(import.meta.url));
 
 // The date-failure head refresh/SKILL.md's post-upgrade migration note quotes
@@ -658,10 +681,20 @@ function readKeysFile(path) {
   return arr;
 }
 
+// A BLANK string is a present date path carrying NO value (F-450): `cn chains`
+// at CLI 1.0.9 emits modifiedDateStr as "" on every row. ONE predicate for every
+// reader of a date value — the upsert row loop, newerThan, the baseline branch
+// and report's datelessEntries all consult it, so no reader has to remember the
+// third state (review round: the first cut treated "" as null in the row loop
+// only, and a stored blank flipped stale under adoption while report counted
+// it as dated).
+const isBlankDate = (v) => typeof v === "string" && v.trim() === "";
+const isDateless = (v) => v == null || isBlankDate(v);
+
 // stale iff the live date is newer than the recorded one (tolerates non-ISO strings)
 function newerThan(live, recorded) {
-  if (live == null) return false;
-  if (recorded == null) return true;
+  if (isDateless(live)) return false;
+  if (isDateless(recorded)) return true;
   // Epoch-ms values (numbers or numeric strings) first: Date.parse of a numeric
   // string is NaN, which used to demote them to string inequality — change was
   // detected but ordering wasn't, so an out-of-order OLDER date flipped stale.
@@ -1064,7 +1097,7 @@ if (verb === "init") {
     return Date.parse(v);
   };
   /** rows whose --name-field PATH exists (F-421: a field absent on every row is an operator error, not "no name") */
-  let namePresent = 0, namesBackfilled = 0;
+  let namePresent = 0, namesBackfilled = 0, blankDatesCleared = 0, dateBlank = 0, frozenDated = 0;
   /**
    * The first few top-level keys of a row — the one hint shape every "this
    * field resolves to nothing" message derives from the offending rows
@@ -1106,11 +1139,25 @@ if (verb === "init") {
     // item has no date", never "this domain has no date field"); only an
     // ABSENT path is the dead-path signature the refusal below is for.
     const modifiedRaw = effDateField ? get(it, effDateField) : undefined;
-    const modified = modifiedRaw ?? null;
+    // A BLANK string is a present path carrying NO value (F-450, the
+    // connectors-chains disagreement: `cn chains` at CLI 1.0.9 emits
+    // modifiedDateStr as "" on every row — one tenant recorded the field and
+    // stored "" as a date, the other recorded none; newerThan("", "") is
+    // false, so the stored blank could never flag a change while report
+    // counted the row as dated). Present-but-empty is data like null:
+    // datePresent counts the path, dateResolved does not.
+    const blankDate = isBlankDate(modifiedRaw);
+    const modified = isDateless(modifiedRaw) ? null : modifiedRaw;
+    if (blankDate) dateBlank++;
     if (modifiedRaw !== undefined) datePresent++;
     if (modified != null) { dateResolved++; resolvedDates.push(modified); }
     if (nameField && get(it, nameField) !== undefined) namePresent++;
     const prev = m.inventory[key];
+    // A blank stored before the blank rule is cleared to null BEFORE the branch
+    // chain, so the baseline branch below sees a null (never a stale flip on
+    // adoption) and report's datelessEntries counts the row — a repair, not a
+    // change; status untouched, counted separately.
+    if (prev && isBlankDate(prev.modified_date)) { prev.modified_date = null; blankDatesCleared++; }
     if (!prev) {
       m.inventory[key] = { id: String(id), name, domain, modified_date: modified, status: "pending" };
       added++;
@@ -1130,6 +1177,11 @@ if (verb === "init") {
       // never wrote). A null stored name filled from a non-null incoming one
       // is a repair, not a change — status untouched, counted separately.
       if (prev.name == null && name != null) { prev.name = name; namesBackfilled++; }
+      // An incoming dateless row over a STORED real date keeps the stored
+      // date (never erased) — but nothing can ever flag that entry again
+      // while the list stays dateless: counted, so the all-blank warning can
+      // say so instead of claiming every entry is dateless.
+      if (modified == null && prev.modified_date != null) frozenDated++;
       unchanged++;
     }
   }
@@ -1382,9 +1434,26 @@ if (verb === "init") {
         `entries — probable under-pagination (CLI list defaults return 20–50 items with no truncation ` +
         `warning). Re-page and re-upsert before inferring any deletion; expected and ignorable only ` +
         `for a single page of a multi-page fetch, a recency-filtered list, or a SCOPE-LIMITED domain — ` +
-        `a list command that cannot see the whole tenant (setup's references/index-scope-notes.md names ` +
-        `them; \`jo email templates\` is one), where the shortfall is permanent and re-paging cannot ` +
+        `a list command that cannot see the whole tenant (report's domains.<domain>.scope names the limit from the ` +
+        `per-pin table; setup's references/index-scope-notes.md is the canon), where the shortfall is permanent and re-paging cannot ` +
         `close it. ${remedy}`
+    );
+  }
+  // An EMPTY STRING on every present row (F-450): the blank-string shape
+  // above — not the dead-path signature (the key exists), and not the
+  // present-but-null shape either (F-392 ruled that data, warning-free: a
+  // null is "this item has no date"), but a field the command fills with
+  // "" for every row can never be compared. A warning, never a refusal —
+  // the recording is the operator's to change with --allow-redate.
+  if (!partial && typeof effDateField === "string" && idRows > 0 && dateBlank > 0 && dateBlank === datePresent && dateResolved === 0) {
+    warnings.push(
+      `--date-field ${effDateField}${dateFieldSource.startsWith("recorded") ? ` (the recording for domain ${domain})` : ""} is present on ` +
+        `${datePresent} row(s) but is an empty string on every one — the incoming rows carry no date to compare` +
+        (frozenDated
+          ? `; ${frozenDated} entry(ies) keep a date stored by an earlier list and read as dated in report while nothing can flag them again — change detection for this domain is FROZEN`
+          : `; every matched entry is stored dateless (report's datelessEntries names them)`) +
+        `. If the command never emits a modified date ('cn chains' at CLI 1.0.9 emits modifiedDateStr as an empty string), ` +
+        `record --no-date-field --allow-redate once.`
     );
   }
   // Mass-stale advisory: a large fraction flipping stale at once is the
@@ -1400,7 +1469,7 @@ if (verb === "init") {
   }
   const result = {
     ok: true, domain, added, stale, unchanged, skipped, baselined, matchedExisting,
-    dateField: effDateField, dateFieldSource, datePresentRows: datePresent, dateResolvedRows: dateResolved, namePresentRows: namePresent, namesBackfilled, incomingCount, existingEntries, partial, warnings,
+    dateField: effDateField, dateFieldSource, datePresentRows: datePresent, dateResolvedRows: dateResolved, namePresentRows: namePresent, namesBackfilled, blankDatesCleared, incomingCount, existingEntries, partial, warnings,
     totalInventory: Object.keys(m.inventory).length,
   };
   if (orphaned) {
@@ -1702,12 +1771,12 @@ if (verb === "init") {
     // recorded-none, ABSENT = legacy/unknown — a bare-string stamp or no
     // stamp at all reads as the third state, never as "none".
     const changeDetection = isObj && "dateField" in stamp ? (typeof stamp.dateField === "string" ? "date" : "none") : "unrecorded";
-    domains[d] = { stamped, describeState: describeStateOf(stamp), byDepth: newDepth(), changeDetection, datelessEntries: 0, docPathsUnknown: 0 };
+    domains[d] = { stamped, describeState: describeStateOf(stamp), byDepth: newDepth(), changeDetection, datelessEntries: 0, docPathsUnknown: 0, scope: null };
   }
   let docPathsUnknown = 0;
   for (const e of entries) {
     const row = domains[e.domain];
-    if (e.modified_date == null) row.datelessEntries++;
+    if (isDateless(e.modified_date)) row.datelessEntries++; // a stored blank (pre-F-450) is dateless too
     if (everDocumented(e) && !hasDocPath(e)) { row.docPathsUnknown++; docPathsUnknown++; }
     if (e.status !== "documented") continue;
     // A metadata stub's completeness is its DOMAIN's recorded describe state
@@ -1725,6 +1794,25 @@ if (verb === "init") {
     byDepth[bucket]++;
   }
   const domainCounts = { indexed: Object.keys(domainsIndexed).length, withAssets: Object.keys(byDomain).length, empty: emptyDomains.length };
+  // Scope limits (F-450 c / F-452): a per-CLI fact of the LIST COMMAND, read
+  // from doc-lib's CLI_PIN_FACTS through each stamp's recorded listCommand
+  // resolved against the catalog (the same resolver upsert-batch's fork
+  // guard uses) — never recorded per tenant, so there is nothing to
+  // backfill and the relay can name every limit the day the table ships.
+  // null = no limit known for the command at this pin, OR nothing could be
+  // resolved (no catalog, no recording, an unresolvable line); `pinFacts`
+  // at the top level says whether the table applied at all, so a pin move
+  // can never read as "no limits" (A-4).
+  const catalog = findWorkspaceCatalog(dirname(resolve(manifestPath)), join(here, "..", "reference", "catalog.json"));
+  const pin = pinFactsFor(catalog);
+  const resolveLine = catalog ? makeCommandResolver(catalog).resolveLine : null;
+  for (const d of domainNames) {
+    const stamp = domainsIndexed[d];
+    const lc = stamp != null && typeof stamp === "object" && typeof stamp.listCommand === "string" ? stamp.listCommand : null;
+    const cmd = lc && resolveLine ? resolveLine(lc) : null;
+    const fact = cmd && typeof cmd.id === "string" && Object.hasOwn(pin.commands, cmd.id) ? pin.commands[cmd.id] : null;
+    if (fact && typeof fact.scope === "string") domains[d].scope = { key: cmd.id, path: cmd.path, limit: fact.scope };
+  }
   // Per-domain change window (F-417): days since the domain's OWN list stamp
   // — the `at` upsert-batch writes on every full list — never since a
   // workspace-wide last_refresh. A crawl that reached 2 of 17 domains leaves
@@ -1761,6 +1849,7 @@ if (verb === "init") {
     domainCounts,
     docPathsUnknown,
     domains,
+    pinFacts: { stamped: pin.stamped, catalogVersion: pin.catalogVersion, applied: pin.applied, why: pin.why },
   });
 } else if (verb === "exclude" || verb === "block") {
   const m = load();

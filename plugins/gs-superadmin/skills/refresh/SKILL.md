@@ -205,10 +205,12 @@ compare the total you fetched against `report`'s `byDomain` count, and read the 
 `incomingCount` / `existingEntries` / `warnings`: it warns when the incoming list is
 smaller than the domain's non-failed inventory (expected and ignorable only for a single
 page of a multi-page fetch, a recency-filtered list, or a **scope-limited domain** — a
-list command that cannot see the whole tenant, named in setup's
-`references/index-scope-notes.md`; `jo email templates` is one, and its shortfall is
-permanent: re-paging cannot close it, and the same warning returns on every refresh —
-read it as the known scope limit, not as under-fetch). **The default reading of any
+list command that cannot see the whole tenant: step 1's report names every such domain
+on its `domains.<domain>.scope` row (`limit` says what the CLI hides; the canon is
+setup's `references/index-scope-notes.md`, one subsection per command), and its
+shortfall is permanent: re-paging cannot close it, and the same warning returns on every
+refresh — read it as the known scope limit, not as under-fetch; a domain whose `scope`
+is null gets no such reading). **The default reading of any
 other shortfall is "probable under-pagination → re-page and re-upsert"** — `upsert-batch`
 never removes entries. Never pass `--partial` on a refresh re-list: that flag declares
 a deliberate-subset registration (gap-fill flows), and here it would silence exactly

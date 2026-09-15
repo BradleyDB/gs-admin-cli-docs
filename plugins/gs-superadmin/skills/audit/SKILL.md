@@ -30,10 +30,13 @@ Same as `/gs-superadmin:refresh` step 1: run `gs-admin whoami`, derive the slug 
 
 ### 2 — Load the naming convention
 
-Read, in order of preference:
-1. `.gs-superadmin/conventions/naming.md` (adopted build-standards pack)
-2. The **Naming** section of `.gs-superadmin/CONVENTIONS.md` — but only if it has been
-   filled in; ignore content still marked as placeholder/example formats.
+Read, in order of preference (the tenant file wins over the workspace-wide pack —
+operating model, "Build standards"):
+1. The **Naming** section of the tenant's `<slug>/CONVENTIONS.md` when that file exists
+   and the section has been filled in (ignore content still marked as placeholder/example
+   formats).
+2. `.gs-superadmin/conventions/naming.md` (adopted build-standards pack).
+3. The **Naming** section of `.gs-superadmin/CONVENTIONS.md` — again only if filled in.
 
 If neither defines a real convention, tell the user: "No naming convention is defined for
 this workspace — edit `.gs-superadmin/CONVENTIONS.md` (or re-run `/gs-superadmin:setup` and

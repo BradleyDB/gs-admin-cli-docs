@@ -2236,6 +2236,51 @@ for (const rel of trackedMd.filter((p) => RUNNABLE_DOC_PREFIXES.some((pre) => p.
   });
 }
 
+// ── check 23 (F-450 c): the scope-limit canon and the per-pin table agree both ways ──
+// doc-lib's CLI_PIN_FACTS carries a `scope` paraphrase per scope-limited list
+// command (keyed by catalog id, ONE home, read by report); the canon is prose —
+// one `###` subsection per such command under "Scope-limited domains" in
+// setup's index-scope-notes.md, headed by the command's canonical path (the
+// id with its colons as spaces), which report's `scope.path` points at. A
+// table entry with no subsection is a pointer into nothing; a subsection with
+// no entry is a limit the report never names. Both are read out of source
+// text (check 22's precedent — the build lane may not import the plugin), and
+// a reader that no longer matches fails loudly rather than sweeping nothing.
+const SCOPE_NOTES_REL = "plugins/gs-superadmin/skills/setup/references/index-scope-notes.md";
+const pinBlock = /export const CLI_PIN_FACTS = Object\.freeze\(\{[\s\S]*?\n\}\);/.exec(read(DOC_LIB_REL));
+const scopeEntryRe = /"([a-z0-9-]+(?::[a-z0-9-]+)+)": Object\.freeze\(\{[^}]*?\bscope: "/g;
+const tableScopePaths = pinBlock ? [...pinBlock[0].matchAll(scopeEntryRe)].map((m) => m[1].split(":").join(" ")) : [];
+if (!pinBlock || tableScopePaths.length < 1) {
+  fail(`check 23: could not read the scope entries out of ${DOC_LIB_REL}'s CLI_PIN_FACTS (got ${tableScopePaths.length}) — the table moved or its shape changed; fix the reader, never the sweep`);
+}
+// The notes are read through the file's one fence grammar (fenceRanges, as
+// check 22 does): a fenced example carrying a heading-shaped line is neither
+// canon nor a section terminator. The section ends at the next level-1 OR
+// level-2 heading (review round: a later `# Appendix` with `###` subsections
+// was being read as canon).
+const scopeNotesLines = read(SCOPE_NOTES_REL).split(/\r?\n/);
+const scopeFenced = fenceRanges(SCOPE_NOTES_REL, scopeNotesLines, "an unreadable fence hides its headings from check 23");
+const scopeInFence = (i) => scopeFenced.some(([a, b]) => i > a && i < b);
+const scopeSectionStart = scopeNotesLines.findIndex((l, i) => !scopeInFence(i) && /^## Scope-limited domains\b/.test(l));
+let scopeSectionEnd = scopeNotesLines.length;
+if (scopeSectionStart >= 0) for (let i = scopeSectionStart + 1; i < scopeNotesLines.length; i++) if (!scopeInFence(i) && /^#{1,2} /.test(scopeNotesLines[i])) { scopeSectionEnd = i; break; }
+const notesScopePaths = scopeSectionStart < 0 ? [] : scopeNotesLines.slice(scopeSectionStart + 1, scopeSectionEnd).filter((l, k) => !scopeInFence(scopeSectionStart + 1 + k) && /^### /.test(l)).map((l) => l.slice(4).trim());
+if (scopeSectionStart < 0) fail(`check 23: ${SCOPE_NOTES_REL} has no "## Scope-limited domains" section — the canon report's scope.path points at is gone (F-450 c)`);
+// Both comparison loops run only when BOTH readers succeeded: fail() counts
+// rather than throws, and a reader failure followed by the sweep printed one
+// spurious "drop the subsection" per canon subsection — the opposite of "fix
+// the reader, never the sweep" (review round).
+if (tableScopePaths.length && scopeSectionStart >= 0) {
+  for (const p of tableScopePaths) {
+    if (!notesScopePaths.includes(p))
+      fail(`check 23: doc-lib's CLI_PIN_FACTS carries a scope entry for "${p}" but ${SCOPE_NOTES_REL} has no "### ${p}" subsection under "Scope-limited domains" — report's scope.path would point at nothing; add the canon subsection (F-450 c)`);
+  }
+  for (const p of notesScopePaths) {
+    if (!tableScopePaths.includes(p))
+      fail(`check 23: ${SCOPE_NOTES_REL} carries a "### ${p}" subsection under "Scope-limited domains" but doc-lib's CLI_PIN_FACTS has no scope entry for its command — report would never name that limit; add the table entry or drop the subsection (F-450 c)`);
+  }
+}
+
 // The fail() gate sits HERE, after the last check, and must stay last (F-258).
 // It used to sit immediately after check 12 — with four checks and the pass line
 // below it — so any fail() raised further down printed its message and then let the
@@ -2258,6 +2303,7 @@ const passLine =
   `${sweep9Read} of ${sweep9.length} files swept for portability-duplicate definitions, ` +
   `${lcCalls} localeCompare call sites locale-pinned, ` +
   `check 22: ${runnableLinesSwept} runnable line(s) in ${runnableDocsSwept} skill/template doc(s) name none of the ${laneFolders.length} default domain folders literally, ` +
+  `check 23: ${tableScopePaths.length} scope-limit entries in CLI_PIN_FACTS match the ${notesScopePaths.length} canon subsections both ways, ` +
   `${scriptRowsNamed} of ${scriptFiles.length} shipped scripts named in the MAINTAINERS Scripts table (rest are shared libs), ` +
   `${placeholderFences} placeholder fence(s) in ${pluginRootSkillsSeen.size} skill(s) (setup's pinned link fence; every other skill fence addresses scripts through ${WORKSPACE_LINK}), ` +
   `${check13Fences} hand-written doc fence(s) free of bash line continuations and ` +

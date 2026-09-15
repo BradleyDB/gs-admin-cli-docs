@@ -218,8 +218,10 @@ Skip only if nothing was fetched.
 ### 5 — Run the mode
 
 **deps mode — field aliasing.** The report script reads the tenant's
-field-aliasing convention from the workspace's `.gs-superadmin/CONVENTIONS.md`
-itself (missing or malformed → exact-only matching with a caveat in the report
+field-aliasing convention itself — from the tenant's own `<slug>/CONVENTIONS.md` when
+that file exists, else from the workspace's `.gs-superadmin/CONVENTIONS.md`, and names
+which (operating model, "Build standards") — (missing or malformed → exact-only
+matching with a caveat in the report
 — it never infers a pattern from tenant data; an empty `--alias-prefix ''`
 disables aliasing outright); pass `--alias-prefix '<regex>'`
 only when the user supplied an explicit override, and carry the report's

@@ -157,8 +157,10 @@ Impact questions to answer explicitly:
 ### 5 — Names, conventions, risk
 
 **Names**: load the workspace convention exactly as `/gs-superadmin:audit` step 2 does
-(`.gs-superadmin/conventions/naming.md`, else a filled-in Naming section of
-`.gs-superadmin/CONVENTIONS.md`). Compose convention-compliant names for every asset the
+(a filled-in Naming section of the tenant's `<slug>/CONVENTIONS.md` when it exists, else
+`.gs-superadmin/conventions/naming.md`, else a filled-in Naming section of
+`.gs-superadmin/CONVENTIONS.md` — operating model, "Build standards"). Compose
+convention-compliant names for every asset the
 plan creates or renames. If no convention is adopted, propose descriptive names and flag
 them `(no workspace naming convention — unchecked)` rather than inventing a convention.
 Apply the build-standards pack where adopted (`.gs-superadmin/conventions/rules-engine.md`

@@ -1368,6 +1368,50 @@ check("fingerprint: malformed value rejected (exit 1)", r.code === 1 && /40-char
   check("f388 partial: a stale id path under --partial fails and routes the rekey to a FULL-list run", r.code === 1 && /resolves to no value on any of the 2 row\(s\)/.test(r.stderr) && /FULL-list upsert-batch with the new --id-field plus --allow-rekey/.test(r.stderr) && /never on a subset/.test(r.stderr), r);
 }
 
+// ── F-450 (the connectors-chains disagreement): a BLANK date string is a value-less
+// present path — stored null, counted dateless, warned about when every row is
+// blank; a stored blank from before the rule is cleared on the next upsert ──────
+{
+  const MB = join(ROOT, "acme-blank", "_manifest.json");
+  run("init", ["--manifest", MB, "--slug", "acme-blank", "--base-url", "https://b.example"]);
+  const chainsFile = join(ROOT, "chains-blank.json");
+  writeFileSync(chainsFile, JSON.stringify({ data: [1, 2, 3].map((n) => ({ chainId: `ch-${n}`, name: `Chain ${n}`, modifiedDateStr: "" })) }));
+  const up = () => run("upsert-batch", ["--manifest", MB, "--file", chainsFile, "--domain", "chains-dom", "--id-field", "chainId", "--name-field", "name", "--date-field", "modifiedDateStr", "--items-path", "data", "--list-command", "gs-admin --json cn chains"]);
+  r = up();
+  const mb = () => JSON.parse(readFileSync(MB, "utf8"));
+  check("f450 blank: an empty-string date is present-but-valueless — exit 0, added 3, datePresentRows 3 / dateResolvedRows 0, every entry stored null (never the blank)", r.code === 0 && r.json?.added === 3 && r.json?.datePresentRows === 3 && r.json?.dateResolvedRows === 0 && Object.values(mb().inventory).every((e) => e.modified_date === null), r);
+  check("f450 blank: the field is still RECORDED (a blank is data about the rows, not a dead path) — the operator redates with --allow-redate", mb().domains_indexed["chains-dom"].dateField === "modifiedDateStr", mb().domains_indexed["chains-dom"]);
+  check("f450 blank: a warning names the all-blank shape, the datelessEntries consequence and the --no-date-field --allow-redate remedy", (r.json?.warnings ?? []).filter((w) => /is an empty string on every one/.test(w) && /datelessEntries/.test(w) && /--no-date-field --allow-redate/.test(w)).length === 1, r.json?.warnings);
+  r = run("report", ["--manifest", MB]);
+  check("f450 blank: report counts all three dateless under changeDetection date", r.json?.domains?.["chains-dom"]?.changeDetection === "date" && r.json.domains["chains-dom"].datelessEntries === 3, r.json?.domains?.["chains-dom"]);
+  // The pre-rule shape (the sandbox's four chains): blanks stored as dates.
+  // The next full upsert clears them — a repair, counted, status untouched.
+  { const m = mb(); for (const e of Object.values(m.inventory)) e.modified_date = ""; writeFileSync(MB, JSON.stringify(m, null, 2)); }
+  r = up();
+  check("f450 blank: a stored blank from before the rule is cleared to null on the next upsert — unchanged 3, blankDatesCleared 3, stale 0", r.code === 0 && r.json?.unchanged === 3 && r.json?.blankDatesCleared === 3 && r.json?.stale === 0 && Object.values(mb().inventory).every((e) => e.modified_date === null && e.status === "pending"), r.json);
+  // Mixed rows: one blank among real dates is per-row data — no warning, the
+  // blank row null, the dated rows dated (F-392's boundary, kept).
+  writeFileSync(chainsFile, JSON.stringify({ data: [{ chainId: "ch-1", name: "Chain 1", modifiedDateStr: "" }, { chainId: "ch-2", name: "Chain 2", modifiedDateStr: "2026-02-02T00:00:00Z" }, { chainId: "ch-3", name: "Chain 3", modifiedDateStr: null }] }));
+  r = up();
+  check("f450 blank: a blank among real dates draws no warning; the blank row stays null, the dated row baselines (adopting over null)", r.code === 0 && !(r.json?.warnings ?? []).some((w) => /empty string/.test(w)) && mb().inventory["chains-dom/ch-1"].modified_date === null && mb().inventory["chains-dom/ch-2"].modified_date === "2026-02-02T00:00:00Z" && r.json?.blankDatesCleared === 0, { json: r.json, inv: mb().inventory });
+  // Review round — the blank rule reaches every reader, not only the row loop:
+  // (1) report counts a STORED blank as dateless before any upsert touches it;
+  // (2) a stored blank under an ADOPTING run (legacy stamp, no dateField key)
+  // baselines a real incoming date — never a stale flip, never the mass-stale
+  // advisory; (3) a stored REAL date with an all-blank incoming list keeps its
+  // date, and the warning says the domain is frozen — not "every entry is
+  // stored dateless".
+  { const m = mb(); for (const e of Object.values(m.inventory)) { e.modified_date = ""; e.status = "pending"; } delete m.domains_indexed["chains-dom"].dateField; writeFileSync(MB, JSON.stringify(m, null, 2)); }
+  r = run("report", ["--manifest", MB]);
+  check("f450 blank (review): report counts stored blanks as dateless before any upsert repairs them", r.json?.domains?.["chains-dom"]?.datelessEntries === 3, r.json?.domains?.["chains-dom"]);
+  writeFileSync(chainsFile, JSON.stringify({ data: [1, 2, 3].map((n) => ({ chainId: `ch-${n}`, name: `Chain ${n}`, modifiedDateStr: `2026-03-0${n}T00:00:00Z` })) }));
+  r = up();
+  check("f450 blank (review): stored blanks under an adopting run baseline a real incoming date — baselined 3, stale 0, blankDatesCleared 3, no mass-stale advisory", r.code === 0 && r.json?.baselined === 3 && r.json?.stale === 0 && r.json?.blankDatesCleared === 3 && !(r.json?.warnings ?? []).some((w) => /flipped stale/.test(w)) && Object.values(mb().inventory).every((e) => e.status === "pending" && e.modified_date.startsWith("2026-03")), r.json);
+  writeFileSync(chainsFile, JSON.stringify({ data: [1, 2, 3].map((n) => ({ chainId: `ch-${n}`, name: `Chain ${n}`, modifiedDateStr: "" })) }));
+  r = up();
+  check("f450 blank (review): an all-blank list over stored real dates keeps the dates and the warning names the FROZEN count, never 'every entry is stored dateless'", r.code === 0 && r.json?.unchanged === 3 && r.json?.blankDatesCleared === 0 && Object.values(mb().inventory).every((e) => e.modified_date.startsWith("2026-03")) && (r.json?.warnings ?? []).some((w) => /3 entry\(ies\) keep a date stored by an earlier list .* FROZEN/.test(w)) && !(r.json?.warnings ?? []).some((w) => /every matched entry is stored dateless/.test(w)), r.json);
+}
+
 // ── F-417 / F-418 / F-419 (the 1.0.9 adoption's tester round) ─────────────────
 {
   const M6 = join(ROOT, "f417", "_manifest.json");
@@ -1467,7 +1511,7 @@ check("fingerprint: malformed value rejected (exit 1)", r.code === 1 && /40-char
   // F-419: the count-guard warning names the scope-limited case and points at the notes.
   r = run("upsert-batch", ["--manifest", M6, "--file", rowsFile("f419-short.json", [{ id: "g1", name: "G1", modifiedDate: oldShared }]), "--domain", "measure-groups", "--items-path", "data", "--id-field", "id", "--name-field", "name"]);
   const w419 = (r.json?.warnings ?? []).find((w) => /smaller than the domain/.test(w)) ?? "";
-  check("f419: the under-pagination warning names the SCOPE-LIMITED case, points at index-scope-notes and names jo email templates", r.code === 0 && /SCOPE-LIMITED domain/.test(w419) && /index-scope-notes\.md/.test(w419) && /jo email templates/.test(w419), w419.slice(0, 200));
+  check("f419: the under-pagination warning names the SCOPE-LIMITED case and points at report's scope row and index-scope-notes (F-450: no hand-listed example — the table is the home)", r.code === 0 && /SCOPE-LIMITED domain/.test(w419) && /index-scope-notes\.md/.test(w419) && /domains\.<domain>\.scope/.test(w419), w419.slice(0, 200));
 }
 
 // ── F-429: a renamed or misspelled --domain on a run that identifies an existing
@@ -1586,6 +1630,13 @@ check("fingerprint: malformed value rejected (exit 1)", r.code === 1 && /40-char
   // is counted, never lost to a byDomain-key count.
   check("c1 report: domainCounts 5 indexed / 4 withAssets / 1 empty, emptyDomains names it", JSON.stringify(rep?.domainCounts) === JSON.stringify({ indexed: 5, withAssets: 4, empty: 1 }) && JSON.stringify(rep?.emptyDomains) === JSON.stringify(["empty-dom"]), rep?.domainCounts);
   check("c1 report: the empty domain has a row (stamped, no assets)", rep?.domains?.["empty-dom"]?.stamped === true && rep.domains["empty-dom"].byDepth.full === 0 && rep.domains["empty-dom"].datelessEntries === 0, rep?.domains?.["empty-dom"]);
+  // scope (F-450 c / F-452): derived from each stamp's recorded listCommand
+  // through doc-lib's per-pin table (the scratch dir has no workspace
+  // catalog, so the bundled one — at the pin — resolves the lines): the
+  // empty domain recorded `jo surveys list`, a scope-limited command; the
+  // others recorded commands with no limit, or nothing.
+  check("c1 report: pinFacts applied against the bundled catalog", rep?.pinFacts?.applied === true && rep.pinFacts.why === null, rep?.pinFacts);
+  check("c1 report: scope derived for the domain recorded from jo surveys list — key/path/limit — and null for the others", rep?.domains?.["empty-dom"]?.scope?.key === "journey:surveys:list" && rep.domains["empty-dom"].scope.path === "journey surveys list" && /PUBLISH/.test(rep.domains["empty-dom"].scope.limit) && rep.domains["full-dom"].scope === null && rep.domains["legacy-dom"].scope === null && rep.domains["listonly-dom"].scope === null, Object.fromEntries(Object.entries(rep?.domains ?? {}).map(([k, v]) => [k, v.scope])));
   // changeDetection + datelessEntries (F-451): recorded field → date; recorded-
   // none → none; no key (legacy) → unrecorded; the dateless count is honest
   // under every state.

@@ -525,6 +525,12 @@ const FACT_CARRIERS = [
       // installed package's auth module; the version stamp beside it forces
       // a re-read of that file when the pin moves.
       { re: /\/\/ v(\d+\.\d+\.\d+) package's dist\/core\/auth\/index\.js/, expect: meta.cliVersion, what: "auth-death literal audit version" },
+      // The per-pin CLI facts table (F-450): what the installed CLI does that
+      // its catalog does not declare — not-enumerable-bare sublists and scope
+      // limits — applied only while the catalog carries this exact version.
+      // The stamp is the table's self-retirement, and this pin forces the hand
+      // re-verification of every entry at each adoption.
+      { re: /export const CLI_PIN_FACTS = Object\.freeze\(\{\s*cliVersion: "(\d+\.\d+\.\d+)"/, expect: meta.cliVersion, what: "per-pin CLI facts table version stamp (CLI_PIN_FACTS)" },
     ],
   },
 ];

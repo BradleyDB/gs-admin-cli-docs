@@ -1578,6 +1578,95 @@ export function recordedDomainsByPath(domainsIndexed, resolveLine) {
   return { byPath, legacyDomains, unresolved };
 }
 
+// ── Per-pin CLI facts (F-450): what the installed CLI DOES that its own
+// catalog does not DECLARE. Two kinds, one table, one version stamp:
+//   notEnumerableBare — a list-shaped command whose handler refuses to run
+//     without a per-asset flag the artifact manifest never marks required
+//     (the four `re rules` sublists at 1.0.9: they pass the candidate
+//     filter, then fail at runtime with the message recorded here). Before
+//     this table every tenant's operator re-derived the same fact by running
+//     each one three times and recording a per-tenant exclusion — a per-CLI
+//     fact stored per tenant (F-450 b). The diff names them in their own
+//     bucket and never asks for a decision.
+//   scope — a list command that cannot see the whole tenant (its handler
+//     hardcodes a filter or flattens a tree): the count it yields is a
+//     CLI-reachable SUBSET, and `report` says so on the domain row
+//     (F-450 c) so the Phase 4 relay can name the limit (F-452). The one-line
+//     `limit` here is the paraphrase; the canon stays prose — ONE `###`
+//     subsection per entry under "Scope-limited domains" in
+//     skills/setup/references/index-scope-notes.md, headed by the command's
+//     canonical path, which build/check-doc-drift.mjs holds to this table
+//     both ways (read out of this source text — the build lane may not
+//     import the plugin).
+// Keyed by catalog command `id` (namespace:group…:action) — NOT actionKey:
+// `list-source-fields` is the actionKey of two commands in two namespaces.
+// SELF-RETIRING, the ask-overrides.json precedent (tenet 6): the table
+// applies only while the catalog in use carries this exact cliVersion;
+// under any other pin every reader gets an empty table plus a warning, and
+// build/check-stale-facts.mjs (FACT_CARRIERS) refuses the stamp until a
+// human re-verifies each entry against the new package — the pair below is
+// the adoption-time tripwire. test/domain-candidates.mjs holds every id to
+// the bundled catalog and refuses a notEnumerableBare entry the catalog has
+// started to declare (a dead entry).
+/**
+ * @typedef {object} GsPinFact  one entry of CLI_PIN_FACTS.commands — at least one of
+ *                              the two kinds is present
+ * @property {string} [notEnumerableBare]  the per-asset flag(s) the CLI demands at runtime
+ * @property {string} [error]               the CLI's runtime message, quoted
+ * @property {string} [scope]               one-line paraphrase of the list command's scope
+ *                                          limit (the canon is the notes subsection)
+ */
+/** @type {Readonly<{ cliVersion: string, commands: Readonly<Record<string, Readonly<GsPinFact>>> }>} */
+export const CLI_PIN_FACTS = Object.freeze({
+  cliVersion: "1.0.9",
+  commands: Object.freeze({
+    "rules-engine:rules:events": Object.freeze({
+      notEnumerableBare: "--topic <topic>",
+      error: "--topic is required",
+    }),
+    "rules-engine:rules:executions": Object.freeze({
+      notEnumerableBare: "--rule-id <id> or --rule-name <name>",
+      error: "ruleId or ruleName is required",
+    }),
+    "rules-engine:rules:s3-tasks": Object.freeze({
+      notEnumerableBare: "--rule-id <id> or --rule-name <name>",
+      error: "ruleId or ruleName is required",
+    }),
+    "rules-engine:rules:schedules": Object.freeze({
+      notEnumerableBare: "--id <id> or --name <name>",
+      error: "--id or --name is required",
+    }),
+    "journey:email:templates": Object.freeze({
+      scope: "flattens one folder level (templates in nested subfolders are dropped) and hides some top-level templates; the count is the CLI-reachable subset",
+    }),
+    "journey:surveys:list": Object.freeze({
+      scope: "returns PUBLISH-state surveys only (closed surveys are invisible)",
+    }),
+    "journey:data-designer:list": Object.freeze({
+      scope: "returns one dataset type only (ds=UNIVERSAL_DATA_SET); its rows are Data Designer OUTPUT datasets, a membership signal over data-management, not a domain of their own",
+    }),
+  }),
+});
+/**
+ * The per-pin facts IN FORCE for one catalog: the table when the catalog's
+ * cliVersion equals the stamp, an empty table (with the why) otherwise —
+ * readers apply `commands` blindly and surface `why` when `applied` is
+ * false, so a pin move never silently drops the facts (A-4).
+ * @param {{meta?: {cliVersion?: string}} | null | undefined} catalog
+ * @returns {{ stamped: string, catalogVersion: ?string, applied: boolean, why: ?string, commands: Readonly<Record<string, Readonly<GsPinFact>>> }}
+ */
+export function pinFactsFor(catalog) {
+  const stamped = CLI_PIN_FACTS.cliVersion;
+  const catalogVersion = typeof catalog?.meta?.cliVersion === "string" ? catalog.meta.cliVersion : null;
+  const applied = catalogVersion === stamped;
+  const why = applied
+    ? null
+    : catalogVersion == null
+      ? `the catalog carries no meta.cliVersion, so the per-pin CLI facts (stamped for ${stamped}) were not applied`
+      : `the per-pin CLI facts are stamped for ${stamped} and the catalog is ${catalogVersion} — not applied; re-verify doc-lib's CLI_PIN_FACTS against the installed package (check-stale-facts names the stamp)`;
+  return { stamped, catalogVersion, applied, why, commands: applied ? CLI_PIN_FACTS.commands : Object.freeze({}) };
+}
+
 // ── The lane table: the ONE home of "which list command is a lane, and what its
 // folder is called when nothing is recorded" (F-429 fourth pass). Every reader
 // derives its lanes and defaults from here — tenant-deps, the relationships

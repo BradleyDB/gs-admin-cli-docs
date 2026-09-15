@@ -57,8 +57,10 @@ separators — still exact, never substring; the report header names the pattern
 and the full prefixed names stay in the output.
 
 - `--alias-prefix <regex>` — an explicit override only: the report script reads the
-  tenant's field-aliasing convention from the workspace's `.gs-superadmin/CONVENTIONS.md`
-  itself (missing or malformed → exact-only matching with a caveat in the report — it
+  tenant's field-aliasing convention itself — from the tenant's own `<slug>/CONVENTIONS.md`
+  when that file exists, else from the workspace's `.gs-superadmin/CONVENTIONS.md`; the
+  report names which (operating model, "Build standards") — (missing or malformed →
+  exact-only matching with a caveat in the report — it
   never infers a pattern from tenant data; an empty value `''` disables aliasing
   outright). Carry the report's conventions caveat into step 5.
 
