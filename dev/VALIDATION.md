@@ -275,7 +275,7 @@ the PULL-REQUEST suite on the PR head; a `[skip ci]` verdict commit at the tip r
 close/reopen fired the suite (no check suite was created for a commit with no file changes).
 This line is the content change that re-runs the suite on the head; nothing else moved.
 
-## F-450 / F-452 — the C2 arms: scope with no backfill, inert per-pin records, the tenant conventions override, and the sandbox connectors-chains redate (banked 2026-09-15, builder, Session C2)
+## F-450 / F-452 — the C2 arms: scope with no backfill, inert per-pin records, the tenant conventions override, and the sandbox connectors-chains redate (banked 2026-09-15, builder, Session C2 — CLEARED 2026-09-15 @ hb-20260915-04)
 
 Owed by: the tester round on the token the C2 handoff mints (branch round-c2-fact-homes,
 PR #21). Tenant reads: NONE for the scope arm — `scope` is
@@ -317,3 +317,11 @@ manifest write is step 4, sandbox only.
    `datelessEntries` 4. Prod needs nothing (already recorded none). A summary without
    `blankDatesCleared`, or a chain still reading dated after the first upsert, REOPENS
    F-450.
+
+Cleared: 2026-09-15 @ hb-20260915-04 (tester, Session C2-V) — all four steps measured and
+held: step 1 on both manifests (scope on the two journey domains, notEnumerableBare 4 inert,
+gate green, sha256 unchanged); step 2 the setup relay's two scope lines verbatim before the
+totals question; step 3 the override read for the sandbox only, prod on the workspace file,
+override deleted; step 4 the sandbox chains `blankDatesCleared` 4 then `changeDetection:
+none`, `datelessEntries` 4. Verdicts of record on F-450 and F-452; the unwalked slash-only
+skills are on F-450's Blind spots line.
