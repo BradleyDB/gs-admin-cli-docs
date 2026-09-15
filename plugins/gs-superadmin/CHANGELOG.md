@@ -5,6 +5,42 @@ marketplace doesn't pin versions — users get main — so entries describe what
 user who updates, not internal refactors. Entries before 0.8.0 were reconstructed from git
 history when this file was introduced.
 
+## 0.40.0 — 2026-09-15
+
+The report is the account of KB state, and it now says how deep that state goes. What a
+user gets by updating: `manifest.mjs report` carries `byDepth` — `full`, `metadata`
+(stubs awaiting `--deep`), `listOnly` (stubs of a domain recorded `none`: complete by
+definition) and `unrecorded` (stubs of a domain with no describe recording: completeness
+unknown, never assumed) — in total and per domain under a new `domains.<domain>` row, so
+"documented" can no longer be relayed as "complete" (F-455: the user was told a deep crawl
+had finished while eight domains were entirely stubs, and nothing in the report could
+contradict it). The setup skill's Phase 5 close, Phase 6 precondition, `--deep` relay and
+final report, and the budget-report shapes, all quote ONE report invocation taken at a
+quiescent point instead of narrating.
+
+- `domainCounts: { indexed, withAssets, empty }` (F-454): the Phase 4 relay quotes
+  `indexed` and names every `emptyDomains` entry, instead of counting `byDomain` keys —
+  a count that silently dropped every listed-but-empty domain.
+- Per domain, `changeDetection: "date" | "none" | "unrecorded"` and `datelessEntries`
+  (F-451): the refresh report ends with a `Not checked for change this run:` block naming
+  every domain with no date field and every count of dateless rows under a recorded one
+  (on one production workspace nearly half the inventory sits outside change detection;
+  "Unchanged" now says what it could see). Honest statement only — fingerprint-based
+  staleness for those rows is issue #12 territory.
+- `docPathsUnknown` (F-459), in `report` (per domain and total) and beside `remove`'s
+  `docPaths`: documented entries with no recorded `doc_path` (docs written before path
+  recording existed) are counted, so a cleanup list can never read 0 as "no docs" when the
+  truth is "unknown". `mark --status documented` now refuses an entry that has no recorded
+  `doc_path` when none is passed (stub, describe-batch and the manual path always pass
+  one). New verb `manifest.mjs reconcile-docs --domain <d> [--dir <folder>] [--out <file>]
+  [--dry-run]` backfills `doc_path` from the docs on disk through the writers' own naming
+  (doc-lib's `docNameMatcher`, the claimer's read-side twin — same `-dup` collision chain),
+  and names recorded-missing, unmatched and orphan files; it writes only `doc_path`,
+  never a doc. This is the reconcile-on-resume step batched marks (#12) will reuse.
+- Contract: report's output is now part of T-2 (`GsReport` in manifest.mjs's header,
+  pinned by `test/contract-conformance.mjs`); every addition is additive — `byDomain`
+  rows stay numbers-only because describe-batch's progress probe sums them.
+
 ## 0.39.0 — 2026-09-14
 
 The describe loop stops itself, and says why. What a user gets by updating: a dead token

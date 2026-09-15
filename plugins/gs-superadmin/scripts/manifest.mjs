@@ -106,7 +106,12 @@
 //   remove        --key <domain/id> | --keys-file <json-array-of-keys>
 //                 delete inventory entries (e.g. rekey orphans); reports the
 //                 removed entries' doc_path values so stale docs can be
-//                 cleaned up — the script never deletes doc files itself
+//                 cleaned up — the script never deletes doc files itself —
+//                 and `docPathsUnknown`, the removed entries that were
+//                 documented with NO doc_path recorded (F-459: legacy docs
+//                 written before path recording existed), so an empty
+//                 `docPaths` can never read as "no docs" when the truth is
+//                 "unknown"; reconcile-docs (below) records those paths
 //                 | --domain <name> [--allow-populated]
 //                 de-register a domains_indexed coverage stamp (F-333: the
 //                 sanctioned exit for a phantom stamp — a typo'd --domain
@@ -132,6 +137,14 @@
 //                 documented stamps last_verified; depth keeps the entry's
 //                 existing depth unless --depth is given (else defaults full);
 //                 --doc-path records where the doc landed (remove reports it);
+//                 a documented mark is REFUSED when the entry has no recorded
+//                 doc_path and none is passed (F-459: every doc writer —
+//                 stub, describe-batch, the manual path — knows where its doc
+//                 landed, and an entry documented with nowhere recorded is
+//                 invisible to every doc_path consumer; with --keys-file the
+//                 whole batch is refused, nothing written). An entry that
+//                 already carries a doc_path may be re-marked without one
+//                 (describe-batch's --if-changed skip does exactly that);
 //                 --fingerprint records the content fingerprint of the
 //                 documented describe payload (doc-lib.mjs
 //                 canonicalFingerprint — describe-batch.mjs's --if-changed
@@ -220,6 +233,55 @@
 //                 cannot be wrong about coverage). `touch-refresh` is gone —
 //                 an unknown verb; last_refresh stays in the manifest as a
 //                 legacy field nothing derives from.
+//                 Depth and change-detection truth (F-455, F-454, F-451,
+//                 F-459 — Session C1; the output shape is the GsReport
+//                 contract below): `byDepth` = { full, metadata, listOnly,
+//                 unrecorded } over DOCUMENTED entries, where a metadata
+//                 stub counts by its domain's recorded describe state —
+//                 `none` → listOnly (complete by definition), a template →
+//                 metadata (awaiting --deep), no recording → unrecorded
+//                 (completeness unknown, never assumed — the F-346 class) —
+//                 and a documented entry with no depth at all (a doc written
+//                 before the field existed; never a stub) counts as full, the
+//                 same rule the stub verb's never-downgrade applies; pending /
+//                 stale / failed entries appear under byStatus only, never
+//                 under a depth. `domainCounts` = { indexed (stamps),
+//                 withAssets (domains holding entries), empty } so a relay
+//                 never re-derives the domain count from byDomain's keys.
+//                 `domains.<d>` = { stamped, describeState, byDepth,
+//                 changeDetection ("date" = a field is recorded; "none" =
+//                 recorded-none; "unrecorded" = legacy stamp, or no stamp),
+//                 datelessEntries (entries with no modified_date — under a
+//                 recorded field these are the rows change detection cannot
+//                 see), docPathsUnknown } — one row per domain that holds
+//                 entries or a stamp. `docPathsUnknown` at the top level is
+//                 the tenant total. Read-only by contract: report never
+//                 writes the manifest (the backfill is reconcile-docs).
+//   reconcile-docs --domain <ns> [--dir <folder>] [--out <detail.json>]
+//                 [--dry-run]
+//                 backfill doc_path on the domain's entries from the docs
+//                 already on disk (F-459: legacy docs written before path
+//                 recording existed; this is also the reconcile-on-resume
+//                 step batched marks will need — issue #12). Scans <folder>
+//                 (default <manifest-dir>/<domain>, the folder every writer
+//                 uses) for *.md files and matches each entry through the
+//                 doc writers' OWN naming — doc-lib's docBaseName plus the
+//                 claimer's "-dup" collision chain, replayed against what is
+//                 on disk — so the match is the name a writer would have
+//                 chosen, never a guess. Records doc_path (the same
+//                 <folder>/<stem>.md spelling stub writes) on every matched
+//                 entry that has none; entries that already carry a doc_path
+//                 are left as recorded (a recorded path whose file is gone is
+//                 reported under recordedMissing, never rewritten — a deleted
+//                 doc is the operator's regeneration signal). Reports, by
+//                 count with samples and in full under --out: recorded,
+//                 alreadyRecorded, recordedMissing, unmatchedDocumented
+//                 (documented entries with no doc on disk — the docs are
+//                 gone; re-document or remove, a decision, never automatic)
+//                 and orphanFiles (docs no entry claims — a rekey or a
+//                 removed entry left them; cleanup is the caller's). Never
+//                 writes or deletes a doc file. --dry-run computes everything
+//                 and writes nothing.
 //
 // Output: one JSON object on stdout. Non-zero exit + stderr message on error.
 // Zero dependencies — Node built-ins only.
@@ -302,6 +364,63 @@
  * @property {string} reason
  * @property {string} decidedAt
  * @property {string} [recheckAfter]  YYYY-MM-DD
+ *
+ * ── report's output (T-2 v3, Session C1 2026-09-15 — ADDITIVE over the v2
+ *    shape; every key below is frozen once a skill quotes it). Readers: the
+ *    setup skill (Phase 4 relay, Phase 5 close, Phase 6 precondition, --deep
+ *    relay), the refresh skill (step 1 / step 4), describe-batch's progress
+ *    probe (byDomain ONLY — it sums a row's values, so a byDomain row carries
+ *    numbers and nothing else, ever). Pinned by test/contract-conformance.mjs.
+ *
+ * @typedef {object} GsReportDepth   counts over DOCUMENTED entries
+ * @property {number} full        a describe ran and a full doc was written
+ *                                (includes documented entries with no depth —
+ *                                pre-depth-field docs, never stubs)
+ * @property {number} metadata    a stub under a domain with a describe
+ *                                template — incomplete, awaiting --deep
+ * @property {number} listOnly    a stub under a domain recorded `none` —
+ *                                complete by definition
+ * @property {number} unrecorded  a stub under a domain with NO describe
+ *                                recording — completeness unknown
+ *
+ * @typedef {object} GsReportDomain  one row per domain holding entries or a stamp
+ * @property {boolean} stamped    a domains_indexed stamp exists (false = entries
+ *                                registered into a never-listed domain, F-316)
+ * @property {"describable"|"list-only"|"unrecorded"} describeState  the stub
+ *                                verb's three recorded states, same words
+ * @property {GsReportDepth} byDepth
+ * @property {"date"|"none"|"unrecorded"} changeDetection  "date" = a date
+ *                                field is recorded; "none" = recorded-none
+ *                                (dateField null); "unrecorded" = legacy stamp
+ *                                with no dateField key, a bare-string stamp,
+ *                                or no stamp — refresh derives it once
+ * @property {number} datelessEntries  entries with no modified_date (null or
+ *                                absent), whatever changeDetection says
+ * @property {number} docPathsUnknown  documented entries with no doc_path
+ *
+ * @typedef {object} GsReport
+ * @property {true} ok
+ * @property {string} slug
+ * @property {string} baseUrl
+ * @property {?string} environment
+ * @property {number} total
+ * @property {?string} last_refresh
+ * @property {Object<string, number>} byStatus
+ * @property {Object<string, Object<string, number>>} byDomain  numbers only
+ * @property {Object<string, {at: ?string, days: ?number}>} lookback
+ * @property {number} lookbackDefault
+ * @property {Object<string, GsDomainStamp|string>} domains_indexed
+ * @property {Object<string, GsExclusion>} domains_excluded
+ * @property {Object<string, GsBlock>} domains_blocked
+ * @property {string[]} emptyDomains
+ * @property {GsReportDepth} byDepth          tenant totals (v3)
+ * @property {{indexed: number, withAssets: number, empty: number}} domainCounts
+ *                                indexed = stamps; withAssets = domains holding
+ *                                entries; empty = emptyDomains.length. The three
+ *                                reconcile (withAssets + empty = indexed) unless
+ *                                an unstamped domain holds entries (v3)
+ * @property {number} docPathsUnknown         tenant total (v3)
+ * @property {Object<string, GsReportDomain>} domains  keyed by domain name (v3)
  */
 import { writeFileSync, mkdirSync, existsSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
@@ -309,7 +428,7 @@ import { fileURLToPath } from "node:url";
 // Doc filename for an asset id — the shared copy every doc writer imports
 // (sanitized ids get a short raw-id hash so distinct ids that clean to the
 // same base can never collide).
-import { docNameClaimer, readJsonFile, writeFileAtomicSync, cmpKey, getPath as get, findItemsArray, extractIds, makeCliHelpers, STUB_MARKER, DESCRIBE_NONE, idPathHint, ZERO_RESOLVE_HEAD, findWorkspaceCatalog, makeCommandResolver } from "./doc-lib.mjs";
+import { docNameClaimer, docNameMatcher, readJsonFile, writeFileAtomicSync, cmpKey, getPath as get, findItemsArray, extractIds, makeCliHelpers, STUB_MARKER, DESCRIBE_NONE, idPathHint, ZERO_RESOLVE_HEAD, findWorkspaceCatalog, makeCommandResolver } from "./doc-lib.mjs";
 const here = dirname(fileURLToPath(import.meta.url));
 
 // The date-failure head refresh/SKILL.md's post-upgrade migration note quotes
@@ -338,7 +457,7 @@ const { opt, out, finish } = helpers;
 /** @type {import("./doc-lib.mjs").FailFn} */
 const fail = helpers.fail;
 
-const VERBS = new Set(["init", "upsert-batch", "mark", "next", "stub", "crawl", "report", "remove", "exclude", "block"]);
+const VERBS = new Set(["init", "upsert-batch", "mark", "next", "stub", "crawl", "report", "remove", "exclude", "block", "reconcile-docs"]);
 
 // Domain names are model-authored kebab identifiers (setup's naming rule). A
 // prototype-shaped name ("__proto__") survives the composite inventory keys
@@ -376,6 +495,21 @@ function domainOrFail(domain) {
 // Hard cap on an exclude/block --reason (F-222). See the check site for why it
 // is set well above the observed working distribution rather than near it.
 const REASON_MAX = 1000;
+// The recorded describe state of a domain stamp — the ONE reading (A-1) the
+// stub banner and report's depth truth both derive from (F-334 → gate-3 F-346;
+// F-455): the `none` sentinel is the operator's list-only decision, a template
+// makes the domain describable, and null/absent (a legacy stamp, a bare-string
+// stamp, an operator who never passed the flag, or no stamp at all) is
+// UNRECORDED — nothing is known, so neither completeness nor a working --deep
+// may be claimed for its stubs.
+/**
+ * @param {GsDomainStamp|string|undefined} stamp
+ * @returns {"describable"|"list-only"|"unrecorded"}
+ */
+function describeStateOf(stamp) {
+  const recorded = stamp != null && typeof stamp === "object" && typeof stamp.describeCommand === "string" ? stamp.describeCommand : null;
+  return recorded === DESCRIBE_NONE ? "list-only" : recorded ? "describable" : "unrecorded";
+}
 // The three enumerations T-2 declares as unions. Each Set is TYPED AGAINST its
 // union, so a member added here but not to the typedef is red under both
 // configs (the sync mechanism A-2 asks for — measured at the 0.36.3 gate: with
@@ -1299,6 +1433,28 @@ if (verb === "init") {
     const shown = unknown.slice(0, 5).join(", ");
     fail(`no inventory entry: ${shown}${unknown.length > 5 ? ` (+${unknown.length - 5} more)` : ""}${keysFile ? " — nothing marked" : ""}`);
   }
+  // A documented entry must know where its doc is (F-459). Every doc writer
+  // passes --doc-path on the mark that follows its write (stub and
+  // describe-batch by construction, the manual per-asset path by its
+  // reference), and describe-batch's --if-changed skip re-marks WITHOUT one
+  // only on an entry that already carries a path — so the only mark this
+  // refuses is the hand-run one that would create an entry no doc_path
+  // consumer can see (remove's cleanup list read 0 for a whole legacy domain
+  // whose stubs sat on disk). Checked before the loop: all-or-nothing, like
+  // the unknown-key rule above.
+  if (status === "documented" && docPath === undefined) {
+    const pathless = keys.filter((k) => typeof m.inventory[k].doc_path !== "string" || m.inventory[k].doc_path === "");
+    if (pathless.length) {
+      const shown = pathless.slice(0, 5).join(", ");
+      fail(
+        `mark --status documented refused for ${shown}${pathless.length > 5 ? ` (+${pathless.length - 5} more)` : ""}: ` +
+          `the entr${pathless.length === 1 ? "y has" : "ies have"} no recorded doc_path and none was passed — a documented entry ` +
+          `with nowhere recorded is invisible to every doc_path consumer (F-459). Pass --doc-path <where the doc landed>` +
+          `${keysFile ? " on a per-key mark (--keys-file marks carry no path; nothing was marked)" : ""}; for docs that already ` +
+          `exist on disk under the writers' naming, run reconcile-docs --domain <ns> first.`
+      );
+    }
+  }
   for (const k of keys) {
     const e = m.inventory[k];
     e.status = status;
@@ -1393,13 +1549,7 @@ if (verb === "init") {
   //     was avoiding.) The catalog cannot make the call for the operator:
   //     scorecards describe through a different command group and connector
   //     jobs through a flag, so a recorded decision is the only honest source.
-  const stubStamp = (m.domains_indexed ?? {})[domain];
-  const recordedDescribe =
-    stubStamp != null && typeof stubStamp === "object" && typeof stubStamp.describeCommand === "string"
-      ? stubStamp.describeCommand
-      : null;
-  const describeState =
-    recordedDescribe === DESCRIBE_NONE ? "list-only" : recordedDescribe ? "describable" : "unrecorded";
+  const describeState = describeStateOf((m.domains_indexed ?? {})[domain]);
   const banner = {
     describable: [
       `${STUB_MARKER} (shallow crawl, captured ${now}) — full ingest:`,
@@ -1493,6 +1643,46 @@ if (verb === "init") {
   const domainsIndexed = m.domains_indexed ?? {};
   // Indexed but no inventory entries: the tenant genuinely has none of these.
   const emptyDomains = Object.keys(domainsIndexed).filter((d) => !byDomain[d]).sort();
+  // Depth and change-detection truth per domain (F-455 / F-454 / F-451 /
+  // F-459 — header comment on `report` for the field semantics; typedef
+  // GsReportDomain). One row per domain that holds entries OR a stamp, so an
+  // empty stamp and an unstamped registration (F-316) both have a row; the
+  // folds are null-prototype like the ones above (F-225). NOTHING here is
+  // written into a byDomain row: describe-batch's progress probe sums a
+  // row's values, so those rows carry numbers only.
+  const newDepth = () => ({ full: 0, metadata: 0, listOnly: 0, unrecorded: 0 });
+  const byDepth = newDepth();
+  /** @type {Object<string, GsReportDomain>} */
+  const domains = Object.create(null);
+  const domainNames = [...new Set([...Object.keys(byDomain), ...Object.keys(domainsIndexed)])].sort();
+  for (const d of domainNames) {
+    const stamp = Object.hasOwn(domainsIndexed, d) ? domainsIndexed[d] : undefined;
+    const stamped = stamp !== undefined;
+    const isObj = stamp != null && typeof stamp === "object";
+    // dateField tri-state (T-2 GsDomainStamp): string = recorded, null =
+    // recorded-none, ABSENT = legacy/unknown — a bare-string stamp or no
+    // stamp at all reads as the third state, never as "none".
+    const changeDetection = isObj && "dateField" in stamp ? (typeof stamp.dateField === "string" ? "date" : "none") : "unrecorded";
+    domains[d] = { stamped, describeState: describeStateOf(stamp), byDepth: newDepth(), changeDetection, datelessEntries: 0, docPathsUnknown: 0 };
+  }
+  let docPathsUnknown = 0;
+  for (const e of Object.values(m.inventory)) {
+    const row = domains[e.domain];
+    if (e.modified_date == null) row.datelessEntries++;
+    if (e.status !== "documented") continue;
+    if (typeof e.doc_path !== "string" || e.doc_path === "") { row.docPathsUnknown++; docPathsUnknown++; }
+    // A metadata stub's completeness is its DOMAIN's recorded describe state
+    // (the stub banner says the same three things); a full doc is full
+    // wherever it sits; no depth at all = a pre-depth-field doc = full (the
+    // stub verb's hasFullDoc rule — stubs have always carried a depth).
+    const bucket =
+      e.depth === "metadata"
+        ? { "list-only": "listOnly", describable: "metadata", unrecorded: "unrecorded" }[row.describeState]
+        : "full";
+    row.byDepth[bucket]++;
+    byDepth[bucket]++;
+  }
+  const domainCounts = { indexed: Object.keys(domainsIndexed).length, withAssets: Object.keys(byDomain).length, empty: emptyDomains.length };
   // Per-domain change window (F-417): days since the domain's OWN list stamp
   // — the `at` upsert-batch writes on every full list — never since a
   // workspace-wide last_refresh. A crawl that reached 2 of 17 domains leaves
@@ -1525,6 +1715,10 @@ if (verb === "init") {
     domains_excluded: m.domains_excluded ?? {},
     domains_blocked: m.domains_blocked ?? {},
     emptyDomains,
+    byDepth,
+    domainCounts,
+    docPathsUnknown,
+    domains,
   });
 } else if (verb === "exclude" || verb === "block") {
   const m = load();
@@ -1807,6 +2001,11 @@ if (verb === "init") {
   keys = [...new Set(keys)];
   const missing = [];
   const docPaths = [];
+  // Documented entries removed with NO doc_path recorded (F-459): their docs
+  // may well sit on disk under the writers' naming, so the cleanup list is
+  // INCOMPLETE by this number — reported beside it, never folded into it, so
+  // an empty docPaths cannot read as "no docs" when the truth is "unknown".
+  let docPathsUnknown = 0;
   let removed = 0;
   for (const k of keys) {
     // hasOwn for the same reason as mark's presence check (F-168): a key like
@@ -1818,11 +2017,95 @@ if (verb === "init") {
     }
     const e = m.inventory[k];
     if (e.doc_path) docPaths.push(e.doc_path);
+    else if (e.status === "documented") docPathsUnknown++;
     delete m.inventory[k];
     removed++;
   }
   save(m);
   // doc files are reported, not deleted — removal of tenant docs stays a
   // caller decision (they may be the only copy of a rekeyed asset's old doc)
-  out({ ok: true, removed, missing, docPaths, totalInventory: Object.keys(m.inventory).length });
+  out({ ok: true, removed, missing, docPaths, docPathsUnknown, totalInventory: Object.keys(m.inventory).length });
+} else if (verb === "reconcile-docs") {
+  // Backfill doc_path from the docs already on disk (F-459; the
+  // reconcile-on-resume step issue #12's batched marks will reuse). The match
+  // is doc-lib's docNameMatcher — the claimer's read-side twin: it replays the
+  // doc writers' OWN naming rule (docBaseName, then the "-dup" chain a writer
+  // appends while the stem is claimed in-run or a DIFFERENT spelling of it
+  // sits on disk — case-folding filesystems, F-125/F-156) against the folder,
+  // so the file an entry is matched to is the file its writer would have
+  // chosen, and the suffix grammar stays in its one sanctioned home. Entries
+  // are walked in key order (cmpKey, the inventory's own order) so the replay
+  // is deterministic; the one residual the claimer documents (two ids whose
+  // docBaseName output is byte-identical) resolves to the first key here as
+  // it resolved to the first writer there. Read-then-write: the manifest is
+  // saved once, only when a path was recorded, and no doc file is touched.
+  const domain = opt("--domain") || fail("reconcile-docs requires --domain <ns>");
+  domainOrFail(domain);
+  const dryRun = argv.includes("--dry-run");
+  const detailOut = opt("--out");
+  const m = load();
+  // The folder every writer uses: <manifest-dir>/<domain>, and doc_path is
+  // recorded exactly as stub records it — the folder as passed, forward
+  // slashes, no trailing slash — so a path reconciled here is byte-identical
+  // to one a writer would have recorded (readers resolve it against the CWD).
+  const dirArg = opt("--dir") ?? join(dirname(manifestPath), domain);
+  const dirNorm = dirArg.replace(/\\/g, "/").replace(/\/$/, "");
+  const dirAbs = resolve(dirArg);
+  const dirExists = existsSync(dirAbs);
+  const matcher = docNameMatcher(dirAbs);
+  const keys = Object.keys(m.inventory).filter((k) => m.inventory[k].domain === domain).sort(cmpKey);
+  /** @type {string[]} */ const recordedKeys = [];
+  /** @type {string[]} */ const recordedMissing = [];
+  /** @type {string[]} */ const unmatchedDocumented = [];
+  let alreadyRecorded = 0;
+  // Pass 1: entries that already carry a path claim their stem first (a
+  // recorded path is a fact; a name replay must never re-attribute it).
+  for (const k of keys) {
+    const e = m.inventory[k];
+    if (typeof e.doc_path !== "string" || e.doc_path === "") continue;
+    if (existsSync(resolve(e.doc_path))) {
+      alreadyRecorded++;
+      const rel = e.doc_path.replace(/\\/g, "/");
+      const slash = rel.lastIndexOf("/");
+      const inDir = slash >= 0 && resolve(rel.slice(0, slash)) === dirAbs;
+      if (inDir && /\.md$/i.test(rel)) matcher.claim(rel.slice(slash + 1, -3));
+    } else {
+      recordedMissing.push(k);
+    }
+  }
+  // Pass 2: the name replay for entries with no path.
+  for (const k of keys) {
+    const e = m.inventory[k];
+    if (typeof e.doc_path === "string" && e.doc_path !== "") continue;
+    const match = matcher.match(e.id);
+    if (match === null) {
+      if (e.status === "documented") unmatchedDocumented.push(k);
+      continue;
+    }
+    if (!dryRun) e.doc_path = `${dirNorm}/${match}.md`;
+    recordedKeys.push(k);
+  }
+  const orphanFiles = matcher.unclaimed().map((s) => `${s}.md`);
+  if (!dryRun && recordedKeys.length) save(m);
+  const SAMPLE = 10;
+  /** @param {string[]} a */
+  const sample = (a) => a.slice(0, SAMPLE);
+  const summary = {
+    ok: true,
+    domain,
+    dir: dirNorm,
+    dirExists,
+    dryRun,
+    entries: keys.length,
+    recorded: recordedKeys.length,
+    alreadyRecorded,
+    recordedMissing: recordedMissing.length,
+    unmatchedDocumented: unmatchedDocumented.length,
+    orphanFiles: orphanFiles.length,
+    samples: { recorded: sample(recordedKeys), recordedMissing: sample(recordedMissing), unmatchedDocumented: sample(unmatchedDocumented), orphanFiles: sample(orphanFiles) },
+    detailFile: detailOut ?? null,
+  };
+  // Full lists go to a file, never through model context (bulk-data rule).
+  if (detailOut) writeFileAtomicSync(resolve(detailOut), JSON.stringify({ ...summary, lists: { recorded: recordedKeys, recordedMissing, unmatchedDocumented, orphanFiles } }, null, 2) + "\n");
+  out(summary);
 }

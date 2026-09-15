@@ -294,29 +294,37 @@ export function docBaseName(id) {
 // prefix collision between two clean ids. Narrow, but silent when it lands: the
 // exact-case disk match reads the second id's write as the first id's own doc
 // and reuses the name.
+// The doc stems in a folder — lower-cased stem -> the exact spellings on disk.
+// ONE snapshot reader for the claimer (write side) and the matcher (read side,
+// F-459): both see the same files the same way, so a name the matcher
+// attributes is a name the claimer would have chosen.
+/** @param {string} dir @returns {Map<string, Set<string>>} */
+function readDocStems(dir) {
+  /** @type {Map<string, Set<string>>} */
+  const disk = new Map();
+  let names = [];
+  try {
+    names = readdirSync(dir);
+  } catch {
+    /* dir not created yet — nothing on disk to respect */
+  }
+  for (const n of names) {
+    if (!/\.md$/i.test(n)) continue;
+    const stem = n.slice(0, -3);
+    const lower = stem.toLowerCase();
+    if (!disk.has(lower)) disk.set(lower, new Set());
+    // The line above guarantees the key; the cast states that to the
+    // strictNullChecks ratchet (Map.get is `| undefined` by signature).
+    /** @type {Set<string>} */ (disk.get(lower)).add(stem);
+  }
+  return disk;
+}
 export function docNameClaimer(dir) {
   const claimedLower = new Set();
   /** @type {Map<string, Set<string>> | null} */
   let disk = null; // lower-cased stem -> Set of exact on-disk stems
   return (id) => {
-    if (disk === null) {
-      disk = new Map();
-      let names = [];
-      try {
-        names = readdirSync(dir);
-      } catch {
-        /* dir not created yet — nothing on disk to respect */
-      }
-      for (const n of names) {
-        if (!/\.md$/i.test(n)) continue;
-        const stem = n.slice(0, -3);
-        const lower = stem.toLowerCase();
-        if (!disk.has(lower)) disk.set(lower, new Set());
-        // The line above guarantees the key; the cast states that to the
-        // strictNullChecks ratchet (Map.get is `| undefined` by signature).
-        /** @type {Set<string>} */ (disk.get(lower)).add(stem);
-      }
-    }
+    if (disk === null) disk = readDocStems(dir);
     let base = docBaseName(id);
     for (;;) {
       const spellings = disk.get(base.toLowerCase());
@@ -326,6 +334,56 @@ export function docNameClaimer(dir) {
     }
     claimedLower.add(base.toLowerCase());
     return base;
+  };
+}
+
+// The claimer's READ-side twin (F-459, manifest.mjs reconcile-docs): which file
+// on disk did a writer running the claimer's rule give this id? It replays the
+// same grammar — docBaseName, then "-dup" while the stem is claimed in-run or a
+// DIFFERENT spelling of it sits on disk — and answers with the exact stem when
+// that file exists and no earlier id took it, or null when the writer's choice
+// is a name no file carries (no doc for this id). Callers claim() the stems of
+// RECORDED paths first, so a replay never re-attributes a doc whose owner is a
+// fact; unclaimed() is what remains — the orphans. Same residual as the
+// claimer (two ids whose docBaseName output is byte-identical resolve in call
+// order), and the same 64-hop bound a pathological folder could otherwise
+// defeat. The suffix loop is written once more here on purpose: it is the
+// grammar's second, read-side home, in the file check-doc-drift check 9
+// sanctions for it — never copy it into a script.
+/**
+ * @param {string} dir
+ * @returns {{ match: (id: string) => string|null, claim: (stem: string) => void, unclaimed: () => string[] }}
+ */
+export function docNameMatcher(dir) {
+  const disk = readDocStems(dir);
+  /** @type {Set<string>} */
+  const claimed = new Set();
+  /** @type {Set<string>} */
+  const claimedLower = new Set();
+  /** @param {string} stem */
+  const claim = (stem) => {
+    claimed.add(stem);
+    claimedLower.add(stem.toLowerCase());
+  };
+  return {
+    claim,
+    match(id) {
+      let base = docBaseName(id);
+      for (let hops = 0; hops < 64; hops++) {
+        const lower = base.toLowerCase();
+        const spellings = disk.get(lower);
+        if (!claimedLower.has(lower)) {
+          if (spellings !== undefined && spellings.has(base)) {
+            claim(base);
+            return base;
+          }
+          if (spellings === undefined) return null; // the writer's first free choice — and no file carries it
+        }
+        base += "-dup";
+      }
+      return null;
+    },
+    unclaimed: () => [...disk.values()].flatMap((s) => [...s]).filter((stem) => !claimed.has(stem)).sort(),
   };
 }
 

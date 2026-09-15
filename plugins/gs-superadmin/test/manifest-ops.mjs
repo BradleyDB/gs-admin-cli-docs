@@ -11,9 +11,14 @@
 // --allow-redate, baseline adoption over null-stored dates, epoch-ms
 // ordering in newerThan), the under-count warning and the --partial
 // deliberate-subset declaration (F-313), the mass-stale advisory,
-// mark --fingerprint validation, and mark --keys-file/--limit batch marking
-// (all-or-nothing, file-order limit, BOM tolerance — F-162). Fixtures live
-// under the OS temp dir; no real state.
+// mark --fingerprint validation, mark --keys-file/--limit batch marking
+// (all-or-nothing, file-order limit, BOM tolerance — F-162), and the Session
+// C1 truth set (F-455/F-454/F-451/F-459): report's byDepth four states per
+// domain and in total, domainCounts, changeDetection + datelessEntries,
+// docPathsUnknown; mark's refusal of a pathless documented mark; remove's
+// docPathsUnknown; reconcile-docs over a legacy folder (matched, case-
+// collision pair, recorded-missing, unmatched, orphans, dry-run, --out).
+// Fixtures live under the OS temp dir; no real state.
 //
 // Run:  node plugins/gs-superadmin/test/manifest-ops.mjs
 // Zero dependencies — Node built-ins only.
@@ -80,8 +85,11 @@ r = run("next", ["--manifest", M, "--domain", "rules-engine-rules"]);
 check("next: --domain filters to that domain only", r.json?.count === 1 && r.json.entries[0].key === "rules-engine-rules/r-1", r);
 
 // ── stub: never downgrades a full doc ────────────────────────────────────────
-run("mark", ["--manifest", M, "--key", "journey-email-templates/t-1", "--status", "documented"]);
 const outDir = join(ROOT, "acme-sbx", "journey-email-templates");
+// A documented mark names where its doc landed (F-459) — the fixture's hand-run
+// mark passes the path the writer would have recorded (the file need not exist
+// for mark; existence is reconcile-docs' business).
+run("mark", ["--manifest", M, "--key", "journey-email-templates/t-1", "--status", "documented", "--doc-path", join(outDir, "t-1.md")]);
 r = run("stub", ["--manifest", M, "--file", listFile, "--domain", "journey-email-templates", "--id-field", "templateId", "--name-field", "title", "--out-dir", outDir]);
 check("stub: stubs pending entries, skips the full-documented one", r.json?.stubbed === 2 && r.json?.skippedFull === 1, r);
 check("stub: no stub file written for the full-documented entry", !existsSync(join(outDir, "t-1.md")), readdirSync(outDir));
@@ -749,11 +757,11 @@ check("advisory: mass stale flip warns to verify the date field first", r.code =
 
 // ── mark --fingerprint: stored on documented marks, strict 40-hex shape ──────
 const FP = "a".repeat(40);
-r = run("mark", ["--manifest", M, "--key", "pagedom/p-1", "--status", "documented", "--fingerprint", FP]);
+r = run("mark", ["--manifest", M, "--key", "pagedom/p-1", "--status", "documented", "--fingerprint", FP, "--doc-path", "acme-sbx/pagedom/p-1.md"]);
 check("fingerprint: stored on a documented mark", r.code === 0 && dj().inventory["pagedom/p-1"].fingerprint === FP, r);
 r = run("mark", ["--manifest", M, "--key", "pagedom/p-1", "--status", "failed", "--error", "x"]);
 check("fingerprint: failed mark leaves the fingerprint untouched", r.code === 0 && dj().inventory["pagedom/p-1"].fingerprint === FP, dj().inventory["pagedom/p-1"]);
-r = run("mark", ["--manifest", M, "--key", "pagedom/p-2", "--status", "documented", "--fingerprint", "B".repeat(40)]);
+r = run("mark", ["--manifest", M, "--key", "pagedom/p-2", "--status", "documented", "--fingerprint", "B".repeat(40), "--doc-path", "acme-sbx/pagedom/p-2.md"]);
 check("fingerprint: uppercase hex accepted and stored lowercase", r.code === 0 && dj().inventory["pagedom/p-2"].fingerprint === "b".repeat(40), r);
 r = run("mark", ["--manifest", M, "--key", "pagedom/p-2", "--status", "documented", "--fingerprint", "not-a-fingerprint"]);
 check("fingerprint: malformed value rejected (exit 1)", r.code === 1 && /40-char hex/.test(r.stderr), r);
@@ -1508,6 +1516,148 @@ check("fingerprint: malformed value rejected (exit 1)", r.code === 1 && /40-char
   check("f432: a new domain sharing another domain's real describe command but with its OWN list command proceeds with a warning naming the sharing domain — not refused", shared && r.code === 0 && r.json?.added === 1 && (r.json?.warnings ?? []).some((w) => /--describe-command is the recorded describeCommand of domain jobs-archived/.test(w) && /proceeds/.test(w)), r);
   r = run("upsert-batch", ["--manifest", M9, "--file", jobsFile, "--domain", "jobs-renamed", "--id-field", "jobId", "--name-field", "jobName", "--no-date-field", "--list-command", "gs-admin --json report list", "--describe-command", "none"]);
   check("f432 (control): a LIST-command collision (alias spelling of a recorded list) is still refused, whatever the describe command says", r.code === 1 && /--list-command is the recorded listCommand of domain jobs-shared-describe/.test(r.stderr), r.stderr.slice(0, 200));
+}
+
+// ── Session C1 (F-455 / F-454 / F-451 / F-459): report carries depth, domain
+// counts, change-detection honesty and doc_path truth; mark refuses a pathless
+// documented mark; remove counts unknown paths; reconcile-docs backfills ────
+{
+  const MC = join(ROOT, "acme-c1", "_manifest.json");
+  const djC = () => JSON.parse(readFileSync(MC, "utf8"));
+  const BSL = String.fromCharCode(92);
+  const fwd = (p) => p.split(BSL).join("/");
+  const rows = (name, items) => { const f = join(ROOT, `c1-${name}.json`); writeFileSync(f, JSON.stringify({ data: items })); return f; };
+  run("init", ["--manifest", MC, "--slug", "acme-c1", "--base-url", "https://c1.example", "--environment", "sandbox"]);
+  // full-dom: describable, dated — two full docs (one written before the depth
+  // field existed) and one pending entry.
+  const fullList = rows("full", [
+    { id: "a-1", name: "Alpha", modifiedDate: "2026-01-01T00:00:00Z" },
+    { id: "a-2", name: "Beta", modifiedDate: "2026-01-02T00:00:00Z" },
+    { id: "a-3", name: "Gamma", modifiedDate: "2026-01-03T00:00:00Z" },
+  ]);
+  run("upsert-batch", ["--manifest", MC, "--file", fullList, "--domain", "full-dom", "--id-field", "id", "--name-field", "name", "--date-field", "modifiedDate", "--describe-command", "gs-admin --json re r describe --id {id}", "--list-command", "gs-admin --json re r list"]);
+  run("mark", ["--manifest", MC, "--key", "full-dom/a-1", "--status", "documented", "--depth", "full", "--doc-path", "acme-c1/full-dom/a-1.md"]);
+  run("mark", ["--manifest", MC, "--key", "full-dom/a-2", "--status", "documented", "--depth", "full", "--doc-path", "acme-c1/full-dom/a-2.md"]);
+  // meta-dom: describable, a date field recorded under which every row is null
+  // (F-451 shape ii) — two metadata stubs awaiting --deep.
+  const metaList = rows("meta", [{ id: "m-1", name: "Meta One", modifiedDate: null }, { id: "m-2", name: "Meta Two", modifiedDate: null }]);
+  run("upsert-batch", ["--manifest", MC, "--file", metaList, "--domain", "meta-dom", "--id-field", "id", "--name-field", "name", "--date-field", "modifiedDate", "--describe-command", "gs-admin --json jo p describe --id {id}", "--list-command", "gs-admin --json jo p list"]);
+  run("stub", ["--manifest", MC, "--file", metaList, "--domain", "meta-dom", "--id-field", "id", "--name-field", "name", "--out-dir", join(ROOT, "acme-c1", "meta-dom")]);
+  // listonly-dom: `none` recorded, recorded-none date field (F-451 shape i).
+  const loList = rows("lo", [{ id: "c-1", name: "Conn One" }, { id: "c-2", name: "Conn Two" }]);
+  run("upsert-batch", ["--manifest", MC, "--file", loList, "--domain", "listonly-dom", "--id-field", "id", "--name-field", "name", "--no-date-field", "--describe-command", "none", "--list-command", "gs-admin --json cn list"]);
+  run("stub", ["--manifest", MC, "--file", loList, "--domain", "listonly-dom", "--id-field", "id", "--name-field", "name", "--out-dir", join(ROOT, "acme-c1", "listonly-dom")]);
+  // legacy-dom: no describe recording, and (below) no dateField key on the
+  // stamp — the July-crawl shape. Six stubs, two of them a case-colliding pair
+  // (the claimer writes Co.md and co-dup.md).
+  const legacyList = rows("legacy", ["l-1", "l-2", "l-3", "l-4", "Co", "co"].map((id) => ({ id, name: `Legacy ${id}`, modifiedDate: null })));
+  const legacyDir = join(ROOT, "acme-c1", "legacy-dom");
+  run("upsert-batch", ["--manifest", MC, "--file", legacyList, "--domain", "legacy-dom", "--id-field", "id", "--name-field", "name", "--date-field", "modifiedDate", "--list-command", "gs-admin --json sc list"]);
+  r = run("stub", ["--manifest", MC, "--file", legacyList, "--domain", "legacy-dom", "--id-field", "id", "--name-field", "name", "--out-dir", legacyDir]);
+  check("c1 rig: legacy stubs written under the claimer's naming (Co.md + co-dup.md)", r.json?.stubbed === 6 && existsSync(join(legacyDir, "Co.md")) && existsSync(join(legacyDir, "co-dup.md")), readdirSync(legacyDir));
+  // empty-dom: listed, tenant has none.
+  const emptyFile = join(ROOT, "c1-empty.json");
+  writeFileSync(emptyFile, JSON.stringify({}));
+  run("upsert-batch", ["--manifest", MC, "--file", emptyFile, "--domain", "empty-dom", "--id-field", "id", "--no-date-field", "--allow-empty", "--list-command", "gs-admin --json jo surveys list"]);
+  // The legacy shapes no verb can write any more, produced the way the
+  // workspaces got them (the fixture edits the JSON; skills never do): a doc
+  // written before path recording existed (documented, no doc_path — five of
+  // the six; l-2 keeps its path), a stamp from before dateField was recorded,
+  // and a full doc from before the depth field existed.
+  {
+    const m = djC();
+    for (const k of ["legacy-dom/l-1", "legacy-dom/l-3", "legacy-dom/l-4", "legacy-dom/Co", "legacy-dom/co"]) delete m.inventory[k].doc_path;
+    delete m.domains_indexed["legacy-dom"].dateField;
+    delete m.inventory["full-dom/a-2"].depth;
+    writeFileSync(MC, JSON.stringify(m, null, 2));
+  }
+
+  // report — the four depth states, per domain and in total (F-455).
+  r = run("report", ["--manifest", MC]);
+  const rep = r.json;
+  check("c1 report: byDepth totals — full 2 (one pre-depth doc), metadata 2, listOnly 2, unrecorded 6", JSON.stringify(rep?.byDepth) === JSON.stringify({ full: 2, metadata: 2, listOnly: 2, unrecorded: 6 }), rep?.byDepth);
+  check("c1 report: full-dom row — describable, byDepth full 2, the pending entry under byStatus only", rep?.domains?.["full-dom"]?.describeState === "describable" && JSON.stringify(rep.domains["full-dom"].byDepth) === JSON.stringify({ full: 2, metadata: 0, listOnly: 0, unrecorded: 0 }) && rep.byDomain["full-dom"].pending === 1, rep?.domains?.["full-dom"]);
+  check("c1 report: meta-dom row — metadata stubs under a template read metadata (awaiting --deep)", rep?.domains?.["meta-dom"]?.byDepth?.metadata === 2 && rep.domains["meta-dom"].byDepth.listOnly === 0, rep?.domains?.["meta-dom"]);
+  check("c1 report: listonly-dom row — metadata stubs under `none` read listOnly, never metadata", rep?.domains?.["listonly-dom"]?.describeState === "list-only" && rep.domains["listonly-dom"].byDepth.listOnly === 2 && rep.domains["listonly-dom"].byDepth.metadata === 0, rep?.domains?.["listonly-dom"]);
+  check("c1 report: legacy-dom row — stubs under NO recording read unrecorded (the F-346 class), never listOnly or metadata", rep?.domains?.["legacy-dom"]?.describeState === "unrecorded" && rep.domains["legacy-dom"].byDepth.unrecorded === 6 && rep.domains["legacy-dom"].byDepth.listOnly === 0 && rep.domains["legacy-dom"].byDepth.metadata === 0, rep?.domains?.["legacy-dom"]);
+  check("c1 report: byDomain rows still carry numbers only (describe-batch sums them)", Object.values(rep?.byDomain ?? {}).every((row) => Object.values(row).every((v) => typeof v === "number")), rep?.byDomain);
+  check("c1 report: byStatus unchanged in shape — documented 12, pending 1", rep?.byStatus?.documented === 12 && rep?.byStatus?.pending === 1, rep?.byStatus);
+  // domainCounts (F-454): 5 stamps, 4 with assets, 1 empty — the empty domain
+  // is counted, never lost to a byDomain-key count.
+  check("c1 report: domainCounts 5 indexed / 4 withAssets / 1 empty, emptyDomains names it", JSON.stringify(rep?.domainCounts) === JSON.stringify({ indexed: 5, withAssets: 4, empty: 1 }) && JSON.stringify(rep?.emptyDomains) === JSON.stringify(["empty-dom"]), rep?.domainCounts);
+  check("c1 report: the empty domain has a row (stamped, no assets)", rep?.domains?.["empty-dom"]?.stamped === true && rep.domains["empty-dom"].byDepth.full === 0 && rep.domains["empty-dom"].datelessEntries === 0, rep?.domains?.["empty-dom"]);
+  // changeDetection + datelessEntries (F-451): recorded field → date; recorded-
+  // none → none; no key (legacy) → unrecorded; the dateless count is honest
+  // under every state.
+  check("c1 report: changeDetection date/none/unrecorded per stamp state", rep?.domains?.["full-dom"]?.changeDetection === "date" && rep.domains["meta-dom"].changeDetection === "date" && rep.domains["listonly-dom"].changeDetection === "none" && rep.domains["legacy-dom"].changeDetection === "unrecorded" && rep.domains["empty-dom"].changeDetection === "none", Object.fromEntries(Object.entries(rep?.domains ?? {}).map(([k, v]) => [k, v.changeDetection])));
+  check("c1 report: datelessEntries — 0 under real dates, 2 null-under-recorded-field, 2 recorded-none, 6 legacy", rep?.domains?.["full-dom"]?.datelessEntries === 0 && rep.domains["meta-dom"].datelessEntries === 2 && rep.domains["listonly-dom"].datelessEntries === 2 && rep.domains["legacy-dom"].datelessEntries === 6, Object.fromEntries(Object.entries(rep?.domains ?? {}).map(([k, v]) => [k, v.datelessEntries])));
+  // docPathsUnknown (F-459): five documented entries with no path, all in
+  // legacy-dom; the total is the tenant sum.
+  check("c1 report: docPathsUnknown 5 in legacy-dom, 0 elsewhere, total 5", rep?.docPathsUnknown === 5 && rep.domains["legacy-dom"].docPathsUnknown === 5 && rep.domains["full-dom"].docPathsUnknown === 0 && rep.domains["meta-dom"].docPathsUnknown === 0, rep?.docPathsUnknown);
+  // An unstamped registration (F-316) gets a row with stamped false and the
+  // counts say so: withAssets no longer equals indexed − empty.
+  const partialList = rows("partial", [{ id: "p-1", name: "Recovered" }]);
+  r = run("upsert-batch", ["--manifest", MC, "--file", partialList, "--domain", "partial-dom", "--id-field", "id", "--name-field", "name", "--partial"]);
+  const beforeRep = readFileSync(MC, "utf8");
+  r = run("report", ["--manifest", MC]);
+  check("c1 report: an unstamped domain (partial registration) — stamped false, describe/changeDetection unrecorded, withAssets 5 vs indexed 5 / empty 1", r.json?.domains?.["partial-dom"]?.stamped === false && r.json.domains["partial-dom"].describeState === "unrecorded" && r.json.domains["partial-dom"].changeDetection === "unrecorded" && JSON.stringify(r.json.domainCounts) === JSON.stringify({ indexed: 5, withAssets: 5, empty: 1 }), r.json?.domainCounts);
+  check("c1 report: read-only — the report leaves the manifest byte-identical and records no path", r.code === 0 && readFileSync(MC, "utf8") === beforeRep && djC().inventory["legacy-dom/l-1"].doc_path === undefined, null);
+
+  // mark refusal (F-459 part 1): a documented mark on a pathless entry with no
+  // --doc-path is refused, nothing written; every other shape still works.
+  const before = readFileSync(MC, "utf8");
+  r = run("mark", ["--manifest", MC, "--key", "legacy-dom/l-1", "--status", "documented"]);
+  check("c1 mark: documented mark on a pathless entry with no --doc-path is refused (exit 1, names the remedy)", r.code === 1 && /no recorded doc_path and none was passed/.test(r.stderr) && /reconcile-docs/.test(r.stderr), r.stderr.slice(0, 200));
+  check("c1 mark: the refusal wrote nothing", readFileSync(MC, "utf8") === before, null);
+  const pathlessKeys = join(ROOT, "c1-pathless-keys.json");
+  writeFileSync(pathlessKeys, JSON.stringify(["legacy-dom/l-2", "legacy-dom/l-3"]));
+  r = run("mark", ["--manifest", MC, "--keys-file", pathlessKeys, "--status", "documented"]);
+  check("c1 mark: a --keys-file documented batch with ONE pathless key is refused whole — all-or-nothing, names the key", r.code === 1 && /legacy-dom\/l-3/.test(r.stderr) && !/legacy-dom\/l-2/.test(r.stderr) && /nothing was marked/.test(r.stderr) && readFileSync(MC, "utf8") === before, r.stderr.slice(0, 300));
+  r = run("mark", ["--manifest", MC, "--key", "legacy-dom/l-2", "--status", "documented"]);
+  check("c1 mark (control): an entry that already carries a doc_path re-marks documented without one (the --if-changed skip)", r.code === 0 && djC().inventory["legacy-dom/l-2"].status === "documented", r);
+  r = run("mark", ["--manifest", MC, "--key", "legacy-dom/l-1", "--status", "failed", "--error", "x"]);
+  check("c1 mark (control): a failed mark on a pathless entry is not refused — only documented needs a path", r.code === 0 && djC().inventory["legacy-dom/l-1"].status === "failed", r);
+  r = run("mark", ["--manifest", MC, "--key", "legacy-dom/l-1", "--status", "documented", "--depth", "metadata", "--doc-path", join(legacyDir, "l-1.md")]);
+  check("c1 mark (control): the same mark WITH --doc-path is accepted and records it", r.code === 0 && /l-1\.md$/.test(djC().inventory["legacy-dom/l-1"].doc_path), r);
+  { const m = djC(); delete m.inventory["legacy-dom/l-1"].doc_path; writeFileSync(MC, JSON.stringify(m, null, 2)); } // back to the legacy shape for the reconcile arms
+
+  // remove (F-459 part 2): a removed pathless documented entry is COUNTED, so
+  // docPaths [] never reads as "no docs".
+  r = run("remove", ["--manifest", MC, "--key", "legacy-dom/l-4"]);
+  check("c1 remove: pathless documented entry removed — docPaths [] but docPathsUnknown 1", r.code === 0 && r.json?.removed === 1 && r.json.docPaths.length === 0 && r.json.docPathsUnknown === 1, r.json);
+  r = run("remove", ["--manifest", MC, "--key", "full-dom/a-1"]);
+  check("c1 remove (control): an entry with a recorded path — docPaths names it, docPathsUnknown 0", r.code === 0 && r.json?.docPaths?.length === 1 && r.json.docPathsUnknown === 0, r.json);
+
+  // reconcile-docs (F-459 part 3) over the legacy folder: l-1.md, Co.md and
+  // co-dup.md match pathless entries; l-2's recorded file is deleted (recorded
+  // missing, never rewritten); l-3.md is deleted (documented, no doc); l-4.md
+  // (entry removed above) and stray.md are orphans.
+  rmSync(join(legacyDir, "l-2.md"));
+  rmSync(join(legacyDir, "l-3.md"));
+  writeFileSync(join(legacyDir, "stray.md"), "# stray\n");
+  const beforeRec = readFileSync(MC, "utf8");
+  r = run("reconcile-docs", ["--manifest", MC, "--domain", "legacy-dom", "--dry-run"]);
+  check("c1 reconcile --dry-run: computes recorded 3 / recordedMissing 1 / unmatchedDocumented 1 / orphanFiles 2 and writes nothing", r.code === 0 && r.json?.dryRun === true && r.json.recorded === 3 && r.json.recordedMissing === 1 && r.json.unmatchedDocumented === 1 && r.json.orphanFiles === 2 && readFileSync(MC, "utf8") === beforeRec, r.json);
+  const detail = join(ROOT, "c1-reconcile.json");
+  r = run("reconcile-docs", ["--manifest", MC, "--domain", "legacy-dom", "--out", detail]);
+  const inv = djC().inventory;
+  check("c1 reconcile: records doc_path on the three matched entries under the writers' naming — l-1.md, Co.md, co-dup.md (the claimer's collision suffix replayed)", r.code === 0 && r.json?.recorded === 3 && /\/l-1\.md$/.test(inv["legacy-dom/l-1"].doc_path) && /\/Co\.md$/.test(inv["legacy-dom/Co"].doc_path) && /\/co-dup\.md$/.test(inv["legacy-dom/co"].doc_path), { l1: inv["legacy-dom/l-1"].doc_path, Co: inv["legacy-dom/Co"].doc_path, co: inv["legacy-dom/co"].doc_path });
+  check("c1 reconcile: doc_path is recorded forward-slashed under the default folder <manifest-dir>/<domain>, the spelling stub writes", inv["legacy-dom/l-1"].doc_path === `${fwd(legacyDir)}/l-1.md` && !inv["legacy-dom/Co"].doc_path.includes(BSL), inv["legacy-dom/l-1"].doc_path);
+  check("c1 reconcile: a recorded path whose file is gone is reported (recordedMissing 1, l-2) and left as recorded — never rewritten", r.json?.recordedMissing === 1 && r.json.samples.recordedMissing[0] === "legacy-dom/l-2" && /l-2\.md$/.test(inv["legacy-dom/l-2"].doc_path), r.json?.samples);
+  check("c1 reconcile: a documented entry with no doc on disk is named (unmatchedDocumented 1, l-3), its doc_path stays absent", r.json?.unmatchedDocumented === 1 && r.json.samples.unmatchedDocumented[0] === "legacy-dom/l-3" && inv["legacy-dom/l-3"].doc_path === undefined, r.json?.samples);
+  check("c1 reconcile: orphan files named — l-4.md (entry removed) and stray.md — and no doc file was created or deleted", r.json?.orphanFiles === 2 && JSON.stringify(r.json.samples.orphanFiles) === JSON.stringify(["l-4.md", "stray.md"]) && existsSync(join(legacyDir, "stray.md")) && existsSync(join(legacyDir, "l-4.md")) && !existsSync(join(legacyDir, "l-3.md")), r.json?.samples);
+  check("c1 reconcile: --out writes the full lists (bulk never through stdout)", existsSync(detail) && JSON.stringify(JSON.parse(readFileSync(detail, "utf8")).lists.recorded.slice().sort()) === JSON.stringify(["legacy-dom/Co", "legacy-dom/co", "legacy-dom/l-1"]), existsSync(detail) ? JSON.parse(readFileSync(detail, "utf8")).lists : null);
+  r = run("report", ["--manifest", MC]);
+  check("c1 reconcile → report: docPathsUnknown drops from 4 to 1 (l-3, the doc that is gone)", r.json?.docPathsUnknown === 1 && r.json.domains["legacy-dom"].docPathsUnknown === 1, r.json?.docPathsUnknown);
+  const afterRec = readFileSync(MC, "utf8");
+  r = run("reconcile-docs", ["--manifest", MC, "--domain", "legacy-dom"]);
+  check("c1 reconcile: idempotent — a re-run records 0, alreadyRecorded 3, same missing/unmatched/orphans, manifest untouched", r.code === 0 && r.json?.recorded === 0 && r.json.alreadyRecorded === 3 && r.json.recordedMissing === 1 && r.json.unmatchedDocumented === 1 && r.json.orphanFiles === 2 && readFileSync(MC, "utf8") === afterRec, r.json);
+  r = run("reconcile-docs", ["--manifest", MC, "--domain", "legacy-dom", "--dir", join(ROOT, "acme-c1", "no-such-folder")]);
+  check("c1 reconcile --dir on a missing folder: dirExists false, nothing recorded, the pathless documented entry named — never an error that hides the state", r.code === 0 && r.json?.dirExists === false && r.json.recorded === 0 && r.json.unmatchedDocumented === 1, r.json);
+  r = run("reconcile-docs", ["--manifest", MC]);
+  check("c1 reconcile: --domain is required", r.code === 1 && /--domain/.test(r.stderr), r.stderr);
+  r = run("reconcile-docs", ["--manifest", MC, "--domain", "__proto__"]);
+  check("c1 reconcile: the domain-name grammar applies (prototype-shaped name refused)", r.code === 1, r.stderr.slice(0, 120));
 }
 
 rmSync(ROOT, { recursive: true, force: true });

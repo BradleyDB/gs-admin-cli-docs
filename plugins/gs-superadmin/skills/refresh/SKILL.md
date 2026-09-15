@@ -41,6 +41,11 @@ node .gs-superadmin/plugin/scripts/manifest.mjs report --manifest <slug>/_manife
 ```
 If the manifest does not exist, or `total` is 0 with `last_refresh` null (setup was
 interrupted before Phase 4 completed), tell the user to run `/gs-superadmin:setup` first and stop.
+Keep this report's `domains` block: step 4 names from it every domain whose changes
+this run could not check (F-451) — `changeDetection` (`date` = a modified-date field
+is recorded; `none` = recorded-none; `unrecorded` = a legacy stamp this run's upsert
+records for the first time, step 3) and `datelessEntries` (entries with no stored
+date, which the date comparison can never flag).
 
 **Environment backfill** (once per legacy manifest): if `report` above shows
 `environment: null` (a manifest that predates the field, or one initialised without it),
@@ -247,12 +252,26 @@ passing `--list-command` on this refresh's upserts (above) is the backfill.
 
 ### 4 — Report
 
+The `Not checked for change this run:` block is read from step 1's report `domains`
+block — one line per domain whose `changeDetection` is `none` (no date field: the
+whole domain sits outside change detection), one per domain whose `changeDetection`
+is `unrecorded` (a legacy stamp; step 3's upsert recorded the field this run and
+change detection starts next run), and one per domain with `changeDetection: date`
+and `datelessEntries > 0` (rows the comparison could not see — the list-invisible
+recovery path registers such entries). `<n>` is that domain's `datelessEntries` and
+`<t>` its `byDomain` total. When no domain qualifies the block is the single word
+`none` — never omitted, never silence: "Unchanged" above counts only what the date
+comparison could see (F-451).
 ```
 ✓ gs-superadmin refresh complete
   Lookback:  <N> days
   Changed:   X assets marked stale
   New:       Y assets added as pending
   Unchanged: Z assets
+  Not checked for change this run:
+    <domain> — no date field recorded; <t> entries outside change detection
+    <domain> — date field recorded this run (legacy stamp); detection starts next refresh
+    <domain> — <n> of <t> entries carry no date under the recorded field
 ```
 
 **Detect-only is the default posture — staleness detection is cheap; re-documenting is
