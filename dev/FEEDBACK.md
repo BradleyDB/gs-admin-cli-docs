@@ -146,8 +146,8 @@ what the gate counts (F-444). The gate refuses both. Sections from F-360 on; the
 rule also reads the archive.
 
 
-Under test: dev · hb-20260911-04 · 2026-09-11
-Blind spots (hb-20260911-04): post-merge close-out of PR 16 on dev: nothing new is under test; the F-449 arms were measured on the sandbox by the tester round (both CLEARED). Still unmeasured on any tenant: everything the next rounds bank (Session B onward, handoffs/ — local-only, untracked), and F-459 (documented entries with no doc_path) which is OPEN for Session C1 and reproducible only on the three July-crawled sandbox domains
+Under test: round-b-describe-loop · hb-20260914-01 · 2026-09-14
+Blind spots (hb-20260914-01): two live arms this builder cannot run, banked in dev/VALIDATION.md (Session B sections): (1) F-456 — a deep-ingest of the connectors-chains lane through describe-batch with the RECORDED describe command, no --command, no manual fallback, no --normalize, plus one chain through the capture helper; (2) F-458 / #13 — one describe-batch run PAST the token half-life from a terminal, reading aborted.reason auth with failures empty in the summary and zero auth-failed entries in the manifest, then a resume after gs-admin login (optionally #13 live on a small domain with a mismatched describe, stopping after exactly 5 spawns). Also unwalked here: the setup skill (slash-only) and the fence-only edits in audit, deprecate, email-report, refresh — Session B-V walks them. Not a blind spot: the DB-1 shell side was measured on Windows PowerShell 5.1 on this machine, and every other claim is a committed fixture.
 
 <!-- builder 2026-09-14 (bus pointer fix — no handoff; nothing under test changed):
      Payload: the four pointers to the rounds B-E handoff set (Blind spots line above, 09-11 block below) named a
