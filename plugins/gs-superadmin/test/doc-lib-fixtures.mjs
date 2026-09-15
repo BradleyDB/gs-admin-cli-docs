@@ -28,7 +28,7 @@ import { pathToFileURL, fileURLToPath } from "node:url";
 import { dirname } from "node:path";
 import { makeTempDir, removeTempDir, writeFiles, runNode } from "../../../test/rig.mjs";
 import {
-  stripBom, normalizeText, readJsonFile, codePointSlice, docBaseName, docNameClaimer, docNameMatcher,
+  stripBom, normalizeText, readJsonFile, codePointSlice, docBaseName, docNameClaimer, docNameMatcher, docPathFor, docDirNorm,
   canonicalFingerprint, getPath, extractIds, findItemsArray, makeCliHelpers, requireKbDir,
   sq, shq, needsPosixQuoteCaveat, normTerm, termKey, cmpName, cmpKey,
   stripLauncherSuffix, extractFencedJson, topBullets, findWorkspaceCatalog, findWorkspaceDir,
@@ -323,10 +323,45 @@ check("normalizeText: interior BOM preserved (F-113)", normalizeText("a" + BOM +
       const m7 = docNameMatcher(deep);
       let claimedStem = "d";
       for (let i = 0; i < 64; i++) { m7.claim(claimedStem); claimedStem += "-dup"; }
-      check("matcher: 64 claimed hops hit the bound → null, no infinite loop", m7.match("d") === null);
+      check("matcher: 64 claimed stems resolve past the chain to a name no file carries → null, terminating", m7.match("d") === null);
     } finally {
       removeTempDir(deep);
     }
+    // Review round (F-459): the matcher records its claim on a null too, as the
+    // writer did — so a deleted doc's collision partner is still found. Writer
+    // order "co" then "Co" (the replay's cmpKey order): co.md, Co-dup.md; then
+    // co.md is deleted (the regeneration signal). Replay: co → null (claimed),
+    // Co → hops past the claimed "co" → Co-dup — its real file; no orphans.
+    const gone = makeTempDir("doclib-matcher-gone");
+    try {
+      const w = docNameClaimer(gone);
+      writeFileSync(join(gone, `${w("co")}.md`), "x");
+      writeFileSync(join(gone, `${w("Co")}.md`), "x");
+      rmSync(join(gone, "co.md"));
+      const m8 = docNameMatcher(gone);
+      const first = m8.match("co");
+      const second = m8.match("Co");
+      check("matcher: a null read still claims the stem — the collision partner's -dup doc is attributed, not orphaned", first === null && second === "Co-dup" && m8.unclaimed().length === 0, { first, second, unclaimed: m8.unclaimed() });
+    } finally {
+      removeTempDir(gone);
+    }
+    // Extension agreement with listMdFiles: a `.MD` file is no stem (every
+    // writer emits `.md`; every reader lists `.md`), so the matcher neither
+    // attributes it nor records a `.md` path for a file spelled otherwise.
+    const ext = makeTempDir("doclib-matcher-ext");
+    try {
+      writeFileSync(join(ext, "Foo.MD"), "x");
+      writeFileSync(join(ext, "bar.md"), "x");
+      const m9 = docNameMatcher(ext);
+      check("matcher: .MD is invisible (listMdFiles agreement) — Foo → null, bar matches, no .MD orphan", m9.match("Foo") === null && m9.match("bar") === "bar" && m9.unclaimed().length === 0, m9.unclaimed());
+    } finally {
+      removeTempDir(ext);
+    }
+    // The ONE doc_path spelling (docPathFor): folder as passed, forward
+    // slashes, no trailing slash, then /<stem>.md — the writers' exact form.
+    const BSL = String.fromCharCode(92);
+    check("docPathFor: backslashes folded, trailing slash dropped", docPathFor(`acme${BSL}dom${BSL}`, "a-1") === "acme/dom/a-1.md" && docPathFor("acme/dom/", "a-1") === "acme/dom/a-1.md" && docPathFor("acme/dom", "a-1") === "acme/dom/a-1.md");
+    check("docPathFor: degenerate folders keep the writers' spelling (root and empty)", docPathFor("/", "x") === "/x.md" && docPathFor("", "x") === "/x.md" && docDirNorm("C:/") === "C:");
   } finally {
     removeTempDir(dir);
   }

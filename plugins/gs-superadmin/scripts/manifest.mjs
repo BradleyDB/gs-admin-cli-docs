@@ -428,7 +428,7 @@ import { fileURLToPath } from "node:url";
 // Doc filename for an asset id — the shared copy every doc writer imports
 // (sanitized ids get a short raw-id hash so distinct ids that clean to the
 // same base can never collide).
-import { docNameClaimer, docNameMatcher, readJsonFile, writeFileAtomicSync, cmpKey, getPath as get, findItemsArray, extractIds, makeCliHelpers, STUB_MARKER, DESCRIBE_NONE, idPathHint, ZERO_RESOLVE_HEAD, findWorkspaceCatalog, makeCommandResolver } from "./doc-lib.mjs";
+import { docNameClaimer, docNameMatcher, docPathFor, docDirNorm, readJsonFile, writeFileAtomicSync, cmpKey, getPath as get, findItemsArray, extractIds, makeCliHelpers, STUB_MARKER, DESCRIBE_NONE, idPathHint, ZERO_RESOLVE_HEAD, findWorkspaceCatalog, makeCommandResolver } from "./doc-lib.mjs";
 const here = dirname(fileURLToPath(import.meta.url));
 
 // The date-failure head refresh/SKILL.md's post-upgrade migration note quotes
@@ -510,6 +510,16 @@ function describeStateOf(stamp) {
   const recorded = stamp != null && typeof stamp === "object" && typeof stamp.describeCommand === "string" ? stamp.describeCommand : null;
   return recorded === DESCRIBE_NONE ? "list-only" : recorded ? "describable" : "unrecorded";
 }
+// "This entry knows where its doc is" — the ONE predicate (review round of
+// F-459: mark, report, remove and reconcile-docs each spelled it, and remove's
+// truthiness test pushed a hand-edited non-string into the cleanup list). A
+// usable doc_path is a non-blank string; anything else is unknown.
+/** @param {GsInventoryEntry} e @returns {e is GsInventoryEntry & {doc_path: string}} */
+const hasDocPath = (e) => typeof e.doc_path === "string" && e.doc_path.trim() !== "";
+// The describe-state → byDepth bucket for a metadata stub (F-455): frozen and
+// null-prototype (F-225 tenet) — the stub banner says the same three things.
+/** @type {Readonly<Record<"list-only"|"describable"|"unrecorded", "listOnly"|"metadata"|"unrecorded">>} */
+const STUB_BUCKET = Object.freeze(Object.assign(Object.create(null), { "list-only": "listOnly", describable: "metadata", unrecorded: "unrecorded" }));
 // The three enumerations T-2 declares as unions. Each Set is TYPED AGAINST its
 // union, so a member added here but not to the typedef is red under both
 // configs (the sync mechanism A-2 asks for — measured at the 0.36.3 gate: with
@@ -1399,6 +1409,10 @@ if (verb === "init") {
     fail("--fingerprint must be a 40-char hex sha1 digest");
   }
   const docPath = opt("--doc-path");
+  // A blank value is a malformed one, like every other value-bearing mark flag
+  // (review round: `--doc-path ""` walked past the F-459 refusal below and
+  // recorded nothing — the state the refusal exists to prevent).
+  if (docPath !== undefined && docPath.trim() === "") fail("--doc-path requires a path — pass where the doc landed");
   // A fingerprint identifies ONE describe payload and a doc_path ONE file —
   // recording the same value on a whole batch is always a corruption, so the
   // batch mode refuses rather than fans out.
@@ -1443,7 +1457,7 @@ if (verb === "init") {
   // whose stubs sat on disk). Checked before the loop: all-or-nothing, like
   // the unknown-key rule above.
   if (status === "documented" && docPath === undefined) {
-    const pathless = keys.filter((k) => typeof m.inventory[k].doc_path !== "string" || m.inventory[k].doc_path === "");
+    const pathless = keys.filter((k) => !hasDocPath(m.inventory[k]));
     if (pathless.length) {
       const shown = pathless.slice(0, 5).join(", ");
       fail(
@@ -1587,7 +1601,7 @@ if (verb === "init") {
     // its name, whatever order the passes ran in. (The old "~" suffix here
     // also sat outside docBaseName's A-Za-z0-9._- charset.)
     const base = claimName(id);
-    const relPath = `${outDir.replace(/\\/g, "/").replace(/\/$/, "")}/${base}.md`;
+    const relPath = docPathFor(outDir, base);
     const name = (nameField ? get(it, nameField) : null) ?? e.name ?? String(id);
     const fields = Object.entries(it)
       .filter(([, v]) => v === null || ["string", "number", "boolean"].includes(typeof v))
@@ -1636,7 +1650,8 @@ if (verb === "init") {
   // the output shape is unchanged.)
   const byStatus = Object.create(null);
   const byDomain = Object.create(null);
-  for (const e of Object.values(m.inventory)) {
+  const entries = Object.values(m.inventory); // one materialization for both folds (report is read-only; nothing mutates the map between them)
+  for (const e of entries) {
     byStatus[e.status] = (byStatus[e.status] ?? 0) + 1;
     (byDomain[e.domain] ??= Object.create(null))[e.status] = (byDomain[e.domain][e.status] ?? 0) + 1;
   }
@@ -1666,19 +1681,22 @@ if (verb === "init") {
     domains[d] = { stamped, describeState: describeStateOf(stamp), byDepth: newDepth(), changeDetection, datelessEntries: 0, docPathsUnknown: 0 };
   }
   let docPathsUnknown = 0;
-  for (const e of Object.values(m.inventory)) {
+  for (const e of entries) {
     const row = domains[e.domain];
     if (e.modified_date == null) row.datelessEntries++;
     if (e.status !== "documented") continue;
-    if (typeof e.doc_path !== "string" || e.doc_path === "") { row.docPathsUnknown++; docPathsUnknown++; }
+    if (!hasDocPath(e)) { row.docPathsUnknown++; docPathsUnknown++; }
     // A metadata stub's completeness is its DOMAIN's recorded describe state
-    // (the stub banner says the same three things); a full doc is full
-    // wherever it sits; no depth at all = a pre-depth-field doc = full (the
-    // stub verb's hasFullDoc rule — stubs have always carried a depth).
-    const bucket =
-      e.depth === "metadata"
-        ? { "list-only": "listOnly", describable: "metadata", unrecorded: "unrecorded" }[row.describeState]
-        : "full";
+    // (STUB_BUCKET — the stub banner says the same three things); a full doc
+    // is full wherever it sits; no depth at all = a pre-depth-field doc = full
+    // (the stub verb's hasFullDoc rule — stubs have always carried a depth).
+    // Any other value is outside T-2 — only a hand edit can put one there —
+    // and is refused loud rather than bucketed as full (review round: a
+    // catch-all read `depth: "partial"` as a completed describe).
+    if (e.depth != null && !isDepth(e.depth)) {
+      fail(`inventory entry ${e.domain}/${e.id} carries depth "${String(e.depth).slice(0, 40)}" — T-2 allows metadata|full (or none); the manifest was hand-edited, and report will not guess its completeness`);
+    }
+    const bucket = e.depth === "metadata" ? STUB_BUCKET[row.describeState] : "full";
     row.byDepth[bucket]++;
     byDepth[bucket]++;
   }
@@ -1705,7 +1723,7 @@ if (verb === "init") {
     // own output (F-427): a legacy manifest with no key reads null here,
     // the same as one initialised without --environment.
     environment: m.environment ?? null,
-    total: Object.keys(m.inventory).length,
+    total: entries.length,
     last_refresh: m.last_refresh,
     byStatus,
     byDomain,
@@ -2016,7 +2034,7 @@ if (verb === "init") {
       continue;
     }
     const e = m.inventory[k];
-    if (e.doc_path) docPaths.push(e.doc_path);
+    if (hasDocPath(e)) docPaths.push(e.doc_path);
     else if (e.status === "documented") docPathsUnknown++;
     delete m.inventory[k];
     removed++;
@@ -2049,40 +2067,67 @@ if (verb === "init") {
   // slashes, no trailing slash — so a path reconciled here is byte-identical
   // to one a writer would have recorded (readers resolve it against the CWD).
   const dirArg = opt("--dir") ?? join(dirname(manifestPath), domain);
-  const dirNorm = dirArg.replace(/\\/g, "/").replace(/\/$/, "");
+  const dirNorm = docDirNorm(dirArg);
   const dirAbs = resolve(dirArg);
   const dirExists = existsSync(dirAbs);
   const matcher = docNameMatcher(dirAbs);
+  // Folder identity for the "is this recorded path inside the folder" test:
+  // case-insensitive on Windows, where `acme/DOM` and `acme/dom` are one
+  // directory (review round: a stub written under a model-typed `--out-dir`
+  // of different case read as an orphan of itself).
+  /** @param {string} a @param {string} b */
+  const sameDir = (a, b) => (process.platform === "win32" ? a.toLowerCase() === b.toLowerCase() : a === b);
   const keys = Object.keys(m.inventory).filter((k) => m.inventory[k].domain === domain).sort(cmpKey);
   /** @type {string[]} */ const recordedKeys = [];
   /** @type {string[]} */ const recordedMissing = [];
   /** @type {string[]} */ const unmatchedDocumented = [];
   let alreadyRecorded = 0;
+  /** @type {string[]} recorded paths that do not resolve from this CWD while their file sits in the folder */
+  const cwdMismatch = [];
   // Pass 1: entries that already carry a path claim their stem first (a
   // recorded path is a fact; a name replay must never re-attribute it).
+  // Recorded paths resolve against the CWD — the convention every writer
+  // records by and every reader (describe-batch's --if-changed gate) resolves
+  // by — while the folder above was derived from --manifest; the two agree
+  // only from the workspace root, so a recorded path that does NOT resolve
+  // here while a file of that name sits in the folder is a wrong CWD, not a
+  // deleted doc, and the verb refuses rather than reporting every doc missing
+  // and every file an orphan (review round, reproduced).
   for (const k of keys) {
     const e = m.inventory[k];
-    if (typeof e.doc_path !== "string" || e.doc_path === "") continue;
+    if (!hasDocPath(e)) continue;
+    const rel = docDirNorm(e.doc_path);
+    const slash = rel.lastIndexOf("/");
+    const stem = slash >= 0 && rel.endsWith(".md") ? rel.slice(slash + 1, -3) : null;
     if (existsSync(resolve(e.doc_path))) {
       alreadyRecorded++;
-      const rel = e.doc_path.replace(/\\/g, "/");
-      const slash = rel.lastIndexOf("/");
-      const inDir = slash >= 0 && resolve(rel.slice(0, slash)) === dirAbs;
-      if (inDir && /\.md$/i.test(rel)) matcher.claim(rel.slice(slash + 1, -3));
+      const inDir = slash >= 0 && sameDir(resolve(rel.slice(0, slash)), dirAbs);
+      if (inDir && stem !== null) matcher.claim(stem);
+    } else if (stem !== null && existsSync(join(dirAbs, `${stem}.md`))) {
+      cwdMismatch.push(k);
     } else {
       recordedMissing.push(k);
     }
   }
+  if (cwdMismatch.length) {
+    const shown = cwdMismatch.slice(0, 3).map((k) => `${k} → ${m.inventory[k].doc_path}`).join("; ");
+    fail(
+      `${cwdMismatch.length} recorded doc_path${cwdMismatch.length === 1 ? "" : "s"} in domain ${domain} do not resolve from this working directory ` +
+        `while a file of that name sits in ${dirNorm} (${shown}${cwdMismatch.length > 3 ? "; …" : ""}). doc_path values are recorded relative ` +
+        `to the workspace root: run reconcile-docs from there with a relative --manifest, or pass --dir spelled the way the recorded ` +
+        `paths are — nothing was written.`
+    );
+  }
   // Pass 2: the name replay for entries with no path.
   for (const k of keys) {
     const e = m.inventory[k];
-    if (typeof e.doc_path === "string" && e.doc_path !== "") continue;
+    if (hasDocPath(e)) continue;
     const match = matcher.match(e.id);
     if (match === null) {
       if (e.status === "documented") unmatchedDocumented.push(k);
       continue;
     }
-    if (!dryRun) e.doc_path = `${dirNorm}/${match}.md`;
+    if (!dryRun) e.doc_path = docPathFor(dirArg, match);
     recordedKeys.push(k);
   }
   const orphanFiles = matcher.unclaimed().map((s) => `${s}.md`);

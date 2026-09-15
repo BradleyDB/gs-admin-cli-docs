@@ -36,7 +36,9 @@ quiescent point instead of narrating.
   [--dry-run]` backfills `doc_path` from the docs on disk through the writers' own naming
   (doc-lib's `docNameMatcher`, the claimer's read-side twin — same `-dup` collision chain),
   and names recorded-missing, unmatched and orphan files; it writes only `doc_path`,
-  never a doc. This is the reconcile-on-resume step batched marks (#12) will reuse.
+  never a doc, and refuses — before any write — a run from a working directory the
+  recorded paths do not resolve from. This is the reconcile-on-resume step batched
+  marks (#12) will reuse. A blank `--doc-path` on `mark` is refused as malformed.
 - Contract: report's output is now part of T-2 (`GsReport` in manifest.mjs's header,
   pinned by `test/contract-conformance.mjs`); every addition is additive — `byDomain`
   rows stay numbers-only because describe-batch's progress probe sums them.

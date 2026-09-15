@@ -455,11 +455,15 @@ node .gs-superadmin/plugin/scripts/manifest.mjs report --manifest <slug>/_manife
 ```
 Relay the **per-domain counts** from the report, not just the total, and take every
 domain count from the report's `domainCounts` — `indexed` (coverage stamps),
-`withAssets`, `empty` — never from a count of `byDomain`'s keys (F-454: the two differ
-by exactly the empty domains, so a key count under-reports what the manifest holds):
-"Indexed N assets across M domains — M = `domainCounts.indexed`, of which W hold
-assets and E are listed but empty (domain: count, …). X pending, Y stale, Z
-documented." Name each of the report's `emptyDomains` explicitly ("domain: 0 — listed,
+`withAssets`, `empty` — never from a count of `byDomain`'s keys (F-454: a key count
+omits every listed-but-empty domain and can include an unstamped one, so it is not the
+manifest's domain count): "Indexed N assets across M domains — M =
+`domainCounts.indexed`, of which W hold assets and E are listed but empty (domain:
+count, …). X pending, Y stale, Z documented." When W + E exceeds M, a domain holds
+entries with no coverage stamp (a `--partial` registration into a never-listed domain):
+find it as the `domains` row with `stamped: false` and name it separately ("domain:
+count — registered, never listed; no coverage stamp"), never folded into W. Name each
+of the report's `emptyDomains` explicitly ("domain: 0 — listed,
 tenant has none") and the exclusion ledger ("K list commands deliberately excluded —
 reasons recorded in `domains_excluded`"). Treat any domain whose count lands exactly on a common default
 page size (20, 25, 50) as **suspect** — re-verify its pagination was exhausted before
@@ -509,13 +513,15 @@ block Phase 6, and the report names them "list-only (complete)", never
 **`--deep <domain>` runs** — select the stubs awaiting full ingest with the
 `next --upgrade` invocation (`references/document-mechanics.md` §2), then follow
 the standard describe path below, overwriting each stub file (the entry's
-`doc_path`) and marking `--status documented --depth full`. When the run's last
-batch has exited, the statement that the domain is fully ingested is the quiescent
-`report` quoted at the close of this phase (below), read at `domains.<domain>.byDepth`:
-fully ingested means `metadata: 0` and `unrecorded: 0` on that row with no `pending`
-or `stale` in its `byDomain` row — relay the row, never a narrative "deep crawl
-finished" (F-455: eight domains were entirely stubs when that sentence was last
-relayed from memory).
+`doc_path`) and marking `--status documented --depth full` — with `--doc-path`, per
+`references/document-mechanics.md` §3 (a legacy stub may carry no recorded path, and
+`mark` refuses a pathless documented mark; the batch script passes it itself). When
+the run's last batch has exited, the statement that the domain is fully ingested is
+the quiescent `report` quoted at the close of this phase (below), read at
+`domains.<domain>.byDepth` — the row must show no stubs left awaiting `--deep` and
+nothing unrecorded; that close states the exact bucket test. Relay the row, never a
+narrative "deep crawl finished" (F-455: eight domains were entirely stubs when that
+sentence was last relayed from memory).
 
 **All other domains (and deep crawl) — describe each entry in the batch.** Default
 execution is the sanctioned batch script (below); the manual per-asset path it
@@ -675,8 +681,10 @@ a pointer from the relationships file if useful), never inline in generated file
 ## Final report
 
 Every number below is read from the quiescent `report` quoted at Phase 5's close
-(never from a running tally): `N` and `M` from `byStatus`; the `Depth:` line from
-`byDepth`, all four buckets, each spelled even when 0; the `Not complete:` line lists
+(never from a running tally): `N` and `M` from `byStatus`; on the `Depth:` line
+substitute `F` · `S` · `L` · `U` with `byDepth.full` · `byDepth.metadata` ·
+`byDepth.listOnly` · `byDepth.unrecorded` respectively, each spelled even when 0,
+leaving the words that follow each number exactly as written; the `Not complete:` line lists
 every domain whose `domains.<domain>.byDepth` has `metadata > 0` or `unrecorded > 0`,
 as `<domain> (<n> metadata stubs)` or `<domain> (<n> unrecorded — record a describe
 command or none)`, comma-separated, or the word `none` when no domain qualifies.

@@ -1619,6 +1619,13 @@ check("fingerprint: malformed value rejected (exit 1)", r.code === 1 && /40-char
   check("c1 mark (control): a failed mark on a pathless entry is not refused — only documented needs a path", r.code === 0 && djC().inventory["legacy-dom/l-1"].status === "failed", r);
   r = run("mark", ["--manifest", MC, "--key", "legacy-dom/l-1", "--status", "documented", "--depth", "metadata", "--doc-path", join(legacyDir, "l-1.md")]);
   check("c1 mark (control): the same mark WITH --doc-path is accepted and records it", r.code === 0 && /l-1\.md$/.test(djC().inventory["legacy-dom/l-1"].doc_path), r);
+  // Review round: a blank --doc-path is malformed, like every other blank mark
+  // value — it neither bypasses the refusal nor records a blank.
+  const beforeBlank = readFileSync(MC, "utf8");
+  r = run("mark", ["--manifest", MC, "--key", "legacy-dom/l-3", "--status", "documented", "--doc-path", ""]);
+  check("c1 mark: --doc-path \"\" is refused as malformed (exit 1), nothing written", r.code === 1 && /--doc-path requires a path/.test(r.stderr) && readFileSync(MC, "utf8") === beforeBlank, r.stderr.slice(0, 120));
+  r = run("mark", ["--manifest", MC, "--key", "legacy-dom/l-3", "--status", "failed", "--error", "x", "--doc-path", "  "]);
+  check("c1 mark: a whitespace --doc-path is refused on any status", r.code === 1 && /--doc-path requires a path/.test(r.stderr), r.stderr.slice(0, 120));
   { const m = djC(); delete m.inventory["legacy-dom/l-1"].doc_path; writeFileSync(MC, JSON.stringify(m, null, 2)); } // back to the legacy shape for the reconcile arms
 
   // remove (F-459 part 2): a removed pathless documented entry is COUNTED, so
@@ -1627,6 +1634,26 @@ check("fingerprint: malformed value rejected (exit 1)", r.code === 1 && /40-char
   check("c1 remove: pathless documented entry removed — docPaths [] but docPathsUnknown 1", r.code === 0 && r.json?.removed === 1 && r.json.docPaths.length === 0 && r.json.docPathsUnknown === 1, r.json);
   r = run("remove", ["--manifest", MC, "--key", "full-dom/a-1"]);
   check("c1 remove (control): an entry with a recorded path — docPaths names it, docPathsUnknown 0", r.code === 0 && r.json?.docPaths?.length === 1 && r.json.docPathsUnknown === 0, r.json);
+  // Review round: report, remove and mark decide "has a doc_path" through ONE
+  // predicate — a hand-edited non-string is unknown everywhere, never pushed
+  // into the cleanup list; a depth outside T-2 is refused, never read as full.
+  {
+    const m = djC();
+    m.inventory["full-dom/a-3"].status = "documented";
+    m.inventory["full-dom/a-3"].doc_path = 5;
+    writeFileSync(MC, JSON.stringify(m, null, 2));
+    r = run("report", ["--manifest", MC]);
+    check("c1 report: a non-string doc_path counts as unknown", r.json?.domains?.["full-dom"]?.docPathsUnknown === 1, r.json?.domains?.["full-dom"]);
+    r = run("remove", ["--manifest", MC, "--key", "full-dom/a-3"]);
+    check("c1 remove: a non-string doc_path is counted unknown, never pushed into docPaths", r.code === 0 && r.json?.docPaths?.length === 0 && r.json.docPathsUnknown === 1, r.json);
+    const m2 = djC();
+    m2.inventory["full-dom/a-2"].depth = "partial";
+    writeFileSync(MC, JSON.stringify(m2, null, 2));
+    r = run("report", ["--manifest", MC]);
+    check("c1 report: a depth outside metadata|full is refused loud (exit 1, names the entry), never bucketed as full", r.code === 1 && /full-dom\/a-2/.test(r.stderr) && /"partial"/.test(r.stderr), r.stderr.slice(0, 160));
+    delete m2.inventory["full-dom/a-2"].depth;
+    writeFileSync(MC, JSON.stringify(m2, null, 2));
+  }
 
   // reconcile-docs (F-459 part 3) over the legacy folder: l-1.md, Co.md and
   // co-dup.md match pathless entries; l-2's recorded file is deleted (recorded
@@ -1652,6 +1679,30 @@ check("fingerprint: malformed value rejected (exit 1)", r.code === 1 && /40-char
   const afterRec = readFileSync(MC, "utf8");
   r = run("reconcile-docs", ["--manifest", MC, "--domain", "legacy-dom"]);
   check("c1 reconcile: idempotent — a re-run records 0, alreadyRecorded 3, same missing/unmatched/orphans, manifest untouched", r.code === 0 && r.json?.recorded === 0 && r.json.alreadyRecorded === 3 && r.json.recordedMissing === 1 && r.json.unmatchedDocumented === 1 && r.json.orphanFiles === 2 && readFileSync(MC, "utf8") === afterRec, r.json);
+  // Review round: a recorded path that does not resolve from this CWD while
+  // its file sits in the folder is a wrong working directory, not a deleted
+  // doc — refused before any write, never reported as missing + orphan.
+  {
+    const m = djC();
+    m.inventory["legacy-dom/Co"].doc_path = "acme-c1/legacy-dom/Co.md"; // workspace-relative spelling; this suite's CWD is not the workspace
+    writeFileSync(MC, JSON.stringify(m, null, 2));
+    const beforeCwd = readFileSync(MC, "utf8");
+    r = run("reconcile-docs", ["--manifest", MC, "--domain", "legacy-dom"]);
+    check("c1 reconcile: CWD mismatch refused (exit 1, names the entry and the remedy), nothing written", r.code === 1 && /do not resolve from this working directory/.test(r.stderr) && /legacy-dom\/Co/.test(r.stderr) && readFileSync(MC, "utf8") === beforeCwd, r.stderr.slice(0, 200));
+    m.inventory["legacy-dom/Co"].doc_path = `${fwd(legacyDir)}/Co.md`;
+    writeFileSync(MC, JSON.stringify(m, null, 2));
+  }
+  if (process.platform === "win32") {
+    // Windows: a recorded path under a different-case folder spelling is the
+    // same directory — its stem is claimed, never an orphan of itself.
+    const m = djC();
+    m.inventory["legacy-dom/Co"].doc_path = `${fwd(legacyDir).replace(/legacy-dom$/, "LEGACY-DOM")}/Co.md`;
+    writeFileSync(MC, JSON.stringify(m, null, 2));
+    r = run("reconcile-docs", ["--manifest", MC, "--domain", "legacy-dom", "--dry-run"]);
+    check("c1 reconcile (win32): a case-different folder spelling claims its stem — Co.md is not an orphan", r.code === 0 && r.json?.alreadyRecorded === 3 && !r.json.samples.orphanFiles.includes("Co.md"), r.json?.samples);
+    m.inventory["legacy-dom/Co"].doc_path = `${fwd(legacyDir)}/Co.md`;
+    writeFileSync(MC, JSON.stringify(m, null, 2));
+  }
   r = run("reconcile-docs", ["--manifest", MC, "--domain", "legacy-dom", "--dir", join(ROOT, "acme-c1", "no-such-folder")]);
   check("c1 reconcile --dir on a missing folder: dirExists false, nothing recorded, the pathless documented entry named — never an error that hides the state", r.code === 0 && r.json?.dirExists === false && r.json.recorded === 0 && r.json.unmatchedDocumented === 1, r.json);
   r = run("reconcile-docs", ["--manifest", MC]);
