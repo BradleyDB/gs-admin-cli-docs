@@ -21,7 +21,9 @@ Two boundaries stated and one prompt made self-resolving. What a user gets by up
   spending budget the run reads one `report`'s `lookback` row for the domain and, when
   the list is older than `lookbackDefault`, says so and points at refresh for a current
   inventory. Four live `--deep` runs had each improvised the same skip against Phase 4's
-  "runs every time".
+  "runs every time". An unrecorded domain (no describe recording on its stamp) is
+  decided by the recording, never by the domain's type: the run says Phase 4 has not
+  recorded a template or `none` yet and stops (D-V side observation).
 - **Phase 6 states the maps' inputs** (F-457b): the five relationship lanes are the
   builder's ONLY inputs (the subset it takes from doc-lib's `RECORDED_LANES`), so a deep
   ingest of any other domain leaves the four maps byte-identical; its value lands in

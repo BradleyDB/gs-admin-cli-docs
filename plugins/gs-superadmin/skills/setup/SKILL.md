@@ -25,7 +25,12 @@ not up front.
   run states that list's age before spending budget (rule canon: Phase 5's `--deep`
   paragraph; a current inventory is `/gs-superadmin:refresh`'s job — F-457). Does not
   apply to **list-only domains** (no per-item describe command, e.g. connections/jobs):
-  their stubs already carry everything the CLI can say — explain that and stop.
+  their stubs already carry everything the CLI can say — explain that and stop. An
+  **unrecorded domain** (its stamp carries no describe recording; `report` counts its
+  stubs under `byDepth.unrecorded`) is neither list-only nor queued — decide by the
+  recording, never by the domain's type: say that Phase 4 has not yet recorded a
+  describe template or `none` for it, and stop; a plain setup run records it, after
+  which `--deep` applies or does not.
 
 ---
 
