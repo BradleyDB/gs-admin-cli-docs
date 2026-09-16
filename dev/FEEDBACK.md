@@ -149,6 +149,32 @@ rule also reads the archive.
 Under test: round-c2-fact-homes · hb-20260915-04 · 2026-09-15
 Blind spots (hb-20260915-04): no tenant in the builder session: the deps-report walk with a tenant override present on one tenant only, the setup Phase 4 relay's rendering of scope lines (no CI executes skill prose), and the sandbox connectors-chains redate rest on the fixtures until C2-V; the per-pin table under a real workspace catalog at another CLI version rests on the synthetic 9.9.9 fixture; the four sublists' runtime errors in CLI_PIN_FACTS are quoted from both tenants' recorded exclusion reasons, not re-run; the scope arm needs NO tenant read (derived from the manifests' recorded list commands, both read locally)
 
+<!-- builder 2026-09-16 (Session D round HANDED OFF — UNMERGED):
+     Payload: DC-1, DC-2, DC-3 of the September round plan — F-457 (setup: --deep runs Phases 1-2 then goes STRAIGHT
+       to Phase 5, Phases 3-4 never re-run and nothing re-lists; before spending budget the run reads one report's
+       lookback.<domain> and relays the list's age when older than lookbackDefault, pointing at refresh; Phase 4's
+       heading no longer says "runs every time"; Phase 6 states its five lanes are the builder's ONLY inputs — the
+       subset of doc-lib's RECORDED_LANES, pointed at, not copied — and names deps-report as where a non-lane deep
+       ingest pays off), F-453 (the guard's repeat-offense ask on a shell-variable subcommand carries the same
+       "spelled literally — variables belong in flag values and paths" remedy the deny names; guard-fixtures pins it
+       on the repeat path, red over the pre-fix hook), and issue #1 (AGENTS.md § Review-gate rules: "Work order is
+       not severity order", marked not mechanically checkable; closes on merge). Rulings (Bradley, 2026-09-16) in the
+       plan's As-shipped notes: NOT the plan's re-list-when-stale (next --upgrade selects metadata stubs only, so a
+       re-list never feeds the --deep queue — a statement, not a mechanism); the ordering rule ALSO lands in the
+       /dev-loop skill by its own PR to gs-admin-superfriends (PR #8 there — the personal skill is a symlink into that
+       checkout). Plugin 0.41.1 staged (CHANGELOG; the ask text ships).
+     Branch round-d-prose -> PR #22, base dev, UNMERGED. Statuses on the branch: F-457 FIXED, F-453 FIXED (Fix /
+       Judge lines; F-453 Sibling sweep: batched). Review: /code-review low — 1 finding (the null-days substitution
+       rule read ungrammatically), fixed on the branch.
+     Under test on the branch: hb-20260916-01; blind spots = no tenant and no operator in the builder session (the
+       --deep walk's lookback branch and the absence of a list sweep, the rendered repeat ask), skill prose read not
+       run, the superfriends PR reviewed in its own repo.
+     Owed: dev/VALIDATION.md § F-457 / F-453 (one setup --deep run to its first batch, slash-typed by Bradley; the
+       guard-wiring line = a variable-built read loop issued twice, the repeat's rendered ask read by the operator).
+       Numbers claimed by the branch: none (no new findings logged). Next free number F-460. Carried, not in scope:
+       draft PR #17 (stages 0.39.0 — rebases its bump against 0.41.1 when it lands). CI on the PR head: quoted on
+       the branch's verdict round, not asserted here. -->
+
 <!-- tester 2026-09-15 (Session C2-V verdict round — UNMERGED; re-stamps the builder comment below):
      Branch round-c2-fact-homes -> PR #21, base dev, still UNMERGED; head now b714ecd (the verdict commit, no [skip ci],
        so the PR suite runs on the head). Statuses on the branch: F-450 VERIFIED, F-452 VERIFIED @ hb-20260915-04.
