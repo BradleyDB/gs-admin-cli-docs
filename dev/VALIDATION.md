@@ -326,7 +326,7 @@ override deleted; step 4 the sandbox chains `blankDatesCleared` 4 then `changeDe
 none`, `datelessEntries` 4. Verdicts of record on F-450 and F-452; the unwalked slash-only
 skills are on F-450's Blind spots line.
 
-## F-457 / F-453 — the D-V walk: one `setup --deep` run to its first Phase 5 batch, and the guard's repeat ask read by the operator (banked 2026-09-16, builder, Session D @ hb-20260916-01)
+## F-457 / F-453 — the D-V walk: one `setup --deep` run to its first Phase 5 batch, and the guard's repeat ask read by the operator (banked 2026-09-16, builder, Session D @ hb-20260916-01 — CLEARED 2026-09-16 @ hb-20260916-01)
 
 Owed by: the tester round on the token the Session D handoff mints (Under test line).
 Tenant: either; the sandbox is fine. No tenant WRITE beyond what `--deep` itself does
@@ -359,3 +359,14 @@ session RESTART for the hook):
 Pass bar: step 2 shows no list sweep and no scaffold; step 3 quotes the `lookback`
 row and the branch that fired; step 5's rendered repeat ask carries the remedy. A
 `--deep` run that re-lists REOPENS F-457; a repeat ask without the remedy REOPENS F-453.
+
+Cleared: 2026-09-16 @ hb-20260916-01 (tester, Session D-V) — all five steps measured and
+held, on the rig's own fallback branch: no metadata stub exists on either tenant, so the
+walk ran `--deep connectors` (sandbox, list-only by type); step 2 no scaffold, no sweep, no
+upsert, no diff; step 3 `lookback.connectors` `days` 1 against `lookbackDefault` 7 quoted,
+branch fired = list-only explain-and-stop before Phase 5 (no describe-batch, 0 of 3 spent);
+step 4 the report-objects maps question drew the five lanes and deps-report; step 5 deny
+then a rendered ask carrying "spelled literally" and "flag values and paths", declined.
+Verdicts of record on F-457 and F-453; the unproduced lookback-relay and `--upgrade` path
+are on F-457's Blind spots line, and re-bank here the first time a tenant holds a
+metadata stub.
