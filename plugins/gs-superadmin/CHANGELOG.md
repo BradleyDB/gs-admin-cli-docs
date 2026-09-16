@@ -5,6 +5,53 @@ marketplace doesn't pin versions — users get main — so entries describe what
 user who updates, not internal refactors. Entries before 0.8.0 were reconstructed from git
 history when this file was introduced.
 
+## 0.41.2 — 2026-09-16
+
+The mutation guard closes two silent spellings (issue #2 items 1–3; bus F-460). What a
+user gets by updating:
+
+- **An interpreter behind a PowerShell assignment now asks.** `$x=iex 'gs-admin jo p
+  save'`, `$x=bash -c '…'`, `$x=powershell "…"`, `$x=cmd /c '…'` (and the `${x}=` /
+  `$env:X=` spellings) run the mutation — PowerShell assigns the interpreter's output —
+  and drew no prompt and no journal row, while `$x=gs-admin …` always asked. The cause
+  was two word-to-program-name normalizers: the assignment strip lived in the one that
+  matched `gs-admin` and not in the one that resolved interpreter names. There is one
+  normalizer now, and every reader of a program name (the gs-admin match, the nested
+  interpreter table, the pipe-safety lint's consumer lookup) goes through it.
+- **Every assignment spelling PowerShell runs is stripped.** The assignment grammar
+  admitted only a letter- or underscore-led name, so `$1=gs-admin jo p save`, `${1}=…`,
+  `$x.y=…` and `$a[0]=…` — digit-led, property and index assignments, all of which run
+  the right-hand command (measured on 5.1, even when the assignment itself then
+  errors) — were silent, direct spelling and interpreter alike. One grammar now: a
+  `$`-led word up to its first `=`, a superset of the old, so it can only add prompts.
+- **A `-Command` behind a positional is re-scanned too.** `powershell foo.ps1 -Command
+  "gs-admin jo p save"` used to stop the payload search at `foo.ps1`. A positional that
+  carries nothing no longer ends the search — measured on Windows PowerShell 5.1 before
+  choosing the order: the positional IS the command text there (`powershell "gs-admin jo
+  p save" -Command "echo hi"` runs the mutation), so the issue's "flag first" order would
+  have dropped a real prompt; the shape PowerShell does not run draws a prompt it does not
+  need, the safe direction, and a line carrying the mutation in both places journals it
+  once.
+- **A value-taking PowerShell option before the payload no longer hides it** (found by
+  the review round; silent on every shipped version). `powershell -ExecutionPolicy Bypass
+  "gs-admin jo p save"` read `Bypass` as the payload and never reached the real one. The
+  executable's value-taking parameters (`-ExecutionPolicy`, `-File`, `-InputFormat`,
+  `-OutputFormat`, `-Version`, `-WindowStyle`, `-ConfigurationName`, `-WorkingDirectory`,
+  …, matched by prefix the way PowerShell resolves them) are skipped with their value;
+  the valueless ones (`-NoProfile`, `-NonInteractive`, …) deliberately are not, since
+  skipping a word after them could skip the payload.
+
+Judged by the shell-oracle suite, not by a hand list: its generator gained a combination
+matrix (assignment prefix × interpreter × option-after-flag × positional, both shells —
+issue #2 item 8), and the PowerShell rows now run under every PowerShell on the host
+(Windows PowerShell 5.1 and PowerShell 7's `pwsh`), so the ubuntu leg a dev PR runs
+judges them for the first time. Measured on the builder's host, where the oracle found one
+PowerShell lane (Windows PowerShell 5.1; the row and lane counts scale with what a host
+has): before the fix, 41 of the matrix's PowerShell rows executed the mutation in
+silence; after, 0 bypass on 706 generated lines. Nothing was
+removed from the documented residual set. Pick up: `/reload-plugins` (restart the session
+for the hook).
+
 ## 0.41.1 — 2026-09-16
 
 Two boundaries stated and one prompt made self-resolving. What a user gets by updating:

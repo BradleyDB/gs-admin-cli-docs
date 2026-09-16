@@ -100,7 +100,7 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
-import { ROOT, readJsonFile, assertScanCoverage } from "./lib.mjs";
+import { ROOT, readJsonFile, assertScanCoverage, QUOTE_RE } from "./lib.mjs";
 import { MECHANICAL_CLASSES, MANUAL_CLASSES, REGISTERED_CLASS_KEYS, sweepDefectClasses, classKeysIn, isTest } from "./defect-classes.mjs";
 
 const read = (p) => readFileSync(join(ROOT, p), "utf8");
@@ -1285,7 +1285,24 @@ for (const rel of linkPathDocs) {
 // user actually reads goes stale.
 const residualsPath = "plugins/gs-superadmin/hooks/guard-residuals.json";
 const guardResiduals = readJsonFile(join(ROOT, residualsPath)).residuals;
-const anchor = /<!--\s*guard-residuals:\s*([^>]*?)\s*-->/.exec(pluginReadme);
+// ONE anchor grammar, matched once (issue #2 item 5): an HTML comment inside
+// the callout whose id list may wrap across quote lines (`> …`) as the set
+// grows — the old `[^>]` class refused a wrapped anchor outright, and a second
+// per-line search located the anchor again with a different pattern for the
+// block walk below (which is now derived from this match). The captured id
+// text is unwrapped before it is split.
+const anchor = /<!--\s*guard-residuals:\s*([\s\S]*?)\s*-->/.exec(pluginReadme);
+// An UNTERMINATED anchor beside a later HTML comment would otherwise borrow
+// that comment's closer and split prose into "ids" (the review's mutant: 63
+// garbage ids) — the capture may not run into another comment's opener.
+if (anchor && anchor[1].includes("<!--")) {
+  console.error(
+    `
+check 11: the plugins/gs-superadmin/README.md \`<!-- guard-residuals: … -->\` anchor is unterminated — its id list runs ` +
+      `into a later comment's opener. Close the anchor with \`-->\` on the callout's own quote lines.`
+  );
+  process.exit(1);
+}
 if (!anchor) {
   console.error(
     `\ncheck 11: plugins/gs-superadmin/README.md carries no \`<!-- guard-residuals: … -->\` anchor. ` +
@@ -1294,7 +1311,7 @@ if (!anchor) {
   );
   process.exit(1);
 }
-const anchorIds = anchor[1].split(",").map((s) => s.trim()).filter(Boolean).sort();
+const anchorIds = anchor[1].replace(/\r?\n\s*>?/g, " ").split(",").map((s) => s.trim()).filter(Boolean).sort();
 const jsonIds = guardResiduals.map((r) => r.id).sort();
 if (anchorIds.join("|") !== jsonIds.join("|")) {
   const missing = jsonIds.filter((i) => !anchorIds.includes(i));
@@ -1315,21 +1332,51 @@ if (anchorIds.join("|") !== jsonIds.join("|")) {
 // tightened in the derivation half of this check after drift mutant D5; this
 // half was left untightened, so the fix landed on one instance and not its
 // twin three lines away.
-// The block is the anchor line plus the blockquote it sits in — lines starting
-// with `>` — which is exactly the "What the guard is, and is not" callout a
-// user reads. A marker re-added outside that quote no longer satisfies the check.
+// The block is the WHOLE blockquote the anchor sits in — the run of `>` lines
+// around it, which is exactly the "What the guard is, and is not" callout a
+// user reads. A marker re-added outside that quote no longer satisfies the
+// check. Three shapes of the old walk, each reproduced by a mutant in
+// build/test-check-doc-drift.mjs before it was changed (issue #2 items 5–7):
+//   - the anchor was located TWICE, by the multiline regex above and again by
+//     a per-line search with a different pattern; an anchor spanning two lines
+//     passed the first and failed the second, the walk started at index -1 and
+//     the block came out empty — every marker "missing" (item 5). The line is
+//     now derived from the one match above.
+//   - the block STARTED at the anchor, so a marker whose sentence belongs to
+//     the bullet above it (the not-spelled-as-the-binary bullet, which the
+//     anchor sits under) could never be found (item 7). The walk now runs
+//     backward to the callout's first line as well as forward.
+//   - the block ends at the first line that is not a `>` line. That is
+//     CommonMark's rule too — a blank line ends a blockquote — so a claim past a
+//     blank line really has left the callout and the red is TRUE, not a false
+//     failure (item 6, measured); the messages below name the block's line
+//     range so the truncation is visible rather than "fixed" by loosening this.
 const readmeLines = pluginReadme.split(/\r?\n/);
-const anchorLine = readmeLines.findIndex((l) => /<!--\s*guard-residuals:/.test(l));
-const residualBlock = [];
-for (let i = anchorLine; i < readmeLines.length; i++) {
-  if (i > anchorLine && !/^\s*>/.test(readmeLines[i])) break;
-  residualBlock.push(readmeLines[i]);
+const anchorLine = pluginReadme.slice(0, anchor.index).split(/\r?\n/).length - 1;
+// The blockquote grammar is build/lib.mjs's QUOTE_RE — the one the wiki
+// renders — not a second spelling here (the review's second-scanner finding:
+// `/^\s*>/` also read `>x` and `>>` lines as quote lines the renderer does not).
+const isQuoteLine = (l) => QUOTE_RE.test(l);
+// The anchor must itself sit on a quote line, or the walks below would glue
+// the neighbouring quote runs onto a line outside the callout (the review's
+// between-two-callouts false green) while the message still called it a run.
+if (!isQuoteLine(readmeLines[anchorLine])) {
+  console.error(
+    `\ncheck 11: the \`<!-- guard-residuals: … -->\` anchor on plugins/gs-superadmin/README.md line ${anchorLine + 1} is not a ` +
+      `quote line — it must sit INSIDE the "What the guard is, and is not" callout (a \`> \`-prefixed line), where the residual bullets are.`
+  );
+  process.exit(1);
 }
-const residualBlockText = residualBlock.join("\n");
+let blockStart = anchorLine;
+let blockEnd = anchorLine;
+while (blockStart > 0 && isQuoteLine(readmeLines[blockStart - 1])) blockStart--;
+while (blockEnd + 1 < readmeLines.length && isQuoteLine(readmeLines[blockEnd + 1])) blockEnd++;
+const residualBlockText = readmeLines.slice(blockStart, blockEnd + 1).join("\n");
+const blockWhere = `README lines ${blockStart + 1}–${blockEnd + 1}, the run of \`>\` lines around the anchor on line ${anchorLine + 1}; a blank line ends the callout, as in CommonMark`;
 const staleMarkers = guardResiduals.filter((r) => !residualBlockText.includes(r.readmeMarker));
 if (staleMarkers.length) {
   console.error(
-    `\ncheck 11: ${staleMarkers.length} residual(s) whose readmeMarker no longer appears in the plugin README: ` +
+    `\ncheck 11: ${staleMarkers.length} residual(s) whose readmeMarker no longer appears in the plugin README's residual block (${blockWhere}): ` +
       staleMarkers.map((r) => `${r.id} (expected "${r.readmeMarker}")`).join(", ") +
       `\nThe anchor ids matching is not enough — the sentence a user actually reads has to name the gap too.`
   );
@@ -1346,27 +1393,43 @@ if (staleMarkers.length) {
 // universal wording there would police style, not correctness. What is barred is
 // the block claiming MORE than the data supports — and, either way, claiming
 // nothing at all, since a deleted sentence is how this drifted in the first place.
-const UNIVERSAL_PIN_CLAIM = "pins each one";
-const SPLIT_PIN_CLAIM = "either pinned by a fixture";
+// The recognised spellings are DATA (contracts-as-data), one list per claim the
+// wording makes; a block that talks about pinning in a wording outside the
+// table is named as such — it is not "no claim at all" (issue #2 item 4: a
+// reworded claim used to land in that branch with a message that told the
+// maintainer to add a sentence the block already had). The topic test is the
+// word itself; the claim's KIND still has to come from the table, because only
+// the kind lets the false-direction test below apply to it.
+const PIN_CLAIMS = {
+  universal: ["pins each one"], // "every residual is pinned" — false while any residual is unpinned
+  split: ["either pinned by a fixture"], // "pinned, or a stated reason why not" — true for any data
+};
+const PIN_TOPIC = /\bpin(?:s|ned|ning)?\b/i;
 const unpinnedResiduals = guardResiduals.filter((r) => !r.pinnedExample);
-const hasUniversalClaim = residualBlockText.includes(UNIVERSAL_PIN_CLAIM);
-const hasSplitClaim = residualBlockText.includes(SPLIT_PIN_CLAIM);
+const hasUniversalClaim = PIN_CLAIMS.universal.some((p) => residualBlockText.includes(p));
+const hasSplitClaim = PIN_CLAIMS.split.some((p) => residualBlockText.includes(p));
 if (!hasUniversalClaim && !hasSplitClaim) {
+  const spellings = `universal: ${PIN_CLAIMS.universal.map((p) => `"${p}"`).join(", ")}; split: ${PIN_CLAIMS.split.map((p) => `"${p}…"`).join(", ")}`;
   console.error(
-    `\ncheck 11: the plugin README's residual block makes no claim about pinning at all ` +
-      `(expected "${SPLIT_PIN_CLAIM}…" or "${UNIVERSAL_PIN_CLAIM}"). The sentence that tells a reader ` +
-      `the list is measured rather than asserted is what keeps it honest — do not drop it.`
+    PIN_TOPIC.test(residualBlockText)
+      ? `\ncheck 11: the plugin README's residual block (${blockWhere}) talks about pinning in a wording this check does not ` +
+          `recognise. The recognised spellings are the PIN_CLAIMS table in build/check-doc-drift.mjs (${spellings}): ` +
+          `either restore one of them, or add the new wording to the table under the claim it makes — universal ` +
+          `(every residual pinned) or split (pinned, or a stated reason) — so the false-direction test still applies to it.`
+      : `\ncheck 11: the plugin README's residual block (${blockWhere}) makes no claim about pinning at all ` +
+          `(expected one of ${spellings}). The sentence that tells a reader the list is measured rather than ` +
+          `asserted is what keeps it honest — do not drop it.`
   );
   process.exit(1);
 }
 if (unpinnedResiduals.length && hasUniversalClaim) {
   console.error(
-    `\ncheck 11: the plugin README's residual block claims "${UNIVERSAL_PIN_CLAIM}", but ` +
+    `\ncheck 11: the plugin README's residual block claims every residual is pinned (${PIN_CLAIMS.universal.map((p) => `"${p}"`).join(", ")}), but ` +
       `${unpinnedResiduals.length} residual(s) carry no fixture pin: ` +
       unpinnedResiduals.map((r) => r.id).join(", ") +
       `.\nAn unpinned residual is allowed (guard-residuals.json \`_pin_rule\` — it must state why), ` +
       `but the README must not promise a pin that does not exist. Say each one is ` +
-      `"${SPLIT_PIN_CLAIM} … or carries a stated reason it is not".`
+      `"${PIN_CLAIMS.split[0]} … or carries a stated reason it is not".`
   );
   process.exit(1);
 }

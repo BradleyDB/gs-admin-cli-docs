@@ -33,9 +33,19 @@
 // hooks/guard-residuals.json (the accepted, measured set). The other
 // direction — the guard asking on a line the shell would not execute — is an
 // over-ask and is reported, never failed (tenet 3: recognizing more spellings
-// only ever adds asks). PowerShell runs the same way through powershell.exe
-// when it is on the machine (Windows legs); the count of skipped legs is
-// printed so coverage is never overstated. The proof that this judge can
+// only ever adds asks). PowerShell rows run the same way under EVERY
+// PowerShell on the machine, each as its own lane (Session E ruling, Bradley
+// 2026-09-16): Windows PowerShell 5.1 (`powershell.exe`) and PowerShell 7
+// (`pwsh`, which every GitHub-hosted runner image ships — so the ubuntu leg a
+// dev PR runs judges the PowerShell rows too, where before they were skipped
+// on every leg but Windows). A row that spells a nested PowerShell spells the
+// LANE's own executable (`{ps}` below), so the guard's `pwsh` table entry is
+// held by a real shell as well as its `powershell` one. The two versions
+// differ in grammar (5.1 reads a bare positional as command text, 7 as a
+// file path) and the lanes measure that difference rather than assume it:
+// a row one version does not execute is unjudged there and counted. The
+// summary line names each lane's version and row count so coverage is never
+// overstated. The proof that this judge can
 // fail is its run against an older hook (GUARD_ORACLE_HOOK): the Step 0
 // review of 0.37.0 found the pre-scan gate (F-440) and the computed-name
 // bypasses (F-441) by adding the positions the first draft never generated;
@@ -88,6 +98,8 @@ writeFileSync(join(WS, "acme-prod", "_manifest.json"), JSON.stringify({ slug: "a
 for (const f of ["f", "g", "in.txt"]) writeFileSync(join(WS, f), "x\n");
 // A script file carrying the mutation — the stdin-payload residual's rows.
 writeFileSync(join(WS, "s.sh"), "gs-admin jo p save\n");
+// A harmless PowerShell script for the positional-then-`-Command` rows (issue #2 item 1).
+writeFileSync(join(WS, "s.ps1"), "'script ran with ' + $args.Count + ' args'\n");
 
 const bashExe = spawnSync("bash", ["-c", "echo ok"], { encoding: "utf8" }).stdout?.trim() === "ok" ? "bash" : null;
 if (!bashExe) { console.error("guard-oracle: bash is required (every CI leg runs steps under bash)"); process.exit(2); }
@@ -95,7 +107,19 @@ if (!bashExe) { console.error("guard-oracle: bash is required (every CI leg runs
 // (see the generator); the summary line prints it so a leg's coverage is
 // never overstated.
 const bashMajor = Number(spawnSync("bash", ["-c", "echo ${BASH_VERSINFO[0]}"], { encoding: "utf8" }).stdout?.trim()) || 0;
-const psExe = spawnSync("powershell.exe", ["-NoProfile", "-Command", "'ok'"], { encoding: "utf8" }).stdout?.trim() === "ok" ? "powershell.exe" : null;
+// Every PowerShell on the host is a lane: { exe, name, version }. `name` is
+// the word a command line spells to run it (`powershell` / `pwsh`) — the
+// `{ps}` rows below substitute it — and the version is printed, never
+// assumed. A missing executable is simply not a lane (spawnSync reports an
+// error, no throw); none at all skips the rows and says so.
+const PS_LANES = [];
+for (const [exe, name] of [["powershell.exe", "powershell"], [process.platform === "win32" ? "pwsh.exe" : "pwsh", "pwsh"]]) {
+  const r = spawnSync(exe, ["-NoProfile", "-NonInteractive", "-Command", "$PSVersionTable.PSVersion.ToString()"], { encoding: "utf8" });
+  const version = r.status === 0 ? (r.stdout ?? "").trim() : "";
+  if (/^\d+\.\d+/.test(version)) PS_LANES.push({ exe, name, version });
+}
+const psExe = PS_LANES.length > 0; // any PowerShell lane at all — the `ps` rows are generated once and run per lane
+const laneTag = (lane) => (lane === "bash" ? "bash" : `${lane.name} ${lane.version}`); // the one spelling of a lane's name in labels and tallies
 // The shim must be what the shells RESOLVE (the MEDIUM review's note): the
 // real CLI is installed on developer machines, and a row that reached it
 // would be a mutation attempt against a real tenant (AGENTS.md — never). The
@@ -104,9 +128,10 @@ const psExe = spawnSync("powershell.exe", ["-NoProfile", "-Command", "'ok'"], { 
   const env = { ...process.env, PATH: `${BIN}${process.platform === "win32" ? ";" : ":"}${process.env.PATH ?? ""}` };
   const viaBash = spawnSync("bash", ["--norc", "-c", "command -v gs-admin"], { cwd: WS, env, encoding: "utf8" }).stdout?.trim() ?? "";
   check("oracle: bash resolves `gs-admin` to the recording shim, never an installed CLI", viaBash.includes(basename(ROOT)), viaBash);
-  if (psExe) {
-    const viaPs = spawnSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", "(Get-Command gs-admin).Source"], { cwd: WS, env, encoding: "utf8" }).stdout?.trim() ?? "";
-    check("oracle: PowerShell resolves `gs-admin` to the recording .cmd shim", viaPs.includes(basename(ROOT)), viaPs);
+  for (const lane of PS_LANES) {
+    // Windows resolves the .cmd shim (PATHEXT); a pwsh on macOS/Linux resolves the POSIX one — either is inside the temp root.
+    const viaPs = spawnSync(lane.exe, ["-NoProfile", "-NonInteractive", "-Command", "(Get-Command gs-admin).Source"], { cwd: WS, env, encoding: "utf8" }).stdout?.trim() ?? "";
+    check(`oracle: ${lane.name} ${lane.version} resolves \`gs-admin\` to the recording shim, never an installed CLI`, viaPs.includes(basename(ROOT)), viaPs);
   }
 }
 
@@ -126,15 +151,18 @@ function executed(calls) {
     return argv.slice(i, i + 3).join(" ") === MUT.join(" ");
   });
 }
-function runShell(shell, cmd) {
+// `lane` is "bash" or one of PS_LANES.
+function runShell(lane, cmd) {
   rmSync(LOG, { force: true });
   let status = null;
   const env = { ...process.env, GS_ORACLE_LOG: LOG, PATH: `${BIN}${process.platform === "win32" ? ";" : ":"}${process.env.PATH ?? ""}`, v: "", w: "", F: "json" };
-  if (shell === "bash") status = spawnSync("bash", ["--norc", "-c", cmd], { cwd: WS, env, encoding: "utf8", timeout: 10000 }).status;
-  else status = spawnSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", cmd + "; exit $LASTEXITCODE"], { cwd: WS, env, encoding: "utf8", timeout: 20000 }).status;
+  if (lane === "bash") status = spawnSync("bash", ["--norc", "-c", cmd], { cwd: WS, env, encoding: "utf8", timeout: 10000 }).status;
+  else status = spawnSync(lane.exe, ["-NoProfile", "-NonInteractive", "-Command", cmd + "; exit $LASTEXITCODE"], { cwd: WS, env, encoding: "utf8", timeout: 20000 }).status;
   const lines = existsSync(LOG) ? readFileSync(LOG, "utf8").split(/\r?\n/).map((l) => l.trim()).filter(Boolean) : [];
-  // the .cmd shim logs the raw argument text; split it like the CLI would
-  const argvLines = shell === "bash" ? lines : lines.flatMap((l) => (l === "--end--" ? [l] : l.split(/\s+/)));
+  // the .cmd shim logs the raw argument text; split it like the CLI would (a
+  // pwsh on macOS/Linux reaches the POSIX shim, one argument per line, which
+  // the same split leaves alone — no PowerShell row's mustArgv carries a space)
+  const argvLines = lane === "bash" ? lines : lines.flatMap((l) => (l === "--end--" ? [l] : l.split(/\s+/)));
   // The calls the shim recorded, one argv array each — what the judge READS:
   // exec is executed()'s reading of them, and the mustArgv rows read the
   // arrays themselves.
@@ -181,14 +209,21 @@ const REDIR_OPS = ["&>>", "&>", "<<-", "<<<", "<<", ">>", ">|", ">&", "<&", "<>"
   check("oracle: the hook's REDIR_OPS equals the manuals' list transcribed here (both directions)", Array.isArray(hookOps) && hookOps.length === REDIR_OPS.length && REDIR_OPS.every((o) => hookOps.includes(o)), JSON.stringify(hookOps));
 }
 const HEREDOC = new Set(["<<", "<<-"]);
-const cases = []; // { label, cmd, shell, residual?, mustExecute?, mustArgv?, mustAsk?, mustBeBare? }
+const cases = []; // { label, cmd, shell, residual?, mustExecute?, mustArgv?, mustAsk?, mustBeBare?, bash4?, cmdExe?, on? }
 // `must` carries what the GENERATOR knows about a row: it executes
 // (mustExecute); the exact argv the shell hands the shim (mustArgv — the
 // judge's reading asserted on the VALUE, not on the boolean executed() derives
 // from its first three words: F-446's reopen was a shim dropping the last
 // argument while every boolean stayed true); the only right decision is the
 // mutating ask (mustAsk); the line is one simple command whose status is the
-// call's (mustBeBare).
+// call's (mustBeBare). `cmdExe`: the row runs through cmd.exe, so mustExecute
+// holds only where cmd.exe exists (win32) — a pwsh lane on macOS/Linux still
+// judges the row, without the claim (the `bash4` pattern). `on: <lane name>`:
+// the row's positive claims (mustExecute, mustArgv, mustAsk, mustBeBare, a
+// residual's "executed") were measured on that PowerShell only; every lane
+// still runs the row and holds executed ⇒ guarded on it.
+// A `ps` row runs once per PowerShell lane; `{ps}` in its text is the lane's
+// own executable name, so a nested PowerShell is the shell being judged.
 const add = (label, cmd, shell = "bash", residual = null, must = {}) => cases.push({ label, cmd, shell, residual, ...must });
 function redirWord(fd, op, spaced) {
   const target = HEREDOC.has(op) ? "EOF" : op === "<<<" ? "text" : op === ">&" ? "1" : op === "<&" ? "0" : "f";
@@ -458,8 +493,10 @@ if (psExe) {
   add("PS: ${F} flag value before the subcommand", "gs-admin --format ${F} jo p save", "ps");
   add("PS: $(…) flag value before the subcommand", "gs-admin --format $(\"json\") jo p save", "ps");
   add("PS: semicolon chain", "$x = 1; gs-admin jo p save", "ps");
-  add("PS: variable payload, iex (documented residual)", "$s = 'gs-admin jo p save'; iex $s", "ps", "variable-payload");
-  add("PS: here-string payload, iex (documented residual)", "$s = @'\ngs-admin jo p save\n'@\niex $s", "ps", "variable-payload");
+  // Residual rows measured on 5.1: on another lane the residual must still be
+  // SILENT and DOCUMENTED, but "executed" is that lane's own finding (`on`).
+  add("PS: variable payload, iex (documented residual)", "$s = 'gs-admin jo p save'; iex $s", "ps", "variable-payload", { on: "powershell" });
+  add("PS: here-string payload, iex (documented residual)", "$s = @'\ngs-admin jo p save\n'@\niex $s", "ps", "variable-payload", { on: "powershell" });
 }
 if (psExe) {
   // The Step 0 rows (F-440, F-441, F-446): the name glued to an operator, the
@@ -476,8 +513,8 @@ if (psExe) {
   add("PS: & ('gs-admin')", "& ('gs-admin') jo p save", "ps", null, strongPs);
   add("PS: name held in a variable set on the line", "$c = Get-Command gs-admin; & $c jo p save", "ps", null, { mustExecute: true });
   add("PS: iex with a literal payload", "iex 'gs-admin jo p save'", "ps", null, strongPs);
-  add("PS: cmd /c payload", "cmd /c 'gs-admin jo p save'", "ps", null, strongPs);
-  add("PS: powershell -c payload", "powershell -c 'gs-admin jo p save'", "ps", null, strongPs);
+  add("PS: cmd /c payload", "cmd /c 'gs-admin jo p save'", "ps", null, { ...strongPs, cmdExe: true });
+  add("PS: {ps} -c payload (the lane's own executable, nested)", "{ps} -c 'gs-admin jo p save'", "ps", null, strongPs);
   add("PS: --format=json", "gs-admin --format=json jo p save", "ps", null, { ...strongPs, mustArgv: ["--format=json", ...MUT] });
   // The .cmd shim's judge (F-446, reopened once): the assertion READS the
   // recorded argv, so the shim without its space — which records `jo p save`
@@ -503,14 +540,114 @@ if (psExe) {
   // a grouped pipeline and RUNS the call (the release-gate /security-review).
   add("PS: `$((gs-admin jo p save))` — a subexpression around a grouped pipeline (security review)", "$((gs-admin jo p save))", "ps", null, strongPs);
   add("PS: … the same as an argument", "echo $((gs-admin jo p save))", "ps", null, strongPs);
+
+  // ── the combination matrix (issue #2 item 8; Session E, F-460) ────────────
+  // Rules the guard fixtures pin ONE AT A TIME — the assignment strip (F-250),
+  // the nested-interpreter payload (F-194/F-245/F-249), option-after-flag and
+  // the positional PowerShell payload (F-247) — crossed on one line, so the
+  // next interaction gap is found by the shell, not by a reviewer combining
+  // fixtures by hand (items 1 and 2 were found that way in minutes). Judged
+  // like every other row: the shell says whether the line executed, the
+  // guard must have asked if it did. What the generator KNOWS (measured on
+  // 5.1, 2026-09-16, before the fix — every one ran the shim): an assignment
+  // in front of bash/sh -c, iex, Invoke-Expression, `{ps} -Command` and cmd /c
+  // executes, so those carry mustExecute + mustAsk; the positional forms are
+  // 5.1 grammar (7 reads the positional as a file path) and `eval` is not a
+  // PowerShell command, so those carry no claim and the lane decides.
+  /** @type {Array<[string, string]>} */
+  // Each prefix row: label, the prefix text, and the breadth of its cross as
+  // DATA — `full` crosses every interpreter form; the rest cross the three
+  // marked `core` (one per family the prefix arm reaches), because they
+  // exercise the prefix grammar, not the interpreter table (the review's
+  // efficiency rule; and the breadth is a column, never read off the label).
+  // `on: "powershell"`: the row's positive claims were measured on Windows
+  // PowerShell 5.1 only (the builder's host had no pwsh 7) — on any other
+  // lane the row still runs and executed ⇒ guarded still holds, but its
+  // mustExecute/mustAsk/mustArgv are not asserted (the `bash4`/`cmdExe`
+  // pattern, one lane over); the pwsh lane's own measurement is CI's.
+  /** @type {Array<{label: string, prefix: string, full?: boolean, on?: string}>} */
+  const PS_ASSIGNMENTS = [
+    { label: "$x=", prefix: "$x=", full: true },
+    { label: "${x}= (braced)", prefix: "${x}=", full: true },
+    { label: "$env:X= (scoped)", prefix: "$env:X=" },
+    { label: "$1= (digit-led variable — PowerShell allows it; the prefix grammar did not, F-460's sibling)", prefix: "$1=", on: "powershell" },
+    { label: "$x.y= (property assignment — 5.1 runs the right-hand command even when the property does not exist)", prefix: "$x.y=", on: "powershell" },
+    { label: "$a[0]= (index assignment)", prefix: "$a[0]=", on: "powershell" },
+    { label: "$x = (spaced — the control that always asked)", prefix: "$x = " },
+  ];
+  /** @type {Array<{label: string, tpl: string, must: Record<string, boolean>, core?: boolean}>} */
+  const PS_INTERPRETERS = [
+    { label: "bash -c", tpl: "bash -c 'gs-admin jo p save'", must: strongPs, core: true },
+    { label: "bash -c -x (option after the flag)", tpl: "bash -c -x 'gs-admin jo p save'", must: strongPs },
+    { label: "sh -c", tpl: "sh -c 'gs-admin jo p save'", must: strongPs },
+    { label: "iex", tpl: "iex 'gs-admin jo p save'", must: strongPs, core: true },
+    { label: "iex -Command", tpl: "iex -Command 'gs-admin jo p save'", must: strongPs },
+    { label: "Invoke-Expression", tpl: "Invoke-Expression 'gs-admin jo p save'", must: strongPs },
+    { label: "{ps} -Command", tpl: '{ps} -Command "gs-admin jo p save"', must: strongPs, core: true },
+    { label: "{ps} -NoProfile -Command (option before the flag)", tpl: '{ps} -NoProfile -Command "gs-admin jo p save"', must: strongPs },
+    { label: "{ps} positional (5.1: command text; 7: a file path)", tpl: '{ps} "gs-admin jo p save"', must: {} },
+    { label: "{ps} -NoProfile positional", tpl: '{ps} -NoProfile "gs-admin jo p save"', must: {} },
+    { label: "{ps} positional then -Command (5.1 runs the positional, with -Command as its arguments)", tpl: '{ps} "gs-admin jo p save" -Command "echo hi"', must: {} },
+    // A VALUE-taking option before the payload (the review's live bypass:
+    // the guard read the option's value as the positional payload and never
+    // reached the real one — silent on every shipped version; 5.1 runs both).
+    { label: "{ps} -ExecutionPolicy Bypass positional (a value-taking option before the payload)", tpl: '{ps} -ExecutionPolicy Bypass "gs-admin jo p save"', must: {} },
+    { label: "{ps} -ExecutionPolicy Bypass -Command", tpl: '{ps} -ExecutionPolicy Bypass -Command "gs-admin jo p save"', must: strongPs },
+    { label: "cmd /c", tpl: "cmd /c 'gs-admin jo p save'", must: { ...strongPs, cmdExe: true } },
+    { label: "eval (not a PowerShell command — nothing runs)", tpl: "eval 'gs-admin jo p save'", must: {} },
+  ];
+  for (const a of PS_ASSIGNMENTS) for (const it of PS_INTERPRETERS) {
+    if (!a.full && !it.core) continue;
+    add(`PS matrix: ${a.label} × ${it.label}`, a.prefix + it.tpl, "ps", null, a.on ? { ...it.must, on: a.on } : it.must);
+  }
+  // The direct spellings under the sibling prefixes (F-250's own shape, one
+  // variable grammar over): 5.1 runs each, and the shim records the argv.
+  for (const [al, ap] of [["$1= (digit-led variable)", "$1="], ["${1}= (braced digit-led variable)", "${1}="], ["$x.y= (property)", "$x.y="], ["$a[0]= (index)", "$a[0]="]]) {
+    add(`PS matrix: ${al} × the direct call`, `${ap}gs-admin jo p save`, "ps", null, { ...strongPs, mustArgv: MUT, on: "powershell" });
+  }
+  // Issue #2 item 1 — a `-Command` behind a positional. Measured on 5.1 before
+  // the fix: `{ps} foo.ps1 -Command "…"` runs NOTHING (the positional is the
+  // command text and `foo.ps1` is not a command), `-File s.ps1 -Command "…"`
+  // hands `-Command` to the script; only the reversed shape (a matrix row
+  // above) executes. The guard re-scans a positional that carried nothing and
+  // then the flag's payload, so these two draw over-asks (safe).
+  add("PS matrix: positional script then -Command (issue #2 item 1)", '{ps} s.ps1 -Command "gs-admin jo p save"', "ps");
+  add("PS matrix: -File script then -Command", '{ps} -File s.ps1 -Command "gs-admin jo p save"', "ps");
 }
+// The same crosses under bash: `$x=bash` is the word `=bash` there (x unset —
+// the run env sets no x), which is not a command, so none of these executes
+// and the guard's ask on them is an over-ask; the bash lane judges that
+// rather than a comment asserting it. A NAME held in a variable in front of
+// a payload (the F-441 rule × the payload rule) does execute.
+/** @type {Array<[string, string]>} */
+const BASH_MATRIX_INTERPRETERS = [["bash -c", "bash -c 'gs-admin jo p save'"], ["eval", "eval 'gs-admin jo p save'"], ["sh -c -e (option after the flag)", "sh -c -e 'gs-admin jo p save'"]];
+for (const ap of ["$x=", "${x}="]) for (const [il, tpl] of BASH_MATRIX_INTERPRETERS) {
+  add(`bash matrix: ${ap} × ${il}`, ap + tpl, "bash");
+}
+add("bash matrix: name in a variable × bash -c payload", "x=bash; $x -c 'gs-admin jo p save'", "bash", null, { mustExecute: true });
+add("bash matrix: name in a variable × eval payload", "x=eval; $x 'gs-admin jo p save'", "bash", null, { mustExecute: true });
 
 // ── the run ──────────────────────────────────────────────────────────────────
-let bypass = 0, overAsk = 0, residualHeld = 0, ran = 0, overQualified = 0;
+// One run per (row, lane): a bash row runs once; a `ps` row runs under every
+// PowerShell lane with `{ps}` spelled as that lane's executable.
+const runs = [];
 for (const c of cases) {
+  if (c.shell === "bash") runs.push({ ...c, lane: "bash" });
+  else for (const lane of PS_LANES) runs.push({ ...c, cmd: c.cmd.replaceAll("{ps}", lane.name), lane });
+}
+let bypass = 0, overAsk = 0, residualHeld = 0, ran = 0, overQualified = 0;
+const perLane = new Map(); // laneTag → { rows, bypass, overAsk }
+for (const c of runs) {
   ran++;
+  const tag = laneTag(c.lane);
+  const lc = perLane.get(tag) ?? { rows: 0, bypass: 0, overAsk: 0 };
+  lc.rows++;
+  perLane.set(tag, lc);
+  // The row's positive claims hold on this lane unless it was measured on
+  // another PowerShell (`on`); executed ⇒ guarded holds on every lane.
+  const claims = !c.on || c.lane === "bash" || c.lane.name === c.on;
   const toolName = c.shell === "bash" ? "Bash" : "PowerShell";
-  const { exec, status, calls } = runShell(c.shell, c.cmd);
+  const { exec, status, calls } = runShell(c.lane, c.cmd);
   const pre = runHook(c.cmd, toolName);
   const guarded = pre.decision === "ask" || pre.decision === "deny";
   if (c.residual) {
@@ -518,31 +655,34 @@ for (const c of cases) {
     // must exist in hooks/guard-residuals.json; a README name-spelling must
     // still be uncaught — one the guard now catches reds here so the README's
     // not-spelled-as-the-binary bullet is corrected rather than left claiming a
-    // gap that closed (the F-246 discipline, extended to the prose set).
+    // gap that closed (the F-246 discipline, extended to the prose set). That
+    // it EXECUTES is asserted where it was measured (`on`); elsewhere it is
+    // this lane's own finding, printed.
     const documented = c.residual.startsWith("name:") || RESIDUALS.includes(c.residual);
-    check(`[${c.shell}] documented residual (${c.residual}) still holds — executed and unguarded: ${c.label}  ⟨${c.cmd.replace(/\n/g, "⏎")}⟩`, exec && !guarded && documented, `executed=${exec} decision=${pre.decision} documented=${documented}`);
+    check(`[${tag}] documented residual (${c.residual}) still holds — ${claims ? "executed and " : ""}unguarded: ${c.label}  ⟨${c.cmd.replace(/\n/g, "⏎")}⟩`, (claims ? exec : true) && !guarded && documented, `executed=${exec} decision=${pre.decision} documented=${documented}`);
+    if (!claims) console.log(`unmeasured on this lane (safe): [${tag}] ${c.label} → executed=${exec}`);
     residualHeld++;
     continue;
   }
   // The judge's own reading is judged (F-446): a row the generator knows
   // executes must be SEEN executing, or the shim / executed() / VALUE_FLAGS
   // has stopped judging and every later invariant is vacuous for it.
-  const mustExecute = c.mustExecute && !(c.bash4 && bashMajor < 4); // a bash-4 spelling on a bash 3 leg is not the shim's failure
-  if (mustExecute) check(`[${c.shell}] the judge saw it execute (mustExecute): ${c.label}  ⟨${c.cmd.replace(/\n/g, "⏎")}⟩`, exec, `executed=${exec} — the shim, executed() or VALUE_FLAGS stopped judging this row`);
+  const mustExecute = claims && c.mustExecute && !(c.bash4 && bashMajor < 4) && !(c.cmdExe && process.platform !== "win32"); // a bash-4 spelling on a bash 3 leg, cmd.exe off Windows, or another PowerShell than the one measured, is not the shim's failure
+  if (mustExecute) check(`[${tag}] the judge saw it execute (mustExecute): ${c.label}  ⟨${c.cmd.replace(/\n/g, "⏎")}⟩`, exec, `executed=${exec} — the shim, executed() or VALUE_FLAGS stopped judging this row`);
   // The shim's recording is judged on its VALUE (F-446's reopen): the argv the
   // generator knows the shell hands the shim must be recorded whole — a shim
   // that drops or splits an argument reds here even while executed() is true.
-  if (c.mustArgv) check(`[${c.shell}] the shim recorded the argv whole (mustArgv ${JSON.stringify(c.mustArgv)}): ${c.label}`, calls.some((argv) => argv.length === c.mustArgv.length && argv.every((a, i) => a === c.mustArgv[i])), `recorded=${JSON.stringify(calls)}`);
+  if (claims && c.mustArgv) check(`[${tag}] the shim recorded the argv whole (mustArgv ${JSON.stringify(c.mustArgv)}): ${c.label}`, calls.some((argv) => argv.length === c.mustArgv.length && argv.every((a, i) => a === c.mustArgv[i])), `recorded=${JSON.stringify(calls)}`);
   if (exec) {
-    check(`[${c.shell}] executed ⇒ guarded: ${c.label}  ⟨${c.cmd.replace(/\n/g, "⏎")}⟩`, guarded, `decision=${pre.decision} ${pre.raw.slice(0, 200)}`);
-    if (!guarded) bypass++;
+    check(`[${tag}] executed ⇒ guarded: ${c.label}  ⟨${c.cmd.replace(/\n/g, "⏎")}⟩`, guarded, `decision=${pre.decision} ${pre.raw.slice(0, 200)}`);
+    if (!guarded) { bypass++; lc.bypass++; }
     // A coaching deny is "guarded" above — it never runs the line — but on a
     // row whose only right reading is the mutation itself it is a WRONG
     // reading (F-443: the lint denied a heredoc body's `|`).
-    if (c.mustAsk) check(`[${c.shell}] the decision is the ask, not a coaching deny (mustAsk): ${c.label}`, pre.decision === "ask", `decision=${pre.decision} ${pre.raw.slice(0, 200)}`);
+    if (claims && c.mustAsk) check(`[${tag}] the decision is the ask, not a coaching deny (mustAsk): ${c.label}`, pre.decision === "ask", `decision=${pre.decision} ${pre.raw.slice(0, 200)}`);
     if (pre.decision === "ask") {
       const j = journal(c.cmd, toolName, status);
-      check(`[${c.shell}] executed ⇒ journaled: ${c.label}`, j.rows >= 1, `rows=${j.rows}`);
+      check(`[${tag}] executed ⇒ journaled: ${c.label}`, j.rows >= 1, `rows=${j.rows}`);
       // The second invariant (F-428, F-438): the shell's status for the LINE is
       // this call's own (the shim's 7) or it is not; when it is not, the row
       // must say so. When it is, a qualified row is a weaker claim than the
@@ -551,19 +691,23 @@ for (const c of cases) {
       // there a qualifier states something about the line that is false.
       if (j.rows >= 1) {
         if (status !== SHIM_EXIT) {
-          check(`[${c.shell}] line status ${status} is not the call's (${SHIM_EXIT}) ⇒ the row is qualified: ${c.label}`, j.qualified, JSON.stringify(j.outcomes));
-          if (c.mustBeBare) check(`[${c.shell}] the generator called this one simple command, but its status was not the call's — the ROW is wrong: ${c.label}`, false, `status=${status}`);
-        } else if (c.mustBeBare) check(`[${c.shell}] one simple command — its status IS the call's ⇒ the row is bare (mustBeBare): ${c.label}`, !j.qualified, JSON.stringify(j.outcomes));
-        else if (j.qualified) { overQualified++; console.log(`over-qualified (safe): ${c.label} → ${j.outcomes[0]}`); }
+          check(`[${tag}] line status ${status} is not the call's (${SHIM_EXIT}) ⇒ the row is qualified: ${c.label}`, j.qualified, JSON.stringify(j.outcomes));
+          if (claims && c.mustBeBare) check(`[${tag}] the generator called this one simple command, but its status was not the call's — the ROW is wrong: ${c.label}`, false, `status=${status}`);
+        } else if (claims && c.mustBeBare) check(`[${tag}] one simple command — its status IS the call's ⇒ the row is bare (mustBeBare): ${c.label}`, !j.qualified, JSON.stringify(j.outcomes));
+        else if (j.qualified) { overQualified++; console.log(`over-qualified (safe): [${tag}] ${c.label} → ${j.outcomes[0]}`); }
       }
     }
   } else {
-    if (guarded) overAsk++;
+    if (guarded) { overAsk++; lc.overAsk++; }
     passed++; // not executed: any decision is safe; counted, never failed
   }
 }
 rmSync(ROOT, { recursive: true, force: true });
-console.log(`\nguard-oracle: ${ran} generated lines (${cases.filter((c) => c.shell === "bash").length} bash ${bashMajor}.x, ${cases.filter((c) => c.shell === "ps").length} PowerShell${psExe ? "" : " — powershell.exe not on this machine, PowerShell leg SKIPPED"}${bashMajor < 4 ? "; bash-4 rows judged without mustExecute" : ""}); ` +
+const psRows = cases.filter((c) => c.shell === "ps").length;
+const laneLine = PS_LANES.length
+  ? PS_LANES.map((l) => { const s = perLane.get(laneTag(l)) ?? { rows: 0, bypass: 0, overAsk: 0 }; return `${laneTag(l)}: ${s.rows} rows, ${s.bypass} bypass, ${s.overAsk} over-ask`; }).join("; ")
+  : "no PowerShell on this machine (neither powershell.exe nor pwsh) — PowerShell rows SKIPPED";
+console.log(`\nguard-oracle: ${ran} generated lines run (${cases.filter((c) => c.shell === "bash").length} bash ${bashMajor}.x; ${psRows} PowerShell rows × ${PS_LANES.length} lane(s) — ${laneLine}${bashMajor < 4 ? "; bash-4 rows judged without mustExecute" : ""}); ` +
   `${bypass} bypass (executed, guard silent), ${overAsk} over-ask (guard asked, shell did not execute — safe), ${overQualified} over-qualified row(s) (the status was the call's, the row said it might not be — safe), ${residualHeld} documented residual(s) held`);
 console.log(failures ? `\n${failures} failure(s)` : "\nAll guard-oracle checks passed");
 process.exit(failures ? 1 : 0);
