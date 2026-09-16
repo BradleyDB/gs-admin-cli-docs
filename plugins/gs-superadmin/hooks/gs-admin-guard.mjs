@@ -1730,6 +1730,10 @@ if (isPost) {
 // the model self-corrects to literal subcommands (which pass silently when
 // read-only); a repeat escalates to a human "ask" — fail-closed, because the
 // variable could expand to a mutation and this prompt is then the only gate.
+// Both branches name the literal-spelling remedy (F-453): the guard is the
+// only thing present at the moment of composition, and a correct block that
+// does not say how to not need it is a wall, not a coach — the ask used to
+// say "approve only if you know", never "spell the words literally".
 let varAskPart = null;
 if (varSubs.length) {
   // Bounded like its sibling clauses (unknowns, promoted — tenet 4): a loop
@@ -1747,7 +1751,9 @@ if (varSubs.length) {
     varAskPart =
       `This command passes a gs-admin subcommand through a shell variable (${shown}) that the ` +
       `guard cannot inspect — if it expands to a mutating command, this prompt is the only gate. ` +
-      `Approve only if you know exactly what it expands to.`;
+      `Approve only if you know exactly what it expands to. To avoid the prompt, rewrite with the ` +
+      `domain/group/command words spelled literally — variables belong in flag values and paths — ` +
+      `and retry: a literal read-only command runs without any prompt.`;
   } else {
     process.stdout.write(
       JSON.stringify({

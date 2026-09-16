@@ -5,6 +5,32 @@ marketplace doesn't pin versions — users get main — so entries describe what
 user who updates, not internal refactors. Entries before 0.8.0 were reconstructed from git
 history when this file was introduced.
 
+## 0.41.1 — 2026-09-16
+
+Two boundaries stated and one prompt made self-resolving. What a user gets by updating:
+
+- **The guard's repeat-offense ask names the remedy** (F-453). A `gs-admin` subcommand
+  built from a shell variable is denied once with a rewrite hint and, on the repeat,
+  escalated to a human prompt; that prompt now carries the same remedy the deny does —
+  spell the domain/group/command words literally, variables belong in flag values and
+  paths — so a correct refusal resolves itself at the moment it fires instead of being
+  debugged back from the operating model. Pinned by guard-fixtures on the repeat path.
+- **`--deep <domain>` states its phases** (F-457a): Phases 1–2, then straight to Phase 5.
+  Phases 3 and 4 never re-run and nothing re-lists (a re-list would not feed the `--deep`
+  queue anyway — `next --upgrade` selects metadata stubs, never `pending`); before
+  spending budget the run reads one `report`'s `lookback` row for the domain and, when
+  the list is older than `lookbackDefault`, says so and points at refresh for a current
+  inventory. Four live `--deep` runs had each improvised the same skip against Phase 4's
+  "runs every time".
+- **Phase 6 states the maps' inputs** (F-457b): the five relationship lanes are the
+  builder's ONLY inputs (the subset it takes from doc-lib's `RECORDED_LANES`), so a deep
+  ingest of any other domain leaves the four maps byte-identical; its value lands in
+  `deps-report`, and the skill says so instead of letting "deep-ingest X to improve the
+  maps" be inferred — several login cycles went to that inference live.
+
+Hook message plus skill prose; no script behaviour moves. Pick up: `/reload-plugins`
+(restart the session for the hook).
+
 ## 0.41.0 — 2026-09-15
 
 One decision per kind of fact (F-450): three facts that lived at the wrong scope now each

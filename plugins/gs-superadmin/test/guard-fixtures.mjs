@@ -408,6 +408,14 @@ check(
   t.decision === "ask" && /shell variable/.test(t.reason) && t.reason.includes("gs-admin $c"),
   t.raw
 );
+// F-453: the escalated ask names the same remedy the first-offense deny names —
+// the guard is the only thing present at the moment of composition, so a
+// correct-but-opaque block must say how to not need it.
+check(
+  "variable subcommand: the repeat ask carries the literal-spelling remedy the deny carries (F-453)",
+  t.decision === "ask" && /spelled\s+literally/i.test(t.reason) && /flag values and paths/.test(t.reason),
+  t.raw
+);
 
 t = runHook(pipeDir, "gs-admin --json re rules list --page $p > .gs-superadmin/tmp/re-rules-$p.json", vsid);
 check("variables in flag values/paths only: silent pass-through", t.silent, t.raw);
