@@ -168,6 +168,47 @@ Blind spots (hb-20260916-01): no tenant and no operator in the builder session: 
      Numbers claimed: none (next free F-460). Issue #1 closes on the merge, not by hand. Next: merging PR #22 is
        Bradley's call. -->
 
+<!-- builder 2026-09-16 (Session E — the mutation guard's one normalizer, the oracle's matrix and lanes, check 11; UNMERGED, riding a branch):
+     Payload: GD-1, GD-2, GD-3 of the September round plan — issue #2 items 1–3 and 8, and check 11's items 4–7.
+       F-460 (normal, Class second-scanner): ONE word→program-name normalizer in hooks/gs-admin-guard.mjs (normalizeProg;
+       isGsAdminWord derives from it), so every interpreter behind a PowerShell assignment ($x=iex '…', $x=bash -c '…',
+       $x=powershell "…", $x=cmd /c '…') asks; sibling from the sweep: the assignment grammar admits every spelling
+       PowerShell runs ($1=, ${1}=, $x.y=, $a[0]= — measured on 5.1) as ONE grammar shared with the computed-name branch;
+       the pwsh positional loop re-scans a positional that carried nothing AND a later -Command (item 1, with a measured
+       deviation from the issue's flag-first order: the first positional IS 5.1's command text, so that order would have
+       dropped a real ask); the review round's live bypass — a value-taking option before the payload
+       (powershell -ExecutionPolicy Bypass "…") read as the positional — closed through a pwsh entry in the value-option
+       table; one execution journals once. Oracle (GD-2, ruled: the generator is the matrix home, and every PowerShell on
+       the host is a lane — powershell.exe 5.1 + pwsh 7, so the ubuntu leg a dev PR runs judges the PowerShell rows for
+       the first time): 51 PowerShell matrix rows per lane + 8 bash, `on:` gate for claims measured on 5.1 only. Check 11
+       (GD-3): items 4, 5, 7 reproduced by fixtures and fixed; item 6 measured not a defect (CommonMark), pinned as the
+       decision; the block is on lib.mjs's QUOTE_RE, refusing an unterminated anchor and one outside the callout.
+       Plugin 0.41.2 (CHANGELOG). README parsing-boundary bullet extended; no residual closed.
+     Branch round-e-guard-normalizer -> PR #23, base dev, UNMERGED (Closes #2 — all eight items addressed). Transitions on
+       the branch: F-460 logged (this branch consumes F-460; next free number F-461) and OPEN -> FIXED (Fix / Class /
+       Judge / Sibling sweep lines). Review: /code-review medium, 8 finders + 3 file-batched verifiers — 9 confirmed,
+       1 plausible, all fixed on the branch; 8 dismissed with reasons in the PR body.
+     Judge, this host (bash 5.x + Windows PowerShell 5.1, one lane): pre-fix hook 709 generated lines / 44 bypass / 80
+       failures; fixed hook 709 / 0 bypass / 62 over-ask / 0 failures; PowerShell lane 98 rows. guard-fixtures 697 green,
+       17 of the 20 new pins red against the pre-fix hook (the dev tree at PR #22's merge). test-check-doc-drift 129 green,
+       fixtures 11b–11f red against the pre-change checker.
+     Under test on the branch: hb-20260916-02; blind spots = no pwsh 7 on this host (the PR's ubuntu suite is that lane's
+       first judge; a red there is real information), no operator for the rendered asks until E-V, the value-option table
+       exercised for three parameters, the macOS bash 3.2 leg unmeasured locally.
+     Dispatch evidence (F-340), on the branch tip 58b1330 (the handoff commit), QUOTED after completion:
+         validate-plugin 35147717941 (pull_request): changes success / validate (ubuntu-latest) success / manifests success
+         docs-drift 35147717956 (pull_request): drift (full) success
+         validate-plugin 35147785798 (dispatch): changes success / validate (ubuntu-latest) success / manifests success
+         docs-drift 35147788662 (dispatch): drift (full) success / drift (stripped) success
+       The pwsh 7 lane's FIRST measurement, quoted from run 35147717941's job log: "709 generated lines run (611 bash 5.x;
+         98 PowerShell rows × 1 lane(s) — pwsh 7.6.5: 98 rows, 0 bypass, 20 over-ask); 0 bypass, 78 over-ask, 44
+         over-qualified, 9 documented residual(s) held — All guard-oracle checks passed"; the two PowerShell residual rows
+         printed "unmeasured on this lane (safe) … executed=true" (so the residual holds on 7 as well), and the 13 extra
+         over-asks are the positional shapes 7 reads as a file path — the version difference the lanes exist to measure.
+     Carried, not in scope: draft PR #17 (stages 0.39.0 — rebases its bump against 0.41.2); no OPEN polish findings.
+     Next: Session E-V (tester, consumer workspace, no tenant) on the branch per handoffs/SESSION-PROMPTS.md — run the
+       oracle and quote its lane line; read the ubuntu run's pwsh lane counts from the job log. -->
+
 <!-- builder 2026-09-16 (Session D round HANDED OFF — UNMERGED):
      Payload: DC-1, DC-2, DC-3 of the September round plan — F-457 (setup: --deep runs Phases 1-2 then goes STRAIGHT
        to Phase 5, Phases 3-4 never re-run and nothing re-lists; before spending budget the run reads one report's
