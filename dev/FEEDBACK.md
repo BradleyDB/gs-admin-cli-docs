@@ -181,6 +181,32 @@ Blind spots (hb-20260916-03): post-merge close-out of Session E on dev, nothing 
      Numbers claimed: none (next free F-460). Issue #1 closes on the merge, not by hand. Next: merging PR #22 is
        Bradley's call. -->
 
+<!-- builder 2026-09-16 (Session E round CLOSED OUT — MERGED):
+     Payload: GD-1, GD-2, GD-3 of the September round plan (issue #2, all eight items) — F-460 (normal, Class
+       second-scanner): ONE word→program-name normalizer in the guard, the assignment grammar as one grammar
+       ($1=, ${1}=, $x.y=, $a[0]= admitted), the pwsh positional loop re-scanning a positional that carried nothing
+       AND a later -Command, a pwsh entry in the value-option table (the review round's live bypass), one execution
+       journaling once; the oracle's combination matrix with every PowerShell on the host as a lane (ruled); check 11
+       items 4, 5, 7 fixed with fixtures, item 6 measured not a defect. Plugin 0.41.2.
+     Verdict: F-460 VERIFIED @ hb-20260916-02 (tester, Session E-V, consumer workspace, no tenant) — seven
+       PowerShell-tool shapes drew the `journey programs save` ask (all declined, text relayed by Bradley); the tester's
+       oracle run reproduced the Fix note's counts (709 / 0 bypass / 62 over-ask; 5.1 lane 98 / 0 / 7) and quoted the
+       pwsh 7.6.5 lane from CI (98 / 0 / 20). Tester blind spots carry on F-460.
+     PR #23 MERGED to dev by the builder on Bradley's instruction 2026-09-16 (dev @ 9549d7b, merge commit); branch
+       round-e-guard-normalizer deleted local + remote; #2 CLOSED by comment with the oracle's counts (a merge to dev
+       does not auto-close; `Closes #2` fires again, harmlessly, at the release to main).
+     Post-merge dispatches on dev, QUOTED per job after completion:
+       (the first pair, dispatched on the merge commit 9549d7b, was CANCELLED by the handoff push — the workflows
+       cancel in-progress runs on the same ref — and re-dispatched on the tip 6308661):
+         validate-plugin 35153484484: changes success / manifests success / validate (ubuntu-latest) success
+         docs-drift 35153486487: drift (full) success / drift (stripped) success
+     Under test + canary → dev · hb-20260916-03. Next free number F-461. Released: nothing (dev stages 0.37.1,
+       0.38.0, 0.39.0, 0.40.0, 0.41.0, 0.41.1, 0.41.2).
+     Open PRs to dev at close-out: draft PR #17 (change-request prose; stages 0.39.0 — rebases its bump against
+       0.41.2) — the NEXT task, reviewed in its own session. No OPEN findings; no polish carried.
+     Sibling named, not closed (F-460 sweep): the oracle's positive claims for the exotic assignment prefixes are
+       asserted on the 5.1 lane only (`on:` gate); pwsh 7 measured 0 bypass in CI. -->
+
 <!-- builder 2026-09-16 (Session E, RE-STAMPED after E-V; UNMERGED, riding a branch):
      Branch round-e-guard-normalizer -> PR #23, base dev, UNMERGED. Transition on the branch since the comment below:
        E-V (tester @ hb-20260916-02) — F-460 FIXED -> VERIFIED (verdict commit 579c85f [skip ci]): seven PowerShell-tool
