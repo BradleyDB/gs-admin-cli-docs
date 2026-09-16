@@ -194,7 +194,18 @@ Blind spots (hb-20260915-04): no tenant in the builder session: the deps-report 
        draft PR #17 (stages 0.39.0 — rebases its bump against 0.41.1 when it lands).
      CI on the PR head fc8673e (the handoff commit, no [skip ci]), QUOTED after conclusion: run 35113354708
        validate-plugin — changes pass, manifests pass, validate (ubuntu-latest) pass; run 35113354630 docs-drift —
-       drift (full) pass; PR #22 mergeStateStatus CLEAN. Unmerged — merge is the maintainer's call after D-V. -->
+       drift (full) pass; PR #22 mergeStateStatus CLEAN. Unmerged — merge is the maintainer's call after D-V.
+     Re-stamped 2026-09-16 (builder, after Session D-V): F-457 and F-453 VERIFIED @ hb-20260916-01 on the branch
+       (verdict commit a9bf2a1); dev/VALIDATION.md § F-457 / F-453 CLEARED; walk: setup --deep on the sandbox
+       (slash-typed by Bradley; the list-only explain-and-stop branch fired; the maps question drew the five-lane
+       boundary and deps-report); guard wiring recorded (the repeat ask rendered with the remedy, read by Bradley,
+       declined). Tester blind spots carried: the lookback RELAY branch and the --upgrade describe path unproduced
+       (no metadata stub on either tenant); the flag doc does not say how --deep treats an UNRECORDED domain (the
+       sandbox's connectors records describeCommand null; the run decided list-only by domain type) — side
+       observation, no number claimed; no Phase 6 relay reached; no hook restart (the rendered text stood in).
+       CI on the verdict tip a9bf2a1, QUOTED after conclusion: run 35115107142 validate-plugin — changes pass,
+       manifests pass, validate (ubuntu-latest) pass; run 35115107251 docs-drift — drift (full) pass; CLEAN.
+       UNMERGED — merge is Bradley's call. -->
 
 <!-- tester 2026-09-15 (Session C2-V verdict round — UNMERGED; re-stamps the builder comment below):
      Branch round-c2-fact-homes -> PR #21, base dev, still UNMERGED; head now b714ecd (the verdict commit, no [skip ci],
