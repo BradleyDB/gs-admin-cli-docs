@@ -172,8 +172,10 @@ Blind spots (hb-20260915-04): no tenant in the builder session: the deps-report 
      Owed: dev/VALIDATION.md § F-457 / F-453 (one setup --deep run to its first batch, slash-typed by Bradley; the
        guard-wiring line = a variable-built read loop issued twice, the repeat's rendered ask read by the operator).
        Numbers claimed by the branch: none (no new findings logged). Next free number F-460. Carried, not in scope:
-       draft PR #17 (stages 0.39.0 — rebases its bump against 0.41.1 when it lands). CI on the PR head: quoted on
-       the branch's verdict round, not asserted here. -->
+       draft PR #17 (stages 0.39.0 — rebases its bump against 0.41.1 when it lands).
+     CI on the PR head fc8673e (the handoff commit, no [skip ci]), QUOTED after conclusion: run 35113354708
+       validate-plugin — changes pass, manifests pass, validate (ubuntu-latest) pass; run 35113354630 docs-drift —
+       drift (full) pass; PR #22 mergeStateStatus CLEAN. Unmerged — merge is the maintainer's call after D-V. -->
 
 <!-- tester 2026-09-15 (Session C2-V verdict round — UNMERGED; re-stamps the builder comment below):
      Branch round-c2-fact-homes -> PR #21, base dev, still UNMERGED; head now b714ecd (the verdict commit, no [skip ci],
