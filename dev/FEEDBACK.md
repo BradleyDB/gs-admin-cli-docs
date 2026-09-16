@@ -146,8 +146,8 @@ what the gate counts (F-444). The gate refuses both. Sections from F-360 on; the
 rule also reads the archive.
 
 
-Under test: round-e-guard-normalizer · hb-20260916-02 · 2026-09-16
-Blind spots (hb-20260916-02): no pwsh 7 on the builder's host, so the oracle's second PowerShell lane has no local measurement — the PR's ubuntu suite (PR #23) is its first judge and the claims measured on 5.1 only are gated on:powershell (a pwsh red there is real information, never suppressed); no operator in the builder session, so the rendered asks for the issue's own shapes rest on the fixture text until E-V's guard-wiring line; the PowerShell value-option table lists the executable's value-taking parameters from the 5.1 and 7 documentation, exercised for -ExecutionPolicy / -InputFormat / -File only; the macOS bash 3.2 leg unmeasured locally, as every round
+Under test: dev · hb-20260916-03 · 2026-09-16
+Blind spots (hb-20260916-03): post-merge close-out of Session E on dev, nothing new under test: the round's blind spots (pwsh 7 lane measured in CI only, no live PostToolUse row, the value-option table exercised for three parameters, GD-3 on the drift suite) carry as stated on F-460; the next round is a review of draft PR #17 in its own session
 
 <!-- tester 2026-09-16 (Session E-V verdict round — UNMERGED; re-stamps the Session E builder comment on dev):
      Branch round-e-guard-normalizer -> PR #23, base dev, still UNMERGED; verdict committed [skip ci] on top of 58b1330.
