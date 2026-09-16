@@ -149,6 +149,25 @@ rule also reads the archive.
 Under test: round-c2-fact-homes · hb-20260915-04 · 2026-09-15
 Blind spots (hb-20260915-04): no tenant in the builder session: the deps-report walk with a tenant override present on one tenant only, the setup Phase 4 relay's rendering of scope lines (no CI executes skill prose), and the sandbox connectors-chains redate rest on the fixtures until C2-V; the per-pin table under a real workspace catalog at another CLI version rests on the synthetic 9.9.9 fixture; the four sublists' runtime errors in CLI_PIN_FACTS are quoted from both tenants' recorded exclusion reasons, not re-run; the scope arm needs NO tenant read (derived from the manifests' recorded list commands, both read locally)
 
+<!-- tester 2026-09-16 (Session D-V verdict round — UNMERGED; re-stamps the builder comment below):
+     Branch round-d-prose -> PR #22, base dev, still UNMERGED; head now a9bf2a1 (the verdict commit, no [skip ci],
+       so the PR suite runs on the head). Statuses on the branch: F-457 VERIFIED, F-453 VERIFIED @ hb-20260916-01.
+     Measured (dev/VALIDATION.md § F-457 / F-453, CLEARED on the branch): no metadata stub exists on either tenant, so
+       the walk took the rig's fallback — `/gs-superadmin:setup --deep connectors --budget 3` on the sandbox, slash-typed
+       by Bradley: Phases 1-2, then no scaffold, no sweep, no upsert, no diff; lookback.connectors days 1 vs
+       lookbackDefault 7 quoted; branch fired = list-only explain-and-stop before Phase 5 (0 of 3 spent, no write).
+       The report-objects maps question drew the five-lane boundary and deps-report. Guard wiring (F-453): the
+       variable-built read loop denied once, then the repeat's ask rendered — read by Bradley, carrying "spelled
+       literally" and "flag values and paths" — declined.
+     Blind spots (tester, hb-20260916-01), on F-457's verdict: the lookback relay branch and the --upgrade describe path
+       unproduced (no stubs on either tenant); a --deep run over an UNRECORDED domain is unspecified by the flag doc
+       (connectors stopped by type); no Phase 6 relay reached; no session restart (the hook's new text stood in).
+     CI on the head a9bf2a1 (quoted after conclusion): run 35115107142 validate-plugin: success — changes=success,
+       validate (ubuntu-latest)=success, manifests=success; run 35115107251 docs-drift: success — drift (full)=success;
+       PR #22 mergeStateStatus CLEAN.
+     Numbers claimed: none (next free F-460). Issue #1 closes on the merge, not by hand. Next: merging PR #22 is
+       Bradley's call. -->
+
 <!-- builder 2026-09-16 (Session D round HANDED OFF — UNMERGED):
      Payload: DC-1, DC-2, DC-3 of the September round plan — F-457 (setup: --deep runs Phases 1-2 then goes STRAIGHT
        to Phase 5, Phases 3-4 never re-run and nothing re-lists; before spending budget the run reads one report's
