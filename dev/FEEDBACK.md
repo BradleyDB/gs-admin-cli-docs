@@ -205,7 +205,20 @@ Blind spots (hb-20260916-01): no tenant and no operator in the builder session: 
        observation, no number claimed; no Phase 6 relay reached; no hook restart (the rendered text stood in).
        CI on the verdict tip a9bf2a1, QUOTED after conclusion: run 35115107142 validate-plugin — changes pass,
        manifests pass, validate (ubuntu-latest) pass; run 35115107251 docs-drift — drift (full) pass; CLEAN.
-       UNMERGED — merge is Bradley's call. -->
+       UNMERGED — merge is Bradley's call.
+     Folded in before the merge (Bradley, 2026-09-16, from the D-V blind spot): the flag doc says a --deep over an
+       UNRECORDED domain is decided by the recording, never by domain type — say Phase 4 has not recorded a template
+       or `none` yet and stop (doc-only, rides 0.41.1; unwalked — the tester's list-only stop was the same outcome
+       by another route). CI on that tip 59c5c87, QUOTED: run 35116163245 validate-plugin — changes pass, manifests
+       pass, validate (ubuntu-latest) pass; run 35116163254 docs-drift — drift (full) pass; CLEAN.
+     MERGED 2026-09-16 by the builder on Bradley's instruction: PR #22 -> dev @ cec8fb8 (merge commit); branch
+       round-d-prose deleted local + remote; issue #1 closed by comment (auto-close does not fire on a PR to dev);
+       superfriends PR #8 MERGED to that repo's dev (d7848b6). Dispatch evidence (F-340), on dev after the merge,
+       QUOTED after completion:
+         validate-plugin 35116668890: changes success / manifests success / validate (ubuntu-latest) success
+         docs-drift 35116672502: drift (stripped) success / drift (full) success
+       Open PRs to dev at close-out: #17 (draft, stages 0.39.0 — rebases its bump against 0.41.1). Next free number
+       F-460. Every live section VERIFIED. -->
 
 <!-- tester 2026-09-15 (Session C2-V verdict round — UNMERGED; re-stamps the builder comment below):
      Branch round-c2-fact-homes -> PR #21, base dev, still UNMERGED; head now b714ecd (the verdict commit, no [skip ci],
