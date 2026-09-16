@@ -146,8 +146,8 @@ what the gate counts (F-444). The gate refuses both. Sections from F-360 on; the
 rule also reads the archive.
 
 
-Under test: round-c2-fact-homes · hb-20260915-04 · 2026-09-15
-Blind spots (hb-20260915-04): no tenant in the builder session: the deps-report walk with a tenant override present on one tenant only, the setup Phase 4 relay's rendering of scope lines (no CI executes skill prose), and the sandbox connectors-chains redate rest on the fixtures until C2-V; the per-pin table under a real workspace catalog at another CLI version rests on the synthetic 9.9.9 fixture; the four sublists' runtime errors in CLI_PIN_FACTS are quoted from both tenants' recorded exclusion reasons, not re-run; the scope arm needs NO tenant read (derived from the manifests' recorded list commands, both read locally)
+Under test: round-d-prose · hb-20260916-01 · 2026-09-16
+Blind spots (hb-20260916-01): no tenant and no operator in the builder session: the setup --deep walk (which lookback branch fires, the absence of a list sweep) and the rendered repeat ask rest on the fixtures until D-V; no CI executes skill prose, so the Phase 5 canon's substitution rule and the Phase 6 lane statement are read, not run; the superfriends dev-loop PR is reviewed in its own repo
 
 <!-- tester 2026-09-15 (Session C2-V verdict round — UNMERGED; re-stamps the builder comment below):
      Branch round-c2-fact-homes -> PR #21, base dev, still UNMERGED; head now b714ecd (the verdict commit, no [skip ci],
