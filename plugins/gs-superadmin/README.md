@@ -352,7 +352,10 @@ the decision record, including for the retired entries.
 >   payload **is** re-scanned — `bash|sh|zsh|dash|ksh -c '…'`, `powershell -Command "…"`,
 >   a positional `powershell "…"`, `cmd /c "…"`, and both shells' eval — `eval '…'` and
 >   `Invoke-Expression`/`iex '…'` — plus each of those with options sitting between the
->   flag and the payload (`bash -c -x '…'`, `bash -c -- '…'`)
+>   flag and the payload (`bash -c -x '…'`, `bash -c -- '…'`), behind a PowerShell
+>   assignment that takes the interpreter's output (`$x=iex '…'`, `$x=bash -c '…'`,
+>   `$x=powershell "…"`, `$x=cmd /c '…'`), and a `-Command` standing behind a positional
+>   (`powershell foo.ps1 -Command "…"`) as well as the first positional itself
 >   — but not `-EncodedCommand` (base64, where the payload is not shell text at all), and
 >   not past three levels of nesting.
 > - *A payload stored in a variable.* The mutation is assigned first — a quoted string or
