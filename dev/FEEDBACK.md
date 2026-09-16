@@ -146,8 +146,8 @@ what the gate counts (F-444). The gate refuses both. Sections from F-360 on; the
 rule also reads the archive.
 
 
-Under test: round-d-prose · hb-20260916-01 · 2026-09-16
-Blind spots (hb-20260916-01): no tenant and no operator in the builder session: the setup --deep walk (which lookback branch fires, the absence of a list sweep) and the rendered repeat ask rest on the fixtures until D-V; no CI executes skill prose, so the Phase 5 canon's substitution rule and the Phase 6 lane statement are read, not run; the superfriends dev-loop PR is reviewed in its own repo
+Under test: round-e-guard-normalizer · hb-20260916-02 · 2026-09-16
+Blind spots (hb-20260916-02): no pwsh 7 on the builder's host, so the oracle's second PowerShell lane has no local measurement — the PR's ubuntu suite (PR #23) is its first judge and the claims measured on 5.1 only are gated on:powershell (a pwsh red there is real information, never suppressed); no operator in the builder session, so the rendered asks for the issue's own shapes rest on the fixture text until E-V's guard-wiring line; the PowerShell value-option table lists the executable's value-taking parameters from the 5.1 and 7 documentation, exercised for -ExecutionPolicy / -InputFormat / -File only; the macOS bash 3.2 leg unmeasured locally, as every round
 
 <!-- tester 2026-09-16 (Session D-V verdict round — UNMERGED; re-stamps the builder comment below):
      Branch round-d-prose -> PR #22, base dev, still UNMERGED; head now a9bf2a1 (the verdict commit, no [skip ci],
