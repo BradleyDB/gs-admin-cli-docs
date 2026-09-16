@@ -19,9 +19,18 @@ not up front.
 - `--slug <name>` — override the derived slug (useful for unusual hostnames)
 - `--deep <domain>` — fully ingest a shallow-crawled domain: describe its metadata-stub
   entries and upgrade them to full docs (respects `--budget`/`--all`; repeatable per
-  domain, resumable — already-upgraded entries are never redone). Does not apply to
-  **list-only domains** (no per-item describe command, e.g. connections/jobs): their
-  stubs already carry everything the CLI can say — explain that and stop.
+  domain, resumable — already-upgraded entries are never redone). Runs Phases 1–2,
+  then goes **straight to Phase 5** for that domain: Phases 3 and 4 do not re-run and
+  nothing re-lists, so the queue is the stubs the domain's last list recorded, and the
+  run states that list's age before spending budget (rule canon: Phase 5's `--deep`
+  paragraph; a current inventory is `/gs-superadmin:refresh`'s job — F-457). Does not
+  apply to **list-only domains** (no per-item describe command, e.g. connections/jobs):
+  their stubs already carry everything the CLI can say — explain that and stop. An
+  **unrecorded domain** (its stamp carries no describe recording; `report` counts its
+  stubs under `byDepth.unrecorded`) is neither list-only nor queued — decide by the
+  recording, never by the domain's type: say that Phase 4 has not yet recorded a
+  describe template or `none` for it, and stop; a plain setup run records it, after
+  which `--deep` applies or does not.
 
 ---
 
@@ -165,7 +174,7 @@ fallback copy that itself fails (no retries, no improvisation).
 
 ---
 
-## Phase 4 — Index (cheap; runs every time)
+## Phase 4 — Index (cheap; runs on every plain run — a `--deep` run skips it)
 
 Create `.gs-superadmin/tmp/` for raw list output.
 
@@ -537,7 +546,21 @@ block Phase 6, and the report names them "list-only (complete)", never
 "metadata-only (shallow)". The `stub` invocation and its rules are
 `references/document-mechanics.md` §1; run it, then continue to the next domain.
 
-**`--deep <domain>` runs** — select the stubs awaiting full ingest with the
+**`--deep <domain>` runs** — the run arrives here from Phase 2: Phases 3 and 4 do
+not re-run under `--deep` and nothing here re-lists (F-457: four live runs each
+improvised that skip against Phase 4's old "runs every time"), so the queue is exactly
+the stubs the domain's last list recorded — an asset created since is not in it, and
+a re-list would not put it there either (`next --upgrade` selects metadata stubs, never
+`pending`). State that boundary before spending budget: run this phase's close
+`report` invocation once and read `lookback.<domain>` — when its `days` is `null` or
+greater than `lookbackDefault`, relay one line, substituting `<domain>` and the row's
+`days` (for `null`, replace the whole "`<days>` days ago" span with "on a legacy
+stamp with no date"):
+"`<domain>` was last listed `<days>` days ago — assets created since are not in this
+queue; run `/gs-superadmin:refresh` first if that matters", then continue; when
+`days` is within the window, say nothing. A current inventory is refresh's job (its
+step 2 owns the per-domain window) — never run Phase 4 for it here. Then select the
+stubs awaiting full ingest with the
 `next --upgrade` invocation (`references/document-mechanics.md` §2), then follow
 the standard describe path below, overwriting each stub file (the entry's
 `doc_path`) and marking `--status documented --depth full` — with `--doc-path`, per
@@ -684,6 +707,16 @@ defaults (`rules-engine`, `rules-engine-chains`, `scorecard`, `journey`,
 `journey-email-templates`) only for a lane with no recording. Pass `--rules-domain` /
 `--chains-domain` / `--scorecard-domain` / `--journey-domain` / `--templates-domain`
 only to override that, with the actual names from `report`'s `byDomain`.
+
+**Those five lanes are the maps' ONLY inputs** (F-457): the builder reads no other
+domain's docs, so a deep ingest of any domain outside them leaves all four files
+byte-identical — never advertise, run, or accept a `--deep` "to improve the maps" for
+a domain that is not one of these lanes. Which list commands are lanes is data,
+doc-lib's `RECORDED_LANES`; the five above are the subset the builder takes from it
+(the table is the home, this paragraph a pointer). A non-lane deep ingest still pays
+off — in `deps-report`, whose lanes come from that same table and whose answers read
+every full doc it finds — so when a user wants one, say that is where its value
+lands, not here.
 
 **Coverage and shallow crawls are handled by the script**: each file opens with a
 coverage header (full-doc counts, stub-excluded domains with their `--deep` re-run

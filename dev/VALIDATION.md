@@ -325,3 +325,48 @@ totals question; step 3 the override read for the sandbox only, prod on the work
 override deleted; step 4 the sandbox chains `blankDatesCleared` 4 then `changeDetection:
 none`, `datelessEntries` 4. Verdicts of record on F-450 and F-452; the unwalked slash-only
 skills are on F-450's Blind spots line.
+
+## F-457 / F-453 — the D-V walk: one `setup --deep` run to its first Phase 5 batch, and the guard's repeat ask read by the operator (banked 2026-09-16, builder, Session D @ hb-20260916-01 — CLEARED 2026-09-16 @ hb-20260916-01)
+
+Owed by: the tester round on the token the Session D handoff mints (Under test line).
+Tenant: either; the sandbox is fine. No tenant WRITE beyond what `--deep` itself does
+(a `describe-batch --upgrade` over one domain, `--budget` small — 3 is enough); the
+walk stops at the first batch's summary. NO new manifest state is required: pick a
+domain whose `domains.<d>.byDepth.metadata` is non-zero in `report` (if none exists on
+either tenant, pick a list-only domain — the flag doc says to explain and stop, and
+that branch is the walk; record which).
+
+Steps (consumer workspace, plugin loaded from the working tree, `/reload-plugins` then a
+session RESTART for the hook):
+1. Bradley types `/gs-superadmin:setup --deep <domain> --budget 3` (slash-only skill).
+2. Read the transcript: after Phase 2 the run must go to Phase 5 with NO Phase 3
+   scaffold step and NO Phase 4 list sweep (no `capture.mjs --paginate` spawn, no
+   `upsert-batch`, no candidate diff).
+3. Before the first `describe-batch`, the run runs `manifest.mjs report` once and
+   reads `lookback.<domain>`: when `days` is null or above `lookbackDefault` it relays
+   the one-line age notice naming `/gs-superadmin:refresh`; when within the window it
+   says nothing. Record `days`, `lookbackDefault`, and which branch fired.
+4. If the run reaches a Phase 6 relay (unlikely with `--budget 3`), or if Bradley asks
+   "would deep-ingesting <non-lane domain> improve the maps?", the answer states the
+   five-lane boundary and names deps-report as where the value lands.
+5. Guard wiring for F-453 (this round's guard-wiring line): in the consumer-workspace
+   session issue a variable-built READ loop once, e.g.
+   `for c in "re rules list" "sc list"; do gs-admin --json $c; done` — the first
+   is DENIED with the rewrite hint; issue the SAME command again — the repeat renders
+   an ASK. Bradley reads the rendered ask (never inferred from the transcript, F-437)
+   and it must carry "spelled literally" and "flag values and paths". Decline it.
+
+Pass bar: step 2 shows no list sweep and no scaffold; step 3 quotes the `lookback`
+row and the branch that fired; step 5's rendered repeat ask carries the remedy. A
+`--deep` run that re-lists REOPENS F-457; a repeat ask without the remedy REOPENS F-453.
+
+Cleared: 2026-09-16 @ hb-20260916-01 (tester, Session D-V) — all five steps measured and
+held, on the rig's own fallback branch: no metadata stub exists on either tenant, so the
+walk ran `--deep connectors` (sandbox, list-only by type); step 2 no scaffold, no sweep, no
+upsert, no diff; step 3 `lookback.connectors` `days` 1 against `lookbackDefault` 7 quoted,
+branch fired = list-only explain-and-stop before Phase 5 (no describe-batch, 0 of 3 spent);
+step 4 the report-objects maps question drew the five lanes and deps-report; step 5 deny
+then a rendered ask carrying "spelled literally" and "flag values and paths", declined.
+Verdicts of record on F-457 and F-453; the unproduced lookback-relay and `--upgrade` path
+are on F-457's Blind spots line, and re-bank here the first time a tenant holds a
+metadata stub.
