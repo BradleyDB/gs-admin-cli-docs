@@ -168,6 +168,23 @@ Blind spots (hb-20260916-01): no tenant and no operator in the builder session: 
      Numbers claimed: none (next free F-460). Issue #1 closes on the merge, not by hand. Next: merging PR #22 is
        Bradley's call. -->
 
+<!-- builder 2026-09-16 (Session E, RE-STAMPED after E-V; UNMERGED, riding a branch):
+     Branch round-e-guard-normalizer -> PR #23, base dev, UNMERGED. Transition on the branch since the comment below:
+       E-V (tester @ hb-20260916-02) — F-460 FIXED -> VERIFIED (verdict commit 579c85f [skip ci]): seven PowerShell-tool
+       shapes (the issue's own three, the two assignment siblings, the review round's value-option bypass, the Fix note's
+       repro) each drew the `journey programs save` ask, text relayed by Bradley, all declined, nothing executed; the
+       tester's own oracle run reproduced the Fix note's counts on one lane (709 / 0 bypass / 62 over-ask; 5.1 lane
+       98 / 0 / 7) and quoted the pwsh 7.6.5 lane from CI run 35147717941 (98 / 0 / 20, all passed). Tester blind spots:
+       pwsh 7 in CI only (ubuntu); no PostToolUse row measured live (every ask declined); GD-3 on the PR's suite only.
+     Merge tip: the [skip ci] verdict commit left the PR BLOCKED on dev's required drift (full); the first empty
+       commit (d914965) QUOTED the skip marker in its own message and was skipped too — GitHub honours the marker
+       anywhere in the message; a second empty commit (963897d, tip) re-ran the PR suites — QUOTED after completion:
+         validate-plugin 35151743764 (pull_request, 963897d): changes success / validate (ubuntu-latest) success / manifests success
+         docs-drift 35151743840 (pull_request, 963897d): drift (full) success
+       PR #23 reads MERGEABLE / CLEAN.
+     PR #23 is verdict-complete; merge is the maintainer's call. #2 closes on merge (Closes #2 in the body; the tester
+       commented the counts). Carried, not in scope: draft PR #17 (stages 0.39.0 — rebases its bump against 0.41.2). -->
+
 <!-- builder 2026-09-16 (Session E — the mutation guard's one normalizer, the oracle's matrix and lanes, check 11; UNMERGED, riding a branch):
      Payload: GD-1, GD-2, GD-3 of the September round plan — issue #2 items 1–3 and 8, and check 11's items 4–7.
        F-460 (normal, Class second-scanner): ONE word→program-name normalizer in hooks/gs-admin-guard.mjs (normalizeProg;
