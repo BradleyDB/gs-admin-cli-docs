@@ -172,7 +172,13 @@ released surface that marketplace users clone.
   marketplace installs from), so the default lands on the one branch that rejects it.
 - Cross-session feedback (tester findings, fix status) flows through `dev/FEEDBACK.md`
   (statuses OPEN → FIXED → VERIFIED | WONTFIX); deferred live checks are banked in
-  `dev/VALIDATION.md`.
+  `dev/VALIDATION.md`. Design conversations on that bus are maintainer-driven. If you
+  want to change always-on prose — what every plan contains
+  (`plugins/gs-superadmin/skills/change-request/references/plan-template.md`), what
+  every session reads (`plugins/gs-superadmin/templates/operating-model.md`), or the
+  managed CLAUDE.md block — open an issue first that says what would change and why,
+  then link that issue from the PR body. Fixes, tests, and generated-file rebuilds do
+  not need this.
 - Every PR runs the generated-file drift check and the doc-drift checker
   (`docs-drift.yml`); PRs touching plugin-affecting paths additionally run strict
   validation and every fixture suite (`validate-plugin.yml`).
@@ -184,7 +190,9 @@ released surface that marketplace users clone.
 - **Bump the plugin version** (`plugins/gs-superadmin/.claude-plugin/plugin.json`) on
   any user-visible plugin change, and add a matching entry to
   `plugins/gs-superadmin/CHANGELOG.md`; docs-only changes need neither. The marketplace
-  doesn't pin versions.
+  doesn't pin versions. Bump to the next number after the `dev` you branched from and
+  head the CHANGELOG entry with it; do not rebase just to chase the number — the
+  maintainer renumbers both at merge if `dev` has moved.
 - **Every release gets a GitHub Release** on its tag, its notes the CHANGELOG entries since
   the previous released tag behind the intro in `.github/release-intro.md` — watching the
   repo's Releases is the notification channel, since the marketplace announces nothing.
