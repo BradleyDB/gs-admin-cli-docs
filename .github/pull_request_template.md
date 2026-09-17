@@ -33,7 +33,9 @@ and the guard's fixture verdicts (`test/guard-fixtures.mjs`). The boxes here are
 judgments only a human can make:
 
 - [ ] Plugin version bumped in `.claude-plugin/plugin.json` with a CHANGELOG entry
-      (user-visible plugin change) / not needed (docs-only).
+      (user-visible plugin change) / not needed (docs-only). Bump to the next number
+      after the `dev` you branched from; do not rebase just to chase the number — the
+      maintainer renumbers both at merge if `dev` has moved.
 - [ ] **Safety boundary**: this PR does / does not touch `hooks/gs-admin-guard.mjs` or
       ask-rules generation. If it does: no "ask" became a "deny" or disappeared, and
       `test/guard-fixtures.mjs` was extended to cover the change.
