@@ -167,6 +167,13 @@ Blind spots (hb-20260921-01): PR #17 (plugin 0.42.0, change-request *Before buil
      Guard wiring: `gs-admin jo p save --id 'walk-guard-probe-nonexistent'` drew the ask naming
        gs-admin journey programs save, both workspace tenants + the PRODUCTION warning (text relayed by Bradley) —
        DECLINED.
+     Second arm: (Session F-V2, dev @ e3e9300) VALIDATION § PR #17 KEPT @ hb-20260921-01. Operating model
+       refreshed in place (passage present, no .new, scaffold check 9/9 current). Ask B re-run as WALK-2B: 6
+       bullets → 5 (type/priority and CTA name merged, both halves kept), all paired; the duplicate line now says
+       "has" not "runs" and asks whether production runs the 90-day rules (unscheduled here); Heads-up keeps the
+       duplicate-CTA line; Justification still AI-inferred. Slightly better, attribution confounded (arm not
+       blind to arm 1). Noted: `re r executions` returns no rows on this sandbox for every rule checked, chained
+       imports included, so "0 executions" is not evidence here.
      Numbers claimed: none (bus has no OPEN section; none opened). -->
 
 <!-- tester 2026-09-16 (Session E-V verdict round — UNMERGED; re-stamps the Session E builder comment on dev):

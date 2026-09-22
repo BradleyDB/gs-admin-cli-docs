@@ -470,3 +470,59 @@ Point by point:
 Guard wiring: `gs-admin jo p save --id 'walk-guard-probe-nonexistent'` in the consumer
 workspace drew the PreToolUse ask naming `gs-admin journey programs save`, both workspace
 tenants and the PRODUCTION warning (text relayed by Bradley) — DECLINED.
+
+Second arm (tester, Session F-V2, 2026-09-21) @ hb-20260921-01 — KEPT.
+Under test: dev @ e3e9300 (clean, 2 ahead of origin); canary matched hb-20260921-01. Ask B only
+(re-run as WALK-2B, slash-typed by Bradley); Ask A not re-run. Sandbox, CLI live, `Verification
+basis: live`. No mutating gs-admin command was proposed or run while drafting (reads: `re r
+schedules`, `re r executions`, `jo p list`, `jo p describe`, all through capture.mjs).
+Step 2 (refresh): refreshed IN PLACE. The workspace operating-model.md now carries "The admin's
+job, and yours" (line 14), with no operating-model.md.new beside it. `scaffold.mjs check` reports
+9/9 scaffolded files current (behind 0, untracked 0, pendingNew 0). The session-start hook,
+re-run by hand, prints no scaffold line.
+Arm confound, stated before the result: this arm is not blind to the first. The tester session
+drafted the plan itself, and it had read the first arm's Ask B quote (above) before drafting.
+Skill step 6 also updates a same-day same-ask plan in place (Revision 2), which means reading
+revision 1 first. What changed is measurable; how much of the change the refreshed passage caused
+is not.
+Live fact found this arm: `re r executions` returns `data: []` on this sandbox for every rule
+checked, including the chained SNOW import and Load-to-Company rules that must run. Execution
+history is therefore not evidence on this tenant. The first arm's "0 executions" wording in both
+asks leaned on it (Ask A is not re-run, so that is noted, not re-judged); "no schedule, not in a
+chain" still holds.
+
+Ask B (WALK-2B) — Before building, verbatim (KB doc ids shortened to <doc>):
+
+    - The tenant already has this at 90 days: "v2 CTA: No Logins > 90 Days - April 2024" (rules-engine/<doc>) opens a Risk / Usage Drop CTA to the CSM from the same object, and "Close CTA: No Logins > 90 Days" (rules-engine/<doc>) closes it when logins resume. Built as asked, an account past 90 days gets **two** open no-login CTAs — the names and identifiers differ. The plan excludes accounts with an open "No Logins > 90 Days" CTA (Command sequence 6–7). The other route is to lower the existing rule to 60 days: one CTA per account and the close path kept, but its "> 90 Days" name goes wrong and the close rule matches on that name, so a rename breaks closing. Ask the requester which they want (the purpose is our guess — see the header). On this sandbox the 90-day rules are active but unscheduled; ask whether production runs them, since that decides whether the exclusion does anything there.
+    - Nothing closes the new CTAs when the login comes back. Plan default: no close rule, as asked — CSMs close them by hand. Offer a copy of <doc> at 60 days.
+    - Day one: every account already past 60 days gets a CTA at once; the count comes from the test run (Verification 3). Plan default: fire for all, as asked. The alternative — fire only when an account crosses day 61 — avoids the backlog but never catches accounts already past it.
+    - Who: the ask names no segment, while other CTA rules on this object filter to customers (e.g. rules-engine/<doc> on Account_Type and product). Plan default: CSM populated (conventions/rules-engine.md) and ACCOUNT_LAST_LOGIN not null, so never-logged-in accounts are excluded (Command sequence 5). Ask: customers only? Does never-logged-in count?
+    - CTA fields, not stated: the plan mirrors the 90-day rule — Risk, Usage Drop, Medium, New — with no playbook (Command sequence 11). "ACCOUNT_LAST_LOGIN alert" is the raw field label, and as the CTA name it is what CSMs see in Cockpit; the plan keeps it as asked. Suggest "No login in 60+ days".
+
+    Heads-up:  The tenant already has this at 90 days ("v2 CTA: No Logins > 90 Days", with a close rule), so built as asked an account past 90 days gets two open no-login CTAs; the plan excludes those accounts. Lowering the existing rule to 60 is the alternative, but its "> 90 Days" name and the name-matching close rule break.
+
+Against the first arm, bullet by bullet:
+- (1) Duplicate CTA: REWORDED + one sentence ADDED. "Already runs" became "already has". A
+  pointer to Command sequence 6–7 was added. New: the 90-day rules are active but unscheduled
+  here, so ask whether production runs them. Pairs: the C_Exclude merge (Command sequence 6–7)
+  and two requester questions, which route and whether production runs the 90-day rule. The
+  second question decides whether that merge does anything.
+- (2) No close rule: REWORDED (shorter), same content. Pairs: the offered 60-day close-rule copy.
+- (3) First run: REWORDED (shorter), same default and alternative. Pairs: Command sequence 5's
+  filter (no crossing window) and the backlog question.
+- (4) Segment: REWORDED; a pointer to Command sequence 5 was added. Pairs: Command sequence 5's
+  CSM and not-null filters, plus the customers-only and never-logged-in questions.
+- (5)+(6) CTA type/priority and CTA name: MERGED into one bullet, both halves kept. Pairs:
+  Command sequence 11's --type/--reason/--priority/--status and its --name, plus the rename
+  suggestion. This is the judgement call against the reopen rule. Six bullets became five, but
+  no paired content was lost: every default and every requester line of the first arm's (5) and
+  (6) is still present.
+- Checked and correctly kept out (impact table only): the customer-facing login journey is live
+  status NEW (nothing goes to customers), a second active copy of the 90-day rule is caught by
+  the same name exclusion, and the Account Scorecard's login measure reads different login
+  fields. None changes a plan line or a requester question.
+- Heads-up: still carries the duplicate-CTA line (same wording apart from "runs"→"has" and
+  "every account"→"an account"). Justification: still `… (AI-inferred)`.
+Judgement: slightly better. The same pairs are there in fewer words, and one overclaim
+("already runs") became a requester question that decides whether a plan step does anything.
+How much of that the refreshed passage caused is unmeasured (confound above).
