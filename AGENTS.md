@@ -678,3 +678,7 @@ go through GitHub private advisories (SECURITY.md), not an email address.
   the public repository it resolves to nothing, by design.
 - …a PR body: `.github/pull_request_template.md` — the shape every PR reproduces;
   `gh pr create --body-file` never pre-fills it, so read it before composing.
+- …always-on prose (the operating model, the managed CLAUDE.md block, a skill's output
+  template) or the plugin version from outside the maintainer's loop: CONTRIBUTING.md,
+  "Submitting changes" — an issue comes first for always-on prose, and the maintainer
+  renumbers the version at merge if `dev` has moved.
