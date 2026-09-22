@@ -526,3 +526,29 @@ Against the first arm, bullet by bullet:
 Judgement: slightly better. The same pairs are there in fewer words, and one overclaim
 ("already runs") became a requester question that decides whether a plan step does anything.
 How much of that the refreshed passage caused is unmeasured (confound above).
+
+## Sandbox `re r executions` — empty for every rule checked (observed 2026-09-21, tester Session F-V2; banked 2026-09-21, builder)
+
+Owed by: the next tester round with the PRODUCTION tenant active. Read-only.
+What was seen: on the sandbox, `re r executions` returned `data: []` for every rule checked, including the chained
+import and Load-to-Company rules that must run for the tenant to function. The first arm's ask A plan leaned on it
+("0 executions", "never run on this tenant"); the second arm noted that "no schedule, not in a chain" still holds on
+its own. Whether the list is empty because the sandbox retains no execution history, or because the command returns
+nothing on every tenant, is not known — and the two outcomes land in different homes.
+
+Steps (consumer workspace, plugin loaded from the working tree):
+1. `gs-admin whoami` reads production.
+2. From the production KB, pick two rules documented as scheduled and active (a rules-engine doc with a schedule, or a
+   chain member), plus one the KB says is inactive.
+3. `gs-admin --json re r executions <id>` for each, through capture.mjs. No other command.
+4. Record per rule: rows returned (count, newest date) or `data: []`, and for an empty result the raw payload shape.
+
+Outcome rule:
+- Rows on production for the scheduled rules → sandbox-only. The fact's home is the sandbox slug's tenant conventions
+  (one home per kind of fact, F-450): "this tenant retains no rule execution history — an empty `re r executions` is
+  not evidence a rule never ran; read schedules and chain membership instead." No skill line, no finding.
+- `data: []` on production too → open a finding (normal: a plan that asserts "never run" from a list that is always
+  empty is wrong for the user), with a Known CLI issue candidate (KI-019) for the operating model — re-check the
+  endpoint the catalog names for `rules-engine rules executions` (reference/domains/rules-engine.md) — and one
+  change-request step 4 line: an empty executions list is unknown, not zero.
+Record the verdict here with the token, and copy it to the bus under the round's Blind spots line.

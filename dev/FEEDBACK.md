@@ -149,6 +149,21 @@ rule also reads the archive.
 Under test: dev · hb-20260921-01 · 2026-09-21
 Blind spots (hb-20260921-01): PR #17 (plugin 0.42.0, change-request *Before building* + operating-model Role) shipped unwalked — the walk is banked in dev/VALIDATION.md § PR #17 and is the whole of this round; the asks are authored from the sandbox KB, not sourced from Jira (no real tickets on hand), so a requester-shaped vague ticket is approximated by deliberate silences in ask B and named as the rig deviation; PR #25 is docs-only, nothing to walk; F-460 blind spots carry as stated
 
+<!-- builder 2026-09-21 (Session F round CLOSED OUT — on dev, no branch):
+     Payload: none of the builder's — the round was the owed walk of PR #17's shipped prose (plugin 0.42.0, merged
+       at 0cbcc12) plus the operating-model refresh's second arm. Both recorded in dev/VALIDATION.md § PR #17:
+       first arm CLEARED @ hb-20260921-01 (PASS on all four points; ask A's line 1 ruled rig-caused), second arm KEPT
+       (operating model refreshed in place, scaffold 9/9 current; ask B 6 → 5 bullets, all paired, slightly better;
+       attribution confounded — the arm was not blind to the first).
+     Processed: F-461 (polish, builder-logged, OPEN) — step 4's closing sentence overstates what a well-formed ticket
+       "gets"; a SKILL.md change owes a walk, so it rides the next substantive round. The `re r executions` observation
+       is banked in dev/VALIDATION.md (production arm, read-only); a finding opens only if production is empty too.
+     Open PRs to dev: none. No OPEN normal/high; one OPEN polish (F-461) — auto-defers once at the release ceremony.
+     Under test stays dev · hb-20260921-01 (nothing FIXED to hand off; no new token minted). Next free number F-462.
+     Released: nothing (dev stages 0.37.1, 0.38.0, 0.39.0, 0.40.0, 0.41.0, 0.41.1, 0.41.2, 0.42.0).
+     Next: the release gate on dev — /code-review over origin/main...dev and /security-review (0.41.2 touched the
+       guard) — then cut release/v0.42.0. -->
+
 <!-- tester 2026-09-21 (Session F-V walk round — on dev, no branch):
      Under test: dev @ 5dd23b3 (handoff commit, clean); canary matched hb-20260921-01, loaded from
        <repo>\plugins\gs-superadmin. Round type: first walk of PR #17's shipped prose; no finding under test.
@@ -958,3 +973,10 @@ Measured: (1) all seven asks rendered and were DECLINED by Bradley, who relayed 
 Verified: 2026-09-16 @ hb-20260916-02 (tester, Session E-V) — all seven assignment-prefixed / positional / value-option shapes drew the `journey programs save` ask (declined); the oracle reads 0 bypass on both PowerShell lanes (5.1 local: 98 rows / 7 over-ask; pwsh 7.6.5 in CI: 98 rows / 20 over-ask) with the Fix note's 709 / 0 / 62 reproduced.
 Walk (tester, hb-20260916-02): no SKILL.md changed this round except the dev-canary token, so no walk is owed; the guard-wiring line is the seven asks above.
 Blind spots (tester, hb-20260916-02): the pwsh 7 lane measured only in CI (no pwsh on this host either), and only on ubuntu; the rendered asks were read for PowerShell-tool calls only (no Bash-tool shape probed); PostToolUse journaling not measured live — every ask was declined, so no row was due; the value-option table beyond -ExecutionPolicy rests on the oracle and fixtures; GD-3 (check 11) rests on the PR's drift suite and fixtures, not re-run by the tester.
+
+## F-461 — OPEN
+Reported: 2026-09-21 (builder, from the Session F-V walk's "noted for the builder" line under VALIDATION § PR #17)
+Severity: polish — skill prose overstates a rule the per-line test, the pass bar and CHANGELOG 0.42.0 already state correctly; the plan a user gets is right
+What: change-request SKILL.md step 4 closes with "If nothing passes, the section is the template's one empty line; a ticket that says what it's for and asks for the right thing gets exactly that." Measured on the walk (VALIDATION § PR #17, ask A): a ticket that stated its purpose and asked for the right thing got ONE line — a true tenant fact (the CTA Name literal "2022 or Earlier" going stale after the threshold edit) that passes the per-line test and pairs with a rename offer to the requester. The test decides the section; the sentence reads as if the ticket's shape decides it. CHANGELOG 0.42.0 already says such a ticket "gets one line saying so".
+Repro: read the sentence (SKILL.md step 4, last paragraph) beside the walk's ask A quote in dev/VALIDATION.md § PR #17 — they disagree on what a well-formed ticket "gets".
+Expected: the sentence says what the test decides, e.g. "…the section is the template's one empty line. A ticket that says what it's for and asks for the right thing usually gets exactly that — unless one tenant fact passes the test, and then it gets that one line." Skill prose only; bump per the repo's prose precedent (0.41.1). A SKILL.md change owes a walk (bus header walk hint), so this rides the next substantive round rather than a round of its own; ask A's first-arm quote is the measurement the reworded sentence must agree with.
