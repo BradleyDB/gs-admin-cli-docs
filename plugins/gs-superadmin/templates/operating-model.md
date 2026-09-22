@@ -355,20 +355,22 @@ commands and output are still in this session.
 - **Every error path aborts on a libuv assertion instead of exiting cleanly.** After
   printing a correct API error, the process aborts with
   `Assertion failed: !(handle->flags & UV_HANDLE_CLOSING), file src\win\async.c, line 94`
-  and exits **127** — conventionally "command not found", so a caller cannot tell a
-  missing CLI from a rejected request. Not specific to auth, malformed JSON or `login`
+  and exits with a crash status — the raw process status on Windows is 0xC0000409
+  (3221226505, a Windows fail-fast; measured 2026-09-14 from a Node spawn with no shell),
+  which Git Bash displays as **127** and PowerShell as 255 — so under Git Bash a caller
+  cannot tell a missing CLI from a rejected request. Not specific to auth, malformed JSON or `login`
   (where it was previously noticed as a side-observation of a different bug): it
   reproduces on a plain read-only `re r describe --id <nonexistent>`, 3 of 3, with and
   without `--json`. The success path exits 0 cleanly. **Parse stderr for the `Error:`
-  line rather than trusting the exit code**; treat exit 127 from `gs-admin` as "check
-  stderr", never as "the CLI is not installed" (observed live on 1.0.9; ledger KI-017).
+  line rather than trusting the exit code**; treat exit 127, 255 or 3221226505 from
+  `gs-admin` as "check stderr", never as "the CLI is not installed" (observed live on 1.0.9; ledger KI-017).
 - **`re rules topics` and `jo email connectors` always fail server-side** — `Error: Server
   Error Occurred, Please contact support` and `Error: HTTP 500` respectively, with a fresh
   Gainsight Request ID on every call (8 attempts across two tokens and two shells, on two
   independent tenants; 0 successes). Both are non-mutating tenant-wide list commands with no
   required flags, so there is no alternate spelling to try and no workaround. Both also abort
-  on the libuv assertion above, so the exit code is a crash code (127 under Git Bash, 255
-  under PowerShell), **not** an auth or server status — do not mistake it for the token
+  on the libuv assertion above, so the exit code is a crash code (raw 0xC0000409; 127 under Git Bash,
+  255 under PowerShell), **not** an auth or server status — do not mistake it for the token
   half-life defect and do not loop on re-login. Record such a command as **blocked with a
   re-check date, never excluded**: "returns 500 today" is not a durable reason to bury a
   domain (observed live on 1.0.8 and 1.0.9; ledger KI-018).
@@ -470,7 +472,15 @@ When you discover new relationships (e.g., a rule writes to a field that a score
 ## Build standards
 
 Refer to `.gs-superadmin/CONVENTIONS.md` before authoring or modifying any Gainsight asset
-(rules, journeys, reports, scorecards). If `.gs-superadmin/conventions/` exists (the adopted
+(rules, journeys, reports, scorecards). That file is **workspace-wide**: every tenant
+indexed here reads it, unless a `<slug>/CONVENTIONS.md` exists beside that tenant's KB
+folder — then that file replaces it for that tenant alone (the exception, not the norm:
+one company, one set of conventions; copy the workspace file into `<slug>/` and edit it
+only when a tenant genuinely differs). Every reader, scripted or prose, looks for the
+tenant file first and says which one it used; an adopted `.gs-superadmin/conventions/`
+pack stays workspace-wide and sits BETWEEN the two — a tenant file's filled-in section
+wins over the pack, the pack over the workspace file's section — and an existing tenant
+file is never completed from the workspace file (two files never read as one). If `.gs-superadmin/conventions/` exists (the adopted
 build-standards pack), consult `conventions/index.md` and load **only** the topic file
 relevant to the current task — `naming.md` for names/renames/audits, `query-building.md`
 for any dataset work (building or editing a query in Rules, Data Designer, or JO Programs;

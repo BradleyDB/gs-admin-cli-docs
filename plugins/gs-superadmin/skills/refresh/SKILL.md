@@ -41,6 +41,10 @@ node .gs-superadmin/plugin/scripts/manifest.mjs report --manifest <slug>/_manife
 ```
 If the manifest does not exist, or `total` is 0 with `last_refresh` null (setup was
 interrupted before Phase 4 completed), tell the user to run `/gs-superadmin:setup` first and stop.
+Keep this report's `domains` block: step 4 compares its `changeDetection` (`date` /
+`none` / `unrecorded`) against a fresh report taken after step 3, and reads
+`datelessEntries`, to name every domain whose changes this run could not check
+(F-451) — the glossary and the per-line rules are at step 4.
 
 **Environment backfill** (once per legacy manifest): if `report` above shows
 `environment: null` (a manifest that predates the field, or one initialised without it),
@@ -91,7 +95,7 @@ the shipped capture helper (clean UTF-8, no BOM, any shell; never a bare shell
 redirect — rule canon: setup Phase 4; prefer a scratch `.mjs` file over a `node -e`
 one-liner when processing the files):
 ```
-node .gs-superadmin/plugin/scripts/capture.mjs --paginate --page-flag page --out .gs-superadmin/tmp/<ns>-<list-cmd>-{page}.json -- gs-admin --json <ns> <list-cmd> --limit 200
+node .gs-superadmin/plugin/scripts/capture.mjs --paginate --page-flag page --out '.gs-superadmin/tmp/<ns>-<list-cmd>-{page}.json' -- gs-admin --json <ns> <list-cmd> --limit 200
 ```
 Add `--items-path <dotted>` for a command whose envelope carries a second array beside
 the rows (`rp list`: `--items-path data.data` — its root `alerts` block fills on a
@@ -201,10 +205,12 @@ compare the total you fetched against `report`'s `byDomain` count, and read the 
 `incomingCount` / `existingEntries` / `warnings`: it warns when the incoming list is
 smaller than the domain's non-failed inventory (expected and ignorable only for a single
 page of a multi-page fetch, a recency-filtered list, or a **scope-limited domain** — a
-list command that cannot see the whole tenant, named in setup's
-`references/index-scope-notes.md`; `jo email templates` is one, and its shortfall is
-permanent: re-paging cannot close it, and the same warning returns on every refresh —
-read it as the known scope limit, not as under-fetch). **The default reading of any
+list command that cannot see the whole tenant: step 1's report names every such domain
+on its `domains.<domain>.scope` row (`limit` says what the CLI hides; the canon is
+setup's `references/index-scope-notes.md`, one subsection per command), and its
+shortfall is permanent: re-paging cannot close it, and the same warning returns on every
+refresh — read it as the known scope limit, not as under-fetch; a domain whose `scope`
+is null gets no such reading). **The default reading of any
 other shortfall is "probable under-pagination → re-page and re-upsert"** — `upsert-batch`
 never removes entries. Never pass `--partial` on a refresh re-list: that flag declares
 a deliberate-subset registration (gap-fill flows), and here it would silence exactly
@@ -247,12 +253,47 @@ passing `--list-command` on this refresh's upserts (above) is the backfill.
 
 ### 4 — Report
 
+The `Not checked for change this run:` block states each domain's change-detection
+state AS THE NEXT RUN WILL READ IT (F-451 reopen: a line that said "detection starts
+next refresh" for a domain this run had just recorded as having no date field was a
+proxy claim). So it is read from a FRESH report taken after step 3's last upsert —
+run the step 1 invocation once more, at a quiescent point — and compared against step
+1's report for the same domain. One line per qualifying domain, sorted by name within
+each kind:
+- fresh `changeDetection: none` and step 1 read `none` too (recorded-none from before
+  this run: the whole domain sits outside change detection) — the first line.
+- step 1 read `unrecorded` (a legacy stamp: nothing could be compared this run) and
+  the fresh report reads `date` (step 3 recorded a field) — the second line, `<field>`
+  = the fresh `domains_indexed.<domain>.dateField`.
+- step 1 read `unrecorded` and the fresh report reads `none` (step 3 recorded
+  `--no-date-field`) — the third line: outside change detection from now on, never
+  "starts next refresh".
+- the fresh report still reads `unrecorded` (no upsert this run, or one that passed
+  neither flag) — the fourth line; it returns next run.
+- fresh `changeDetection: date` with `datelessEntries > 0` (rows the comparison
+  could not see — the list-invisible recovery path registers such entries) — the
+  fifth line.
+`<n>` is that domain's `datelessEntries`; `<t>` is the sum of that domain's `byDomain`
+row values (`byDomain.<domain>` is a status→count map and carries no total key). A
+domain in `emptyDomains` has no `byDomain` row — it holds zero entries — and gets no
+line at all. When no domain qualifies the block is the single word `none` — never
+omitted, never silence: "Unchanged" above counts only what the date comparison could
+see (F-451). Check before relaying: every line's state word ("outside change
+detection" / "detection starts next refresh" / "still unrecorded") must equal that
+domain's fresh `changeDetection` (`none` / `date` / `unrecorded`); a line that does
+not is wrong, whatever step 3 printed.
 ```
 ✓ gs-superadmin refresh complete
   Lookback:  <N> days
   Changed:   X assets marked stale
   New:       Y assets added as pending
   Unchanged: Z assets
+  Not checked for change this run:
+    <domain> — no date field recorded; <t> entries outside change detection
+    <domain> — no date field when this run started (legacy stamp); recorded this run as <field>; detection starts next refresh
+    <domain> — no date field when this run started (legacy stamp); recorded this run as none; <t> entries outside change detection from now on
+    <domain> — no date field recorded (legacy stamp); still unrecorded — this run's upsert passed neither --date-field nor --no-date-field
+    <domain> — <n> of <t> entries carry no date under the recorded field
 ```
 
 **Detect-only is the default posture — staleness detection is cheap; re-documenting is

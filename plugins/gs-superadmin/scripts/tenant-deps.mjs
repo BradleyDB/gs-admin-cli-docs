@@ -36,7 +36,8 @@
 //   in every output row (it names the originating task); near-misses are
 //   listed in a not-counted caveat. The convention is read by the SCRIPT
 //   itself (GP-B5 DS-27: jo-report-deps readAliasConvention, from the
-//   workspace's .gs-superadmin/CONVENTIONS.md, walking up from --kb) —
+//   workspace's .gs-superadmin/CONVENTIONS.md, walking up from --kb, or the
+//   tenant's own <slug>/CONVENTIONS.md override when one exists, F-450 a) —
 //   --alias-prefix is the explicit override. Missing/unset → exact-only plus
 //   a conventions-unavailable caveat; malformed → exact-only plus a loud
 //   caveat naming why. A pattern is never inferred from tenant data (A-4).
@@ -1859,6 +1860,8 @@ export async function run(argv) {
       nearMisses: [...nearMissByTerm.entries()].map(([term, names]) => ({ term, names: [...names].sort() })),
       conventionNote: aliasRes.note,
       unsetWhy: aliasRes.unsetWhy,
+      unsetHome: aliasRes.home ?? null,
+      unsetPath: aliasRes.path ?? null,
     })
   );
   if (terms.objectTerms.length)

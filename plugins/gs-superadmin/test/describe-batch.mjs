@@ -123,6 +123,18 @@ writeFileSync(
       { path: "data-designer templates describe", shortPath: "dd t describe", mutating: false,
         flags: [{ flag: "--template-id" }, { flag: "--template-name" }, { flag: "--task-id" }, { flag: "--pivot-column" }, { flag: "--field" }],
         endpoints: [{ method: "GET", path: "/v1/bionicreporting/designTemplates/{{templateId}}" }, { method: "GET", path: "/v1/bionicreporting/designTemplates/{{templateId}}/tasks" }] },
+      // F-456 (DB-2): a per-item read whose PATH ends in a noun — admitted on
+      // its actionKey (the catalog's own statement of what the action is),
+      // never on the trailing word. Shape from the 1.0.9 catalog.
+      { path: "connectors chain", shortPath: "cn chain", mutating: false, actionKey: "describe-job-chain",
+        summary: "Describe a job execution chain set", endpoints: [{ method: "GET", path: "/v1/connectors/chains/{{id}}" }] },
+      // …the hand-trimmed shape (path/shortPath/mutating only): no actionKey
+      // to read, so the trailing-word fallback decides — and refuses "chain".
+      { path: "connectors chain-trimmed", shortPath: "cn chain-trimmed", mutating: false },
+      // …and a describe-shaped actionKey over a write endpoint: the endpoint
+      // gate stays independent of the actionKey admit.
+      { path: "connectors chain-sneaky", shortPath: "cn chain-sneaky", mutating: false, actionKey: "describe-chain-sneaky",
+        endpoints: [{ method: "PUT", path: "/v1/connectors/chains/{{id}}" }] },
     ],
   })
 );
@@ -137,6 +149,33 @@ writeFileSync(
     "const a = process.argv;",
     "const at = (f) => { const i = a.indexOf(f); return i > -1 ? a[i + 1] : undefined; };",
     "const id = at('--id') ?? at('--name');",
+    // DB-3 / DB-4 (issue #13, F-458) run controls, all env-driven and off by
+    // default. FAKE_SPAWN_LOG: one line per spawn — the suite counts spawns
+    // from it, never from the summary. FAKE_FAIL_PATTERN: an F/S string
+    // indexed by spawn number modulo its length; F fails that spawn with a
+    // transport-shaped error (exit 1, no re-login sentence). FAKE_AUTH_AFTER=N:
+    // every spawn past the Nth dies the way the CLI's shared handler prints a
+    // thrown auth error (`Error: <message>` on stderr, exit 1 —
+    // dist/commands/base.js BaseCommand.catch at 1.0.9); FAKE_AUTH_LITERAL
+    // picks which of the four dist/core/auth/index.js throws (default 3, the
+    // finding's half-life literal). FAKE_WARN_AUTH=1: the phrase on stderr
+    // under a NORMAL exit 0 — the ruling's negative arm (2026-09-14: only a
+    // failed spawn is classified).
+    "const AUTH_LITERALS = [",
+    "  'No stored token found. Run `gs-admin login` to authenticate.',",
+    "  'Access token has expired and no refresh token is available. Run `gs-admin login` to re-authenticate.',",
+    "  'Token expired and silent refresh failed (GET https://acme.gainsightcloud.com/v1/oauth/apps returned 401). Run `gs-admin login` to re-authenticate.',",
+    "  'Token refresh failed (400). Run `gs-admin login` to re-authenticate.',",
+    "];",
+    // The spawn number comes from a one-byte-per-spawn sibling counter file
+    // (O(1): its size IS the count); the log itself keeps the argv lines. A
+    // control set without the log would silently no-op — refused loudly.
+    "let spawnN = 0;",
+    "if ((process.env.FAKE_FAIL_PATTERN || process.env.FAKE_AUTH_AFTER !== undefined) && !process.env.FAKE_SPAWN_LOG) { console.error('fake: FAKE_FAIL_PATTERN / FAKE_AUTH_AFTER need FAKE_SPAWN_LOG (the spawn counter) — refusing'); process.exit(97); }",
+    "if (process.env.FAKE_SPAWN_LOG) { const fs0 = await import('node:fs'); fs0.appendFileSync(process.env.FAKE_SPAWN_LOG, a.slice(2).join(' ') + '\\n'); fs0.appendFileSync(process.env.FAKE_SPAWN_LOG + '.n', '.'); spawnN = fs0.statSync(process.env.FAKE_SPAWN_LOG + '.n').size; }",
+    "if (process.env.FAKE_AUTH_AFTER !== undefined && spawnN > Number(process.env.FAKE_AUTH_AFTER)) { console.error('Error: ' + AUTH_LITERALS[Number(process.env.FAKE_AUTH_LITERAL ?? '3') - 1]); process.exit(1); }",
+    "if (process.env.FAKE_FAIL_PATTERN) { const p = process.env.FAKE_FAIL_PATTERN; if (p[(spawnN - 1) % p.length] === 'F') { console.error('boom: simulated transport failure on spawn ' + spawnN); process.exit(1); } }",
+    "if (process.env.FAKE_WARN_AUTH === '1') console.error('Error: ' + AUTH_LITERALS[2]);",
     "if (id === 'r-fail') { console.error('boom: simulated describe failure'); process.exit(1); }",
     // W9 designer branch — the three levels of `dd t describe` at pin 1.0.8,
     // fixtures under $FAKE_DD (a JSON file: { templates: { <id>: { tasks:[summary
@@ -923,7 +962,7 @@ check(
   resetLog();
   r = dd(["--limit", "1", "--spawn-budget", "3"]);
   const cut = fenceOf("dd-1.md");
-  check("W9 budget: the run stops at the budget — nothing marked, entry still stale, budgetExhausted + moreRemaining true, 3 spawns", r.code === 0 && r.json?.documented === 0 && r.json?.drilldowns?.budgetExhausted === true && r.json?.moreRemaining === true && r.json?.drilldowns?.spawnsUsed === 3 && invOf("data-designer/dd-1").status === "stale", r.json);
+  check("W9 budget: the run stops at the budget — nothing marked, entry still stale, budgetExhausted + moreRemaining true, 3 spawns — and NO `aborted` (distinguishable by field from a DB-3/DB-4 abort)", r.code === 0 && r.json?.documented === 0 && r.json?.drilldowns?.budgetExhausted === true && r.json?.moreRemaining === true && r.json?.drilldowns?.spawnsUsed === 3 && invOf("data-designer/dd-1").status === "stale" && r.json?.aborted === undefined, r.json);
   check("W9 budget: the partial doc is on disk and SAYS so — t1 ok, t2 pending, one field ok, provenance INCOMPLETE", cut.payload.data._kb.tasks.t1.status === "ok" && cut.payload.data._kb.tasks.t2.status === "pending" && Object.values(cut.payload.data._kb.fields.t1).filter((f) => f.status === "ok").length === 1 && /INCOMPLETE — resumes on the next describe-batch run/.test(cut.text), cut.text.split("\n")[2]);
   check("W9 budget: stderr progress line reports spawns used against the budget", /\(spawns 3\/3\)/.test(r.stderr), r.stderr);
   resetLog();
@@ -966,7 +1005,7 @@ check(
   const dd6calls = argLines().filter((a) => a.includes("dd-6") && a.includes("--field")).map((a) => a[a.indexOf("--field") + 1]);
   check("W9 fallback: an UNKNOWN trailing group is tried whole first, then shape-stripped on the not-found refusal; the resolved spelling is recorded", e6.status === "documented" && isDeepStrictEqual(dd6calls.slice(0, 2), ["Growth (new_fn)", "Growth"]) && fb.payload.data._kb.fields.t1["Growth (new_fn)"].status === "ok" && fb.payload.data._kb.fields.t1["Growth (new_fn)"].spelling === "Growth", { dd6calls, f: fb.payload.data._kb.fields.t1 });
   check("W9 fallback: a label whose own parenthesis resolves whole is never stripped; a known suffix is tried stripped first and whole on refusal", isDeepStrictEqual(dd6calls.slice(2), ["Rollup (v2)", "Total", "Total (SUM)"]) && fb.payload.data._kb.fields.t1["Rollup (v2)"].spelling === undefined && fb.payload.data._kb.fields.t1.Total.status === "ok" && fb.payload.data._kb.fields.t1.Total.spelling === "Total (SUM)", { dd6calls, f: fb.payload.data._kb.fields.t1 });
-  check("W9 failure: the batch continued past the failures and the queue re-offers the retryable ones", r.json?.moreRemaining === true && r.json?.failed === 3, r.json);
+  check("W9 failure: the batch continued past the failures and the queue re-offers the retryable ones — three failures, none consecutive past two, no abort", r.json?.moreRemaining === true && r.json?.failed === 3 && r.json?.aborted === undefined, r.json);
   resetLog();
   r = dd(["--limit", "9"]);
   check("W9 failure: the retry resumes dd-2 (fingerprint unchanged), re-spawns ONLY its retryable item (template + 1 task) and SKIPS the permanent field; dd-4/dd-5 fail again at their gates without drilldowns", r.json?.drilldowns?.resumedEntries === 1 && r.json?.drilldowns?.thisRun?.fieldsSkippedUnresolvable === 1 && argLines().filter((a) => a.includes("--task-id")).length === 1 && r.json?.failed === 3, { drilldowns: r.json?.drilldowns, calls: argLines() });
@@ -993,6 +1032,221 @@ check(
   manifest("upsert-batch", ["--file", otherList, "--domain", "designs-x", "--id-field", "templateId", "--name-field", "name"]);
   r = batch(["--domain", "designs-x", "--out-dir", join(ROOT, "acme-sbx", "designs-x"), "--bin", FAKE, "--command", "gs-admin --json dd t describe --template-id {id}"], ENV);
   check("W9 mode: a domain NOT named data-designer whose command resolves to `dd t describe` still gets the designer doc-mode", r.json?.docMode === "designer" && r.json?.documented === 1 && !!fenceOf(join("..", "designs-x", "dd-1.md")).payload.data._kb, r.json);
+
+  // ── DB-3 / DB-4 in designer mode: the abort counter is per ENTRY outcome,
+  // and an auth death inside a drilldown aborts with the entry unmarked ────
+  {
+    const SPAWN_LOG = join(ROOT, "dd-spawn-log.txt");
+    // dd-7: five tasks, every drilldown fails on transport — ONE failed entry
+    // outcome, whatever the spawn count (issue #13: the counter is per
+    // top-level entry, never per drilldown spawn).
+    const fx7 = JSON.parse(JSON.stringify(fx));
+    fx7.templates["dd-7"] = {
+      name: "Acme Five Broken",
+      tasks: ["a", "b", "c", "d", "e"].map((t) => ({ taskId: `t-${t}`, taskName: t, taskType: "mdaExtract", _parents: "", _object: "company", _connType: "MDA", _fieldCount: 0, _filterCount: 0, _groupByCount: 0 })),
+      failTasks: ["t-a", "t-b", "t-c", "t-d", "t-e"], details: {}, fields: {},
+    };
+    writeFileSync(FX, JSON.stringify(fx7));
+    const dd7List = join(ROOT, "dd-7.json");
+    writeFileSync(dd7List, JSON.stringify({ data: [{ templateId: "dd-7", name: "Acme Five Broken" }] }));
+    manifest("upsert-batch", ["--file", dd7List, "--domain", "data-designer", "--id-field", "templateId", "--name-field", "name"]);
+    const resetSpawns = () => { rmSync(SPAWN_LOG, { force: true }); rmSync(SPAWN_LOG + ".n", { force: true }); };
+    resetLog(); resetSpawns();
+    r = dd(["--limit", "1", "--statuses", "pending"]);
+    check("#13 designer: five failed DRILLDOWNS are one failed entry outcome — marked failed, no abort (the counter is per entry, never per spawn)",
+      r.json?.failed === 1 && r.json?.aborted === undefined && r.json?.drilldowns?.thisRun?.tasksFailed === 5 && invOf("data-designer/dd-7").status === "failed", r.json);
+    // dd-1 again, the token dying on the THIRD spawn (template ok, t1 ok, the
+    // first field detail dies): nothing marked, the composite records no
+    // false task/field outcome, the summary names the auth abort.
+    writeFileSync(FX, JSON.stringify(fx));
+    manifest("mark", ["--key", "data-designer/dd-1", "--status", "stale"]);
+    rmSync(join(DD_OUT, "dd-1.md"), { force: true });
+    resetLog(); resetSpawns();
+    r = dd(["--limit", "1", "--statuses", "stale"], { FAKE_SPAWN_LOG: SPAWN_LOG, FAKE_AUTH_AFTER: "2" });
+    const partial = fenceOf("dd-1.md");
+    check("F-458 designer: an auth death inside a drilldown aborts the run — reason auth, after 1, entry UNMARKED (still stale), 3 spawns, budget not the signal",
+      r.code === 0 && r.json?.aborted?.reason === "auth" && r.json?.aborted?.after === 1 && r.json?.documented === 0 && r.json?.failed === 0 &&
+        invOf("data-designer/dd-1").status === "stale" && r.json?.drilldowns?.spawnsUsed === 3 && r.json?.drilldowns?.budgetExhausted === false &&
+        r.json?.moreRemaining === true,
+      { json: r.json, entry: invOf("data-designer/dd-1") });
+    // …and the same death one level UP, on the template spawn itself (the
+    // review round's sibling): the same top-level record, one spawn, nothing
+    // on disk for the entry, nothing marked.
+    {
+      const before = existsSync(join(DD_OUT, "dd-1.md")) ? readFileSync(join(DD_OUT, "dd-1.md"), "utf8") : null;
+      resetLog(); resetSpawns();
+      const rr = dd(["--limit", "1", "--statuses", "stale"], { FAKE_SPAWN_LOG: SPAWN_LOG, FAKE_AUTH_AFTER: "0" });
+      const after = existsSync(join(DD_OUT, "dd-1.md")) ? readFileSync(join(DD_OUT, "dd-1.md"), "utf8") : null;
+      check("F-458 designer: an auth death on the TEMPLATE spawn aborts the same way — reason auth, after 1, 1 spawn, entry still stale, the partial composite untouched",
+        rr.json?.aborted?.reason === "auth" && rr.json?.aborted?.after === 1 && rr.json?.drilldowns?.spawnsUsed === 1 && rr.json?.failed === 0 &&
+          invOf("data-designer/dd-1").status === "stale" && after === before, { json: rr.json });
+    }
+    check("F-458 designer: the composite on disk carries NO outcome from the token death — t1 ok, its first field still pending (never `failed`), t2 pending, provenance INCOMPLETE",
+      partial.payload.data._kb.tasks.t1.status === "ok" && partial.payload.data._kb.fields.t1.ARR.status === "pending" &&
+        partial.payload.data._kb.tasks.t2.status === "pending" && /INCOMPLETE/.test(partial.text),
+      partial.payload.data._kb);
+    // …and the resume is unchanged: the next run picks the composite up.
+    resetLog(); resetSpawns();
+    r = dd(["--limit", "1", "--statuses", "stale"]);
+    check("F-458 designer: the next invocation resumes from the partial composite and completes (resumedEntries 1, documented)",
+      r.json?.documented === 1 && r.json?.drilldowns?.resumedEntries === 1 && r.json?.aborted === undefined && invOf("data-designer/dd-1").status === "documented", r.json);
+  }
+}
+
+// ── DB-2 (F-456): the read-shape gate reads the catalog's actionKey ──────────
+// `cn chain` is a per-item describe whose PATH ends in a noun; the trailing-
+// word predicate refused it — and, since capture.mjs composes the same gate,
+// both sanctioned capture paths refused it, leaving no legal route to
+// document the domain (the finding's third note). The shared predicate now
+// admits a describe-shaped actionKey on its own merits, keeps the trailing-
+// word rule for hand-trimmed catalogs (no actionKey to read), and the
+// endpoint gate stays independent of either admit.
+{
+  const chainList = join(ROOT, "chains-cn.json");
+  writeFileSync(chainList, JSON.stringify({ data: [{ chainId: "ch-1", name: "Nightly Load Chain" }] }));
+  manifest("upsert-batch", ["--file", chainList, "--domain", "connectors-chains", "--id-field", "chainId", "--name-field", "name"]);
+  const CN_OUT = join(ROOT, "acme-sbx", "connectors-chains");
+  let r = batch(["--domain", "connectors-chains", "--out-dir", CN_OUT, "--bin", FAKE, "--command", "gs-admin --json cn chain --id {id}"]);
+  check("F-456: `cn chain --id {id}` admitted on its actionKey (describe-job-chain) though the path's trailing word is a noun",
+    r.code === 0 && r.json?.documented === 1 && existsSync(join(CN_OUT, "ch-1.md")), r);
+  manifest("mark", ["--key", "connectors-chains/ch-1", "--status", "stale"]);
+  r = batch(["--domain", "connectors-chains", "--out-dir", CN_OUT, "--bin", FAKE, "--command", "gs-admin --json cn chain-trimmed --id {id}"]);
+  check("F-456: a hand-trimmed entry (no actionKey) still decides on the trailing word — `chain-trimmed` refused",
+    r.code === 1 && /not a describe-shaped read/.test(r.stderr) && /action "chain-trimmed"/.test(r.stderr), r);
+  r = batch(["--domain", "connectors-chains", "--out-dir", CN_OUT, "--bin", FAKE, "--command", "gs-admin --json cn chain-sneaky --id {id}"]);
+  check("F-456: a describe-shaped actionKey over a PUT endpoint is still refused by the endpoint gate", r.code === 1 && /declares a PUT endpoint/.test(r.stderr), r);
+  check("F-456: nothing was marked by the two refusals (the gate precedes every spawn and every write)",
+    JSON.parse(readFileSync(M, "utf8")).inventory["connectors-chains/ch-1"].status === "stale", null);
+
+  // The catalog sweep the finding's Expected asks for: every command the
+  // SHIPPED catalog declares as a describe-* action goes through the shared
+  // predicate, so a refused per-item read is named HERE, at adoption time,
+  // never discovered mid-run. Source: the bundled reference/catalog.json (a
+  // verbatim copy of data/catalog.json — build-plugin-gs-superadmin.mjs; CI
+  // diffs the copy).
+  const { isDescribeRead, READ_VERB_EXACT, DESCRIBE_SHAPE_RE } = await import(pathToFileURL(join(SCRIPTS, "doc-lib.mjs")).href);
+  const catalog = JSON.parse(readFileSync(join(SCRIPTS, "..", "reference", "catalog.json"), "utf8"));
+  const tail = (c) => String(c.path).trim().split(/\s+/).pop(); // the gate's own derivation (assertReadOnlyCommand)
+  const admitted = catalog.commands.filter((c) => isDescribeRead(tail(c), c));
+  const refusedDescribes = catalog.commands.filter((c) => DESCRIBE_SHAPE_RE.test(c.actionKey ?? "") && !isDescribeRead(tail(c), c));
+  check(`F-456 sweep (source: the ${catalog.meta.cliVersion} catalog's actionKeys): every describe-* action is admitted by the gate predicate`,
+    refusedDescribes.length === 0, refusedDescribes.map((c) => `${c.shortPath} (${c.actionKey})`));
+  const admittedByKeyOnly = admitted.filter((c) => !DESCRIBE_SHAPE_RE.test(tail(c)) && !READ_VERB_EXACT.has(tail(c)));
+  check("F-456 sweep: the actionKey admit reaches exactly the commands the trailing word refused — cn chain (the finding) and re r execution (the sibling the finding did not list)",
+    isDeepStrictEqual(admittedByKeyOnly.map((c) => c.shortPath).sort(), ["cn chain", "re r execution"]), admittedByKeyOnly.map((c) => c.shortPath));
+  const unsafe = admitted.filter((c) => c.mutating || (c.endpoints ?? []).some((e) => /^(PUT|DELETE|PATCH)$/.test(e.method)));
+  check("F-456 sweep: nothing the predicate admits is catalog-mutating or declares a write endpoint (the safety direction)", unsafe.length === 0, unsafe.map((c) => c.shortPath));
+  // Adoption-time tripwire: the admitted set at this pin, as data. A pin
+  // that adds, renames or drops a per-item read changes this list and is
+  // named here — the delta question the upstream watcher asks cannot see a
+  // baseline miss (F-456's provenance note); this list is the baseline.
+  const ADMITTED_AT_PIN = [
+    "cn chain", "dd t describe", "dm dd describe", "dm o describe", "dm o list-and-describe", "jo dd get", "jo e template",
+    "jo p describe", "jo p src describe", "jo s get", "re c describe", "re c event-curl", "re r describe",
+    "re r describe-external-action", "re r event-curl", "re r events", "re r execution", "re r list-and-describe",
+    "re r s3-tasks", "re r schedules", "re r topics", "rp describe", "runtime describe-asset-schema",
+    "runtime describe-asset-type", "sc measures",
+  ];
+  check(`F-456 sweep: the admitted set at ${catalog.meta.cliVersion} is exactly the pinned ${ADMITTED_AT_PIN.length} (a changed set at a new pin is named here)`,
+    isDeepStrictEqual(admitted.map((c) => c.shortPath).sort(), ADMITTED_AT_PIN), admitted.map((c) => c.shortPath).sort());
+}
+
+// ── DB-3 (issue #13) + DB-4 (F-458): the within-run abort ────────────────────
+// One ADDITIVE summary field, `aborted: { reason, after, lastError }`, absent
+// on a run that did not abort; budgetExhausted / moreRemaining / failures
+// keep their shapes and meanings (the setup skill branches on them). Spawns
+// are counted from the fake CLI's own log, never inferred from the summary.
+{
+  const LOG = join(ROOT, "spawn-log.txt");
+  const spawns = () => (existsSync(LOG) ? readFileSync(LOG, "utf8").split("\n").filter(Boolean).length : 0);
+  const fresh = (domain, n) => {
+    rmSync(LOG, { force: true }); rmSync(LOG + ".n", { force: true });
+    const f = join(ROOT, `${domain}.json`);
+    writeFileSync(f, JSON.stringify({ data: Array.from({ length: n }, (_, i) => ({ ruleId: `${domain}-${i + 1}`, name: `Rule ${i + 1}` })) }));
+    manifest("upsert-batch", ["--file", f, "--domain", domain, "--id-field", "ruleId", "--name-field", "name"]);
+    return (env, extra = []) =>
+      batch(["--domain", domain, "--out-dir", join(ROOT, "acme-sbx", domain), "--bin", FAKE, "--command", DESCRIBE, ...extra], { FAKE_SPAWN_LOG: LOG, ...env });
+  };
+  const statusCounts = (domain) => {
+    const inv = JSON.parse(readFileSync(M, "utf8")).inventory;
+    const c = {};
+    for (const k of Object.keys(inv)) if (k.startsWith(`${domain}/`)) c[inv[k].status] = (c[inv[k].status] ?? 0) + 1;
+    return c;
+  };
+
+  // Every describe fails: exactly 5 spawns, then the loop stops.
+  let run = fresh("re-abort-all", 8);
+  let r = run({ FAKE_FAIL_PATTERN: "F" });
+  check("#13: every describe failing stops the domain after exactly 5 spawns (8 entries selected)", r.code === 0 && spawns() === 5 && r.json?.selected === 8, { code: r.code, spawns: spawns(), json: r.json });
+  check("#13: the summary names the abort — aborted { reason: consecutive-failures, after: 5, lastError }",
+    r.json?.aborted?.reason === "consecutive-failures" && r.json?.aborted?.after === 5 && /simulated transport failure/.test(r.json?.aborted?.lastError ?? ""), r.json?.aborted);
+  check("#13: the five marks stand exactly as written; the three untried entries are still pending",
+    isDeepStrictEqual(statusCounts("re-abort-all"), { failed: 5, pending: 3 }) && r.json?.failed === 5 && r.json?.failures?.length === 5 && r.json?.documented === 0, statusCounts("re-abort-all"));
+  check("#13: moreRemaining stays true; budgetExhausted is not the signal (no drilldowns block outside designer mode)",
+    r.json?.moreRemaining === true && r.json?.budgetExhausted === undefined && r.json?.drilldowns === undefined, r.json);
+  check("#13: stderr says so — never silent", /\[describe-batch\] ABORTED after 5 entries \(consecutive-failures\)/.test(r.stderr), r.stderr);
+  // The boundary: 4 failures then a success runs to completion, and the count RESETS.
+  run = fresh("re-boundary", 8);
+  r = run({ FAKE_FAIL_PATTERN: "FFFFS" });
+  check("#13 boundary: F F F F S F F F — no abort, all 8 spawned (four in a row never trips it; the success resets the count)",
+    r.code === 0 && spawns() === 8 && r.json?.aborted === undefined && r.json?.documented === 1 && r.json?.failed === 7, { spawns: spawns(), json: r.json });
+  // …and the off-by-one the other way: the 5th consecutive failure aborts
+  // even when the batch would have ended one entry later.
+  run = fresh("re-fifth", 6);
+  r = run({ FAKE_FAIL_PATTERN: "FFFFFS" });
+  check("#13 boundary: the 5th consecutive failure aborts — the 6th entry (a success) is never spawned",
+    spawns() === 5 && r.json?.aborted?.after === 5 && r.json?.failed === 5 && r.json?.documented === 0, { spawns: spawns(), json: r.json });
+  // The summary's domainProgress is re-read at the abort (review round): on
+  // an --upgrade run the loop can stop between progress ticks, and a stale
+  // snapshot would disagree with the summary's own `failed`. S F F F F F on a
+  // 10-stub domain: entry 1 full, 2–6 fail, abort at the 6th — the tick fired
+  // at the 5th, before the fifth failed mark.
+  {
+    rmSync(LOG, { force: true }); rmSync(LOG + ".n", { force: true });
+    const f = join(ROOT, "re-abort-upgrade.json");
+    writeFileSync(f, JSON.stringify({ data: Array.from({ length: 10 }, (_, i) => ({ ruleId: `up-${i + 1}`, name: `Up ${i + 1}` })) }));
+    manifest("upsert-batch", ["--file", f, "--domain", "re-abort-upgrade", "--id-field", "ruleId", "--name-field", "name"]);
+    const UP_OUT = join(ROOT, "acme-sbx", "re-abort-upgrade");
+    manifest("stub", ["--file", f, "--domain", "re-abort-upgrade", "--id-field", "ruleId", "--name-field", "name", "--out-dir", UP_OUT]);
+    const rr = batch(["--domain", "re-abort-upgrade", "--out-dir", UP_OUT, "--bin", FAKE, "--upgrade", "--command", DESCRIBE], { FAKE_SPAWN_LOG: LOG, FAKE_FAIL_PATTERN: "SFFFFF" });
+    check("#13 --upgrade: the abort's domainProgress is fresh — failed 5 (not the pre-abort tick's 4), full 1, total 10, after 6",
+      rr.json?.aborted?.after === 6 && rr.json?.failed === 5 && rr.json?.domainProgress?.failed === 5 && rr.json?.domainProgress?.full === 1 && rr.json?.domainProgress?.total === 10,
+      { json: rr.json });
+  }
+  // Resumption is unchanged: the next invocation documents the untried and
+  // retries the failed (issue #13: "nothing about resumption changes").
+  rmSync(LOG, { force: true }); rmSync(LOG + ".n", { force: true });
+  r = batch(["--domain", "re-abort-all", "--out-dir", join(ROOT, "acme-sbx", "re-abort-all"), "--bin", FAKE, "--command", DESCRIBE], { FAKE_SPAWN_LOG: LOG });
+  check("#13 resume: the next invocation documents the three untried and retries the five failed — 8 spawns, no abort, all documented",
+    r.code === 0 && spawns() === 8 && r.json?.aborted === undefined && r.json?.documented === 8 && isDeepStrictEqual(statusCounts("re-abort-all"), { documented: 8 }), { spawns: spawns(), json: r.json });
+
+  // An auth death: the FIRST sighting aborts and NOTHING is marked.
+  run = fresh("re-auth", 5);
+  r = run({ FAKE_AUTH_AFTER: "2" });
+  check("F-458: the CLI's re-login literal after 2 successes — 3 spawns, aborted { reason: auth, after: 3, lastError names the literal }",
+    r.code === 0 && spawns() === 3 && r.json?.aborted?.reason === "auth" && r.json?.aborted?.after === 3 && /Token expired and silent refresh failed/.test(r.json?.aborted?.lastError ?? ""), { spawns: spawns(), json: r.json });
+  check("F-458: the in-flight entry keeps its status (pending), failures is EMPTY, failed 0 — an auth death is never a describe failure",
+    r.json?.failed === 0 && isDeepStrictEqual(r.json?.failures, []) && isDeepStrictEqual(statusCounts("re-auth"), { documented: 2, pending: 3 }), statusCounts("re-auth"));
+  check("F-458: domainProgress reads two documented of five; moreRemaining true", r.json?.domainProgress?.documented === 2 && r.json?.domainProgress?.total === 5 && r.json?.moreRemaining === true, r.json);
+  check("F-458: stderr names the auth abort", /ABORTED after 3 entries \(auth\)/.test(r.stderr), r.stderr);
+  // The three sibling literals the finding did not list: every auth-path
+  // throw in dist/core/auth/index.js ends with the same re-login sentence.
+  for (const [lit, label] of [["1", "no stored token"], ["2", "expired, no refresh token"], ["4", "refresh POST refused"]]) {
+    run = fresh(`re-auth-lit${lit}`, 2);
+    r = run({ FAKE_AUTH_AFTER: "0", FAKE_AUTH_LITERAL: lit });
+    check(`F-458 sibling: literal ${lit} (${label}) aborts as auth on the first spawn with nothing marked`,
+      spawns() === 1 && r.json?.aborted?.reason === "auth" && r.json?.aborted?.after === 1 && r.json?.failed === 0 && isDeepStrictEqual(statusCounts(`re-auth-lit${lit}`), { pending: 2 }), { spawns: spawns(), json: r.json });
+  }
+  // The auth check precedes the consecutive count: 4 real failures, then the token dies.
+  run = fresh("re-auth-after-fails", 8);
+  r = run({ FAKE_FAIL_PATTERN: "FFFFS", FAKE_AUTH_AFTER: "4" });
+  check("F-458: 4 real failures then an auth death — reason auth (not consecutive-failures), after 5, the 4 marks stand, the 5th entry unmarked",
+    spawns() === 5 && r.json?.aborted?.reason === "auth" && r.json?.aborted?.after === 5 && r.json?.failed === 4 && isDeepStrictEqual(statusCounts("re-auth-after-fails"), { failed: 4, pending: 4 }), { spawns: spawns(), json: r.json });
+  // The ruling's negative arm (2026-09-14): the phrase on stderr under exit 0
+  // is a success — only a FAILED spawn is classified.
+  run = fresh("re-auth-warn", 2);
+  r = run({ FAKE_WARN_AUTH: "1" });
+  check("F-458 (ruled): the re-login phrase on stderr under exit 0 is NOT an auth death — both documented, no abort", r.code === 0 && r.json?.documented === 2 && r.json?.aborted === undefined, r.json);
 }
 
 // "Exactly one leading U+FEFF, never a global strip" — the global-regex mutant

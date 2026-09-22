@@ -138,8 +138,10 @@ jobs:
       - name: Guard hook fixtures
         run: node plugins/gs-superadmin/test/guard-fixtures.mjs
       # The shell-as-oracle differential (F-436, third pass): generated spellings
-      # run through real bash — and PowerShell on the Windows leg — with a
-      # recording shim; the guard must ask on every line the shell executed.
+      # run through real bash — and every PowerShell the runner has, each as a
+      # lane: pwsh 7 on all three images, Windows PowerShell 5.1 as a second
+      # lane on windows (F-460) — with a recording shim; the guard must ask on
+      # every line the shell executed. The summary line names each lane.
       - name: Guard shell-oracle differential
         run: node plugins/gs-superadmin/test/guard-oracle.mjs
       - name: Manifest init fixtures

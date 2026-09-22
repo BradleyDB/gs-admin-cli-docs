@@ -64,18 +64,31 @@ node ".gs-superadmin/plugin/scripts/manifest.mjs" next --manifest <slug>/_manife
 
 If the describe command fails for an asset:
 `… mark --manifest <slug>/_manifest.json --key <key> --status failed --error "<short message>"` — then continue with the next asset.
+Exception: a failure carrying the CLI's re-login instruction (`Run gs-admin login to
+re-authenticate`) is the session's token, not the asset — mark nothing, have the user
+log in, and retry the same asset (the batch script draws the same line: its summary
+reports `aborted.reason: "auth"` and leaves the entry's status untouched).
 
 ## §4 Budget-report shapes (after Phase 5 hits the budget limit)
+
+Every count here is read from the ONE quiescent `report` Phase 5's close quotes
+(F-455) — `byStatus` for the first shape, `domains.<domain>.byDepth` for the domain
+lines — never from a running tally or from what this run wrote.
 
 - "Documented N assets. M remaining (pending/stale). F permanently failed. Re-run
   `/gs-superadmin:setup` to continue, or use `--budget N` / `--all`." Keep the two
   counts separate: `failed` entries are a terminal state this skill deliberately
   produces (un-describable assets, the known scorecard auth race), not work still
   queued.
-- On a shallow crawl, also list the stubbed domains that have a describe command:
-  "Metadata-only (shallow): <domain> (<count> stubs) — full ingest:
-  `/gs-superadmin:setup --deep <domain>`." List list-only domains separately as
-  "List-only (complete): <domain> (<count>)" — never advertise `--deep` for them.
+- List every domain whose row has `metadata > 0` — stubs under a recorded describe
+  template: "Metadata-only (shallow): <domain> (<count> stubs) — full ingest:
+  `/gs-superadmin:setup --deep <domain>`." List every domain whose row has
+  `listOnly > 0` separately as "List-only (complete): <domain> (<count>)" — never
+  advertise `--deep` for them. List every domain whose row has `unrecorded > 0` as
+  "Completeness unknown: <domain> (<count>) — no describe command recorded; re-run
+  its Phase 4 upsert with `--describe-command` (a template, or `none`)" — neither
+  complete nor a working `--deep` may be claimed for those stubs (their banners say
+  the same).
 
 ## §5 Hand-chaining several describes
 

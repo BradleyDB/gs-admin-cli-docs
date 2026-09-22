@@ -362,7 +362,10 @@ the decision record, including for the retired entries.
 >   payload **is** re-scanned — `bash|sh|zsh|dash|ksh -c '…'`, `powershell -Command "…"`,
 >   a positional `powershell "…"`, `cmd /c "…"`, and both shells' eval — `eval '…'` and
 >   `Invoke-Expression`/`iex '…'` — plus each of those with options sitting between the
->   flag and the payload (`bash -c -x '…'`, `bash -c -- '…'`)
+>   flag and the payload (`bash -c -x '…'`, `bash -c -- '…'`), behind a PowerShell
+>   assignment that takes the interpreter's output (`$x=iex '…'`, `$x=bash -c '…'`,
+>   `$x=powershell "…"`, `$x=cmd /c '…'`), and a `-Command` standing behind a positional
+>   (`powershell foo.ps1 -Command "…"`) as well as the first positional itself
 >   — but not `-EncodedCommand` (base64, where the payload is not shell text at all), and
 >   not past three levels of nesting.
 > - *A payload stored in a variable.* The mutation is assigned first — a quoted string or
@@ -457,7 +460,9 @@ editing session has unsaved changes (the Journey cache is keyed by program id, n
                             `node .gs-superadmin/plugin/scripts/<x>.mjs`; created by setup,
                             repointed at every plugin session start, never a copy
   operating-model.md        Claude's always-on instructions (yours to edit)
-  CONVENTIONS.md            Build standards entry point (yours to fill in)
+  CONVENTIONS.md            Build standards entry point (yours to fill in; workspace-wide —
+                            a `<slug>/CONVENTIONS.md` beside a tenant's KB overrides it
+                            for that tenant alone)
   conventions/              Opt-in build-standards pack (yours to edit or delete)
   catalog.json              Generated from the installed CLI's manifests (bundled
                             snapshot if generation fails)

@@ -1271,7 +1271,7 @@ const runObj = (term, dir) => {
   check(
     "e2e conventions: declared pattern read by the SCRIPT — aliased rule found with no --alias-prefix, header names the pattern",
     conv.status === 0 && convSummary.counts.rulesMatched === 1 && convSummary.aliasPrefix === "^[A-Z]_" &&
-      convMd.includes("task-alias prefix stripping (`^[A-Z]_`, from the tenant conventions)"),
+      convMd.includes("task-alias prefix stripping (`^[A-Z]_`, from the tenant conventions — the workspace CONVENTIONS.md, shared by every tenant)"),
     convSummary
   );
   check(

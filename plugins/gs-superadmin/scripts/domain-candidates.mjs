@@ -42,6 +42,19 @@
 //                   it BY NAME on every run, with its reason and suggested
 //                   name, and warns when its recheckAfter date has passed.
 //       undecided — none of the above: the gate's work list
+//     and, BEFORE the states above, one bucket that is not a decision:
+//       notEnumerableBare — the installed CLI refuses to run the command
+//                   without a per-asset flag its catalog never declares
+//                   (doc-lib CLI_PIN_FACTS, F-450 b; the four `re rules`
+//                   sublists at 1.0.9). A per-CLI fact, so no tenant decides
+//                   it: listed with the flag it needs and the runtime error,
+//                   never undecided, never gating. A tenant exclusion or
+//                   block recorded against one (the pre-table route) is
+//                   reported INERT on the entry (`tenantRecord`) with a
+//                   warning, and is not counted among the decisions in
+//                   force. The table is version-stamped and self-retiring:
+//                   under a catalog at another pin it is not applied and the
+//                   diff warns (`pinFacts` in the output says which).
 //     Undecided candidates get a suggested KB domain name
 //     (<namespace>-<actionKey minus the list- prefix>) collision-checked
 //     against existing domains and bare namespaces — a renamed domain
@@ -106,6 +119,7 @@ import {
   makeCommandResolver,
   recordedDomainsByPath,
   indexedElsewhere,
+  pinFactsFor,
 } from "./doc-lib.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -184,6 +198,10 @@ if (verb === "diff") {
   const candidateByPath = new Map(candidates.map((c) => [c.path, c]));
 
   const warnings = [];
+  // Per-pin CLI facts (F-450 b): applied only at the stamped pin, warned
+  // about otherwise — a pin move never silently drops them.
+  const pin = pinFactsFor(catalog);
+  if (!pin.applied) warnings.push(pin.why);
   const domainsIndexed =
     manifest.domains_indexed && typeof manifest.domains_indexed === "object" ? manifest.domains_indexed : {};
   // canonical path → [domain names]: doc-lib's recordedDomainsByPath (F-429
@@ -324,6 +342,7 @@ if (verb === "diff") {
   const indexed = [];
   const excluded = [];
   const blocked = [];
+  const notEnumerableBare = [];
   const undecided = [];
   const today = new Date().toISOString().slice(0, 10);
   // ONE due-date rule for both record kinds (excluded and blocked carry
@@ -346,6 +365,10 @@ if (verb === "diff") {
     // the enumeration with a DECISION_RECORDS table driving a generated pair
     // loop (and derive the precedence chain from the same table), or a
     // forgotten pair silently reports a contradictory manifest as clean.
+    // The per-pin bucket below is NOT a record kind — it is a catalog-level
+    // fact that pre-empts the precedence chain — so these checks run first
+    // and a contradictory manifest is still named whatever bucket the
+    // command lands in (review round).
     if (inDomains && excl) {
       warnings.push(
         `"${c.path}" is both indexed (domain ${inDomains.join(", ")}) and excluded — contradictory; ` +
@@ -363,6 +386,41 @@ if (verb === "diff") {
         `"${c.path}" is both excluded and blocked — contradictory ("looked and said no" vs "could not ` +
           `look"); treating it as excluded — lift whichever record is wrong`
       );
+    }
+    // Per-pin fact (F-450 b): a command the installed CLI refuses to run bare
+    // is not a decision for any tenant — its own bucket, before the record
+    // chain. A tenant record written against it (the pre-table route: three
+    // runtime failures, then an exclusion) is INERT and says so; it is not a
+    // decision in force and never counts as one. An INDEXED domain from such
+    // a command contradicts the table (or was registered from a per-asset
+    // run): warn and let the chain below report it as indexed — a wrong
+    // table entry must stay visible, never hide a real domain.
+    const pinFact = typeof c.id === "string" && Object.hasOwn(pin.commands, c.id) ? pin.commands[c.id] : null;
+    if (pinFact?.notEnumerableBare && inDomains) {
+      warnings.push(
+        `"${c.path}" is indexed (domain ${inDomains.join(", ")}) but the per-pin table says it is not enumerable bare at CLI ${pin.stamped} ` +
+          `(needs ${pinFact.notEnumerableBare}) — either the table entry is wrong (re-verify it against the installed CLI) or the domain ` +
+          `was registered from a per-asset run; reported as indexed`
+      );
+    } else if (pinFact?.notEnumerableBare) {
+      const tenantRecord = excl ? "excluded" : blk ? "blocked" : null;
+      if (tenantRecord) {
+        warnings.push(
+          `"${c.path}" is ${tenantRecord} per tenant, but at CLI ${pin.stamped} it is not enumerable bare (needs ${pinFact.notEnumerableBare}) — ` +
+            `the record is inert: no decision is needed; lift it (${tenantRecord === "excluded" ? "exclude" : "block"} --remove) or leave it`
+        );
+      }
+      notEnumerableBare.push({
+        path: c.path,
+        shortPath: c.shortPath ?? null,
+        namespace: c.domain,
+        actionKey: c.actionKey ?? null,
+        summary: c.summary ?? null,
+        needs: pinFact.notEnumerableBare,
+        error: pinFact.error ?? null,
+        tenantRecord,
+      });
+      continue;
     }
     if (inDomains) {
       indexed.push({ path: c.path, shortPath: c.shortPath ?? null, domains: [...inDomains].sort() });
@@ -415,6 +473,7 @@ if (verb === "diff") {
   excluded.sort(cmpPath);
   blocked.sort(cmpPath);
   undecided.sort(cmpPath);
+  notEnumerableBare.sort(cmpPath);
   legacyDomains.sort();
 
   // Gate verdict first, summary last: the summary is the stdout write, and the
@@ -454,7 +513,12 @@ if (verb === "diff") {
     excludedLegacyCount: legacyExclusions,
     blockedCount: blocked.length,
     undecidedCount: undecided.length,
+    // F-450 b: a per-CLI bucket, never gating; pinFacts says whether the
+    // shipped table applied to this catalog at all.
+    notEnumerableBareCount: notEnumerableBare.length,
+    pinFacts: { stamped: pin.stamped, catalogVersion: pin.catalogVersion, applied: pin.applied },
     undecided,
+    notEnumerableBare,
     indexed,
     excluded,
     blocked,
