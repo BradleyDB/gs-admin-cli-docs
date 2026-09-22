@@ -146,8 +146,8 @@ what the gate counts (F-444). The gate refuses both. Sections from F-360 on; the
 rule also reads the archive.
 
 
-Under test: dev · hb-20260916-03 · 2026-09-16
-Blind spots (hb-20260916-03): post-merge close-out of Session E on dev, nothing new under test: the round's blind spots (pwsh 7 lane measured in CI only, no live PostToolUse row, the value-option table exercised for three parameters, GD-3 on the drift suite) carry as stated on F-460; the next round is a review of draft PR #17 in its own session
+Under test: dev · hb-20260921-01 · 2026-09-21
+Blind spots (hb-20260921-01): PR #17 (plugin 0.42.0, change-request *Before building* + operating-model Role) shipped unwalked — the walk is banked in dev/VALIDATION.md § PR #17 and is the whole of this round; the asks are authored from the sandbox KB, not sourced from Jira (no real tickets on hand), so a requester-shaped vague ticket is approximated by deliberate silences in ask B and named as the rig deviation; PR #25 is docs-only, nothing to walk; F-460 blind spots carry as stated
 
 <!-- tester 2026-09-16 (Session E-V verdict round — UNMERGED; re-stamps the Session E builder comment on dev):
      Branch round-e-guard-normalizer -> PR #23, base dev, still UNMERGED; verdict committed [skip ci] on top of 58b1330.
