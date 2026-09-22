@@ -360,6 +360,18 @@ npm run build   # only when build/ scripts or the catalog changed (needs the pin
   is a guard prototype, not scratch: the Fix/Verified note must record whether the
   probe should be promoted to a committed check, and log a finding when it should.
   (The tree sweep that found F-158 became check 9.)
+- **Work order is not severity order** (issue #1; learned at 0.30.0 and re-homed from
+  the private bus's F-248): a finding whose fix removes an **unreliable manual step** is
+  worked before the next change that performs that step by hand, and before any tester
+  handoff, whatever its severity label — severity says what a finding protects, never
+  when to work it. And nothing is handed to a tester while a known-pending change will
+  re-arrange what is being verified: land it first, or defer it past the round
+  explicitly and say which. This is **not mechanically checkable** — no check reads a
+  plan's ordering — so the handoff note states the ordering decision it made, the way
+  the doc-vs-tree bullet's Fix note states why a claim is unchecked. (0.30.0: a fix
+  that retired a three-copy hand sync was scheduled after a change that performed the
+  sync by hand, and after a tester round that hand-verified the very thing the lock
+  existed to remove.)
 - A round is **assessed from open PRs as well as the dev log** (`git log` plus
   `gh pr list`) — a fix riding an unmerged branch is invisible from dev alone. And the
   role that lands a fix on an unmerged PR says so **in a bus comment on dev** — branch
@@ -666,3 +678,7 @@ go through GitHub private advisories (SECURITY.md), not an email address.
   the public repository it resolves to nothing, by design.
 - …a PR body: `.github/pull_request_template.md` — the shape every PR reproduces;
   `gh pr create --body-file` never pre-fills it, so read it before composing.
+- …always-on prose (the operating model, the managed CLAUDE.md block, a skill's output
+  template) or the plugin version from outside the maintainer's loop: CONTRIBUTING.md,
+  "Submitting changes" — an issue comes first for always-on prose, and the maintainer
+  renumbers the version at merge if `dev` has moved.

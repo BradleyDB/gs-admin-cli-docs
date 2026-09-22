@@ -19,9 +19,18 @@ not up front.
 - `--slug <name>` — override the derived slug (useful for unusual hostnames)
 - `--deep <domain>` — fully ingest a shallow-crawled domain: describe its metadata-stub
   entries and upgrade them to full docs (respects `--budget`/`--all`; repeatable per
-  domain, resumable — already-upgraded entries are never redone). Does not apply to
-  **list-only domains** (no per-item describe command, e.g. connections/jobs): their
-  stubs already carry everything the CLI can say — explain that and stop.
+  domain, resumable — already-upgraded entries are never redone). Runs Phases 1–2,
+  then goes **straight to Phase 5** for that domain: Phases 3 and 4 do not re-run and
+  nothing re-lists, so the queue is the stubs the domain's last list recorded, and the
+  run states that list's age before spending budget (rule canon: Phase 5's `--deep`
+  paragraph; a current inventory is `/gs-superadmin:refresh`'s job — F-457). Does not
+  apply to **list-only domains** (no per-item describe command, e.g. connections/jobs):
+  their stubs already carry everything the CLI can say — explain that and stop. An
+  **unrecorded domain** (its stamp carries no describe recording; `report` counts its
+  stubs under `byDepth.unrecorded`) is neither list-only nor queued — decide by the
+  recording, never by the domain's type: say that Phase 4 has not yet recorded a
+  describe template or `none` for it, and stop; a plain setup run records it, after
+  which `--deep` applies or does not.
 
 ---
 
@@ -165,7 +174,7 @@ fallback copy that itself fails (no retries, no improvisation).
 
 ---
 
-## Phase 4 — Index (cheap; runs every time)
+## Phase 4 — Index (cheap; runs on every plain run — a `--deep` run skips it)
 
 Create `.gs-superadmin/tmp/` for raw list output.
 
@@ -176,10 +185,13 @@ reconciliation, and the suspect-round-count honesty (this and the next paragraph
 the canonical statements of the capture and pagination rules — the other capturing and
 sweeping skills carry a one-line paraphrase pointing here):
 ```
-node .gs-superadmin/plugin/scripts/capture.mjs --paginate --page-flag page --out .gs-superadmin/tmp/<ns>-<list-cmd>-{page}.json -- gs-admin --json <ns> <list-cmd> --limit 200
+node .gs-superadmin/plugin/scripts/capture.mjs --paginate --page-flag page --out '.gs-superadmin/tmp/<ns>-<list-cmd>-{page}.json' -- gs-admin --json <ns> <list-cmd> --limit 200
 ```
 `{page}` is literal — the SCRIPT substitutes it (one file per page; keep every page
-file). The helper spawns the CLI itself (argv, no shell) and writes clean UTF-8 with no
+file). Keep the `--out` value quoted as the fence spells it: Windows PowerShell
+consumes an unquoted `{page}` (the script then refuses the run — the placeholder is
+gone — rather than writing a mis-named file), and single quotes are literal in both
+shells the tools use, PowerShell and bash. The helper spawns the CLI itself (argv, no shell) and writes clean UTF-8 with no
 BOM on every shell — never capture with a bare shell redirect, whose encoding is the
 shell's choice (an ill-encoded file is one the manifest script's JSON parser rejects).
 If a payload was ever captured by hand with a redirect, re-encode it before parsing:
@@ -236,12 +248,14 @@ script cannot make:
   exists) — never presented as complete.
 - Reconciliation proves **paging** completeness against the payload's own post-filter
   total — never inventory completeness (scope-limited domains, next bullet).
-- **Scope-limited domains — paging cannot fix these.** Several journey-side list
-  commands cannot see the whole tenant (`jo email templates`, `jo surveys list`,
-  `jo data-designer list`; Data Designer *designs* have no list command at all, and
-  are not identifiable among dm objects). Before indexing any of those — or reasoning
-  about their coverage, or recovering list-invisible templates from user-supplied
-  ids — read `references/index-scope-notes.md`: the per-command limits, the
+- **Scope-limited domains — paging cannot fix these.** Some list commands cannot see
+  the whole tenant; which ones, at the pinned CLI, is shipped data (doc-lib's per-pin
+  table), and `report` names each such domain's limit on its `domains.<domain>.scope`
+  row — never a list carried from memory. (Data Designer *designs* have no list command
+  at all, and are not identifiable among dm objects.) Before indexing a journey-side
+  domain — or reasoning about its coverage, or recovering list-invisible templates from
+  user-supplied ids — read `references/index-scope-notes.md`: the per-command limits
+  (one subsection per limited command, the canon a `scope.path` points at), the
   "CLI-reachable subset" annotation and UI-vs-CLI gap rules, and the recovery flow.
 
 Consult `.gs-superadmin/cheatsheet.md` for the exact commands. Skip `query` (no list
@@ -331,14 +345,24 @@ node .gs-superadmin/plugin/scripts/domain-candidates.mjs diff --manifest <slug>/
 The script derives every candidate mechanically from the workspace catalog (artifact-lane,
 non-mutating, tenant-wide list commands — never from recall) and maps each against the
 manifest: **indexed** (a `domains_indexed` entry's recorded `listCommand` matches),
-**excluded** (recorded in `domains_excluded`), or **undecided**. Surface the undecided
-candidates to the user **by name** — the decisions are tenant policy, not bookkeeping —
-then work through them in the order printed. A candidate flagged `likelyPerAsset: true`
-is probably a per-asset sublist whose required flag the catalog does not declare (the
-filter drops only *declared* required flags): expect its tenant-wide run to fail with a
-runtime "X is required" error, and when it does, exclude it as a per-asset sublist
-citing that error — the flag is advisory, so still run it once rather than excluding on
-the hint alone. A candidate carrying a non-null `requiredEnumFlags` is runnable
+**excluded** (recorded in `domains_excluded`), or **undecided** — after setting aside
+`notEnumerableBare`: the commands the pinned CLI is known to refuse without a
+per-asset flag its catalog never declares (the plugin ships that fact, version-stamped;
+each entry names the flag it needs and the runtime error). Those are NOT work: no
+decision is recorded for them, they never gate, and a tenant exclusion or block found
+against one is reported inert (`tenantRecord`) and not counted — lift it or leave it.
+Surface the undecided candidates to the user **by name** — the decisions are tenant
+policy, not bookkeeping — then work through them in the order printed. A candidate
+flagged `likelyPerAsset: true` outside that list is probably a per-asset sublist whose
+required flag the catalog does not declare (the filter drops only *declared* required
+flags): expect its tenant-wide run to fail with a runtime "X is required" error, and
+when it does, exclude it as a per-asset sublist citing that error (no capture exists,
+so no overlap check can run: pass `--no-check "<the runtime error>"` in place of
+`--check`, step 3) — the flag is advisory, so still run it once rather than excluding
+on the hint alone, and report the command so the shipped list can carry it at the next
+pin. If the diff warns that the shipped list was not applied (`pinFacts.applied` false —
+the workspace catalog is at another CLI version), relay the warning: every sublist is
+then ordinary undecided work again until the plugin is updated. A candidate carrying a non-null `requiredEnumFlags` is runnable
 tenant-wide only through those enum flags (e.g. `--type` over `MDA|SFDC`): to evaluate
 or adopt it, run the list once per enum value and combine the captures — a decision on
 such a candidate covers every value, and its reason should say so.
@@ -364,8 +388,14 @@ such a candidate covers every value, and its reason should say so.
    inventory?"**, never "does a domain of this name exist" (a filtered view of an
    already-indexed list matches under a *different* domain than its namespace suggests):
    ```
-   node .gs-superadmin/plugin/scripts/domain-candidates.mjs check --manifest <slug>/_manifest.json --file <tmp-file> --id-field <idField>
+   node .gs-superadmin/plugin/scripts/domain-candidates.mjs check --manifest <slug>/_manifest.json --file <tmp-file> --id-field <idField> --command "<path>" --out <check-file>
    ```
+   `<path>` is the exact `path` value the diff printed for this candidate (the same value
+   step 3's `exclude --command` takes); `<check-file>` is a tmp path of your choosing
+   (e.g. `.gs-superadmin/tmp/check-<n>.json`, one per candidate). The script writes the
+   same JSON it prints, stamped with the command, and step 3's `exclude` takes that file
+   as the decision's evidence — it refuses a file that measured a different command, so
+   a reused path fails loudly rather than deciding one candidate on another's numbers.
    `<idField>` is a dot path into each row (pass `--items-path <dot.path>` when the items
    array needs locating, as for `upsert-batch`). A connection-shaped payload's id path
    follows the endpoint and the CLI version that captured it — `cn list` nests it
@@ -389,21 +419,39 @@ such a candidate covers every value, and its reason should say so.
    0-row answer must be decided from the payload itself — inspect the capture first
    (a typo'd `--items-path` and a captured error body both look like "empty"), and
    only if the tenant's list is genuinely empty, adopt it as an empty domain
-   (`upsert-batch --allow-empty`, stamp-only) or exclude it with a reason:
+   (`upsert-batch --allow-empty`, stamp-only) or exclude it as a judgment call (the
+   second fence below, with `--recheck-after` — an empty list can fill):
    - `noneIndexed` and the rows are owned/configured assets (the "What counts" rule
      above) → **adopt**: `upsert-batch` it under the diff's `suggestedName` — or another
      non-colliding name when `nameCollision` is flagged — never a bare namespace, never
      an existing domain's name (naming rule above). A tiny row count is not a failed
      crawl: some real domains are small, config-shaped lists.
-   - `allIndexed` → a filtered view of an already-indexed list: **exclude**, naming the
-     covering domain (the check's `matchedByDomain`) in the reason.
+   - `allIndexed` → a filtered view of an already-indexed list: **exclude as covered**,
+     naming the covering domain (the check's `matchedByDomain`) as the `--covered-by` flag:
+   ```
+   node .gs-superadmin/plugin/scripts/manifest.mjs exclude --manifest <slug>/_manifest.json --command "<path>" --reason "<why>" --check <check-file> --covered-by <domain>
+   ```
    - Otherwise — partial overlap, activity/history feeds, execution records,
      lookup/reference data, organizational containers with no dependency surface —
-     **exclude** with the item's own specific reason (a blanket "reference data" is often
-     wrong; record what a future re-run needs in order to not re-litigate the call):
+     **exclude as a judgment call** with the item's own specific reason (a blanket
+     "reference data" is often wrong; record what a future re-run needs in order to not
+     re-litigate the call). A **partial overlap is never "covered"**: rows the covering
+     domain does not hold are indexed nowhere, and `deps-report` answers "nothing depends
+     on this" for every one of them — so 253 of 586 is an adopt, not an exclude:
    ```
-   node .gs-superadmin/plugin/scripts/manifest.mjs exclude --manifest <slug>/_manifest.json --command "<path>" --reason "<why>"
+   node .gs-superadmin/plugin/scripts/manifest.mjs exclude --manifest <slug>/_manifest.json --command "<path>" --reason "<why>" --check <check-file>
    ```
+   The verb binds the verdict to the check's numbers, not to the prose: `--covered-by` is
+   refused unless that one domain holds every unique id, and a check where some domain
+   does is refused without `--covered-by`. Exactly two cases have no check to pass, and
+   they pass `--no-check "<why-no-check>"` in place of `--check`, where
+   `<why-no-check>` is the cause and nothing else: the payload carries no items array
+   (as `journey cta options`), or the list command failed at runtime with a required-flag
+   error (a step-1 per-asset sublist the shipped `notEnumerableBare` list does not already
+   name). Add `--recheck-after <YYYY-MM-DD>` when the
+   reason rests on a tenant state that can change (a 0-row list, "empty on this tenant")
+   rather than on the payload's shape — the diff surfaces the exclusion by name once the
+   date passes, as it does a block's.
    `<path>` is the exact `path` value the diff printed for the candidate; `<why>` is the
    specific reason just decided.
 4. Re-run the diff with `--require-decided` — it must exit 0 before Phase 4 reports:
@@ -426,11 +474,34 @@ Then:
 ```
 node .gs-superadmin/plugin/scripts/manifest.mjs report --manifest <slug>/_manifest.json
 ```
-Relay the **per-domain counts** from the report, not just the total: "Indexed N assets
-across M domains (domain: count, …). X pending, Y stale, Z documented." Include the
-report's `emptyDomains` explicitly ("domain: 0 — listed, tenant has none") and the
-exclusion ledger ("K list commands deliberately excluded — reasons recorded in
-`domains_excluded`"). Treat any domain whose count lands exactly on a common default
+Relay the **per-domain counts** from the report, not just the total, and take every
+domain count from the report's `domainCounts` — `indexed` (coverage stamps),
+`withAssets`, `empty` — never from a count of `byDomain`'s keys (F-454: a key count
+omits every listed-but-empty domain and can include an unstamped one, so it is not the
+manifest's domain count): "Indexed N assets across M domains — M =
+`domainCounts.indexed`, of which W hold assets and E are listed but empty (domain:
+count, …). X pending, Y stale, Z documented." When W + E exceeds M, a domain holds
+entries with no coverage stamp (a `--partial` registration into a never-listed domain):
+find it as the `domains` row with `stamped: false` and name it separately ("domain:
+count — registered, never listed; no coverage stamp"), never folded into W. Name each
+of the report's `emptyDomains` explicitly ("domain: 0 — listed,
+tenant has none"), the exclusion ledger ("K list commands deliberately excluded —
+reasons recorded in `domains_excluded`", K = the diff's `excludedCount`) and, separately,
+the diff's `notEnumerableBareCount` ("N list commands the CLI cannot run bare — no
+decision needed"). Then, **before** asking about totals, name every scope-limited domain
+— each `domains` row of the report whose `scope` is not null — with its limit, so the
+question is answerable (F-452: a CLI-reachable subset otherwise reads as a tenant
+total): one line per such row,
+`<domain>: <count> — CLI-reachable subset: <scope.limit>; the remainder can be added later (references/index-scope-notes.md § <scope.path>)`,
+where `<domain>` is the row's key in `domains`, `<scope.limit>` and `<scope.path>` are
+quoted from that row verbatim (the reference's subsection headed by `<scope.path>` is
+the canon — never restate a limit from memory), `<count>` is the domain's `byDomain`
+total — `0` for a row that has no `byDomain` entry because it is in `emptyDomains`,
+whose scope line then REPLACES its "listed, tenant has none" line (one line per domain,
+never two) — and a row whose `scope` is null gets no line. If the report's
+`pinFacts.applied` is false, write "scope limits not evaluated: <pinFacts.why>" in place
+of the lines, `<pinFacts.why>` quoted from the report verbatim — never "none".
+Treat any domain whose count lands exactly on a common default
 page size (20, 25, 50) as **suspect** — re-verify its pagination was exhausted before
 continuing — and ask the user whether the totals match their sense of the tenant
 before Phase 5 spends the documentation budget.
@@ -475,10 +546,32 @@ block Phase 6, and the report names them "list-only (complete)", never
 "metadata-only (shallow)". The `stub` invocation and its rules are
 `references/document-mechanics.md` §1; run it, then continue to the next domain.
 
-**`--deep <domain>` runs** — select the stubs awaiting full ingest with the
+**`--deep <domain>` runs** — the run arrives here from Phase 2: Phases 3 and 4 do
+not re-run under `--deep` and nothing here re-lists (F-457: four live runs each
+improvised that skip against Phase 4's old "runs every time"), so the queue is exactly
+the stubs the domain's last list recorded — an asset created since is not in it, and
+a re-list would not put it there either (`next --upgrade` selects metadata stubs, never
+`pending`). State that boundary before spending budget: run this phase's close
+`report` invocation once and read `lookback.<domain>` — when its `days` is `null` or
+greater than `lookbackDefault`, relay one line, substituting `<domain>` and the row's
+`days` (for `null`, replace the whole "`<days>` days ago" span with "on a legacy
+stamp with no date"):
+"`<domain>` was last listed `<days>` days ago — assets created since are not in this
+queue; run `/gs-superadmin:refresh` first if that matters", then continue; when
+`days` is within the window, say nothing. A current inventory is refresh's job (its
+step 2 owns the per-domain window) — never run Phase 4 for it here. Then select the
+stubs awaiting full ingest with the
 `next --upgrade` invocation (`references/document-mechanics.md` §2), then follow
 the standard describe path below, overwriting each stub file (the entry's
-`doc_path`) and marking `--status documented --depth full`.
+`doc_path`) and marking `--status documented --depth full` — with `--doc-path`, per
+`references/document-mechanics.md` §3 (a legacy stub may carry no recorded path, and
+`mark` refuses a pathless documented mark; the batch script passes it itself). When
+the run's last batch has exited, the statement that the domain is fully ingested is
+the quiescent `report` quoted at the close of this phase (below), read at
+`domains.<domain>.byDepth` — the row must show no stubs left awaiting `--deep` and
+nothing unrecorded; that close states the exact bucket test. Relay the row, never a
+narrative "deep crawl finished" (F-455: eight domains were entirely stubs when that
+sentence was last relayed from memory).
 
 **All other domains (and deep crawl) — describe each entry in the batch.** Default
 execution is the sanctioned batch script (below); the manual per-asset path it
@@ -516,7 +609,14 @@ safe unquoted (substitution rules and identifier cases:
 content fingerprint per documented entry, which `/gs-superadmin:refresh
 --document` passes `--if-changed` against so a later re-describe rewrites a doc
 only when the payload genuinely changed. Size `--limit` so one invocation
-finishes inside the harness's ~2-minute shell timeout (**~10–15 describes** is
+finishes inside the **nearer** of two deadlines — the harness's ~2-minute shell
+timeout, and the token's usable life from the Phase 1 pre-flight (a token that
+dies mid-batch ends the run, not the assets: the script reports it as
+`aborted.reason: "auth"`, below, and marks nothing) — and size against the
+**slow end** of the rates you have observed, because a small sample under-predicts
+a large batch (measured on 1.0.9, one tenant: 2.36 s/asset over 25 assets, 2.77
+over 275, 3.09 over 311 — a batch sized from the 25-asset rate overran the token).
+Within the shell timeout, **~10–15 describes** is
 the norm, journey programs included; `journey-email-templates` alone runs ~50;
 `data-designer` runs **1–2** templates because each costs 1 + tasks + fields calls
 under the script's own per-invocation spawn budget — sizing rationale in the
@@ -532,6 +632,17 @@ stop re-invoking — those failures are deterministic; report the failed keys wi
 their recorded errors instead of looping. A run that documents 0 with an EMPTY
 `failures` list and `budgetExhausted: true` (the designer doc-mode's spawn budget
 ran out mid-template) is progress — its doc grew on disk — so re-invoke.
+The script also enforces a **within-run** limit and names it in the summary's
+`aborted` field (absent when the run did not stop early; the fields above keep
+their meanings): `aborted.reason: "consecutive-failures"` — five entries in a row
+ended in a `failed` mark and the loop stopped with those marks standing; the
+untried entries are still queued, so re-invoke once, and a second run that aborts
+the same way on the same keys is the stop rule above firing (check the recorded
+`describeCommand` and id field before anything else). `aborted.reason: "auth"` —
+the CLI could not obtain a token: the in-flight entry was NOT marked and keeps its
+status (any `failures` listed are real describe failures from EARLIER in the same
+run and stand); have the user run `gs-admin login`, then re-invoke, and never
+count that run as a stop-rule sample.
 On `--deep` runs add `--upgrade` (a failed stub keeps depth `metadata`, stays in the
 upgrade queue, and is retried the same way). Email templates, journey programs, and
 data designers run through this same batch script — it writes compact docs for the
@@ -541,19 +652,36 @@ first two and the three-level composite doc for designers.
 preference from the top of this phase — if the user opted in, pause and verify before
 starting the next domain.
 
-After hitting the budget limit, report per the shapes in
-`references/document-mechanics.md` §4 — keep documented / remaining / permanently
-failed as separate counts (`failed` is a terminal state the skill deliberately
-produces, not work still queued), and never advertise `--deep` for a list-only
-domain.
+**Every completeness statement comes from ONE `report` invocation at a quiescent
+point** (F-455). When the last `describe-batch` or `stub` invocation of this run has
+exited and nothing is still writing the manifest, run the report once:
+```
+node .gs-superadmin/plugin/scripts/manifest.mjs report --manifest <slug>/_manifest.json
+```
+and quote it rather than narrating: `byDepth` is the tenant's depth truth over
+documented entries — `full` (describe docs), `metadata` (stubs awaiting `--deep`),
+`listOnly` (stubs of a domain recorded `none`: complete by definition), `unrecorded`
+(stubs of a domain with no describe recording: completeness unknown until Phase 4
+records a template or `none`) — and `domains.<domain>.byDepth` is the same per
+domain. "Documented" alone never means complete (a stub is documented); a domain is
+fully ingested only when its row reads `metadata: 0` and `unrecorded: 0` with no
+`pending` or `stale` in `byDomain`. A tally taken while a batch is still running is
+a snapshot of a moving target — never quote one, and never re-derive these numbers
+from `byStatus` or from what this run wrote.
 
-**If any `pending` or `stale` entries remain, stop here.** Skip Phase 6 — relationship synthesis from partial data would produce misleading maps. Phase 6 runs automatically on the run that clears them, which is the same condition Phase 6 states as its precondition. Persistent `failed` entries do **not** block Phase 6: they are terminal, the `next` selection re-offers them so the remaining count would never clear on its own, and the maps' coverage headers report them ("N asset(s) failed describe and are not represented").
+After hitting the budget limit, report per the shapes in
+`references/document-mechanics.md` §4 — every count in them comes from that one
+quoted report; keep documented / remaining / permanently failed as separate counts
+(`failed` is a terminal state the skill deliberately produces, not work still
+queued), and never advertise `--deep` for a list-only domain.
+
+**If the quoted report's `byStatus` carries any `pending` or `stale`, stop here.** Skip Phase 6 — relationship synthesis from partial data would produce misleading maps. Phase 6 runs automatically on the run that clears them, which is the same condition Phase 6 states as its precondition. Persistent `failed` entries do **not** block Phase 6: they are terminal, the `next` selection re-offers them so the remaining count would never clear on its own, and the maps' coverage headers report them ("N asset(s) failed describe and are not represented").
 
 ---
 
 ## Phase 6 — Synthesize
 
-**Precondition**: only run if all inventory entries are `documented` or `failed` (no `pending` or `stale` remaining). Metadata stubs count as documented — they never block this phase.
+**Precondition**: only run if all inventory entries are `documented` or `failed` (no `pending` or `stale` remaining) — read from the quiescent `report` quoted at Phase 5's close, never re-tallied: its `byStatus` carries no `pending` and no `stale` key. Metadata stubs count as documented — they never block this phase (every `byDepth` bucket — `full`, `metadata`, `listOnly`, `unrecorded` — is a documented entry; the maps' coverage headers say which domains are stub-only).
 
 Build or refresh `<slug>/relationships/` — **default mechanics is the sanctioned
 script** (same rationale as describe-batch: deterministic parsing work, and the bulk
@@ -580,6 +708,16 @@ defaults (`rules-engine`, `rules-engine-chains`, `scorecard`, `journey`,
 `--chains-domain` / `--scorecard-domain` / `--journey-domain` / `--templates-domain`
 only to override that, with the actual names from `report`'s `byDomain`.
 
+**Those five lanes are the maps' ONLY inputs** (F-457): the builder reads no other
+domain's docs, so a deep ingest of any domain outside them leaves all four files
+byte-identical — never advertise, run, or accept a `--deep` "to improve the maps" for
+a domain that is not one of these lanes. Which list commands are lanes is data,
+doc-lib's `RECORDED_LANES`; the five above are the subset the builder takes from it
+(the table is the home, this paragraph a pointer). A non-lane deep ingest still pays
+off — in `deps-report`, whose lanes come from that same table and whose answers read
+every full doc it finds — so when a user wants one, say that is where its value
+lands, not here.
+
 **Coverage and shallow crawls are handled by the script**: each file opens with a
 coverage header (full-doc counts, stub-excluded domains with their `--deep` re-run
 command, failed-describe counts), and a rules domain with no full docs gets a
@@ -602,11 +740,21 @@ a pointer from the relationships file if useful), never inline in generated file
 
 ## Final report
 
+Every number below is read from the quiescent `report` quoted at Phase 5's close
+(never from a running tally): `N` and `M` from `byStatus`; on the `Depth:` line
+substitute `F` · `S` · `L` · `U` with `byDepth.full` · `byDepth.metadata` ·
+`byDepth.listOnly` · `byDepth.unrecorded` respectively, each spelled even when 0,
+leaving the words that follow each number exactly as written; the `Not complete:` line lists
+every domain whose `domains.<domain>.byDepth` has `metadata > 0` or `unrecorded > 0`,
+as `<domain> (<n> metadata stubs)` or `<domain> (<n> unrecorded — record a describe
+command or none)`, comma-separated, or the word `none` when no domain qualifies.
 ```
 ✓ gs-superadmin setup complete
-  Tenant:     <slug> (<baseUrl>)
-  Documented: N assets
-  Remaining:  M pending/stale
-  KB folder:  <slug>/
-  Next steps: /gs-superadmin:refresh to detect changes
+  Tenant:       <slug> (<baseUrl>)
+  Documented:   N assets
+  Depth:        F full · S metadata (awaiting --deep) · L list-only (complete) · U unrecorded (completeness unknown)
+  Not complete: <domains, or none>
+  Remaining:    M pending/stale
+  KB folder:    <slug>/
+  Next steps:   /gs-superadmin:refresh to detect changes
 ```

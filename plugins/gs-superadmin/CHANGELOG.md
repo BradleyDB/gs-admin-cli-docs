@@ -5,6 +5,276 @@ marketplace doesn't pin versions — users get main — so entries describe what
 user who updates, not internal refactors. Entries before 0.8.0 were reconstructed from git
 history when this file was introduced.
 
+## 0.42.0 — 2026-09-21
+
+The operating model's Role section gains *The admin's job, and yours*, and the
+change-request plan gains a **Before building** section that comes from it. What a user
+gets by updating: every session is told how a good CS Ops admin thinks about a change —
+not just whether the tenant can build it, but what it does to the CS team's strategy, the
+CSMs who'll work it, the data it depends on, and the customers on the other end — and that
+its own job is to do that thinking with the KB open, ask the questions a newer admin might
+not think to, and tell the admin where the build as asked doesn't fit and what the better
+version costs, in as few lines as the change deserves, leaving the decision with the
+admin. The plan carries that between the impact analysis and the assets, held to one test:
+would the admin build or say something different after reading it? If the tenant already
+has a way to do this, the section cites the KB doc and says what that way gives up; where
+the ticket left something open, it says which way the plan went and asks; a ticket that
+says what it's for and asks for the right thing gets one line saying so. The plan is
+written on the ask as stated whatever the section says, and the chat summary's `Heads-up:`
+line shows the one line the admin most needs before opening the file.
+
+- `templates/operating-model.md` Role: the one canonical statement; the skill points at
+  it. Existing workspaces pick it up through the scaffold's `.new` flow at the next setup
+  or refresh.
+- `skills/change-request/SKILL.md` step 4 applies that thinking to the plan — the rules
+  specific to a plan, and the one test for what gets written; step 7's summary gains the
+  `Heads-up:` line.
+- `references/plan-template.md`: the section, its render rule, and its exact empty line
+  (`Nothing to add — the change as asked is the direct way to do it, and nothing the
+  ticket left out would change this plan.`).
+- `test/change-request-fixtures.mjs` locks the section across the four documents that
+  teach, render, summarize, and ground it; the expected plan demonstrates it (the
+  fixture's playbook decision moves from Risk notes into the reading, where it belonged).
+- Skill prose only — no script, hook, or guard behaviour moves. The tester walk is owed
+  (no tenant in the contributor session); see the PR.
+
+## 0.41.2 — 2026-09-16
+
+The mutation guard closes two silent spellings (issue #2 items 1–3; bus F-460). What a
+user gets by updating:
+
+- **An interpreter behind a PowerShell assignment now asks.** `$x=iex 'gs-admin jo p
+  save'`, `$x=bash -c '…'`, `$x=powershell "…"`, `$x=cmd /c '…'` (and the `${x}=` /
+  `$env:X=` spellings) run the mutation — PowerShell assigns the interpreter's output —
+  and drew no prompt and no journal row, while `$x=gs-admin …` always asked. The cause
+  was two word-to-program-name normalizers: the assignment strip lived in the one that
+  matched `gs-admin` and not in the one that resolved interpreter names. There is one
+  normalizer now, and every reader of a program name (the gs-admin match, the nested
+  interpreter table, the pipe-safety lint's consumer lookup) goes through it.
+- **Every assignment spelling PowerShell runs is stripped.** The assignment grammar
+  admitted only a letter- or underscore-led name, so `$1=gs-admin jo p save`, `${1}=…`,
+  `$x.y=…` and `$a[0]=…` — digit-led, property and index assignments, all of which run
+  the right-hand command (measured on 5.1, even when the assignment itself then
+  errors) — were silent, direct spelling and interpreter alike. One grammar now: a
+  `$`-led word up to its first `=`, a superset of the old, so it can only add prompts.
+- **A `-Command` behind a positional is re-scanned too.** `powershell foo.ps1 -Command
+  "gs-admin jo p save"` used to stop the payload search at `foo.ps1`. A positional that
+  carries nothing no longer ends the search — measured on Windows PowerShell 5.1 before
+  choosing the order: the positional IS the command text there (`powershell "gs-admin jo
+  p save" -Command "echo hi"` runs the mutation), so the issue's "flag first" order would
+  have dropped a real prompt; the shape PowerShell does not run draws a prompt it does not
+  need, the safe direction, and a line carrying the mutation in both places journals it
+  once.
+- **A value-taking PowerShell option before the payload no longer hides it** (found by
+  the review round; silent on every shipped version). `powershell -ExecutionPolicy Bypass
+  "gs-admin jo p save"` read `Bypass` as the payload and never reached the real one. The
+  executable's value-taking parameters (`-ExecutionPolicy`, `-File`, `-InputFormat`,
+  `-OutputFormat`, `-Version`, `-WindowStyle`, `-ConfigurationName`, `-WorkingDirectory`,
+  …, matched by prefix the way PowerShell resolves them) are skipped with their value;
+  the valueless ones (`-NoProfile`, `-NonInteractive`, …) deliberately are not, since
+  skipping a word after them could skip the payload.
+
+Judged by the shell-oracle suite, not by a hand list: its generator gained a combination
+matrix (assignment prefix × interpreter × option-after-flag × positional, both shells —
+issue #2 item 8), and the PowerShell rows now run under every PowerShell on the host
+(Windows PowerShell 5.1 and PowerShell 7's `pwsh`), so the ubuntu leg a dev PR runs
+judges them for the first time. Measured on the builder's host, where the oracle found one
+PowerShell lane (Windows PowerShell 5.1; the row and lane counts scale with what a host
+has): before the fix, 41 of the matrix's PowerShell rows executed the mutation in
+silence; after, 0 bypass on 706 generated lines. Nothing was
+removed from the documented residual set. Pick up: `/reload-plugins` (restart the session
+for the hook).
+
+## 0.41.1 — 2026-09-16
+
+Two boundaries stated and one prompt made self-resolving. What a user gets by updating:
+
+- **The guard's repeat-offense ask names the remedy** (F-453). A `gs-admin` subcommand
+  built from a shell variable is denied once with a rewrite hint and, on the repeat,
+  escalated to a human prompt; that prompt now carries the same remedy the deny does —
+  spell the domain/group/command words literally, variables belong in flag values and
+  paths — so a correct refusal resolves itself at the moment it fires instead of being
+  debugged back from the operating model. Pinned by guard-fixtures on the repeat path.
+- **`--deep <domain>` states its phases** (F-457a): Phases 1–2, then straight to Phase 5.
+  Phases 3 and 4 never re-run and nothing re-lists (a re-list would not feed the `--deep`
+  queue anyway — `next --upgrade` selects metadata stubs, never `pending`); before
+  spending budget the run reads one `report`'s `lookback` row for the domain and, when
+  the list is older than `lookbackDefault`, says so and points at refresh for a current
+  inventory. Four live `--deep` runs had each improvised the same skip against Phase 4's
+  "runs every time". An unrecorded domain (no describe recording on its stamp) is
+  decided by the recording, never by the domain's type: the run says Phase 4 has not
+  recorded a template or `none` yet and stops (D-V side observation).
+- **Phase 6 states the maps' inputs** (F-457b): the five relationship lanes are the
+  builder's ONLY inputs (the subset it takes from doc-lib's `RECORDED_LANES`), so a deep
+  ingest of any other domain leaves the four maps byte-identical; its value lands in
+  `deps-report`, and the skill says so instead of letting "deep-ingest X to improve the
+  maps" be inferred — several login cycles went to that inference live.
+
+Hook message plus skill prose; no script behaviour moves. Pick up: `/reload-plugins`
+(restart the session for the hook).
+
+## 0.41.0 — 2026-09-15
+
+One decision per kind of fact (F-450): three facts that lived at the wrong scope now each
+have one home, and the Phase 4 relay can finally ask an answerable question (F-452). What
+a user gets by updating:
+
+- **Per-CLI facts ship with the plugin, not per tenant.** doc-lib's `CLI_PIN_FACTS` is a
+  version-stamped table (keyed by catalog command id, applied only while the workspace
+  catalog is at that pin — the ask-overrides precedent; `check-stale-facts` refuses a
+  stale stamp) of what the installed CLI does that its catalog does not declare:
+  - `domain-candidates.mjs diff` reports the four `re rules` sublists (events,
+    executions, s3-tasks, schedules — list-shaped, no declared required flag, refuse to
+    run bare) under a new `notEnumerableBare` bucket with the flag each needs, before any
+    tenant decision: they never gate, and a tenant exclusion or block recorded against one
+    (the pre-table route: three runtime failures, then an exclusion, re-derived on every
+    new tenant) is reported inert on the entry and dropped from the decisions in force.
+    `pinFacts` in the output says whether the table applied; under another pin every
+    sublist is ordinary undecided work again, with a warning.
+  - `manifest.mjs report` derives `domains.<domain>.scope` — `{ key, path, limit }` — for
+    every domain whose recorded `listCommand` is a scope-limited command (`jo email
+    templates` flattens a folder level and hides some templates; `jo surveys list` is
+    PUBLISH-only; `jo data-designer list` is one dataset type — a membership signal over
+    data-management, not a domain), plus a top-level `pinFacts`. Nothing is recorded per
+    tenant and nothing is backfilled: existing workspaces read their limits on the next
+    report. The canon stays prose — one subsection per command in setup's
+    index-scope-notes.md, headed by the command's canonical path, which `check-doc-drift`
+    holds to the table both ways.
+  - The setup Phase 4 relay names every scope-limited domain from `scope` with its
+    limit and the fact that the remainder can be added later, BEFORE asking whether the
+    totals look right (F-452: a CLI-reachable subset used to read as a tenant total at the
+    one moment the user was asked to validate it).
+- **CONVENTIONS.md is workspace-wide by default, with a per-tenant override.** The file is
+  shared by every tenant of the workspace (one company, one set of conventions); a tenant
+  that differs gets its own `<slug>/CONVENTIONS.md` beside its KB, which the deps-report
+  and email-report scripts read first (an existing tenant file is the home whatever it
+  says — never completed from the workspace file) and name in the report header and, when
+  it declares nothing, in the exact-only caveat (so a tenant file that shadows a workspace
+  declaration is named, not silently in force); the precedence everywhere is tenant file >
+  adopted `conventions/` pack > workspace file, stated once in the operating model and
+  followed by the audit, change-request and deprecate prose. The "Tenant-specific" banner
+  had promised what the readers did not do.
+- **A blank date string is not a date.** `upsert-batch` stores an empty-string
+  modified-date value as null (the row is present-but-valueless, counted by report's
+  `datelessEntries`), warns once when EVERY row of a full list is blank (`cn chains` at
+  CLI 1.0.9 emits `modifiedDateStr` as `""`) with the `--no-date-field --allow-redate`
+  remedy, clears a blank stored before this rule on the next upsert (`blankDatesCleared`
+  in the summary — before the baseline branch, so adoption over stored blanks baselines
+  instead of flipping stale), and `report` counts a stored blank as dateless before any
+  upsert repairs it. Two workspaces had recorded the same command
+  differently — one the field, one none — and the one carrying the field showed four
+  "dated" chains that could never change.
+- Contract: T-2 v4 — `scope` on every `GsReportDomain` row and `pinFacts` on `GsReport`,
+  additive, pinned by `test/contract-conformance.mjs`; the diff's output gains
+  `notEnumerableBare`, `notEnumerableBareCount` and `pinFacts`.
+
+## 0.40.0 — 2026-09-15
+
+The report is the account of KB state, and it now says how deep that state goes. What a
+user gets by updating: `manifest.mjs report` carries `byDepth` — `full`, `metadata`
+(stubs awaiting `--deep`), `listOnly` (stubs of a domain recorded `none`: complete by
+definition) and `unrecorded` (stubs of a domain with no describe recording: completeness
+unknown, never assumed) — in total and per domain under a new `domains.<domain>` row, so
+"documented" can no longer be relayed as "complete" (F-455: the user was told a deep crawl
+had finished while eight domains were entirely stubs, and nothing in the report could
+contradict it). The setup skill's Phase 5 close, Phase 6 precondition, `--deep` relay and
+final report, and the budget-report shapes, all quote ONE report invocation taken at a
+quiescent point instead of narrating.
+
+- `domainCounts: { indexed, withAssets, empty }` (F-454): the Phase 4 relay quotes
+  `indexed` and names every `emptyDomains` entry, instead of counting `byDomain` keys —
+  a count that silently dropped every listed-but-empty domain.
+- Per domain, `changeDetection: "date" | "none" | "unrecorded"` and `datelessEntries`
+  (F-451): the refresh report ends with a `Not checked for change this run:` block naming
+  every domain with no date field and every count of dateless rows under a recorded one
+  (on one production workspace nearly half the inventory sits outside change detection;
+  "Unchanged" now says what it could see). Honest statement only — fingerprint-based
+  staleness for those rows is issue #12 territory.
+- `docPathsUnknown` (F-459), in `report` (per domain and total) and beside `remove`'s
+  `docPaths`: entries that were ever documented — documented now, or stale/failed still
+  carrying `last_verified` or `depth` — with no recorded `doc_path` (docs written before
+  path recording existed) are counted, so a cleanup list can never read 0 as "no docs"
+  when the truth is "unknown"; `reconcile-docs` records paths for exactly that set, and
+  names a never-documented entry's stray file as `docsForUndocumented`. `mark --status documented` now refuses an entry that has no recorded
+  `doc_path` when none is passed (stub, describe-batch and the manual path always pass
+  one). New verb `manifest.mjs reconcile-docs --domain <d> [--dir <folder>] [--out <file>]
+  [--dry-run]` backfills `doc_path` from the docs on disk through the writers' own naming
+  (doc-lib's `docNameMatcher`, the claimer's read-side twin — same `-dup` collision chain),
+  and names recorded-missing, unmatched and orphan files; it writes only `doc_path`,
+  never a doc, and refuses — before any write — a run from a working directory the
+  recorded paths do not resolve from. This is the reconcile-on-resume step batched
+  marks (#12) will reuse. A blank `--doc-path` on `mark` is refused as malformed.
+- Contract: report's output is now part of T-2 (`GsReport` in manifest.mjs's header,
+  pinned by `test/contract-conformance.mjs`); every addition is additive — `byDomain`
+  rows stay numbers-only because describe-batch's progress probe sums them.
+
+## 0.39.0 — 2026-09-14
+
+The describe loop stops itself, and says why. What a user gets by updating: a dead token
+or a wrong `describeCommand` no longer walks the whole asset list — `describe-batch.mjs`
+aborts a domain after five consecutive failed marks (issue #13) and aborts on the first
+auth failure with nothing marked (F-458), reporting either as one new summary field,
+`aborted: { reason: "consecutive-failures" | "auth", after, lastError }` (absent on a run
+that did not stop early; `budgetExhausted`, `moreRemaining` and `failures` are unchanged).
+A run that ended because the token died therefore never records that death as an asset's
+`failed` state: on one live run seventeen healthy assets carried it with the auth error as
+their reason; the entry in flight now keeps its status and is simply re-offered after
+`gs-admin login` (real describe failures earlier in the same run still stand).
+
+- The read-only gate in `describe-batch.mjs` and `capture.mjs` admits a per-item describe
+  on its catalog `actionKey` as well as on the path's trailing word (F-456): `cn chain`
+  (`describe-job-chain`) and `re r execution` (`describe-execution`) are now describable
+  and capturable through both scripts, so the connectors-chains lane needs no manual
+  fallback. A committed sweep over the shipped catalog names any future refusal at
+  adoption time.
+- Every `capture.mjs --paginate` fence in the skills quotes its `--out` value: Windows
+  PowerShell consumed the unquoted `{page}` placeholder and the command failed (issue #10).
+  The helper's refusal for a missing placeholder now names that cause.
+- Operating model, Known CLI issue KI-017: the libuv-abort exit code is named as the raw Windows
+  status 0xC0000409 (3221226505) beside the codes Git Bash (127) and PowerShell (255) display —
+  a caller reading the raw status from a spawn saw a number the note did not mention.
+- Setup Phase 5: the stop rule names the within-run limit and both `aborted` reasons; the
+  batch-sizing guidance names the nearer of the shell timeout and the token's usable life
+  as the binding deadline, and says to size against the slow end of observed rates. The
+  manual per-asset path carries the same auth exception.
+
+## 0.38.0 — 2026-09-11
+
+Setup Phase 4's index-or-exclude decision is bound to the overlap check's numbers. What a
+user gets by updating: `manifest.mjs exclude` refuses to record "covered by another domain"
+unless the check it now takes as evidence says every row is indexed under that domain — and
+refuses to record a check that proves coverage as anything else. On one tenant a
+"redundant, covered more completely" exclusion was recorded over a check that read 253 of
+586, leaving roughly 333 objects indexed nowhere and `deps-report` answering "nothing
+depends on this" for each of them; the same evidence on a second tenant was adopted. The
+rule was prose; it is now the verb.
+
+- `domain-candidates.mjs check --out <file>` writes the check JSON it prints.
+- `manifest.mjs exclude` takes exactly one of `--check <file>` or `--no-check "<why>"`
+  (a record write without evidence is refused — this is the breaking change), the coverage
+  claim as `--covered-by <domain>`, and `--recheck-after` like `block`.
+- Exclusion entries carry `evidence` (or `noCheck`), `coveredBy`, `recheckAfter`; existing
+  entries are untouched and the diff reports them as `legacy`. The diff's `excluded` rows
+  gain `kind` and `recheckDue`, warning by name when an exclusion's re-check date passes.
+- Setup Phase 4 and refresh prose follow the verb. Existing workspaces need no migration.
+
+## 0.37.1 — 2026-09-10
+
+Operating model gains one Known CLI issue. What a user gets by updating: a note that
+`re rules topics` and `jo email connectors` fail server-side on every call, so a session
+that hits one stops re-trying it and records it correctly.
+
+Both return a server error with a fresh Gainsight Request ID on every attempt — measured
+across two independent tenants and two CLI versions, with no successes — and both then abort
+on the libuv assertion (ledger KI-017), so the process exits with a crash code rather than a
+server status. The note exists mainly to stop that being read as the token half-life defect
+and answered with a re-login loop, and to say that such a command is recorded as **blocked
+with a re-check date, never excluded**: "returns 500 today" is not a durable reason to bury a
+domain from the KB. Ledger KI-018.
+
+Template change only — no script or skill behaviour moves. Existing workspaces pick it up
+through the scaffold's `.new` flow at the next setup or refresh.
+
 ## 0.37.0 — 2026-09-08
 
 CLI pin 1.0.8 → 1.0.9 (gs-fortress audit-1.0.9, kickoff E2: CP-1 + CP-5). What a user gets by

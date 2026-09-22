@@ -25,7 +25,7 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
-import { makeCommandResolver } from "../scripts/doc-lib.mjs";
+import { makeCommandResolver, CLI_PIN_FACTS } from "../scripts/doc-lib.mjs";
 
 const SCRIPTS = join(dirname(fileURLToPath(import.meta.url)), "..", "scripts");
 const CANDIDATES = join(SCRIPTS, "domain-candidates.mjs");
@@ -156,9 +156,115 @@ let r = manifest("upsert-batch", [
 ]);
 checkThat("fixture: connectors upsert succeeds with nested id field", r.code === 0 && r.json?.added === 4, r);
 
+// ── F-450 b: the per-pin CLI facts — not-enumerable-bare sublists ─────────────
+// A second workspace whose catalog is AT the stamped pin and carries the four
+// real `re rules` sublists (real ids; the catalog declares no required flag on
+// any of them — the upstream declaration gap) plus the real `dd sources
+// fields` (declares --type[enum], keeps its requiredEnumFlags path). The
+// shipped table must bucket the four WITHOUT any tenant record, keep the gate
+// off them, report a tenant record written against one as inert, and keep an
+// indexed domain visible when the table contradicts it.
+{
+  const R2 = join(ROOT, "pin");
+  mkdirSync(join(R2, ".gs-superadmin"), { recursive: true });
+  mkdirSync(join(R2, "acme-pin"), { recursive: true });
+  const real = (path, shortPath, id, actionKey, summary, extra = {}) =>
+    cmd(path, shortPath, path.split(" ")[0], path.split(" ").pop(), actionKey, summary, { id, ...extra });
+  const catalogPin = {
+    ...catalog,
+    meta: { cliVersion: CLI_PIN_FACTS.cliVersion },
+    commands: [
+      // the synthetic F-219 executions command (a made-up id) gives way to the
+      // real-id one below — one command per path, as in a real catalog
+      ...catalog.commands.filter((c) => c.path !== "rules-engine rules executions"),
+      real("rules-engine rules events", "re r events", "rules-engine:rules:events", "events", "List Events Framework events for a topic"),
+      real("rules-engine rules executions", "re r executions", "rules-engine:rules:executions", "list-rule-executions", "List execution history for a rule"),
+      real("rules-engine rules s3-tasks", "re r s3-tasks", "rules-engine:rules:s3-tasks", "s3-tasks", "List a rule's S3 tasks"),
+      real("rules-engine rules schedules", "re r schedules", "rules-engine:rules:schedules", "list-rule-schedules", "List schedules for a rule"),
+      real("data-designer sources fields", "dd sources fields", "data-designer:sources:fields", "list-source-fields", "List fields of a source object", {
+        flags: [{ name: "type", flag: "--type", required: true, cliExposed: true, enum: ["MDA", "SFDC"] }],
+      }),
+    ],
+    domains: [...catalog.domains, { namespace: "data-designer", aliases: ["dd"] }],
+  };
+  writeFileSync(join(R2, ".gs-superadmin", "catalog.json"), JSON.stringify(catalogPin, null, 2));
+  const M2 = join(R2, "acme-pin", "_manifest.json");
+  const diff2 = (args = []) => run(CANDIDATES, ["diff", "--manifest", M2, ...args]);
+  const manifest2 = (verb, args) => run(MANIFEST_SCRIPT, [verb, "--manifest", M2, ...args]);
+  manifest2("init", ["--slug", "acme-pin", "--base-url", "https://acme.example"]);
+  const FOUR = ["rules-engine rules events", "rules-engine rules executions", "rules-engine rules s3-tasks", "rules-engine rules schedules"];
+  let d = diff2(["--require-decided"]);
+  const neb = d.json?.notEnumerableBare ?? [];
+  const undec = (d.json?.undecided ?? []).map((u) => u.path);
+  checkThat("pin: the table applies — pinFacts.applied true, stamped = catalog version", d.json?.pinFacts?.applied === true && d.json?.pinFacts?.catalogVersion === CLI_PIN_FACTS.cliVersion, d.json?.pinFacts);
+  checkThat("pin: the four re rules sublists read notEnumerableBare with NO tenant record — needs + the runtime error, tenantRecord null", neb.length === 4 && JSON.stringify(neb.map((n) => n.path)) === JSON.stringify(FOUR) && neb.every((n) => typeof n.needs === "string" && n.needs.startsWith("--") && typeof n.error === "string" && n.tenantRecord === null && typeof n.summary === "string"), neb);
+  checkThat("pin: none of the four is undecided, and the gate's stderr names none of them (they never gate)", FOUR.every((p) => !undec.includes(p)) && !/re r (events|executions|s3-tasks|schedules)/.test(d.stderr) && d.json?.notEnumerableBareCount === 4, { undec, stderr: d.stderr });
+  checkThat("pin: candidateCount still counts the universe — the bucket is part of it", d.json?.candidateCount === d.json.indexedCount + d.json.excludedCount + d.json.blockedCount + d.json.undecidedCount + d.json.notEnumerableBareCount, d.json);
+  const ddf = (d.json?.undecided ?? []).find((u) => u.path === "data-designer sources fields");
+  checkThat("pin: the enum pair keeps its requiredEnumFlags path — dd sources fields is undecided carrying --type over MDA|SFDC, not bucketed", ddf != null && ddf.requiredEnumFlags?.[0]?.flag === "--type" && !neb.some((n) => n.path === "data-designer sources fields"), ddf);
+  // A tenant record against a bucketed command (the pre-table route) is INERT:
+  // reported on the entry and in a warning, dropped from the decisions in force.
+  manifest2("exclude", ["--command", "rules-engine rules events", "--reason", "Per-topic sublist: hard-fails bare", "--no-check", "--topic is required"]);
+  manifest2("block", ["--command", "rules-engine rules s3-tasks", "--reason", "server error x3", "--recheck-after", "2099-01-01"]);
+  d = diff2(["--require-decided"]);
+  const byPath = Object.fromEntries((d.json?.notEnumerableBare ?? []).map((n) => [n.path, n]));
+  checkThat("pin: an exclusion recorded against a bucketed command reads tenantRecord 'excluded', is not in excluded[] and not counted", byPath["rules-engine rules events"]?.tenantRecord === "excluded" && !(d.json?.excluded ?? []).some((e) => e.path === "rules-engine rules events") && d.json?.excludedCount === 0 && d.json?.excludedLegacyCount === 0, { entry: byPath["rules-engine rules events"], excluded: d.json?.excluded });
+  checkThat("pin: a block recorded against a bucketed command reads tenantRecord 'blocked', is not in blocked[] and the gate does not report it as blocked", byPath["rules-engine rules s3-tasks"]?.tenantRecord === "blocked" && !(d.json?.blocked ?? []).some((b) => b.path === "rules-engine rules s3-tasks") && d.json?.blockedCount === 0 && !/BLOCKED candidate/.test(d.stderr), { entry: byPath["rules-engine rules s3-tasks"], stderr: d.stderr });
+  checkThat("pin: each inert record draws ONE warning naming the record kind, the flag needed and the lift verb", (d.json?.warnings ?? []).filter((w) => /is excluded per tenant, but at CLI .* not enumerable bare .*--topic.*exclude --remove/.test(w)).length === 1 && (d.json?.warnings ?? []).filter((w) => /is blocked per tenant, but .*block --remove/.test(w)).length === 1, d.json?.warnings);
+  // Review round: a contradictory manifest (a hand edit — the verbs refuse to
+  // write both) is still named whatever bucket the command lands in: the
+  // pairwise contradiction checks run BEFORE the per-pin bucket.
+  {
+    const m = JSON.parse(readFileSync(M2, "utf8"));
+    m.domains_blocked["rules-engine rules events"] = { reason: "server error x3", decidedAt: "2026-09-01T00:00:00.000Z" };
+    writeFileSync(M2, JSON.stringify(m, null, 2));
+    const dd = diff2();
+    checkThat("pin: a bucketed command carrying BOTH an exclusion and a block still draws the excluded+blocked contradiction warning (never hidden by the bucket)", (dd.json?.warnings ?? []).some((w) => /"rules-engine rules events" is both excluded and blocked — contradictory/.test(w)) && (dd.json?.notEnumerableBare ?? []).find((n) => n.path === "rules-engine rules events")?.tenantRecord === "excluded", dd.json?.warnings);
+    delete m.domains_blocked["rules-engine rules events"];
+    writeFileSync(M2, JSON.stringify(m, null, 2));
+  }
+  // The table contradicted by the manifest: a domain INDEXED from a bucketed
+  // command stays visible as indexed, with a warning — never hidden.
+  const evFile = join(R2, "events.json");
+  writeFileSync(evFile, JSON.stringify({ data: [{ id: "e-1", name: "Evt" }] }));
+  manifest2("upsert-batch", ["--file", evFile, "--domain", "rules-engine-events", "--id-field", "id", "--name-field", "name", "--no-date-field", "--items-path", "data", "--list-command", "gs-admin --json re r events --topic t1"]);
+  d = diff2();
+  checkThat("pin: a domain indexed from a bucketed command is reported as indexed (never hidden) with a warning naming the contradiction", (d.json?.indexed ?? []).some((i) => i.path === "rules-engine rules events" && i.domains.includes("rules-engine-events")) && !(d.json?.notEnumerableBare ?? []).some((n) => n.path === "rules-engine rules events") && (d.json?.warnings ?? []).some((w) => /is indexed .* but the per-pin table says it is not enumerable bare/.test(w)), { indexed: d.json?.indexed, warnings: d.json?.warnings });
+}
+
+// ── F-450: the shipped per-pin table holds against the BUNDLED catalog ────────
+// Every id must exist at the pin; a notEnumerableBare entry the catalog has
+// started to DECLARE (a required CLI-exposed flag) is dead and must go — the
+// filter would drop the command on its own; a scope entry must be a list
+// command. The version stamp itself is check-stale-facts' tripwire.
+{
+  const bundled = JSON.parse(readFileSync(join(SCRIPTS, "..", "reference", "catalog.json"), "utf8"));
+  const byId = new Map((bundled.commands ?? []).map((c) => [c.id, c]));
+  checkThat("pin table: stamped for the bundled catalog's cliVersion", CLI_PIN_FACTS.cliVersion === bundled.meta?.cliVersion, { table: CLI_PIN_FACTS.cliVersion, bundled: bundled.meta?.cliVersion });
+  for (const [id, fact] of Object.entries(CLI_PIN_FACTS.commands)) {
+    const c = byId.get(id);
+    checkThat(`pin table: ${id} exists in the bundled catalog`, c != null, id);
+    if (!c) continue;
+    if (fact.notEnumerableBare)
+      checkThat(`pin table: ${id} still declares no required CLI flag — the entry is live, not dead`, !(c.flags ?? []).some((f) => f.required && f.cliExposed !== false), c.flags);
+    if (fact.scope)
+      checkThat(`pin table: ${id} is a list-shaped command`, /^list(-|$)/.test(c.actionKey ?? "") || /^List\b/.test(c.summary ?? ""), { actionKey: c.actionKey, summary: c.summary });
+  }
+}
+
 // ── diff: filter + statuses ──────────────────────────────────────────────────
 r = diff();
 checkThat("diff: candidate universe is exactly the 8 list-shaped tenant-wide commands", r.json?.candidateCount === 8, r.json);
+// F-450 b: this catalog is at a synthetic pin, so the shipped per-pin table is
+// NOT applied — the diff says so (pinFacts + a warning naming the stamp) and
+// the bucket is empty; the F-219 sublist below stays an ordinary undecided
+// candidate under a pin the table does not know.
+checkThat(
+  "diff: under a catalog at another pin the per-pin table is not applied — pinFacts.applied false, a warning names the stamp, notEnumerableBare empty (F-450 b)",
+  r.json?.pinFacts?.applied === false && r.json?.pinFacts?.stamped === CLI_PIN_FACTS.cliVersion && r.json?.pinFacts?.catalogVersion === "9.9.9" &&
+    (r.json?.warnings ?? []).some((w) => w.includes(`stamped for ${CLI_PIN_FACTS.cliVersion}`)) && r.json?.notEnumerableBareCount === 0 && Array.isArray(r.json?.notEnumerableBare),
+  { pinFacts: r.json?.pinFacts, warnings: r.json?.warnings }
+);
 const undecidedPaths = (r.json?.undecided ?? []).map((u) => u.path);
 checkThat(
   "diff: mutating / required-flag / hidden / describe commands are not candidates",
@@ -223,11 +329,16 @@ checkThat("diff: --require-decided exits 1 while candidates are undecided", r.co
 });
 
 // ── exclusions ───────────────────────────────────────────────────────────────
-r = manifest("exclude", ["--command", "rules-engine rules list-rest-connections", "--reason", "subsumed by the connectors domain"]);
+r = manifest("exclude", ["--command", "rules-engine rules list-rest-connections", "--reason", "subsumed by the connectors domain", "--no-check", "fixture: decided without a capture"]);
 checkThat("exclude: records a decision", r.code === 0 && r.json?.ok === true && r.json?.updated === false, r);
 r = diff();
 const excl = (r.json?.excluded ?? []).find((e) => e.path === "rules-engine rules list-rest-connections");
 checkThat("diff: excluded candidate carries its reason and decidedAt", excl?.reason === "subsumed by the connectors domain" && typeof excl?.decidedAt === "string", excl);
+checkThat(
+  "diff: an exclusion recorded with --no-check reads kind no-check, carrying noCheck and null evidence/coveredBy (F-449)",
+  excl?.kind === "no-check" && excl?.noCheck === "fixture: decided without a capture" && excl?.evidence === null && excl?.coveredBy === null && excl?.recheckAfter === null && excl?.recheckDue === false,
+  excl
+);
 checkThat("diff: excluded candidate is no longer undecided", !(r.json?.undecided ?? []).some((u) => u.path === "rules-engine rules list-rest-connections"), r.json?.undecided);
 
 // ── legacy domain (no listCommand) arms the gate + name collision ────────────
@@ -265,10 +376,10 @@ checkThat("diff: backfilled domain leaves the legacy list and maps to its candid
 const schemesFile = join(ROOT, "sc-schemes.json");
 writeFileSync(schemesFile, JSON.stringify({ data: [{ schemeId: "s-1" }, { schemeId: "s-2" }] }));
 manifest("upsert-batch", ["--file", schemesFile, "--domain", "scorecard-schemes", "--id-field", "schemeId", "--no-date-field", "--items-path", "data", "--list-command", "gs-admin --json sc sch list"]);
-manifest("exclude", ["--command", "rules-engine rules topics", "--reason", "reference data - platform topic registry, not tenant-owned assets"]);
-manifest("exclude", ["--command", "connectors widgets", "--reason", "organizational containers with no dependency surface"]);
-manifest("exclude", ["--command", "rules-engine rules executions", "--reason", "per-asset sublist - runtime error 'ruleId or ruleName is required'"]);
-manifest("exclude", ["--command", "rules-engine rules sources", "--reason", "source schema reference lists - not tenant-owned assets"]);
+manifest("exclude", ["--command", "rules-engine rules topics", "--reason", "reference data - platform topic registry, not tenant-owned assets", "--no-check", "fixture"]);
+manifest("exclude", ["--command", "connectors widgets", "--reason", "organizational containers with no dependency surface", "--no-check", "fixture"]);
+manifest("exclude", ["--command", "rules-engine rules executions", "--reason", "per-asset sublist - runtime error 'ruleId or ruleName is required'", "--no-check", "fixture"]);
+manifest("exclude", ["--command", "rules-engine rules sources", "--reason", "source schema reference lists - not tenant-owned assets", "--no-check", "fixture"]);
 r = diff(["--require-decided"]);
 checkThat("diff: gate passes once every candidate is decided and no domain is legacy", r.code === 0 && r.json?.undecidedCount === 0, {
   code: r.code,
@@ -371,8 +482,15 @@ checkThat(
   { code: r.code, blk: topicsBlk, warnings: r.json?.warnings }
 );
 // a later round that CAN look decides it — the exclude lifts the block
-r = manifest("exclude", ["--command", "rules-engine rules topics", "--reason", "reference data - platform topic registry, not tenant-owned assets"]);
+r = manifest("exclude", ["--command", "rules-engine rules topics", "--reason", "reference data - platform topic registry, not tenant-owned assets", "--no-check", "fixture", "--recheck-after", "2020-01-01"]);
 checkThat("exclude: deciding a blocked candidate lifts the block (blockLifted)", r.code === 0 && r.json?.blockLifted === true, r);
+r = diff(["--require-decided"]);
+const topicsExcl = (r.json?.excluded ?? []).find((e) => e.path === "rules-engine rules topics");
+checkThat(
+  "diff: an exclusion past its re-check date flags recheckDue and warns by name, gate still passes (F-449)",
+  r.code === 0 && topicsExcl?.recheckAfter === "2020-01-01" && topicsExcl?.recheckDue === true && (r.json?.warnings ?? []).some((w) => w.includes("excluded candidate") && w.includes("re-check date") && w.includes("re r topics")),
+  { code: r.code, excl: topicsExcl, warnings: r.json?.warnings }
+);
 r = diff();
 checkThat("diff: decided candidate leaves blocked and reads excluded", r.json?.blockedCount === 0 && (r.json?.excluded ?? []).some((e) => e.path === "rules-engine rules topics"), r.json);
 // stale block (command retired from the catalog) warns, record kept
@@ -406,6 +524,41 @@ checkThat(
   r.code === 0 && r.json?.alreadyIndexed === 4 && r.json?.allIndexed === true && r.json?.matchedByDomain?.connectors === 4,
   r.json
 );
+// ── F-449: check --out is the evidence file exclude --check reads ────────────
+// The verdict is bound to the numbers this run measured: the file is the
+// printed JSON byte-for-byte, and the exclude verb copies its numbers into the
+// ledger entry — never a re-typed count.
+const restCheck = join(ROOT, "check-rest.json");
+r = check(["--file", restFile, "--id-field", "pnpConnectionsInfo.connectionId", "--items-path", "data", "--out", restCheck]);
+checkThat("check --out: refused without --command — the evidence file names the candidate it measured", r.code === 1 && /--out requires --command/.test(r.stderr), r);
+r = check(["--file", restFile, "--id-field", "pnpConnectionsInfo.connectionId", "--items-path", "data", "--command", "gs-admin --json re r list-rest-connections", "--out", restCheck]);
+checkThat("check --command: a full command line is refused — canonical path only", r.code === 1 && /canonical command path/.test(r.stderr), r);
+r = check(["--file", restFile, "--id-field", "pnpConnectionsInfo.connectionId", "--items-path", "data", "--command", "rules-engine rules list-rest-connections", "--out", restCheck]);
+checkThat("check --out: writes the printed JSON to the file, stamped with command and checkedAt", r.code === 0 && r.json?.command === "rules-engine rules list-rest-connections" && typeof r.json?.checkedAt === "string" && JSON.stringify(JSON.parse(readFileSync(restCheck, "utf8"))) === JSON.stringify(r.json), { stdout: r.json });
+r = check(["--file", restFile, "--id-field", "pnpConnectionsInfo.connectionId", "--items-path", "data"]);
+checkThat("check: without --command the printed command is null (no file, no binding needed)", r.code === 0 && r.json?.command === null, r.json);
+r = manifest("exclude", ["--command", "rules-engine rules list-rest-connections", "--reason", "filtered view of the connectors domain", "--check", restCheck]);
+checkThat("exclude: a check proving coverage is refused without --covered-by (F-449)", r.code === 1 && /--covered-by connectors/.test(r.stderr), r);
+r = manifest("exclude", ["--command", "rules-engine rules list-rest-connections", "--reason", "filtered view of the connectors domain", "--check", restCheck, "--covered-by", "connectors"]);
+checkThat("exclude: --covered-by connectors accepted on 4 of 4 (kind coverage)", r.code === 0 && r.json?.kind === "coverage" && r.json?.updated === true, r);
+r = diff();
+const covExcl = (r.json?.excluded ?? []).find((e) => e.path === "rules-engine rules list-rest-connections");
+checkThat(
+  "diff: a coverage exclusion reads kind coverage with coveredBy and the check's evidence, noCheck null",
+  covExcl?.kind === "coverage" && covExcl?.coveredBy === "connectors" && covExcl?.evidence?.uniqueIds === 4 && covExcl?.evidence?.alreadyIndexed === 4 && covExcl?.evidence?.matchedByDomain?.connectors === 4 && covExcl?.noCheck === null,
+  covExcl
+);
+{
+  // A pre-F-449 entry (neither evidence nor noCheck) is tolerated and named
+  // legacy — readers never guess its kind from the prose.
+  const raw = JSON.parse(readFileSync(M, "utf8"));
+  raw.domains_excluded["rules-engine rules list-rest-connections"] = { reason: "subsumed by the connectors domain", decidedAt: "2020-01-01T00:00:00.000Z" };
+  writeFileSync(M, JSON.stringify(raw, null, 2));
+}
+r = diff();
+const legacyExcl = (r.json?.excluded ?? []).find((e) => e.path === "rules-engine rules list-rest-connections");
+checkThat("diff: a pre-evidence exclusion reads kind legacy (evidence, noCheck, coveredBy all null) and is counted", legacyExcl?.kind === "legacy" && legacyExcl?.evidence === null && legacyExcl?.noCheck === null && legacyExcl?.coveredBy === null && r.json?.excludedLegacyCount === 1, legacyExcl);
+manifest("exclude", ["--command", "rules-engine rules list-rest-connections", "--reason", "filtered view of the connectors domain", "--check", restCheck, "--covered-by", "connectors"]);
 r = check(["--file", restFile, "--id-field", "id", "--items-path", "data"]);
 checkThat("check: id field resolving to no value on every row fails loudly, naming the nested shape", r.code === 1 && /pnpConnectionsInfo/.test(r.stderr), {
   code: r.code,
@@ -502,8 +655,13 @@ checkThat(
 );
 const freshFile = join(ROOT, "fresh.json");
 writeFileSync(freshFile, JSON.stringify({ data: [{ id: "x-1" }, { id: "x-2" }] }));
-r = check(["--file", freshFile, "--id-field", "id", "--items-path", "data"]);
+const freshCheck = join(ROOT, "check-fresh.json");
+r = check(["--file", freshFile, "--id-field", "id", "--items-path", "data", "--command", "connectors widgets", "--out", freshCheck]);
 checkThat("check: 0-of-N rows indexed anywhere reads noneIndexed", r.json?.alreadyIndexed === 0 && r.json?.noneIndexed === true && r.json?.allIndexed === false, r.json);
+r = manifest("exclude", ["--command", "connectors widgets", "--reason", "covered by connectors", "--check", freshCheck, "--covered-by", "connectors"]);
+checkThat("exclude: --covered-by on a 0-of-2 check is refused end-to-end through the real check file (F-449)", r.code === 1 && /NOT covered by connectors/.test(r.stderr) && /0 of 2/.test(r.stderr), r);
+r = manifest("exclude", ["--command", "connectors jobs", "--reason", "x", "--check", freshCheck]);
+checkThat("exclude: the real check file passed for a different candidate is refused (measured connectors widgets)", r.code === 1 && /measured "connectors widgets", not "connectors jobs"/.test(r.stderr), r);
 // ── F-224: zero-row honesty — the pre-fix hardwired allowEmpty=true turned a
 // typo'd --items-path into rows:0 + a confident `noneIndexed: true` at exit 0,
 // and setup Phase 4 maps noneIndexed to the ADOPT branch: a permanent ledger

@@ -18,3 +18,13 @@ contact_links:
       This is an unaffiliated community project; it documents and drives the CLI but does
       not publish it. CLI defects go to Gainsight through your normal support channel —
       the plugin's /gs-superadmin:report-bug skill drafts a vendor-ready report for you.
+  # Discussions were enabled 2026-09-09; GitHub does not surface them in this chooser on
+  # its own. contact_links take absolute URLs only, so this one does hardcode owner/repo
+  # (the security-policy caveat above is why that link is left to GitHub) — a rename
+  # shows up as a dead link here, which check-doc-drift does not read; re-point it then.
+  - name: Question, idea, or "how do I…?"
+    url: https://github.com/BradleyDB/gs-admin-cli-docs/discussions
+    about: >-
+      Use Discussions for anything that isn't a defect or a concrete request: how to drive
+      the CLI or the plugin, whether something is expected, what a workflow should look
+      like. Issues stay the worklist.

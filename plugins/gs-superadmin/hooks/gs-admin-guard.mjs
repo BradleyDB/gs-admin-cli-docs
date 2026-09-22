@@ -215,14 +215,15 @@ const command = String(input.tool_input?.command ?? "");
 const isPowerShell = input.tool_name === "PowerShell";
 // Suffix-spelled invocations are the same CLI: on Windows the npm shims are
 // gs-admin.cmd / gs-admin.ps1 (a packaged binary would be gs-admin.exe, a
-// hand-rolled wrapper gs-admin.bat), so the gate and both word scanners must
+// hand-rolled wrapper gs-admin.bat), so the gate and the word normalizer must
 // treat one optional launcher suffix exactly like the bare name, or a
 // mutating `gs-admin.cmd jo p save` skips the ask AND the journal.
 // Recognizing more spellings only ADDS asks (tenet 3).
 //
-// One rule for suffix + case normalization, shared by isGsAdminWord and
-// normalizeProg (F-111: two hand-written copies had already drifted —
-// normalizeProg knew only `.exe`). It case-folds the WHOLE name, not just
+// One rule for suffix + case normalization, applied inside normalizeProg —
+// the ONE word → program-name normalizer below, which isGsAdminWord derives
+// from (F-111: two hand-written copies had already drifted, one knowing only
+// `.exe`; F-460 removed the second normalizer itself). It case-folds the WHOLE name, not just
 // the suffix: Windows and macOS filesystems are case-insensitive, so
 // `GS-Admin jo p save` runs the same CLI, and a case-sensitive compare let
 // it skip the ask AND the journal (F-109 — fails open, silent). The fold is
@@ -244,13 +245,25 @@ const stripLauncherSuffix = (name) =>
 // `--flag=value`, and splitting on it would push a flag's VALUE into the
 // subcommand words, which can stop a mutating command matching its catalog
 // path — i.e. it could REMOVE an ask, the one direction tenet 3 forbids.
-// Covers `$x=`, `${x}=`, and scoped/namespaced spellings (`$env:FOO=`,
-// `$script:x=`). Only the `$`-prefixed form: a bash `FOO=gs-admin cmd` sets a
-// variable and does NOT execute gs-admin, so stripping there would add noise
-// for nothing. Accepted false ask, stated because it is real: `$x='gs-admin'`
-// (assigning the literal string) tokenizes identically once quotes are
-// stripped, so it now asks. Nothing executes, the human declines, and that is
-// the safe direction.
+// The variable arm is `$` followed by ANYTHING up to the word's first `=` —
+// a name (`$x=`), braced (`${x}=`), scoped (`$env:FOO=`, `$script:x=`),
+// digit-led (`$1=` — legal in PowerShell), a property or an index (`$x.y=`,
+// `$a[0]=`). PowerShell evaluates the right-hand command for every one of
+// them, even when the assignment itself then errors (measured on 5.1,
+// 2026-09-16, F-460's sibling sweep). The grammar used to spell the name's
+// alphabet by hand (`\{?[A-Za-z_][\w:]*\}?`) and missed the last three, so
+// `$1=gs-admin jo p save` and `$x.y=gs-admin jo p save` ran in silence; the
+// computed-name branch in scanWords had meanwhile written the honest grammar
+// as a SECOND regex for its own question — two spellings of "is this word an
+// assignment" (the second-scanner class). One spelling now, here, and that
+// branch derives from it. The new arm is a superset of the old at the same
+// position, so every word that matched before strips to the same remainder:
+// it can only add asks (tenet 3). Only the `$`-prefixed form: a bash
+// `FOO=gs-admin cmd` sets a variable and does NOT execute gs-admin, so
+// stripping there would add noise for nothing. Accepted false ask, stated
+// because it is real: `$x='gs-admin'` (assigning the literal string)
+// tokenizes identically once quotes are stripped, so it now asks. Nothing
+// executes, the human declines, and that is the safe direction.
 // The variable part is OPTIONAL: the lexer reads `{` after `$` as a word
 // character, so `${x}=gs-admin` reaches this helper as ONE word and strips
 // through the variable arm, while a bare leading `=` (a word an older
@@ -260,11 +273,33 @@ const stripLauncherSuffix = (name) =>
 // The `$` itself is NOT optional on the variable arm: a bash `FOO=gs-admin cmd`
 // sets a variable and does not execute gs-admin, so matching it would add asks
 // for something that never runs.
-const ASSIGNMENT_PREFIX = /^(?:\$\{?[A-Za-z_][\w:]*\}?)?=/;
-const isGsAdminWord = (w) => {
-  const base = stripLauncherSuffix(w.replace(ASSIGNMENT_PREFIX, ""));
-  return base === "gs-admin" || base.endsWith("/gs-admin") || base.endsWith("\\gs-admin");
-};
+const ASSIGNMENT_PREFIX = /^(?:\$[^=\s]*)?=/;
+// THE ONE word → program-name normalizer (issue #2 items 2–3; the
+// second-scanner class, F-460). Every reader that asks "which program is this
+// word" goes through it and nothing else: the gs-admin match right below, the
+// nested-interpreter table (NESTED_SHELLS), the pipe-safety lint's consumer
+// lookup and the workspace consumer list. The rule, in order: strip a
+// PowerShell assignment prefix (the ASSIGNMENT_PREFIX arm above, F-250), take
+// the last path segment (`C:\tools\bash.exe`, `/usr/bin/bash`), then case-fold
+// and strip a launcher suffix (stripLauncherSuffix). It used to be TWO
+// functions that each re-derived part of the rule — isGsAdminWord stripped
+// the assignment and normalizeProg did not — so `$x=gs-admin jo p save` asked
+// while `$x=iex '…'`, `$x=bash -c '…'`, `$x=powershell "…"` and `$x=cmd /c '…'`
+// (every interpreter behind an assignment, all of which PowerShell really
+// runs — measured 2026-09-16 on 5.1 through test/guard-oracle.mjs) never
+// reached the interpreter table and ran the mutation in silence. The same
+// split had been closed once before by sharing stripLauncherSuffix (F-111)
+// and came back one layer up: a rule with two homes reaches one of them
+// (A-1), so the second home is gone rather than patched. The assignment strip
+// is safe for every consumer: on the lint's consumer lookup it can only widen
+// what the LINT accepts (`| =cat` now reads as `cat` — a coaching deny moved
+// to the normal flow), never touch a mutation ask (tenet 3).
+const normalizeProg = (word) => stripLauncherSuffix(word.replace(ASSIGNMENT_PREFIX, "").split(/[\\/]/).pop());
+const isGsAdminWord = (w) => normalizeProg(w) === "gs-admin";
+// "Is this word an assignment" — the variable arm of the same grammar, named
+// once here so no caller composes it (the computed-name branch in scanWords
+// is its reader: an assignment sets a variable and names no command).
+const isAssignmentWord = (w) => w.startsWith("$") && ASSIGNMENT_PREFIX.test(w);
 // The command-text gate decides only whether to keep looking: a false pass
 // falls through the scanners and exits silently, a missed pass loses the ask
 // AND the journal (tenet 3). It used to restate the WORD BOUNDARY as a
@@ -948,17 +983,12 @@ const PIPE_CONSUMERS = new Set([
   "pbcopy", "xclip", "xsel", "wl-copy",
 ]);
 
-// One normalization for program names, used both for matching a command's RHS
-// word and for loading workspace-listed consumer names — the "matched like
-// built-ins" guarantee is structural, not two copies kept in sync by hand.
-// Suffix + case handling is stripLauncherSuffix, the same rule the gs-admin
-// word matcher applies (F-111: this copy knew only `.exe`, so on Windows
-// `| findstr.CMD x` missed the consumer list and drew a false deny).
-// Deliberately stem-based: a local `select.ps1` unrelated to Select-Object
-// also passes the lint. Accepted — the lint's fail direction is a missed
-// quoting hint (back to the shell's own handling), never a missed ask, and a
-// suffix whitelist here would re-split the rule this helper exists to unify.
-const normalizeProg = (name) => stripLauncherSuffix(name.split(/[\\/]/).pop());
+// Consumer names — a command's RHS word and the workspace-listed entries
+// alike — normalize through normalizeProg (defined with isGsAdminWord above;
+// a second definition lived here until F-460). Deliberately stem-based: a
+// local `select.ps1` unrelated to Select-Object also passes the lint —
+// accepted, since the lint's fail direction is a missed quoting hint, never
+// a missed ask.
 
 // Workspace-extendable consumers (.gs-superadmin/pipe-consumers.json, live
 // Finding H: `… | dump` was denied because `dump` is a user-defined shell
@@ -1247,7 +1277,12 @@ const expansionNames = new Set();
 // payloads (`powershell "…"` with no -Command). Both were accepted by judgment
 // rather than by constraint, and both were cheap to close — see the payload
 // rule at the top of scanWords. Keep this paragraph: it is the record that the
-// two were considered, closed, and are expected to STAY closed.
+// two were considered, closed, and are expected to STAY closed. Two more
+// closed the same way (issue #2 items 1–2, F-460, 2026-09-16): an interpreter
+// behind a PowerShell assignment (`$x=iex '…'`, `$x=bash -c '…'`,
+// `$x=powershell "…"`, `$x=cmd /c '…'` — the one normalizer above) and a
+// `-Command` standing behind a positional (`powershell foo.ps1 -Command "…"`
+// — the positional loop below re-scans both).
 const NESTED_SHELLS = new Map([
   ["bash", "posix"], ["sh", "posix"], ["zsh", "posix"],
   ["dash", "posix"], ["ksh", "posix"],
@@ -1270,7 +1305,26 @@ const NESTED_PAYLOAD_FLAG = {
 };
 // Options of a payload runner that TAKE A VALUE, so the value is never read as
 // the payload (`watch -n 5 'gs-admin …'`: the payload is the string, not `5`).
-const NESTED_VALUE_OPTIONS = { watch: /^(-n|--interval)$/ };
+// PowerShell's own (F-460 review — a live bypass on every shipped version:
+// `powershell -ExecutionPolicy Bypass "gs-admin jo p save"` read `Bypass` as
+// the positional payload and never reached the real one): the executable's
+// value-taking parameters, matched by any prefix the way PowerShell resolves
+// them — a prefix that is ALSO a prefix of a valueless parameter is ambiguous,
+// PowerShell refuses it, nothing runs, either reading is safe. `-Command`'s
+// prefixes are the payload flag (NESTED_PAYLOAD_FLAG) and are tested first.
+// A valueless parameter (-NoProfile, -NonInteractive, -NoLogo, -NoExit, -Sta,
+// -Mta) must NOT be here: skipping its next word could skip the payload,
+// the ask-removing direction.
+const PWSH_VALUE_PARAMETERS = ["executionpolicy", "file", "inputformat", "outputformat", "version", "windowstyle",
+  "configurationname", "psconsolefile", "workingdirectory", "settingsfile", "custompipename", "encodedcommand", "encodedarguments"];
+const PWSH_VALUELESS_PARAMETERS = ["noprofile", "nointeractive", "noninteractive", "nologo", "noexit", "sta", "mta", "help", "command"];
+const pwshValueOption = {
+  test: (t) => {
+    const name = t.slice(1).toLowerCase();
+    return name.length > 0 && PWSH_VALUE_PARAMETERS.some((n) => n.startsWith(name)) && !PWSH_VALUELESS_PARAMETERS.some((n) => n.startsWith(name));
+  },
+};
+const NESTED_VALUE_OPTIONS = { watch: /^(-n|--interval)$/, pwsh: pwshValueOption };
 // Families whose reported status is the INTERPRETER's own, never the
 // payload's code (F-438's class, the Step 0 review): PowerShell's -Command
 // reports 0 or 1 for its last statement; watch re-runs its payload and exits
@@ -1384,7 +1438,8 @@ for (let i = 0; i < words.length; i++) {
   // through to the ordinary scan afterwards (an UNQUOTED payload's words are
   // separate tokens the ordinary scan already sees; its single-token re-scan
   // finds no subcommand words and adds nothing, so nothing double-counts).
-  const shellKind = NESTED_SHELLS.get(normalizeProg(w));
+  const prog = normalizeProg(w); // read once per word — the interpreter table here and the gs-admin match below both consume it
+  const shellKind = NESTED_SHELLS.get(prog);
   if (shellKind && depth < NESTED_SCAN_DEPTH) {
     // ONE payload-locating rule for every family (F-247). The payload used to
     // be read as the token immediately after the command-string flag, which
@@ -1397,14 +1452,19 @@ for (let i = 0; i < words.length; i++) {
     const isOption = (t) => t.startsWith("-") || (shellKind === "cmd" && t.startsWith("/"));
     const valueOpt = NESTED_VALUE_OPTIONS[shellKind];
     let payloadFound = false;
+    // Did a re-scan record an invocation? Read from the result collections
+    // the scan appends to — never from the payload's text.
+    const invocationsSeen = () => hits.length + overrideHits.length + unknowns.length + varSubs.length;
     const rescanText = (p) => {
       const sub = shellWords(p);
       // The interpreter's own position masks everything inside its payload
       // too (`bash -c 'gs-admin …' | cat`) — F-428. A nested PowerShell masks
       // by itself: its -Command reports 0 or 1, never the call's code ("nested").
       const payloadMasked = outerMasked || (NESTED_REPORTS_OWN_STATUS.has(shellKind) ? "nested" : segmentMasked(words, segStartSet, i, subs));
+      const before = invocationsSeen();
       scanWords(sub.words, sub.starts, depth + 1, payloadMasked, sub.inert, sub.redirs, sub.subs, sub.spans, sub.quoted, sub.arith);
       payloadFound = true;
+      return invocationsSeen() > before;
     };
     const rescanFrom = (from) => {
       for (let k = from; k < words.length; k++) {
@@ -1420,6 +1480,7 @@ for (let i = 0; i < words.length; i++) {
     // to find: the payload rule above applies straight from the next token.
     if (NESTED_PAYLOAD_FLAG[shellKind] === null) rescanFrom(i + 1);
     else {
+      let positionalSeen = false;
       for (let j = i + 1; j < words.length; j++) {
         const t = words[j];
         if (redirs.has(j)) continue; // `bash > f -c '…'`: the redirection is not the flag and not the payload
@@ -1428,6 +1489,10 @@ for (let i = 0; i < words.length; i++) {
           rescanFrom(j + 1);
           break;
         }
+        // An option, with its value when it takes one — the SAME step
+        // rescanFrom takes (F-460 review: this loop skipped the option and
+        // then read its value as the positional payload).
+        if (isOption(t)) { if (valueOpt?.test(t)) j++; continue; }
         // PowerShell runs a POSITIONAL first argument as a command string, so
         // `powershell "gs-admin jo p save"` with no -Command really executes —
         // the second closed residual (F-247). This is pwsh-only on purpose: a
@@ -1435,9 +1500,26 @@ for (let i = 0; i < words.length; i++) {
         // not a command string, so treating one as a payload there would assert
         // an execution that does not happen. Non-option tokens stay skipped for
         // those families, exactly as before.
-        if (shellKind === "pwsh" && !isOption(t)) {
-          rescanFrom(j);
-          break;
+        // The positional is re-scanned AND the search goes on for a `-Command`
+        // further along the segment (issue #2 item 1, F-460): the positional
+        // used to end the search, so `powershell foo.ps1 -Command "gs-admin jo
+        // p save"` never reached its flag. Measured on 5.1 (2026-09-16) before
+        // choosing the order: the positional IS the command text there —
+        // `powershell "gs-admin jo p save" -Command "echo hi"` runs the
+        // mutation with `-Command echo hi` as its arguments, and `foo.ps1
+        // -Command "…"` runs nothing — so the issue's "flag first, positional
+        // only as a fallback" would have dropped a real ask (tenet 3). Both are
+        // payloads to this reader; the one PowerShell does not run draws an
+        // over-ask, the safe direction. Later positionals are the script's
+        // arguments, not payloads — and so is a later `-Command` once the
+        // positional itself carried an invocation: the search ends there,
+        // or the same execution would be recorded twice (the review's
+        // `powershell "gs-admin jo p save" -Command "gs-admin jo p save"`
+        // journaled two rows for one run). The search goes on past a
+        // positional that carried nothing (`foo.ps1`).
+        if (shellKind === "pwsh" && !positionalSeen) {
+          positionalSeen = true;
+          if (rescanText(t)) break;
         }
       }
     }
@@ -1497,11 +1579,14 @@ for (let i = 0; i < words.length; i++) {
   // the name's spelling rather than read as a second call.
   let argStart = i + 1;
   let nameFrom = null;
-  if (!isGsAdminWord(w)) {
+  if (prog !== "gs-admin") {
     const span = spans.get(i);
     // An assignment (`$s = …`, `$s=…`) sets a variable and runs nothing — never
     // a name, whatever else the word carries.
-    const assignment = /^\$[^=\s]*=/.test(w) || words[i + 1] === "=";
+    // "Is this word an assignment" has ONE spelling — isAssignmentWord, the
+    // ASSIGNMENT_PREFIX variable arm (F-460: this line carried its own
+    // `/^\$[^=\s]*=/`, the honest grammar, while the strip spelled a narrower one).
+    const assignment = isAssignmentWord(w) || words[i + 1] === "=";
     const computedWord = span
       ? span.kind === "cmdsub" || span.kind === "bq" || span.kind === "expr"
       : !assignment && (/[$`]/.test(w) || (quoted.has(i) && /gs-admin/i.test(w)));
@@ -1730,6 +1815,10 @@ if (isPost) {
 // the model self-corrects to literal subcommands (which pass silently when
 // read-only); a repeat escalates to a human "ask" — fail-closed, because the
 // variable could expand to a mutation and this prompt is then the only gate.
+// Both branches name the literal-spelling remedy (F-453): the guard is the
+// only thing present at the moment of composition, and a correct block that
+// does not say how to not need it is a wall, not a coach — the ask used to
+// say "approve only if you know", never "spell the words literally".
 let varAskPart = null;
 if (varSubs.length) {
   // Bounded like its sibling clauses (unknowns, promoted — tenet 4): a loop
@@ -1747,7 +1836,9 @@ if (varSubs.length) {
     varAskPart =
       `This command passes a gs-admin subcommand through a shell variable (${shown}) that the ` +
       `guard cannot inspect — if it expands to a mutating command, this prompt is the only gate. ` +
-      `Approve only if you know exactly what it expands to.`;
+      `Approve only if you know exactly what it expands to. To avoid the prompt, rewrite with the ` +
+      `domain/group/command words spelled literally — variables belong in flag values and paths — ` +
+      `and retry: a literal read-only command runs without any prompt.`;
   } else {
     process.stdout.write(
       JSON.stringify({

@@ -185,12 +185,22 @@ same objects/fields), applies the workspace naming convention, and writes a revi
 request-event schema and ticket anatomy are vendored frozen contracts (canonical:
 `BradleyDB/CS_GTM_Tools`).
 
+The plan also has a **Before building** section: what a good CS Ops admin would say about
+the ticket if they had time to think it over — not just whether it can be built, but what
+it does to the CS team's strategy, the CSMs who'll work it, the data it depends on, and
+the customers on the other end. Where the build as asked doesn't fit, it says what would
+and what that costs. Where the ticket left something open, it says which way the plan went
+and asks the question, so you can confirm it in a glance or send it back to the requester.
+When there's nothing to add, it says so in one line. The plan is written on the ask as
+stated either way — nothing waits on you — and the chat summary shows the one line you
+most need before you open the file.
+
 The lifecycle, end to end — the key point is that **drafting is always safe**:
 
 1. **Draft** — `/gs-superadmin:change-request ticket.md --ticket CSOPS-142` writes the
    plan file. Nothing is executed at drafting time, ever.
-2. **Review** — open the plan, check the impact analysis, names, command sequence, and
-   rollback. Edit or discard freely; it's just a markdown file.
+2. **Review** — open the plan, check the impact analysis, the *Before building* read, names,
+   command sequence, and rollback. Edit or discard freely; it's just a markdown file.
 3. **Execute** — a separate, explicit ask ("execute the CSOPS-142 plan"). Commands run
    one at a time, each catalog-mutating command behind the approval prompt. The plan's
    guard-coverage section names the steps that will run without one — your approval of
@@ -352,7 +362,10 @@ the decision record, including for the retired entries.
 >   payload **is** re-scanned — `bash|sh|zsh|dash|ksh -c '…'`, `powershell -Command "…"`,
 >   a positional `powershell "…"`, `cmd /c "…"`, and both shells' eval — `eval '…'` and
 >   `Invoke-Expression`/`iex '…'` — plus each of those with options sitting between the
->   flag and the payload (`bash -c -x '…'`, `bash -c -- '…'`)
+>   flag and the payload (`bash -c -x '…'`, `bash -c -- '…'`), behind a PowerShell
+>   assignment that takes the interpreter's output (`$x=iex '…'`, `$x=bash -c '…'`,
+>   `$x=powershell "…"`, `$x=cmd /c '…'`), and a `-Command` standing behind a positional
+>   (`powershell foo.ps1 -Command "…"`) as well as the first positional itself
 >   — but not `-EncodedCommand` (base64, where the payload is not shell text at all), and
 >   not past three levels of nesting.
 > - *A payload stored in a variable.* The mutation is assigned first — a quoted string or
@@ -447,7 +460,9 @@ editing session has unsaved changes (the Journey cache is keyed by program id, n
                             `node .gs-superadmin/plugin/scripts/<x>.mjs`; created by setup,
                             repointed at every plugin session start, never a copy
   operating-model.md        Claude's always-on instructions (yours to edit)
-  CONVENTIONS.md            Build standards entry point (yours to fill in)
+  CONVENTIONS.md            Build standards entry point (yours to fill in; workspace-wide —
+                            a `<slug>/CONVENTIONS.md` beside a tenant's KB overrides it
+                            for that tenant alone)
   conventions/              Opt-in build-standards pack (yours to edit or delete)
   catalog.json              Generated from the installed CLI's manifests (bundled
                             snapshot if generation fails)

@@ -9,6 +9,41 @@
 
 - **CLI (`gs-admin`) = source of truth.** Run it for every read; never guess at API responses.
 - **This KB (`<slug>/`) = memory/map.** Documented assets here save re-fetching; they are inputs to reasoning, not authoritative without verification.
+- **The admin = the judgment between what the business asks for and what the tenant should do.**
+
+### The admin's job, and yours
+
+A request usually shows up as a build: the person asking has already picked the Gainsight
+feature they think they need, out of the ones they know about. A good CS Ops admin doesn't
+just check whether it can be built. They think about what it does to the whole operation
+the tenant serves — the CS team's strategy, the CSMs who'll have to work it, the data it
+depends on, the customers on the other end, and the tenant it lands in. Is this what the
+CS team is trying to do, or just what this person asked for? Will the CSMs do the thing,
+or ignore it — and what does that teach them about the system? Is the data it reads good
+enough to drive it, and does writing to a field change what that field means to everything
+else that uses it? Does anything go out to customers? Could the tenant already do this, or
+nearly? Who keeps it working after the requester has moved on? Should the process behind
+the ask exist at all? What are we signing up for by saying yes? And how much of that
+thinking does this one change deserve — a small change gets a small think. Then they say
+the one or two things that matter: where the build as asked doesn't fit, and what the
+better version costs. When there's time, that's a conversation with the business. When
+there isn't, it gets skipped and the ticket gets built as written. And someone new to the
+role hasn't had the years that make those questions automatic.
+
+Your job is the same job, one level down. Do that thinking for the admin, with the KB
+open, and ask the questions they might not have thought to ask yet. Whenever you're asked
+to change the tenant, put what you found in front of them — in the plan, or in your reply
+— in as few lines as it takes, and no more than the change deserves. What you can't know
+is the people and the history around the request; ask about those only when the answer
+would change what gets built or how it rolls out, and don't wait for the answer — draft
+the plan on the ask as stated and put the questions next to it. Two ways to get this
+wrong: build the ticket as written and say nothing; or ask "would a thorough consultant
+mention this?", to which the answer with the KB open is yes to everything, and you get a
+memo nobody working a queue will read. The test for every line: would the admin build, roll out, or say something different after
+reading it? If not, leave it out. The admin decides. They're trying to give the business
+what it needs; you show the best way to get there and what it costs, and you don't try to
+talk them out of it. A plain question gets a plain answer — plus the one thing they'd want
+to know, if the answer turns one up.
 
 ---
 
@@ -320,13 +355,25 @@ commands and output are still in this session.
 - **Every error path aborts on a libuv assertion instead of exiting cleanly.** After
   printing a correct API error, the process aborts with
   `Assertion failed: !(handle->flags & UV_HANDLE_CLOSING), file src\win\async.c, line 94`
-  and exits **127** — conventionally "command not found", so a caller cannot tell a
-  missing CLI from a rejected request. Not specific to auth, malformed JSON or `login`
+  and exits with a crash status — the raw process status on Windows is 0xC0000409
+  (3221226505, a Windows fail-fast; measured 2026-09-14 from a Node spawn with no shell),
+  which Git Bash displays as **127** and PowerShell as 255 — so under Git Bash a caller
+  cannot tell a missing CLI from a rejected request. Not specific to auth, malformed JSON or `login`
   (where it was previously noticed as a side-observation of a different bug): it
   reproduces on a plain read-only `re r describe --id <nonexistent>`, 3 of 3, with and
   without `--json`. The success path exits 0 cleanly. **Parse stderr for the `Error:`
-  line rather than trusting the exit code**; treat exit 127 from `gs-admin` as "check
-  stderr", never as "the CLI is not installed" (observed live on 1.0.9; ledger KI-017).
+  line rather than trusting the exit code**; treat exit 127, 255 or 3221226505 from
+  `gs-admin` as "check stderr", never as "the CLI is not installed" (observed live on 1.0.9; ledger KI-017).
+- **`re rules topics` and `jo email connectors` always fail server-side** — `Error: Server
+  Error Occurred, Please contact support` and `Error: HTTP 500` respectively, with a fresh
+  Gainsight Request ID on every call (8 attempts across two tokens and two shells, on two
+  independent tenants; 0 successes). Both are non-mutating tenant-wide list commands with no
+  required flags, so there is no alternate spelling to try and no workaround. Both also abort
+  on the libuv assertion above, so the exit code is a crash code (raw 0xC0000409; 127 under Git Bash,
+  255 under PowerShell), **not** an auth or server status — do not mistake it for the token
+  half-life defect and do not loop on re-login. Record such a command as **blocked with a
+  re-check date, never excluded**: "returns 500 today" is not a durable reason to bury a
+  domain (observed live on 1.0.8 and 1.0.9; ledger KI-018).
 - **General rule**: any "No stored token found" while `whoami` succeeds is this bug class,
   not a logged-out state. Prefer a sequential variant of the command or `gs-admin login`
   to mint a fresh token; do not conclude auth is broken or loop on re-login.
@@ -425,7 +472,15 @@ When you discover new relationships (e.g., a rule writes to a field that a score
 ## Build standards
 
 Refer to `.gs-superadmin/CONVENTIONS.md` before authoring or modifying any Gainsight asset
-(rules, journeys, reports, scorecards). If `.gs-superadmin/conventions/` exists (the adopted
+(rules, journeys, reports, scorecards). That file is **workspace-wide**: every tenant
+indexed here reads it, unless a `<slug>/CONVENTIONS.md` exists beside that tenant's KB
+folder — then that file replaces it for that tenant alone (the exception, not the norm:
+one company, one set of conventions; copy the workspace file into `<slug>/` and edit it
+only when a tenant genuinely differs). Every reader, scripted or prose, looks for the
+tenant file first and says which one it used; an adopted `.gs-superadmin/conventions/`
+pack stays workspace-wide and sits BETWEEN the two — a tenant file's filled-in section
+wins over the pack, the pack over the workspace file's section — and an existing tenant
+file is never completed from the workspace file (two files never read as one). If `.gs-superadmin/conventions/` exists (the adopted
 build-standards pack), consult `conventions/index.md` and load **only** the topic file
 relevant to the current task — `naming.md` for names/renames/audits, `query-building.md`
 for any dataset work (building or editing a query in Rules, Data Designer, or JO Programs;

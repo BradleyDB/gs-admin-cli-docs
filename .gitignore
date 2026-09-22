@@ -9,8 +9,13 @@ gs-admin-explorer.config.json
 .env
 .env.local
 
-# Local session-handoff notes (contain machine-specific paths — never commit)
+# Local session-handoff notes: handoff plans, session prompts, cleanup plans.
+# THIS REPO IS PUBLIC. The dev/ release strip only keeps them off main — the dev
+# branch is public too, so a handoff written under dev/ is world-readable. Both the
+# handoff-plan skill paths are listed: handoffs/ (its documented home) and
+# dev/handoff/ (where a past session wrote them). Never commit either.
 handoffs/
+dev/handoff/
 
 # Claude Code local state (per-machine permission grants, worktrees — never commit)
 .claude/settings.local.json

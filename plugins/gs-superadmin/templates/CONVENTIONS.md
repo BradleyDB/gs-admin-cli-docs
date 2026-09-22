@@ -1,7 +1,10 @@
 # Build Standards & Conventions
 
-> **Tenant-specific** — fill in as patterns emerge. This file is yours to edit.
-> It is loaded by Claude when authoring or modifying Gainsight assets in this workspace.
+> **Workspace-wide by default** — fill in as patterns emerge. This file is yours to edit
+> and applies to every tenant indexed in this workspace; a tenant that differs gets its own
+> copy at `<slug>/CONVENTIONS.md`, which readers use for that tenant instead (operating
+> model, "Build standards"). It is loaded by Claude when authoring or modifying Gainsight
+> assets in this workspace.
 
 ## Standards library
 

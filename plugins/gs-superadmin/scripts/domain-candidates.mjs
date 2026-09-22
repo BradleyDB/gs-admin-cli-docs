@@ -42,6 +42,19 @@
 //                   it BY NAME on every run, with its reason and suggested
 //                   name, and warns when its recheckAfter date has passed.
 //       undecided — none of the above: the gate's work list
+//     and, BEFORE the states above, one bucket that is not a decision:
+//       notEnumerableBare — the installed CLI refuses to run the command
+//                   without a per-asset flag its catalog never declares
+//                   (doc-lib CLI_PIN_FACTS, F-450 b; the four `re rules`
+//                   sublists at 1.0.9). A per-CLI fact, so no tenant decides
+//                   it: listed with the flag it needs and the runtime error,
+//                   never undecided, never gating. A tenant exclusion or
+//                   block recorded against one (the pre-table route) is
+//                   reported INERT on the entry (`tenantRecord`) with a
+//                   warning, and is not counted among the decisions in
+//                   force. The table is version-stamped and self-retiring:
+//                   under a catalog at another pin it is not applied and the
+//                   diff warns (`pinFacts` in the output says which).
 //     Undecided candidates get a suggested KB domain name
 //     (<namespace>-<actionKey minus the list- prefix>) collision-checked
 //     against existing domains and bare namespaces — a renamed domain
@@ -54,6 +67,11 @@
 //     with --list-command; the diff cannot be computed without it).
 //   check  --manifest <path> --file <list.json> --id-field <dot.path>
 //          [--items-path <dot.path>] [--allow-empty] [--allow-partial]
+//          [--command "<canonical path>" --out <file>]
+//     --out (F-449) writes the printed JSON to a file that `manifest.mjs
+//     exclude --check` takes as the decision's evidence; it requires
+//     --command, the candidate's canonical path, which is stamped into the
+//     output (with checkedAt) so the file is evidence for THAT candidate only.
 //     The GLOBAL overlap test for one candidate's captured rows: every
 //     extracted id is tested against the ids of EVERY inventory entry in
 //     EVERY domain — "is this row already indexed ANYWHERE", never "does a
@@ -93,6 +111,7 @@ import {
   idPathHint,
   ZERO_RESOLVE_HEAD,
   readJsonFile,
+  writeFileAtomicSync,
   findItemsArray,
   extractIds,
   makeCliHelpers,
@@ -100,6 +119,7 @@ import {
   makeCommandResolver,
   recordedDomainsByPath,
   indexedElsewhere,
+  pinFactsFor,
 } from "./doc-lib.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -108,7 +128,7 @@ const verb = argv[0];
 
 // Shared argv helpers (F-238) — the F-165/F-171 last-token rule lives in
 // doc-lib now; booleans are read with argv.includes, never opt().
-const { opt, fail, out, finish } = makeCliHelpers("domain-candidates.mjs", argv);
+const { opt, fail, finish } = makeCliHelpers("domain-candidates.mjs", argv);
 
 if (verb !== "diff" && verb !== "check") {
   fail("usage: domain-candidates.mjs <diff|check> --manifest <path> [...]");
@@ -178,6 +198,10 @@ if (verb === "diff") {
   const candidateByPath = new Map(candidates.map((c) => [c.path, c]));
 
   const warnings = [];
+  // Per-pin CLI facts (F-450 b): applied only at the stamped pin, warned
+  // about otherwise — a pin move never silently drops them.
+  const pin = pinFactsFor(catalog);
+  if (!pin.applied) warnings.push(pin.why);
   const domainsIndexed =
     manifest.domains_indexed && typeof manifest.domains_indexed === "object" ? manifest.domains_indexed : {};
   // canonical path → [domain names]: doc-lib's recordedDomainsByPath (F-429
@@ -285,11 +309,20 @@ if (verb === "diff") {
     }
     return byPath;
   };
-  // canonical path → { reason, decidedAt }
+  // canonical path → { reason, decidedAt, coveredBy, evidence, noCheck, recheckAfter }
+  // — the F-449 evidence fields ride along so the diff can say what KIND of
+  // decision each exclusion is (coverage / judgment / legacy) from the record,
+  // never from its prose.
   const excludedByPath = loadDecisionMap(manifest.domains_excluded, {
     label: "excluded",
     lift: "lift it (exclude --remove)",
     keepNote: "record kept",
+    extraFields: {
+      coveredBy: (v) => (typeof v === "string" ? v : null),
+      evidence: (v) => (v && typeof v === "object" && !Array.isArray(v) ? v : null),
+      noCheck: (v) => (typeof v === "string" ? v : null),
+      recheckAfter: (v) => (typeof v === "string" ? v : null),
+    },
   });
   // canonical path → { reason, decidedAt, recheckAfter }
   const blockedByPath = loadDecisionMap(manifest.domains_blocked, {
@@ -309,8 +342,18 @@ if (verb === "diff") {
   const indexed = [];
   const excluded = [];
   const blocked = [];
+  const notEnumerableBare = [];
   const undecided = [];
   const today = new Date().toISOString().slice(0, 10);
+  // ONE due-date rule for both record kinds (excluded and blocked carry
+  // recheckAfter since F-449): the comparison and the warning skeleton live
+  // here; only the remedy sentence differs per kind.
+  let legacyExclusions = 0;
+  const dueWarning = (rec, noun, c, remedy) => {
+    const due = rec.recheckAfter != null && rec.recheckAfter <= today;
+    if (due) warnings.push(`${noun} candidate "${c.shortPath ?? c.path}" passed its re-check date (${rec.recheckAfter}) — ${remedy}`);
+    return due;
+  };
   for (const c of candidates) {
     const inDomains = indexedByPath.get(c.path) ?? null;
     const excl = excludedByPath.get(c.path) ?? null;
@@ -322,6 +365,10 @@ if (verb === "diff") {
     // the enumeration with a DECISION_RECORDS table driving a generated pair
     // loop (and derive the precedence chain from the same table), or a
     // forgotten pair silently reports a contradictory manifest as clean.
+    // The per-pin bucket below is NOT a record kind — it is a catalog-level
+    // fact that pre-empts the precedence chain — so these checks run first
+    // and a contradictory manifest is still named whatever bucket the
+    // command lands in (review round).
     if (inDomains && excl) {
       warnings.push(
         `"${c.path}" is both indexed (domain ${inDomains.join(", ")}) and excluded — contradictory; ` +
@@ -340,10 +387,58 @@ if (verb === "diff") {
           `look"); treating it as excluded — lift whichever record is wrong`
       );
     }
+    // Per-pin fact (F-450 b): a command the installed CLI refuses to run bare
+    // is not a decision for any tenant — its own bucket, before the record
+    // chain. A tenant record written against it (the pre-table route: three
+    // runtime failures, then an exclusion) is INERT and says so; it is not a
+    // decision in force and never counts as one. An INDEXED domain from such
+    // a command contradicts the table (or was registered from a per-asset
+    // run): warn and let the chain below report it as indexed — a wrong
+    // table entry must stay visible, never hide a real domain.
+    const pinFact = typeof c.id === "string" && Object.hasOwn(pin.commands, c.id) ? pin.commands[c.id] : null;
+    if (pinFact?.notEnumerableBare && inDomains) {
+      warnings.push(
+        `"${c.path}" is indexed (domain ${inDomains.join(", ")}) but the per-pin table says it is not enumerable bare at CLI ${pin.stamped} ` +
+          `(needs ${pinFact.notEnumerableBare}) — either the table entry is wrong (re-verify it against the installed CLI) or the domain ` +
+          `was registered from a per-asset run; reported as indexed`
+      );
+    } else if (pinFact?.notEnumerableBare) {
+      const tenantRecord = excl ? "excluded" : blk ? "blocked" : null;
+      if (tenantRecord) {
+        warnings.push(
+          `"${c.path}" is ${tenantRecord} per tenant, but at CLI ${pin.stamped} it is not enumerable bare (needs ${pinFact.notEnumerableBare}) — ` +
+            `the record is inert: no decision is needed; lift it (${tenantRecord === "excluded" ? "exclude" : "block"} --remove) or leave it`
+        );
+      }
+      notEnumerableBare.push({
+        path: c.path,
+        shortPath: c.shortPath ?? null,
+        namespace: c.domain,
+        actionKey: c.actionKey ?? null,
+        summary: c.summary ?? null,
+        needs: pinFact.notEnumerableBare,
+        error: pinFact.error ?? null,
+        tenantRecord,
+      });
+      continue;
+    }
     if (inDomains) {
       indexed.push({ path: c.path, shortPath: c.shortPath ?? null, domains: [...inDomains].sort() });
     } else if (excl) {
-      excluded.push({ path: c.path, shortPath: c.shortPath ?? null, reason: excl.reason, decidedAt: excl.decidedAt });
+      // kind is derived from the RECORD (F-449): coverage carries the flag
+      // the numbers supported; judgment carries the check's evidence;
+      // no-check carries an explicit reason none could run; legacy predates
+      // evidence and its prose is all there is.
+      const kind = excl.coveredBy ? "coverage" : excl.evidence ? "judgment" : excl.noCheck ? "no-check" : "legacy";
+      if (kind === "legacy") legacyExclusions++;
+      const recheckDue = dueWarning(excl, "excluded", c,
+        "re-run its list command and the overlap check, then re-decide: adopt it (exclude --remove, then " +
+        "upsert-batch) or re-exclude with the fresh --check");
+      excluded.push({
+        path: c.path, shortPath: c.shortPath ?? null, reason: excl.reason, decidedAt: excl.decidedAt,
+        kind, coveredBy: excl.coveredBy, evidence: excl.evidence, noCheck: excl.noCheck,
+        recheckAfter: excl.recheckAfter, recheckDue,
+      });
     } else {
       // Undecided AND blocked candidates both carry the full identification an
       // adoption needs (namespace, summary, suggested name): a blocked
@@ -365,14 +460,9 @@ if (verb === "diff") {
         requiredEnumFlags: requiredEnumFlags(c),
       };
       if (blk) {
-        const recheckDue = blk.recheckAfter != null && blk.recheckAfter <= today;
+        const recheckDue = dueWarning(blk, "blocked", c,
+          "re-run its list command; on success decide it (adopt or exclude) and lift the block");
         blocked.push({ ...entry, reason: blk.reason, decidedAt: blk.decidedAt, recheckAfter: blk.recheckAfter, recheckDue });
-        if (recheckDue) {
-          warnings.push(
-            `blocked candidate "${c.shortPath ?? c.path}" passed its re-check date (${blk.recheckAfter}) — ` +
-              `re-run its list command; on success decide it (adopt or exclude) and lift the block`
-          );
-        }
       } else {
         undecided.push(entry);
       }
@@ -383,6 +473,7 @@ if (verb === "diff") {
   excluded.sort(cmpPath);
   blocked.sort(cmpPath);
   undecided.sort(cmpPath);
+  notEnumerableBare.sort(cmpPath);
   legacyDomains.sort();
 
   // Gate verdict first, summary last: the summary is the stdout write, and the
@@ -416,9 +507,18 @@ if (verb === "diff") {
     candidateCount: candidates.length,
     indexedCount: indexed.length,
     excludedCount: excluded.length,
+    // Exclusions recorded before evidence existed (F-449): named in one line
+    // so the corpus drains when re-litigated, never gated — an old decision is
+    // still a decision.
+    excludedLegacyCount: legacyExclusions,
     blockedCount: blocked.length,
     undecidedCount: undecided.length,
+    // F-450 b: a per-CLI bucket, never gating; pinFacts says whether the
+    // shipped table applied to this catalog at all.
+    notEnumerableBareCount: notEnumerableBare.length,
+    pinFacts: { stamped: pin.stamped, catalogVersion: pin.catalogVersion, applied: pin.applied },
     undecided,
+    notEnumerableBare,
     indexed,
     excluded,
     blocked,
@@ -437,6 +537,16 @@ if (verb === "diff") {
   // zero rows.
   const allowEmpty = argv.includes("--allow-empty");
   if (!file || !idField) fail("check requires --file <list.json> and --id-field <dot.path>");
+  // --out is the evidence file exclude --check reads (F-449); it must name the
+  // candidate it measures, or the file could be passed for any command.
+  const outPath = opt("--out");
+  const checkCommand = opt("--command");
+  if (outPath !== undefined && checkCommand === undefined) {
+    fail(`check --out requires --command "<canonical path>" (the path the diff printed for this candidate) — the evidence file names the candidate it measured`);
+  }
+  if (checkCommand !== undefined && !/^[a-z][a-z0-9-]*( [a-z0-9][a-z0-9-]*){0,9}$/.test(checkCommand)) {
+    fail(`--command must be a canonical command path (lowercase words, e.g. "rules-engine rules list-rest-connections") — the exact path the diff printed (got "${checkCommand.slice(0, 60)}")`);
+  }
   let data;
   try {
     data = readJsonFile(file);
@@ -495,21 +605,25 @@ if (verb === "diff") {
   if (partial) {
     warnings.push(
       `--allow-partial: ${unresolvedRows} of ${items.length} rows had no value at ${idField} and were ` +
-        `NOT tested for overlap; allIndexed/noneIndexed are withheld. Decide this candidate on the ` +
-        `untested rows' own evidence, and never record an exclusion citing coverage you did not measure`
+        `NOT tested for overlap; allIndexed/noneIndexed are withheld. A partial check is refused as ` +
+        `exclude --check evidence: fix the id path or --items-path and re-run, and never record an exclusion ` +
+        `citing coverage you did not measure`
     );
   }
   if (empty) {
     warnings.push(
       `0 rows extracted — allIndexed/noneIndexed are withheld: a 0-row check cannot answer the overlap ` +
-        `question and must never feed a ledger decision. Inspect the captured payload first (a typo'd ` +
+        `question and must never feed a coverage decision. Inspect the captured payload first (a typo'd ` +
         `--items-path and an error-wrapper body both land here under --allow-empty); only if the tenant's ` +
         `list is genuinely empty, decide the candidate on that fact — adopt as an empty domain ` +
-        `(upsert-batch --allow-empty, stamp-only) or exclude with a reason`
+        `(upsert-batch --allow-empty, stamp-only) or exclude it as a judgment call (--reason, with this ` +
+        `check as --check and a --recheck-after date, since an empty list can fill)`
     );
   }
-  out({
+  const result = {
     ok: true,
+    command: checkCommand ?? null,
+    checkedAt: new Date().toISOString(),
     rows: items.length,
     idsExtracted: ids.length,
     unresolvedRows,
@@ -524,5 +638,14 @@ if (verb === "diff") {
     matchedByDomain,
     sampleMatches: matches.slice(0, 5),
     warnings,
-  });
+  };
+  // --out (F-449): the SAME serialisation printed and written, so the file
+  // `manifest.mjs exclude --check` reads as the decision's evidence is byte-
+  // identical to what the operator saw — the numbers the verdict is bound to
+  // are the numbers this run measured, never a re-typed copy. Printed first:
+  // a write failure (a directory as --out, a locked path) must not swallow the
+  // computed result.
+  const json = JSON.stringify(result, null, 2);
+  console.log(json);
+  if (outPath !== undefined) writeFileAtomicSync(resolve(outPath), json + "\n");
 }

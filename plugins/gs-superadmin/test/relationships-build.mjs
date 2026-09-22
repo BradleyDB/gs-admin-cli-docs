@@ -201,7 +201,7 @@ function buildWorkspace(slug, { rulesDepth = "full", withFailedRule = true, chai
     if (depth === "full") writeFileSync(join(rulesDir, `${r.id}.md`), doc(`rules-engine/${r.id}`, r.id, r.name, r.payload));
     // metadata stubs carry no describe payload — an empty stub file stands in
     else writeFileSync(join(rulesDir, `${r.id}.md`), `# ${r.name}\n\n> Metadata-only stub.\n\n- key: rules-engine/${r.id}\n- id: ${r.id}\n- name: ${r.name}\n`);
-    manifest(M, "mark", ["--key", `rules-engine/${r.id}`, "--status", "documented", "--depth", depth]);
+    manifest(M, "mark", ["--key", `rules-engine/${r.id}`, "--status", "documented", "--depth", depth, "--doc-path", join(rulesDir, `${r.id}.md`)]);
   });
   if (withFailedRule) manifest(M, "mark", ["--key", "rules-engine/rule-acme-0004", "--status", "failed", "--error", "simulated describe failure"]);
 
@@ -211,7 +211,7 @@ function buildWorkspace(slug, { rulesDepth = "full", withFailedRule = true, chai
     manifest(M, "mark", ["--key", `rules-engine-chains/${CHAIN.id}`, "--status", "failed", "--error", "simulated describe failure"]);
   } else {
     writeFileSync(join(chainsDir, `${CHAIN.id}.md`), doc(`rules-engine-chains/${CHAIN.id}`, CHAIN.id, CHAIN.name, CHAIN.payload));
-    manifest(M, "mark", ["--key", `rules-engine-chains/${CHAIN.id}`, "--status", "documented", "--depth", "full"]);
+    manifest(M, "mark", ["--key", `rules-engine-chains/${CHAIN.id}`, "--status", "documented", "--depth", "full", "--doc-path", join(chainsDir, `${CHAIN.id}.md`)]);
   }
 
   const scDir = join(ROOT, slug, "scorecard");
@@ -226,7 +226,7 @@ function buildWorkspace(slug, { rulesDepth = "full", withFailedRule = true, chai
   } else {
     writeFileSync(join(scDir, `${SCORECARD.id}.md`), `# ${SCORECARD.name}\n\n> Metadata-only stub.\n\n- key: scorecard/${SCORECARD.id}\n- id: ${SCORECARD.id}\n- name: ${SCORECARD.name}\n`);
   }
-  manifest(M, "mark", ["--key", `scorecard/${SCORECARD.id}`, "--status", "documented", "--depth", scorecardDepth]);
+  manifest(M, "mark", ["--key", `scorecard/${SCORECARD.id}`, "--status", "documented", "--depth", scorecardDepth, "--doc-path", join(scDir, `${SCORECARD.id}.md`)]);
 
   // journey programs + email-template inventory (program-to-template map).
   // Template entries stay pending on purpose: the map matches inventory ids
@@ -242,13 +242,13 @@ function buildWorkspace(slug, { rulesDepth = "full", withFailedRule = true, chai
       // so a quoted key missed the inventory lookup, the depth gate was
       // skipped, and this stub was walked as a full program.
       writeFileSync(join(joDir, `${p.id}.md`), `# ${p.name}\n\n> Metadata-only stub.\n\n- key: \`journey/${p.id}\`\n- id: ${p.id}\n- name: ${p.name}\n\n\`\`\`json\n${JSON.stringify({ programId: p.id, name: p.name })}\n\`\`\`\n`);
-      manifest(M, "mark", ["--key", `journey/${p.id}`, "--status", "documented", "--depth", "metadata"]);
+      manifest(M, "mark", ["--key", `journey/${p.id}`, "--status", "documented", "--depth", "metadata", "--doc-path", join(joDir, `${p.id}.md`)]);
       continue;
     }
     if (p.corrupt) writeFileSync(join(joDir, `${p.id}.md`), `# ${p.name}\n\n- key: journey/${p.id}\n- id: ${p.id}\n- name: ${p.name}\n\n\`\`\`json\n{ corrupt\n\`\`\`\n`);
     else if (p.compact) writeFileSync(join(joDir, `${p.id}.md`), renderProgramDoc(p.payload, { key: `journey/${p.id}` }).doc);
     else writeFileSync(join(joDir, `${p.id}.md`), doc(`journey/${p.id}`, p.id, p.name, p.payload));
-    manifest(M, "mark", ["--key", `journey/${p.id}`, "--status", "documented", "--depth", "full"]);
+    manifest(M, "mark", ["--key", `journey/${p.id}`, "--status", "documented", "--depth", "full", "--doc-path", join(joDir, `${p.id}.md`)]);
   }
   return M;
 }
@@ -517,7 +517,7 @@ check(
   mkdirSync(join(slugDir, "jo-programs-x"), { recursive: true });
   for (const p of PARSEABLE) {
     writeFileSync(join(slugDir, "jo-programs-x", `${p.id}.md`), doc(`jo-programs-x/${p.id}`, p.id, p.name, p.payload));
-    manifest(M9, "mark", ["--key", `jo-programs-x/${p.id}`, "--status", "documented", "--depth", "full"]);
+    manifest(M9, "mark", ["--key", `jo-programs-x/${p.id}`, "--status", "documented", "--depth", "full", "--doc-path", join(slugDir, "jo-programs-x", `${p.id}.md`)]);
   }
   const OUT9 = join(slugDir, "relationships");
   r = run(["--manifest", M9, "--out-dir", OUT9, "--date", "2026-01-15"]);
