@@ -185,12 +185,22 @@ same objects/fields), applies the workspace naming convention, and writes a revi
 request-event schema and ticket anatomy are vendored frozen contracts (canonical:
 `BradleyDB/CS_GTM_Tools`).
 
+The plan also has a **Before building** section: what a good CS Ops admin would say about
+the ticket if they had time to think it over — not just whether it can be built, but what
+it does to the CS team's strategy, the CSMs who'll work it, the data it depends on, and
+the customers on the other end. Where the build as asked doesn't fit, it says what would
+and what that costs. Where the ticket left something open, it says which way the plan went
+and asks the question, so you can confirm it in a glance or send it back to the requester.
+When there's nothing to add, it says so in one line. The plan is written on the ask as
+stated either way — nothing waits on you — and the chat summary shows the one line you
+most need before you open the file.
+
 The lifecycle, end to end — the key point is that **drafting is always safe**:
 
 1. **Draft** — `/gs-superadmin:change-request ticket.md --ticket CSOPS-142` writes the
    plan file. Nothing is executed at drafting time, ever.
-2. **Review** — open the plan, check the impact analysis, names, command sequence, and
-   rollback. Edit or discard freely; it's just a markdown file.
+2. **Review** — open the plan, check the impact analysis, the *Before building* read, names,
+   command sequence, and rollback. Edit or discard freely; it's just a markdown file.
 3. **Execute** — a separate, explicit ask ("execute the CSOPS-142 plan"). Commands run
    one at a time, each catalog-mutating command behind the approval prompt. The plan's
    guard-coverage section names the steps that will run without one — your approval of
