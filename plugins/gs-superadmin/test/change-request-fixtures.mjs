@@ -231,12 +231,13 @@ check("plan template ties a guessed purpose to the header's AI-inferred tag",
 check("SKILL.md step 4 teaches the one test for what the reading writes",
   skillDoc.includes("*Before building*") &&
     skillDoc.includes("can you point to the line of the plan, or the thing") &&
-    skillDoc.includes('"would a thorough consultant mention this?"'), null);
+    skillDoc.includes("Something true about the tenant that changes nothing is commentary"), null);
 check("SKILL.md step-7 summary fence carries the Heads-up line",
   /```\n✓ change-request plan drafted[\s\S]*?\n  Heads-up:  <[\s\S]*?```/.test(skillDoc), null);
 check("operating model Role carries the admin's job and the session's",
   operatingModel.includes("### The admin's job, and yours") &&
-    operatingModel.includes("Your job is the same job, one level down."), null);
+    operatingModel.includes("Your job is the same job, one level down.") &&
+    operatingModel.includes('"would a thorough consultant'), null);
 check("expected plan demonstrates the Before building section",
   expectedPlan.includes("## Before building") && !expectedPlan.includes(EMPTY_READ), null);
 

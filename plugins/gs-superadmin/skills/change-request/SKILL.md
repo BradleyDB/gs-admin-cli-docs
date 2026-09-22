@@ -1,5 +1,5 @@
 ---
-description: Turn a change request (Jira ticket with a handoff block, request-event JSON, or pasted text) into a reviewable implementation plan — KB impact analysis, a *Before building* read, convention-checked names, exact gs-admin commands, rollback.
+description: Turn a change request (Jira ticket with a handoff block, request-event JSON, or pasted text) into a reviewable implementation plan — KB impact analysis, a Before-building read, convention-checked names, exact gs-admin commands, rollback.
 disable-model-invocation: true
 argument-hint: "<file-or-text> [--ticket KEY] [--slug name]"
 ---
@@ -154,35 +154,30 @@ Impact questions to answer explicitly:
 - What consumes the outputs downstream (scorecard measures, reports, dashboards, syncs)?
 - Does anything scheduled need to run before/after the new or changed asset?
 
-Then, with the KB still open, think about the change the way a good CS Ops admin would if
-they had the time (operating model, Role: *The admin's job, and yours*). This becomes the
-plan's *Before building* section. The impact analysis above is the list of what's touched;
-this is what you make of it. Think past the tenant to the CS team it serves — the
-strategy, the CSMs, the data, the customers — the way the operating model lays it out. The
-KB and the CLI can tell you what's true about the tenant; only the admin or the requester
-can tell you what's true about the people. Then say what a senior CS Ops person would say
-before building: where the build as asked doesn't fit and what the better version costs,
-plus the questions they'd ask that a newer admin might not think to. A question goes in
-only if the answer would change what gets built or how it's rolled out. Wherever the ask
-was silent, the plan had to pick something, and once picked it looks decided — so put each
-question next to the default the plan took, and the admin can confirm it in a glance or
-pass it to the requester. Match the length to the size of the change; a small change that
-fits gets a line.
+Then, with the KB still open, do the thinking the operating model asks of you (Role: *The
+admin's job, and yours*): what this change does to the CS team, the CSMs who'll work it,
+the data it reads, and the customers on the other end — and whether the build as asked is
+the best way there. That becomes the plan's *Before building* section. The impact analysis
+above is the list of what's touched; this section is what you make of it.
 
-If you say the tenant already has a way to do this, cite the KB doc that shows it and say
-what you'd give up by going that way — if there's no cost, you haven't looked hard enough.
-If the ticket doesn't say what it's for, your guess is marked as a guess: the header's
-`Justification:` tag reads `AI-inferred` (template render rule). And nothing waits on an
-answer: write the plan now, on the ask as stated.
+Rules specific to the plan:
 
-One test for every line: **can you point to the line of the plan, or the thing the admin
-would say to the requester, that changes if they take this on board?** Something true
-about the tenant that changes nothing is commentary, and the impact table already has it.
-The wrong test is "would a thorough consultant mention this?" — with the KB open the
-answer is yes to everything, and you get a memo nobody working a queue will read. If
-nothing passes, the section says so in one line; a ticket that says what it's for and asks
-for the right thing gets exactly that. Never try to talk the admin out of what the
-business needs: build what was asked, and put the better route next to it with its cost.
+- Wherever the ask was silent, the plan had to pick something, and once picked it looks
+  decided — so put each such question next to the default the plan took, and the admin can
+  confirm it in a glance or pass it to the requester.
+- If you say the tenant already has a way to do this, cite the KB doc that shows it and say
+  what you'd give up by going that way — if there's no cost, you haven't looked hard enough.
+- If the ticket doesn't say what it's for, your guess is marked as a guess: the header's
+  `Justification:` tag reads `AI-inferred` (template render rule).
+- Nothing waits on an answer: write the plan now, on the ask as stated, and put the better
+  route next to it with its cost.
+
+The operating model's test for every line, in plan terms:
+**can you point to the line of the plan, or the thing the admin would say to the
+requester, that changes if they take this on board?**
+Something true about the tenant that changes nothing is commentary, and the impact table
+already has it. If nothing passes, the section is the template's one empty line; a
+ticket that says what it's for and asks for the right thing gets exactly that.
 
 ### 5 — Names, conventions, risk
 

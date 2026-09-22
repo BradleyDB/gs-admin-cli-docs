@@ -5,7 +5,7 @@ marketplace doesn't pin versions — users get main — so entries describe what
 user who updates, not internal refactors. Entries before 0.8.0 were reconstructed from git
 history when this file was introduced.
 
-## 0.42.0 — 2026-09-16
+## 0.42.0 — 2026-09-21
 
 The operating model's Role section gains *The admin's job, and yours*, and the
 change-request plan gains a **Before building** section that comes from it. What a user
@@ -26,8 +26,9 @@ line shows the one line the admin most needs before opening the file.
 - `templates/operating-model.md` Role: the one canonical statement; the skill points at
   it. Existing workspaces pick it up through the scaffold's `.new` flow at the next setup
   or refresh.
-- `skills/change-request/SKILL.md` step 4 teaches the thinking and the one test for what
-  gets written; step 7's summary gains the `Heads-up:` line.
+- `skills/change-request/SKILL.md` step 4 applies that thinking to the plan — the rules
+  specific to a plan, and the one test for what gets written; step 7's summary gains the
+  `Heads-up:` line.
 - `references/plan-template.md`: the section, its render rule, and its exact empty line
   (`Nothing to add — the change as asked is the direct way to do it, and nothing the
   ticket left out would change this plan.`).
