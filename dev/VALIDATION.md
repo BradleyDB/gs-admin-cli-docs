@@ -370,3 +370,31 @@ then a rendered ask carrying "spelled literally" and "flag values and paths", de
 Verdicts of record on F-457 and F-453; the unproduced lookback-relay and `--upgrade` path
 are on F-457's Blind spots line, and re-bank here the first time a tenant holds a
 metadata stub.
+
+## PR #17 — change-request walk: the Before building section on a real ticket (banked 2026-09-21, maintainer, merged to dev @ 0cbcc12 as plugin 0.42.0)
+
+Owed by: the next tester round, in a consumer session with the working tree loaded.
+The contributor had no tenant, so the skill shipped unwalked (CONTRIBUTING, "Skill prose
+has no automated test"); the fixture suite and every CI gate were green on the merge.
+Tenant: either. Drafting a plan is read-only against the tenant (KB reads plus the CLI
+discovery reads the skill already makes); nothing is executed at drafting time.
+
+Steps (from the consumer workspace):
+1. Pick two real tickets: one small and well specified (a single criteria change, a
+   rename), and one that touches a shared field or opens CTAs.
+2. `/gs-superadmin:change-request <ticket> --ticket <KEY>` for each (slash only — the
+   operator types it; that is the walk).
+3. Read each plan's *Before building* section and the chat summary's `Heads-up:` line.
+
+Pass bar (the three measurements the PR itself named, plus the empty-line case):
+- The small ticket's section is one line or exactly the template's empty line — not a
+  memo. The section on the larger ticket is proportionate: every bullet points at a line
+  of the plan, or a thing the admin would say to the requester, that changes.
+- `Heads-up:` carries the one line the operator would actually want first, or reads
+  "nothing to add" when the section is the empty line.
+- Both plans are drafted on the ask as stated; any question sits beside the default the
+  plan took, and nothing waits on an answer.
+- If the section names a way the tenant can already do this, it cites the KB doc and
+  says what that way gives up.
+Record the verdict here with the token, and copy it to the bus under the round's Blind
+spots line.
