@@ -371,7 +371,7 @@ Verdicts of record on F-457 and F-453; the unproduced lookback-relay and `--upgr
 are on F-457's Blind spots line, and re-bank here the first time a tenant holds a
 metadata stub.
 
-## PR #17 — change-request walk: the Before building section on a real ticket (banked 2026-09-21, maintainer, merged to dev @ 0cbcc12 as plugin 0.42.0)
+## PR #17 — change-request walk: the Before building section on a real ticket (banked 2026-09-21, maintainer, merged to dev @ 0cbcc12 as plugin 0.42.0 — CLEARED 2026-09-21 @ hb-20260921-01)
 
 Owed by: the next tester round, in a consumer session with the working tree loaded.
 The contributor had no tenant, so the skill shipped unwalked (CONTRIBUTING, "Skill prose
@@ -398,3 +398,75 @@ Pass bar (the three measurements the PR itself named, plus the empty-line case):
   says what that way gives up.
 Record the verdict here with the token, and copy it to the bus under the round's Blind
 spots line.
+
+CLEARED 2026-09-21 (tester, Session F-V) @ hb-20260921-01 — PASS, with one rig deviation and
+one line of ask A's section discounted as rig-caused (Bradley's ruling, below).
+Under test: dev @ 5dd23b3 (the handoff commit, clean); canary matched (dev-canary description
+hb-20260921-01), loaded from <repo>\plugins\gs-superadmin. Tenant: the sandbox, CLI logged in,
+so both plans read `Verification basis: live`. Round type: first walk of shipped prose (PR #17).
+Rig deviation: no real Jira tickets. Both asks were authored from the sandbox KB from the round's
+templates, so every asset named exists. Ask B's requester vagueness is stood in for by
+deliberate silences (CTA type/priority, first-run treatment, segment, purpose, the existing
+rule on the same field). Ask A's template justification ("last quarter's firings") is fiction
+that the tenant contradicts, which is where the discounted line comes from.
+Step 2 (workspace): the workspace operating-model.md does NOT contain "The admin's job, and
+yours", and there is no operating-model.md.new beside it — setup not re-run since 0.42.0 (the
+session-start line reported 1 scaffolded file behind). The skill carried the thinking alone.
+Step 3 (assets, KB doc names only): ask A — the rule "MarketPay - Survey Year 2022 or Earlier"
+(criterion Survey_Year LTE 2022 → 2021). Ask B — the field ACCOUNT_LAST_LOGIN on Product Usage
+Attributes, read by "Close CTA: No Logins > 90 Days - April 2024", "Load to Company:
+ACCOUNT_LAST_LOGIN", ~10 reports ("Account last login in Period", "Last Login Date", …) and the
+journey "Digital CS - Login Campaign". The CTA-creating rule the section had to find unprompted:
+"v2 CTA: No Logins > 90 Days - April 2024" (same object, CSM-owned Risk CTA). Its KB doc and
+the live describe carry no criteria (a task-level filter, `_filterCount: ?`), so the overlap is
+measurable through its name, its source object and its close sibling's
+`ACCOUNT_LAST_LOGIN < 90 days` condition, not through a documented filter of its own.
+No mutating gs-admin command was proposed or run during drafting. The skill's reads were
+`re r describe`, `re r schedules`, `re r executions` and `jo cta options`, each captured
+through capture.mjs.
+
+Ask A (WALK-1) — Before building, verbatim:
+
+    - This rule has never run on this tenant — no schedule, no chain, 0 executions (live, 2026-09-21) — so "last quarter's firings" came from another tenant and "same schedule" means none here: ask the requester which tenant they reviewed; on this one the edit changes nothing until someone schedules it.
+    - The CTA's Name mapping is the literal "MarketPay - Survey Year 2022 or Earlier", so after the edit CSMs will see "2022 or Earlier" on CTAs that fire only for 2021 or earlier; the plan keeps the name as asked ("no other change") — offer the requester a rename of the rule and CTA Name to "…2021 or Earlier".
+
+    Heads-up:  This rule has never run on this tenant (no schedule, no chain, 0 executions) — "last quarter's firings" came from another tenant, and on this one the edit changes nothing until someone schedules it.
+
+Ask B (WALK-2) — Before building, verbatim (KB doc ids shortened to <doc>):
+
+    - The tenant already runs this at 90 days: "v2 CTA: No Logins > 90 Days - April 2024" (rules-engine/<doc>) opens a Risk / Usage Drop CTA to the CSM from the same object, and "Close CTA: No Logins > 90 Days" (rules-engine/<doc>) closes it when logins resume. Built as asked, every account past 90 days gets **two** open no-login CTAs, because the names differ and so do the identifiers. The plan builds the new rule as asked and excludes accounts that already have an open "No Logins > 90 Days" CTA. The other route is to lower the existing rule from 90 to 60 days. That keeps one CTA per account and keeps the close path, but it costs the 90-day CTA as it stands: its name literal "> 90 Days" would be wrong, and the close rule matches on that name, so renaming it breaks closing. Ask the requester which one they want (the purpose is our guess — see the header).
+    - Nothing closes the new CTAs when the customer logs back in; the 90-day route has a close rule, the ask doesn't. Plan default: no close rule (as asked) — CSMs close them by hand; offer a matching close rule (a copy of <doc> at 60 days).
+    - First run: every account already more than 60 days without a login gets a CTA on day one. The count is unknown until the test run (Verification 3). Plan default: fire for all of them, as asked. The alternative is to fire only on the day an account crosses the line (last login exactly 61 days ago), which avoids a day-one backlog but never catches the accounts already past it.
+    - Segment: the ask names no account filter, while other CTA rules on this object filter to customers (e.g. rules-engine/<doc> filters on Account_Type and product). Plan default: every record with a CSM populated (conventions/rules-engine.md) and a non-null ACCOUNT_LAST_LOGIN — accounts that never logged in are excluded. Ask whether it is customers only, and whether never-logged-in counts.
+    - CTA type/priority: not stated. Plan default mirrors the 90-day rule — Type Risk, Reason Usage Drop, Priority Medium, Status New — with no playbook (the 90-day playbook is not assumed to fit 60 days).
+    - "ACCOUNT_LAST_LOGIN alert" is the raw field label; as the CTA name, that is what CSMs see in Cockpit. Plan default: the CTA name stays as asked, and the rule gets the naming-convention name below. Suggest to the requester a CSM-readable CTA name, e.g. "No login in 60+ days".
+
+    Heads-up:  The tenant already runs this at 90 days ("v2 CTA: No Logins > 90 Days", with a close rule), so built as asked every account past 90 days gets two open no-login CTAs. The plan excludes those accounts; lowering the existing rule to 60 is the alternative, but its "> 90 Days" name and the name-matching close rule break.
+
+Point by point:
+- Proportionality — PASS (ruled). Ask A's section is two lines, not one. Bradley ruled
+  2026-09-21 to discount line 1: the skill correctly caught a contradiction the rig planted
+  (the fictional run history against a rule with 0 executions on this tenant). The remaining
+  line — the CTA Name literal that goes stale — is one line, and it pairs with something the
+  admin says (the rename offer). Noted for the builder, not a finding: the skill prose says a
+  ticket that states its purpose and asks for the right thing "gets exactly" the empty line,
+  but the per-line test admits a real tenant fact such as a stale name literal. On a real
+  ticket the section would have been one line, not empty. Ask B: 6 bullets, each paired —
+  (1) the C_Exclude merge task (Assets 1, Command sequence 6–7) plus the route question to
+  the requester; (2) the offered close rule; (3) Command 5's filter (no crossing window) plus
+  the backlog question; (4) Command 5's null and CSM filters plus the customers-only
+  question; (5) Command 11's --type/--reason/--priority/--status; (6) Command 11's --name
+  plus the rename suggestion. No bullet is commentary.
+- Heads-up — PASS. A carries one line from its section (the never-run line; with that line
+  discounted as rig-caused, it is still the line an admin on this tenant wants first). B
+  carries the duplicate-CTA line, which is the one I would have picked first — match.
+- Drafted on the ask as stated — PASS. Both plans are complete, with no question held for an
+  answer. Ask B's silences each sit beside the default the plan took: CTA type/priority
+  (bullet 5), first-run (bullet 3), segment (bullet 4). Its header reads
+  `Justification: … (AI-inferred)`.
+- Existing way, with its cost — PASS. Ask B cites both 90-day rule docs by path. It says what
+  lowering the existing rule gives up: the "> 90 Days" name literal goes wrong, and the close
+  rule's name match breaks. Ask A names no existing route; none was owed.
+Guard wiring: `gs-admin jo p save --id 'walk-guard-probe-nonexistent'` in the consumer
+workspace drew the PreToolUse ask naming `gs-admin journey programs save`, both workspace
+tenants and the PRODUCTION warning (text relayed by Bradley) — DECLINED.

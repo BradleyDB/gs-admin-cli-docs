@@ -149,6 +149,26 @@ rule also reads the archive.
 Under test: dev · hb-20260921-01 · 2026-09-21
 Blind spots (hb-20260921-01): PR #17 (plugin 0.42.0, change-request *Before building* + operating-model Role) shipped unwalked — the walk is banked in dev/VALIDATION.md § PR #17 and is the whole of this round; the asks are authored from the sandbox KB, not sourced from Jira (no real tickets on hand), so a requester-shaped vague ticket is approximated by deliberate silences in ask B and named as the rig deviation; PR #25 is docs-only, nothing to walk; F-460 blind spots carry as stated
 
+<!-- tester 2026-09-21 (Session F-V walk round — on dev, no branch):
+     Under test: dev @ 5dd23b3 (handoff commit, clean); canary matched hb-20260921-01, loaded from
+       <repo>\plugins\gs-superadmin. Round type: first walk of PR #17's shipped prose; no finding under test.
+     Walked (slash-typed by Bradley, sandbox, CLI logged in, plans `Verification basis: live`):
+       /gs-superadmin:change-request on ask A (WALK-1, a one-value criteria edit) and ask B (WALK-2, a new CTA rule
+       on a field with a CTA-creating rule already on it). Both plans written; no mutating command proposed or run
+       while drafting (reads only: re r describe / schedules / executions, jo cta options, via capture.mjs).
+     Verdict: dev/VALIDATION.md § PR #17 CLEARED @ hb-20260921-01 — PASS on all four points. Ask A's section ran two
+       lines; line 1 (never run on this tenant vs. the ask's "last quarter's firings") was ruled rig-caused and
+       discounted by Bradley; the remaining line is one. Ask B: 6 bullets, each paired to a plan line or a
+       requester question; cites the existing 90-day CTA and close rules with the cost of that route;
+       Justification tagged AI-inferred. The two sections and Heads-up lines are quoted there.
+     Rig deviation: no real Jira tickets — both asks authored from the sandbox KB; ask B's vagueness is deliberate
+       silences. Workspace operating-model.md lacks "The admin's job, and yours" and has no .new (setup not re-run
+       since 0.42.0) — the skill carried the thinking alone.
+     Guard wiring: `gs-admin jo p save --id 'walk-guard-probe-nonexistent'` drew the ask naming
+       gs-admin journey programs save, both workspace tenants + the PRODUCTION warning (text relayed by Bradley) —
+       DECLINED.
+     Numbers claimed: none (bus has no OPEN section; none opened). -->
+
 <!-- tester 2026-09-16 (Session E-V verdict round — UNMERGED; re-stamps the Session E builder comment on dev):
      Branch round-e-guard-normalizer -> PR #23, base dev, still UNMERGED; verdict committed [skip ci] on top of 58b1330.
        Status on the branch: F-460 VERIFIED @ hb-20260916-02 (the only live section this round).
