@@ -30,7 +30,8 @@
 //   matched) are listed in a "possible related fields (not counted)" caveat.
 //   The convention is read by the SCRIPT itself (GP-B5 DS-27:
 //   readAliasConvention below, from the workspace's
-//   .gs-superadmin/CONVENTIONS.md, walking up from the KB dir);
+//   .gs-superadmin/CONVENTIONS.md, walking up from the KB dir — or, for one
+//   tenant that differs, its own <slug>/CONVENTIONS.md override, F-450 a);
 //   --alias-prefix is the explicit override. Unset → exact-only (the S3
 //   behavior above) plus a no-convention caveat; malformed → exact-only plus
 //   a loud caveat naming why — a pattern is never inferred from tenant data
@@ -96,7 +97,7 @@
 // Zero dependencies — Node built-ins only.
 // ─────────────────────────────────────────────────────────────────────────────
 import { readFileSync, writeFileSync, existsSync, readdirSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import {
   parseFlags,
   C3_REPEATABLE,
@@ -160,7 +161,12 @@ export function compileAliasPrefix(source) {
 
 // ── tenant conventions read (GP-B5 DS-27) ────────────────────────────────────
 // The field-aliasing convention lives in the workspace's
-// `.gs-superadmin/CONVENTIONS.md`: a `## Field aliasing` section whose
+// `.gs-superadmin/CONVENTIONS.md` — the default for every tenant of the
+// workspace — or, for one tenant that differs, in a `<slug>/CONVENTIONS.md`
+// override beside its KB (F-450 a, ruled 2026-09-15: one company, one set of
+// conventions is the norm; the per-tenant file is the exception). Every
+// result carries `home` ("tenant" | "workspace") naming which was read, and
+// `path`. It is a `## Field aliasing` section whose
 // `- task-alias-prefix-regex:` bullet carries the pattern as ONE inline-code
 // value (the shipped templates/CONVENTIONS.md shape). Both deps surfaces read
 // it through here. The guardrail that used to be skill prose is behavioral
@@ -185,12 +191,45 @@ export function readAliasConvention(startDir) {
   // to be the walk's third hand copy).
   const wsDir = findWorkspaceDir(startDir);
   if (!wsDir) return { status: "unset", why: "no .gs-superadmin workspace at or above the KB directory" };
-  const path = join(wsDir, ".gs-superadmin", "CONVENTIONS.md");
+  // Home (F-450 a): the tenant directory is the KB path's first segment
+  // under the workspace (`<ws>/<slug>/…`); its CONVENTIONS.md, when it
+  // EXISTS, is the home whatever it contains — an unset or malformed
+  // declaration is reported against it, never silently completed from the
+  // workspace file (two files must never read as one declaration). Only a
+  // MISSING tenant file falls through to the workspace default. A start
+  // directory AT the workspace root has no tenant and reads the default.
+  const tenantDir = tenantDirOf(startDir, wsDir);
+  const tenantPath = tenantDir ? join(tenantDir, "CONVENTIONS.md") : null;
+  const home = tenantPath && existsSync(tenantPath) ? "tenant" : "workspace";
+  const path = home === "tenant" ? tenantPath : join(wsDir, ".gs-superadmin", "CONVENTIONS.md");
+  return { ...readAliasConventionFile(path), home };
+}
+// The ancestor of startDir whose parent is the workspace dir — the tenant
+// (slug) directory — or null when startDir IS the workspace dir, lies outside
+// it, or sits under the workspace's own `.gs-superadmin/` control directory
+// (review round: that directory is a first-level child too, and its
+// CONVENTIONS.md IS the workspace default — reporting it as a tenant override
+// would be the F-307 false-provenance class inverted).
+function tenantDirOf(startDir, wsDir) {
+  const ws = resolve(String(wsDir));
+  let dir = resolve(String(startDir));
+  if (dir === ws) return null;
+  const control = join(ws, ".gs-superadmin");
+  for (;;) {
+    const up = dirname(dir);
+    if (up === ws) return dir === control ? null : dir;
+    if (up === dir) return null;
+    dir = up;
+  }
+}
+// One CONVENTIONS.md file, parsed — the grammar below is unchanged by the
+// home rule; every result carries the path it was read from.
+function readAliasConventionFile(path) {
   let text;
   try {
     text = normalizeText(readFileSync(path, "utf8"));
   } catch {
-    return { status: "unset", why: "no readable CONVENTIONS.md in the workspace", path };
+    return { status: "unset", why: "no readable CONVENTIONS.md in the tenant directory or the workspace", path };
   }
   // Section: from the `## Field aliasing` heading (title matched
   // case-insensitively) to the next level-1/level-2 heading. The TITLE is the anchor,
@@ -378,7 +417,7 @@ export function resolveAliasPrefix({ explicit, hasFieldTerms, kbDir }) {
   if (!hasFieldTerms) return { source: null, origin: null, prefix: null, note: null, unsetWhy: null };
   const conv = readAliasConvention(kbDir);
   if (conv.status === "declared")
-    return { source: conv.pattern, origin: "convention", prefix: conv.prefix, note: null, unsetWhy: null };
+    return { source: conv.pattern, origin: "convention", prefix: conv.prefix, note: null, unsetWhy: null, home: conv.home, path: conv.path };
   if (conv.status === "malformed")
     return {
       source: null,
@@ -389,7 +428,7 @@ export function resolveAliasPrefix({ explicit, hasFieldTerms, kbDir }) {
         `field-aliasing convention in ${conv.path} is MALFORMED (${conv.why}) — field matching ran EXACT-ONLY; ` +
         `fix the declaration or pass --alias-prefix explicitly (a pattern is never guessed from tenant data)`,
     };
-  return { source: null, origin: null, prefix: null, note: null, unsetWhy: conv.why };
+  return { source: null, origin: null, prefix: null, note: null, unsetWhy: conv.why, home: conv.home ?? null, path: conv.path ?? null };
 }
 
 // Space↔underscore separator equivalence (ruled P-2: `X_Company GSID` and
@@ -481,24 +520,32 @@ export function addNearMisses(map, candidates, fieldTerms) {
 // when no conventions section exists — the same false-provenance class F-307
 // closed for the inactive states, on both deps surfaces).
 export function aliasMatchingLine(aliasRes, hasFieldTerms) {
-  const { source, origin, note, unsetWhy } = aliasRes ?? {};
+  const { source, origin, note, unsetWhy, home } = aliasRes ?? {};
+  // The convention's HOME rides its provenance (F-450 a): the workspace
+  // default is shared by every tenant, the tenant file is not.
+  const conventionHome = home === "tenant" ? "the tenant's own CONVENTIONS.md override" : "the workspace CONVENTIONS.md, shared by every tenant";
   if (source && hasFieldTerms)
     return (
       `case-insensitive exact match on system name or label, with task-alias prefix stripping ` +
-      `(\`${source}\`, from ${origin === "flag" ? "the explicit `--alias-prefix` flag" : "the tenant conventions"}) ` +
+      `(\`${source}\`, from ${origin === "flag" ? "the explicit `--alias-prefix` flag" : `the tenant conventions — ${conventionHome}`}) ` +
       `and space↔underscore separator equivalence — never substring`
     );
   const base = "case-insensitive exact match on system name or label";
   if (!hasFieldTerms) return base;
   if (note) return `${base} (declared field-aliasing convention MALFORMED — aliasing withheld; see Caveats)`;
-  return `${base} (field aliasing not in force: ${unsetWhy ?? "no field-aliasing convention supplied"})`;
+  // The unset arm names the home it read when one was read (F-450 a, review
+  // round): an existing tenant file that declares nothing SHADOWS a workspace
+  // declaration, and a line that only says "not in force" sent the operator to
+  // edit the wrong file.
+  const readFrom = home ? `, read from ${conventionHome}` : "";
+  return `${base} (field aliasing not in force: ${unsetWhy ?? "no field-aliasing convention supplied"}${readFrom})`;
 }
 
 // The ER-21/ER-23 honesty caveats, worded ONCE for both deps surfaces:
 // without an aliasing convention the exact-only matcher is blind to
 // task-alias-prefixed fields (never silently); with one, near-misses are
 // shown to the human but never counted. nearMisses: [{term, names[]}].
-export function aliasFieldCaveats({ hasFieldTerms, aliasActive, nearMisses = [], conventionNote = null, unsetWhy = null }) {
+export function aliasFieldCaveats({ hasFieldTerms, aliasActive, nearMisses = [], conventionNote = null, unsetWhy = null, unsetHome = null, unsetPath = null }) {
   const caveats = [];
   // A MALFORMED convention already states "ran EXACT-ONLY" with its why —
   // the generic exact-only caveat would restate it in different words
@@ -510,7 +557,12 @@ export function aliasFieldCaveats({ hasFieldTerms, aliasActive, nearMisses = [],
         `(${unsetWhy ?? "none declared"}), so fields ` +
         `carrying a task-alias prefix (a tenant build standard can prefix every task-built field, e.g. \`X_<field>\`) ` +
         `did NOT match their unprefixed names and real dependents may be missing from this report. If the tenant ` +
-        `aliases fields, declare the pattern in the workspace CONVENTIONS.md \`## Field aliasing\` section — this ` +
+        (unsetHome === "tenant"
+          ? `aliases fields, declare the pattern in the \`## Field aliasing\` section of the tenant's own ${unsetPath ?? "<slug>/CONVENTIONS.md"} — ` +
+            `that file exists and OVERRIDES the workspace CONVENTIONS.md for this tenant (a workspace declaration is not read while it exists; ` +
+            `delete the tenant file to fall back) — this `
+          : `aliases fields, declare the pattern in the workspace CONVENTIONS.md \`## Field aliasing\` section (or in a \`<slug>/CONVENTIONS.md\` ` +
+            `override when only this tenant aliases — the report reads that file first) — this `) +
         `report reads it itself — or re-run with \`--alias-prefix '<regex>'\`.`
     );
   for (const nm of nearMisses) {
@@ -1479,6 +1531,8 @@ function buildCaveats(index, opts, result, provenance) {
       nearMisses: result.nearMisses ?? [],
       conventionNote: opts.aliasConventionNote ?? null,
       unsetWhy: opts.aliasUnsetWhy ?? null,
+      unsetHome: opts.aliasUnsetHome ?? null,
+      unsetPath: opts.aliasUnsetPath ?? null,
     })
   );
   if (opts.fieldTerms.length && !opts.tokens)
@@ -1688,6 +1742,8 @@ export async function run(argv) {
   opts.aliasPrefix = aliasPrefix;
   opts.aliasConventionNote = aliasRes.note;
   opts.aliasUnsetWhy = aliasRes.unsetWhy;
+  opts.aliasUnsetHome = aliasRes.home ?? null;
+  opts.aliasUnsetPath = aliasRes.path ?? null;
   if (aliasRes.note) warnings.push(aliasRes.note);
   if (aliasPrefix && !fieldTerms.length)
     warnings.push("--alias-prefix has no effect without --field terms (aliasing applies to field matching only)");

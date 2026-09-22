@@ -38,6 +38,7 @@ import {
   readAliasConvention,
   resolveAliasPrefix,
   aliasMatchingLine,
+  aliasFieldCaveats,
   prepFieldTerm,
   fieldTermMatch,
   isNearMiss,
@@ -169,6 +170,50 @@ check("eqTerm: null never matches", !eqTerm(null, "arr") && !eqTerm(undefined, "
   writeFileSync(CONV, SECTION("- task-alias-prefix-regex: `^[A-Z]_`"), "utf8");
   check("readAliasConvention: declared → the inline-code value, compilable", (() => { const r = readAliasConvention(KB); return r.status === "declared" && r.pattern === "^[A-Z]_"; })(), readAliasConvention(KB));
   check("readAliasConvention: walk-up from a KB SUBDIR finds the workspace", readAliasConvention(join(KB, "rules-engine")).status === "declared", null);
+  // F-450 a (ruled 2026-09-15): the workspace file is the DEFAULT for every
+  // tenant of the workspace; a <slug>/CONVENTIONS.md beside the KB OVERRIDES
+  // it when it exists. Every result names its home and path.
+  {
+    const r = readAliasConvention(KB);
+    check("readAliasConvention: no tenant file → the workspace default, home 'workspace', path = the workspace file (F-450 a)", r.status === "declared" && r.home === "workspace" && r.path === CONV, r);
+    const TCONV = join(KB, "CONVENTIONS.md");
+    writeFileSync(TCONV, SECTION("- task-alias-prefix-regex: `^T_`"), "utf8");
+    const t = readAliasConvention(KB);
+    check("readAliasConvention: a tenant CONVENTIONS.md beside the KB wins over the workspace default — home 'tenant', its own pattern, its own path", t.status === "declared" && t.pattern === "^T_" && t.home === "tenant" && t.path === TCONV, t);
+    check("readAliasConvention: the override is found from a KB SUBDIR too (the tenant dir is the first segment under the workspace)", readAliasConvention(join(KB, "rules-engine")).pattern === "^T_", readAliasConvention(join(KB, "rules-engine")));
+    check("aliasMatchingLine: a tenant-override pattern names the tenant file as its home, never the shared workspace file (F-450 a)",
+      (() => { const l = aliasMatchingLine(resolveAliasPrefix({ explicit: null, hasFieldTerms: true, kbDir: KB }), true); return l.includes("(`^T_`, from the tenant conventions — the tenant's own CONVENTIONS.md override)") && !l.includes("shared by every tenant"); })(), null);
+    // An EXISTING tenant file is the home whatever it says: unset there is
+    // reported against it and never completed from the workspace's
+    // declaration — two files must never read as one (mutation: a
+    // fall-through on unset leaks ^[A-Z]_ here).
+    writeFileSync(TCONV, ["# Tenant", "", "## Naming", "", "- x", ""].join(String.fromCharCode(10)), "utf8");
+    const u = readAliasConvention(KB);
+    check("readAliasConvention: a tenant file WITHOUT the section is unset AGAINST the tenant file — the workspace's declaration never leaks through", u.status === "unset" && u.home === "tenant" && u.path === TCONV && /Field aliasing/.test(u.why), u);
+    const atRoot = readAliasConvention(WS);
+    check("readAliasConvention: a start dir AT the workspace root has no tenant — reads the workspace default", atRoot.home === "workspace" && atRoot.status === "declared", atRoot);
+    // Review round: the workspace's own .gs-superadmin/ is a first-level child
+    // too, and its CONVENTIONS.md IS the default — never a "tenant override".
+    const atControl = readAliasConvention(join(WS, ".gs-superadmin"));
+    check("readAliasConvention: a start dir under the workspace's .gs-superadmin/ is NOT a tenant — home 'workspace' (the F-307 false-provenance class, inverted)", atControl.home === "workspace" && atControl.status === "declared" && atControl.path === CONV, atControl);
+    // An existing tenant file that declares nothing SHADOWS the workspace
+    // declaration: the exact-only caveat and the matching line must name the
+    // tenant file, or the operator edits the workspace file for nothing.
+    {
+      const res = resolveAliasPrefix({ explicit: null, hasFieldTerms: true, kbDir: KB });
+      const caveat = aliasFieldCaveats({ hasFieldTerms: true, aliasActive: false, unsetWhy: res.unsetWhy, unsetHome: res.home, unsetPath: res.path }).join("\n");
+      const line = aliasMatchingLine(res, true);
+      check("aliasFieldCaveats: an unset TENANT file names itself as the override that shadows the workspace file (review round)", res.home === "tenant" && caveat.includes(TCONV) && /OVERRIDES the workspace CONVENTIONS\.md/.test(caveat) && !/declare the pattern in the workspace CONVENTIONS\.md/.test(caveat), caveat);
+      check("aliasMatchingLine: the unset arm names the home it read", /read from the tenant's own CONVENTIONS\.md override/.test(line), line);
+    }
+    rmSync(TCONV);
+    check("readAliasConvention: tenant file removed → back to the workspace default", readAliasConvention(KB).home === "workspace" && readAliasConvention(KB).pattern === "^[A-Z]_", readAliasConvention(KB));
+    {
+      const res = resolveAliasPrefix({ explicit: null, hasFieldTerms: true, kbDir: join(ROOT, "conv-none", "kb") });
+      const caveat = aliasFieldCaveats({ hasFieldTerms: true, aliasActive: false, unsetWhy: res.unsetWhy, unsetHome: res.home, unsetPath: res.path }).join("\n");
+      check("aliasFieldCaveats: with no workspace at all the caveat keeps the generic workspace remedy (home unknown)", res.home == null && /declare the pattern in the workspace CONVENTIONS\.md/.test(caveat), caveat);
+    }
+  }
   writeFileSync(CONV, String.fromCharCode(0xfeff) + SECTION("- task-alias-prefix-regex: `^[A-Z]_`"), "utf8");
   check("readAliasConvention: BOM'd CONVENTIONS.md (PS 5.1 Out-File) still parses (T-7 read boundary)", readAliasConvention(KB).status === "declared", readAliasConvention(KB));
   writeFileSync(CONV, SECTION("- task-alias-prefix-regex: `^[A-Z]_`").replace("## Field aliasing", "## FIELD ALIASING"), "utf8");
@@ -559,7 +604,7 @@ check("eqTerm: null never matches", !eqTerm(null, "arr") && !eqTerm(undefined, "
   );
   check(
     "aliasMatchingLine: a conventions-declared pattern still credits the conventions (F-308 regression guard)",
-    (() => { const l = aliasMatchingLine(resolveAliasPrefix({ explicit: null, hasFieldTerms: true, kbDir: KB }), true); return l.includes("(`^[A-Z]_`, from the tenant conventions)") && !l.includes("--alias-prefix` flag"); })(),
+    (() => { const l = aliasMatchingLine(resolveAliasPrefix({ explicit: null, hasFieldTerms: true, kbDir: KB }), true); return l.includes("(`^[A-Z]_`, from the tenant conventions — the workspace CONVENTIONS.md, shared by every tenant)") && !l.includes("--alias-prefix` flag"); })(),
     null
   );
 

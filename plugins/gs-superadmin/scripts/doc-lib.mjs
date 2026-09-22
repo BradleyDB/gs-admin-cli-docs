@@ -245,6 +245,17 @@ export function canonicalFingerprint(payload) {
   return createHash("sha1").update(JSON.stringify(canon(payload))).digest("hex");
 }
 
+// The doc_path SPELLING every writer records and every reader resolves against
+// the CWD (T-2 GsInventoryEntry.doc_path): the folder as passed, forward
+// slashes, no trailing slash, then `/<stem>.md`. One home (review round of
+// F-459: stub, describe-batch, the template writer and reconcile-docs each
+// carried the same two-replace chain) — a path reconciled from disk is
+// byte-identical to one a writer recorded because both call this.
+/** @param {string} dir */
+export const docDirNorm = (dir) => dir.replace(/\\/g, "/").replace(/\/$/, "");
+/** @param {string} dir @param {string} stem */
+export const docPathFor = (dir, stem) => `${docDirNorm(dir)}/${stem}.md`;
+
 // Doc filename for an asset id — the single copy; import, never re-implement.
 // Beyond the charset whitelist, two Windows filename-legality rules force the
 // hash suffix (F-126): reserved DOS device names (NUL/CON/COM1/…, with or
@@ -294,38 +305,114 @@ export function docBaseName(id) {
 // prefix collision between two clean ids. Narrow, but silent when it lands: the
 // exact-case disk match reads the second id's write as the first id's own doc
 // and reuses the name.
+// The doc stems in a folder — lower-cased stem -> the exact spellings on disk.
+// ONE snapshot reader for the claimer (write side) and the matcher (read side,
+// F-459): both see the same files the same way, so a name the matcher
+// attributes is a name the claimer would have chosen.
+/** @param {string} dir @returns {Map<string, Set<string>>} */
+function readDocStems(dir) {
+  /** @type {Map<string, Set<string>>} */
+  const disk = new Map();
+  let names = [];
+  try {
+    names = readdirSync(dir);
+  } catch {
+    /* dir not created yet — nothing on disk to respect */
+  }
+  for (const n of names) {
+    // The same extension test as listMdFiles (the readers' listing): a doc is
+    // `<stem>.md`, exact case — every writer emits that, and a `.MD` file is
+    // invisible to every reader, so it must be no stem here either (review
+    // round: the matcher would have recorded `<stem>.md` for a file spelled
+    // `.MD`, a path that exists on Windows only).
+    if (!n.endsWith(".md")) continue;
+    const stem = n.slice(0, -3);
+    const lower = stem.toLowerCase();
+    if (!disk.has(lower)) disk.set(lower, new Set());
+    // The line above guarantees the key; the cast states that to the
+    // strictNullChecks ratchet (Map.get is `| undefined` by signature).
+    /** @type {Set<string>} */ (disk.get(lower)).add(stem);
+  }
+  return disk;
+}
+// The ONE suffix grammar (F-125/F-156; review round of F-459): starting from
+// docBaseName(id), append "-dup" while the stem is claimed in-run
+// (case-insensitively) or a DIFFERENT spelling of it sits on disk, and stop
+// at the first stem that is free — which is either this id's own exact-case
+// file (reuse) or a name no file carries (a fresh write). The write side
+// (docNameClaimer) and the read side (docNameMatcher) both resolve through
+// this function and both record the claim, so a replay lands on the stem
+// the writer chose. Termination: each hop lengthens the stem, and both the
+// disk snapshot and the claim set are finite. Not exported — the grammar
+// has no third home (check-doc-drift check 9 refuses a copy in any script).
+/**
+ * @param {Map<string, Set<string>>} disk  lower-cased stem -> exact on-disk stems
+ * @param {Set<string>} claimedLower       lower-cased stems claimed this run
+ * @param {string} id
+ * @returns {string}
+ */
+function resolveStem(disk, claimedLower, id) {
+  let base = docBaseName(id);
+  for (;;) {
+    const spellings = disk.get(base.toLowerCase());
+    const foreignOnDisk = spellings != null && !spellings.has(base);
+    if (!claimedLower.has(base.toLowerCase()) && !foreignOnDisk) break;
+    base += "-dup";
+  }
+  return base;
+}
 export function docNameClaimer(dir) {
   const claimedLower = new Set();
   /** @type {Map<string, Set<string>> | null} */
   let disk = null; // lower-cased stem -> Set of exact on-disk stems
   return (id) => {
-    if (disk === null) {
-      disk = new Map();
-      let names = [];
-      try {
-        names = readdirSync(dir);
-      } catch {
-        /* dir not created yet — nothing on disk to respect */
-      }
-      for (const n of names) {
-        if (!/\.md$/i.test(n)) continue;
-        const stem = n.slice(0, -3);
-        const lower = stem.toLowerCase();
-        if (!disk.has(lower)) disk.set(lower, new Set());
-        // The line above guarantees the key; the cast states that to the
-        // strictNullChecks ratchet (Map.get is `| undefined` by signature).
-        /** @type {Set<string>} */ (disk.get(lower)).add(stem);
-      }
-    }
-    let base = docBaseName(id);
-    for (;;) {
-      const spellings = disk.get(base.toLowerCase());
-      const foreignOnDisk = spellings != null && !spellings.has(base);
-      if (!claimedLower.has(base.toLowerCase()) && !foreignOnDisk) break;
-      base += "-dup";
-    }
+    if (disk === null) disk = readDocStems(dir);
+    const base = resolveStem(disk, claimedLower, id);
     claimedLower.add(base.toLowerCase());
     return base;
+  };
+}
+
+// The claimer's READ-side twin (F-459, manifest.mjs reconcile-docs): which file
+// on disk did a writer running the claimer's rule give this id? It resolves
+// through the same resolveStem and answers with that stem when the file exists
+// (exact case) or null when the writer's choice is a name no file carries (no
+// doc for this id) — and it records the claim EITHER way, exactly as the
+// writer did, so a later id whose stem collides hops past it even when the
+// earlier id's doc was deleted (review round: a matcher that skipped the claim
+// on a null read a deleted doc's collision partner as an orphan). Callers
+// claim() the stems of RECORDED paths first, so a replay never re-attributes
+// a doc whose owner is a fact; unclaimed() is what remains — the orphans.
+// Residual, shared with the claimer: the replay agrees with the writer only
+// in the writer's claim ORDER — two ids whose docBaseName output collides
+// case-insensitively were named in list-payload order, and manifest.mjs
+// replays in key order; the pair resolves to the same two files either way
+// when both docs exist, and to the surviving file when one was deleted only
+// if the replay order matches the writing order. Exact-name residual as the
+// claimer's (byte-identical docBaseName output resolves in call order).
+/**
+ * @param {string} dir
+ * @returns {{ match: (id: string) => string|null, claim: (stem: string) => void, unclaimed: () => string[] }}
+ */
+export function docNameMatcher(dir) {
+  const disk = readDocStems(dir);
+  /** @type {Set<string>} */
+  const claimed = new Set();
+  /** @type {Set<string>} */
+  const claimedLower = new Set();
+  /** @param {string} stem */
+  const claim = (stem) => {
+    claimed.add(stem);
+    claimedLower.add(stem.toLowerCase());
+  };
+  return {
+    claim,
+    match(id) {
+      const base = resolveStem(disk, claimedLower, id);
+      claim(base);
+      return disk.get(base.toLowerCase())?.has(base) ? base : null;
+    },
+    unclaimed: () => [...disk.values()].flatMap((s) => [...s]).filter((stem) => !claimed.has(stem)).sort(),
   };
 }
 
@@ -1328,7 +1415,7 @@ export function runDocGenerator({ scriptName, render, argv }) {
       const base = claimName(id);
       const path = resolve(outDir, `${base}.md`);
       writeFileSync(path, doc, "utf8");
-      written.push({ id, path: `${outDir.replace(/\\/g, "/").replace(/\/$/, "")}/${base}.md`, bytes: Buffer.byteLength(doc) });
+      written.push({ id, path: docPathFor(outDir, base), bytes: Buffer.byteLength(doc) });
     } catch (e) {
       failed.push({ file, error: e instanceof Error ? e.message : String(e) });
     }
@@ -1489,6 +1576,95 @@ export function recordedDomainsByPath(domainsIndexed, resolveLine) {
     byPath.get(cmd.path).push(domain);
   }
   return { byPath, legacyDomains, unresolved };
+}
+
+// ── Per-pin CLI facts (F-450): what the installed CLI DOES that its own
+// catalog does not DECLARE. Two kinds, one table, one version stamp:
+//   notEnumerableBare — a list-shaped command whose handler refuses to run
+//     without a per-asset flag the artifact manifest never marks required
+//     (the four `re rules` sublists at 1.0.9: they pass the candidate
+//     filter, then fail at runtime with the message recorded here). Before
+//     this table every tenant's operator re-derived the same fact by running
+//     each one three times and recording a per-tenant exclusion — a per-CLI
+//     fact stored per tenant (F-450 b). The diff names them in their own
+//     bucket and never asks for a decision.
+//   scope — a list command that cannot see the whole tenant (its handler
+//     hardcodes a filter or flattens a tree): the count it yields is a
+//     CLI-reachable SUBSET, and `report` says so on the domain row
+//     (F-450 c) so the Phase 4 relay can name the limit (F-452). The one-line
+//     `limit` here is the paraphrase; the canon stays prose — ONE `###`
+//     subsection per entry under "Scope-limited domains" in
+//     skills/setup/references/index-scope-notes.md, headed by the command's
+//     canonical path, which build/check-doc-drift.mjs holds to this table
+//     both ways (read out of this source text — the build lane may not
+//     import the plugin).
+// Keyed by catalog command `id` (namespace:group…:action) — NOT actionKey:
+// `list-source-fields` is the actionKey of two commands in two namespaces.
+// SELF-RETIRING, the ask-overrides.json precedent (tenet 6): the table
+// applies only while the catalog in use carries this exact cliVersion;
+// under any other pin every reader gets an empty table plus a warning, and
+// build/check-stale-facts.mjs (FACT_CARRIERS) refuses the stamp until a
+// human re-verifies each entry against the new package — the pair below is
+// the adoption-time tripwire. test/domain-candidates.mjs holds every id to
+// the bundled catalog and refuses a notEnumerableBare entry the catalog has
+// started to declare (a dead entry).
+/**
+ * @typedef {object} GsPinFact  one entry of CLI_PIN_FACTS.commands — at least one of
+ *                              the two kinds is present
+ * @property {string} [notEnumerableBare]  the per-asset flag(s) the CLI demands at runtime
+ * @property {string} [error]               the CLI's runtime message, quoted
+ * @property {string} [scope]               one-line paraphrase of the list command's scope
+ *                                          limit (the canon is the notes subsection)
+ */
+/** @type {Readonly<{ cliVersion: string, commands: Readonly<Record<string, Readonly<GsPinFact>>> }>} */
+export const CLI_PIN_FACTS = Object.freeze({
+  cliVersion: "1.0.9",
+  commands: Object.freeze({
+    "rules-engine:rules:events": Object.freeze({
+      notEnumerableBare: "--topic <topic>",
+      error: "--topic is required",
+    }),
+    "rules-engine:rules:executions": Object.freeze({
+      notEnumerableBare: "--rule-id <id> or --rule-name <name>",
+      error: "ruleId or ruleName is required",
+    }),
+    "rules-engine:rules:s3-tasks": Object.freeze({
+      notEnumerableBare: "--rule-id <id> or --rule-name <name>",
+      error: "ruleId or ruleName is required",
+    }),
+    "rules-engine:rules:schedules": Object.freeze({
+      notEnumerableBare: "--id <id> or --name <name>",
+      error: "--id or --name is required",
+    }),
+    "journey:email:templates": Object.freeze({
+      scope: "flattens one folder level (templates in nested subfolders are dropped) and hides some top-level templates; the count is the CLI-reachable subset",
+    }),
+    "journey:surveys:list": Object.freeze({
+      scope: "returns PUBLISH-state surveys only (closed surveys are invisible)",
+    }),
+    "journey:data-designer:list": Object.freeze({
+      scope: "returns one dataset type only (ds=UNIVERSAL_DATA_SET); its rows are Data Designer OUTPUT datasets, a membership signal over data-management, not a domain of their own",
+    }),
+  }),
+});
+/**
+ * The per-pin facts IN FORCE for one catalog: the table when the catalog's
+ * cliVersion equals the stamp, an empty table (with the why) otherwise —
+ * readers apply `commands` blindly and surface `why` when `applied` is
+ * false, so a pin move never silently drops the facts (A-4).
+ * @param {{meta?: {cliVersion?: string}} | null | undefined} catalog
+ * @returns {{ stamped: string, catalogVersion: ?string, applied: boolean, why: ?string, commands: Readonly<Record<string, Readonly<GsPinFact>>> }}
+ */
+export function pinFactsFor(catalog) {
+  const stamped = CLI_PIN_FACTS.cliVersion;
+  const catalogVersion = typeof catalog?.meta?.cliVersion === "string" ? catalog.meta.cliVersion : null;
+  const applied = catalogVersion === stamped;
+  const why = applied
+    ? null
+    : catalogVersion == null
+      ? `the catalog carries no meta.cliVersion, so the per-pin CLI facts (stamped for ${stamped}) were not applied`
+      : `the per-pin CLI facts are stamped for ${stamped} and the catalog is ${catalogVersion} — not applied; re-verify doc-lib's CLI_PIN_FACTS against the installed package (check-stale-facts names the stamp)`;
+  return { stamped, catalogVersion, applied, why, commands: applied ? CLI_PIN_FACTS.commands : Object.freeze({}) };
 }
 
 // ── The lane table: the ONE home of "which list command is a lane, and what its
@@ -1705,12 +1881,69 @@ export function indexedElsewhere(inventory, ids, excludeDomain = null) {
 // `jo dd get`, `jo s get`, the two `list-and-describe` combos, and the six
 // scheduling/Events-Framework reads added at 1.0.6 — and is re-audited by
 // hand at each CLI adoption (check-stale-facts pins the version stamp in
-// this sentence). Callers COMPOSE on it: describe-batch adds the
-// describe-shape regex; capture adds list shapes and `check`.
+// this sentence). Callers COMPOSE on it through isDescribeRead below:
+// describe-batch uses that predicate as its whole policy; capture adds list
+// shapes and `check`.
 export const READ_VERB_EXACT = new Set([
   "template", "measures", "get", "list-and-describe",
   "schedules", "topics", "events", "s3-tasks", "event-curl",
 ]);
+// The describe-shaped read predicate BOTH spawn-capable scripts compose on
+// (F-456). The gate hands it the resolved path's trailing word AND the
+// matched catalog entry; until F-456 only the word was read, so a per-item
+// describe whose path ends in a noun — `cn chain`, actionKey
+// describe-job-chain — was refused by describe-batch and capture alike,
+// leaving no sanctioned route to document the domain. The catalog's
+// `actionKey` is the action's own name (generated from the manifests,
+// semantically stable), so a describe-shaped key admits on its own merits.
+// The trailing word stays a second admit, not a fallback only: the
+// allowlisted reads carry non-describe keys (`jo e template` is
+// get-email-template, `sc measures` get-scorecard-measures — measured at
+// the pin, 2026-09-14), so "key instead of word" would refuse them. A
+// hand-trimmed workspace catalog carries no actionKey, and there the word
+// decides alone. `describe` is matched as a whole segment (`describe` or
+// `describe-…`), never as a prefix of a longer word. Never keyed on
+// `mutating` (F-456: two upstream mislabelled writers carried false); the
+// shared gate's endpoint check backstops every admit either way.
+export const DESCRIBE_SHAPE_RE = /^describe(-|$)/;
+/**
+ * @param {string | undefined} verb  the resolved catalog path's trailing word
+ * @param {{actionKey?: unknown} | null | undefined} cmd  the matched catalog entry (fields absent on trimmed catalogs)
+ * @returns {boolean}
+ */
+export function isDescribeRead(verb, cmd) {
+  const key = cmd && typeof cmd === "object" && typeof cmd.actionKey === "string" ? cmd.actionKey : null;
+  if (key !== null && DESCRIBE_SHAPE_RE.test(key)) return true;
+  return typeof verb === "string" && (DESCRIBE_SHAPE_RE.test(verb) || READ_VERB_EXACT.has(verb));
+}
+
+// The CLI's re-login instruction — the sentence every auth-path throw in the
+// v1.0.9 package's dist/core/auth/index.js ends with (F-458). Four literals,
+// all session-wide (the CLI cannot obtain a bearer token; no command after
+// them succeeds until `gs-admin login`): "No stored token found. Run
+// `gs-admin login` to authenticate."; "Access token has expired and no
+// refresh token is available. Run `gs-admin login` to re-authenticate.";
+// "Token expired and silent refresh failed (<cause>). Run `gs-admin login`
+// to re-authenticate." — the half-life case setup Phase 1's pre-flight
+// names; "Token refresh failed (<status>). Run `gs-admin login` to
+// re-authenticate.". Pinned on the shared sentence, not on a cause, so all
+// four classify the same way (ruled 2026-09-14). Other CLI mentions of login
+// ("Run: gs-admin login", "run 'gs-admin login'") are worded differently and
+// do not match. Classified only on a FAILED spawn — the CLI's shared handler
+// (dist/commands/base.js BaseCommand.catch) writes `Error: <message>` to
+// stderr and exits 1 for every thrown error, so a successful command is
+// never reclassified by its stderr. One home for both spawn-capable scripts
+// (describe-batch stops its loop on it; capture may classify the same death
+// later): the version citation is the adoption-time tripwire
+// (check-stale-facts, FACT_CARRIERS) — re-read that file at the next pin.
+export const AUTH_DEATH = /Run `gs-admin login` to (re-)?authenticate/;
+/**
+ * @param {{ok: boolean, stdout: string, stderr: string}} r  a spawn result
+ * @returns {boolean}
+ */
+export function isAuthDeath(r) {
+  return !r.ok && (AUTH_DEATH.test(r.stderr) || AUTH_DEATH.test(r.stdout));
+}
 
 // Argv hygiene for a command a spawn-capable script is about to run — shared
 // for the same F-284 reason as the gate below (review round: the first-token

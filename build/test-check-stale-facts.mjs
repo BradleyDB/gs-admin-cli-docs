@@ -81,9 +81,10 @@ function runRig(files) {
     );
     // All three F-280 carriers live in doc-lib since the shared-gate hoist
     // (B5 W4/DS-17 + its review round).
+    // …plus the auth-death literal's audit stamp (F-458), same home.
     writeFileSync(
       join(rig, "plugins", "gs-superadmin", "scripts", "doc-lib.mjs"),
-      `// strict writers went 29 → 0; POST reads 59 → 0\n// read actions in the v${PIN} catalog audited\n`,
+      docLibStub(PIN),
     );
     // Coverage floor (F-101): the checker requires ≥40 tracked .md files with
     // some nested — filler carries no version/count/flag tokens.
@@ -103,6 +104,35 @@ function runRig(files) {
   } finally {
     rmSync(rig, { recursive: true, force: true });
   }
+}
+
+// The doc-lib carrier stub, parameterized on the version its CLI_PIN_FACTS
+// stamp cites — the F-450 case below re-writes it with a stale stamp only.
+function docLibStub(pinFactsVersion, pin = PIN) {
+  return (
+    `// strict writers went 29 → 0; POST reads 59 → 0\n// read actions in the v${pin} catalog audited\n` +
+    `// the sentence every auth-path throw in the\n// v${pin} package's dist/core/auth/index.js ends with\n` +
+    `export const CLI_PIN_FACTS = Object.freeze({\n  cliVersion: "${pinFactsVersion}",\n  commands: Object.freeze({}),\n});\n`
+  );
+}
+
+// ── 0. F-450: the per-pin CLI facts table's version stamp is a carrier ──────
+// A table stamped for another pin is not applied by its readers (self-
+// retiring), so the stamp must trip here at adoption, by name, while the
+// other doc-lib carriers stay green.
+{
+  // The stamp is a bare version (the const's own literal), so the stale form
+  // is STALE without its v.
+  const res = runRig({ "plugins/gs-superadmin/scripts/doc-lib.mjs": docLibStub(STALE.replace(/^v/, "")) });
+  ok("stale CLI_PIN_FACTS stamp fails", res.status === 1);
+  ok("stale CLI_PIN_FACTS failure names the table and the pin", res.stderr.includes("CLI_PIN_FACTS") && res.stderr.includes(PIN));
+  ok("the other doc-lib carriers stay green under a stale pin-facts stamp", !res.stderr.includes("read-verb allowlist") && !res.stderr.includes("auth-death"));
+  // A table that moved or lost its stamp is an unmatched pattern — itself a
+  // failure (silently unmatched prose is how the F-280 carriers went stale).
+  const gone = runRig({ "plugins/gs-superadmin/scripts/doc-lib.mjs": docLibStub(PIN).replace("export const CLI_PIN_FACTS", "const PIN_FACTS_MOVED") });
+  ok("a missing CLI_PIN_FACTS stamp fails as an unmatched carrier pattern", gone.status === 1 && gone.stderr.includes("CLI_PIN_FACTS") && gone.stderr.includes("no longer pinned"));
+  const fresh = runRig({ "plugins/gs-superadmin/scripts/doc-lib.mjs": docLibStub(PIN) });
+  ok("current CLI_PIN_FACTS stamp passes", fresh.status === 0);
 }
 
 // ── 1. Stale citation in bus PROSE: still fails ──────────────────────────────

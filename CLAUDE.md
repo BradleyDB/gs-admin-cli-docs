@@ -143,6 +143,11 @@ in this repo must not get wrong:
   VERIFIED | WONTFIX. Checks that need a live tenant are banked in `dev/VALIDATION.md`.
   Both live only on `dev` and never ship to users; treat everything written there as
   public-safe (no tenant, org, or ticket specifics).
+- **The bus is not the whole picture — GitHub Issues are the second home.** A finding an
+  outside contributor could act on without a design conversation first is filed as an issue
+  on this repo instead of a bus section (issues take no F-number, so the bus's numbering is
+  unaffected). Read `gh issue list` alongside `dev/FEEDBACK.md` before concluding what is
+  open. The bus header's "Issues hint" names the ones from the current round.
 - **To exercise the working tree in a live Claude Code session:** start it with
   `claude --plugin-dir <path-to-this-repo>/plugins/gs-superadmin`, then `/reload-plugins`
   after each edit. A session testing the plugin this way reports findings to the bus

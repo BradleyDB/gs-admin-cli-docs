@@ -408,6 +408,14 @@ check(
   t.decision === "ask" && /shell variable/.test(t.reason) && t.reason.includes("gs-admin $c"),
   t.raw
 );
+// F-453: the escalated ask names the same remedy the first-offense deny names —
+// the guard is the only thing present at the moment of composition, so a
+// correct-but-opaque block must say how to not need it.
+check(
+  "variable subcommand: the repeat ask carries the literal-spelling remedy the deny carries (F-453)",
+  t.decision === "ask" && /spelled\s+literally/i.test(t.reason) && /flag values and paths/.test(t.reason),
+  t.raw
+);
 
 t = runHook(pipeDir, "gs-admin --json re rules list --page $p > .gs-superadmin/tmp/re-rules-$p.json", vsid);
 check("variables in flag values/paths only: silent pass-through", t.silent, t.raw);
@@ -2262,7 +2270,10 @@ check(
 // `$x=gs-admin jo p save` really runs the mutation, but `=` is not a token
 // boundary, so the tokenizer produced the single word `$x=gs-admin` and the
 // match failed — silent on both lanes, while the SPACED form asked correctly.
-// Fixed by stripping the assignment prefix in isGsAdminWord plus `=` in the
+// Fixed by stripping the assignment prefix in the word → program-name
+// normalizer (normalizeProg, from which isGsAdminWord derives — ONE
+// normalizer since F-460; it was isGsAdminWord's alone before, which is how
+// every interpreter behind an assignment stayed silent) plus `=` in the
 // GATE class only — deliberately NOT in META, because splitting on `=` would
 // push a `--flag=value` value into the subcommand words and could stop a
 // mutating command matching its catalog path, i.e. REMOVE an ask.
@@ -2272,6 +2283,14 @@ for (const [label, cmd] of [
   ["assignment with flags", "$r=gs-admin jo p save --id 42"],
   ["braced variable", "${x}=gs-admin jo p save"],
   ["scoped variable", "$script:x=gs-admin jo p save"],
+  // PowerShell allows a digit-led variable name (`$1 = 5` is legal) and runs
+  // `$1=gs-admin jo p save` (measured on 5.1, 2026-09-16); the prefix grammar
+  // admitted only a letter- or underscore-led name, so this spelling was
+  // silent on dev — found by F-460's sibling sweep, held by the oracle.
+  ["digit-led variable", "$1=gs-admin jo p save"],
+  ["braced digit-led variable", "${1}=gs-admin jo p save"],
+  ["property assignment", "$x.y=gs-admin jo p save"],
+  ["index assignment", "$a[0]=gs-admin jo p save"],
 ]) {
   t = runHook(braceWs, cmd, freshSid());
   check(
@@ -2294,6 +2313,79 @@ check(
   t.decision === "ask" && t.reason.includes("journey programs save"),
   t.raw
 );
+
+// ── Assignment-prefixed INTERPRETERS (issue #2 items 2–3, F-460) ─────────────
+// The assignment strip lived in isGsAdminWord alone; normalizeProg — the
+// function that resolves an interpreter's name for the nested-payload re-scan
+// — had no strip, so `$x=iex '…'`, `$x=bash -c '…'`, `$x=powershell "…"` and
+// `$x=cmd /c '…'` (PowerShell runs every one: the assignment takes the
+// interpreter's output) never reached NESTED_SHELLS and the mutation inside
+// ran with no ask and no journal, while the direct `$x=gs-admin …` asked.
+// One normalizer now; these pin the message text (resolved catalog path) the
+// oracle does not read — the oracle (test/guard-oracle.mjs, the judge of
+// record) holds the same shapes to "executed ⇒ guarded" against the real
+// shell, crossed with every interpreter form. Mutation-proved against the
+// pre-fix hook (the dev tree at PR #22's merge): these ten red, the two
+// controls green.
+const psRun = (cmd) => runHook(nestWs, cmd, freshSid(), undefined, undefined, { tool_name: "PowerShell" });
+const mutatingAsk = (r) => r.decision === "ask" && r.reason.includes("Mutating Gainsight command: gs-admin journey programs save");
+for (const [label, cmd] of [
+  ["$x=iex", "$x=iex 'gs-admin jo p save'"],
+  ["${x}=bash -c", "${x}=bash -c 'gs-admin jo p save'"],
+  ["$env:X=powershell -Command", '$env:X=powershell -Command "gs-admin jo p save"'],
+  ["$x=powershell positional", '$x=powershell "gs-admin jo p save"'],
+  ["$x=cmd /c", "$x=cmd /c 'gs-admin jo p save'"],
+  ["$x=bash -c -x (option after the flag)", "$x=bash -c -x 'gs-admin jo p save'"],
+  ["$x=Invoke-Expression -Command", "$x=Invoke-Expression -Command 'gs-admin jo p save'"],
+]) {
+  t = psRun(cmd);
+  check(`assignment-prefixed interpreter (${label}): the payload's mutation asks with the resolved path`, mutatingAsk(t), `${cmd} -> ${t.raw}`);
+}
+// Read-side symmetry: the strip must not turn a read-only payload into a prompt.
+t = psRun("$x=iex 'gs-admin --json re rules list'");
+check("assignment-prefixed interpreter: a read-only payload stays silent", t.silent, t.raw);
+// The lint side of the one normalizer: a consumer behind an assignment-shaped
+// word is still looked up by its program name (the strip can only WIDEN what
+// the lint accepts — a coaching deny moved to the normal flow, never an ask
+// removed), and the workspace consumer list normalizes the same way.
+t = runHook(nestWs, "gs-admin --json re rules list | =cat", freshSid());
+check("one normalizer: the pipe lint reads `=cat` as the consumer `cat` (no deny)", t.silent, t.raw);
+
+// ── A `-Command` behind a positional (issue #2 item 1, F-460) ────────────────
+// The pwsh positional rule ended the search at the first non-option word, so
+// `powershell foo.ps1 -Command "…"` re-scanned `foo.ps1` and never reached its
+// flag. Both are re-scanned now. Measured on 5.1 before choosing the order
+// (the oracle's item-1 rows): PowerShell reads the FIRST positional as the
+// command text — `powershell "gs-admin jo p save" -Command "echo hi"` runs the
+// mutation with `-Command echo hi` as its arguments — so the issue's "flag
+// first, positional only as a fallback" would have REMOVED that ask; the
+// control below is that row. `foo.ps1 -Command "…"` runs nothing on 5.1, so
+// its ask is an over-ask, the safe direction (tenet 3).
+for (const [label, cmd] of [
+  ["positional then -Command: the flag's payload is re-scanned past the positional", 'powershell foo.ps1 -Command "gs-admin jo p save"'],
+  ["positional then -Command (control): the positional payload still asks — the shape 5.1 really runs", 'powershell "gs-admin jo p save" -Command "echo hi"'],
+  ["-File then -Command: the flag's payload is re-scanned (an over-ask on 5.1, which hands -Command to the script)", 'powershell -File foo.ps1 -Command "gs-admin jo p save"'],
+  // A VALUE-taking option before the positional (the review's live bypass): the
+  // option's value is not the payload — `powershell -ExecutionPolicy Bypass
+  // "gs-admin jo p save"` runs the quoted string as the command text on 5.1.
+  ["value-taking option then positional: the option's value is skipped, the payload asks", 'powershell -ExecutionPolicy Bypass "gs-admin jo p save"'],
+  ["value-taking option then positional, behind an assignment", '$x=powershell -InputFormat Text "gs-admin jo p save"'],
+  ["value-taking option then -Command", 'powershell -ExecutionPolicy Bypass -Command "gs-admin jo p save"'],
+]) {
+  t = psRun(cmd);
+  check(`${label} (asks with the resolved path)`, mutatingAsk(t), `${cmd} -> ${t.raw}`);
+}
+// One execution, one journal row (review): a line carrying the mutation in BOTH
+// the positional and a later -Command runs it once on 5.1 (the -Command is the
+// positional's argument), so the journal must not record it twice.
+{
+  const dupWs = makeWorkspace("pwsh-dup-journal", [
+    { slug: "acme-prod", baseUrl: "https://acme.gainsightcloud.com", environment: "production" },
+  ]);
+  runHook(dupWs, 'powershell "gs-admin jo p save" -Command "gs-admin jo p save"', freshSid(), "PostToolUse", { exit_code: 0 }, { tool_name: "PowerShell" });
+  const body = existsSync(journalOf(dupWs, "acme-prod")) ? readFileSync(journalOf(dupWs, "acme-prod"), "utf8") : "";
+  check("positional and -Command both carrying the mutation: ONE journal row for one execution", (body.match(/^## /gm) ?? []).length === 1, body.slice(-600) || "(no journal)");
+}
 
 // ── No-flag nested interpreters (security review, F-245) ─────────────────────
 // F-194's re-scan is keyed on interpreter-name-plus-command-string-flag, a

@@ -236,7 +236,13 @@ export function renderInlineCore(text, hooks) {
  */
 const HR_RE = /^\s*(-{3,}|\*{3,}|_{3,})\s*$/;
 const HEADING_RE = /^(#{1,6})[ \t]+(.*?)\s*$/;
-const QUOTE_RE = /^\s*>(\s|$)/;
+// Exported for build/check-doc-drift.mjs check 11, which locates the plugin
+// README's residual callout as the run of quote lines around its anchor — the
+// ONE blockquote grammar for this repo's renderers (F-460 review: the check
+// had grown its own `/^\s*>/`, CommonMark's looser form that also admits `>x`
+// and `>>`; this parser's stricter form — documented above — is what the wiki
+// renders, so the check reads the same lines the reader sees).
+const QUOTE_RE = /^\s*>(\s|$)/; // exported below the parser: build/test-wiki-html.mjs compiles this slice with new Function, where `export` is a syntax error
 const TOP_MARKER_RE = /^(?:([-*])|(\d+)\.)[ \t]+(.*)$/;
 const CHILD_MARKER_RE = /^ {2,}([-*]|\d+\.)[ \t]+(.*)$/;
 const SEPARATOR_ROW_RE = /^\|[\s:|-]+\|?$/;
@@ -368,6 +374,8 @@ export function parseBlocks(md) {
 // paragraph has no bold lead of its own). Missing blockquote, missing lead,
 // or a Currency paragraph without the date/pin phrases to substitute is a
 // THROW — a notice that silently lost its date would pass every check.
+export { QUOTE_RE };
+
 export const NOTICE_HEADING = "Notice";
 export const NOTICE_LEADS = ["Currency.", "Unaffiliated community project."];
 // The blockquote's leads that stay README-only (F-405): declared, so an

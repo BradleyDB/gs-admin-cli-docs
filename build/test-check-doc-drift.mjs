@@ -607,6 +607,53 @@ try {
     } finally { snap.restore(); }
   }
 
+  // ── check 23 · the scope-limit canon and the per-pin table agree both ways (F-450 c) ─
+  {
+    const NOTES = "plugins/gs-superadmin/skills/setup/references/index-scope-notes.md";
+    const DOCLIB = "plugins/gs-superadmin/scripts/doc-lib.mjs";
+    const snap = snapshotFiles([at(NOTES), at(DOCLIB)]);
+    try {
+      mutate(NOTES, (s) => s.replace("### journey surveys list", "### journey surveys listing"));
+      const res = run();
+      check("check 23a: a table entry whose canon subsection is missing (heading respelled) goes red naming the command and the file",
+        res.status === 1 && /check 23: .*scope entry for "journey surveys list" but .*index-scope-notes\.md has no "### journey surveys list" subsection/.test(res.stderr) && /"### journey surveys listing" subsection .* has no scope entry/.test(res.stderr), res.stderr);
+    } finally { snap.restore(); }
+    try {
+      mutate(NOTES, (s) => s.replace("## Recovering list-invisible email templates", "### connectors chains\n\nA limit nobody tabled.\n\n## Recovering list-invisible email templates"));
+      const res = run();
+      check("check 23b: a canon subsection with no table entry goes red naming the subsection",
+        res.status === 1 && /check 23: .*"### connectors chains" subsection under "Scope-limited domains" but doc-lib's CLI_PIN_FACTS has no scope entry/.test(res.stderr), res.stderr);
+    } finally { snap.restore(); }
+    try {
+      mutate(NOTES, (s) => s.replace("## Recovering list-invisible email templates", "## Recovering\n\n### journey surveys list\n\n## Recovering list-invisible email templates").replace("### journey surveys list\n\nHardcodes", "### journey surveys list (moved)\n\nHardcodes"));
+      const res = run();
+      check("check 23c: a subsection outside the Scope-limited section does not count as the canon",
+        res.status === 1 && /has no "### journey surveys list" subsection/.test(res.stderr), res.stderr);
+    } finally { snap.restore(); }
+    try {
+      mutate(DOCLIB, (s) => s.replace("export const CLI_PIN_FACTS = Object.freeze({", "export const CLI_PIN_FACTS = Object.freeze(Object.assign({}, {"));
+      const res = run();
+      check("check 23d: the table's opener changing shape goes red at the reader, not silently as an empty sweep — and ONLY at the reader (no spurious per-subsection failures)",
+        res.status === 1 && /check 23: could not read the scope entries out of/.test(res.stderr) && (res.stderr.match(/check 23:/g) ?? []).length === 1, res.stderr);
+    } finally { snap.restore(); }
+    try {
+      mutate(NOTES, (s) => s.replace("### journey surveys list", "```markdown\n### journey fenceprobe list\n```\n\n### journey surveys list"));
+      const res = run();
+      check("check 23f: a heading-shaped line inside a fenced example is neither canon nor a terminator (the file's fence grammar)", res.status === 0, res.stderr);
+    } finally { snap.restore(); }
+    try {
+      mutate(NOTES, (s) => s.replace("## Recovering list-invisible email templates", "# Appendix\n\n### journey appendix list\n\n## Recovering list-invisible email templates"));
+      const res = run();
+      check("check 23g: a level-1 heading ends the section — a ### under a later # Appendix is not canon", res.status === 0, res.stderr);
+    } finally { snap.restore(); }
+    try {
+      mutate(NOTES, (s) => s.replace("## Scope-limited domains — paging cannot fix these", "## Scope limits — paging cannot fix these"));
+      const res = run();
+      check("check 23e: the section heading itself renamed goes red naming the file (the anchor is read, F-439 class)",
+        res.status === 1 && /check 23: .*index-scope-notes\.md has no "## Scope-limited domains" section/.test(res.stderr), res.stderr);
+    } finally { snap.restore(); }
+  }
+
   // ── check 11: guard-residuals anchor drift ─────────────────────────────────
   {
     const snap = snapshotFiles([at(PLUGIN_README)]);
@@ -615,6 +662,90 @@ try {
       const res = run();
       check("check 11: README anchor id not in guard-residuals.json goes red",
         res.status === 1 && res.stderr.includes("zzz-bogus-residual"), res.stderr);
+    } finally { snap.restore(); }
+  }
+  // Issue #2 items 4–7 (Session E, F-460): each shape below was CONSTRUCTED and
+  // run against the pre-change check first — 11b, 11c and 11e went red with the
+  // wrong message or a false failure; 11d went red truthfully (CommonMark ends
+  // a blockquote at a blank line) and is pinned as the decision, not a defect.
+  {
+    const RESIDUALS_JSON = "plugins/gs-superadmin/hooks/guard-residuals.json";
+    const snap = snapshotFiles([at(PLUGIN_README), at(RESIDUALS_JSON)]);
+    // 11b (item 4): a REWORDED split claim — still true of the data — is named as
+    // an unrecognised wording pointing at the PIN_CLAIMS table, never as "no
+    // claim at all" (the pre-change message, which told the maintainer to add a
+    // sentence the block already carried).
+    try {
+      mutate(PLUGIN_README, (s) => s.replace("each one is either pinned by a fixture in", "each one is pinned by a fixture in"));
+      const res = run();
+      check("check 11b: a reworded pin claim is reported as an unrecognised wording naming the PIN_CLAIMS table, not as 'no claim at all'",
+        res.status === 1 && /check 11: .*wording this check does not recognise/.test(res.stderr) && /PIN_CLAIMS/.test(res.stderr) && !/makes no claim about pinning at all/.test(res.stderr), res.stderr);
+    } finally { snap.restore(); }
+    // 11c (item 5): an anchor that WRAPS across quote lines inside the callout
+    // (the shape a growing id list takes) is one anchor, located once — the
+    // pre-change `[^>]` class refused it as "no anchor" at all. The literal
+    // item-5 shape — a continuation line WITHOUT the `>` — passed the first
+    // pattern and failed the second, so the block walk began at index -1 and
+    // every marker read as missing with no hint why; that line also ends the
+    // callout in CommonMark, so it is red truthfully now, naming the block's
+    // range instead of "no anchor" or an empty block.
+    try {
+      mutate(PLUGIN_README, (s) => s.replace("<!-- guard-residuals: encoded-command, nesting-depth, ", "<!-- guard-residuals: encoded-command,\n>   nesting-depth, "));
+      const res = run();
+      check("check 11c: an anchor wrapped across quote lines inside the callout is one anchor, located once (green)", res.status === 0, res.stderr);
+    } finally { snap.restore(); }
+    try {
+      mutate(PLUGIN_README, (s) => s.replace("<!-- guard-residuals: ", "<!--\nguard-residuals: "));
+      const res = run();
+      check("check 11c (the literal item-5 shape): an unquoted continuation line ends the callout — red names the block's range, never 'no anchor' or an empty block",
+        res.status === 1 && /readmeMarker no longer appears .*README lines \d+–\d+/.test(res.stderr) && !/carries no/.test(res.stderr), res.stderr);
+    } finally { snap.restore(); }
+    // 11d (item 6): a blank line inside the callout ends the block — CommonMark
+    // ends the blockquote there too, so the pin claim past it HAS left the
+    // callout a user reads; the red is true and the message names the block's
+    // line range so the truncation is seen rather than the check loosened.
+    try {
+      mutate(PLUGIN_README, (s) => s.replace("\n>\n> These are measured, not assumed", "\n\n> These are measured, not assumed"));
+      const res = run();
+      check("check 11d: a blank line inside the callout ends the block (CommonMark) — red names the block's line range",
+        res.status === 1 && /makes no claim about pinning at all/.test(res.stderr) && /README lines \d+–\d+/.test(res.stderr) && /blank line ends the callout/.test(res.stderr), res.stderr);
+    } finally { snap.restore(); }
+    // 11e (item 7): a residual whose marker sentence sits in the bullet ABOVE
+    // the anchor — the not-spelled-as-the-binary bullet, inside the same
+    // callout — is found; pre-change the block started AT the anchor and the
+    // marker read as missing although a user reads it three lines up. One
+    // probe recipe for the pair (the residual skeleton exists once): an
+    // unpinned entry with a stated reason, its id added to the anchor.
+    const withProbeResidual = (id, readmeMarker, why, readmeExtra = "") => {
+      mutate(RESIDUALS_JSON, (s) => {
+        const j = JSON.parse(s);
+        j.residuals.push({ id, summary: "fixture probe (scratch rig only)", readmeMarker,
+          pinnedExample: null, pinnedExampleTemplate: null, pinnedExampleConceals: null, pinnedExampleEncoding: null,
+          notPinnedWhy: `fixture probe — ${why}` });
+        return JSON.stringify(j, null, 2) + "\n";
+      });
+      mutate(PLUGIN_README, (s) => s.replace("<!-- guard-residuals: ", `<!-- guard-residuals: ${id}, `) + readmeExtra);
+      return run();
+    };
+    try {
+      const res = withProbeResidual("zzz-above-anchor", "escape-mangled", "a marker in the bullet above the anchor");
+      check("check 11e: a marker whose sentence sits in the bullet above the anchor is found (the block is the whole callout)", res.status === 0, res.stderr);
+    } finally { snap.restore(); }
+    // The control for 11e: the same marker OUTSIDE the callout (a plain paragraph
+    // after it) is still missing — the block did not widen to the whole file.
+    try {
+      const res = withProbeResidual("zzz-outside-callout", "zzz-marker-outside", "a marker outside the callout", "\nzzz-marker-outside\n");
+      check("check 11e control: a marker outside the callout is still reported missing (the block is the callout, not the file)",
+        res.status === 1 && /zzz-outside-callout/.test(res.stderr) && /README lines \d+–\d+/.test(res.stderr), res.stderr);
+    } finally { snap.restore(); }
+    // The anchor grammar's other edge (review): an UNTERMINATED anchor beside a
+    // later HTML comment must not read that comment's closer as its own and
+    // split prose into ids — it is named as unterminated.
+    try {
+      mutate(PLUGIN_README, (s) => s.replace("stdin-payload -->", "stdin-payload") + "\n<!-- a later comment -->\n");
+      const res = run();
+      check("check 11f: an unterminated anchor beside a later comment is named as unterminated, not compared as ids",
+        res.status === 1 && /unterminated/.test(res.stderr) && !/in the README anchor but NOT in the JSON/.test(res.stderr), res.stderr);
     } finally { snap.restore(); }
   }
 
@@ -1108,6 +1239,24 @@ try {
         const res = run();
         check("check 14i: the audit rp list paginate fence losing its stated --items-path goes red",
           res.status === 1 && /rp list.*does not state its rows path/.test(res.stderr) && /--items-path data\.data/.test(res.stderr), res.stderr);
+      } finally { snap.restore(); }
+    }
+    // (j) issue #10: a paginate fence whose --out carries {page} UNQUOTED must
+    // go red — Windows PowerShell consumes the braces, and nothing but the
+    // fence carries the quoting. Mutant: strip the quotes from the audit rules
+    // fence.
+    {
+      const auditRel = "plugins/gs-superadmin/skills/audit/SKILL.md";
+      const snap = snapshotFiles([at(auditRel)]);
+      try {
+        mutate(auditRel, (s) => {
+          const q = "--out '.gs-superadmin/tmp/audit-rules-{page}.json'";
+          if (!s.includes(q)) throw new Error("audit rules fence no longer carries the quoted {page} --out — fixture stale");
+          return s.replace(q, "--out .gs-superadmin/tmp/audit-rules-{page}.json");
+        });
+        const res = run();
+        check("check 14j: a paginate fence with an UNQUOTED {page} --out goes red (issue #10)",
+          res.status === 1 && /audit\/SKILL\.md:\d+: paginate fence's --out carries \{page\} unquoted/.test(res.stderr), res.stderr);
       } finally { snap.restore(); }
     }
   }

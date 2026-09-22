@@ -6,9 +6,11 @@ argument-hint: "<name-or-id> [--domain rules|data-designer|reports] [--ticket RE
 
 # /gs-superadmin:deprecate
 
-Deprecate an asset per this workspace's deprecation process (default source:
-`.gs-superadmin/conventions/deprecation.md`; fall back to any deprecation guidance in
-`.gs-superadmin/CONVENTIONS.md`). If neither defines a process, tell the user and stop —
+Deprecate an asset per this workspace's deprecation process (in order: deprecation
+guidance in the tenant's `<slug>/CONVENTIONS.md` when that file exists, else
+`.gs-superadmin/conventions/deprecation.md`, else `.gs-superadmin/CONVENTIONS.md` —
+the precedence is the operating model's "Build standards" rule). If none defines a
+process, tell the user and stop —
 never invent a deprecation convention.
 
 ## Arguments
@@ -55,7 +57,7 @@ with the domain describe (rules: `re r describe --id <id>`) — the manifest key
    spellings (`report-reports/`); the name grep finds the key whatever the prefix, and
    `report`'s `byDomain` lists the names in use (F-429).
 2. **Live search (fallback if not in the KB — e.g. the asset postdates the last refresh).**
-   - Rules: `node .gs-superadmin/plugin/scripts/capture.mjs --paginate --page-flag page --out .gs-superadmin/tmp/deprecate-list-{page}.json -- gs-admin --json re r list --search '<name>' --limit 200`
+   - Rules: `node .gs-superadmin/plugin/scripts/capture.mjs --paginate --page-flag page --out '.gs-superadmin/tmp/deprecate-list-{page}.json' -- gs-admin --json re r list --search '<name>' --limit 200`
      (`--search` is a server-side partial name match; the paginate mode exhausts the
      pages, so a name with more matches than one page holds is never truncated —
      `{page}` is literal, the script substitutes it, one file per page; read every
@@ -64,7 +66,7 @@ with the domain describe (rules: `re r describe --id <id>`) — the manifest key
    - Reports: no name filter on `rp list` — sweep the whole list through the same
      paginate mode, stating the rows path (the envelope carries a root `alerts` block
      beside the rows; canon: setup Phase 4):
-     `node .gs-superadmin/plugin/scripts/capture.mjs --paginate --page-flag page --items-path data.data --out .gs-superadmin/tmp/deprecate-reports-{page}.json -- gs-admin --json rp list --limit 200`
+     `node .gs-superadmin/plugin/scripts/capture.mjs --paginate --page-flag page --items-path data.data --out '.gs-superadmin/tmp/deprecate-reports-{page}.json' -- gs-admin --json rp list --limit 200`
      then match the name against every page file locally. The sweep's verdict decides
      what the pages prove (canon: setup Phase 4): `reconciled` is the complete list;
      `unverified` (also exit 0 — no payload total) is the CLI-reachable set, and its
@@ -163,7 +165,7 @@ file's prefix format.) Build step 3's plan table the same way.
 1. If step 2's describe showed a non-null `nextScheduledRun` — or the rule appears in
    the SCHEDULE-filtered list, swept through the paginate mode (canon: setup Phase 4 —
    the mode exhausts the pages, so a full page is never where the evidence ends):
-   `node .gs-superadmin/plugin/scripts/capture.mjs --paginate --page-flag page --out .gs-superadmin/tmp/deprecate-schedule-{page}.json -- gs-admin --json re r list --search '<name>' --filter-execution-type SCHEDULE --limit 200`
+   `node .gs-superadmin/plugin/scripts/capture.mjs --paginate --page-flag page --out '.gs-superadmin/tmp/deprecate-schedule-{page}.json' -- gs-admin --json re r list --search '<name>' --filter-execution-type SCHEDULE --limit 200`
    with a returned row (any page file) whose **`ruleId` equals `<id>`** — run
    `gs-admin re r delete-schedule --id <id>`. This search is the **primary** detection
    path, not an edge case: `nextScheduledRun` means "a future run is pending", not "a

@@ -1,5 +1,5 @@
 ---
-description: Turn a change request (Jira ticket with a handoff block, request-event JSON, or pasted text) into a reviewable implementation plan — KB impact analysis, convention-checked names, exact gs-admin commands, rollback.
+description: Turn a change request (Jira ticket with a handoff block, request-event JSON, or pasted text) into a reviewable implementation plan — KB impact analysis, a Before-building read, convention-checked names, exact gs-admin commands, rollback.
 disable-model-invocation: true
 argument-hint: "<file-or-text> [--ticket KEY] [--slug name]"
 ---
@@ -154,11 +154,38 @@ Impact questions to answer explicitly:
 - What consumes the outputs downstream (scorecard measures, reports, dashboards, syncs)?
 - Does anything scheduled need to run before/after the new or changed asset?
 
+Then, with the KB still open, do the thinking the operating model asks of you (Role: *The
+admin's job, and yours*): what this change does to the CS team, the CSMs who'll work it,
+the data it reads, and the customers on the other end — and whether the build as asked is
+the best way there. That becomes the plan's *Before building* section. The impact analysis
+above is the list of what's touched; this section is what you make of it.
+
+Rules specific to the plan:
+
+- Wherever the ask was silent, the plan had to pick something, and once picked it looks
+  decided — so put each such question next to the default the plan took, and the admin can
+  confirm it in a glance or pass it to the requester.
+- If you say the tenant already has a way to do this, cite the KB doc that shows it and say
+  what you'd give up by going that way — if there's no cost, you haven't looked hard enough.
+- If the ticket doesn't say what it's for, your guess is marked as a guess: the header's
+  `Justification:` tag reads `AI-inferred` (template render rule).
+- Nothing waits on an answer: write the plan now, on the ask as stated, and put the better
+  route next to it with its cost.
+
+The operating model's test for every line, in plan terms:
+**can you point to the line of the plan, or the thing the admin would say to the
+requester, that changes if they take this on board?**
+Something true about the tenant that changes nothing is commentary, and the impact table
+already has it. If nothing passes, the section is the template's one empty line; a
+ticket that says what it's for and asks for the right thing gets exactly that.
+
 ### 5 — Names, conventions, risk
 
 **Names**: load the workspace convention exactly as `/gs-superadmin:audit` step 2 does
-(`.gs-superadmin/conventions/naming.md`, else a filled-in Naming section of
-`.gs-superadmin/CONVENTIONS.md`). Compose convention-compliant names for every asset the
+(a filled-in Naming section of the tenant's `<slug>/CONVENTIONS.md` when it exists, else
+`.gs-superadmin/conventions/naming.md`, else a filled-in Naming section of
+`.gs-superadmin/CONVENTIONS.md` — operating model, "Build standards"). Compose
+convention-compliant names for every asset the
 plan creates or renames. If no convention is adopted, propose descriptive names and flag
 them `(no workspace naming convention — unchecked)` rather than inventing a convention.
 Apply the build-standards pack where adopted (`.gs-superadmin/conventions/rules-engine.md`
@@ -249,12 +276,15 @@ The command sequence in the plan must:
 ### 7 — Report and stop
 
 Summarize in chat: what the change is, impacted assets found (count + the notable ones),
-proposed names, environment flag, and the plan file path. Then stop:
+proposed names, environment flag, and the plan file path. Then stop. The `Heads-up:` line
+is the one line from *Before building* the admin most needs to see before opening the file
+— or "nothing to add":
 
 ```
 ✓ change-request plan drafted — nothing has been executed
-  Plan:    <slug>/changes/<date>-<change-slug>.md
-  Ticket:  <key or "none">
+  Plan:      <slug>/changes/<date>-<change-slug>.md
+  Ticket:    <key or "none">
+  Heads-up:  <one line from Before building, or "nothing to add">
   Review the plan, edit it if needed, then tell me explicitly to execute it.
 ```
 

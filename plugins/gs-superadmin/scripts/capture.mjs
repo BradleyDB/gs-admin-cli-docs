@@ -140,7 +140,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   writeFileAtomicSync, makeCliHelpers, findWorkspaceCatalog, makeCommandResolver,
-  assertReadOnlyCommand, assertPlainGsAdminCommand, resolveCliArgv, READ_VERB_EXACT,
+  assertReadOnlyCommand, assertPlainGsAdminCommand, resolveCliArgv, isDescribeRead,
   sleepMs, decideEntryArray, entryDecisionReason, DOTTED_PATH_RE,
 } from "./doc-lib.mjs";
 // The shared printable clamp (journal-lib exports it; the guard keeps its own
@@ -339,7 +339,11 @@ if (paginate && pageFlagName) {
         `it each round; remove it from the command (a fixed page would re-fetch the same page forever)`
     );
   if (!outPath.includes("{page}"))
-    fail("--paginate with a page flag needs a literal {page} placeholder in --out (one file per page)");
+    fail(
+      "--paginate with a page flag needs a literal {page} placeholder in --out (one file per page) — " +
+        "if you wrote one, the shell consumed it: quote the --out value (Windows PowerShell eats an unquoted {page}; " +
+        "single quotes are right in PowerShell and bash) (issue #10)"
+    );
 }
 // The requested page size, read from the command's own tokens (the caller
 // already spells `--limit 200` there; a second knob would drift): used only
@@ -371,16 +375,20 @@ const { cmd: matched, rest } = makeCommandResolver(catalog).resolveTokens(args);
 //     actionKey is `dependency-config`) — plus the resolved-path verb form;
 //     actionKey/summary are absent on hand-trimmed workspace catalogs, so
 //     the verb clause stands alone there;
-//   - describe-shaped actions and the shared per-item/scheduling read set
-//     (READ_VERB_EXACT — one copy, in doc-lib, with the adoption-time
-//     re-audit stamp);
+//   - describe-shaped actions and the shared per-item/scheduling read set —
+//     doc-lib's isDescribeRead, the ONE describe-shape predicate (F-456: a
+//     describe-shaped actionKey admits on its own merits, so `cn chain`
+//     (describe-job-chain) is capturable here exactly as describe-batch
+//     describes it; the trailing word admits on the describe shape or
+//     READ_VERB_EXACT, one copy in doc-lib with the adoption-time re-audit
+//     stamp);
 //   - `check` — the async `dm deps check` dependency scan (actionKey
 //     object-dependencies), the deps-report/email-report live capture.
 // Everything else is refused; the shared gate's mutating/override/endpoint
 // checks backstop this list in both directions.
-const CAPTURE_VERB_EXACT = new Set([...READ_VERB_EXACT, "check"]);
 const isCaptureRead = (verb, cmd) =>
-  (typeof verb === "string" && (/^(describe|list)(-|$)/.test(verb) || CAPTURE_VERB_EXACT.has(verb))) ||
+  isDescribeRead(verb, cmd) ||
+  (typeof verb === "string" && (/^list(-|$)/.test(verb) || verb === "check")) ||
   (typeof cmd?.actionKey === "string" && /^list(-|$)/.test(cmd.actionKey)) ||
   (typeof cmd?.summary === "string" && /^List\b/.test(cmd.summary));
 assertReadOnlyCommand({

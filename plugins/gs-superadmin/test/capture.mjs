@@ -62,6 +62,7 @@ try {
       { namespace: "rules-engine", aliases: ["re"] },
       { namespace: "journey", aliases: ["jo"] },
       { namespace: "data-management", aliases: ["dm"] },
+      { namespace: "connectors", aliases: ["cn"] },
     ],
     commands: [
       // The capture surface the skills actually use: list pages, per-item
@@ -69,6 +70,12 @@ try {
       { path: "rules-engine rules list", shortPath: "re r list", mutating: false, actionKey: "list-rules",
         endpoints: [{ method: "POST", path: "/v1/rulesengine/rules/list" }] },
       { path: "rules-engine rules describe", shortPath: "re r describe", mutating: false, actionKey: "describe-rule" },
+      // F-456: describe-shaped by actionKey ONLY — the resolved-path verb is a
+      // noun ("chain"); capture inherits the admit through the shared
+      // predicate (doc-lib isDescribeRead). The trimmed twin has no actionKey.
+      { path: "connectors chain", shortPath: "cn chain", mutating: false, actionKey: "describe-job-chain",
+        endpoints: [{ method: "GET", path: "/v1/connectors/chains/{{id}}" }] },
+      { path: "connectors chain-trimmed", shortPath: "cn chain-trimmed", mutating: false },
       // List-shaped by actionKey only — the resolved-path verb is "templates".
       { path: "journey email templates", shortPath: "jo e templates", mutating: false,
         actionKey: "list-email-templates", endpoints: [{ method: "GET", path: "/v1/email/templates" }] },
@@ -207,6 +214,10 @@ try {
   check("gate: list-shaped by summary prong admitted (dm deps config — domain-candidates parity)", r.code === 0, r);
   r = cap(["--out", join(TMP, "desc.json"), "--bin", FAKE, "--", "gs-admin", "--json", "re", "r", "describe", "--id", "r-1"]);
   check("gate: describe-shaped read admitted", r.code === 0, r);
+  r = cap(["--out", join(TMP, "chain.json"), "--bin", FAKE, "--", "gs-admin", "--json", "cn", "chain", "--id", "ch-1"]);
+  check("gate F-456: describe-shaped by actionKey admitted (cn chain — the verb is a noun; capture inherits the shared predicate)", r.code === 0, r);
+  r = cap(["--out", join(TMP, "x.json"), "--bin", FAKE, "--", "gs-admin", "--json", "cn", "chain-trimmed", "--id", "ch-1"]);
+  check("gate F-456: the trimmed shape (no actionKey) still refuses on the trailing word", r.code === 1 && /not a capture-shaped read/.test(r.stderr), r);
 
   // ── Refusals ───────────────────────────────────────────────────────────────
   r = cap(["--out", join(TMP, "x.json"), "--bin", FAKE, "--", "gs-admin", "--json", "re", "r", "delete", "--id", "r-1"]);
