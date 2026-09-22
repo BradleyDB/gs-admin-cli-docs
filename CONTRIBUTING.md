@@ -172,13 +172,14 @@ released surface that marketplace users clone.
   marketplace installs from), so the default lands on the one branch that rejects it.
 - Cross-session feedback (tester findings, fix status) flows through `dev/FEEDBACK.md`
   (statuses OPEN → FIXED → VERIFIED | WONTFIX); deferred live checks are banked in
-  `dev/VALIDATION.md`. Design conversations on that bus are maintainer-driven. If you
-  want to change always-on prose — what every plan contains
-  (`plugins/gs-superadmin/skills/change-request/references/plan-template.md`), what
-  every session reads (`plugins/gs-superadmin/templates/operating-model.md`), or the
-  managed CLAUDE.md block — open an issue first that says what would change and why,
-  then link that issue from the PR body. Fixes, tests, and generated-file rebuilds do
-  not need this.
+  `dev/VALIDATION.md`.
+- **Changing always-on prose?** Open an issue first that says what would change and why,
+  and link it from the PR body. Always-on prose is what every session reads
+  (`plugins/gs-superadmin/templates/operating-model.md`), the managed CLAUDE.md block,
+  and any skill's output template (the files under a skill's `references/` folder that
+  a plan, report, or comment is rendered from). The feedback bus is maintainer-driven, so
+  an issue is the place to raise it. Fixes, tests, and generated-file rebuilds do not
+  need this.
 - Every PR runs the generated-file drift check and the doc-drift checker
   (`docs-drift.yml`); PRs touching plugin-affecting paths additionally run strict
   validation and every fixture suite (`validate-plugin.yml`).
