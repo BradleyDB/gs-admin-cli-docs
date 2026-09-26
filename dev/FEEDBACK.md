@@ -55,7 +55,9 @@ multi-tenant round: #10 unquoted page placeholder in the capture fences, which P
 eats (good first issue); #11 recover list-invisible email templates from program payloads
 (help wanted); #12 deep-ingest performance — concurrent describes and batched marks, to
 bring a full run inside one token lifetime (help wanted); #13 abort a domain after 5
-consecutive retryable failures (good first issue).
+consecutive retryable failures (good first issue). From the 2026-09-26 CLI 1.0.10 round: #28
+deps-report's corroborate-live caveat ignores passed --live-deps captures (good first issue; re-homed
+from F-465, which closes on the bus as WONTFIX with a Re-homed: line — the bus has no status for a move).
 Round-assessment hint (F-161, extended by F-223): ANY status transition — a fix, a
 verdict, a WONTFIX, a flip back to OPEN — may ride an UNMERGED PR. Assess a round with
 `gh pr list` as well as the dev log. The role landing a transition on an unmerged
@@ -963,7 +965,7 @@ What: setup SKILL.md Phase 1 says "Run `gs-admin whoami` to confirm authenticati
 Repro: after a normal `gs-admin login` on 1.0.10, run `gs-admin whoami; echo "exit=$?"` — exit 0, `Token: valid (…)`, and the `Auth mode: not configured — run 'gs-admin login' …` line; after expiry the same command still exits 0 with `Token: expired`. Read setup Phase 1's two paragraphs beside that output.
 Expected: Phase 1 decides on named lines — `Token: valid` continues; `Token: expired` / `Token: none` stop with the re-login message; `Base URL: (not set)` gives the `--base-url` form (already named since 0.43.0) — and says the enrollment path's `Auth mode: not configured` line is not an auth failure. A SKILL.md change owes a walk (bus header walk hint), so this rides the next substantive round.
 
-## F-465 — OPEN
+## F-465 — WONTFIX
 Reported: 2026-09-26 (tester 1.0.10-V @ hb-20260926-01, noticed during the deps-report walk and not logged; logged by the builder after PR #27 merged, on Bradley's call)
 Severity: polish — the report's data and its live section are right; one caveat line gives advice the run already followed
 What: scripts/tenant-deps.mjs pushes the caveat "KB-derived view — corroborate live and cross-area with `gs-admin --json dm deps check --name '<object>'` … then pass each capture back via `--live-deps <file>`" whenever the run has any object term (or objects touched), without reading whether `--live-deps` captures were passed (tenant-deps.mjs ~:1941-1947 — `corroborate` is built from `terms.objectTerms` alone). A deps-report run that captured and passed the live check therefore ends by telling the user to capture and pass it.
@@ -971,6 +973,7 @@ Repro: offline — test/tenant-deps.mjs's e2e case (`--object Company` plus a Co
     - KB-derived view — corroborate live and cross-area with `gs-admin --json dm deps check --name 'Company'` (async — re-capture until COMPLETED), then pass each capture back via `--live-deps <file>`.
   Live: the 1.0.10-V deps-report walk (one object, live dm deps check COMPLETED and passed back) showed the same as its third caveat.
 Expected: the caveat names only the object terms no passed capture covers, and is omitted when every term is covered; a capture that did not complete still leaves its object in the caveat. Pin it in test/tenant-deps.mjs (covered, partly covered, uncovered) — mutation-proved against the current script.
+Re-homed: 2026-09-26 (Bradley) — moved to GitHub issue #28 (labels bug, good first issue), where an outside contributor can take it: a self-contained script change with a ready fixture, which the header's Issues hint says lives as an issue, not a bus section. The defect is NOT declined — WONTFIX here only closes the bus record so there is one live home; the fix, its test and its verdict belong to #28 and its PR. The bus has no status for a move, so this is the nearest terminal one.
 
 ## F-466 — DEFERRED (past 0.43.0)
 Reported: 2026-09-26 (tester 1.0.10-V @ hb-20260926-01, hit while building its rig and not logged; reproduced and logged by the builder after PR #27 merged, on Bradley's call)
