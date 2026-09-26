@@ -254,7 +254,7 @@ Blind spots (hb-20260926-04): release cut of 0.43.0 in progress, nothing new und
        auto-deleted the remote at merge); checkout back on dev.
      Housekeeping: F-462..F-465, F-467, F-468 moved VERBATIM to the archive by dev-utils archive (live 8 → 2, archive
        13 → 19, sum 21; block sha256 8b1918cbaa0157c482209f83ca03f463984e3d48ce164befca93c3053695939c — the bus copy differed only in where one separator blank line sat); entry hint
-       updated; Under test + canary → dev with this close-out. Next free number F-469. Released: 0.43.0; dev stages nothing.
+       updated. Under test + canary stay dev · hb-20260926-04 (on dev since the gate round's close-out): dev-utils handoff refused a fresh mint as a stale header draft, because its guard (profiles.header_drafts) counts provenance on the bus only while its mint reads the archive too, so the tester's 0.43.0-gate-V comment naming hb-20260926-03 reads stale once that token's Verified lines are archived; not bypassed, and the tester's text is not rewritten; the dev-utils fix is flagged in its own repo. Next free number F-469. Released: 0.43.0; dev stages nothing.
      Now live from main: nothing new — no .github change since [v]0.42.0.
      GitHub Release: https://github.com/BradleyDB/gs-admin-cli-docs/releases/tag/v0.43.0 (notes = the CHANGELOG entry since
        [v]0.42.0).
