@@ -146,8 +146,8 @@ what the gate counts (F-444). The gate refuses both. Sections from F-360 on; the
 rule also reads the archive.
 
 
-Under test: dev · hb-20260921-02 · 2026-09-21
-Blind spots (hb-20260921-02): post-release housekeeping after 0.42.0, nothing new under test: F-461 (polish) DEFERRED past 0.42.0 — its step-4 sentence fix is a SKILL.md change and owes a walk when it lands; the `re r executions` production arm is banked in dev/VALIDATION.md, unmeasured; the PR #17 second arm was not blind to the first (attribution confounded) — carries as recorded
+Under test: adopt-cli-1-0-10 · hb-20260926-01 · 2026-09-26
+Blind spots (hb-20260926-01): no tenant and no operator in the builder session: CP-6's four live checks and the F-463 CORS-origin check are banked in dev/VALIDATION.md (sections F-462 / CP-6 (a)-(d) and F-463), unmeasured; no CI executes skill prose, so setup (the pre-flight canon, the first-run login message), refresh, deps-report, email-report, change-request (two version stamps) and the operating model are read, not run, and owe the walk (setup, refresh and change-request are slash-only; deps-report and email-report model-invocable); the README beginner path had no newcomer dry run (the desktop app's Add-from-repo input and its auto-update toggle unconfirmed); dist/artifacts byte-identity and the designer drilldown grammar rest on the gs-fortress audit's package diff, not re-derived here (no 1.0.9 package left on this host after the upgrade); the macOS leg is CI's
 
 <!-- builder 2026-09-21 ([v]0.42.0 RELEASED — post-release housekeeping):
      Payload: the guard closes the PowerShell assignment / positional / value-option spellings and its repeat ask names the
