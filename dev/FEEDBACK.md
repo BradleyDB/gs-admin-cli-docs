@@ -228,6 +228,26 @@ Blind spots (hb-20260926-01): no tenant and no operator in the builder session: 
        VALIDATION's `re r executions` production arm (finding only if production is empty too); issues #11, #12
        (enhancements). -->
 
+<!-- builder 2026-09-26 (CLI 1.0.10 adoption round CLOSED OUT — MERGED):
+     PR #27 (adopt-cli-1-0-10) merged to dev by Bradley at 6acd1e4; the remote branch was deleted at merge, the local one
+       after; this checkout is back on dev. On dev now: CLI pin 1.0.10, plugin 0.43.0 staged (CHANGELOG), F-462 and F-463
+       VERIFIED, VALIDATION CP-6 (a)-(d) and § F-463 CLEARED.
+     gs-fortress close-out.mjs 1.0.10 --session E1,V1,E2 --pr 27 --commit ran (gs-fortress 929578b, pushed): ledger lines
+       E1 (CP-2..CP-5), V1 (CP-6), E2 (CP-1, CP-7) → PR #27 (merge 6acd1e4), unreleased; decisions.1.0.10.execution done.
+     Post-merge CI on 6acd1e4 (push), quoted per job after completion: docs-drift 36273009099: drift (full) success;
+       validate-plugin 36273009116: changes success / manifests success / validate (ubuntu-latest) success.
+     Logged after the merge, on Bradley's call: the three tester observations from 1.0.10-V — F-464 (polish: setup Phase 1
+       branches on whoami "failing"; 1.0.10 whoami always exits 0), F-465 (polish: deps-report's corroborate-live caveat
+       ignores passed --live-deps captures; reproduced offline on the e2e fixture), F-466 (normal: the guard's pipe-safety
+       lint first-offense-denies non-gs-admin pipelines whenever "gs-admin" appears anywhere in the command; reproduced on
+       the hook). Next free number F-467.
+     Release note for 0.43.0: F-466 is an OPEN normal finding on dev, so it gates the release until fixed, or deferred past
+       0.43.0 by Bradley with a reason and a reopen trigger; F-464 and F-465 (polish) take the one-time auto-defer at the
+       release ceremony. F-461 (polish) is DEFERRED past 0.42.0 by the auto-defer, so step 0 re-opens it and, its one free
+       pass spent, it also gates 0.43.0 until fixed, WONTFIX, or manually deferred with a real reopen trigger.
+     Released: nothing (dev stages 0.43.0). Next: the 0.43.0 release through the maintainer's procedure, then close-out
+       --release v0.43.0. Under test + canary move to dev with this close-out. -->
+
 <!-- builder 2026-09-26 (CLI 1.0.10 adoption — VERDICTS IN; UNMERGED, riding a branch, ready to merge on Bradley's call; re-stamps the PR #27 pointers below):
      Branch adopt-cli-1-0-10 -> PR #27, base dev, UNMERGED. Transitions on the branch since the tester's re-stamp:
        F-462 FIXED -> VERIFIED (builder verdict on the tester's role-inversion fix @ hb-20260926-01: the reopen's repro
@@ -933,3 +953,32 @@ Verdict: VERIFIED 2026-09-26 (tester, 1.0.10-V) @ hb-20260926-01. Under test: br
 Pass bar (stated before measuring): README "The gs-superadmin plugin (Claude Code)" §1-3, read as a newcomer, agrees with Gainsight's Configure Admin CLI page; the first login carries --base-url in the README, the plugin README Quick start and setup Phase 1's first-run message; setup's branch on "Base URL: (not set)" matches what 1.0.10's whoami prints; README #1-prerequisites and the plugin README's ../../README.md link resolve; no "while the repo is private" sentence remains anywhere tracked.
 Verified: 2026-09-26 @ hb-20260926-01 (tester, 1.0.10-V) — README §1 matches the Configure Admin CLI page item by item (super admin; OAuth app scopes Read, Write, PKCE enabled, callback http://localhost:19876/callback; `gs-admin login --base-url https://YOUR_TENANT.gainsightcloud.com`; `gs-admin whoami`; the "Enrollment failed: No OAuth app found in this environment" symptom), stricter only where the package is (Node 20, the 1.0.10 engines floor; the page says "Node.js" unqualified) and silent where the page is silent (no CORS origin). --base-url present at all three first-login sites. 1.0.10's dist/commands/whoami.js prints `Base URL:     ${config.base_url || "(not set)"}` — setup's quoted text matches. `### 1. Prerequisites` slugs to #1-prerequisites; ../../README.md from plugins/gs-superadmin/ is the repo root README. git grep for "repo is private" / "repository is private": only this entry's What: text and the CHANGELOG line recording the removal. dev/VALIDATION.md § F-463 CLEARED (no CORS field on the sandbox's OAuth app form — the README is right; auth.md's CORS clause is the polish drop that section names, owed by the builder).
 Observed beside the pass bar (not a finding; for the builder's next touch of setup Phase 1): on 1.0.10 `whoami` never exits non-zero — it prints `Token: expired` / `Token: none — run 'gs-admin login'` and exits 0 — and on the enrollment path it prints `Auth mode: not configured — run 'gs-admin login' (credentials auto-discovered)` even while `Token: valid`. Phase 1's "If it fails (auth error or no tenant)" therefore never fires literally; the walk decided on the Token: line. Naming that line would make the branch mechanical.
+
+## F-464 — OPEN
+Reported: 2026-09-26 (tester 1.0.10-V @ hb-20260926-01, observed beside F-463's pass bar and not logged; logged by the builder after PR #27 merged, on Bradley's call)
+Severity: polish — the setup walk decided correctly on the `Token:` line; the skill's wording only leaves that to the agent's reading
+What: setup SKILL.md Phase 1 says "Run `gs-admin whoami` to confirm authentication. If it fails (auth error or no tenant)…". On 1.0.10 `whoami` never fails: dist/commands/whoami.js logs every state and exits 0 — `Token: valid (expires in Ns)`, `Token: expired`, or `Token: none — run 'gs-admin login'`, beside `Base URL: … | (not set)`. On the enrollment path (no client credentials stored — the default) it also prints `Auth mode: not configured — run 'gs-admin login' (credentials auto-discovered)` while the token is valid, a line that reads like a failure and is not one. The branch is therefore decided by the agent's reading of the output, not by the words the skill uses.
+Repro: after a normal `gs-admin login` on 1.0.10, run `gs-admin whoami; echo "exit=$?"` — exit 0, `Token: valid (…)`, and the `Auth mode: not configured — run 'gs-admin login' …` line; after expiry the same command still exits 0 with `Token: expired`. Read setup Phase 1's two paragraphs beside that output.
+Expected: Phase 1 decides on named lines — `Token: valid` continues; `Token: expired` / `Token: none` stop with the re-login message; `Base URL: (not set)` gives the `--base-url` form (already named since 0.43.0) — and says the enrollment path's `Auth mode: not configured` line is not an auth failure. A SKILL.md change owes a walk (bus header walk hint), so this rides the next substantive round.
+
+## F-465 — OPEN
+Reported: 2026-09-26 (tester 1.0.10-V @ hb-20260926-01, noticed during the deps-report walk and not logged; logged by the builder after PR #27 merged, on Bradley's call)
+Severity: polish — the report's data and its live section are right; one caveat line gives advice the run already followed
+What: scripts/tenant-deps.mjs pushes the caveat "KB-derived view — corroborate live and cross-area with `gs-admin --json dm deps check --name '<object>'` … then pass each capture back via `--live-deps <file>`" whenever the run has any object term (or objects touched), without reading whether `--live-deps` captures were passed (tenant-deps.mjs ~:1941-1947 — `corroborate` is built from `terms.objectTerms` alone). A deps-report run that captured and passed the live check therefore ends by telling the user to capture and pass it.
+Repro: offline — test/tenant-deps.mjs's e2e case (`--object Company` plus a Company `--live-deps` capture), measured 2026-09-26 on dev by printing its report before the assertions: the live section renders AND the caveats include
+    - KB-derived view — corroborate live and cross-area with `gs-admin --json dm deps check --name 'Company'` (async — re-capture until COMPLETED), then pass each capture back via `--live-deps <file>`.
+  Live: the 1.0.10-V deps-report walk (one object, live dm deps check COMPLETED and passed back) showed the same as its third caveat.
+Expected: the caveat names only the object terms no passed capture covers, and is omitted when every term is covered; a capture that did not complete still leaves its object in the caveat. Pin it in test/tenant-deps.mjs (covered, partly covered, uncovered) — mutation-proved against the current script.
+
+## F-466 — OPEN
+Reported: 2026-09-26 (tester 1.0.10-V @ hb-20260926-01, hit while building its rig and not logged; reproduced and logged by the builder after PR #27 merged, on Bradley's call)
+Severity: normal — the guard's pipe-safety lint first-offense-DENIES a legitimate command that runs no gs-admin at all, whenever the text "gs-admin" appears anywhere in it; reachable in any workspace whose paths or arguments carry the word (this repo's own name does). Not high: the repeat escalates to an ask, and no mutation ask is removed or downgraded
+What: hooks/gs-admin-guard.mjs gates on the RAW text — `if (!/gs-admin/i.test(command)) process.exit(0);` (~:316) — and past that gate the pipe-safety lint (findSuspiciousMeta over the whole command's words) inspects EVERY unquoted `|` / lone `&` in the command, whether or not a gs-admin invocation feeds that pipeline. So `git -C <path containing gs-admin> archive HEAD | tar -x …` draws the coaching deny aimed at asset-name fragments ("`tar` would run as a command. Gainsight asset names …"), although no gs-admin runs. Class candidate, to confirm at fix time: second-scanner — the lint's SCOPE is decided from the raw text, not from the tokenizer's record of which segments a gs-admin invocation occupies.
+Repro: drive the hook in place per AGENTS.md's recipe (spawnSync, cwd inside a throwaway dir holding `.gs-superadmin/`, hook_event_name PreToolUse, tool_name Bash), measured 2026-09-26 on dev:
+    P1 git -C /work/gs-admin-cli-docs archive HEAD | tar -x -C /work/out  → deny (coaching: `tar` would run as a command)
+    P2 git -C /work/other-repo archive HEAD | tar -x -C /work/out         → pass-through (control)
+    P3 echo hi | tar -x                                                   → pass-through (control)
+    P4 ls gs-admin | tar -x                                               → deny
+    P5 ls /opt/tools/gs-admin | tar -x                                    → deny
+    P6 gs-admin --json jo p list | tar -x                                 → deny (the lint's intended target)
+Expected: the lint applies only to a pipeline a gs-admin invocation participates in, decided from the tokenizer's record (the invocation's segment and the operator that follows it), never from the raw text — P1, P4, P5 pass through, P6 is still coached. Tenets 1-3 hold by construction: the change can only remove a coaching deny on a command that runs no gs-admin; it never touches a mutation ask. Pin P1/P4/P5/P6 in test/guard-fixtures.mjs and add non-gs-admin pipelines to the shell-oracle generator (test/guard-oracle.mjs) so the scope is judged against the real shell, not a list. Gates the next release unless fixed or deliberately deferred.
