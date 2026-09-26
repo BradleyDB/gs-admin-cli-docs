@@ -2,7 +2,7 @@
 
 # gs-admin Cheatsheet
 
-> Generated from CLI v1.0.9 · 188 commands / 182 MCP tools
+> Generated from CLI v1.0.10 · 188 commands / 182 MCP tools
 > **Global flags go before the subcommand**: `gs-admin --json <ns> <cmd>`
 > **Single-quote every free-text value** — asset names carry `|` `&` spaces and other shell metacharacters (`;` `(` `)` `$`); single quotes neutralize all of them: `--search 'CS|Risk|Renewal|Alert'`
 > **Spell subcommands literally** — the guard can't inspect `gs-admin $cmd`; variables only in flag values/paths

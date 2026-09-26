@@ -5,8 +5,9 @@
 // Two live E2E runs in a row saw the model improvise its own orchestration for
 // this exact loop (with quoting, encoding, and .cmd-spawn bugs along the way).
 // This is the sanctioned version: it selects the batch through manifest.mjs
-// (same `next` semantics), runs the describes SEQUENTIALLY (parallel gs-admin
-// calls can trip the CLI's token-refresh race), writes one structured doc per
+// (same `next` semantics), runs the describes SEQUENTIALLY (on CLI 1.0.9 and
+// earlier parallel gs-admin calls can trip its token-refresh race; 1.0.10 has
+// no refresh, but parallel calls are unmeasured there), writes one structured doc per
 // asset, and marks each entry as its doc lands — so an interruption never
 // loses more than one asset, and bulk payloads never enter model context.
 //

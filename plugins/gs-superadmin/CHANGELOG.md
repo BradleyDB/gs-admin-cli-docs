@@ -5,6 +5,45 @@ marketplace doesn't pin versions — users get main — so entries describe what
 user who updates, not internal refactors. Entries before 0.8.0 were reconstructed from git
 history when this file was introduced.
 
+## 0.43.0 — 2026-09-26
+
+CLI pin 1.0.9 → 1.0.10 (gs-fortress audit-1.0.10, CP-1..CP-7), and the token pre-flight made
+version-conditional. What a user gets by updating:
+
+- **The token pre-flight is right on CLI 1.0.10 and stays right on 1.0.9.** 1.0.10 removed
+  token refresh, so the half-life defect is gone: a token now works until one minute before
+  it expires. The pre-flight canon (setup Phase 1) states one rule per version range and
+  tells the agent to pick by `gs-admin --version` — 1.0.7 through 1.0.9 keep usable life ≈
+  remaining minus 1800 s and the "Token expired and silent refresh failed" text; 1.0.10 and
+  later get remaining minus 60 s and "Access token has expired. Run `gs-admin login` to
+  re-authenticate." On 1.0.10, long batches (setup, refresh, email-report, deps-report) no
+  longer ask for a re-login about half an hour early or refuse a batch that would fit. The
+  three paraphrases say "far less than printed" only for 1.0.9 and earlier.
+- **The `sc measures --id` false "No stored token found"** entry (operating model, Known CLI
+  issues; setup's scorecard note) scopes its concurrent-refresh cause to 1.0.9 and earlier —
+  1.0.10 has no refresh — and keeps the `--name` workaround on every version. Measured live
+  on 1.0.10: the symptom persists, and `--id` now fails every time, a fresh token included —
+  the entries say so, name the cause there as unknown, and tell setup to expect the failure
+  on its duplicate-name `--id` fallback. The "sequential calls only" rules in
+  email-report, deps-report, setup and describe-batch say the same.
+- **Reference bundle regenerated from 1.0.10** (catalog, cheatsheet, ask-rules, version).
+  1.0.10 is an auth-only release: the catalog is unchanged apart from its version stamp —
+  188 commands / 182 MCP tools / 10 domains, no mutating flag moves, the guard untouched,
+  the 20 non-mutating POST fetches the same list. Version prose across the skills,
+  references and operating model re-checked at 1.0.10.
+- **Plugin README Quick start**: the first login carries `--base-url` (a first-time
+  `gs-admin login` without it has no tenant to sign in to), step 1 states Node.js 20 or
+  newer (the CLI's floor since 1.0.10), the stale "while the repo is private" note is gone,
+  and a new line points newcomers at the repo README's step 1, which now starts from
+  nothing installed. Setup's own not-authenticated message does the same on a first run:
+  when `whoami` shows no tenant saved, it gives the `--base-url` form instead of a bare
+  `gs-admin login`.
+
+Existing workspaces pick up the operating-model wording through the scaffold's refresh at
+the next setup or refresh run. `scripts/doc-lib.mjs`'s auth-death classifier is unchanged —
+it matches the CLI's shared re-login sentence, which 1.0.10 still prints; only its comment
+and version stamps moved.
+
 ## 0.42.0 — 2026-09-21
 
 The operating model's Role section gains *The admin's job, and yours*, and the

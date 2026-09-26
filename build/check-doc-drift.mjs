@@ -1840,8 +1840,8 @@ let kindSites = 0;
 }
 
 // ── check 16 (GP-B5 DS-31, bus F-312): the token pre-flight family has ONE ──
-// canon. The F-221 pre-flight (usable token life is far less than `whoami`
-// prints — the CLI's half-life defect) shipped as TWO full hand-synced copies
+// canon. The F-221 pre-flight (usable token life is less than `whoami`
+// prints — far less on CLI 1.0.7–1.0.9, the CLI's half-life defect) shipped as TWO full hand-synced copies
 // (setup + refresh) whose wording had already diverged, while the other two
 // long-batch skills (email-report, deps-report) carried no pre-flight at all —
 // the fix-one-copy-miss-the-sibling class (A-1) in prose form. C1's
@@ -1852,11 +1852,22 @@ let kindSites = 0;
 // family to the checking tier (A-5) with the site list carried as data
 // (contracts-as-data, check 14 / DS-20 precedent; the F-172 set-not-count
 // rule):
-//   (a) the canon skill carries the family headline AND the canon-only
-//       formula fragment;
+//   (a) the canon skill carries the family headline AND, for EVERY CLI
+//       version range the rule distinguishes, the range's name and its
+//       canon-only formula fragment — a missing rule is counted and reported
+//       ("N of M version-range rules"), so deleting one range's clause cannot
+//       pass on the strength of another range's formula (F-462: CLI 1.0.10
+//       removed token refresh, so the half-life arithmetic holds for 1.0.7
+//       through 1.0.9 only and the canon became version-conditional). The
+//       range and its formula must share ONE bullet of the canon block, and
+//       the catch-all bullet must name the conservative rule — presence
+//       anywhere in the file let a swap of the two formulas, or an optimistic
+//       fallback, read "2 of 2" (F-462 reopen, tester role inversion);
 //   (b) every paraphrase skill carries the headline AND the pointer to the
-//       canon, and does NOT carry the formula fragment — a full copy grown
-//       back at a paraphrase site is the drift this check exists to end;
+//       canon, and carries no usable-life arithmetic in ANY spelling of the
+//       minus (not only the listed formula strings) — a full copy grown
+//       back at a paraphrase site is the drift this check exists to end (a
+//       paraphrase qualifies by version range in words, never by formula);
 //   (c) both set directions: a listed skill that lost its pre-flight, and ANY
 //       skill mentioning the pre-flight that is not in the family, each fail
 //       — the family stays an enumerated statement about the tree.
@@ -1874,11 +1885,22 @@ let kindSites = 0;
 const TOKEN_PREFLIGHT = {
   canonSkill: "setup",
   headline: "Token pre-flight (F-221",
-  canonOnly: "remaining − 1800s", // the formula — canon-only by rule (b)
+  // One entry per CLI version range: the range as the canon names it (rule
+  // (a) only — paraphrases name ranges too) and its formula (canon-only by
+  // rule (b)). The formulas carry a U+2212 minus.
+  canonOnly: [
+    { range: "CLI 1.0.7 through 1.0.9", formula: "remaining − 1800s" },
+    { range: "CLI 1.0.10 and later", formula: "remaining − 60s" },
+  ],
+  // The canon's catch-all bullet (opened by `marker`) must send every other
+  // version to the conservative rule, named by `rule` (F-462 reopen: a
+  // fallback flipped to the optimistic rule passed while the count read 2 of 2).
+  fallback: { marker: "Any other version", rule: "1.0.7 through 1.0.9" },
   pointer: "rule canon: setup Phase 1",
   paraphraseSkills: ["refresh", "email-report", "deps-report"],
 };
 let preflightSites = 0;
+let preflightRulesStated = 0;
 {
   const wsFold = (s) => s.replace(/\s+/g, " ");
   const family = new Set([TOKEN_PREFLIGHT.canonSkill, ...TOKEN_PREFLIGHT.paraphraseSkills]);
@@ -1918,12 +1940,45 @@ let preflightSites = 0;
       continue;
     }
     if (name === TOKEN_PREFLIGHT.canonSkill) {
-      if (!text.includes(TOKEN_PREFLIGHT.canonOnly)) {
+      const rules = TOKEN_PREFLIGHT.canonOnly;
+      // A rule is stated only when its range and its formula share ONE bullet of
+      // the canon block (headline → next `---`), not merely both appear in the
+      // file (F-462 reopen: the two formulas swapped between ranges read "2 of 2").
+      const raw = read(rel);
+      const block = raw.slice(raw.indexOf(TOKEN_PREFLIGHT.headline)).split(/\r?\n---\r?\n/)[0];
+      const bullets = [];
+      for (const line of block.split(/\r?\n/)) {
+        if (/^- /.test(line)) bullets.push(line);
+        else if (bullets.length && /^\s+\S/.test(line)) bullets[bullets.length - 1] += ` ${line}`;
+        else if (bullets.length && bullets[bullets.length - 1] !== null) bullets.push(null);
+      }
+      const items = bullets.filter(Boolean).map(wsFold);
+      const lost = rules.map((r) => {
+        const own = items.find((b) => b.includes(r.range));
+        return [
+          !own && `the version range "${r.range}"`,
+          (!own || !own.includes(r.formula)) &&
+            `the usable-life formula ("… ${r.formula}")${own ? " in its own bullet" : ""}`,
+        ].filter(Boolean);
+      });
+      const fb = TOKEN_PREFLIGHT.fallback;
+      const fbItem = items.find((b) => b.startsWith(`- ${fb.marker}`));
+      if (!fbItem || !fbItem.includes(fb.rule) || rules.some((r) => fbItem.includes(r.formula) || fbItem.includes(r.range))) {
         fail(
-          `${rel}: the canon site no longer states the usable-life formula ("… ${TOKEN_PREFLIGHT.canonOnly}") — ` +
-            `the canon must carry the full statement the paraphrase sites point at (DS-31, F-312)`,
+          `${rel}: the canon's "${fb.marker}" bullet must send every other CLI version to the conservative ` +
+            `"${fb.rule}" rule by name, with no formula or range rule of its own — ` +
+            `${fbItem ? `it reads: ${fbItem}` : "no such bullet"} (DS-31, F-462)`,
         );
       }
+      preflightRulesStated = lost.filter((l) => l.length === 0).length;
+      rules.forEach((r, i) => {
+        if (lost[i].length === 0) return;
+        fail(
+          `${rel}: the canon states ${preflightRulesStated} of ${rules.length} version-range rules — the ` +
+            `"${r.range}" rule no longer carries ${lost[i].join(" and ")}; the canon must carry the full ` +
+            `statement the paraphrase sites point at, one rule per CLI version range (DS-31, F-312, F-462)`,
+        );
+      });
     } else {
       if (!text.includes(TOKEN_PREFLIGHT.pointer)) {
         fail(
@@ -1932,9 +1987,12 @@ let preflightSites = 0;
             `(DS-31, F-312)`,
         );
       }
-      if (text.includes(TOKEN_PREFLIGHT.canonOnly)) {
+      // Any usable-life arithmetic in any spelling of the minus (U+2212, the
+      // dashes, an ASCII hyphen, the word), not only the listed formulas (F-462
+      // reopen: an ASCII-hyphen copy of a canon formula passed).
+      for (const [formula] of text.matchAll(/remaining\s*(?:[−–—-]|minus)\s*\d+\s*s\b/gi)) {
         fail(
-          `${rel}: paraphrase site restates the canon-only formula ("… ${TOKEN_PREFLIGHT.canonOnly}") — that ` +
+          `${rel}: paraphrase site restates the canon-only formula ("… ${formula}") — that ` +
             `is a full second copy growing back; state the judgment in one line and point at the canon ` +
             `(rule: one canon per rule — GP-B5 C1; DS-31, F-312)`,
         );
@@ -2374,7 +2432,8 @@ const passLine =
   `${helperSkillsSeen.size} capturing skills route through the capture helper with zero raw redirects, ` +
   `${kindSites} journal-kind nickname site(s) paired with the emitter literal, ` +
   `${preflightSites} token pre-flight sites held to one canon (${TOKEN_PREFLIGHT.canonSkill} + ` +
-  `${TOKEN_PREFLIGHT.paraphraseSkills.length} paraphrase-plus-pointer), ` +
+  `${TOKEN_PREFLIGHT.paraphraseSkills.length} paraphrase-plus-pointer; the canon states ` +
+  `${preflightRulesStated} of ${TOKEN_PREFLIGHT.canonOnly.length} version-range rules), ` +
   `${upsertCopyOutsHeld} upsert-batch failure copy-out(s) held segment-wise to the writer's own stderr, ` +
   `${linkPathTokens} workspace-link path(s) held to tracked plugin files (F-398), ` +
   `${buildChainSites} of ${BUILD_CHAIN_SITES.length} build-pipeline enumeration(s) held to package.json's build script (F-407), ` +

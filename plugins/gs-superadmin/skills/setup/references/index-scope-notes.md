@@ -5,7 +5,7 @@ the rest before indexing the journey-side domains (`jo email templates`,
 `jo surveys list`, `jo data-designer list`) or reasoning about Data Designer
 coverage. Pagination proves paging completeness only — the scope limits below are
 about what the CLI can SEE, and paging cannot fix them.
-Facts here were verified against CLI v1.0.9 (this line is the stale-facts
+Facts here were verified against CLI v1.0.10 (this line is the stale-facts
 checker's per-upgrade tripwire for this file; the bare versions below date the
 original observations).
 

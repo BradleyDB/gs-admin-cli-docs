@@ -1618,7 +1618,7 @@ export function recordedDomainsByPath(domainsIndexed, resolveLine) {
  */
 /** @type {Readonly<{ cliVersion: string, commands: Readonly<Record<string, Readonly<GsPinFact>>> }>} */
 export const CLI_PIN_FACTS = Object.freeze({
-  cliVersion: "1.0.9",
+  cliVersion: "1.0.10",
   commands: Object.freeze({
     "rules-engine:rules:events": Object.freeze({
       notEnumerableBare: "--topic <topic>",
@@ -1876,7 +1876,7 @@ export function indexedElsewhere(inventory, ids, excludeDomain = null) {
 // copy). The constraint is the action VERB, not "declares a GET endpoint":
 // `jo p describe` is POST-only and a legitimate, shipped describe, so a GET
 // requirement would refuse the whole journey lane. This set admits the
-// read actions in the v1.0.9 catalog beyond the describe/list name shapes — the
+// read actions in the v1.0.10 catalog beyond the describe/list name shapes — the
 // two per-item describes under other names (`jo e template`, `sc measures`),
 // `jo dd get`, `jo s get`, the two `list-and-describe` combos, and the six
 // scheduling/Events-Framework reads added at 1.0.6 — and is re-audited by
@@ -1918,16 +1918,20 @@ export function isDescribeRead(verb, cmd) {
 }
 
 // The CLI's re-login instruction — the sentence every auth-path throw in the
-// v1.0.9 package's dist/core/auth/index.js ends with (F-458). Four literals,
-// all session-wide (the CLI cannot obtain a bearer token; no command after
+// v1.0.10 package's dist/core/auth/index.js ends with (F-458). Two literals,
+// both session-wide (the CLI cannot obtain a bearer token; no command after
 // them succeeds until `gs-admin login`): "No stored token found. Run
-// `gs-admin login` to authenticate."; "Access token has expired and no
-// refresh token is available. Run `gs-admin login` to re-authenticate.";
-// "Token expired and silent refresh failed (<cause>). Run `gs-admin login`
-// to re-authenticate." — the half-life case setup Phase 1's pre-flight
-// names; "Token refresh failed (<status>). Run `gs-admin login` to
-// re-authenticate.". Pinned on the shared sentence, not on a cause, so all
-// four classify the same way (ruled 2026-09-14). Other CLI mentions of login
+// `gs-admin login` to authenticate."; "Access token has expired. Run
+// `gs-admin login` to re-authenticate." — the expiry case setup Phase 1's
+// pre-flight names for CLI 1.0.10 and later. 1.0.10 removed token refresh
+// (F-462), so three literals of the 1.0.9 package no longer exist in the
+// dist: "Access token has expired and no refresh token is available. …";
+// "Token expired and silent refresh failed (<cause>). …" — the half-life
+// case the pre-flight names for 1.0.7 through 1.0.9; "Token refresh failed
+// (<status>). …" — each ending "Run `gs-admin login` to re-authenticate.".
+// A workspace still on 1.0.9 emits them, and test/describe-batch.mjs's fake
+// CLI prints them. Pinned on the shared sentence, not on a cause, so every
+// one of them classifies the same way (ruled 2026-09-14). Other CLI mentions of login
 // ("Run: gs-admin login", "run 'gs-admin login'") are worded differently and
 // do not match. Classified only on a FAILED spawn — the CLI's shared handler
 // (dist/commands/base.js BaseCommand.catch) writes `Error: <message>` to
