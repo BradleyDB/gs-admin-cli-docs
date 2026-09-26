@@ -148,8 +148,8 @@ what the gate counts (F-444). The gate refuses both. Sections from F-360 on; the
 rule also reads the archive.
 
 
-Under test: release-gate-0-43-0 · hb-20260926-03 · 2026-09-26
-Blind spots (hb-20260926-03): no CLI 1.0.9 on this host, so F-467's 1.0.9 path is measured on a constructed workspace catalog stamped 1.0.9 (fixture and a tester-built workspace), never on a real 1.0.9 install; no operator in the builder session, so setup Phase 1's decision on whoami's lines (F-464) is read, not run, and owes the tester's walk; change-request's offline-mode sentence (F-464's class) is carried to F-461's round, unwalked; the macOS leg and pwsh 7 are CI's
+Under test: dev · hb-20260926-04 · 2026-09-26
+Blind spots (hb-20260926-04): release cut of 0.43.0 in progress, nothing new under test: every live section is VERIFIED, WONTFIX, or DEFERRED past 0.43.0; the release PR's 3-OS matrix is the release-grade run
 
 <!-- tester 2026-09-26 (0.43.0-gate-V @ hb-20260926-03 — acceptance round for F-464, F-467 and F-468, on branch release-gate-0-43-0):
      Provenance: dev-canary read hb-20260926-03 in session; checkout release-gate-0-43-0, clean, level with origin at 8950478
