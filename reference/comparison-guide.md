@@ -255,7 +255,7 @@ flag. Since CLI 1.0.8 that flag is a written contract in the CLI's own artifact 
 and upstream closed the class this paragraph used to warn about: commands flagged
 non-mutating while declaring a PUT/DELETE/PATCH endpoint went 29 → 0 at 1.0.8, the
 `re r` rule-authoring and scheduling surface and `dd t` template edits all prompt from
-the catalog now, and at v1.0.9 the 20 non-mutating commands still carrying a POST
+the catalog now, and at v1.0.10 the 20 non-mutating commands still carrying a POST
 endpoint are read-shaped fetches (list/describe/fetch-data/validate) reviewed
 command-by-command upstream. The residual risk is a future mislabel, not a standing population: the guard
 fail-closes on unknown commands, and a hand-maintained ask-override list (empty since
@@ -359,7 +359,7 @@ It is still the better path to *adding write access safely* — a documented KB,
 approval step inside every write-capable skill, and a change journal beat an unguarded
 read-write surface. Its guard also got stronger at CLI 1.0.8: upstream fixed the
 mislabeled-writer class (29 strict cases → 0), so every verified writer now prompts
-from the catalog itself, and at v1.0.9 the 20 non-mutating commands still carrying
+from the catalog itself, and at v1.0.10 the 20 non-mutating commands still carrying
 POST endpoints are read-shaped fetches reviewed upstream. Adopt it knowing the guard is
 command-parsing risk reduction plus a fail-closed prompt on unknown commands, not a
 boundary — the skills that drive writes still make their own approval step the gate.

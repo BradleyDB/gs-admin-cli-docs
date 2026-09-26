@@ -7,7 +7,7 @@ post-condition gate live in the skill itself, between §3 and §4 here — run t
 there before starting §4. Every `.gs-superadmin/plugin/…` path below is the
 workspace's link to the installed plugin (created in the skill's Phase 2), relative to
 the working dir.
-Facts here were verified against CLI v1.0.9 (this line is the stale-facts
+Facts here were verified against CLI v1.0.10 (this line is the stale-facts
 checker's per-upgrade tripwire for this file).
 
 ## §1 User-editable template files — scaffolded with a vintage (bus F-396)

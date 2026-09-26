@@ -2,7 +2,7 @@
 
 # gs-admin — Domain Reference Map
 
-Generated from `@gainsight/gs-admin-cli@1.0.9` on 2026-09-08.
+Generated from `@gainsight/gs-admin-cli@1.0.10` on 2026-09-26.
 
 **188 CLI commands** · **182 MCP tools** · **10 domains**
 

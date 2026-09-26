@@ -12,7 +12,7 @@ When launched over stdio it serves tools instead of parsing argv — no separate
 - **Naming:** `<namespace>_<actionKey>` with dashes → underscores
   (e.g. `journey_create_program`, `data_management_list_objects`,
   `rules_engine_add_action_cta`). Lane-2 tools are `runtime_<verb>`.
-- Every artifact action is exposed (none are `mcp.hidden` in v1.0.9); the static
+- Every artifact action is exposed (none are `mcp.hidden` in v1.0.10); the static
   `login`/`config`/etc. commands are **CLI-only** (not MCP tools).
 
 The full tool list with input schemas is in [domains/index.md](domains/index.md) — the

@@ -230,7 +230,33 @@ checkThat("fixture: connectors upsert succeeds with nested id field", r.code ===
   manifest2("upsert-batch", ["--file", evFile, "--domain", "rules-engine-events", "--id-field", "id", "--name-field", "name", "--no-date-field", "--items-path", "data", "--list-command", "gs-admin --json re r events --topic t1"]);
   d = diff2();
   checkThat("pin: a domain indexed from a bucketed command is reported as indexed (never hidden) with a warning naming the contradiction", (d.json?.indexed ?? []).some((i) => i.path === "rules-engine rules events" && i.domains.includes("rules-engine-events")) && !(d.json?.notEnumerableBare ?? []).some((n) => n.path === "rules-engine rules events") && (d.json?.warnings ?? []).some((w) => /is indexed .* but the per-pin table says it is not enumerable bare/.test(w)), { indexed: d.json?.indexed, warnings: d.json?.warnings });
+  // F-467: a workspace whose catalog was extracted from an EARLIER CLI the
+  // table was also verified on (alsoVerifiedOn — the plugin supports more
+  // than one CLI at once) gets the table too; `stamped` stays the pin.
+  for (const v of CLI_PIN_FACTS.alsoVerifiedOn) {
+    const R3 = join(ROOT, `pin-${v}`);
+    mkdirSync(join(R3, ".gs-superadmin"), { recursive: true });
+    mkdirSync(join(R3, "acme-old"), { recursive: true });
+    writeFileSync(join(R3, ".gs-superadmin", "catalog.json"), JSON.stringify({ ...catalogPin, meta: { cliVersion: v } }, null, 2));
+    const M3 = join(R3, "acme-old", "_manifest.json");
+    run(MANIFEST_SCRIPT, ["init", "--manifest", M3, "--slug", "acme-old", "--base-url", "https://acme.example"]);
+    const o = run(CANDIDATES, ["diff", "--manifest", M3]);
+    checkThat(`pin: a catalog at ${v} (an earlier version the table was verified on) applies the table — the four sublists bucketed, no not-applied warning, stamped still the pin (F-467)`,
+      o.json?.pinFacts?.applied === true && o.json?.pinFacts?.catalogVersion === v && o.json?.pinFacts?.stamped === CLI_PIN_FACTS.cliVersion &&
+        o.json?.notEnumerableBareCount === 4 && !(o.json?.warnings ?? []).some((w) => /not applied/.test(w)),
+      { pinFacts: o.json?.pinFacts, count: o.json?.notEnumerableBareCount, warnings: o.json?.warnings });
+    // …and a warning about a bucketed command cites the CLI version in USE,
+    // not the stamp (the fact was verified at both).
+    run(MANIFEST_SCRIPT, ["exclude", "--manifest", M3, "--command", "rules-engine rules events", "--reason", "Per-topic sublist: hard-fails bare", "--no-check", "--topic is required"]);
+    const o2 = run(CANDIDATES, ["diff", "--manifest", M3]);
+    checkThat(`pin: at ${v}, the inert-record warning says "at CLI ${v}", the version in use (F-467)`,
+      (o2.json?.warnings ?? []).some((w) => w.includes(`is excluded per tenant, but at CLI ${v} it is not enumerable bare`)), o2.json?.warnings);
+  }
 }
+checkThat("pin table: alsoVerifiedOn lists distinct x.y.z versions other than the stamp (F-467)",
+  CLI_PIN_FACTS.alsoVerifiedOn.every((v) => /^\d+\.\d+\.\d+$/.test(v) && v !== CLI_PIN_FACTS.cliVersion) &&
+    new Set(CLI_PIN_FACTS.alsoVerifiedOn).size === CLI_PIN_FACTS.alsoVerifiedOn.length,
+  CLI_PIN_FACTS.alsoVerifiedOn);
 
 // ── F-450: the shipped per-pin table holds against the BUNDLED catalog ────────
 // Every id must exist at the pin; a notEnumerableBare entry the catalog has

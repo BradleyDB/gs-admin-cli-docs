@@ -4,7 +4,7 @@ The stub, `--deep` selection, manual per-asset path, report shapes, and
 hand-chaining rules the skill's Phase 5 defers here. Every `.gs-superadmin/plugin/…`
 path below is the workspace's link to the installed plugin (created in the skill's
 Phase 2), relative to the working dir.
-Facts here were verified against CLI v1.0.9 (this line is the stale-facts
+Facts here were verified against CLI v1.0.10 (this line is the stale-facts
 checker's per-upgrade tripwire for this file).
 
 ## §1 Stubbing (shallow domains > 100 assets, and every list-only domain)

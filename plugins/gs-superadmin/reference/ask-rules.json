@@ -1,7 +1,7 @@
 {
   "_generated": "GENERATED FILE — do not edit by hand. Regenerate with: npm run build:plugin:gs-superadmin.",
-  "generated": "2026-09-08T00:17:33.660Z",
-  "cliVersion": "1.0.9",
+  "generated": "2026-09-26T19:00:55.984Z",
+  "cliVersion": "1.0.10",
   "mcpServer": "gs-admin",
   "note": "Merge mcpTools into permissions.ask in .claude/settings.json (append-only; never remove unrelated entries). Mutating CLI commands are guarded by the plugin's PreToolUse hook (which also journals approved mutations on PostToolUse), not by settings patterns.",
   "mcpTools": [

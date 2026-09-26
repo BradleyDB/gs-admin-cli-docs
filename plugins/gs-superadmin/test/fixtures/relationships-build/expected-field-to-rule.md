@@ -26,7 +26,7 @@ Execution order from each chain's task list. Source: `rules-engine-chains/` docs
   1. CS|Health|Compute Score Trend
   2. CS|Ops|Sync Legacy Flags
 
-## actionType accounting (verified live on CLI 1.0.4, re-verified statically at 1.0.6, 1.0.7, 1.0.8 and 1.0.9)
+## actionType accounting (verified live on CLI 1.0.4, re-verified statically at 1.0.6, 1.0.7, 1.0.8, 1.0.9 and 1.0.10)
 
 Every `_flatMappings` entry in the documented rules, by actionType — nothing is silently dropped. Dispositions: mapped above / in field-to-scorecard.md / in process-maps.md, or counted here.
 
@@ -39,12 +39,12 @@ Every `_flatMappings` entry in the documented rules, by actionType — nothing i
 
 ### ⚠ Unknown actionTypes — mappings NOT classified
 
-These actionTypes are not part of the semantics this generator hardcodes (verified live on CLI 1.0.4, re-verified statically at 1.0.6, 1.0.7, 1.0.8 and 1.0.9). Their entries were counted but not mapped — inspect the rule docs directly, and update the generator (plugin repo) if a CLI upgrade added them.
+These actionTypes are not part of the semantics this generator hardcodes (verified live on CLI 1.0.4, re-verified statically at 1.0.6, 1.0.7, 1.0.8, 1.0.9 and 1.0.10). Their entries were counted but not mapped — inspect the rule docs directly, and update the generator (plugin repo) if a CLI upgrade added them.
 
 - `FLAG_SYNC_V9` — carried by: CS|Ops|Sync Legacy Flags
 
 ### ⚠ Unrecognized REST_API areas — not classified
 
-REST_API delivery areas outside the list this generator hardcodes (NativeCta, NativeSp, callExternalAPI, loadtoactivity; verified live on CLI 1.0.4, re-verified statically at 1.0.6, 1.0.7, 1.0.8 and 1.0.9). Their entries were counted but not mapped — inspect the rule docs directly, and update the generator if a CLI upgrade added them.
+REST_API delivery areas outside the list this generator hardcodes (NativeCta, NativeSp, callExternalAPI, loadtoactivity; verified live on CLI 1.0.4, re-verified statically at 1.0.6, 1.0.7, 1.0.8, 1.0.9 and 1.0.10). Their entries were counted but not mapped — inspect the rule docs directly, and update the generator if a CLI upgrade added them.
 
 - `NativeEmailBlast` — carried by: CS|Risk|Create Renewal CTA _(inactive)_

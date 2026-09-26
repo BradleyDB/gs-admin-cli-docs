@@ -1,7 +1,7 @@
 {
   "_generated": "GENERATED FILE — do not edit by hand. Regenerate with: npm run build:reader-shapes (build/emit-reader-shapes.mjs).",
   "schemaVersion": 3,
-  "cliVersion": "1.0.9",
+  "cliVersion": "1.0.10",
   "what": "The plugin's READ SURFACE: for each CLI command whose JSON output a KB reader indexes, the payload keys the readers dereference — measured by running every reader over the shared fixture corpus under a recording Proxy with a deletion closure (plugins/gs-superadmin/test/trace-reader-shapes.mjs). Consumed by the gs-fortress CLI-watch audit (impact-checklist item 11): a key here that an upstream release projects away, renames or re-nests is a silent zero in the plugin — unless `alternates` names a surviving fallback, and unless the key is in `alternatesUnmeasured`, where the absence of a fallback was never measured. `recognized` names what a reader matches without dereferencing. `fields` describes every field; `residuals` states what the measurement cannot see.",
   "pathGrammar": {
     "a.b.c": "object keys, dot-joined, from the payload root — every named segment is one the reader's code dereferences (recorded even when absent from the fixture)",

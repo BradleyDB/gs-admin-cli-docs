@@ -1398,15 +1398,19 @@ try {
     const field16 = (k) => new RegExp(`${k}: "([^"]*)"`).exec(lit16)?.[1];
     const canonSkill = field16("canonSkill");
     const headline16 = field16("headline");
-    const canonOnly16 = field16("canonOnly");
+    // canonOnly is one { range, formula } entry per CLI version range (F-462).
+    const rules16 = [...(/canonOnly: \[([\s\S]*?)\],/.exec(lit16)?.[1] ?? "")
+      .matchAll(/\{ range: "([^"]*)", formula: "([^"]*)" \}/g)].map((m) => ({ range: m[1], formula: m[2] }));
+    const canonOnly16 = rules16[0]?.formula;
     const pointer16 = field16("pointer");
     const paraSkills16 = [...(/paraphraseSkills: \[([^\]]*)\]/.exec(lit16)?.[1] ?? "").matchAll(/"([a-z0-9-]+)"/g)].map((m) => m[1]);
     const outsider16 = skills.find((s) => s !== canonSkill && !paraSkills16.includes(s) && s !== "dev-canary");
     if (!canonSkill || !headline16 || !canonOnly16 || !pointer16 || paraSkills16.length === 0 || !outsider16) {
       console.log("FAIL  rig sanity: TOKEN_PREFLIGHT scrape broke, or no outsider skill to mutate");
-      console.log(`      ${JSON.stringify({ canonSkill, headline16, canonOnly16, pointer16, paraSkills16, outsider16 })}`);
+      console.log(`      ${JSON.stringify({ canonSkill, headline16, rules16, pointer16, paraSkills16, outsider16 })}`);
       process.exit(1);
     }
+    const esc16 = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     const canonRel = `plugins/gs-superadmin/skills/${canonSkill}/SKILL.md`;
     const paraRel = `plugins/gs-superadmin/skills/${paraSkills16[0]}/SKILL.md`;
     // (a) the canon site losing the formula — the full statement the
@@ -1430,15 +1434,126 @@ try {
           res.status === 1 && /no pointer to the canon/.test(res.stderr) && res.stderr.includes(paraRel), res.stderr);
       } finally { snap.restore(); }
     }
-    // (c) the formula growing back at a paraphrase site — the full-second-copy
-    // drift class this check exists to end.
+    // (c) a formula growing back at a paraphrase site — the full-second-copy
+    // drift class this check exists to end. Every version range's formula is
+    // canon-only, so each one is grown back in turn.
+    for (const { range, formula } of rules16) {
+      const snap = snapshotFiles([at(paraRel)]);
+      try {
+        mutate(paraRel, (s) => s + `\nRemember: usable life is ${formula}.\n`);
+        const res = run();
+        check(`check 16c: paraphrase site restating the canon formula goes red (second full copy; ${range})`,
+          res.status === 1 && /full second copy/.test(res.stderr) && res.stderr.includes(paraRel) && res.stderr.includes(formula), res.stderr);
+      } finally { snap.restore(); }
+    }
+    // (g) one version range's WHOLE clause deleted from the canon (F-462) —
+    // the other range's rule is still there, so a check that only asked "is a
+    // formula present" would pass. The miss must be counted and reported.
+    {
+      const last = rules16[rules16.length - 1];
+      const snap = snapshotFiles([at(canonRel)]);
+      try {
+        mutate(canonRel, (s) => s.replace(new RegExp(`${esc16(last.range)}[\\s\\S]*?${esc16(last.formula)}`), ""));
+        const res = run();
+        const counted = `states ${rules16.length - 1} of ${rules16.length} version-range rules`;
+        check("check 16g: the canon losing one version range's clause goes red, counted and reported",
+          res.status === 1 && res.stderr.includes(counted) && res.stderr.includes(last.range) &&
+            res.stderr.includes(last.formula) && res.stderr.includes(canonRel), res.stderr);
+      } finally { snap.restore(); }
+    }
+    // (h) a version range no longer named while its formula survives — the
+    // canon states a formula without saying which CLI it is for.
+    {
+      const last = rules16[rules16.length - 1];
+      const snap = snapshotFiles([at(canonRel)]);
+      try {
+        mutate(canonRel, (s) => s.replace(last.range, "Newer CLIs"));
+        const res = run();
+        check("check 16h: the canon dropping a version range's name goes red",
+          res.status === 1 && res.stderr.includes(`the version range "${last.range}"`) && res.stderr.includes(canonRel), res.stderr);
+      } finally { snap.restore(); }
+    }
+    // (i) every range and formula still present, but the formulas swapped
+    // between ranges (F-462 reopen, tester role inversion) — presence anywhere
+    // in the file read "2 of 2"; a rule is its range and formula in ONE bullet.
+    {
+      const [a, b] = rules16;
+      const snap = snapshotFiles([at(canonRel)]);
+      try {
+        mutate(canonRel, (s) => s.replace(a.formula, "\u0000").replace(b.formula, a.formula).replace("\u0000", b.formula));
+        const res = run();
+        check("check 16i: the canon's formulas swapped between version ranges goes red, counted (0 of 2)",
+          res.status === 1 && res.stderr.includes(`states 0 of ${rules16.length} version-range rules`) &&
+            res.stderr.includes("in its own bullet") && res.stderr.includes(canonRel), res.stderr);
+      } finally { snap.restore(); }
+    }
+    // (j) the catch-all bullet sent to the optimistic rule (F-462 reopen).
+    {
+      const fb16 = /fallback: \{ marker: "([^"]*)", rule: "([^"]*)" \}/.exec(lit16);
+      const last = rules16[rules16.length - 1];
+      const snap = snapshotFiles([at(canonRel)]);
+      try {
+        mutate(canonRel, (s) => s.replace(new RegExp(`(${esc16(fb16?.[1] ?? "\u0000")}[^\\n]*?)${esc16(fb16?.[2] ?? "\u0000")}`),
+          `$1${last.range.replace(/^CLI /, "")}`));
+        const res = run();
+        check("check 16j: the canon's catch-all bullet naming the optimistic rule goes red",
+          !!fb16 && res.status === 1 && res.stderr.includes(`"${fb16[1]}" bullet`) && res.stderr.includes(canonRel), res.stderr);
+      } finally { snap.restore(); }
+    }
+    // (k) a paraphrase regrowing a formula with an ASCII hyphen — the canon's
+    // U+2212 spelling is not the only spelling of the arithmetic (F-462 reopen).
     {
       const snap = snapshotFiles([at(paraRel)]);
       try {
-        mutate(paraRel, (s) => s + `\nRemember: usable life is ${canonOnly16}.\n`);
+        mutate(paraRel, (s) => s + `\nRemember: usable life is ${rules16[0].formula.replace("−", "-")}.\n`);
         const res = run();
-        check("check 16c: paraphrase site restating the canon formula goes red (second full copy)",
+        check("check 16k: paraphrase site restating a formula with an ASCII hyphen goes red",
           res.status === 1 && /full second copy/.test(res.stderr) && res.stderr.includes(paraRel), res.stderr);
+      } finally { snap.restore(); }
+    }
+    // (l) the canon's headline re-wrapped across two lines (F-468) — prose
+    // reflows freely, so the canon is still found and still reads M of M.
+    {
+      const snap = snapshotFiles([at(canonRel)]);
+      try {
+        mutate(canonRel, (s) => s.replace("Token pre-flight (F-221)", "Token pre-flight\n(F-221)"));
+        const res = run();
+        check("check 16l: a re-wrapped canon headline stays green and still reads M of M (F-468)",
+          res.status === 0 && res.stdout.includes(`states ${rules16.length} of ${rules16.length} version-range rules`), res.stderr || res.stdout);
+      } finally { snap.restore(); }
+    }
+    // (n) a LOOSE canon list — a blank line between every bullet (F-468): one
+    // list to a reader, several adjacent list blocks to parseBlocks (it drops
+    // blank lines); read as one, it stays green.
+    {
+      const snap = snapshotFiles([at(canonRel)]);
+      try {
+        mutate(canonRel, (s) => {
+          const i = s.indexOf(rules16[0].range);
+          const end = s.indexOf("\n\n", i);
+          return s.slice(0, i) + s.slice(i, end).replace(/\n- /g, "\n\n- ") + s.slice(end);
+        });
+        const res = run();
+        check("check 16n: a loose canon list (blank lines between the bullets) stays green and reads M of M (F-468)",
+          res.status === 0 && res.stdout.includes(`states ${rules16.length} of ${rules16.length} version-range rules`), res.stderr || res.stdout);
+      } finally { snap.restore(); }
+    }
+    // (m) the grammar decision, pinned (F-468): the canon is read through
+    // build/lib.mjs's parseBlocks, where a continuation line that is NOT
+    // indented ends the list item (T-9's decision table), so a formula moved
+    // onto such a line sits outside its item — red, as a rendered page shows it.
+    {
+      const last = rules16[rules16.length - 1];
+      const snap = snapshotFiles([at(canonRel)]);
+      try {
+        mutate(canonRel, (s) => {
+          const i = s.indexOf(last.formula);
+          const nl = s.lastIndexOf("\n", i);
+          return s.slice(0, nl + 1) + s.slice(nl + 1).replace(/^[ \t]+/, "");
+        });
+        const res = run();
+        check("check 16m: a formula on an UNINDENTED continuation line is outside its item under the shared grammar — red, counted (F-468)",
+          res.status === 1 && res.stderr.includes(`states ${rules16.length - 1} of ${rules16.length} version-range rules`) && res.stderr.includes(last.range), res.stderr);
       } finally { snap.restore(); }
     }
     // (d) set drift, gain: a skill outside the family teaching the pre-flight.

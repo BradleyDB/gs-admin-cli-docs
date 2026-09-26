@@ -21,8 +21,8 @@ installs two checker-only devDependencies; nothing runs from them).
 > are welcome, but this is not a support channel for Gainsight products: defects in the
 > CLI itself go to Gainsight, not here.
 >
-> **Currency.** This document was last updated on 2026-09-08 (against
-> `@gainsight/gs-admin-cli@1.0.9`) with reference to Gainsight's then-current pre-built and
+> **Currency.** This document was last updated on 2026-09-26 (against
+> `@gainsight/gs-admin-cli@1.0.10`) with reference to Gainsight's then-current pre-built and
 > generally available Admin CLI package. Gainsight may have updated its documentation and
 > available Admin CLI package since then. You can always find the latest version of
 > Gainsight's documentation and Admin CLI package at
@@ -59,11 +59,40 @@ command behind a human approval prompt — reads run freely, writes always ask.
 
 ### 1. Prerequisites
 
+You need these first. None of them can be installed from here:
+
+- **Gainsight super admin access**, plus an **OAuth application in your tenant** with scopes
+  **Read, Write**, **PKCE enabled**, and the callback URL `http://localhost:19876/callback`.
+  Gainsight's
+  [OAuth for Gainsight APIs](https://support.gainsight.com/gainsight_nxt/01Onboarding_and_Implementation/Onboarding_for_Gainsight_NXT/Login_and_Permissions/OAuth_for_Gainsight_APIs)
+  article shows where to create it. Without it, login fails with *"Enrollment failed: No OAuth
+  app found in this environment."*
+- **A Claude plan that includes Claude Code**: Pro, Max, Team, or Enterprise, or an Anthropic
+  Console account. The free plan doesn't include it.
+
+Start with a **sandbox** tenant until you're comfortable.
+
+Then install these, in order. New to the terminal? On Windows, open **Terminal** from the Start
+menu; on a Mac, press ⌘ + Space and open **Terminal**. Paste each command and press Enter.
+
+1. **Node.js 20 or newer**: the LTS installer from [nodejs.org](https://nodejs.org), or
+   `winget install OpenJS.NodeJS.LTS` (Windows) or `brew install node` (Mac). Open a new
+   terminal window afterwards.
+2. **Claude Code**: one command, from Anthropic's
+   [setup guide](https://code.claude.com/docs/en/setup).
+3. **The Admin CLI**, then log in with your tenant's address (the one you open Gainsight with):
+
 ```bash
-npm i -g @gainsight/gs-admin-cli   # the CLI itself (Node ≥ 18)
-gs-admin login                     # OAuth browser flow for your tenant
-gs-admin whoami                    # confirm you're on the right tenant
+npm i -g @gainsight/gs-admin-cli
+gs-admin login --base-url https://YOUR_TENANT.gainsightcloud.com   # sign in in the browser
+gs-admin whoami                                                    # confirm the tenant and "Token: valid"
 ```
+
+On Windows, if PowerShell says *running scripts is disabled on this system*, run the same
+commands in **Command Prompt**, or use the fix on the CLI's
+[npm page](https://www.npmjs.com/package/@gainsight/gs-admin-cli). Gainsight's
+[Configure Admin CLI](https://support.gainsight.com/gainsight_nxt/AI_Assistants/Admin_CLI/Configure_Admin_CLI)
+guide is the official reference for this step.
 
 ### 2. Install the plugin
 
@@ -77,9 +106,10 @@ claude plugin install gs-superadmin@gs-admin-cli-docs
 (Or interactively inside Claude Code: `/plugin marketplace add BradleyDB/gs-admin-cli-docs`,
 then pick **gs-superadmin** from `/plugin`.)
 
-The marketplace add clones this repo over git, so your machine needs GitHub access: for a
-public repo that's automatic; while the repo is private, authenticate first (`gh auth login`,
-or an SSH key on your GitHub account).
+Using the [Claude desktop app](https://claude.com/download) instead? Add it there with
+**+** → **Plugins** → **Add plugin** → **Add marketplace** → **Add from repo**, enter
+`BradleyDB/gs-admin-cli-docs`, and install **gs-superadmin**. The app shares plugins with the
+terminal install, so if you've already run the commands above, it's there already.
 
 Then **enable auto-update** for the marketplace — `/plugin` → **Marketplaces** →
 `gs-admin-cli-docs`. Third-party marketplaces default to auto-update off and there is no
@@ -90,7 +120,8 @@ two commands for updating by hand.
 ### 3. First run — bootstrap a workspace
 
 `cd` into the directory you want to work from (a new empty folder is fine), start Claude
-Code, and run:
+Code, and run the command below. In the desktop app, start a local session and select that
+folder instead.
 
 ```
 /gs-superadmin:setup
@@ -220,7 +251,7 @@ taking part is expected to follow the [Code of Conduct](CODE_OF_CONDUCT.md).
 
 ## Requirements
 
-- **Node.js ≥ 18** (developed against v24).
+- **Node.js ≥ 20** (developed against v24).
 - **`@gainsight/gs-admin-cli` installed globally** (`npm i -g @gainsight/gs-admin-cli`) —
   this project reads its bundled manifests to generate the docs. It does **not** call the
   Gainsight API, so no login/tenant is needed just to build the wiki.

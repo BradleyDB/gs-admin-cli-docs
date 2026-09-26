@@ -62,7 +62,10 @@ One exception to the cadence: before running a **mutation**, if there is any cha
 active tenant changed outside this session (e.g. the user ran `gs-admin config --base-url`
 in another terminal), re-run `whoami` first.
 
-If `whoami` fails → auth error → run `gs-admin login` and wait for confirmation.
+If `whoami`'s `Token:` line reads `expired` or `none` (it exits 0 either way), or `whoami`
+itself errors → auth error → run `gs-admin login` and wait for confirmation. Its
+`Auth mode: not configured` line beside a valid token is normal on the default
+auto-enrollment setup, not an auth error.
 
 ### Multiple instances (e.g. Sandbox + Production)
 
@@ -215,7 +218,7 @@ you at the spelling the guard understands. Use the installed `gs-admin` binary.
   are behind (or have a `.new` waiting for you) and points at setup; apart from the
   `plugin` link above, nothing under `.gs-superadmin/` is written outside a setup run.
 
-## Known CLI issues (observed live on 1.0.4; statically re-checked at v1.0.9 — the run-now catalog mislabel below was fixed upstream at 1.0.8, the rest still stand: from 1.0.8 to 1.0.9 only the two connectors artifacts changed, core/config and the scorecard and rules-engine handlers are byte-identical; two NEW issues observed live at 1.0.9 are listed below (`sc scheme list`, ledger KI-016; the libuv error-path abort, ledger KI-017) — recheck after CLI upgrades)
+## Known CLI issues (observed live on 1.0.4; statically re-checked at v1.0.10 — the run-now catalog mislabel below was fixed upstream at 1.0.8, the rest still stand: from 1.0.8 to 1.0.9 only the two connectors artifacts changed, and 1.0.10 changed only the auth module (token refresh removed, so the `sc measures --id` entry's stated mechanism is scoped to 1.0.9 and earlier) — every artifact, handler and core/config file is byte-identical from 1.0.9 to 1.0.10; two issues first observed live at 1.0.9 are listed below (`sc scheme list`, ledger KI-016; the libuv error-path abort, ledger KI-017) — recheck after CLI upgrades)
 
 When a `gs-admin` command misbehaves in a Known-CLI-issue-like way that this list does
 **not** cover (wrong/missing flag, false auth error, silent truncation, mislabeled
@@ -223,13 +226,18 @@ mutating flag, state left behind), suggest `/gs-superadmin:report-bug` to the us
 right away — it captures a vendor-ready "prompt and problem" report while the verbatim
 commands and output are still in this session.
 
-- **`sc measures --id` fails with a false "No stored token found"** once the stored token
-  is past half its lifetime, even though `gs-admin whoami` shows it valid. Cause: the CLI
-  refreshes tokens with no single-flight guard, and this is its only command whose *first*
-  authenticated call is a concurrent fan-out — the concurrent refresh corrupts the
-  credential read, which is then misreported as a missing token. **Use
-  `sc measures --name '<scorecard name>'` instead** (resolves name→id sequentially, which
-  primes auth first — unaffected).
+- **`sc measures --id` fails with a false "No stored token found"** even though
+  `gs-admin whoami` shows the token valid. On CLI 1.0.9 and earlier it fails once the
+  stored token is past half its lifetime: the CLI refreshes tokens with no single-flight
+  guard, and this is its only command whose *first* authenticated call is a concurrent
+  fan-out — the concurrent refresh corrupts the credential read, which is then misreported
+  as a missing token. On CLI 1.0.10, which has no token refresh, it fails **every time**,
+  a fresh token included (measured live 2026-09-26: 7 of 7 across four scorecards, from
+  3589 s down to 1057 s remaining). The cause there is unknown — the concurrent first
+  call is still there, so a concurrent credential read is the suspect (read from the
+  1.0.10 handler, not confirmed). **Use
+  `sc measures --name '<scorecard name>'` instead** on any version (resolves name→id
+  sequentially, which primes auth first — unaffected).
 - **`sc measures` flattens only one level of the measures tree**, so on rollup-enabled
   scorecards its rows are measure *groups* presented as measures (the real measures stay
   nested in each row's `children`; `_groupName` is the rollup's display name). Classify
@@ -370,8 +378,9 @@ commands and output are still in this session.
   independent tenants; 0 successes). Both are non-mutating tenant-wide list commands with no
   required flags, so there is no alternate spelling to try and no workaround. Both also abort
   on the libuv assertion above, so the exit code is a crash code (raw 0xC0000409; 127 under Git Bash,
-  255 under PowerShell), **not** an auth or server status — do not mistake it for the token
-  half-life defect and do not loop on re-login. Record such a command as **blocked with a
+  255 under PowerShell), **not** an auth or server status — do not mistake it for token
+  expiry (on CLI 1.0.9 and earlier, the half-life defect) and do not loop on re-login.
+  Record such a command as **blocked with a
   re-check date, never excluded**: "returns 500 today" is not a durable reason to bury a
   domain (observed live on 1.0.8 and 1.0.9; ledger KI-018).
 - **General rule**: any "No stored token found" while `whoami` succeeds is this bug class,

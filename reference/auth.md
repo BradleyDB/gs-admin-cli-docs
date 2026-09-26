@@ -15,8 +15,8 @@ gs-admin --base-url https://your-company.gainsightcloud.com login
 3. The access token is stored securely (see backends below).
 4. `base_url` is saved to `~/.gs-admin/config.json`, so later commands don't need `--base-url`.
 
-The OAuth app in the tenant needs **scopes `read`, `write`**, **PKCE enabled**, callback
-`http://localhost:19876/callback`, and CORS origin `http://localhost:19876`.
+The OAuth app in the tenant needs **scopes `read`, `write`**, **PKCE enabled**, and callback
+`http://localhost:19876/callback`.
 
 ## Verify
 
@@ -55,9 +55,25 @@ gs-admin tokens migrate     # move tokens from legacy ~/.gs-admin/tokens.json to
 
 ## Token refresh & expiry
 
-- When `client_id`/`client_secret` are stored, tokens **auto-refresh** silently.
-- Otherwise, re-run `gs-admin login` when the token expires.
+As of v1.0.10 the CLI **never refreshes a token, on any path** — a token is used for its
+whole lifetime as issued (about an hour) less one minute, then:
+
+- **Enrollment path** (the default — no `client_id`/`client_secret` stored): commands fail
+  with "Access token has expired. Run `gs-admin login` to re-authenticate." Re-run
+  `gs-admin login`. `whoami` can still report the token valid for that last minute.
+- **Credentialed path** (`client_id` and `client_secret` stored via `gs-admin config`): an
+  expired token opens the interactive browser login from inside whatever command needed
+  it, which waits up to five minutes for the callback — there is no silent refresh here
+  either.
+- **A running MCP server** keeps the token it loaded and never re-reads the token store,
+  so after a re-login, restart the server (reconnect it in your MCP client).
 - `"No authentication configured"` → run `gs-admin login`.
+
+History: CLI 1.0.7 through 1.0.9 attempted a silent refresh at half the token's lifetime.
+On the enrollment path it needed the OAuth app's client secret from a lookup most users
+cannot read, so it usually failed ("Token expired and silent refresh failed") and half of
+every token was unusable. The gs-superadmin plugin's token pre-flight still carries that
+rule for workspaces on those versions.
 
 ## Logout / uninstall
 

@@ -23,7 +23,8 @@ Scorecards (measures set by matching rules' scoring actions).
 
 - **Read-only tenant.** Every `gs-admin` command this skill issues is catalogued
   non-mutating (`whoami`, `dm deps check`). The scan itself reads only KB markdown.
-- **Sequential `gs-admin` calls only** — parallel calls trip the CLI's token-refresh race.
+- **Sequential `gs-admin` calls only** — on CLI 1.0.9 and earlier parallel calls trip its
+  token-refresh race; 1.0.10 has no refresh, but parallel calls are unmeasured there.
 - **Single-quote every name/filter value** — Gainsight names contain `|` and spaces.
 - **Bulk JSON never enters model context.** `dm deps check` captures go to files under
   `.gs-superadmin/tmp/`; you read only script stdout summaries and finished reports.
@@ -83,9 +84,9 @@ Same as `/gs-superadmin:refresh` step 1: run `gs-admin whoami`, derive the slug 
 
 **Token pre-flight (F-221):** step 2's live captures run as one sequential batch and
 `--wait` can hold up to 2 minutes per object — check `whoami`'s remaining token life
-first and have the user re-run `gs-admin login` if the USABLE life (far less than the
-number printed, per the known half-life defect) won't cover the batch (rule canon:
-setup Phase 1).
+first and have the user re-run `gs-admin login` if the USABLE life (on CLI 1.0.7
+through 1.0.9 far less than the number printed, per the known half-life defect; on
+1.0.10 and later nearly all of it) won't cover the batch (rule canon: setup Phase 1).
 
 ### 2 — Capture live dependents (skip with `--no-live` or when no `--object` terms)
 

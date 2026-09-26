@@ -53,8 +53,10 @@
 //                   reported INERT on the entry (`tenantRecord`) with a
 //                   warning, and is not counted among the decisions in
 //                   force. The table is version-stamped and self-retiring:
-//                   under a catalog at another pin it is not applied and the
-//                   diff warns (`pinFacts` in the output says which).
+//                   under a catalog at a version its entries were not
+//                   verified on (the stamp, plus doc-lib's alsoVerifiedOn —
+//                   F-467) it is not applied and the diff warns (`pinFacts`
+//                   in the output says which).
 //     Undecided candidates get a suggested KB domain name
 //     (<namespace>-<actionKey minus the list- prefix>) collision-checked
 //     against existing domains and bare namespaces — a renamed domain
@@ -398,7 +400,7 @@ if (verb === "diff") {
     const pinFact = typeof c.id === "string" && Object.hasOwn(pin.commands, c.id) ? pin.commands[c.id] : null;
     if (pinFact?.notEnumerableBare && inDomains) {
       warnings.push(
-        `"${c.path}" is indexed (domain ${inDomains.join(", ")}) but the per-pin table says it is not enumerable bare at CLI ${pin.stamped} ` +
+        `"${c.path}" is indexed (domain ${inDomains.join(", ")}) but the per-pin table says it is not enumerable bare at CLI ${pin.catalogVersion} ` +
           `(needs ${pinFact.notEnumerableBare}) — either the table entry is wrong (re-verify it against the installed CLI) or the domain ` +
           `was registered from a per-asset run; reported as indexed`
       );
@@ -406,7 +408,7 @@ if (verb === "diff") {
       const tenantRecord = excl ? "excluded" : blk ? "blocked" : null;
       if (tenantRecord) {
         warnings.push(
-          `"${c.path}" is ${tenantRecord} per tenant, but at CLI ${pin.stamped} it is not enumerable bare (needs ${pinFact.notEnumerableBare}) — ` +
+          `"${c.path}" is ${tenantRecord} per tenant, but at CLI ${pin.catalogVersion} it is not enumerable bare (needs ${pinFact.notEnumerableBare}) — ` +
             `the record is inert: no decision is needed; lift it (${tenantRecord === "excluded" ? "exclude" : "block"} --remove) or leave it`
         );
       }
