@@ -182,6 +182,32 @@ Blind spots (hb-20260921-02): post-release housekeeping after 0.42.0, nothing ne
        VALIDATION's `re r executions` production arm (finding only if production is empty too); issues #11, #12
        (enhancements). -->
 
+<!-- builder 2026-09-26 (CLI 1.0.10 adoption + README beginner path — HANDED OFF; UNMERGED, riding a branch; re-stamps the claim comment below):
+     Branch adopt-cli-1-0-10 -> PR #27, base dev, UNMERGED. Payload: gs-fortress build-kickoffs-1.0.10.md sessions X0 + E1 +
+       V1 + E2 (CP-1..CP-7) plus the README beginner path, one PR (Bradley, 2026-09-26); plugin 0.43.0 (CHANGELOG).
+     Transitions on the branch: F-462 OPEN -> FIXED (Fix / Judge / mutation copy-out / Sibling sweep); F-463 logged (the
+       number the claim comment below reserved) and FIXED (Class consumer-parity; Judge; Sibling sweep — setup's first-run
+       not-authenticated message added to scope by Bradley mid-round). Numbers consumed: F-463. Next free number F-464.
+     CP-1: the catalog differs from the pre-regen snapshot only in meta.cliVersion / generatedAt; counts 10 / 188 / 182;
+       diff-catalogs hasChanges false, non-mutating writes strict 0 -> 0 and withPost 20 -> 20 on the same ids; reader-shapes
+       moves only its cliVersion. Check 16 mutation proof 13 of 13 as predicted (copy-out under F-462 on the branch).
+     Ordering decision (work order is not severity order): E1's prose (CP-2 / CP-3) landed before the regen, so CP-7's
+       version pass re-checked the rewritten canon, not the old one; the README landed after CP-7 (it touched neither the
+       Requirements line nor the currency stamps, so nothing needed rebasing); one bump after every shipped-byte change. No
+       known-pending change re-arranges what is under test — F-461 (DEFERRED) touches change-request step 4 prose only.
+     Under test on the branch: hb-20260926-01; blind spots = the Blind spots line in the branch's header (no tenant or
+       operator: CP-6 and the CORS check banked; skill prose read, not run; no newcomer README dry run; artifacts
+       byte-identity carried on the gs-fortress audit).
+     Owed by the tester round: verdicts on F-462 and F-463; the walk of setup, refresh and change-request (slash-typed by
+       Bradley) and of deps-report and email-report (tester-invoked); one guard-wiring line; dev/VALIDATION.md sections
+       F-462 / CP-6 (a)-(d) and F-463 where a live tenant and CLI 1.0.10 are available (this host's global CLI is 1.0.10).
+     Local battery on the handoff tip 75e3fd8: 47/47 green (AGENTS.md list verbatim plus the four jo-report siblings).
+     CI on the PR head 75e3fd8 (the handoff commit, no skip marker): pending at this stamp — quoted per job on PR #27 after
+       completion, never asserted here first.
+     Merge is Bradley's call after the tester round; then gs-fortress close-out.mjs 1.0.10 --session E1,V1,E2 --pr 27
+       --commit (the PR title names CP-1..CP-7 individually and nothing else — close-out reads the title first).
+     Carried, not in scope: F-461 (polish, DEFERRED past 0.42.0); issues #11, #12. -->
+
 <!-- builder 2026-09-26 (CLI 1.0.10 adoption + README beginner path; UNMERGED, riding a branch):
      Branch adopt-cli-1-0-10 (off dev @ this commit; PR to dev to follow, re-stamped here with its number). One
        branch, one PR for gs-fortress sessions X0 + E1 + V1 + E2 (plan build-kickoffs-1.0.10.md, CP-1..CP-7) plus the
