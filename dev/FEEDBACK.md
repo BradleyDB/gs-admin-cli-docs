@@ -707,3 +707,43 @@ What: change-request SKILL.md step 4 closes with "If nothing passes, the section
 Repro: read the sentence (SKILL.md step 4, last paragraph) beside the walk's ask A quote in dev/VALIDATION.md § PR #17 — they disagree on what a well-formed ticket "gets".
 Expected: the sentence says what the test decides, e.g. "…the section is the template's one empty line. A ticket that says what it's for and asks for the right thing usually gets exactly that — unless one tenant fact passes the test, and then it gets that one line." Skill prose only; bump per the repo's prose precedent (0.41.1). A SKILL.md change owes a walk (bus header walk hint), so this rides the next substantive round rather than a round of its own; ask A's first-arm quote is the measurement the reworded sentence must agree with.
 Defer: 2026-09-21 (auto, release ceremony) - past 0.42.0. Why not now: OPEN polish at release. Reopen: next release ceremony.
+
+## F-462 — OPEN
+Reported: 2026-09-21 (carried from gs-fortress ledger/reports/audit-1.0.10.md §1.12 and
+§1.14 by the watch's kickoffs step; DECOUPLED from the adopt decision per that audit's §5)
+Severity: normal — shipped behaviour is wrong for a user whose installed CLI is 1.0.10:
+the F-221 token pre-flight tells the agent usable token life is remaining minus 1800s,
+but at 1.0.10 the half-life defect is gone and usable life is remaining minus about 60s,
+so every long-batch skill asks for a re-login roughly half an hour early and cites an
+error message the CLI no longer prints
+What: CLI 1.0.10 removes token refresh on every auth path. Its token-store now treats a
+token as expired only 60 s before expires_at (1.0.9 fired at the lifetime midpoint), and
+the enrollment path's failure text becomes "Access token has expired. Run gs-admin login
+to re-authenticate." instead of "Token expired and silent refresh failed". The pre-flight
+canon in skills/setup/SKILL.md, its three paraphrases (refresh, deps-report,
+email-report) and check-doc-drift check 16's TOKEN_PREFLIGHT data all encode the
+1.0.7-1.0.9 arithmetic unconditionally. Second site, same cause: operating-model.md and
+setup/references/document-domain-notes.md attribute the sc measures --id false "No
+stored token found" to a concurrent refresh, which 1.0.10 no longer performs. Third,
+unrelated: README.md's quick-start install line says Node 18 or later, while the
+unpinned install now gets a CLI whose engines field says Node 20 or later. The error is
+conservative (nothing breaks, nothing is silently wrong) and the current text is still
+right for users on 1.0.9 - so the repair is version-conditional, never a replacement.
+Repro (no tenant needed): read the canon's formula line and the audit's §0 item 1
+(token-store tokenIsExpired at expires_at minus 60 s); for a fresh 3600 s token the canon
+computes 1800 s usable where 1.0.10 gives about 3540 s.
+Expected: CP-2 (canon names both version ranges and both failure texts, the agent picks
+by gs-admin --version; paraphrases version-qualified; check 16's data moved in step),
+CP-3 (the sc measures --id mechanism scoped to 1.0.9 and earlier, workaround kept), CP-4
+(install line Node 20), CP-5 (bump + CHANGELOG); CP-6's four live checks banked in
+dev/VALIDATION.md on the same branch. Lock: check 16's existing mutants still go red, and
+a mutant that deletes the 1.0.10 clause from the canon must produce a COUNTED, REPORTED
+miss.
+Not in scope: adopting 1.0.10 (catalog regen, version prose, reference/auth.md, the
+README Requirements line, and the three check-stale-facts fact-carrier stamps in
+plugins/gs-superadmin/scripts/doc-lib.mjs that go red at the regen — the gated session
+E2 in gs-fortress ledger/reports/build-kickoffs-1.0.10.md, on Bradley's clock). Also
+not in scope: the AUTH_DEATH classifier in doc-lib.mjs — it matches the CLI's shared
+re-login sentence, which 1.0.10 still prints, so it keeps working untouched.
+Plan: gs-fortress ledger/reports/build-kickoffs-1.0.10.md, session E1 (CP-2, CP-3,
+CP-4, CP-5) + V1 (CP-6).
