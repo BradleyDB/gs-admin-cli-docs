@@ -146,8 +146,8 @@ what the gate counts (F-444). The gate refuses both. Sections from F-360 on; the
 rule also reads the archive.
 
 
-Under test: adopt-cli-1-0-10 · hb-20260926-01 · 2026-09-26
-Blind spots (hb-20260926-01): no tenant and no operator in the builder session: CP-6's four live checks and the F-463 CORS-origin check are banked in dev/VALIDATION.md (sections F-462 / CP-6 (a)-(d) and F-463), unmeasured; no CI executes skill prose, so setup (the pre-flight canon, the first-run login message), refresh, deps-report, email-report, change-request (two version stamps) and the operating model are read, not run, and owe the walk (setup, refresh and change-request are slash-only; deps-report and email-report model-invocable); the README beginner path had no newcomer dry run (the desktop app's Add-from-repo input and its auto-update toggle unconfirmed); dist/artifacts byte-identity and the designer drilldown grammar rest on the gs-fortress audit's package diff, not re-derived here (no 1.0.9 package left on this host after the upgrade); the macOS leg is CI's
+Under test: dev · hb-20260926-02 · 2026-09-26
+Blind spots (hb-20260926-02): post-merge housekeeping after PR #27 (merged at 6acd1e4), nothing new under test: F-464 and F-465 (polish) and F-466 (normal) are logged OPEN and unfixed; plugin 0.43.0 is staged on dev and unreleased; the 1.0.10-V round's walks and live checks stand as recorded under F-462 / F-463 and in dev/VALIDATION.md
 
 <!-- tester 2026-09-26 (1.0.10-V @ hb-20260926-01 — acceptance round for F-462 and F-463, on branch adopt-cli-1-0-10):
      Provenance: dev-canary read hb-20260926-01 in session; checkout adopt-cli-1-0-10, clean, level with origin at 75e3fd8
