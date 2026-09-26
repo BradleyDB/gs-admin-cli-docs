@@ -33,7 +33,9 @@ version-conditional. What a user gets by updating:
   `gs-admin login` without it has no tenant to sign in to), step 1 states Node.js 20 or
   newer (the CLI's floor since 1.0.10), the stale "while the repo is private" note is gone,
   and a new line points newcomers at the repo README's step 1, which now starts from
-  nothing installed.
+  nothing installed. Setup's own not-authenticated message does the same on a first run:
+  when `whoami` shows no tenant saved, it gives the `--base-url` form instead of a bare
+  `gs-admin login`.
 
 Existing workspaces pick up the operating-model wording through the scaffold's refresh at
 the next setup or refresh run. `scripts/doc-lib.mjs`'s auth-death classifier is unchanged —

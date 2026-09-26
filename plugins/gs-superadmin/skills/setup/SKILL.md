@@ -41,8 +41,12 @@ found), tell the user: "gs-admin is not installed. Run: `npm i -g @gainsight/gs-
 — then stop; do not proceed until re-run after installation.
 
 Run `gs-admin whoami` to confirm authentication. If it fails (auth error or no
-tenant), tell the user: "Not authenticated. Run: `gs-admin login`" — then stop; do
-not proceed until re-run after login.
+tenant), tell the user: "Not authenticated. Run: `gs-admin login`" — or, when `whoami`
+printed `Base URL: (not set)` (no tenant saved yet, so a bare login exits asking for
+one): "Not authenticated. Run:
+`gs-admin login --base-url https://YOUR_TENANT.gainsightcloud.com`, with YOUR_TENANT
+replaced by the address you open Gainsight with" — then stop; do not proceed until
+re-run after login.
 
 If both pass, continue. **Do not reinstall or re-authenticate if already set up.**
 
