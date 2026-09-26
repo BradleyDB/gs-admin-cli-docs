@@ -1511,6 +1511,51 @@ try {
           res.status === 1 && /full second copy/.test(res.stderr) && res.stderr.includes(paraRel), res.stderr);
       } finally { snap.restore(); }
     }
+    // (l) the canon's headline re-wrapped across two lines (F-468) — prose
+    // reflows freely, so the canon is still found and still reads M of M.
+    {
+      const snap = snapshotFiles([at(canonRel)]);
+      try {
+        mutate(canonRel, (s) => s.replace("Token pre-flight (F-221)", "Token pre-flight\n(F-221)"));
+        const res = run();
+        check("check 16l: a re-wrapped canon headline stays green and still reads M of M (F-468)",
+          res.status === 0 && res.stdout.includes(`states ${rules16.length} of ${rules16.length} version-range rules`), res.stderr || res.stdout);
+      } finally { snap.restore(); }
+    }
+    // (n) a LOOSE canon list — a blank line between every bullet (F-468): one
+    // list to a reader, several adjacent list blocks to parseBlocks (it drops
+    // blank lines); read as one, it stays green.
+    {
+      const snap = snapshotFiles([at(canonRel)]);
+      try {
+        mutate(canonRel, (s) => {
+          const i = s.indexOf(rules16[0].range);
+          const end = s.indexOf("\n\n", i);
+          return s.slice(0, i) + s.slice(i, end).replace(/\n- /g, "\n\n- ") + s.slice(end);
+        });
+        const res = run();
+        check("check 16n: a loose canon list (blank lines between the bullets) stays green and reads M of M (F-468)",
+          res.status === 0 && res.stdout.includes(`states ${rules16.length} of ${rules16.length} version-range rules`), res.stderr || res.stdout);
+      } finally { snap.restore(); }
+    }
+    // (m) the grammar decision, pinned (F-468): the canon is read through
+    // build/lib.mjs's parseBlocks, where a continuation line that is NOT
+    // indented ends the list item (T-9's decision table), so a formula moved
+    // onto such a line sits outside its item — red, as a rendered page shows it.
+    {
+      const last = rules16[rules16.length - 1];
+      const snap = snapshotFiles([at(canonRel)]);
+      try {
+        mutate(canonRel, (s) => {
+          const i = s.indexOf(last.formula);
+          const nl = s.lastIndexOf("\n", i);
+          return s.slice(0, nl + 1) + s.slice(nl + 1).replace(/^[ \t]+/, "");
+        });
+        const res = run();
+        check("check 16m: a formula on an UNINDENTED continuation line is outside its item under the shared grammar — red, counted (F-468)",
+          res.status === 1 && res.stderr.includes(`states ${rules16.length - 1} of ${rules16.length} version-range rules`) && res.stderr.includes(last.range), res.stderr);
+      } finally { snap.restore(); }
+    }
     // (d) set drift, gain: a skill outside the family teaching the pre-flight.
     {
       const outRel = `plugins/gs-superadmin/skills/${outsider16}/SKILL.md`;

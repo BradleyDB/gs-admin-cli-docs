@@ -100,7 +100,7 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
-import { ROOT, readJsonFile, assertScanCoverage, QUOTE_RE } from "./lib.mjs";
+import { ROOT, readJsonFile, assertScanCoverage, QUOTE_RE, parseBlocks } from "./lib.mjs";
 import { MECHANICAL_CLASSES, MANUAL_CLASSES, REGISTERED_CLASS_KEYS, sweepDefectClasses, classKeysIn, isTest } from "./defect-classes.mjs";
 
 const read = (p) => readFileSync(join(ROOT, p), "utf8");
@@ -1941,18 +1941,34 @@ let preflightRulesStated = 0;
     }
     if (name === TOKEN_PREFLIGHT.canonSkill) {
       const rules = TOKEN_PREFLIGHT.canonOnly;
-      // A rule is stated only when its range and its formula share ONE bullet of
-      // the canon block (headline → next `---`), not merely both appear in the
-      // file (F-462 reopen: the two formulas swapped between ranges read "2 of 2").
-      const raw = read(rel);
-      const block = raw.slice(raw.indexOf(TOKEN_PREFLIGHT.headline)).split(/\r?\n---\r?\n/)[0];
-      const bullets = [];
-      for (const line of block.split(/\r?\n/)) {
-        if (/^- /.test(line)) bullets.push(line);
-        else if (bullets.length && /^\s+\S/.test(line)) bullets[bullets.length - 1] += ` ${line}`;
-        else if (bullets.length && bullets[bullets.length - 1] !== null) bullets.push(null);
+      // A rule is stated only when its range and its formula share ONE item of
+      // the canon's list, not merely both appear in the file (F-462 reopen: the
+      // two formulas swapped between ranges read "2 of 2"). The canon is read
+      // through build/lib.mjs's parseBlocks — the ONE block grammar the repo
+      // renders with (F-468 redesign: the hand-rolled line loop that stood here
+      // was a second list grammar, and it found the block by a raw-text search
+      // while the headline check reads folded text, so a re-wrapped headline
+      // read "0 of 2" on a correct canon). The canon = the paragraph carrying
+      // the headline, then the first bullet list after it, before the next
+      // heading or rule (bulleted or numbered — either reads as the canon). Which continuation lines belong to an item is the
+      // shared grammar's decision (indented continuation; T-9's decision table),
+      // so this check reads exactly the list a rendered page shows. parseBlocks
+      // drops blank lines, so bullet lists standing next to each other were
+      // separated only by blank lines — one loose list to a reader — and are
+      // read as one.
+      const blocks = parseBlocks(read(rel));
+      const at = blocks.findIndex((b) => b.type === "p" && wsFold(b.text).includes(TOKEN_PREFLIGHT.headline));
+      /** @type {string[]} */
+      const items = [];
+      for (let k = at + 1; at >= 0 && k < blocks.length; k++) {
+        const b = blocks[k];
+        if (b.type === "hr" || /^h\d$/.test(b.type)) break;
+        if (b.type !== "list") {
+          if (items.length) break;
+          continue;
+        }
+        items.push(...b.items.map((it) => wsFold(["- " + it.text, ...it.children].join(" "))));
       }
-      const items = bullets.filter(Boolean).map(wsFold);
       const lost = rules.map((r) => {
         const own = items.find((b) => b.includes(r.range));
         return [
