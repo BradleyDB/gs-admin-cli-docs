@@ -32,7 +32,8 @@ Some list commands cannot see the whole tenant: their handlers hardcode a filter
 flatten a tree, so the count they yield is a CLI-reachable SUBSET, post-filter and
 post-flatten. These are facts about the pinned CLI, not about a tenant, so no tenant
 records them: the plugin ships them once, as data, in doc-lib's `CLI_PIN_FACTS` (keyed
-by the catalog command id, version-stamped, self-retiring at the next pin), and
+by the catalog command id, stamped with every CLI version its entries were verified on — the
+pin and any earlier pin an adoption re-verified unchanged — and self-retiring on any other), and
 `manifest.mjs report` derives `domains.<domain>.scope` — `{ key, path, limit }` — for
 every domain whose recorded `listCommand` resolves to one of them (F-450; `null` when no
 limit is known at the pin, and the report's `pinFacts.applied` says whether the table

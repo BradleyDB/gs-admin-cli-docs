@@ -62,7 +62,10 @@ One exception to the cadence: before running a **mutation**, if there is any cha
 active tenant changed outside this session (e.g. the user ran `gs-admin config --base-url`
 in another terminal), re-run `whoami` first.
 
-If `whoami` fails → auth error → run `gs-admin login` and wait for confirmation.
+If `whoami`'s `Token:` line reads `expired` or `none` (it exits 0 either way), or `whoami`
+itself errors → auth error → run `gs-admin login` and wait for confirmation. Its
+`Auth mode: not configured` line beside a valid token is normal on the default
+auto-enrollment setup, not an auth error.
 
 ### Multiple instances (e.g. Sandbox + Production)
 

@@ -1601,13 +1601,21 @@ export function recordedDomainsByPath(domainsIndexed, resolveLine) {
 // Keyed by catalog command `id` (namespace:group…:action) — NOT actionKey:
 // `list-source-fields` is the actionKey of two commands in two namespaces.
 // SELF-RETIRING, the ask-overrides.json precedent (tenet 6): the table
-// applies only while the catalog in use carries this exact cliVersion;
-// under any other pin every reader gets an empty table plus a warning, and
-// build/check-stale-facts.mjs (FACT_CARRIERS) refuses the stamp until a
-// human re-verifies each entry against the new package — the pair below is
-// the adoption-time tripwire. test/domain-candidates.mjs holds every id to
-// the bundled catalog and refuses a notEnumerableBare entry the catalog has
-// started to declare (a dead entry).
+// applies only while the catalog in use carries a version its entries were
+// VERIFIED on — the stamp (`cliVersion`, the pin) or one of the earlier pins
+// listed in `alsoVerifiedOn`, where an adoption re-verified every entry
+// unchanged; under any other version every reader gets an empty table plus a
+// warning, and build/check-stale-facts.mjs (FACT_CARRIERS) refuses the stamp
+// until a human re-verifies each entry against the new package — the pair
+// below is the adoption-time tripwire. `alsoVerifiedOn` exists because the
+// plugin supports more than one CLI at once (0.43.0 supports 1.0.9 and
+// 1.0.10): a workspace's catalog is extracted from ITS installed CLI, so a
+// single-version stamp withdrew the table from every workspace still on the
+// previous pin although nothing in it had changed (F-467). An adoption that
+// finds an entry changed drops the older versions instead of keeping them.
+// test/domain-candidates.mjs holds every id to the bundled catalog and
+// refuses a notEnumerableBare entry the catalog has started to declare (a
+// dead entry).
 /**
  * @typedef {object} GsPinFact  one entry of CLI_PIN_FACTS.commands — at least one of
  *                              the two kinds is present
@@ -1616,9 +1624,10 @@ export function recordedDomainsByPath(domainsIndexed, resolveLine) {
  * @property {string} [scope]               one-line paraphrase of the list command's scope
  *                                          limit (the canon is the notes subsection)
  */
-/** @type {Readonly<{ cliVersion: string, commands: Readonly<Record<string, Readonly<GsPinFact>>> }>} */
+/** @type {Readonly<{ cliVersion: string, alsoVerifiedOn: ReadonlyArray<string>, commands: Readonly<Record<string, Readonly<GsPinFact>>> }>} */
 export const CLI_PIN_FACTS = Object.freeze({
   cliVersion: "1.0.10",
+  alsoVerifiedOn: Object.freeze(["1.0.9"]),
   commands: Object.freeze({
     "rules-engine:rules:events": Object.freeze({
       notEnumerableBare: "--topic <topic>",
@@ -1649,21 +1658,25 @@ export const CLI_PIN_FACTS = Object.freeze({
 });
 /**
  * The per-pin facts IN FORCE for one catalog: the table when the catalog's
- * cliVersion equals the stamp, an empty table (with the why) otherwise —
+ * cliVersion is one the entries were verified on (the stamp, or an earlier
+ * pin in `alsoVerifiedOn` — F-467), an empty table (with the why) otherwise —
  * readers apply `commands` blindly and surface `why` when `applied` is
- * false, so a pin move never silently drops the facts (A-4).
+ * false, so a pin move never silently drops the facts (A-4). `stamped` is
+ * always the stamp (the pin), whichever verified version applied.
  * @param {{meta?: {cliVersion?: string}} | null | undefined} catalog
  * @returns {{ stamped: string, catalogVersion: ?string, applied: boolean, why: ?string, commands: Readonly<Record<string, Readonly<GsPinFact>>> }}
  */
 export function pinFactsFor(catalog) {
   const stamped = CLI_PIN_FACTS.cliVersion;
+  const verified = [...CLI_PIN_FACTS.alsoVerifiedOn, stamped];
   const catalogVersion = typeof catalog?.meta?.cliVersion === "string" ? catalog.meta.cliVersion : null;
-  const applied = catalogVersion === stamped;
+  const applied = catalogVersion !== null && verified.includes(catalogVersion);
+  const alsoOn = CLI_PIN_FACTS.alsoVerifiedOn.length ? ` (also verified on ${CLI_PIN_FACTS.alsoVerifiedOn.join(", ")})` : "";
   const why = applied
     ? null
     : catalogVersion == null
-      ? `the catalog carries no meta.cliVersion, so the per-pin CLI facts (stamped for ${stamped}) were not applied`
-      : `the per-pin CLI facts are stamped for ${stamped} and the catalog is ${catalogVersion} — not applied; re-verify doc-lib's CLI_PIN_FACTS against the installed package (check-stale-facts names the stamp)`;
+      ? `the catalog carries no meta.cliVersion, so the per-pin CLI facts (stamped for ${stamped}${alsoOn}) were not applied`
+      : `the per-pin CLI facts are stamped for ${stamped}${alsoOn} and the catalog is ${catalogVersion} — not applied; re-verify doc-lib's CLI_PIN_FACTS against the installed package (check-stale-facts names the stamp)`;
   return { stamped, catalogVersion, applied, why, commands: applied ? CLI_PIN_FACTS.commands : Object.freeze({}) };
 }
 

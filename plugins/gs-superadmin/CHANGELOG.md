@@ -38,6 +38,15 @@ version-conditional. What a user gets by updating:
   nothing installed. Setup's own not-authenticated message does the same on a first run:
   when `whoami` shows no tenant saved, it gives the `--base-url` form instead of a bare
   `gs-admin login`.
+- **Workspaces still on CLI 1.0.9 keep the per-CLI facts table.** The table of what the CLI does
+  that its catalog does not declare (the four `re rules` sublists that need a per-asset flag, and
+  the three scope-limited list commands) now applies at every CLI version it was verified on —
+  1.0.10 and 1.0.9 — instead of only at the pin, so setup on a 1.0.9 workspace no longer offers
+  those four sublists as index candidates or drops the scope limits from its report.
+- **Setup decides "logged in" from `whoami`'s `Token:` line.** `whoami` exits 0 in every state
+  (1.0.9 and 1.0.10 alike), and on the default auto-enrollment setup it prints `Auth mode: not configured`
+  beside a valid token; setup Phase 1 and the operating model now read `Base URL:` and `Token:`
+  instead of waiting for `whoami` to fail.
 
 Existing workspaces pick up the operating-model wording through the scaffold's refresh at
 the next setup or refresh run. `scripts/doc-lib.mjs`'s auth-death classifier is unchanged —
