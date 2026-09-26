@@ -248,6 +248,17 @@ Blind spots (hb-20260926-02): post-merge housekeeping after PR #27 (merged at 6a
      After the verdicts and the merge: the 0.43.0 release resumes at dev/RELEASE-CHECKLIST.md §1 (step 0 + gate), then
        §2 is satisfied by this round. Next free number F-469. -->
 
+<!-- tester 2026-09-26 (0.43.0-gate-V @ hb-20260926-03 — re-stamps the PR #29 pointer above; UNMERGED, riding a branch):
+     Branch release-gate-0-43-0 -> PR #29, head e9629cf (bus: 0.43.0-gate-V —, no skip marker). Verdicts recorded on the
+       branch, not here: F-464 VERIFIED, F-467 VERIFIED, F-468 VERIFIED — none reopened. Two polish observations noted on
+       the verdicts, not logged (the operating model's auth line omits the Base URL (not set) state — a candidate for
+       F-461's round; check 16's cascade "no such bullet" message on the unindented-continuation refusal).
+     Walk (setup --budget 1, slash-typed by Bradley, stopped at the Phase 4 boundary), guard-wiring line (ask rendered,
+       declined), blind spots and the handoff head 8950478's CI quoted per job (all pass): the tester block under the
+       branch header's Blind spots (hb-20260926-03) line.
+     CI on e9629cf: started by the push, pending at this stamp — quoted per job on PR #29 after completion, never asserted
+       here first. Merge stays Bradley's call; the 0.43.0 release then resumes at dev/RELEASE-CHECKLIST.md §1. -->
+
 <!-- builder 2026-09-26 (CLI 1.0.10 adoption round CLOSED OUT — MERGED):
      PR #27 (adopt-cli-1-0-10) merged to dev by Bradley at 6acd1e4; the remote branch was deleted at merge, the local one
        after; this checkout is back on dev. On dev now: CLI pin 1.0.10, plugin 0.43.0 staged (CHANGELOG), F-462 and F-463
