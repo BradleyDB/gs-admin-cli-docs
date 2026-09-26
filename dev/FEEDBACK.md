@@ -182,6 +182,16 @@ Blind spots (hb-20260921-02): post-release housekeeping after 0.42.0, nothing ne
        VALIDATION's `re r executions` production arm (finding only if production is empty too); issues #11, #12
        (enhancements). -->
 
+<!-- builder 2026-09-26 (CLI 1.0.10 adoption + README beginner path; UNMERGED, riding a branch):
+     Branch adopt-cli-1-0-10 (off dev @ this commit; PR to dev to follow, re-stamped here with its number). One
+       branch, one PR for gs-fortress sessions X0 + E1 + V1 + E2 (plan build-kickoffs-1.0.10.md, CP-1..CP-7) plus the
+       README beginner path (Bradley, 2026-09-26). Not in scope: CP-8 (gs-fortress repo), CP-9 (upstream memo).
+     Works under F-462 (the X0 emission, logged on dev at fb8f9ab; gs-fortress X0 status derived spent by close-out).
+     Numbers claimed by the branch: F-463 (the README beginner-path change, logged on the branch as its own finding so
+       the tester round covers it). Next free number F-464.
+     Carried, not in scope: F-461 (polish, DEFERRED past 0.42.0; reopens at the next release ceremony). Open PRs to
+       dev at kickoff: none. -->
+
 <!-- builder 2026-09-21 (Session F round CLOSED OUT — on dev, no branch):
      Payload: none of the builder's — the round was the owed walk of PR #17's shipped prose (plugin 0.42.0, merged
        at 0cbcc12) plus the operating-model refresh's second arm. Both recorded in dev/VALIDATION.md § PR #17:
