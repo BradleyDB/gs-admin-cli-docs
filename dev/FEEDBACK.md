@@ -148,8 +148,8 @@ what the gate counts (F-444). The gate refuses both. Sections from F-360 on; the
 rule also reads the archive.
 
 
-Under test: dev · hb-20260926-02 · 2026-09-26
-Blind spots (hb-20260926-02): post-merge housekeeping after PR #27 (merged at 6acd1e4), nothing new under test: F-464 and F-465 (polish) and F-466 (normal) are logged OPEN and unfixed; plugin 0.43.0 is staged on dev and unreleased; the 1.0.10-V round's walks and live checks stand as recorded under F-462 / F-463 and in dev/VALIDATION.md
+Under test: release-gate-0-43-0 · hb-20260926-03 · 2026-09-26
+Blind spots (hb-20260926-03): no CLI 1.0.9 on this host, so F-467's 1.0.9 path is measured on a constructed workspace catalog stamped 1.0.9 (fixture and a tester-built workspace), never on a real 1.0.9 install; no operator in the builder session, so setup Phase 1's decision on whoami's lines (F-464) is read, not run, and owes the tester's walk; change-request's offline-mode sentence (F-464's class) is carried to F-461's round, unwalked; the macOS leg and pwsh 7 are CI's
 
 <!-- tester 2026-09-26 (1.0.10-V @ hb-20260926-01 — acceptance round for F-462 and F-463, on branch adopt-cli-1-0-10):
      Provenance: dev-canary read hb-20260926-01 in session; checkout adopt-cli-1-0-10, clean, level with origin at 75e3fd8
