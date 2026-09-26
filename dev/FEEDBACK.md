@@ -182,6 +182,27 @@ Blind spots (hb-20260921-02): post-release housekeeping after 0.42.0, nothing ne
        VALIDATION's `re r executions` production arm (finding only if production is empty too); issues #11, #12
        (enhancements). -->
 
+<!-- builder 2026-09-26 (CLI 1.0.10 adoption — VERDICTS IN; UNMERGED, riding a branch, ready to merge on Bradley's call; re-stamps the PR #27 pointers below):
+     Branch adopt-cli-1-0-10 -> PR #27, base dev, UNMERGED. Transitions on the branch since the tester's re-stamp:
+       F-462 FIXED -> VERIFIED (builder verdict on the tester's role-inversion fix @ hb-20260926-01: the reopen's repro
+       U1-U3 and siblings V1-V9 against the fixed and the pre-inversion checker, 13 of 13 as predicted; checker mutants C1-C3 KILLED by arms 16i / 16j / 16k;
+       V3, a paraphrase spelling "seconds", survives outside the Fix note's claim — recorded, not reopened).
+       F-463 stays VERIFIED (tester). VALIDATION § F-463's owed polish applied: the CORS clause dropped from
+       reference/auth.md, and its sibling in reference/workflows/01-authenticate.md reworded; wiki regenerated.
+     Live checks: CP-6 (a) FIXED, (b) BROKEN (sc measures --id fails every time on 1.0.10 — folded into F-462's reopen and
+       its CP-3 wording), (c) FIXED, (d) FIXED; § F-463 FIXED. All CLEARED. Walks recorded by the tester.
+     Upstream: the sc measures --id failure on 1.0.10 is already reported (Bradley, 2026-09-26).
+     To log AFTER this PR merges (Bradley, 2026-09-26) — three tester observations, deliberately kept off this branch so a
+       possibly-normal finding does not gate 0.43.0: setup Phase 1 should branch on whoami's Token: line (1.0.10 whoami
+       always exits 0) — polish; deps-report's third caveat asks for --live-deps although a capture was passed — polish;
+       the guard's pipe lint fired on a non-gs-admin command whose path contained "gs-admin" — severity to be declared
+       at logging (a first-offense deny on a legitimate command reads normal), its own round.
+     No OPEN finding on the branch; F-461 (polish) stays DEFERRED past 0.42.0. Next free number F-464.
+     CI on the verdict tip: 4a288ef (the builder verdict commit, no skip marker) — its pull_request runs had not concluded at this stamp,
+       so nothing is asserted for them here; the 128340e runs, quoted after completion: validate-plugin 36271463848
+       changes success / validate (ubuntu-latest) success / manifests success; docs-drift 36271463921 drift (full) success.
+     Merge is Bradley's call; then gs-fortress close-out.mjs 1.0.10 --session E1,V1,E2 --pr 27 --commit. -->
+
 <!-- builder 2026-09-26 (CLI 1.0.10 adoption + README beginner path — HANDED OFF; UNMERGED, riding a branch; re-stamps the claim comment below):
      Branch adopt-cli-1-0-10 -> PR #27, base dev, UNMERGED. Payload: gs-fortress build-kickoffs-1.0.10.md sessions X0 + E1 +
        V1 + E2 (CP-1..CP-7) plus the README beginner path, one PR (Bradley, 2026-09-26); plugin 0.43.0 (CHANGELOG).
