@@ -764,7 +764,7 @@ Repro: read the sentence (SKILL.md step 4, last paragraph) beside the walk's ask
 Expected: the sentence says what the test decides, e.g. "…the section is the template's one empty line. A ticket that says what it's for and asks for the right thing usually gets exactly that — unless one tenant fact passes the test, and then it gets that one line." Skill prose only; bump per the repo's prose precedent (0.41.1). A SKILL.md change owes a walk (bus header walk hint), so this rides the next substantive round rather than a round of its own; ask A's first-arm quote is the measurement the reworded sentence must agree with.
 Defer: 2026-09-21 (auto, release ceremony) - past 0.42.0. Why not now: OPEN polish at release. Reopen: next release ceremony.
 
-## F-462 — FIXED
+## F-462 — VERIFIED
 Reported: 2026-09-21 (carried from gs-fortress ledger/reports/audit-1.0.10.md §1.12 and
 §1.14 by the watch's kickoffs step; DECOUPLED from the adopt decision per that audit's §5)
 Severity: normal — shipped behaviour is wrong for a user whose installed CLI is 1.0.10:
@@ -836,6 +836,30 @@ Mutation proof — each mutant against the fixed checker, on a scratch clone, pr
     U4 canon: 1.0.10 formula moved out of its bullet: KILLED pred:KILL ("states 1 of 2")
     U5 paraphrase: "remaining minus 120s": KILLED pred:KILL
 Sibling sweep: the same presence-not-structure shape elsewhere in check 16 — the pointer and headline checks are presence checks by design (a marker, not a rule), so not siblings; `git grep` over plugins/gs-superadmin for "not yet measured" after the edit: none left.
+Verdict: VERIFIED 2026-09-26 (builder — the other role's verdict on the tester's role-inversion fix) @ hb-20260926-01. Under test: branch adopt-cli-1-0-10 @ 128340e (PR #27, unmerged), checkout level with origin. Round type: re-verification of the inverted fix — the reopen's repro plus the Fix note's claims, measured from a frame the fixer did not write.
+Pass bar (stated before measuring): the reopen's repro now KILLED — U1 the formulas swapped between the ranges, U2 the catch-all sent to the 1.0.10 rule, U3 a paraphrase regrowing a formula with an ASCII hyphen; the Fix note's claims hold — (1a) a rule counts only when its range and its formula share ONE canon bullet, (1b) the catch-all bullet names the conservative rule and carries no formula or range rule of its own, (1c) usable-life arithmetic at a paraphrase site is refused in any spelling of the minus (U+2212, en and em dash, ASCII hyphen, the word) followed by N s, (2) the CP-3 entries say the symptom persists on 1.0.10 and fails every time, the cause there is unknown, `--name` is the workaround on every version, and the duplicate-name `--id` fallback expects the failure; test-check-doc-drift 135 green; the real tree reads "2 of 2".
+Verified: 2026-09-26 @ hb-20260926-01 (builder) — every point holds. Independent frame: the same mutants run against the pre-inversion checker (75e3fd8), so each KILL is shown to come from the new structure; siblings built from the fixed code's decision points (the own-bullet binding, the first-match bullet lookup, the bullet parse, the fallback clause, the paraphrase regex's minus / unit / spacing arms), not from the Fix note's list; three checker mutants judged by the suite so the new arms are shown to pin the new code (Class unpinned-arm's recipe). test-check-doc-drift 135/135 green; check-doc-drift reads "the canon states 2 of 2 version-range rules". (2) read against dev/VALIDATION.md § F-462 / CP-6 (b)'s measurement — the counts, the fresh-token failure and the unconfirmed suspect are the measured ones; the 0.43.0 CHANGELOG bullet agrees.
+Mutation copy-out — sweep (source: the reopen's repro U1-U3 and M1, plus siblings V1-V9 from the fixed code's decision points); predictions written before the run; fixed checker (128340e) | pre-inversion checker (75e3fd8), on a scratch copy of the tree:
+    M1 canon: 1.0.10 clause deleted: fixed KILLED pred:KILL | pre KILLED pred:KILL
+    U1 canon: formulas swapped between ranges: fixed KILLED pred:KILL | pre SURVIVED pred:SURVIVE
+    U2 canon: fallback sent to the 1.0.10 rule: fixed KILLED pred:KILL | pre SURVIVED pred:SURVIVE
+    U3 paraphrase: ASCII-hyphen formula: fixed KILLED pred:KILL | pre SURVIVED pred:SURVIVE
+    V1 paraphrase: en-dash formula: fixed KILLED pred:KILL | pre SURVIVED pred:SURVIVE
+    V2 paraphrase: em dash, spaced unit: fixed KILLED pred:KILL | pre SURVIVED pred:SURVIVE
+    V3 paraphrase: unit spelled 'seconds': fixed SURVIVED pred:SURVIVE | pre SURVIVED pred:SURVIVE
+    V4 canon: 1.0.10 range name also in the first bullet: fixed KILLED pred:KILL | pre SURVIVED pred:SURVIVE
+    V5 canon: bullets flattened to prose: fixed KILLED pred:KILL | pre SURVIVED pred:SURVIVE
+    V6 canon: CRLF line endings, content unchanged: fixed SURVIVED pred:SURVIVE | pre SURVIVED pred:SURVIVE
+    V7 canon: fallback bullet carries a formula: fixed KILLED pred:KILL | pre SURVIVED pred:SURVIVE
+    V8 paraphrase: 'Remaining-60s', no spaces: fixed KILLED pred:KILL | pre SURVIVED pred:SURVIVE
+    V9 canon: the two range bullets reordered, pairing intact: fixed SURVIVED pred:SURVIVE | pre SURVIVED pred:SURVIVE
+  Checker mutants, judged by build/test-check-doc-drift.mjs on the scratch tree:
+    C1 own-bullet binding reverted to file presence: KILLED pred:KILL (check 16i: red)
+    C2 fallback check removed: KILLED pred:KILL (check 16j: red)
+    C3 paraphrase regex narrowed to U+2212: KILLED pred:KILL (check 16k: red)
+  No MISMATCH. V6 and V9 are the no-false-red controls (a CRLF checkout, a reordered canon) and stay green.
+Beside the pass bar, not a reopen: V3 — a paraphrase spelling the unit out ("remaining minus 1800 seconds") survives, as predicted. The Fix note claims "N s", so the claim holds as written; rule (b) is a tripwire over free prose, where there is no grammar to parse (AGENTS.md A-9), so another spelling tune would be the wrong model. Before this round the rule matched two exact strings, so V3 was never caught there either. Recorded, not logged: if a paraphrase ever regrows arithmetic in another spelling, revisit the rule's model, not its regex.
+CI on 128340e (the tester's verdict commit, the PR head this verdict measured; pull_request), quoted per job after completion: validate-plugin 36271463848: changes success / validate (ubuntu-latest) success / manifests success; docs-drift 36271463921: drift (full) success. PR #27 read MERGEABLE / CLEAN.
 
 ## F-463 — VERIFIED
 Reported: 2026-09-26 (builder, from the README beginner-path workstream — Bradley's rulings of 2026-09-22 and 2026-09-26; logged as its own finding so the tester round covers the README change)

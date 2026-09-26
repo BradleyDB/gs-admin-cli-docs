@@ -671,6 +671,10 @@ over-states). Step 1: Bradley opened the sandbox's OAuth Applications page and t
 no CORS-origin field on the form ("nothing new from the first time I set this up"). Step 2 is moot (nothing to clear);
 no tenant change was made. The same session's `gs-admin login` against that app succeeded (CP-6 (d) above). Owed: drop
 the CORS clause from reference/auth.md "One-time login" (polish, doc-only, per this section).
+Applied 2026-09-26 (builder, adopt-cli-1-0-10): the clause is dropped from reference/auth.md, and its one sibling —
+reference/workflows/01-authenticate.md's troubleshooting line "CORS / callback errors → the tenant OAuth app needs
+origin …" — now names only PKCE and the callback; `git grep -i cors` outside dev/ and the regenerated wiki finds
+nothing left. Wiki regenerated (it embeds both docs).
 
 Owed by: a tester session, or Bradley, with super-admin access to the SANDBOX tenant's OAuth Applications page and a
 CLI that can log in. Nothing here is a gs-admin mutation; the tenant change is an admin-UI edit, reversible, and

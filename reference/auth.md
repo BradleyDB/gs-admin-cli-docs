@@ -15,8 +15,8 @@ gs-admin --base-url https://your-company.gainsightcloud.com login
 3. The access token is stored securely (see backends below).
 4. `base_url` is saved to `~/.gs-admin/config.json`, so later commands don't need `--base-url`.
 
-The OAuth app in the tenant needs **scopes `read`, `write`**, **PKCE enabled**, callback
-`http://localhost:19876/callback`, and CORS origin `http://localhost:19876`.
+The OAuth app in the tenant needs **scopes `read`, `write`**, **PKCE enabled**, and callback
+`http://localhost:19876/callback`.
 
 ## Verify
 
