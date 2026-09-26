@@ -1473,6 +1473,44 @@ try {
           res.status === 1 && res.stderr.includes(`the version range "${last.range}"`) && res.stderr.includes(canonRel), res.stderr);
       } finally { snap.restore(); }
     }
+    // (i) every range and formula still present, but the formulas swapped
+    // between ranges (F-462 reopen, tester role inversion) — presence anywhere
+    // in the file read "2 of 2"; a rule is its range and formula in ONE bullet.
+    {
+      const [a, b] = rules16;
+      const snap = snapshotFiles([at(canonRel)]);
+      try {
+        mutate(canonRel, (s) => s.replace(a.formula, "\u0000").replace(b.formula, a.formula).replace("\u0000", b.formula));
+        const res = run();
+        check("check 16i: the canon's formulas swapped between version ranges goes red, counted (0 of 2)",
+          res.status === 1 && res.stderr.includes(`states 0 of ${rules16.length} version-range rules`) &&
+            res.stderr.includes("in its own bullet") && res.stderr.includes(canonRel), res.stderr);
+      } finally { snap.restore(); }
+    }
+    // (j) the catch-all bullet sent to the optimistic rule (F-462 reopen).
+    {
+      const fb16 = /fallback: \{ marker: "([^"]*)", rule: "([^"]*)" \}/.exec(lit16);
+      const last = rules16[rules16.length - 1];
+      const snap = snapshotFiles([at(canonRel)]);
+      try {
+        mutate(canonRel, (s) => s.replace(new RegExp(`(${esc16(fb16?.[1] ?? "\u0000")}[^\\n]*?)${esc16(fb16?.[2] ?? "\u0000")}`),
+          `$1${last.range.replace(/^CLI /, "")}`));
+        const res = run();
+        check("check 16j: the canon's catch-all bullet naming the optimistic rule goes red",
+          !!fb16 && res.status === 1 && res.stderr.includes(`"${fb16[1]}" bullet`) && res.stderr.includes(canonRel), res.stderr);
+      } finally { snap.restore(); }
+    }
+    // (k) a paraphrase regrowing a formula with an ASCII hyphen — the canon's
+    // U+2212 spelling is not the only spelling of the arithmetic (F-462 reopen).
+    {
+      const snap = snapshotFiles([at(paraRel)]);
+      try {
+        mutate(paraRel, (s) => s + `\nRemember: usable life is ${rules16[0].formula.replace("−", "-")}.\n`);
+        const res = run();
+        check("check 16k: paraphrase site restating a formula with an ASCII hyphen goes red",
+          res.status === 1 && /full second copy/.test(res.stderr) && res.stderr.includes(paraRel), res.stderr);
+      } finally { snap.restore(); }
+    }
     // (d) set drift, gain: a skill outside the family teaching the pre-flight.
     {
       const outRel = `plugins/gs-superadmin/skills/${outsider16}/SKILL.md`;

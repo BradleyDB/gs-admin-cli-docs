@@ -21,8 +21,10 @@ version-conditional. What a user gets by updating:
   three paraphrases say "far less than printed" only for 1.0.9 and earlier.
 - **The `sc measures --id` false "No stored token found"** entry (operating model, Known CLI
   issues; setup's scorecard note) scopes its concurrent-refresh cause to 1.0.9 and earlier —
-  1.0.10 has no refresh — and keeps the `--name` workaround on every version. Whether the
-  symptom persists on 1.0.10 is not yet measured live. The "sequential calls only" rules in
+  1.0.10 has no refresh — and keeps the `--name` workaround on every version. Measured live
+  on 1.0.10: the symptom persists, and `--id` now fails every time, a fresh token included —
+  the entries say so, name the cause there as unknown, and tell setup to expect the failure
+  on its duplicate-name `--id` fallback. The "sequential calls only" rules in
   email-report, deps-report, setup and describe-batch say the same.
 - **Reference bundle regenerated from 1.0.10** (catalog, cheatsheet, ask-rules, version).
   1.0.10 is an auth-only release: the catalog is unchanged apart from its version stamp —

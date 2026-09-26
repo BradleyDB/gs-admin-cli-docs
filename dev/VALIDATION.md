@@ -553,7 +553,17 @@ Outcome rule:
   change-request step 4 line: an empty executions list is unknown, not zero.
 Record the verdict here with the token, and copy it to the bus under the round's Blind spots line.
 
-## F-462 / CP-6 (a) — KI-012 closed live: a token works past the old half-life point on CLI 1.0.10 (banked 2026-09-26, builder, 1.0.10 adoption round)
+## F-462 / CP-6 (a) — KI-012 closed live: a token works past the old half-life point on CLI 1.0.10 (banked 2026-09-26, builder, 1.0.10 adoption round — CLEARED 2026-09-26 @ hb-20260926-01)
+
+CLEARED 2026-09-26 (tester, 1.0.10-V) @ hb-20260926-01 — FIXED (KI-012 closed live; the canon's 1.0.10-and-later rule
+holds). Rig: one background Git Bash loop on one fresh token (login 19:44 UTC, `whoami` 3591 s), each iteration
+`whoami` → `gs-admin --json sc list --limit 1` → `whoami`; every ~5 min above 1900 s, ~2 min to 300 s, 30 s to 180 s,
+then every ~13 s (10 s sleep + the calls). 31 iterations. Step 2: reads at 1737, 1481, 1228 and 1104 s remaining all
+exit 0 (1.0.9's first failure was at 1772 s). Last success: `whoami` 62 s before / 60 s after the read. First failure:
+49 s before / 47 s after — stderr exactly "Error: Access token has expired. Run `gs-admin login` to re-authenticate.",
+exit 1 (Git Bash), and `whoami` immediately after still printed `Token:        valid (expires in 47s)`. No
+"Token expired and silent refresh failed" anywhere in the run. The failure lands inside the 60 s margin at the loop's
+~13 s resolution.
 
 Owed by: a tester session on a machine whose `gs-admin --version` prints 1.0.10, with a live tenant, before the next
 release (named on the round's Blind spots line). Plan item: gs-fortress build-kickoffs-1.0.10.md CP-6 (a).
@@ -577,7 +587,19 @@ Run `gs-admin login` to re-authenticate."
 BROKEN: any read fails with more than about 120 s remaining, or the failure text is "Token expired and silent
 refresh failed" (the 1.0.9 refresh path is still live). Either REOPENS F-462: the canon's 1.0.10 formula is wrong.
 
-## F-462 / CP-6 (b) — `sc measures --id` past the old half-life point on CLI 1.0.10 (banked 2026-09-26, builder, 1.0.10 adoption round)
+## F-462 / CP-6 (b) — `sc measures --id` past the old half-life point on CLI 1.0.10 (banked 2026-09-26, builder, 1.0.10 adoption round — CLEARED 2026-09-26 @ hb-20260926-01, BROKEN)
+
+CLEARED 2026-09-26 (tester, 1.0.10-V) @ hb-20260926-01 — BROKEN (symptom persists; worse than on 1.0.9). On (a)'s token,
+one KB scorecard id, through the capture helper: `whoami` 1737 s → exit 1, stderr "Error: No stored token found. Run
+`gs-admin login` to authenticate.", nothing written; 1481 s → same; 1228 s → same. Controls in the same minutes: the
+loop's `sc list` reads all exit 0; the same `--id` call issued directly (no helper) at 1057 s → same error; `sc measures
+--name` on the same scorecard through the helper → exit 0, 35 KB captured. Discriminator beyond this section's steps:
+after a FRESH login (`whoami` 3589 s) `--id` failed 3 of 3 and on all four KB scorecards — on 1.0.10 it fails every time,
+not only past half-life. Static reading of the 1.0.10 handler (unconfirmed): with `--id` the name lookup is skipped, so
+the first authenticated call is a Promise.all pair (fetch + schemes) reaching TokenOnlyProvider's lazy token load at
+once; with `--name` a sequential list call primes it. Per the kickoff this reopened F-462 (CP-3 is its section) rather
+than minting a finding; both entries now say the symptom persists on 1.0.10 with the cause unknown (tester role
+inversion, see F-462). Upstream via /gs-superadmin:report-bug: Bradley's call.
 
 Owed by: the same session as (a), on (a)'s token. Plan item: CP-6 (b) — it decides the final wording of the two
 race entries F-462 scoped to 1.0.9 and earlier (templates/operating-model.md "Known CLI issues", and
@@ -597,7 +619,13 @@ BROKEN (symptom persists): any false "No stored token found" while `whoami` read
 mechanism cannot be the cause on 1.0.10, so log a normal finding: both entries must say the cause is unknown on
 1.0.10, and the symptom goes upstream through /gs-superadmin:report-bug.
 
-## F-462 / CP-6 (c) — KI-017 on the new expired-token error path (banked 2026-09-26, builder, 1.0.10 adoption round)
+## F-462 / CP-6 (c) — KI-017 on the new expired-token error path (banked 2026-09-26, builder, 1.0.10 adoption round — CLEARED 2026-09-26 @ hb-20260926-01)
+
+CLEARED 2026-09-26 (tester, 1.0.10-V) @ hb-20260926-01 — FIXED (KI-017 does not reach this path). At (a)'s first
+failure the full stderr was the one "Access token has expired …" line — no UV_HANDLE_CLOSING assertion, no
+`src\win\async.c` line — and the exit code was 1 under Git Bash. The same read repeated at once from Windows
+PowerShell 5.1 (`powershell.exe -NoProfile`, spawned by the loop): the same message (wrapped as a NativeCommandError
+by 5.1's stderr handling), no assertion, `$LASTEXITCODE` 1. A clean non-zero exit in both shells.
 
 Owed by: the same session as (a) — measured at (a)'s first failure, no extra run. Windows host (the assertion is in
 the CLI's Windows event loop). Plan item: CP-6 (c).
@@ -614,7 +642,13 @@ PowerShell (raw 0xC0000409). Record for the gs-fortress ledger's KI-017; no plug
 auth-death classifier reads the re-login sentence in the output, not the exit code, and the operating model's
 KI-017 entry already says a crash code is not an auth status.
 
-## F-462 / CP-6 (d) — KI-005 retry: `re r sources fields` in isolation on CLI 1.0.10 (banked 2026-09-26, builder, 1.0.10 adoption round)
+## F-462 / CP-6 (d) — KI-005 retry: `re r sources fields` in isolation on CLI 1.0.10 (banked 2026-09-26, builder, 1.0.10 adoption round — CLEARED 2026-09-26 @ hb-20260926-01)
+
+CLEARED 2026-09-26 (tester, 1.0.10-V) @ hb-20260926-01 — FIXED (KI-005 resolved at 1.0.10). Fresh `gs-admin login`
+(browser flow, exit 0), then as the FIRST command after it, alone:
+`gs-admin --json re r sources fields --type MDA --object-name company --limit 5` — exit 0, `result: true`, fields
+returned (Git Bash). In the same minute, `gs-admin --json re r sources objects --type MDA --limit 1` — exit 0, one
+object returned. No auth text on either stderr. `whoami` right after: valid, 3591 s. Same token as (a)-(c).
 
 Owed by: a tester session on 1.0.10 with a live tenant; any time inside a token's usable life (it need not ride
 (a)). Plan item: CP-6 (d). A refresh-timing interaction was one candidate cause of KI-005, and 1.0.10 removed refresh.
@@ -630,7 +664,13 @@ FIXED (KI-005 resolved at 1.0.10): step 2 returns fields.
 BROKEN (still open): step 2 fails auth in isolation while step 3 succeeds — record the exact text for the ledger's
 KI-005; no plugin change is owed.
 
-## F-463 — does the tenant OAuth app need the CORS origin reference/auth.md lists? (banked 2026-09-26, builder, 1.0.10 adoption round)
+## F-463 — does the tenant OAuth app need the CORS origin reference/auth.md lists? (banked 2026-09-26, builder, 1.0.10 adoption round — CLEARED 2026-09-26 @ hb-20260926-01)
+
+CLEARED 2026-09-26 (Bradley, relayed by tester 1.0.10-V) @ hb-20260926-01 — FIXED (the README is right, auth.md
+over-states). Step 1: Bradley opened the sandbox's OAuth Applications page and the app the CLI enrolls against — there is
+no CORS-origin field on the form ("nothing new from the first time I set this up"). Step 2 is moot (nothing to clear);
+no tenant change was made. The same session's `gs-admin login` against that app succeeded (CP-6 (d) above). Owed: drop
+the CORS clause from reference/auth.md "One-time login" (polish, doc-only, per this section).
 
 Owed by: a tester session, or Bradley, with super-admin access to the SANDBOX tenant's OAuth Applications page and a
 CLI that can log in. Nothing here is a gs-admin mutation; the tenant change is an admin-UI edit, reversible, and

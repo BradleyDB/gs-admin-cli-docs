@@ -1858,9 +1858,14 @@ let kindSites = 0;
 //       ("N of M version-range rules"), so deleting one range's clause cannot
 //       pass on the strength of another range's formula (F-462: CLI 1.0.10
 //       removed token refresh, so the half-life arithmetic holds for 1.0.7
-//       through 1.0.9 only and the canon became version-conditional);
+//       through 1.0.9 only and the canon became version-conditional). The
+//       range and its formula must share ONE bullet of the canon block, and
+//       the catch-all bullet must name the conservative rule — presence
+//       anywhere in the file let a swap of the two formulas, or an optimistic
+//       fallback, read "2 of 2" (F-462 reopen, tester role inversion);
 //   (b) every paraphrase skill carries the headline AND the pointer to the
-//       canon, and carries NONE of the formula fragments — a full copy grown
+//       canon, and carries no usable-life arithmetic in ANY spelling of the
+//       minus (not only the listed formula strings) — a full copy grown
 //       back at a paraphrase site is the drift this check exists to end (a
 //       paraphrase qualifies by version range in words, never by formula);
 //   (c) both set directions: a listed skill that lost its pre-flight, and ANY
@@ -1887,6 +1892,10 @@ const TOKEN_PREFLIGHT = {
     { range: "CLI 1.0.7 through 1.0.9", formula: "remaining − 1800s" },
     { range: "CLI 1.0.10 and later", formula: "remaining − 60s" },
   ],
+  // The canon's catch-all bullet (opened by `marker`) must send every other
+  // version to the conservative rule, named by `rule` (F-462 reopen: a
+  // fallback flipped to the optimistic rule passed while the count read 2 of 2).
+  fallback: { marker: "Any other version", rule: "1.0.7 through 1.0.9" },
   pointer: "rule canon: setup Phase 1",
   paraphraseSkills: ["refresh", "email-report", "deps-report"],
 };
@@ -1932,12 +1941,35 @@ let preflightRulesStated = 0;
     }
     if (name === TOKEN_PREFLIGHT.canonSkill) {
       const rules = TOKEN_PREFLIGHT.canonOnly;
-      const lost = rules.map((r) =>
-        [
-          !text.includes(r.range) && `the version range "${r.range}"`,
-          !text.includes(r.formula) && `the usable-life formula ("… ${r.formula}")`,
-        ].filter(Boolean),
-      );
+      // A rule is stated only when its range and its formula share ONE bullet of
+      // the canon block (headline → next `---`), not merely both appear in the
+      // file (F-462 reopen: the two formulas swapped between ranges read "2 of 2").
+      const raw = read(rel);
+      const block = raw.slice(raw.indexOf(TOKEN_PREFLIGHT.headline)).split(/\r?\n---\r?\n/)[0];
+      const bullets = [];
+      for (const line of block.split(/\r?\n/)) {
+        if (/^- /.test(line)) bullets.push(line);
+        else if (bullets.length && /^\s+\S/.test(line)) bullets[bullets.length - 1] += ` ${line}`;
+        else if (bullets.length && bullets[bullets.length - 1] !== null) bullets.push(null);
+      }
+      const items = bullets.filter(Boolean).map(wsFold);
+      const lost = rules.map((r) => {
+        const own = items.find((b) => b.includes(r.range));
+        return [
+          !own && `the version range "${r.range}"`,
+          (!own || !own.includes(r.formula)) &&
+            `the usable-life formula ("… ${r.formula}")${own ? " in its own bullet" : ""}`,
+        ].filter(Boolean);
+      });
+      const fb = TOKEN_PREFLIGHT.fallback;
+      const fbItem = items.find((b) => b.startsWith(`- ${fb.marker}`));
+      if (!fbItem || !fbItem.includes(fb.rule) || rules.some((r) => fbItem.includes(r.formula) || fbItem.includes(r.range))) {
+        fail(
+          `${rel}: the canon's "${fb.marker}" bullet must send every other CLI version to the conservative ` +
+            `"${fb.rule}" rule by name, with no formula or range rule of its own — ` +
+            `${fbItem ? `it reads: ${fbItem}` : "no such bullet"} (DS-31, F-462)`,
+        );
+      }
       preflightRulesStated = lost.filter((l) => l.length === 0).length;
       rules.forEach((r, i) => {
         if (lost[i].length === 0) return;
@@ -1955,8 +1987,10 @@ let preflightRulesStated = 0;
             `(DS-31, F-312)`,
         );
       }
-      for (const { formula } of TOKEN_PREFLIGHT.canonOnly) {
-        if (!text.includes(formula)) continue;
+      // Any usable-life arithmetic in any spelling of the minus (U+2212, the
+      // dashes, an ASCII hyphen, the word), not only the listed formulas (F-462
+      // reopen: an ASCII-hyphen copy of a canon formula passed).
+      for (const [formula] of text.matchAll(/remaining\s*(?:[−–—-]|minus)\s*\d+\s*s\b/gi)) {
         fail(
           `${rel}: paraphrase site restates the canon-only formula ("… ${formula}") — that ` +
             `is a full second copy growing back; state the judgment in one line and point at the canon ` +

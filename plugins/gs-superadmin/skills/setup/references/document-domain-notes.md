@@ -15,11 +15,12 @@ plugin (created in the skill's Phase 2), relative to the working dir.
 - **Scorecard exception (CLI 1.0.4 auth race)**: describe scorecards by *name*, not id
   — `gs-admin --json sc measures --name '<name>'` (single-quoted; the name is in the
   manifest entry). `sc measures --id` makes its first authenticated call a concurrent
-  fan-out, and on CLI 1.0.9 and earlier a token-refresh race fails it with a false "No
-  stored token found" once the token passes half-life (1.0.10 has no refresh, so not
-  that mechanism; its behaviour there is not yet measured live — see "Known CLI issues"
-  in the operating model). If two scorecards share a name, try `--id` once (a fresh
-  token usually survives); if it fails that way, mark the entry failed with error
+  fan-out, and it fails with a false "No stored token found": on CLI 1.0.9 and earlier
+  once the token passes half-life (a token-refresh race), and on 1.0.10 every time, a
+  fresh token included (measured live 2026-09-26; no refresh there, cause unknown — see
+  "Known CLI issues" in the operating model). If two scorecards share a name, try `--id`
+  once (on 1.0.9 and earlier a fresh token usually survives; on 1.0.10 expect the
+  failure); if it fails that way, mark the entry failed with error
   "known CLI auth race (sc measures --id)".
 - **Scorecard output semantics (verified live on CLI 1.0.4; statically re-checked at
   v1.0.10 — the scorecard handler is byte-identical from 1.0.8 through 1.0.10, and the 1.0.8 handler change only adds a `_total` count on the four

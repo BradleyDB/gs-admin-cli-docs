@@ -223,13 +223,16 @@ mutating flag, state left behind), suggest `/gs-superadmin:report-bug` to the us
 right away — it captures a vendor-ready "prompt and problem" report while the verbatim
 commands and output are still in this session.
 
-- **`sc measures --id` fails with a false "No stored token found"** on CLI 1.0.9 and
-  earlier once the stored token is past half its lifetime, even though `gs-admin whoami`
-  shows it valid. Cause on those versions: the CLI refreshes tokens with no single-flight
+- **`sc measures --id` fails with a false "No stored token found"** even though
+  `gs-admin whoami` shows the token valid. On CLI 1.0.9 and earlier it fails once the
+  stored token is past half its lifetime: the CLI refreshes tokens with no single-flight
   guard, and this is its only command whose *first* authenticated call is a concurrent
   fan-out — the concurrent refresh corrupts the credential read, which is then misreported
-  as a missing token. CLI 1.0.10 removed token refresh, so that mechanism cannot occur
-  there; whether the symptom is gone on 1.0.10 is not yet measured live. **Use
+  as a missing token. On CLI 1.0.10, which has no token refresh, it fails **every time**,
+  a fresh token included (measured live 2026-09-26: 7 of 7 across four scorecards, from
+  3589 s down to 1057 s remaining). The cause there is unknown — the concurrent first
+  call is still there, so a concurrent credential read is the suspect (read from the
+  1.0.10 handler, not confirmed). **Use
   `sc measures --name '<scorecard name>'` instead** on any version (resolves name→id
   sequentially, which primes auth first — unaffected).
 - **`sc measures` flattens only one level of the measures tree**, so on rollup-enabled
