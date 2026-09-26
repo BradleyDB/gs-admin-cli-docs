@@ -230,6 +230,24 @@ Blind spots (hb-20260926-02): post-merge housekeeping after PR #27 (merged at 6a
        VALIDATION's `re r executions` production arm (finding only if production is empty too); issues #11, #12
        (enhancements). -->
 
+<!-- builder 2026-09-26 (0.43.0 release gate — review fixes HANDED OFF; UNMERGED, riding a branch):
+     Branch release-gate-0-43-0 -> PR #29, base dev, UNMERGED. The release-gate /code-review (medium, origin/main...dev)
+       found F-467 (normal: the per-CLI facts table stamped for 1.0.10 only, so 1.0.9 workspaces lost it) and F-468
+       (polish: check 16's canon parser, a second list grammar found by raw-text search); Bradley added F-464 (polish:
+       setup Phase 1 waits for whoami to fail; it exits 0 in every state) and kept F-461, F-466 and issue #28 out.
+     Transitions on the branch: F-464, F-467, F-468 OPEN -> FIXED (F-468 with Redesign: check 16 onto lib.mjs's
+       parseBlocks). Mutation proof 15 of 15 as predicted (copy-outs under F-467 and F-468 on the branch). The release's
+       local step-0 commit (F-464's auto-defer) was dropped unpushed when F-464 joined the round; step 0 re-runs at the cut.
+     Under test on the branch: hb-20260926-03; blind spots = the Blind spots line in the branch's header (no CLI 1.0.9 on
+       the host — F-467's 1.0.9 path measured on a constructed catalog; setup Phase 1 read, not run; change-request's
+       offline-mode sentence carried to F-461's round).
+     Owed by the tester round: verdicts on F-464, F-467, F-468; the walk of setup Phase 1 (slash-typed by Bradley); one
+       guard-wiring line.
+     Local battery on the handoff tip 8950478: 41/41 green, verbatim from both workflow YAMLs. CI on the PR head: pending
+       at this stamp — quoted after completion, never asserted here first.
+     After the verdicts and the merge: the 0.43.0 release resumes at dev/RELEASE-CHECKLIST.md §1 (step 0 + gate), then
+       §2 is satisfied by this round. Next free number F-469. -->
+
 <!-- builder 2026-09-26 (CLI 1.0.10 adoption round CLOSED OUT — MERGED):
      PR #27 (adopt-cli-1-0-10) merged to dev by Bradley at 6acd1e4; the remote branch was deleted at merge, the local one
        after; this checkout is back on dev. On dev now: CLI pin 1.0.10, plugin 0.43.0 staged (CHANGELOG), F-462 and F-463
