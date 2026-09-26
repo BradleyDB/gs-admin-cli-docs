@@ -13,8 +13,8 @@ left off. In short:
   catalog-mutating commands ask (see [the gate you're relying on](#how-the-plugin-protects-your-tenant)
   for the commands the catalog mislabels).
 
-> **Currency.** This document was last updated on 2026-09-08 (against
-> `@gainsight/gs-admin-cli@1.0.9`) with reference to Gainsight's then-current pre-built and
+> **Currency.** This document was last updated on 2026-09-26 (against
+> `@gainsight/gs-admin-cli@1.0.10`) with reference to Gainsight's then-current pre-built and
 > generally available Admin CLI package. Gainsight may have updated its documentation and
 > available Admin CLI package since then. You can always find the latest version of
 > Gainsight's documentation and Admin CLI package at
@@ -27,14 +27,17 @@ left off. In short:
 
 ## Quick start
 
-**1. Prerequisites** — Node.js on your PATH, the `gs-admin` CLI installed globally, and a
-login to your tenant:
+**1. Prerequisites** — Node.js 20 or newer on your PATH, the `gs-admin` CLI installed
+globally, and a login to your tenant (use the address you open Gainsight with):
 
 ```bash
 npm i -g @gainsight/gs-admin-cli
-gs-admin login
+gs-admin login --base-url https://YOUR_TENANT.gainsightcloud.com
 gs-admin whoami     # confirm you're on the right tenant
 ```
+
+New to the terminal, or to the tenant OAuth app the login needs? Start at the
+[repo README's step 1](../../README.md#1-prerequisites), which begins from nothing installed.
 
 **2. Install the plugin** from this repo's marketplace:
 
@@ -44,9 +47,7 @@ claude plugin install gs-superadmin@gs-admin-cli-docs
 ```
 
 (Or interactively: `/plugin marketplace add BradleyDB/gs-admin-cli-docs`, then pick
-**gs-superadmin** from `/plugin`. The marketplace add clones the repo over git — public
-repos need no auth; while the repo is private, set up GitHub credentials first
-(`gh auth login` or an SSH key). Developing locally instead?
+**gs-superadmin** from `/plugin`. Developing locally instead?
 `claude --plugin-dir /path/to/gs-admin-cli-docs/plugins/gs-superadmin`, then
 `/reload-plugins` inside the session.)
 
@@ -311,7 +312,7 @@ the decision record, including for the retired entries.
 > since 1.0.4: commands flagged non-mutating while declaring a PUT/DELETE/PATCH
 > endpoint went **29 → 0** at 1.0.8 (39 commands flipped to mutating), so the whole
 > `re r` rule-authoring surface, the scheduling writers, and `dd t` template edits now
-> prompt from the catalog. At v1.0.9, the **20** commands still flagged non-mutating with
+> prompt from the catalog. At v1.0.10, the **20** commands still flagged non-mutating with
 > a POST endpoint are read-shaped fetches (list/describe/fetch-data/validate RPCs), reviewed
 > command-by-command upstream — the counting rule (catalog `mutating: false` plus a
 > declared write-method endpoint) stays computable from the catalog if you want to

@@ -43,7 +43,7 @@ to regenerate a complete catalog (`data/catalog.json`) any time the CLI is upgra
 - Handlers (the actual logic): `<pkg>/dist/artifacts/handlers/**`
 - Validators: `<pkg>/dist/artifacts/validators/**`
 
-### Counts (this install, v1.0.9)
+### Counts (this install, v1.0.10)
 
 - **170 artifact commands** across 8 domains, **all** also exposed as MCP tools.
 - **12 Lane 2 runtime** verbs (CLI-hidden; MCP tools `runtime_*`).

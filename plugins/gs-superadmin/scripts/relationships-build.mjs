@@ -159,7 +159,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 // (the inline VAR=value prefix is bash-only — PowerShell fails at runtime on that
 // token and the refresh never runs, F-255; then review that diff — it must be this
 // string and nothing else).
-const SEMANTICS_BASIS = "verified live on CLI 1.0.4, re-verified statically at 1.0.6, 1.0.7, 1.0.8 and 1.0.9";
+const SEMANTICS_BASIS = "verified live on CLI 1.0.4, re-verified statically at 1.0.6, 1.0.7, 1.0.8, 1.0.9 and 1.0.10";
 
 const argv = process.argv.slice(2);
 // Shared argv helpers (F-238) — the F-165/F-171 last-token rule (extended by

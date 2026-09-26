@@ -195,7 +195,7 @@ existing rule chains.
 
 **Data-source mode** (any plan that chooses or alters a rule's data source): the CLI has two
 modes, and the plan header's `Data-source mode:` line must disclose the choice (re-checked
-at v1.0.9 — recheck after CLI upgrades). `re r set-source` is the UI's "Select an Object" — a
+at v1.0.10 — recheck after CLI upgrades). `re r set-source` is the UI's "Select an Object" — a
 single-object source. It CAN be converted to a prepared dataset later — verified live on
 1.0.7 (F-104/PV-5): `re r set-source-template` against an existing Horizon rule converts IN
 PLACE (same `ruleId` and `ddConfigId`, `tasksType` SIMPLE → COMPLEX) — but the
@@ -206,7 +206,7 @@ beside the existing graph (disconnected task graphs — a corrupted dataset), so
 it as retryable.
 `re r set-source-template` attaches a
 Data Designer template as the rule's data-prep source and is the CLI's "Prepare Dataset"
-equivalent (there is no inline prepare-dataset builder as of v1.0.9). Where the adopted
+equivalent (there is no inline prepare-dataset builder as of v1.0.10). Where the adopted
 workspace standard mandates Prepare Dataset, the plan uses `set-source-template` — author
 the Data Designer template (tasks and fields named per the query-building standard) as part
 of the plan; a plan that picks `set-source` anyway must justify it in the header line — the

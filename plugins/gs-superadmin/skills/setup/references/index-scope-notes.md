@@ -5,7 +5,7 @@ the rest before indexing the journey-side domains (`jo email templates`,
 `jo surveys list`, `jo data-designer list`) or reasoning about Data Designer
 coverage. Pagination proves paging completeness only — the scope limits below are
 about what the CLI can SEE, and paging cannot fix them.
-Facts here were verified against CLI v1.0.9 (this line is the stale-facts
+Facts here were verified against CLI v1.0.10 (this line is the stale-facts
 checker's per-upgrade tripwire for this file; the bare versions below date the
 original observations).
 
@@ -32,7 +32,8 @@ Some list commands cannot see the whole tenant: their handlers hardcode a filter
 flatten a tree, so the count they yield is a CLI-reachable SUBSET, post-filter and
 post-flatten. These are facts about the pinned CLI, not about a tenant, so no tenant
 records them: the plugin ships them once, as data, in doc-lib's `CLI_PIN_FACTS` (keyed
-by the catalog command id, version-stamped, self-retiring at the next pin), and
+by the catalog command id, stamped with every CLI version its entries were verified on — the
+pin and any earlier pin an adoption re-verified unchanged — and self-retiring on any other), and
 `manifest.mjs report` derives `domains.<domain>.scope` — `{ key, path, limit }` — for
 every domain whose recorded `listCommand` resolves to one of them (F-450; `null` when no
 limit is known at the pin, and the report's `pinFacts.applied` says whether the table

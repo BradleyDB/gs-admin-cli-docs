@@ -38,8 +38,8 @@ If this returns rows, you're ready for any workflow.
 ## Troubleshooting
 
 - **"No authentication configured"** → re-run `login`.
-- **CORS / callback errors** → the tenant OAuth app needs origin `http://localhost:19876`
-  and callback `http://localhost:19876/callback` (see [../auth.md](../auth.md)).
+- **Callback errors** → the tenant OAuth app needs PKCE enabled and callback
+  `http://localhost:19876/callback` (see [../auth.md](../auth.md)).
 - **Version-mismatch block** → `npm i -g @gainsight/gs-admin-cli@latest`, or bypass once
   with `--skip-version-check`.
 

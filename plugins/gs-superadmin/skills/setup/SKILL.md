@@ -40,9 +40,21 @@ Run `gs-admin --version` to confirm the CLI is installed. If it fails (command n
 found), tell the user: "gs-admin is not installed. Run: `npm i -g @gainsight/gs-admin-cli`"
 — then stop; do not proceed until re-run after installation.
 
-Run `gs-admin whoami` to confirm authentication. If it fails (auth error or no
-tenant), tell the user: "Not authenticated. Run: `gs-admin login`" — then stop; do
-not proceed until re-run after login.
+Run `gs-admin whoami` to confirm authentication, and decide by the lines it prints, in
+this order — never by its exit code (it exits 0 whether or not a token is usable):
+
+- `Base URL: (not set)` → no tenant saved yet, so a bare login exits asking for one. Tell
+  the user: "Not authenticated. Run:
+  `gs-admin login --base-url https://YOUR_TENANT.gainsightcloud.com`, with YOUR_TENANT
+  replaced by the address you open Gainsight with" — then stop.
+- `Token: valid (expires in …)` (or `Token: SID cookie set via env`) → authenticated;
+  continue.
+- Anything else — `Token: expired`, `Token: none — run 'gs-admin login'`, or `whoami`
+  itself erroring → tell the user: "Not authenticated. Run: `gs-admin login`" — then stop.
+
+After a stop, do not proceed until re-run after login. On the default (auto-enrollment)
+setup, `whoami` also prints `Auth mode: not configured — run 'gs-admin login'` beside a
+valid token: that line is not an auth failure — the `Token:` line decides.
 
 If both pass, continue. **Do not reinstall or re-authenticate if already set up.**
 
@@ -50,15 +62,27 @@ If both pass, continue. **Do not reinstall or re-authenticate if already set up.
 (here: the Phase 3 crawl and Phase 4's candidate runs; the other batching skills
 paraphrase and point back to this statement — the family list lives as data in
 `build/check-doc-drift.mjs` check 16, not here):
-before starting one, read the remaining-seconds figure from `whoami`'s `Token:` line.
-At CLI 1.0.7 through v1.0.9 (re-measured live at each pin) a token stops working at HALF its lifetime (the known half-life defect —
-commands fail with "Token expired and silent refresh failed" once remaining life
-crosses 1800s of 3600s while `whoami` still reports it valid), so
-**usable life ≈ remaining − 1800s**, not the number printed. If that is less than the
-batch you are about to start, have the user re-run `gs-admin login` FIRST — an
-interrupted batch is consistent (writes are atomic per call) but must be re-run, and a
-mid-batch blanket auth failure masks real per-command errors in the same batch, so a
-pre-flight login is cheaper than it looks.
+before starting one, read the remaining-seconds figure from `whoami`'s `Token:` line,
+then take the rule for the installed CLI, whose version `gs-admin --version` printed
+above:
+
+- **CLI 1.0.7 through 1.0.9** (re-measured live at each of those pins): a token stops
+  working at HALF its lifetime (the known half-life defect — commands fail with
+  "Token expired and silent refresh failed" once remaining life crosses 1800s of 3600s
+  while `whoami` still reports it valid), so **usable life ≈ remaining − 1800s**, not
+  the number printed.
+- **CLI 1.0.10 and later** (read from the 1.0.10 package): the CLI no longer refreshes
+  tokens and the half-life defect is gone — a token works until one minute before it
+  expires. Commands then fail with "Access token has expired. Run `gs-admin login` to
+  re-authenticate." (on a setup that stores a client id and secret, the command opens a
+  browser sign-in instead), while `whoami` can still report the token valid for that
+  last minute, so **usable life ≈ remaining − 60s**.
+- Any other version: use the 1.0.7 through 1.0.9 rule — it is the conservative one.
+
+If the usable life is less than the batch you are about to start, have the user re-run
+`gs-admin login` FIRST — an interrupted batch is consistent (writes are atomic per call)
+but must be re-run, and a mid-batch blanket auth failure masks real per-command errors
+in the same batch, so a pre-flight login is cheaper than it looks.
 
 ---
 
@@ -238,7 +262,7 @@ script cannot make:
   scope-limited — next bullet). The scorecard family works either way; the audit
   skill's `sc list --limit 10000` single fetch is the precedent (its bare defaults
   truncate — `sc m list` serves 20 rows by default, measured on 1.0.4; since CLI
-  1.0.8 (re-checked at v1.0.9) the four `sc` list commands return a top-level `_total` the mode reconciles
+  1.0.8 (re-checked at v1.0.10) the four `sc` list commands return a top-level `_total` the mode reconciles
   against).
 - On `suspect`, re-verify with a larger limit captured to a **separate** file (never
   overwrite the baseline being compared against); where no larger fetch exists (the
@@ -591,8 +615,9 @@ the doc; `--limit` 1–2, its own first-run notice). Applies to `--deep` runs to
 **Batch execution — use the sanctioned script.** The describe→doc→mark loop is
 deterministic work; run it through `describe-batch.mjs` rather than improvising an
 orchestrator or hand-chaining every call. It selects the batch (same `next` semantics
-as above), runs the describes **sequentially** (parallel `gs-admin` calls can trip
-the token-refresh race under "Known CLI issues"), writes one structured doc per
+as above), runs the describes **sequentially** (on CLI 1.0.9 and earlier, parallel
+`gs-admin` calls can trip the token-refresh race under "Known CLI issues"; 1.0.10
+has no refresh, but parallel calls are unmeasured there), writes one structured doc per
 asset, and marks each entry as its doc lands, so an interruption never loses more
 than one asset:
 ```
