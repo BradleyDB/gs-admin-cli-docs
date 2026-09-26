@@ -8,7 +8,7 @@
 
 ## Program → template reference(s) (confirmed via GSID co-occurrence)
 
-Each fully-described journey program whose doc payload references a template id from the `journey-email-templates` inventory (matched as whole tokens — see the generator header; verified live on CLI 1.0.4, re-verified statically at 1.0.6, 1.0.7, 1.0.8 and 1.0.9). Raw and compacted program docs both carry the references.
+Each fully-described journey program whose doc payload references a template id from the `journey-email-templates` inventory (matched as whole tokens — see the generator header; verified live on CLI 1.0.4, re-verified statically at 1.0.6, 1.0.7, 1.0.8, 1.0.9 and 1.0.10). Raw and compacted program docs both carry the references.
 
 - **Acme Onboarding Journey** → Welcome Sequence Email (`tpl-gsid-acme-0001`)
 - **Acme Renewal Journey** → Renewal Reminder Email (`tpl-gsid-acme-0002`)

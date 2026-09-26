@@ -25,7 +25,7 @@ this repo parses them into `data/catalog.json`.
   `runtime_*` MCP tools; JO is the only full-lifecycle provider.
 - Auth: OAuth 2.1 PKCE + auto-enrollment; tokens in OS keychain → encrypted file →
   plaintext; config at `~/.gs-admin/config.json`.
-- Counts at the pinned version (v1.0.9): **188 CLI commands / 182 MCP tools / 10 domains**
+- Counts at the pinned version (v1.0.10): **188 CLI commands / 182 MCP tools / 10 domains**
   (170 artifact + 12 runtime + 6 static). Trust `data/catalog.json` (`meta.counts`) as
   the count of record. (Since 1.0.8 the package README agrees — it says 182, generated
   from the manifests at build time.)

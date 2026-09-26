@@ -26,8 +26,9 @@ Run `gs-admin whoami`.
 
 **Token pre-flight (F-221):** a refresh crawl is tens of minutes of back-to-back
 calls — check `whoami`'s remaining token life first and have the user re-run
-`gs-admin login` if the USABLE life (far less than the number printed, per the known
-half-life defect) won't cover the batch (rule canon: setup Phase 1).
+`gs-admin login` if the USABLE life (on CLI 1.0.7 through 1.0.9 far less than the number
+printed, per the known half-life defect; on 1.0.10 and later nearly all of it) won't
+cover the batch (rule canon: setup Phase 1).
 
 Derive the slug:
 - If `--slug` is provided, use that value directly.

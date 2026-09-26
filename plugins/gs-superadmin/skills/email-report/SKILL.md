@@ -27,7 +27,8 @@ from the tenant KB plus a fresh live status sweep:
 - **Read-only tenant.** Every `gs-admin` command this skill issues is catalogued
   non-mutating (`whoami`, `jo p list`, `jo p describe`, `jo email template`). Gap-fill
   writes only KB markdown + manifest entries in the workspace — never tenant state.
-- **Sequential `gs-admin` calls only** — parallel calls trip the CLI's token-refresh race.
+- **Sequential `gs-admin` calls only** — on CLI 1.0.9 and earlier parallel calls trip its
+  token-refresh race; 1.0.10 has no refresh, but parallel calls are unmeasured there.
 - **Single-quote every name/filter value** — Gainsight names contain `|` and spaces.
 - **Bulk JSON never enters model context.** List/describe payloads and the index live
   under `.gs-superadmin/tmp/`; you read only script stdout summaries and finished reports.
@@ -75,9 +76,9 @@ Same as `/gs-superadmin:refresh` step 1: run `gs-admin whoami`, derive the slug 
 **Token pre-flight (F-221):** the step-2 sweep and a step-4c gap-fill are long
 sequential batches (a full gap-fill can be hundreds of back-to-back calls) — check
 `whoami`'s remaining token life first and have the user re-run `gs-admin login` if the
-USABLE life (far less than the number printed, per the known half-life defect) won't
-cover the batch; re-check before 4c when the chosen budget is large (rule canon: setup
-Phase 1).
+USABLE life (on CLI 1.0.7 through 1.0.9 far less than the number printed, per the known
+half-life defect; on 1.0.10 and later nearly all of it) won't cover the batch; re-check
+before 4c when the chosen budget is large (rule canon: setup Phase 1).
 
 ### 2 — Live status sweep
 

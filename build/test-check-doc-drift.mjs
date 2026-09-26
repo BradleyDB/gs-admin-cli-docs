@@ -1398,15 +1398,19 @@ try {
     const field16 = (k) => new RegExp(`${k}: "([^"]*)"`).exec(lit16)?.[1];
     const canonSkill = field16("canonSkill");
     const headline16 = field16("headline");
-    const canonOnly16 = field16("canonOnly");
+    // canonOnly is one { range, formula } entry per CLI version range (F-462).
+    const rules16 = [...(/canonOnly: \[([\s\S]*?)\],/.exec(lit16)?.[1] ?? "")
+      .matchAll(/\{ range: "([^"]*)", formula: "([^"]*)" \}/g)].map((m) => ({ range: m[1], formula: m[2] }));
+    const canonOnly16 = rules16[0]?.formula;
     const pointer16 = field16("pointer");
     const paraSkills16 = [...(/paraphraseSkills: \[([^\]]*)\]/.exec(lit16)?.[1] ?? "").matchAll(/"([a-z0-9-]+)"/g)].map((m) => m[1]);
     const outsider16 = skills.find((s) => s !== canonSkill && !paraSkills16.includes(s) && s !== "dev-canary");
     if (!canonSkill || !headline16 || !canonOnly16 || !pointer16 || paraSkills16.length === 0 || !outsider16) {
       console.log("FAIL  rig sanity: TOKEN_PREFLIGHT scrape broke, or no outsider skill to mutate");
-      console.log(`      ${JSON.stringify({ canonSkill, headline16, canonOnly16, pointer16, paraSkills16, outsider16 })}`);
+      console.log(`      ${JSON.stringify({ canonSkill, headline16, rules16, pointer16, paraSkills16, outsider16 })}`);
       process.exit(1);
     }
+    const esc16 = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     const canonRel = `plugins/gs-superadmin/skills/${canonSkill}/SKILL.md`;
     const paraRel = `plugins/gs-superadmin/skills/${paraSkills16[0]}/SKILL.md`;
     // (a) the canon site losing the formula — the full statement the
@@ -1430,15 +1434,43 @@ try {
           res.status === 1 && /no pointer to the canon/.test(res.stderr) && res.stderr.includes(paraRel), res.stderr);
       } finally { snap.restore(); }
     }
-    // (c) the formula growing back at a paraphrase site — the full-second-copy
-    // drift class this check exists to end.
-    {
+    // (c) a formula growing back at a paraphrase site — the full-second-copy
+    // drift class this check exists to end. Every version range's formula is
+    // canon-only, so each one is grown back in turn.
+    for (const { range, formula } of rules16) {
       const snap = snapshotFiles([at(paraRel)]);
       try {
-        mutate(paraRel, (s) => s + `\nRemember: usable life is ${canonOnly16}.\n`);
+        mutate(paraRel, (s) => s + `\nRemember: usable life is ${formula}.\n`);
         const res = run();
-        check("check 16c: paraphrase site restating the canon formula goes red (second full copy)",
-          res.status === 1 && /full second copy/.test(res.stderr) && res.stderr.includes(paraRel), res.stderr);
+        check(`check 16c: paraphrase site restating the canon formula goes red (second full copy; ${range})`,
+          res.status === 1 && /full second copy/.test(res.stderr) && res.stderr.includes(paraRel) && res.stderr.includes(formula), res.stderr);
+      } finally { snap.restore(); }
+    }
+    // (g) one version range's WHOLE clause deleted from the canon (F-462) —
+    // the other range's rule is still there, so a check that only asked "is a
+    // formula present" would pass. The miss must be counted and reported.
+    {
+      const last = rules16[rules16.length - 1];
+      const snap = snapshotFiles([at(canonRel)]);
+      try {
+        mutate(canonRel, (s) => s.replace(new RegExp(`${esc16(last.range)}[\\s\\S]*?${esc16(last.formula)}`), ""));
+        const res = run();
+        const counted = `states ${rules16.length - 1} of ${rules16.length} version-range rules`;
+        check("check 16g: the canon losing one version range's clause goes red, counted and reported",
+          res.status === 1 && res.stderr.includes(counted) && res.stderr.includes(last.range) &&
+            res.stderr.includes(last.formula) && res.stderr.includes(canonRel), res.stderr);
+      } finally { snap.restore(); }
+    }
+    // (h) a version range no longer named while its formula survives — the
+    // canon states a formula without saying which CLI it is for.
+    {
+      const last = rules16[rules16.length - 1];
+      const snap = snapshotFiles([at(canonRel)]);
+      try {
+        mutate(canonRel, (s) => s.replace(last.range, "Newer CLIs"));
+        const res = run();
+        check("check 16h: the canon dropping a version range's name goes red",
+          res.status === 1 && res.stderr.includes(`the version range "${last.range}"`) && res.stderr.includes(canonRel), res.stderr);
       } finally { snap.restore(); }
     }
     // (d) set drift, gain: a skill outside the family teaching the pre-flight.
