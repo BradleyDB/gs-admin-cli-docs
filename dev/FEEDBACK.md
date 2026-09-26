@@ -208,6 +208,17 @@ Blind spots (hb-20260921-02): post-release housekeeping after 0.42.0, nothing ne
        --commit (the PR title names CP-1..CP-7 individually and nothing else — close-out reads the title first).
      Carried, not in scope: F-461 (polish, DEFERRED past 0.42.0); issues #11, #12. -->
 
+<!-- tester 2026-09-26 (1.0.10-V @ hb-20260926-01 — re-stamps the PR #27 pointer above; UNMERGED, riding a branch):
+     Branch adopt-cli-1-0-10 -> PR #27, head 128340e (bus: 1.0.10-V —, no skip marker). Verdicts recorded on the branch,
+       not here: F-463 VERIFIED; F-462 REOPENED (check 16 held the canon to presence — a formula swap read "2 of 2"; CP-6 (b)
+       BROKEN: sc measures --id fails every time on 1.0.10, fresh token included) and re-FIXED by the tester in a ROLE
+       INVERSION at Bradley's instruction — the builder owes F-462's verdict before merge.
+     VALIDATION on the branch: CP-6 (a) FIXED, (b) BROKEN, (c) FIXED, (d) FIXED; F-463 FIXED (no CORS field — auth.md's
+       CORS clause is the owed polish drop). Walks, guard-wiring line, blind spots and the handoff head's CI quoted per job:
+       the tester block under the branch header's Blind spots (hb-20260926-01) line.
+     CI on 128340e: started by the push, pending at this stamp — quoted per job on PR #27 after completion, never asserted
+       here first. Merge stays Bradley's call, after the builder's F-462 verdict. -->
+
 <!-- builder 2026-09-26 (CLI 1.0.10 adoption + README beginner path; UNMERGED, riding a branch):
      Branch adopt-cli-1-0-10 (off dev @ this commit; PR to dev to follow, re-stamped here with its number). One
        branch, one PR for gs-fortress sessions X0 + E1 + V1 + E2 (plan build-kickoffs-1.0.10.md, CP-1..CP-7) plus the
