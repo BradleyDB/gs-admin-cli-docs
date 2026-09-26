@@ -264,6 +264,23 @@ Blind spots (hb-20260926-03): no CLI 1.0.9 on this host, so F-467's 1.0.9 path i
        VALIDATION's `re r executions` production arm (finding only if production is empty too); issues #11, #12
        (enhancements). -->
 
+<!-- builder 2026-09-26 (0.43.0 release-gate round CLOSED OUT — MERGED):
+     PR #29 (release-gate-0-43-0) merged to dev at 9f1c606 on Bradley's instruction ("continue with release process if
+       all checks out"); the branch deleted; checkout on dev. F-464, F-467, F-468 VERIFIED @ hb-20260926-03 (tester);
+       the tester's verdict commit changed only the bus, so nothing role-inverted awaits a builder verdict.
+     CI on PR #29's head e9629cf (pull_request), quoted per job after completion: validate-plugin 36277286009: changes
+       success / validate (ubuntu-latest) success / manifests success; docs-drift 36277286010: drift (full) success;
+       MERGEABLE / CLEAN at merge.
+     Release gate §2, recorded: /code-review medium over origin/main...dev — 2 findings (F-467 normal, F-468 polish),
+       both fixed on dev through the loop (PR #29, tester-verified); /code-review low over the fix delta
+       (origin/dev...release-gate-0-43-0) — 0 findings; /security-review over origin/main...release-gate-0-43-0 — no
+       findings (guard untouched; generated files stamp-only; the pin-facts change advisory, its interpolated version
+       bounded to the verified list); highest severity none.
+     Tester observations noted on the verdicts, not logged: the operating model's auth-error line does not name the
+       Base URL: (not set) state (F-464's class; a candidate for F-461's round); check 16's cascade "no such bullet"
+       message beside the unindented-continuation refusal (F-468's; the check fails closed and names the real miss
+       first). Next free number F-469. Under test + canary move to dev with this close-out; the cut follows. -->
+
 <!-- builder 2026-09-26 (0.43.0 release gate — review fixes HANDED OFF; UNMERGED, riding a branch):
      Branch release-gate-0-43-0 -> PR #29, base dev, UNMERGED. The release-gate /code-review (medium, origin/main...dev)
        found F-467 (normal: the per-CLI facts table stamped for 1.0.10 only, so 1.0.9 workspaces lost it) and F-468
