@@ -5,6 +5,15 @@ marketplace doesn't pin versions — users get main — so entries describe what
 user who updates, not internal refactors. Entries before 0.8.0 were reconstructed from git
 history when this file was introduced.
 
+## 0.43.1 — 2026-09-27
+
+- **deps-report stops nagging about live checks you already ran.** The report's
+  closing caveat used to tell you to corroborate every object live even when you
+  had passed a completed `dm deps check` capture back with `--live-deps`. Now it
+  names only the objects no completed capture covers, and stays silent when
+  every object is covered. A capture that never reached COMPLETED still counts
+  as not done — its object stays on the list.
+
 ## 0.43.0 — 2026-09-26
 
 CLI pin 1.0.9 → 1.0.10 (gs-fortress audit-1.0.10, CP-1..CP-7), and the token pre-flight made
