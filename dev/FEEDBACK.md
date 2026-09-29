@@ -148,8 +148,8 @@ what the gate counts (F-444). The gate refuses both. Sections from F-360 on; the
 rule also reads the archive.
 
 
-Under test: dev · hb-20260928-01 · 2026-09-28
-Blind spots (hb-20260928-01): no tenant or operator in the builder session, so the four live arms (A1/A2 deps-report, B1/B2 email-report deps) are this round's work, banked in dev/VALIDATION.md § PR #31 / PR #32 (#28); a partly covered run and a never-COMPLETED capture cannot be produced by either skill on demand (--wait writes only COMPLETED captures), so both are pinned offline only; deps-report's touched-objects fallback is off-skill (its step 2 captures --object terms only) and no arm walks it, and its case/NFC fold is unpinned (K5 survived: every fixture object name is lowercase); the macOS leg and pwsh 7 are CI's
+Under test: fix-f461-f466 · hb-20260928-02 · 2026-09-28
+Blind spots (hb-20260928-02): no tenant or operator in the builder session, so change-request's walk is this round's (slash-only, typed by Bradley: a well-formed ticket's Before building section against ask A's measurement, and the offline arm read against whoami's actual lines); F-466 is measured by fixtures and the bash + Windows PowerShell 5.1 oracle only, so the rendered deny or ask in a live session is the tester's (the guard-wiring line, plus one harmless pipeline carrying the name); pwsh 7 and the macOS leg are CI's; the dropped heredoc exclusion rests on the chain walk looking left, probed on four shapes, not proved
 
 <!-- tester 2026-09-28 (#28 walk round @ hb-20260928-01 — first live walk of #31/#32, no finding under test, on dev):
      Provenance: dev-canary read hb-20260928-01 in session; dev, clean, level with origin at 6a86219 (matches Under test);
