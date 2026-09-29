@@ -151,6 +151,35 @@ rule also reads the archive.
 Under test: dev · hb-20260928-01 · 2026-09-28
 Blind spots (hb-20260928-01): no tenant or operator in the builder session, so the four live arms (A1/A2 deps-report, B1/B2 email-report deps) are this round's work, banked in dev/VALIDATION.md § PR #31 / PR #32 (#28); a partly covered run and a never-COMPLETED capture cannot be produced by either skill on demand (--wait writes only COMPLETED captures), so both are pinned offline only; deps-report's touched-objects fallback is off-skill (its step 2 captures --object terms only) and no arm walks it, and its case/NFC fold is unpinned (K5 survived: every fixture object name is lowercase); the macOS leg and pwsh 7 are CI's
 
+<!-- tester 2026-09-28 (#28 walk round @ hb-20260928-01 — first live walk of #31/#32, no finding under test, on dev):
+     Provenance: dev-canary read hb-20260928-01 in session; dev, clean, level with origin at 6a86219 (matches Under test);
+       gs-admin --version 1.0.10; tenant: the sandbox.
+     Load check: the workspace's .gs-superadmin/plugin junction resolves into the repo's plugins/gs-superadmin working tree
+       (not the 0.43.0 cache), and the linked plugin.json reads 0.43.2. Both skills' base directories resolved there.
+     Walks (object `Playbook` in every arm; verbatim caveats in dev/VALIDATION.md § PR #31 / PR #32 (#28)):
+       A1 deps-report (tester-invoked, live): capture COMPLETED attempt 1 (1.5 s); 10 reports / 16 rows; live section
+         RENDERED; 2 caveats, no "KB-derived view — corroborate live" line → PASS (#28 stays closed).
+       A2 deps-report --no-live: same counts; 3 caveats, the third "KB-derived view — corroborate live … --name
+         'Playbook' …" → PASS.
+       B1 email-report deps (tester-invoked, live): sweep reconciled 1085/1085; gap 1754 → 4b ask rendered, Bradley chose
+         Skip; JO capture COMPLETED attempt 1 (1.2 s); 0 field-usage rows, objectsTouched []; live section RENDERED (0 JO
+         dependents); 2 caveats (scope, filter-conditions-only), no "KB-derived, JO-scoped view" line → PASS. Pre-#32
+         source (7f66d40^) falls back to the --object terms when objectsTouched is empty, so the old code would have
+         named Playbook: the arm discriminates.
+       B2: SKIPPED. B1 lists no field-level rows.
+     Guard-wiring: `gs-admin jo p save --id <nil uuid>` → Bradley read the rendered ask: "Mutating Gainsight command:
+       gs-admin journey programs save. This workspace is read-only by default. Workspace manifests claim multiple tenants
+       (…) — confirm `gs-admin whoami` targets the intended one before approving. ⚠ At least one of these tenants is
+       PRODUCTION (recorded at setup) — verify the target before approving." DECLINED; no journal row written (checked
+       both journals: no entry dated 2026-09-28/29).
+     Blind spots: B2 unwalked, so the live JO-scoped caveat was never seen present-and-naming. Playbook has no JO usage on
+       the sandbox, and choosing an object with participant-source field rows would have exercised B2 (the object was
+       fixed by A1/A2 before B1 showed this). B1 exercises the --object-term fallback only, not a non-empty
+       touched-objects list. The partly covered and never-COMPLETED cases stay offline-only, as banked. deps-report's
+       touched-objects fallback is still unwalked (off-skill). Both captures completed first try, so the --wait poll
+       path went unexercised. A report's date suffix follows UTC (2026-09-29 files on a 2026-09-28 local evening), and
+       that is not a finding. -->
+
 <!-- tester 2026-09-26 (0.43.0-gate-V @ hb-20260926-03 — acceptance round for F-464, F-467 and F-468, on branch release-gate-0-43-0):
      Provenance: dev-canary read hb-20260926-03 in session; checkout release-gate-0-43-0, clean, level with origin at 8950478
        (matches Under test); gs-admin --version 1.0.10; tenant: the sandbox.

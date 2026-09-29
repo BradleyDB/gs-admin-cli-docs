@@ -696,7 +696,34 @@ clause from reference/auth.md (polish, doc-only).
 BROKEN (the README under-states): login fails with the field cleared — README §1's prerequisite list gains the CORS
 origin (normal: a beginner following the README cannot log in), worded the same way in README and auth.md.
 
-## PR #31 / PR #32 (#28) — deps-report and email-report deps walks: the corroborate-live caveat drops objects a completed capture covers (banked 2026-09-28, maintainer — #31 merged to dev @ 7a75662 as plugin 0.43.1, #32 @ 7f66d40 as 0.43.2)
+## PR #31 / PR #32 (#28) — deps-report and email-report deps walks: the corroborate-live caveat drops objects a completed capture covers (banked 2026-09-28, maintainer — #31 merged to dev @ 7a75662 as plugin 0.43.1, #32 @ 7f66d40 as 0.43.2 — CLEARED 2026-09-28 @ hb-20260928-01)
+
+CLEARED 2026-09-28 (tester) @ hb-20260928-01 — A1 PASS, A2 PASS, B1 PASS, B2 SKIPPED (B1 lists no field-level rows).
+Provenance: dev-canary read hb-20260928-01; dev clean at 6a86219; the workspace plugin link resolved into the repo's
+plugins/gs-superadmin working tree (junction, not the 0.43.0 cache) and its plugin.json read 0.43.2; gs-admin
+--version 1.0.10; tenant: the sandbox. Object in every arm: `Playbook` (the 1.0.10-V walk's object).
+A1 (`deps-report --object 'Playbook'`, skill-invoked): `dm deps check` capture COMPLETED on attempt 1 (1.5 s, 27724 B);
+  scan 10 reports / 16 rows, liveCaptures 1, caveatCount 2. "Live dependents of `playbook` (dm deps check)" RENDERED.
+  Caveats, verbatim:
+    - All statuses and payloads are KB-cached (see the freshness line) — nothing here was fetched live; re-crawl stale domains before acting on status columns.
+    - JO participant-source mapping rows carry no object names (C1 fact, inherited from the deps mode) — a journey using a matched object only via mappings shows under --field terms or in the live section, never under --object.
+  No "KB-derived view — corroborate live …" line. #28 stays closed.
+A2 (`--no-live`): same 10 / 16, liveCaptures 0, caveatCount 3; no live section (none expected). Caveats: the two above,
+  plus:
+    - KB-derived view — corroborate live and cross-area with `gs-admin --json dm deps check --name 'Playbook'` (async — re-capture until COMPLETED), then pass each capture back via `--live-deps <file>`.
+  Present and names the object.
+B1 (`email-report deps --object 'Playbook'`, skill-invoked): sweep reconciled 1085/1085 over 6 pages; index 1075
+  programs; gap total 1754 → the 4b ask rendered (the tester's AskUserQuestion; Bradley chose Skip); JO-scoped capture
+  COMPLETED on attempt 1 (1.2 s); 79 active programs scanned, 0 field-usage rows, objectsTouched [], caveatCount 2.
+  "Live dependents of `playbook` (dm deps check)" RENDERED (0 JO dependents). Caveats, verbatim:
+    - Scope: active programs only — 996 of 1075 program(s) NOT scanned. A schema change can still break inactive programs someone later reactivates; re-run with --all for full coverage.
+    - The participant-source table above is FILTER-CONDITIONS-ONLY (C1 mappings carry no object names); the "Live dependents" section(s) supply the mapping/SELECT-side usage from `dm deps check` — read them together.
+  No "KB-derived, JO-scoped view — corroborate live …" line. Discrimination, read from source rather than run: at
+  7f66d40^, jo-report-deps.mjs built the list as `objectsTouched.length ? objectsTouched : opts.objectTerms`, so
+  with objectsTouched [] the pre-#32 code would have named `Playbook`. This arm measures the --object-term fallback,
+  not a touched-objects list.
+B2: SKIPPED. B1 lists no field-level usage rows, so there was no field to pass. The JO-scoped caveat's presence and
+  naming are unmeasured live this round and remain pinned offline.
 
 Owed by: the next tester round, in a consumer session with the working tree loaded (dev at or after 7f66d40).
 Neither fix has been walked live. #31 (outside contributor, no tenant) fixed deps-report's caveat for `--object`
