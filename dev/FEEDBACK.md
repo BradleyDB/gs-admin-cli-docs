@@ -231,6 +231,36 @@ Blind spots (hb-20260926-04): release cut of 0.43.0 in progress, nothing new und
          GitGuardian Security Checks: pass
        No macOS or Windows validate leg ran on this PR. This commit (no skip marker) starts new runs. -->
 
+<!-- builder 2026-09-28 (#28 walk round — HANDED OFF @ hb-20260928-01; MERGED, on dev):
+     Round type: first live walk of shipped behaviour (the PR #17 precedent). No finding is under test. #31 (outside
+       contributor, issue #28, deps-report's corroborate-live caveat) merged to dev @ 7a75662 as plugin 0.43.1; #32
+       (maintainer follow-up: the same rule for email-report's deps mode and deps-report's touched-objects fallback)
+       @ 7f66d40 as 0.43.2. Both shipped walked on fixture KBs only; #28 is closed by hand (dev is not the default
+       branch).
+     Owed by the tester round: dev/VALIDATION.md § PR #31 / PR #32 (#28), arms A1/A2 (deps-report) and B1/B2
+       (email-report deps). Both skills are model-invocable, so the tester invokes them; the live dm deps check needs
+       the operator's logged-in CLI. Plus one guard-wiring line.
+     Load check owed before any arm: the workspace's .gs-superadmin/plugin link must resolve into this working tree,
+       not an installed cache. The skills run their scripts through that link, so a cached 0.43.0 target would pass
+       the canary and walk the pre-fix scripts.
+     Ordering decision: nothing pending re-arranges what is walked. F-461 (polish) and F-466 (normal) stay DEFERRED
+       past 0.43.0 and are not in this round; step 0 of the next release reopens both.
+     Evidence: local battery green on 61307bf (every test runner, check-stale-facts / doc-drift / imports /
+       instance-data, typecheck, bundle rebuild with no drift, both strict validates); 61307bf's tree equals 7f66d40's.
+       Vacuity check, not closure: the mutants come from #32's own decision points (which list is filtered, the
+       COMPLETED guard, the fallback filter, its fold), and no predictions were recorded before the run, so the
+       results below carry no pred: column. K1 JO filter on the touched list only, K2 JO filter on the --object
+       fallback only, K3 JO coverage set counting INIT captures and K4 tenant-deps fallback left unfiltered were each
+       killed by a #28 pin. K5, the tenant-deps fallback compare without its fold, survived: every fixture object
+       name is already lowercase, so the fold is defensive. Disclosed on PR #32 and left unpinned.
+       CI on PR #32's head 61307bf, quoted per job after completion (gh pr checks 32):
+         validate-plugin 36519731729: changes pass / manifests pass / validate (ubuntu-latest) pass
+         docs-drift 36519731799: drift (full) pass
+         GitGuardian Security Checks: pass
+       CI on the handoff tip: started by the handoff push, pending at this stamp — quoted after completion, never
+       asserted here first. No macOS or Windows validate leg ran; the next release PR's 3-OS matrix covers them.
+     Next free number F-469. -->
+
 <!-- builder 2026-09-26 ([v]0.43.0 RELEASED — post-release housekeeping):
      Payload: CLI pin 1.0.9 → 1.0.10 (gs-fortress audit-1.0.10, CP-1..CP-7) — the token pre-flight version-conditional
        (the 1.0.7–1.0.9 half-life rule kept, 1.0.10 and later remaining − 60s), the sc measures --id entries scoped and
