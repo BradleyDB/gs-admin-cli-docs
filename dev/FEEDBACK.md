@@ -148,8 +148,8 @@ what the gate counts (F-444). The gate refuses both. Sections from F-360 on; the
 rule also reads the archive.
 
 
-Under test: dev · hb-20260926-04 · 2026-09-26
-Blind spots (hb-20260926-04): release cut of 0.43.0 in progress, nothing new under test: every live section is VERIFIED, WONTFIX, or DEFERRED past 0.43.0; the release PR's 3-OS matrix is the release-grade run
+Under test: dev · hb-20260928-01 · 2026-09-28
+Blind spots (hb-20260928-01): no tenant or operator in the builder session, so the four live arms (A1/A2 deps-report, B1/B2 email-report deps) are this round's work, banked in dev/VALIDATION.md § PR #31 / PR #32 (#28); a partly covered run and a never-COMPLETED capture cannot be produced by either skill on demand (--wait writes only COMPLETED captures), so both are pinned offline only; deps-report's touched-objects fallback is off-skill (its step 2 captures --object terms only) and no arm walks it, and its case/NFC fold is unpinned (K5 survived: every fixture object name is lowercase); the macOS leg and pwsh 7 are CI's
 
 <!-- tester 2026-09-26 (0.43.0-gate-V @ hb-20260926-03 — acceptance round for F-464, F-467 and F-468, on branch release-gate-0-43-0):
      Provenance: dev-canary read hb-20260926-03 in session; checkout release-gate-0-43-0, clean, level with origin at 8950478
