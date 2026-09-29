@@ -696,28 +696,42 @@ clause from reference/auth.md (polish, doc-only).
 BROKEN (the README under-states): login fails with the field cleared — README §1's prerequisite list gains the CORS
 origin (normal: a beginner following the README cannot log in), worded the same way in README and auth.md.
 
-## PR #31 / #28 — deps-report walk: the corroborate-live caveat drops objects a completed capture covers (banked 2026-09-28, maintainer, merged to dev @ 7a75662 as plugin 0.43.1)
+## PR #31 / PR #32 (#28) — deps-report and email-report deps walks: the corroborate-live caveat drops objects a completed capture covers (banked 2026-09-28, maintainer — #31 merged to dev @ 7a75662 as plugin 0.43.1, #32 @ 7f66d40 as 0.43.2)
 
-Owed by: the next tester round, in a consumer session with the working tree loaded (dev at or after 7a75662).
-The contributor had no tenant, so the fix shipped walked on the fixture KB only. The tenant-deps suite (three new
-pins, each mutation-checked at intake), every local gate and every CI gate were green on the merge. The defect was
-first seen live in the 1.0.10-V deps-report walk ("the report's third caveat still says to corroborate live via
---live-deps although a capture was passed"), logged as F-465 and re-homed to issue #28.
-Tenant: either. Read-only: `dm deps check` is not mutating (reference/domains/data-management.md), and the scan
-reads the KB only.
+Owed by: the next tester round, in a consumer session with the working tree loaded (dev at or after 7f66d40).
+Neither fix has been walked live. #31 (outside contributor, no tenant) fixed deps-report's caveat for `--object`
+terms; #32 (maintainer follow-up) applied the same rule to email-report's deps mode (the JO-scoped caveat) and to
+deps-report's touched-objects fallback. Both shipped walked on fixture KBs only: seven new pins across
+test/tenant-deps.mjs and test/jo-report-deps.mjs, each cover pin mutation-checked, with every local gate and every
+CI gate green on both merges. The defect was first seen live in the 1.0.10-V deps-report walk ("the report's third
+caveat still says to corroborate live via --live-deps although a capture was passed"), logged as F-465 and
+re-homed to issue #28.
+Tenant: either. Read-only: `dm deps check` is not mutating (reference/domains/data-management.md), and both scans
+read the KB only.
 
-Steps (from the consumer workspace):
-1. `/gs-superadmin:deps-report --object '<object>'` for one object the KB documents (the 1.0.10-V walk's object
-   is fine), letting step 2 capture live. The capture must complete: `--wait` writes it only on COMPLETED.
-2. The same object with `--no-live` (the KB-only control).
+Steps (from the consumer workspace; one object the KB documents, used in every step — the 1.0.10-V walk's object
+is fine):
+A1. `/gs-superadmin:deps-report --object '<object>'`, letting step 2 capture live. The capture must complete:
+    `--wait` writes it only on COMPLETED.
+A2. `/gs-superadmin:deps-report --object '<object>' --no-live` (the KB-only control).
+B1. `/gs-superadmin:email-report deps --object '<object>'`, letting step 5 capture live
+    (`--areas JOURNEY_ORCHESTRATOR`, also written only on COMPLETED).
+B2. `/gs-superadmin:email-report deps --field '<field>'`, where `<field>` is one B1's report lists in its
+    field-level usage rows (the KB-only control: step 5 captures `--object` terms only, so this run passes no
+    capture, and a field with usage rows makes the scan touch the object). If B1 lists no field-level rows, skip
+    B2 and record that; the touched-objects list is pinned offline.
 
 Pass bar:
-- Run 1: the report renders its "Live dependents of `<object>`" section, and its caveats carry NO
+- A1: the report renders its "Live dependents of `<object>`" section, and its caveats carry NO
   "KB-derived view — corroborate live …" line.
-- Run 2: that caveat is present and names the object. A KB-only run still carries the corroboration command
+- A2: that caveat is present and names the object. A KB-only run still carries the corroboration command
   (deps-report step 2: "the report's caveats already carry the corroboration command").
-- Not walked here, pinned offline instead (test/tenant-deps.mjs, the three #28 checks): a partly covered run names
-  only the uncovered object, and a capture that never reached COMPLETED leaves its object in the caveat. The
-  skill's own flow cannot produce either on demand, because `--wait` writes no capture for an incomplete check.
-A run-1 caveat that still names the object reopens #28.
+- B1: the report renders its "Live dependents of `<object>`" section, and its caveats carry NO
+  "KB-derived, JO-scoped view — corroborate live …" line, or, if the scan touched other objects too, a line
+  naming only those.
+- B2: the JO-scoped caveat is present and names the touched object(s).
+- Not walked here, pinned offline instead: a partly covered run names only the uncovered object, and a capture
+  that never reached COMPLETED leaves its object in the caveat (the #28 checks in both suites). The skills' own
+  flows cannot produce either on demand, because `--wait` writes no capture for an incomplete check.
+An A1 caveat that still names the object reopens #28; a B1 caveat that still names it is a finding against #32.
 Record the verdict here with the token, and copy it to the bus under the round's Blind spots line.
