@@ -13,8 +13,9 @@ history when this file was introduced.
   was blocked on the first try although no gs-admin runs. It now judges only the pipes
   and `&`s that a real gs-admin call's arguments can reach, so an unquoted asset name
   like `--search CS|Risk` is still caught, including behind a wrapper such as `npx`. A
-  payload piped into a shell (`echo 'gs-admin …' | bash`) now shows the normal mutation
-  approval prompt instead of the quoting hint. No approval prompt is removed.
+  mutating payload piped into a shell (`echo 'gs-admin …' | bash`) now shows the normal
+  mutation approval prompt instead of the quoting hint. No mutation approval prompt is
+  removed; commands the check no longer judges simply run, without its retry prompt.
 - **change-request: two sentences corrected.** Offline mode now decides from the lines
   `gs-admin whoami` prints, the way setup does: `whoami` exits 0 even when you are
   signed out, so the old "if whoami fails" never triggered. And step 4 no longer
