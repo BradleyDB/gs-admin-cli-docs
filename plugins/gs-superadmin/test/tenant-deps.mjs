@@ -1482,6 +1482,49 @@ check("e2e: blank term → exit 1", emptyTerm.status === 1, emptyTerm.stderr?.sl
   );
 }
 
+{
+  const coverCompany = join(ROOT, "live-deps-cover-company.json");
+  writeFileSync(
+    coverCompany,
+    JSON.stringify({ result: true, data: { objectName: "company", progressStatus: { overallStatus: "COMPLETED" }, dependents: { RULE: [] } } }),
+    "utf8"
+  );
+  const staleCompany = join(ROOT, "live-deps-stale-company.json");
+  writeFileSync(
+    staleCompany,
+    JSON.stringify({ result: true, data: { objectName: "company", progressStatus: { overallStatus: "INIT" }, dependents: { RULE: [] } } }),
+    "utf8"
+  );
+  const run = (args) => {
+    const done = spawnSync(process.execPath, [SCRIPT, "--kb", KB, ...args], { encoding: "utf8" });
+    const s = done.status === 0 ? JSON.parse(done.stdout) : null;
+    return { done, md: s?.reportPath ? readFileSync(s.reportPath, "utf8") : "" };
+  };
+  const COMPANY_CMD = "`gs-admin --json dm deps check --name 'Company'`";
+  const WIDGET_CMD = "`gs-admin --json dm deps check --name 'Widget'`";
+  // Every term covered: the main e2e above passed --object Company with a
+  // COMPLETED Company capture, so its report carries no corroborate line.
+  check(
+    "caveat: fully covered object terms leave no corroborate line (#28)",
+    !md.includes("corroborate live"),
+    md.match(/.*corroborate.*/)?.[0]
+  );
+  // Partly covered: Widget stays named, Company drops out.
+  const part = run(["--object", "Company", "--object", "Widget", "--live-deps", coverCompany, "--report", join(ROOT, "reports-cover-part")]);
+  check(
+    "caveat: partly covered terms name only the uncovered one (#28)",
+    part.done.status === 0 && part.md.includes("corroborate live") && part.md.includes(WIDGET_CMD) && !part.md.includes(COMPANY_CMD),
+    part.md.match(/.*corroborate live.*/)?.[0]
+  );
+  // Nothing covered: an INIT capture is not cover, caveat names Company.
+  const none = run(["--object", "Company", "--live-deps", staleCompany, "--report", join(ROOT, "reports-cover-none")]);
+  check(
+    "caveat: a non-COMPLETED capture is not cover, caveat as before (#28)",
+    none.done.status === 0 && none.md.includes("corroborate live") && none.md.includes(COMPANY_CMD),
+    none.md.match(/.*corroborate live.*/)?.[0]
+  );
+}
+
 // ── wave-2 portability: quote caveat + junction-tolerant CLI entry ───────────
 {
   // F-123: an apostrophe-bearing term makes the emitted hints carry the bash
