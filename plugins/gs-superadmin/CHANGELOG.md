@@ -5,6 +5,22 @@ marketplace doesn't pin versions — users get main — so entries describe what
 user who updates, not internal refactors. Entries before 0.8.0 were reconstructed from git
 history when this file was introduced.
 
+## 0.43.3 — 2026-09-28
+
+- **The safety hook stops blocking harmless commands that only mention gs-admin.**
+  Its check for unquoted `|` and `&` in asset names used to fire on any command
+  containing the text "gs-admin", so `git -C …/gs-admin-cli-docs archive HEAD | tar -x`
+  was blocked on the first try although no gs-admin runs. It now judges only the pipes
+  and `&`s that a real gs-admin call's arguments can reach, so an unquoted asset name
+  like `--search CS|Risk` is still caught, including behind a wrapper such as `npx`. A
+  payload piped into a shell (`echo 'gs-admin …' | bash`) now shows the normal mutation
+  approval prompt instead of the quoting hint. No approval prompt is removed.
+- **change-request: two sentences corrected.** Offline mode now decides from the lines
+  `gs-admin whoami` prints, the way setup does: `whoami` exits 0 even when you are
+  signed out, so the old "if whoami fails" never triggered. And step 4 no longer
+  promises that a well-written ticket always gets an empty *Before building* section:
+  a tenant fact that passes the test still earns its one line.
+
 ## 0.43.2 — 2026-09-28
 
 - **email-report's deps mode stops nagging about live checks you already ran, too.**
