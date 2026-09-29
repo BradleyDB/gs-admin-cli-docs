@@ -260,6 +260,26 @@ Blind spots (hb-20260928-01): no tenant or operator in the builder session, so t
          GitGuardian Security Checks: pass
        No macOS or Windows validate leg ran on this PR. This commit (no skip marker) starts new runs. -->
 
+<!-- builder 2026-09-28 (F-461 + F-466 release-prep round — HANDED OFF @ hb-20260928-02; UNMERGED, riding a branch):
+     Branch fix-f461-f466 -> PR #33, base dev, UNMERGED. Transitions on the branch: F-461 and F-466 DEFERRED (past
+       0.43.0) -> Reopened -> FIXED. Both Reopen triggers named the next release ceremony, and Bradley chose fix-now
+       for a clean release. F-466 carries Class: second-scanner, a Judge line (the shell: guard-oracle's new mustNotLint
+       rows, 59 red on the pre-fix hook, 0 on the fix), a vacuity-check copy-out (8 KILLED, 1 SURVIVED, all as
+       predicted) and a Sibling sweep. F-461 also carries F-464's offline-mode sentence. No F-number consumed; next free
+       F-469.
+     Under test on the branch: hb-20260928-02; blind spots = the Blind spots line in the branch's header.
+     Owed by the tester round: verdicts on F-461 and F-466; the change-request walk (slash-only, so Bradley types it);
+       for F-466, the repro rows P1-P6 driven through the hook in place, plus one harmless pipeline carrying the name
+       issued live in the tester session; one guard-wiring line. Reload: restart the session (a hook change).
+     Ordering decision: nothing else pending touches what is verified. Not in this round: the operating model's auth
+       line omitting `Base URL: (not set)` (0.43.0-gate-V's unlogged observation), because setup Phase 1 owns that
+       pre-setup state and an always-on line would cost every session.
+     Local evidence on the branch: the full battery ran green except typecheck, which failed on an em dash in a new
+       @param description (TS1127); after that one-character fix, typecheck, guard-fixtures and the three doc gates
+       re-ran green. guard-oracle: 768 lines, 0 bypass, 0 pipe-lint deny on a line that ran no gs-admin. CI on
+       PR #33's head: started by the push, pending at this stamp — quoted after completion, never asserted here first.
+     After the verdicts and the merge: the release resumes at dev/RELEASE-CHECKLIST.md §1. -->
+
 <!-- builder 2026-09-28 (#28 walk round CLOSED OUT — CLEARED @ hb-20260928-01):
      Verdict of record: the tester's (e370d88). dev/VALIDATION.md § PR #31 / PR #32 (#28) is CLEARED: A1, A2 and B1 PASS;
        B2 SKIPPED (the walked object has no JO field-level rows on the sandbox), which the banked pass bar allowed. No
