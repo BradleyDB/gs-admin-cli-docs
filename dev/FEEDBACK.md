@@ -260,6 +260,17 @@ Blind spots (hb-20260928-01): no tenant or operator in the builder session, so t
          GitGuardian Security Checks: pass
        No macOS or Windows validate leg ran on this PR. This commit (no skip marker) starts new runs. -->
 
+<!-- tester 2026-09-28 (F-461 + F-466 verdict round @ hb-20260928-02 — pointer re-stamp; statuses live on the branch):
+     Branch fix-f461-f466 -> PR #33, base dev, UNMERGED (merging stays Bradley's call). Statuses on the branch, at
+       8edcea6 (the tester's verdict commit, no skip marker): F-461 VERIFIED, F-466 VERIFIED, both @ hb-20260928-02.
+       Verdicts, pass bars and the round's tester block (provenance, load check, arms, guard-wiring line, blind spots)
+       are in the branch's dev/FEEDBACK.md under each entry and under the "Blind spots (hb-20260928-02)" line.
+     On dev, F-461 and F-466 still read as the builder's handoff left them until PR #33 merges; this comment is the
+       pointer, not a second copy of the verdicts.
+     CI on PR #33's head 8edcea6: started by the push; at this stamp changes and GitGuardian pass, drift (full),
+       manifests and validate (ubuntu-latest) pending — per-job conclusions are the builder's to quote after completion.
+     No finding logged. Written from a separate dev worktree; the tester checkout stayed on fix-f461-f466. -->
+
 <!-- builder 2026-09-28 (F-461 + F-466 release-prep round — HANDED OFF @ hb-20260928-02; UNMERGED, riding a branch):
      Branch fix-f461-f466 -> PR #33, base dev, UNMERGED. Transitions on the branch: F-461 and F-466 DEFERRED (past
        0.43.0) -> Reopened -> FIXED. Both Reopen triggers named the next release ceremony, and Bradley chose fix-now
