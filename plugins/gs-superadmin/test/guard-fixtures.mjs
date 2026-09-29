@@ -3061,11 +3061,13 @@ check(
   check("F-436 (payloads): a here-string target is the interpreter's payload — the mutating ask", MUTATES(res), res.raw);
   res = runHook(ws(), "bash <<<'gs-admin jo p save'", freshSid());
   check("F-436 (payloads): …glued here-string too", MUTATES(res), res.raw);
-  // Piping into an interpreter draws the shell-safety lint's coaching DENY
-  // first (bash/sh are not pipe consumers) — guarded, but the rescan behind it
-  // is exercised in a workspace that ACCEPTS them as consumers.
+  // Piping into an interpreter is not the shell-safety lint's case: the `|`
+  // splits no gs-admin invocation's words (the call is echo's DATA until bash
+  // runs it), so since F-466 the upstream stage is re-scanned as the payload in
+  // a default workspace too — the mutating ask, where the lint's coaching deny
+  // used to stand in for it. The consumer-list workspace below reads the same.
   res = runHook(ws(), "echo 'gs-admin jo p save' | bash", freshSid());
-  check("F-436 (payloads): piping into bash is guarded by the lint's deny in a default workspace", res.decision === "deny", res.raw);
+  check("F-436 (payloads) + F-466: piping a payload into bash is the mutating ask in a default workspace, not the lint's coaching deny", MUTATES(res), res.raw);
   const consumerWs = ws();
   writeFileSync(join(consumerWs, ".gs-superadmin", "pipe-consumers.json"), JSON.stringify({ consumers: ["bash", "sh"] }));
   res = runHook(consumerWs, "echo 'gs-admin jo p save' | bash", freshSid());
@@ -3352,6 +3354,48 @@ check(
   check("F-443 (review): a markdown table in a heredoc body — its `|` words are data, the call asks, no deny", MUTATES(res), res.raw);
   res = runHook(ws(), "gs-admin --json re rules list # a|b", freshSid());
   check("F-443 (review, control): a `|` inside a comment draws no deny on a read-only line — silent", res.silent, res.raw);
+  // F-466 — the lint's SCOPE: only an operator a gs-admin invocation's words
+  // can reach, read from the scan's record of the invocations, never the raw
+  // text. P1..P6 are the finding's repro rows; the rest pin each arm of the
+  // scope (the chain walk, `&` as a joiner, a list separator ending the chain,
+  // a span as one word, an invocation behind a wrapper).
+  const LINTED = (r, word) => r.decision === "deny" && r.reason.includes(`\`${word}\``);
+  res = runHook(ws(), "git -C /work/gs-admin-cli-docs archive HEAD | tar -x -C /work/out", freshSid());
+  check("F-466 P1: a path CONTAINING gs-admin runs no gs-admin — no coaching deny, silent", res.silent, res.raw);
+  res = runHook(ws(), "git -C /work/other-repo archive HEAD | tar -x -C /work/out", freshSid());
+  check("F-466 P2 (control): the same pipeline without the word — silent", res.silent, res.raw);
+  for (const cmd of ["ls gs-admin | tar -x", "ls /opt/tools/gs-admin | tar -x"]) {
+    res = runHook(ws(), cmd, freshSid());
+    check(`F-466 P4/P5: \`${cmd}\` — a bare operand name carries no words for a \`|\` to split: no coaching deny; the operand ask (F-436) stands`, res.decision === "ask" && res.reason.includes("no subcommand words on this line"), res.raw);
+  }
+  res = runHook(ws(), "gs-admin --json jo p list | tar -x", freshSid());
+  check("F-466 P6 (control): the lint's intended target is still coached", LINTED(res, "tar"), res.raw);
+  res = runHook(ws(), "gs-admin --json jo p list --search CS|Sort|Risk", freshSid());
+  check("F-466 (chain): a fragment that happens to name a consumer does not end the scope — the next `|` in the chain is still judged", LINTED(res, "Risk"), res.raw);
+  res = runHook(ws(), "gs-admin --json jo p list --search Sales & Echo|Risk", freshSid());
+  check("F-466 (chain): a lone `&` joins the chain too — a fragment after it is still judged", LINTED(res, "Risk"), res.raw);
+  for (const sep of [";", "&&", "||", "\n"]) {
+    res = runHook(ws(), `gs-admin --json jo p list ${sep} ls | tar -x`, freshSid());
+    check(`F-466 (chain, control): \`${JSON.stringify(sep)}\` ends the chain — the pipeline after it is not the invocation's, silent`, res.silent, res.raw);
+  }
+  res = runHook(ws(), "echo $(gs-admin --json jo p list --search CS|Risk)", freshSid());
+  check("F-466 (span): inside a substitution the invocation's own chain is judged", LINTED(res, "Risk"), res.raw);
+  res = runHook(ws(), "echo $(gs-admin --json jo p list) | tar -x", freshSid());
+  check("F-466 (span, control): a `|` after the substitution cannot split words inside it — silent", res.silent, res.raw);
+  res = runHook(ws(), "npx gs-admin --json jo p list --search CS|Risk", freshSid());
+  check("F-466 (wrapper): an invocation behind a wrapper (operand position, catalog words after it) is in scope", LINTED(res, "Risk"), res.raw);
+  res = runHook(ws(), "node .gs-superadmin/plugin/scripts/capture.mjs --out f.json -- gs-admin --json jo p list --search CS|Risk", freshSid());
+  check("F-466 (wrapper): the skills' own capture-helper spelling stays in scope", LINTED(res, "Risk"), res.raw);
+  res = runHook(ws(), "git -C gs-admin status | tar -x", freshSid());
+  check("F-466 (operand): a path ENDING in the name, followed by words no catalog command has, runs no gs-admin — no coaching deny (the scan's operand ask stands)", res.decision === "ask" && !res.reason.includes("would run as a command"), res.raw);
+  res = runHook(ws(), "cat <<'EOF' | tar -x\ngs-admin jo p list\nEOF", freshSid());
+  check("F-466 (heredoc): a call spelled in heredoc DATA is not split by the pipe after the opener — no coaching deny", res.decision !== "deny", res.raw);
+  // Accepted boundary, stated because it is real: an UNQUOTED call spelled as
+  // another command's arguments reads exactly like the wrapper spelling above
+  // (`echo` and `npx` are both just the word before the name), so it stays in
+  // scope — the scan asks on it as an operand call for the same reason (F-051).
+  res = runHook(ws(), "echo gs-admin jo p list | tar -x", freshSid());
+  check("F-466 (accepted boundary): an unquoted catalog call as echo's arguments stays in scope, like a wrapper", LINTED(res, "tar"), res.raw);
 }
 
 // ── Cleanup ──────────────────────────────────────────────────────────────────

@@ -26,7 +26,10 @@
 //       dropped the last argument stayed "executed"); a row whose only right
 //       decision is the ask fails on a coaching deny (`mustAsk` — F-443: a
 //       false deny counts as "guarded" to the first invariant and hid a wrong
-//       reading).
+//       reading);
+//     no gs-admin ran ⇒ no pipe-lint deny, on the rows the generator
+//       knows run none (`mustNotLint`, F-466 — the lint's deny says the
+//       command is broken as written, a claim about a gs-admin call).
 //
 // A line the shell executes and the guard passes in silence is a BYPASS and
 // reds this suite, unless the spelling is a documented residual in
@@ -209,14 +212,15 @@ const REDIR_OPS = ["&>>", "&>", "<<-", "<<<", "<<", ">>", ">|", ">&", "<&", "<>"
   check("oracle: the hook's REDIR_OPS equals the manuals' list transcribed here (both directions)", Array.isArray(hookOps) && hookOps.length === REDIR_OPS.length && REDIR_OPS.every((o) => hookOps.includes(o)), JSON.stringify(hookOps));
 }
 const HEREDOC = new Set(["<<", "<<-"]);
-const cases = []; // { label, cmd, shell, residual?, mustExecute?, mustArgv?, mustAsk?, mustBeBare?, bash4?, cmdExe?, on? }
+const cases = []; // { label, cmd, shell, residual?, mustExecute?, mustArgv?, mustAsk?, mustBeBare?, mustNotLint?, bash4?, cmdExe?, on? }
 // `must` carries what the GENERATOR knows about a row: it executes
 // (mustExecute); the exact argv the shell hands the shim (mustArgv — the
 // judge's reading asserted on the VALUE, not on the boolean executed() derives
 // from its first three words: F-446's reopen was a shim dropping the last
 // argument while every boolean stayed true); the only right decision is the
 // mutating ask (mustAsk); the line is one simple command whose status is the
-// call's (mustBeBare). `cmdExe`: the row runs through cmd.exe, so mustExecute
+// call's (mustBeBare); the line runs no gs-admin, so the pipe lint's coaching
+// deny is wrong there (mustNotLint, F-466). `cmdExe`: the row runs through cmd.exe, so mustExecute
 // holds only where cmd.exe exists (win32) — a pwsh lane on macOS/Linux still
 // judges the row, without the claim (the `bash4` pattern). `on: <lane name>`:
 // the row's positive claims (mustExecute, mustArgv, mustAsk, mustBeBare, a
@@ -627,6 +631,36 @@ for (const ap of ["$x=", "${x}="]) for (const [il, tpl] of BASH_MATRIX_INTERPRET
 add("bash matrix: name in a variable × bash -c payload", "x=bash; $x -c 'gs-admin jo p save'", "bash", null, { mustExecute: true });
 add("bash matrix: name in a variable × eval payload", "x=eval; $x 'gs-admin jo p save'", "bash", null, { mustExecute: true });
 
+// ── the pipe lint's scope (F-466) ─────────────────────────────────────────────
+// Lines that CARRY the text "gs-admin" and run no gs-admin: the text as a path
+// or part of one, a bare name, quoted data, an assignment's value, heredoc
+// data — each joined by every operator the lint judges to a right-hand program
+// the lint does not accept (`true`, `tar -t`). The lint's coaching deny says
+// "the command is broken as written"; on a line where no gs-admin runs that is
+// false, so these rows claim `mustNotLint`, and the claim is judged twice: the
+// shell must record NO call (the generator's reading of the position is itself
+// checked), and the guard must not return the lint's deny. An unquoted catalog
+// call as another command's ARGUMENTS (`echo gs-admin jo p list | …`) is not
+// generated with the claim: it reads like a wrapper (`npx gs-admin …`), which
+// runs — the accepted boundary, pinned in the guard fixtures.
+/** @type {Array<[string, string]>} */
+const NO_RUN_POSITIONS = [
+  ["a path containing the name (P1)", "ls /tmp/gs-admin-cli-docs"],
+  ["…as a -C dir with a subcommand after it", "git -C /tmp/gs-admin-cli-docs status"],
+  ["a bare name as an argument (P4)", "ls gs-admin"],
+  ["a path ending in the name (P5)", "ls /opt/tools/gs-admin"],
+  ["a path ending in the name, then words no catalog command has", "git -C gs-admin status"],
+  ["quoted data", "echo 'gs-admin jo p list'"],
+  ["a bash assignment's value (sets a variable, runs ls)", "X=gs-admin ls"],
+  ["an argument containing the name", "grep -r gs-admin-cli ."],
+];
+const NO_RUN_JOINERS = [["|", "|", false], ["|&", "|&", true], ["lone &", "&", false]];
+for (const [pl, pos] of NO_RUN_POSITIONS) for (const [jl, j, bash4] of NO_RUN_JOINERS) for (const rhs of ["true", "tar -t"]) {
+  add(`F-466 no-run: ${pl} ${jl} ${rhs}`, `${pos} ${j} ${rhs}`, "bash", null, { mustNotLint: true, bash4 });
+}
+for (const [pl, pos] of NO_RUN_POSITIONS) add(`F-466 no-run: ${pl} |true (glued)`, `${pos}|true`, "bash", null, { mustNotLint: true });
+for (const [jl, j, bash4] of NO_RUN_JOINERS) add(`F-466 no-run: heredoc data, the opener's line ${jl} true`, `cat <<'EOF' ${j} true\ngs-admin jo p list\nEOF`, "bash", null, { mustNotLint: true, bash4 });
+
 // ── the run ──────────────────────────────────────────────────────────────────
 // One run per (row, lane): a bash row runs once; a `ps` row runs under every
 // PowerShell lane with `{ps}` spelled as that lane's executable.
@@ -635,7 +669,7 @@ for (const c of cases) {
   if (c.shell === "bash") runs.push({ ...c, lane: "bash" });
   else for (const lane of PS_LANES) runs.push({ ...c, cmd: c.cmd.replaceAll("{ps}", lane.name), lane });
 }
-let bypass = 0, overAsk = 0, residualHeld = 0, ran = 0, overQualified = 0;
+let bypass = 0, overAsk = 0, residualHeld = 0, ran = 0, overQualified = 0, lintNoRun = 0;
 const perLane = new Map(); // laneTag → { rows, bypass, overAsk }
 for (const c of runs) {
   ran++;
@@ -673,6 +707,16 @@ for (const c of runs) {
   // generator knows the shell hands the shim must be recorded whole — a shim
   // that drops or splits an argument reds here even while executed() is true.
   if (claims && c.mustArgv) check(`[${tag}] the shim recorded the argv whole (mustArgv ${JSON.stringify(c.mustArgv)}): ${c.label}`, calls.some((argv) => argv.length === c.mustArgv.length && argv.every((a, i) => a === c.mustArgv[i])), `recorded=${JSON.stringify(calls)}`);
+  // The pipe lint's scope (F-466): the lint's deny claims the line is broken as
+  // written — a claim about a gs-admin call. Every row reports a lint deny on a
+  // line that ran no gs-admin; a `mustNotLint` row fails on one, and fails too
+  // if the shell DID run the shim (then the generator misread the position).
+  const lintDeny = pre.decision === "deny" && /will be parsed as a shell (?:pipeline|operator)/.test(pre.raw);
+  if (lintDeny && calls.length === 0) { lintNoRun++; if (!c.mustNotLint) console.log(`lint deny on a line that ran no gs-admin (reported): [${tag}] ${c.label}`); }
+  if (claims && c.mustNotLint && !(c.bash4 && bashMajor < 4)) {
+    check(`[${tag}] the shell ran no gs-admin (the generator's no-run claim, judged): ${c.label}  ⟨${c.cmd.replace(/\n/g, "⏎")}⟩`, calls.length === 0, `recorded=${JSON.stringify(calls)}`);
+    check(`[${tag}] no gs-admin ran ⇒ no pipe-lint coaching deny (mustNotLint): ${c.label}  ⟨${c.cmd.replace(/\n/g, "⏎")}⟩`, !lintDeny, `decision=${pre.decision} ${pre.raw.slice(0, 200)}`);
+  }
   if (exec) {
     check(`[${tag}] executed ⇒ guarded: ${c.label}  ⟨${c.cmd.replace(/\n/g, "⏎")}⟩`, guarded, `decision=${pre.decision} ${pre.raw.slice(0, 200)}`);
     if (!guarded) { bypass++; lc.bypass++; }
@@ -708,6 +752,6 @@ const laneLine = PS_LANES.length
   ? PS_LANES.map((l) => { const s = perLane.get(laneTag(l)) ?? { rows: 0, bypass: 0, overAsk: 0 }; return `${laneTag(l)}: ${s.rows} rows, ${s.bypass} bypass, ${s.overAsk} over-ask`; }).join("; ")
   : "no PowerShell on this machine (neither powershell.exe nor pwsh) — PowerShell rows SKIPPED";
 console.log(`\nguard-oracle: ${ran} generated lines run (${cases.filter((c) => c.shell === "bash").length} bash ${bashMajor}.x; ${psRows} PowerShell rows × ${PS_LANES.length} lane(s) — ${laneLine}${bashMajor < 4 ? "; bash-4 rows judged without mustExecute" : ""}); ` +
-  `${bypass} bypass (executed, guard silent), ${overAsk} over-ask (guard asked, shell did not execute — safe), ${overQualified} over-qualified row(s) (the status was the call's, the row said it might not be — safe), ${residualHeld} documented residual(s) held`);
+  `${bypass} bypass (executed, guard silent), ${overAsk} over-ask (guard asked, shell did not execute — safe), ${overQualified} over-qualified row(s) (the status was the call's, the row said it might not be — safe), ${residualHeld} documented residual(s) held, ${lintNoRun} pipe-lint deny(s) on a line that ran no gs-admin`);
 console.log(failures ? `\n${failures} failure(s)` : "\nAll guard-oracle checks passed");
 process.exit(failures ? 1 : 0);
