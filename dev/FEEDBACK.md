@@ -284,6 +284,42 @@ Blind spots (hb-20260928-02): no tenant or operator in the builder session, so c
          GitGuardian Security Checks: pass
        No macOS or Windows validate leg ran on this PR. This commit (no skip marker) starts new runs. -->
 
+<!-- builder 2026-09-28 ([v]0.43.3 RELEASED — post-release housekeeping):
+     Payload: deps-report, and email-report's deps mode, stop telling you to corroborate objects that a completed live
+       capture already covers (0.43.1, #31, an outside contribution; 0.43.2, #32); the guard's pipe lint judges only
+       what a gs-admin call's words can reach (0.43.3, F-466); change-request's offline-mode condition and step 4
+       sentence corrected (0.43.3, F-461). Staged versions folded in: 0.43.1, 0.43.2, 0.43.3.
+     Gate 1 (bus): terminal — F-461 and F-466 VERIFIED @ hb-20260928-02 (step 0: nothing to re-open, no open polish);
+       open PRs to dev: none. VALIDATION § PR #31 / PR #32 (#28) CLEARED @ hb-20260928-01.
+     Gate 2 (review): /code-review medium over origin/main...dev — 1 finding (the 0.43.3 CHANGELOG entry overstated
+       "no approval prompt is removed"), fixed on dev in 39fedc5, docs-only. /security-review — run, no findings;
+       highest severity none. Notes, not findings: the lint's chain walk costs more on a ~200 KB command (excluded as
+       DoS); the npx and node-path spellings run unguarded, as the README already documents.
+     Cut: release/[v]0.43.3 from dev @ 39fedc5, ONE commit beyond (the strip, a3a6c21); stripped tree: both strict
+       validates PASS; battery verbatim 42/42 (and 41/41 on the dev tip 545d730 first).
+     CI on the release PR #34, QUOTED per job after completion:
+         validate-plugin 36529805162: manifests success / ubuntu success / macos success / windows success (changes success)
+         docs-drift 36529805180: drift (full) success
+         pr-target-guard 36529805157: guard success
+         GitGuardian Security Checks: pass
+     Merged by Bradley (main @ 5353b7f); tag [v]0.43.3 pushed; release branch deleted local + remote (the remote by
+       GitHub's delete-on-merge); checkout back on dev. dev-utils release-finish refused, since from the stripped
+       release checkout it found no bus, so §5 ran by hand.
+     Housekeeping: F-461 and F-466 moved VERBATIM to the archive (live 2 → 0, archive 19 → 21, sum 21; block sha256
+       04046a4a05a06defe69cf3c100b46404bc72f9e34b338fc924bc067bacd2a61a); entry hint updated. Under test and canary
+       NOT re-stamped: dev-utils handoff refused twice today, before the cut and again after the archive. The header's
+       tester block names today's hb-20260928-01, and no provenance line has carried it since the hb-20260928-02
+       handoff replaced its Blind spots line: the same guard gap as the 0.43.0 close-out, not bypassed. The line keeps
+       naming the merged and deleted fix-f461-f466 · hb-20260928-02; the next handoff re-stamps it (from 2026-09-29
+       that mention is another day's token). Next free number F-469. Released: 0.43.3; dev stages nothing.
+     Now live from main: nothing (no workflow or Dependabot policy change in the payload).
+     GitHub Release: https://github.com/BradleyDB/gs-admin-cli-docs/releases/tag/v0.43.3 (notes = the CHANGELOG entries
+       since the previous tag, newest first, after the fixed intro).
+     Consumer refresh: claude plugin marketplace update gs-admin-cli-docs; claude plugin update
+       gs-superadmin@gs-admin-cli-docs.
+     Carried forward (not in this release): VALIDATION's `re r executions` production arm; issues #11 and #12
+       (enhancements). -->
+
 <!-- builder 2026-09-28 (F-461 + F-466 release-prep round CLOSED OUT — MERGED):
      PR #33 merged to dev by merge commit (1d8f880, on Bradley's call); its head was 8edcea6, the tester's verdict
        commit. Verdicts of record (tester @ hb-20260928-02, now on dev): F-461 VERIFIED, F-466 VERIFIED. No finding
