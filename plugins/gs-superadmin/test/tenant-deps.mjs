@@ -1523,6 +1523,16 @@ check("e2e: blank term → exit 1", emptyTerm.status === 1, emptyTerm.stderr?.sl
     none.done.status === 0 && none.md.includes("corroborate live") && none.md.includes(COMPANY_CMD),
     none.md.match(/.*corroborate live.*/)?.[0]
   );
+  // No --object terms: the caveat falls back to the objects the scan touched
+  // (company and acme_mbo_tracking for --field ARR), and a completed capture
+  // covers its object there too — the uncovered one stays named.
+  const touched = run(["--field", "ARR", "--live-deps", coverCompany, "--report", join(ROOT, "reports-cover-touched")]);
+  const touchedLine = touched.md.match(/.*corroborate live.*/)?.[0] ?? "";
+  check(
+    "caveat: the touched-objects fallback names only the uncovered object (#28)",
+    touched.done.status === 0 && touchedLine.includes("--name 'acme_mbo_tracking'") && !/--name 'company'/i.test(touchedLine),
+    touchedLine
+  );
 }
 
 // ── wave-2 portability: quote caveat + junction-tolerant CLI entry ───────────

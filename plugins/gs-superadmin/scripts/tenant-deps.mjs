@@ -1938,16 +1938,18 @@ export async function run(argv) {
         .filter((o) => o != null && o !== "")
     ),
   ].sort();
-  // A COMPLETED capture for an object term is the corroboration the caveat
-  // asks for, so covered terms leave the list (issue #28). The compare is the
-  // intake's own matchesObjectTerm (eqTerm/F-148); a non-COMPLETED capture
-  // never counts — its object stays in the caveat.
+  // A COMPLETED capture for an object is the corroboration the caveat asks
+  // for, so covered objects leave the list (issue #28) — the --object terms
+  // and the touched-objects fallback alike. The compare is the intake's own
+  // matchesObjectTerm (eqTerm/F-148); a non-COMPLETED capture never counts —
+  // its object stays in the caveat.
   const coveredNames = liveDeps
     .filter((live) => live.complete && live.objectName)
     .map((live) => live.objectName);
+  const isCovered = (lowered) => coveredNames.some((name) => eqTerm(name, lowered));
   const corroborate = terms.objectTerms.length
-    ? terms.objectTerms.filter((t) => !coveredNames.some((name) => eqTerm(name, t.lowered))).map((t) => t.term)
-    : objectsTouched.slice(0, 5);
+    ? terms.objectTerms.filter((t) => !isCovered(t.lowered)).map((t) => t.term)
+    : objectsTouched.filter((o) => !isCovered(normTerm(o).trim().toLowerCase())).slice(0, 5);
   if (corroborate.length)
     caveats.push(
       "KB-derived view — corroborate live and cross-area with " +
