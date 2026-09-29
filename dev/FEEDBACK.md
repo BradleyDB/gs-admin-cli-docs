@@ -260,6 +260,26 @@ Blind spots (hb-20260928-01): no tenant or operator in the builder session, so t
          GitGuardian Security Checks: pass
        No macOS or Windows validate leg ran on this PR. This commit (no skip marker) starts new runs. -->
 
+<!-- builder 2026-09-28 (#28 walk round CLOSED OUT — CLEARED @ hb-20260928-01):
+     Verdict of record: the tester's (e370d88). dev/VALIDATION.md § PR #31 / PR #32 (#28) is CLEARED: A1, A2 and B1 PASS;
+       B2 SKIPPED (the walked object has no JO field-level rows on the sandbox), which the banked pass bar allowed. No
+       finding logged.
+     Builder read: the tester's discrimination claim checks out against source. At 7f66d40^ the JO list was
+       `objectsTouched.length ? objectsTouched : opts.objectTerms`, so B1's empty touched list would have named the
+       object before #32. #32's JO change is one filter over whichever list is chosen, and B1 ran it live, including
+       the termKey fold (the capture's objectName came back lowercase against a capitalised term); A1 ran #31's eqTerm
+       fold the same way. What stays unwalked live is the unchanged list-choice and emission code: a non-empty JO
+       touched list, the JO caveat present and naming (B2), the partly covered and never-COMPLETED cases, and
+       deps-report's off-skill fallback. All of it is pinned offline (K1-K4 in the handoff block below). Accepted
+       without a second arm.
+     CI on the handoff tip 6a86219, quoted per job after completion (gh run view):
+         docs-drift 36520507827: drift (full) success
+         validate-plugin 36520507822: changes success / validate (ubuntu-latest) success / manifests success
+       The tester's tip e370d88 carries [skip ci]; no runs started on it.
+     Next: the release carrying 0.43.1 and 0.43.2 (dev/RELEASE-CHECKLIST.md §1). Step 0 re-opens F-461 and F-466, both
+       deferred past 0.43.0, an older version. Each needs a fix, a WONTFIX, or a fresh manual Defer before the gate.
+       Next free number F-469. -->
+
 <!-- builder 2026-09-28 (#28 walk round — HANDED OFF @ hb-20260928-01; MERGED, on dev):
      Round type: first live walk of shipped behaviour (the PR #17 precedent). No finding is under test. #31 (outside
        contributor, issue #28, deps-report's corroborate-live caveat) merged to dev @ 7a75662 as plugin 0.43.1; #32
