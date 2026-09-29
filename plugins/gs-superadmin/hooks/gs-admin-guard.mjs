@@ -957,10 +957,11 @@ function recordDeny(key, denied) {
 // ── Shell-safety lint: unquoted `|` / lone `&` from metachar-bearing names ───
 // Gainsight asset names commonly contain literal pipes (Prefix|Domain|Subdomain|
 // Description) and sometimes `&` (Sales & Marketing). Unquoted, the shell
-// parses them as operators before gs-admin ever sees them. Scan the RAW
-// command (quote-aware; shellWords can't see an operator with no surrounding
-// spaces) for single unquoted pipes / lone ampersands whose right-hand side is
-// not a plausible program — those are near-certainly name fragments.
+// parses them as operators before gs-admin ever sees them. Find, in the
+// lexer's record (F-443) and only where a gs-admin invocation's words can
+// reach (F-466, the scope below the scan), single unquoted pipes / lone
+// ampersands whose right-hand side is not a plausible program — those are
+// near-certainly name fragments.
 const PIPE_CONSUMERS = new Set([
   // POSIX-ish filters
   "jq", "grep", "egrep", "fgrep", "rg", "head", "tail", "sort", "uniq", "wc",
@@ -1034,12 +1035,14 @@ if (!isPost) {
 // always resumes with a literal word), and either operator followed by a
 // quoted word or a `$`-word (deliberate syntax — `& "C:\…\tool"`, `| $pager`).
 // The RHS word is the next TOKEN — `| %{ … }` yields `%`, on the consumer
-// list, because the lexer split the brace off.
-function findSuspiciousMeta(ws, quotedWords, redirWords, inertWords) {
+// list, because the lexer split the brace off. `inScope(k)` says whether the
+// operator at k is one a gs-admin invocation's words can reach (F-466, below).
+function findSuspiciousMeta(ws, quotedWords, redirWords, inertWords, inScope) {
   for (let k = 0; k < ws.length; k++) {
     const t = ws[k];
     if (inertWords.has(k)) continue; // a heredoc body word that happens to be `|` is data (the review's markdown-table body)
     if (t !== "|" && t !== "|&" && t !== "&") continue;
+    if (!inScope(k)) continue;
     const op = t === "&" ? "&" : "|";
     const next = ws[k + 1];
     const trailing = next === undefined || next === ")" || next === "}";
@@ -1073,86 +1076,6 @@ function invocationKey(ws, redirWords) {
     return toks.join(" ") || "gs-admin";
   }
   return "gs-admin";
-}
-
-// The lint is pre-execution advice; on PostToolUse the command already ran.
-const suspicious = isPost ? null : findSuspiciousMeta(words, segQuoted, segRedirs, segInert);
-// Set when the lint escalates to "ask": the text is carried into the single
-// prompt assembled at the end rather than emitted on its own — see below.
-let lintAskPart = null;
-if (suspicious) {
-  // The RHS word is attacker-influenceable text (it comes from whatever the
-  // model wrote, which asset names and KB docs steer) — clamp it like every
-  // other untrusted interpolation, per design tenet 4.
-  const { op } = suspicious;
-  const rhsWord = printable(suspicious.word, 60) || "(end of command)";
-  const key = invocationKey(words, segRedirs);
-  const denied = readDenied();
-
-  // Repeat offense — or a deny we cannot record (a deny that can never
-  // escalate would block forever) — goes to the human prompt. The `|` and `&`
-  // lints share the deny memory: a still-broken retry of the same invocation
-  // escalates no matter which metacharacter is caught first.
-  // Shared coaching fragments — per-operator text carries only what differs
-  // (operator noun, name pattern, intent phrasing), so a wording fix lands in
-  // one place for both operators.
-  const quoteFix =
-    `Single-quote the whole value (single quotes are literal in both PowerShell and bash), ` +
-    `e.g. ${op === "|" ? "--search 'CS|Risk|Renewal|Alert'" : "--search 'Sales & Marketing|EMEA|Renewals'"}, ` +
-    `then retry.`;
-  let reason = null;
-  if (denied.includes(key) || !recordDeny(key, denied)) {
-    lintAskPart =
-      `This command contains an unquoted ${op === "|" ? "`|`" : "lone `&`"} whose right-hand ` +
-      `side (\`${rhsWord}\`) is not a recognized ${op === "|" ? "filter program" : "program"}. ` +
-      `If the \`${op}\` is part of a Gainsight asset name, the value must be single-quoted ` +
-      `before running. Approve only if the ${op === "|" ? "pipe is intentional" : "`&` is intentional (`&&` chaining is never flagged)"}.`;
-  } else {
-    reason =
-      (op === "|"
-        ? `Unquoted \`|\` here will be parsed as a shell pipeline — \`${rhsWord}\` would run as a ` +
-          `command. Gainsight asset names often contain literal pipes ` +
-          `(Prefix|Domain|Subdomain|Description). `
-        : `Unquoted lone \`&\` here will be parsed as a shell operator — \`${rhsWord}\` would run ` +
-          `as a separate command. Gainsight asset names can contain a literal \`&\` ` +
-          `(e.g. Sales & Marketing). `) +
-      quoteFix +
-      (op === "|"
-        ? ` If you really meant to pipe into \`${rhsWord}\`, still quote the gs-admin argument ` +
-          `values and retry.`
-        : ` If you really meant a background/parallel \`&\`, still quote the gs-admin argument ` +
-          `values and retry (\`&&\` chaining is never flagged).`);
-  }
-
-  // First offense: DENY and stop — the command is broken as written, so there is
-  // nothing to approve and the mutation scan would only describe a command that
-  // cannot run as typed. The repeat offense is the opposite case: that branch
-  // exists so the human CAN run it, which means the prompt must carry the
-  // mutation, tenant and PRODUCTION text too. So it falls through to the scan
-  // below and its text is concatenated into the single ask assembled at the end,
-  // rather than replacing it.
-  if (reason !== null) {
-    // Every stdout site — the three PreToolUse replies (F-363) and the two
-    // PostToolUse journal alerts in journalMutations (F-372) — exits IN the
-    // stdout write callback (the F-360 class fixed at the design): stdout is asynchronous when it is a pipe on
-    // macOS — the harness transport — so `write(json); process.exit(0)` lost
-    // everything past the first 8,192-byte chunk and the harness saw a reply
-    // cut mid-JSON. The never-resolving awaited promise holds control flow
-    // exactly where process.exit did (doc-lib finish()'s shape, hand-spelled:
-    // this hook imports nothing, R-1). Same JSON, same decision — only when
-    // the process exits changes.
-    process.stdout.write(
-      JSON.stringify({
-        hookSpecificOutput: {
-          hookEventName: "PreToolUse",
-          permissionDecision: "deny",
-          permissionDecisionReason: reason,
-        },
-      }),
-      () => process.exit(0)
-    );
-    await new Promise(() => {});
-  }
 }
 
 const hits = [];
@@ -1406,8 +1329,9 @@ function segmentMasked(words, segStartSet, idx, subs = new Map()) {
  * @param {Map<number, {close: number, kind: string}>} [spans]
  * @param {Set<number>} [quoted]
  * @param {Map<number, string>} [arith]
+ * @param {Set<number> | null} [named] - receives the name index of every invocation the pipe lint may judge; only the top-level balanced pass passes it (F-466)
  */
-function scanWords(words, segStartSet, depth = 0, outerMasked = false, inert = new Map(), redirs = new Map(), subs = new Map(), spans = new Map(), quoted = new Set(), arith = new Map()) {
+function scanWords(words, segStartSet, depth = 0, outerMasked = false, inert = new Map(), redirs = new Map(), subs = new Map(), spans = new Map(), quoted = new Set(), arith = new Map(), named = null) {
 // Command position (F-051): the first word of a segment, or the word after a
 // separator or a command-introducing keyword; a heredoc-body word (`inert`) is
 // DATA of the command that opened the heredoc, whatever precedes it on its own
@@ -1728,6 +1652,17 @@ for (let i = 0; i < words.length; i++) {
     }
   }
   if (matched && nameFrom !== null) expansionNames.add(nameFrom);
+  // The pipe lint's scope (F-466): an invocation whose words an unquoted `|`
+  // or `&` can split — an asset name is one of them. At command position any
+  // words qualify. In operand position only words the catalog knows: behind a
+  // wrapper (`npx gs-admin …`, the capture helper's `-- gs-admin …`) the name
+  // runs with a real subcommand, while a path that merely ends in the name
+  // (`git -C gs-admin status`) carries no gs-admin subcommand and runs none.
+  // A bare name (`ls gs-admin`) never gets here. Heredoc DATA needs no
+  // exclusion: its words follow every operator on the opener's line, and the
+  // lint's chain walk only looks left (measured: dropping an exclusion changed
+  // no decision). The scan's asks are unchanged by this.
+  if (named && (cmdPos || matched)) named.add(i);
   if (matched?.mutating) hits.push({ cmd: matched, args: rest.slice(matchedLen), operand: !cmdPos, masked });
   // Ask-override: the catalog would let this command pass silently, but a
   // verified-mislabel entry matches — force an ask. Consulted only on this
@@ -1768,7 +1703,8 @@ for (let i = 0; i < words.length; i++) {
 }
 }
 
-scanWords(words, segStarts, 0, false, segInert, segRedirs, segSubs, segSpans, segQuoted, segArith);
+const lintNamed = new Set(); // name indices of the invocations the pipe lint may judge (F-466)
+scanWords(words, segStarts, 0, false, segInert, segRedirs, segSubs, segSpans, segQuoted, segArith, lintNamed);
 
 // Quote-blind second pass: only when the quote-aware tokenization ended
 // mid-quote, i.e. the parse is untrustworthy (see shellWordsQuoteBlind).
@@ -1806,6 +1742,116 @@ if (isPost) {
   if (hits.length || overrideHits.length || unknowns.length || varSubs.length)
     await journalMutations();
   process.exit(0);
+}
+
+// ── The pipe lint's scope (F-466) ──
+// The lint judges only the `|` / `|&` / lone `&` a gs-admin invocation's words
+// can reach: an asset name split by one is an argument of that invocation, so
+// every fragment lands in the chain of segments the operators join, from the
+// invocation's segment onward. Which segments hold an invocation is the SCAN's
+// reading (`lintNamed`, recorded by the balanced pass above) — never the raw
+// text, which is what made `git -C …/gs-admin-cli-docs archive HEAD | tar -x`
+// draw the coaching deny although no gs-admin runs (the lint ran BEFORE the
+// scan and judged every operator on a line the command-text gate let through).
+// The lint therefore runs here, after the scan; its first offense still denies
+// before anything is reported. A span (`$(…)`, a subshell, a group) is ONE
+// word of the segment that holds it, so the walks step over it to its opener.
+const openerOf = new Map([...segSpans].map(([open, { close }]) => [close, open]));
+const segStartBefore = (k) => {
+  let a = k - 1;
+  for (;;) {
+    if (openerOf.has(a)) a = openerOf.get(a);
+    if (a <= 0 || segStarts.has(a)) return Math.max(a, 0);
+    a--;
+  }
+};
+const PIPE_JOINERS = new Set(["|", "|&", "&"]);
+const namedSegs = new Set([...lintNamed].map((i) => segStartBefore(i + 1)));
+const inLintScope = (k) => {
+  for (let s = segStartBefore(k); ; s = segStartBefore(s - 1)) {
+    if (namedSegs.has(s)) return true;
+    if (!(s > 0 && PIPE_JOINERS.has(words[s - 1]) && !segInert.has(s - 1))) return false;
+  }
+};
+
+// The lint is pre-execution advice; on PostToolUse the command already ran.
+const suspicious = isPost ? null : findSuspiciousMeta(words, segQuoted, segRedirs, segInert, inLintScope);
+// Set when the lint escalates to "ask": the text is carried into the single
+// prompt assembled at the end rather than emitted on its own — see below.
+let lintAskPart = null;
+if (suspicious) {
+  // The RHS word is attacker-influenceable text (it comes from whatever the
+  // model wrote, which asset names and KB docs steer) — clamp it like every
+  // other untrusted interpolation, per design tenet 4.
+  const { op } = suspicious;
+  const rhsWord = printable(suspicious.word, 60) || "(end of command)";
+  const key = invocationKey(words, segRedirs);
+  const denied = readDenied();
+
+  // Repeat offense — or a deny we cannot record (a deny that can never
+  // escalate would block forever) — goes to the human prompt. The `|` and `&`
+  // lints share the deny memory: a still-broken retry of the same invocation
+  // escalates no matter which metacharacter is caught first.
+  // Shared coaching fragments — per-operator text carries only what differs
+  // (operator noun, name pattern, intent phrasing), so a wording fix lands in
+  // one place for both operators.
+  const quoteFix =
+    `Single-quote the whole value (single quotes are literal in both PowerShell and bash), ` +
+    `e.g. ${op === "|" ? "--search 'CS|Risk|Renewal|Alert'" : "--search 'Sales & Marketing|EMEA|Renewals'"}, ` +
+    `then retry.`;
+  let reason = null;
+  if (denied.includes(key) || !recordDeny(key, denied)) {
+    lintAskPart =
+      `This command contains an unquoted ${op === "|" ? "`|`" : "lone `&`"} whose right-hand ` +
+      `side (\`${rhsWord}\`) is not a recognized ${op === "|" ? "filter program" : "program"}. ` +
+      `If the \`${op}\` is part of a Gainsight asset name, the value must be single-quoted ` +
+      `before running. Approve only if the ${op === "|" ? "pipe is intentional" : "`&` is intentional (`&&` chaining is never flagged)"}.`;
+  } else {
+    reason =
+      (op === "|"
+        ? `Unquoted \`|\` here will be parsed as a shell pipeline — \`${rhsWord}\` would run as a ` +
+          `command. Gainsight asset names often contain literal pipes ` +
+          `(Prefix|Domain|Subdomain|Description). `
+        : `Unquoted lone \`&\` here will be parsed as a shell operator — \`${rhsWord}\` would run ` +
+          `as a separate command. Gainsight asset names can contain a literal \`&\` ` +
+          `(e.g. Sales & Marketing). `) +
+      quoteFix +
+      (op === "|"
+        ? ` If you really meant to pipe into \`${rhsWord}\`, still quote the gs-admin argument ` +
+          `values and retry.`
+        : ` If you really meant a background/parallel \`&\`, still quote the gs-admin argument ` +
+          `values and retry (\`&&\` chaining is never flagged).`);
+  }
+
+  // First offense: DENY and stop — the command is broken as written, so there is
+  // nothing to approve, and the mutation scan's findings (collected above) would
+  // only describe a command that cannot run as typed: none is reported. The
+  // repeat offense is the opposite case: that branch exists so the human CAN
+  // run it, which means the prompt must carry the mutation, tenant and
+  // PRODUCTION text too. So it falls through, and its text is concatenated into
+  // the single ask assembled at the end, rather than replacing it.
+  if (reason !== null) {
+    // Every stdout site — the three PreToolUse replies (F-363) and the two
+    // PostToolUse journal alerts in journalMutations (F-372) — exits IN the
+    // stdout write callback (the F-360 class fixed at the design): stdout is asynchronous when it is a pipe on
+    // macOS — the harness transport — so `write(json); process.exit(0)` lost
+    // everything past the first 8,192-byte chunk and the harness saw a reply
+    // cut mid-JSON. The never-resolving awaited promise holds control flow
+    // exactly where process.exit did (doc-lib finish()'s shape, hand-spelled:
+    // this hook imports nothing, R-1). Same JSON, same decision — only when
+    // the process exits changes.
+    process.stdout.write(
+      JSON.stringify({
+        hookSpecificOutput: {
+          hookEventName: "PreToolUse",
+          permissionDecision: "deny",
+          permissionDecisionReason: reason,
+        },
+      }),
+      () => process.exit(0)
+    );
+    await new Promise(() => {});
+  }
 }
 
 // ── Variable-subcommand coaching: `gs-admin $cmd` (loops, splats) hides the
