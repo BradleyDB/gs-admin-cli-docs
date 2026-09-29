@@ -1635,7 +1635,13 @@ function buildCaveats(index, opts, result, provenance) {
     if (kinds.has("power-list")) parts.push(`Power Lists (QUERY_BUILDER sources, collectionId == ruleId) have no CLI surface at all.`);
     caveats.push(parts.join(" "));
   }
-  const corroborate = result.objectsTouched.length ? result.objectsTouched : opts.objectTerms;
+  // A COMPLETED capture is the corroboration this caveat asks for, so its
+  // object leaves the list, whichever list names it (#28 — the tenant-wide
+  // surface got the same rule in #31). termKey'd like the coverage set (F-197).
+  const liveCovered = opts.liveObjects ?? new Set();
+  const corroborate = (result.objectsTouched.length ? result.objectsTouched : opts.objectTerms).filter(
+    (o) => !liveCovered.has(termKey(o))
+  );
   if (corroborate.length)
     caveats.push(
       `KB-derived, JO-scoped view — corroborate live and cross-area with ` +

@@ -1432,6 +1432,33 @@ const dependent = (id, name, cols) => ({
     initSame.summary?.warnings
   );
 
+  // #28's JO-scoped sibling (#31 fixed the tenant-wide surface): a COMPLETED
+  // capture is the corroboration the closing caveat asks for, so its object
+  // leaves the list — the touched-objects list and the --object fallback
+  // alike — and an INIT capture never counts.
+  const joCmd = (o) => `\`gs-admin --json dm deps check --name '${o}' --areas JOURNEY_ORCHESTRATOR\``;
+  check(
+    "caveat: a touched object a completed capture covers leaves no corroborate line (#28, JO scope)",
+    md.includes("## Live dependents of `Company`") && !md.includes("JO-scoped view — corroborate live"),
+    md.match(/.*corroborate live.*/)?.[0]
+  );
+  // Nothing in the KB touches Widget or Gadget, so the list falls back to the
+  // --object terms; the Widget capture covers one of the two.
+  const fWidget = join(ROOT, "live-deps-widget.json");
+  writeFileSync(fWidget, JSON.stringify(liveDepsPayload("Widget", [])));
+  const part = runCli("deps", "--index", INDEX_PATH, "--object", "Widget", "--object", "Gadget", "--live-deps", fWidget, "--all", "--report", join(ROOT, "r-cover-part"));
+  const mdPart = part.summary?.reportPath ? readFileSync(part.summary.reportPath, "utf8") : "";
+  check(
+    "caveat: the --object fallback names only the uncovered term (#28, JO scope)",
+    part.res.status === 0 && mdPart.includes(joCmd("Gadget")) && !mdPart.includes(joCmd("Widget")),
+    mdPart.match(/.*corroborate live.*/)?.[0]
+  );
+  check(
+    "caveat: an INIT capture is not cover — the touched object stays named (#28, JO scope)",
+    mdInitSame.includes(joCmd("Company")),
+    mdInitSame.match(/.*corroborate live.*/)?.[0]
+  );
+
   const fBadLive = join(ROOT, "live-deps-bad.json");
   writeFileSync(fBadLive, "{ nope");
   const bad = runCli("deps", "--index", INDEX_PATH, "--object", "Company", "--live-deps", fBadLive, "--all", "--report", join(ROOT, "r12"));

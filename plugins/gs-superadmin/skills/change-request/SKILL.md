@@ -54,10 +54,13 @@ Same as `/gs-superadmin:refresh` step 1: run `gs-admin whoami`, derive the slug 
 Read `environment` from the manifest — a `production` workspace makes every risk note
 sharper (step 5) and must be called out in the plan header.
 
-**Offline mode:** if `gs-admin whoami` fails (no CLI or no auth) but a workspace manifest
-exists, you can still draft a plan from the KB alone — resolve the slug from the only (or
-user-chosen) `*/_manifest.json`, skip live verification in step 4, and mark the plan header
-`verification: KB-only (CLI unavailable)`.
+**Offline mode:** `whoami` exits 0 whether or not a token is usable, so read its lines the
+way setup Phase 1 does (the canon): `Base URL: (not set)`, a `Token:` line other than
+`valid (…)` or `SID cookie set via env`, or `whoami` itself erroring (no CLI) means no
+live session. If so but a workspace
+manifest exists, you can still draft a plan from the KB alone — resolve the slug from the
+only (or user-chosen) `*/_manifest.json`, skip live verification in step 4, and mark the
+plan header `verification: KB-only (CLI unavailable)`.
 
 ### 2 — Ingest the request
 
@@ -176,8 +179,9 @@ The operating model's test for every line, in plan terms:
 **can you point to the line of the plan, or the thing the admin would say to the
 requester, that changes if they take this on board?**
 Something true about the tenant that changes nothing is commentary, and the impact table
-already has it. If nothing passes, the section is the template's one empty line; a
-ticket that says what it's for and asks for the right thing gets exactly that.
+already has it. If nothing passes, the section is the template's one empty line. A ticket
+that says what it's for and asks for the right thing usually gets exactly that — unless a
+tenant fact passes the test, and then it gets that line.
 
 ### 5 — Names, conventions, risk
 
