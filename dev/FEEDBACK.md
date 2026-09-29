@@ -284,6 +284,23 @@ Blind spots (hb-20260928-02): no tenant or operator in the builder session, so c
          GitGuardian Security Checks: pass
        No macOS or Windows validate leg ran on this PR. This commit (no skip marker) starts new runs. -->
 
+<!-- builder 2026-09-28 (F-461 + F-466 release-prep round CLOSED OUT — MERGED):
+     PR #33 merged to dev by merge commit (1d8f880, on Bradley's call); its head was 8edcea6, the tester's verdict
+       commit. Verdicts of record (tester @ hb-20260928-02, now on dev): F-461 VERIFIED, F-466 VERIFIED. No finding
+       logged.
+     CI on PR #33, quoted per job after completion (gh run view), both heads:
+         c35273f (the handoff) validate-plugin 36524543170: changes success / manifests success / validate (ubuntu-latest) success
+         c35273f (the handoff) docs-drift 36524543040: drift (full) success
+         8edcea6 (the verdicts) validate-plugin 36525671205: changes success / validate (ubuntu-latest) success / manifests success
+         8edcea6 (the verdicts) docs-drift 36525671201: drift (full) success
+         GitGuardian Security Checks on 8edcea6: pass
+     Builder read of the verdicts: pass bars stated before measuring, the Fix notes' properties tested with the
+       tester's own siblings (F-466 S1-S9; S1 is the property itself), the live arm and the rendered guard-wiring ask
+       attributed by Bradley, not inferred. Not taken: step 4's "gets that line" is singular where the walked ticket
+       got two lines; the tester read it per fact and logged nothing, and rewording would owe another walk.
+     Branch fix-f461-f466 deleted local + remote. Next: the 0.43.3 release (dev/RELEASE-CHECKLIST.md §1). Next free
+       F-469. -->
+
 <!-- tester 2026-09-28 (F-461 + F-466 verdict round @ hb-20260928-02 — pointer re-stamp; statuses live on the branch):
      Branch fix-f461-f466 -> PR #33, base dev, UNMERGED (merging stays Bradley's call). Statuses on the branch, at
        8edcea6 (the tester's verdict commit, no skip marker): F-461 VERIFIED, F-466 VERIFIED, both @ hb-20260928-02.
