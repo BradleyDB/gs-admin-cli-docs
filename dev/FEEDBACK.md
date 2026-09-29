@@ -51,13 +51,13 @@ Issues hint (2026-09-10): this bus is NOT the whole picture of open work. A find
 stranger could act on without a design conversation first is filed as a GitHub Issue
 instead of a bus section; issues consume no F-number, so the NEXT FREE NUMBER rule above
 is unaffected by them. Read `gh issue list` alongside this file. Open from the 2026-09-10
-multi-tenant round: #10 unquoted page placeholder in the capture fences, which PowerShell
-eats (good first issue); #11 recover list-invisible email templates from program payloads
-(help wanted); #12 deep-ingest performance — concurrent describes and batched marks, to
-bring a full run inside one token lifetime (help wanted); #13 abort a domain after 5
-consecutive retryable failures (good first issue). From the 2026-09-26 CLI 1.0.10 round: #28
-deps-report's corroborate-live caveat ignores passed --live-deps captures (good first issue; re-homed
-from F-465, which closes on the bus as WONTFIX with a Re-homed: line — the bus has no status for a move).
+multi-tenant round: #11 recover list-invisible email templates from program payloads (help
+wanted); #12 deep-ingest performance — concurrent describes and batched marks, to bring a
+full run inside one token lifetime (help wanted). Closed since (hint updated 2026-09-28):
+#10 and #13 by #19 (d23f890, plugin 0.39.0); #28, the 2026-09-26 round's deps-report
+corroborate-live caveat (re-homed from F-465, which closed on the bus as WONTFIX with a
+Re-homed: line — the bus has no status for a move), by #31 (7a75662, plugin 0.43.1), its
+live walk banked in dev/VALIDATION.md.
 Round-assessment hint (F-161, extended by F-223): ANY status transition — a fix, a
 verdict, a WONTFIX, a flip back to OPEN — may ride an UNMERGED PR. Assess a round with
 `gh pr list` as well as the dev log. The role landing a transition on an unmerged
