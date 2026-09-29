@@ -5,6 +5,17 @@ marketplace doesn't pin versions — users get main — so entries describe what
 user who updates, not internal refactors. Entries before 0.8.0 were reconstructed from git
 history when this file was introduced.
 
+## 0.43.2 — 2026-09-28
+
+- **email-report's deps mode stops nagging about live checks you already ran, too.**
+  0.43.1 fixed this for deps-report; the JO-scoped report kept telling you to run
+  `dm deps check` for objects you had already captured and passed back with
+  `--live-deps`. It now names only the objects no completed capture covers, and
+  stays silent when every object is covered. Both reports now apply the rule to
+  every object the caveat names, whether it came from your `--object` terms or from
+  the objects the scan touched. A capture that never reached COMPLETED still counts
+  as not done.
+
 ## 0.43.1 — 2026-09-27
 
 - **deps-report stops nagging about live checks you already ran.** The report's
