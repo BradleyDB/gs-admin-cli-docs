@@ -380,6 +380,13 @@ try {
           res.stderr.includes('step "No dev-only content on main" spells the strip path(s)'), res.stderr);
     } finally { snap.restore(); }
     try {
+      // Control (the sweep's M10 survivor, pinned): a comment line inside a run: body is
+      // prose, not a second copy of the line, so naming the paths there stays green.
+      mutate(WF, (s) => s.replace("          set -f\n          git --literal-pathspecs rm", `          # strips ${devOnly.paths.join(" ")}\n          set -f\n          git --literal-pathspecs rm`));
+      const res = run();
+      check("check 24 (control): a comment line inside a run: body may name the strip paths", res.status === 0 && !res.stderr.includes("check 24:"), res.stderr);
+    } finally { snap.restore(); }
+    try {
       mutate(WF, (s) => s.replace("- name: No dev-only content on main", "- name: No dev-only content on main (renamed)"));
       const res = run();
       check("check 24: a consumer step that moved or was renamed goes red — the site list is stale", res.status === 1 && res.stderr.includes('has no step "- name: No dev-only content on main"'), res.stderr);
