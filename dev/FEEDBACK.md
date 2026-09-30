@@ -189,7 +189,15 @@ Blind spots (hb-20260928-02): no tenant or operator in the builder session, so c
          validate-plugin 36667392152 (pull_request): changes success / manifests success / validate (ubuntu-latest) success
          docs-drift 36667397546 (workflow_dispatch): drift (full) success / drift (stripped) success — the stripped
            arm read the set from dev/FEEDBACK.md before its strip and from HEAD after it, and ran the suite 208/208
-       PR #35: MERGEABLE, CLEAN. -->
+       PR #35: MERGEABLE, CLEAN.
+     RE-STAMPED 2026-09-29 (builder): F-469 VERIFIED on the branch at 119a884, the builder's verdict of record on the
+       tester's role-inverted fix (5a386a7; no code path changed). The check 18 comment lists every measured miss and
+       claims nothing the probes contradicted, and the judge re-run on b03896b follows the line 10/10 on all three tree
+       shapes. CI on PR #35's head 119a884, quoted per job after completion:
+         docs-drift 36672861825 (pull_request): drift (full) success
+         validate-plugin 36672861745 (pull_request): changes success / manifests success / validate (ubuntu-latest) success
+       PR #35 reads MERGEABLE, CLEAN and is UNMERGED: the merge is Bradley's. On dev, F-469 reads OPEN until it merges.
+       Carried, not logged (polish): check-doc-drift's pass line still reads "N shipped files name none of it". -->
 
 <!-- tester 2026-09-28 (verdict round @ hb-20260928-02 — F-461 and F-466, on branch fix-f461-f466, PR #33 unmerged):
      Provenance: dev-canary read hb-20260928-02 in session; fix-f461-f466, clean, level with origin at c35273f (matches
