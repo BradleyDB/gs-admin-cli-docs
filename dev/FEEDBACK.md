@@ -151,6 +151,30 @@ rule also reads the archive.
 Under test: fix-f461-f466 · hb-20260928-02 · 2026-09-28
 Blind spots (hb-20260928-02): no tenant or operator in the builder session, so change-request's walk is this round's (slash-only, typed by Bradley: a well-formed ticket's Before building section against ask A's measurement, and the offline arm read against whoami's actual lines); F-466 is measured by fixtures and the bash + Windows PowerShell 5.1 oracle only, so the rendered deny or ask in a live session is the tester's (the guard-wiring line, plus one harmless pipeline carrying the name); pwsh 7 and the macOS leg are CI's; the dropped heredoc exclusion rests on the chain walk looking left, probed on four shapes, not proved
 
+<!-- builder 2026-09-29 (F-469 round — HANDED OFF @ hb-20260929-01; UNMERGED, riding a branch):
+     Branch fix-f469-dev-only -> PR #35, base dev, UNMERGED. Transition on the branch: F-469 OPEN -> FIXED (polish,
+       Class: consumer-parity; Judge, Sibling sweep and a 17-row mutation copy-out, every row as predicted). The branch
+       also carries the header's new `Dev-only:` line (dev-utils init, 0e5a0b1), which reaches dev with the merge.
+       F-469 was logged here (ffca105); the branch consumes no other number, so the next free is F-470.
+     Under test on the branch: hb-20260929-01; blind spots = the Blind spots line in the branch's header.
+     Owed by the tester round (acceptance, a new mechanism): the F-469 verdict, measured in scratch copies only — sibling
+       Dev-only values, the two workflow step bodies through bash, RELEASE-CHECKLIST §3 on a throwaway release branch in
+       a clone, and a grammar comparison against `dev-utils status` — plus one guard-wiring line. No SKILL.md changed, so
+       no walk is owed. Reload: no plugin byte changed; /reload-plugins picks up the canary's new stamp.
+     Decision of record (Bradley, 2026-09-29): RELEASE-CHECKLIST §3 stays a hand cut whose strip reads the Dev-only line,
+       and §5's tag, delete and switch steps become dev-utils release-finish.
+     Ordering decision: nothing else pending touches what is verified. Open PRs to dev: #35 only. Issues #11 and #12
+       (help wanted) are untouched.
+     Local evidence on the branch: doc-drift suite 208/208 on the full tree (207/207 on the rehearsal and release
+       shapes, before the M10 control pin); docs-drift's step list run verbatim on both stripped shapes in scratch
+       clones; Validate, the four checks and typecheck green.
+     CI on PR #35's head 8b8596c, quoted per job after completion:
+         docs-drift 36667392177 (pull_request): drift (full) success
+         validate-plugin 36667392152 (pull_request): changes success / manifests success / validate (ubuntu-latest) success
+         docs-drift 36667397546 (workflow_dispatch): drift (full) success / drift (stripped) success — the stripped
+           arm read the set from dev/FEEDBACK.md before its strip and from HEAD after it, and ran the suite 208/208
+       PR #35: MERGEABLE, CLEAN. -->
+
 <!-- tester 2026-09-28 (verdict round @ hb-20260928-02 — F-461 and F-466, on branch fix-f461-f466, PR #33 unmerged):
      Provenance: dev-canary read hb-20260928-02 in session; fix-f461-f466, clean, level with origin at c35273f (matches
        Under test); tenant (gs-admin whoami): the sandbox.
