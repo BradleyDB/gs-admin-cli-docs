@@ -147,7 +147,7 @@ const files = execSync("git ls-files -z", { cwd: ROOT, encoding: "utf8" })
 //   - a file HEAD commits that the index lacks — WARNS, naming the files: a
 //     broken checkout and an intended staged deletion look identical here,
 //     and one caller is intended by design (docs-drift's release-strip
-//     rehearsal `git rm`s dev/ and the canary from the index, no commit, then
+//     rehearsal `git rm`s the dev-only set from the index, no commit, then
 //     runs this gate on exactly the release tree). The pushed tip still
 //     carries the files, so the operator is told which ones went unread.
 // Unborn HEAD (a fresh rig with no commit) diffs against the empty tree and

@@ -46,8 +46,8 @@ concurrency:
 jobs:
   drift:
     # Stripped-tree rehearsal (release-gate wrinkle, 2026-08-25): a release
-    # branch differs from dev by exactly the dev-only strip (dev/ + the
-    # dev-canary skill), and the first battery run on such a tree used to
+    # branch differs from dev by exactly the dev-only strip (the set the bus
+    # header declares — see the strip step), and the first battery run on such a tree used to
     # happen at the release PR itself — where a latent tree-shape assumption
     # in a fixture suite crashed the v0.31.9 gate. The weekly cron and every
     # manual dispatch now run the SAME steps a second time on a stripped
@@ -69,15 +69,32 @@ jobs:
           # Keyed on package-lock.json (DS-42): the two checker-only pins are
           # exact, so `npm ci` below is a cache restore on every run.
           cache: npm
+      # The dev-only strip set is declared once, on the bus header: the
+      # Dev-only: and Canary: lines of dev/FEEDBACK.md, read by
+      # build/dev-only.mjs (F-469). A tree the strip already ran on — a release
+      # PR, main, the cron — carries no bus, so the reader takes dev's: fetch
+      # that one ref, shallow. A tree with a bus reads its own and fetches nothing.
+      - name: Fetch dev's bus header (the dev-only set) when this tree has none
+        run: |
+          if [ ! -e dev/FEEDBACK.md ]; then
+            git fetch --no-tags --depth=1 origin +refs/heads/dev:refs/remotes/origin/dev
+          fi
       # Same removal (worktree + index) the release strip commit performs, so
       # `git ls-files`-driven checks see exactly the release tree. No commit
-      # is made — the checks read the index, not history. --ignore-unmatch:
-      # a dispatch or the cron can land on main (the default ref), where both
-      # paths are already stripped — the arm must rehearse that tree, not go
-      # red on an empty pathspec (release-gate round).
+      # is made — the checks read the index, not history (and the reader finds
+      # the declaration in HEAD once the worktree bus is gone). The paths come
+      # from build/dev-only.mjs, never a list here: check-doc-drift check 24
+      # holds this step to that. They are literal (set -f: no globbing, and
+      # --literal-pathspecs for git). --ignore-unmatch: a dispatch or the cron
+      # can land on main (the default ref), where the set is already stripped —
+      # the arm must rehearse that tree, not go red on an empty pathspec
+      # (release-gate round).
       - name: Strip dev-only content (release-tree rehearsal arm)
         if: matrix.tree == 'stripped'
-        run: git rm -r -q --ignore-unmatch dev plugins/gs-superadmin/skills/dev-canary
+        run: |
+          paths=$(node build/dev-only.mjs)
+          set -f
+          git --literal-pathspecs rm -r -q --ignore-unmatch -- $paths
       # GP-B5 DS-42: the JSDoc-contract type gate (AGENTS.md tenet 5 is the
       # canon for the checker-only devDependency carve-out and the base
       # config's non-strict decision) — and, since GP-B5 W8/DS-46, the
@@ -85,7 +102,7 @@ jobs:
       # config, then build/check-strict-list.mjs runs tsconfig.strict.json once
       # and proves its list equals the strict program (closure) and that no
       # floor file left it. Full arm only: the strip removes no file tsc reads
-      # (dev/ holds no .mjs; the canary is a SKILL.md), so the stripped arm's
+      # (no dev-only path holds a .mjs), so the stripped arm's
       # verdict would be identical. That claim is held to the tree by
       # build/check-doc-drift.mjs check 17 (no tracked .mjs under a strip
       # path) rather than by a file count here — the count it used to carry
@@ -167,19 +184,24 @@ jobs:
       # it a synthetic fixture package via GS_ADMIN_PKG).
       - name: Catalog emitter fixtures
         run: node build/test-extract-catalog.mjs
-      # Dev-branch-only content (the dev-canary skill, dev/) must never reach
-      # main — this mechanizes the release invariant in CLAUDE.md, so a release
-      # PR that forgot to strip them cannot merge. dev-targeted PRs are unaffected.
+      # Dev-branch-only content (the dev-only strip set, read by
+      # build/dev-only.mjs from the bus header — dev's, fetched above, on a tree
+      # the strip already ran on) must never reach main — this mechanizes the
+      # release invariant in CLAUDE.md, so a release PR that forgot to strip a
+      # path cannot merge. The stripped rehearsal arm runs it too, after its
+      # strip: every declared path must be gone, the survivor check dev-utils
+      # release makes, rehearsed weekly (F-469). dev-targeted PRs are unaffected.
       - name: No dev-only content on main
-        if: github.base_ref == 'main' || github.ref == 'refs/heads/main'
+        if: github.base_ref == 'main' || github.ref == 'refs/heads/main' || matrix.tree == 'stripped'
         run: |
+          paths=$(node build/dev-only.mjs)
+          set -f
           fail=0
-          if [ -e plugins/gs-superadmin/skills/dev-canary ]; then
-            echo "plugins/gs-superadmin/skills/dev-canary exists — strip it on the release branch"; fail=1
-          fi
-          if [ -e dev ]; then
-            echo "dev/ exists — strip it on the release branch"; fail=1
-          fi
+          for p in $paths; do
+            if [ -e "$p" ]; then
+              echo "$p exists — strip it on the release branch"; fail=1
+            fi
+          done
           exit $fail
       # Nothing tenant-, instance-, or org-specific may be committed (the repo may
       # be open-sourced). Fixtures use fictional tenants; live findings stay out
