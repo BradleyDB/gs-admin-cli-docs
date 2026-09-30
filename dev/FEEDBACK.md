@@ -1135,3 +1135,11 @@ Blind spots (hb-20260928-02): no tenant or operator in the builder session, so c
      Consumer refresh: nothing to refresh — plugin bytes identical to 0.37.0.
      Carried forward (not in this release): F-448 verdict by the other role; the skipped-path arm
        (Blind spots above). -->
+
+## F-469 — OPEN
+Reported: 2026-09-29 (builder, consumer follow-up (b) of dev-utils F-026, which shipped the `Dev-only:` bus header line in dev-utils 0.5.0)
+Severity: polish — release tooling, CI and checks only; what ships is correct (every copy names the same two paths today)
+Class: consumer-parity
+What: the release strip set (dev/ plus the dev-canary skill) has no declaration: each place that asks "is this dev-only?" answers from its own hand list. build/check-doc-drift.mjs holds four (check 17's DEV_ONLY_STRIP_PATHS; check 18's SHIPPED_STRIP_REF needle and its canary-dir scope exclusion; check 4's CANARY_ALLOWED; DEV_ONLY_SKILLS, the skill filter checks 1-3 run on). .github/workflows/docs-drift.yml holds two (the stripped rehearsal arm's `git rm -r -q --ignore-unmatch dev plugins/gs-superadmin/skills/dev-canary`; the "No dev-only content on main" step's two existence tests). dev/RELEASE-CHECKLIST.md §3 holds one, build/test-check-doc-drift.mjs five skill picks plus its check 17/18 probes, and CLAUDE.md and CONTRIBUTING.md carry prose copies. dev-utils 0.5.0's `Dev-only:` line (what `dev-utils release` strips with the canary) is absent here, and writing it alone would add one more copy.
+Repro: `git grep -n -e 'skills/dev-canary' -e 'DEV_ONLY' -- build .github dev/RELEASE-CHECKLIST.md`; then add a third path to the strip in one copy (the stripped arm's `git rm`, say): check 17's scope, check 18's needle and the main existence step still answer from their own lists, and nothing goes red.
+Expected: one declaration: the bus header's `Dev-only:` line, written by `dev-utils init --dev-only`, beside the `Canary:` line (dev-utils strips the canary with the declared paths). Every reader derives the set from those two lines. Change the line and checks 1-4, 17 and 18, the stripped arm and the main existence step all follow with no second edit; prose points at the line. A tree the strip already ran on (no dev/FEEDBACK.md) still gets the set.
