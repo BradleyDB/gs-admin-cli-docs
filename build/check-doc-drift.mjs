@@ -78,7 +78,8 @@
 //      reads — a claim that was a hand count in the workflow comment (65 → 67 in one
 //      wave, W8.5 review) and is now held to the tree
 //  18. shipped plugin content naming a dev-only strip path — a dangling pointer in
-//      the installed plugin (W9 review)
+//      the installed plugin (W9 review); a best-effort lint with known misses,
+//      listed at the check
 //  (checks 1-4, 17, 18 and 24 take the strip set from build/dev-only.mjs, the ONE
 //  reader of the bus header's `Dev-only:` and `Canary:` lines — F-469; no list of
 //  dev-only paths lives in this file)
@@ -2073,6 +2074,16 @@ for (const f of strippedMjs) {
 // (`dev/VALIDATION.md`, never bare `dev`), and it never counts as the head of an
 // absolute path: `/dev/null` and `/dev/fd` stay green, `../dev/X` and `<repo>/dev/X`
 // do not. Matching is indexOf over the spelling (no regex is built from a path).
+//
+// A best-effort lint, not a guarantee: it catches the forward-slash spellings above,
+// and deciding whether free text points at a path has no oracle, so it has known
+// misses (measured in the F-469 acceptance round, hb-20260929-01). Any one-segment
+// spelling needs a child, so a strip path that is one segment plugin-relatively —
+// a plugin-root file such as MAINTAINERS.md, or a plugin-root dir named bare — is
+// never matched; nor is a backslash spelling (`dev\VALIDATION.md`), a bare dir
+// mention (`the dev/ folder`), another letter case (`DEV/`), or a path built in code.
+// What the release strips, and that none of it survives, is decided by
+// build/dev-only.mjs and docs-drift's two strip-set steps, not here.
 const NAME_CH = /[A-Za-z0-9_.-]/;
 const stripSpellings = [
   ...new Set(devOnly.paths.flatMap((p) => (p !== PLUGIN_DIR && covers(PLUGIN_DIR, p) ? [p, p.slice(PLUGIN_DIR.length + 1)] : [p]))),
