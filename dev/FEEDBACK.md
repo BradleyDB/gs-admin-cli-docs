@@ -151,6 +151,19 @@ rule also reads the archive.
 Under test: fix-f461-f466 · hb-20260928-02 · 2026-09-28
 Blind spots (hb-20260928-02): no tenant or operator in the builder session, so change-request's walk is this round's (slash-only, typed by Bradley: a well-formed ticket's Before building section against ask A's measurement, and the offline arm read against whoami's actual lines); F-466 is measured by fixtures and the bash + Windows PowerShell 5.1 oracle only, so the rendered deny or ask in a live session is the tester's (the guard-wiring line, plus one harmless pipeline carrying the name); pwsh 7 and the macOS leg are CI's; the dropped heredoc exclusion rests on the chain walk looking left, probed on four shapes, not proved
 
+<!-- tester 2026-09-29 (F-469 acceptance round @ hb-20260929-01 — pointer re-stamp; statuses live on the branch):
+     Branch fix-f469-dev-only -> PR #35, base dev, UNMERGED. Status on the branch at 73e5bc3 (the tester's verdict
+       commit, no skip marker): F-469 REOPENED (FIXED -> OPEN) @ hb-20260929-01. Check 18 does not follow a Dev-only
+       line that declares a one-segment plugin-relative path (a plugin-root file). The rehearsal and release shapes,
+       the refusals and grammar parity with dev-utils were met. Verdict, pass bar, class and invariant test are
+       under the entry; the round's tester block (provenance, guard-wiring line, blind spots) sits under the
+       branch's "Blind spots (hb-20260929-01)" line.
+     On dev, F-469 still reads OPEN as logged at ffca105, and the builder's handoff pointer below still says FIXED
+       until PR #35 merges. This comment is the pointer, not a second copy of the verdict. First reopen of a
+       mechanism born this release: one more round is allowed before the defer-or-redesign valve.
+     No finding logged, no number consumed; the next free number stays F-470. Written from a separate dev worktree;
+       the tester checkout stayed on fix-f469-dev-only. -->
+
 <!-- builder 2026-09-29 (F-469 round — HANDED OFF @ hb-20260929-01; UNMERGED, riding a branch):
      Branch fix-f469-dev-only -> PR #35, base dev, UNMERGED. Transition on the branch: F-469 OPEN -> FIXED (polish,
        Class: consumer-parity; Judge, Sibling sweep and a 17-row mutation copy-out, every row as predicted). The branch
