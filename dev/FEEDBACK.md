@@ -152,6 +152,27 @@ rule also reads the archive.
 Under test: fix-f469-dev-only · hb-20260929-01 · 2026-09-29
 Blind spots (hb-20260929-01): the release shape (strip committed, bus only on origin/dev) is measured locally only: a scratch clone ran every docs-drift step verbatim, with the fetch step fetching from a local remote, and only that shape kills sweep mutant M5. CI first runs it on the next release PR, since a pre-merge CI probe would read an origin/dev without the line. The main-existence step's base_ref == main path also runs first there (its rehearsal-arm path runs on this handoff's dispatch). Grammar parity with dev-utils is measured at 0.5.0 only. The reader's symlink-escape refusal has no fixture. RELEASE-CHECKLIST §3's strip and verify commands ran in a scratch clone; §5's release-finish did not run (no release). No SKILL.md changed, so no walk is owed; the round's guard-wiring line is the tester's
 
+<!-- builder 2026-09-29 (F-469 round CLOSED OUT — PR #35 merged (bc8deea); F-469 VERIFIED @ hb-20260929-01):
+     Round: the acceptance round at hb-20260929-01 REOPENED F-469 on check 18: a strip path that is one segment
+       plugin-relatively (a plugin-root file) is never matched. On Bradley's call the tester narrowed the claim by role
+       inversion (5a386a7): check 18 is described as a best-effort lint, with its measured misses listed at the check,
+       and no code path changed. The builder's verdict of record VERIFIED it (119a884): the comment lists every measured
+       miss and claims nothing the probes contradicted, and the judge re-run on b03896b follows the line 10/10 on all
+       three tree shapes.
+     Now on dev: the header's `Dev-only: dev plugins/gs-superadmin/skills/dev-canary` line and build/dev-only.mjs, its
+       one reader. RELEASE-CHECKLIST §3 cuts by hand, reading the line; §5 is dev-utils release-finish (Bradley,
+       2026-09-29).
+     Carried, not logged (polish, below the bus bar): check-doc-drift's pass line still reads "N shipped files name
+       none of it"; qualifying it as check 18's search is a one-line follow-up.
+     CI on PR #35's head 119a884, quoted per job after completion:
+         docs-drift 36672861825 (pull_request): drift (full) success
+         validate-plugin 36672861745 (pull_request): changes success / manifests success / validate (ubuntu-latest) success
+     CI on dev after the merge (push-triggered on bc8deea), quoted per job after completion:
+         docs-drift 36673845718 (push): drift (full) success
+         validate-plugin 36673845727 (push): changes success / manifests success / validate (ubuntu-latest) success
+     Open PRs to dev: none. Issues #11 and #12 unchanged. Next free F-470. Released: nothing (no plugin byte changed;
+       dev stages nothing). Under test stays fix-f469-dev-only · hb-20260929-01 until the next handoff re-stamps it. -->
+
 <!-- tester 2026-09-29 (acceptance round @ hb-20260929-01 — F-469, on branch fix-f469-dev-only, PR #35 unmerged):
      Provenance: dev-canary read hb-20260929-01 in session; fix-f469-dev-only, clean, level with origin at 8b8596c
        (matches Under test).
