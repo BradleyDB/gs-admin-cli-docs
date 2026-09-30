@@ -149,8 +149,8 @@ what the gate counts (F-444). The gate refuses both. Sections from F-360 on; the
 rule also reads the archive.
 
 
-Under test: fix-f461-f466 · hb-20260928-02 · 2026-09-28
-Blind spots (hb-20260928-02): no tenant or operator in the builder session, so change-request's walk is this round's (slash-only, typed by Bradley: a well-formed ticket's Before building section against ask A's measurement, and the offline arm read against whoami's actual lines); F-466 is measured by fixtures and the bash + Windows PowerShell 5.1 oracle only, so the rendered deny or ask in a live session is the tester's (the guard-wiring line, plus one harmless pipeline carrying the name); pwsh 7 and the macOS leg are CI's; the dropped heredoc exclusion rests on the chain walk looking left, probed on four shapes, not proved
+Under test: fix-f469-dev-only · hb-20260929-01 · 2026-09-29
+Blind spots (hb-20260929-01): the release shape (strip committed, bus only on origin/dev) is measured locally only: a scratch clone ran every docs-drift step verbatim, with the fetch step fetching from a local remote, and only that shape kills sweep mutant M5. CI first runs it on the next release PR, since a pre-merge CI probe would read an origin/dev without the line. The main-existence step's base_ref == main path also runs first there (its rehearsal-arm path runs on this handoff's dispatch). Grammar parity with dev-utils is measured at 0.5.0 only. The reader's symlink-escape refusal has no fixture. RELEASE-CHECKLIST §3's strip and verify commands ran in a scratch clone; §5's release-finish did not run (no release). No SKILL.md changed, so no walk is owed; the round's guard-wiring line is the tester's
 
 <!-- tester 2026-09-28 (verdict round @ hb-20260928-02 — F-461 and F-466, on branch fix-f461-f466, PR #33 unmerged):
      Provenance: dev-canary read hb-20260928-02 in session; fix-f461-f466, clean, level with origin at c35273f (matches
