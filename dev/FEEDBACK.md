@@ -158,9 +158,12 @@ Blind spots (hb-20260928-02): no tenant or operator in the builder session, so c
        the refusals and grammar parity with dev-utils were met. Verdict, pass bar, class and invariant test are
        under the entry; the round's tester block (provenance, guard-wiring line, blind spots) sits under the
        branch's "Blind spots (hb-20260929-01)" line.
-     On dev, F-469 still reads OPEN as logged at ffca105, and the builder's handoff pointer below still says FIXED
-       until PR #35 merges. This comment is the pointer, not a second copy of the verdict. First reopen of a
-       mechanism born this release: one more round is allowed before the defer-or-redesign valve.
+     RE-STAMPED 2026-09-29: now F-469 FIXED on the branch at b03896b (tester, role inversion on Bradley's call). The
+       claim is narrowed, not the matcher widened: 5a386a7 calls check 18 a best-effort lint and lists its measured
+       misses at the check, with no code path changed. The verdict of record is owed by the BUILDER, on the way out
+       (Judge line on the entry), before PR #35 merges.
+     On dev, F-469 still reads OPEN as logged at ffca105 until PR #35 merges. This comment is the pointer, not a
+       second copy of the verdict.
      No finding logged, no number consumed; the next free number stays F-470. Written from a separate dev worktree;
        the tester checkout stayed on fix-f469-dev-only. -->
 
