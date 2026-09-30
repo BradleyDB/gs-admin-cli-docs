@@ -159,8 +159,9 @@ released surface that marketplace users clone.
 
 - **Branch off `dev`, PR to `dev`.** Never push or PR `main` directly — releases reach
   `main` only via a short-lived `release/vX.Y.Z` branch cut from `dev`, on which
-  dev-branch-only content (the `dev-canary` skill, the `dev/` directory) is stripped
-  first. Never merge `main` back into `dev`. CI enforces the targeting rule: a PR
+  dev-branch-only content is stripped first — the set the `Dev-only:` line in
+  `dev/FEEDBACK.md`'s header declares, plus the `dev-canary` skill (run
+  `node build/dev-only.mjs` to print it). Never merge `main` back into `dev`. CI enforces the targeting rule: a PR
   aimed at `main` from anything but a `release/*` branch fails the required `guard`
   check (`pr-target-guard.yml`), and the check's message says the fix — change the
   PR's base branch to `dev` (**Edit** next to the PR title, then the base dropdown).

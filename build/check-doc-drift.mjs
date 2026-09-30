@@ -7,7 +7,8 @@
 //   2. a `/gs-superadmin:<name>` reference to a skill that doesn't exist
 //   3. a catalog-table invocation label that contradicts the skill's
 //      disable-model-invocation frontmatter ("slash only" vs "slash + natural language")
-//   4. dev-branch-only content (dev-canary) mentioned outside its allowed files
+//   4. the canary skill's name (dev-canary) mentioned in a doc outside the dev-only
+//      strip set and the two docs that describe the release ceremony
 //   5. a test runner — under plugins/gs-superadmin/test/ OR build/test-*.mjs — not
 //      named inside AGENTS.md's verification-commands fence (the authoritative list;
 //      F-181: enumerating only the plugin dir left the build/ suites unpoliced, and
@@ -72,12 +73,16 @@
 //      (formula included), every paraphrase skill the headline + pointer and
 //      never the formula, and no skill outside the family may mention the
 //      pre-flight — site list carried as data (TOKEN_PREFLIGHT)
-//  17. a tracked .mjs under a dev-only strip path (dev/, the dev-canary skill): the
-//      type gate runs on docs-drift.yml's FULL arm only because the release strip
-//      removes nothing tsc reads — a claim that was a hand count in the workflow
-//      comment (65 → 67 in one wave, W8.5 review) and is now held to the tree
-//  18. shipped plugin content naming a dev-only strip path (dev/<File>.md, the
-//      dev-canary skill) — a dangling pointer in the installed plugin (W9 review)
+//  17. a tracked .mjs under a dev-only strip path: the type gate runs on
+//      docs-drift.yml's FULL arm only because the release strip removes nothing tsc
+//      reads — a claim that was a hand count in the workflow comment (65 → 67 in one
+//      wave, W8.5 review) and is now held to the tree
+//  18. shipped plugin content naming a dev-only strip path — a dangling pointer in
+//      the installed plugin (W9 review); a best-effort lint with known misses,
+//      listed at the check
+//  (checks 1-4, 17, 18 and 24 take the strip set from build/dev-only.mjs, the ONE
+//  reader of the bus header's `Dev-only:` and `Canary:` lines — F-469; no list of
+//  dev-only paths lives in this file)
 //  19. the defect-class registry (build/defect-classes.mjs, GP-B5 W10): every
 //      mechanical row swept tree-wide with its allowance ledger checked both
 //      ways, unreadable files failed by name, every scope floored, and the manual
@@ -92,6 +97,9 @@
 //      fence and docs-drift.yml's Regenerate step carry, and the individual
 //      `build:*` steps both READMEs enumerate — each held to the script, in order
 //      (F-407: three files went stale when emit-reader-shapes joined the chain)
+//  24. a CI consumer of the dev-only strip set that stops reading the declaration:
+//      each workflow step in DEV_ONLY_CONSUMERS runs `node build/dev-only.mjs` and
+//      spells no strip path itself (F-469: the workflow held two hand copies)
 //
 // Zero dependencies: Node built-ins only. Runs in .github/workflows/docs-drift.yml.
 
@@ -102,13 +110,14 @@ import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { ROOT, readJsonFile, assertScanCoverage, QUOTE_RE, parseBlocks } from "./lib.mjs";
 import { MECHANICAL_CLASSES, MANUAL_CLASSES, REGISTERED_CLASS_KEYS, sweepDefectClasses, classKeysIn, isTest } from "./defect-classes.mjs";
+import { readDevOnlySet, isDevOnly, covers } from "./dev-only.mjs";
 
 const read = (p) => readFileSync(join(ROOT, p), "utf8");
 
 const SKILLS_DIR = "plugins/gs-superadmin/skills";
 const PLUGIN_README = "plugins/gs-superadmin/README.md";
 const ROOT_README = "README.md";
-const DEV_ONLY_SKILLS = new Set(["dev-canary"]);
+const PLUGIN_DIR = "plugins/gs-superadmin";
 // Invocation labels the plugin README's catalog table must use, verbatim.
 const LABEL_SLASH_ONLY = "slash only";
 const LABEL_MODEL_TOO = "slash + natural language";
@@ -122,7 +131,6 @@ const fail = (msg) => {
 const skills = readdirSync(join(ROOT, SKILLS_DIR), { withFileTypes: true })
   .filter((d) => d.isDirectory() && existsSync(join(ROOT, SKILLS_DIR, d.name, "SKILL.md")))
   .map((d) => d.name);
-const userSkills = skills.filter((s) => !DEV_ONLY_SKILLS.has(s));
 
 // Coverage floor (F-101): build/lib.mjs's assertScanCoverage — one copy for both
 // markdown-scanning checks (GP-B5 W10; the twin lived here and in
@@ -134,6 +142,20 @@ const trackedMd = execFileSync("git", ["ls-files", "-z", "--", "*.md"], { cwd: R
   .split("\0")
   .filter(Boolean);
 assertScanCoverage(trackedMd);
+
+// The release strip set (F-469): declared once, on the bus header's `Dev-only:` and
+// `Canary:` lines, and read here through its one reader — which also knows where the
+// declaration lives on a tree the strip already ran on. Without it checks 1-4, 17, 18
+// and 24 cannot tell a dev-only file from a shipped one, so a refusal stops the run
+// here (after the coverage floor, whose F-095 signature must stay first).
+let devOnly;
+try {
+  devOnly = readDevOnlySet(ROOT);
+} catch (e) {
+  console.error(`dev-only strip set: ${e instanceof Error ? e.message : String(e)} (F-469)`);
+  process.exit(1);
+}
+const userSkills = skills.filter((s) => !isDevOnly(devOnly, `${SKILLS_DIR}/${s}`));
 
 // --- 1+2. Skill mentions and references resolve both ways -----------------------------
 // Always compare extracted names for equality, never substring-match on the reference
@@ -193,15 +215,17 @@ for (const s of userSkills) {
 }
 
 // --- 4. Dev-only content stays contained -----------------------------------------------
-// dev-canary is a /dev-loop provenance marker stripped before release; user-facing
+// The canary skill is a /dev-loop provenance marker stripped before release; user-facing
 // docs must never describe it. CLAUDE.md and CONTRIBUTING.md may name it (they document
-// the release ceremony that strips it), as may anything under dev/ and the skill itself.
-const CANARY_ALLOWED = [/^CLAUDE\.md$/, /^CONTRIBUTING\.md$/, /^dev\//, new RegExp(`^${SKILLS_DIR}/dev-canary/`)];
+// the release ceremony that strips it), as may anything in the dev-only strip set — the
+// skill itself included. Its name comes from the bus header's `Canary:` line (F-469).
+const CANARY_DOCS = new Set(["CLAUDE.md", "CONTRIBUTING.md"]);
+const canaryName = devOnly.canaryName;
 for (const file of trackedMd) {
-  if (CANARY_ALLOWED.some((re) => re.test(file))) continue;
+  if (CANARY_DOCS.has(file) || isDevOnly(devOnly, file)) continue;
   const lines = read(file).split("\n");
   lines.forEach((line, i) => {
-    if (line.includes("dev-canary")) fail(`${file}:${i + 1}: mentions dev-canary — dev-only content must not leak into this doc`);
+    if (line.includes(canaryName)) fail(`${file}:${i + 1}: mentions ${canaryName} — dev-only content must not leak into this doc`);
   });
 }
 
@@ -2019,44 +2043,84 @@ let preflightRulesStated = 0;
 
 // --- 17. The dev-only strip removes nothing the type gate reads (W8.5 review) ----------
 // docs-drift.yml runs `npm run typecheck` on its full arm only, on the claim that the
-// release strip (dev/ + the dev-canary skill — the same two paths the workflow's
-// `git rm` names) removes no file the base config's `**/*.mjs` include reaches, so
-// the stripped arm's verdict would be identical. The claim lived in the YAML as a
-// hand count (65, while the tree held 67); this is the claim itself, as data.
-const DEV_ONLY_STRIP_PATHS = ["dev/", `${SKILLS_DIR}/dev-canary/`];
-const strippedMjs = trackedAll.filter((f) => f.endsWith(".mjs") && DEV_ONLY_STRIP_PATHS.some((p) => f.startsWith(p)));
+// release strip (the dev-only set, read from the bus header — F-469) removes no file
+// the base config's `**/*.mjs` include reaches, so the stripped arm's verdict would be
+// identical. The claim lived in the YAML as a hand count (65, while the tree held 67);
+// this is the claim itself, as data.
+const strippedMjs = trackedAll.filter((f) => f.endsWith(".mjs") && isDevOnly(devOnly, f));
 for (const f of strippedMjs) {
   fail(
     `${f}: a .mjs under a dev-only strip path — the type gate runs on docs-drift.yml's full arm only ` +
       `because the strip removes nothing tsc reads; this file makes the stripped tree a different program ` +
-      `(move it out of ${DEV_ONLY_STRIP_PATHS.join(" / ")}, or run the gate on both arms)`,
+      `(move it out of ${devOnly.paths.join(" / ")}, or run the gate on both arms)`,
   );
 }
 
 // --- 18. Shipped plugin content never points at a dev-only strip path (W9 review) ----
-// The release strip removes dev/ and the dev-canary skill from the tree a user
-// installs, so a shipped script's error text, a skill reference, or a shipped
-// comment naming `dev/VALIDATION.md` (or any dev/ file, or the canary skill)
-// is a dangling pointer exactly where and when it is read. Check 17 asks
-// whether a file LIVES under a strip path; this asks whether a shipped file
-// MENTIONS one. Scope = every tracked file under the plugin dir except the
-// canary skill itself (stripped with the paths it names). The needle is the
-// strip paths' own spellings: `dev/` followed by a capitalised file name (the
-// dev dir's files — never `/dev/null`) and the canary skill's directory.
-const SHIPPED_STRIP_REF = /\bdev\/[A-Z][A-Za-z-]*\.md\b|\bskills\/dev-canary\b/;
-const shippedFiles = trackedAll.filter((f) => f.startsWith("plugins/gs-superadmin/") && !f.startsWith(`${SKILLS_DIR}/dev-canary/`));
+// The release strip removes the dev-only set from the tree a user installs, so a
+// shipped script's error text, a skill reference, or a shipped comment naming
+// `dev/VALIDATION.md` (or any strip path) is a dangling pointer exactly where and
+// when it is read. Check 17 asks whether a file LIVES under a strip path; this asks
+// whether a shipped file MENTIONS one. Scope = every tracked file under the plugin
+// dir outside the set (the canary skill is stripped with the paths it names).
+//
+// The needles are the strip paths' own spellings (F-469: derived from the set, never
+// listed): each path repo-relative, and plugin-relative too when it lies inside the
+// plugin (`skills/dev-canary`, which shipped text addresses through the plugin root).
+// A spelling counts only at a path boundary — the character before it is not a
+// name character (so `mydev/` is not `dev/`), nor is the one after a multi-segment
+// spelling (so `skills/dev-canary-x` is not the canary). A ONE-segment spelling
+// (`dev`) is an English word as often as a directory, so it needs a child after it
+// (`dev/VALIDATION.md`, never bare `dev`), and it never counts as the head of an
+// absolute path: `/dev/null` and `/dev/fd` stay green, `../dev/X` and `<repo>/dev/X`
+// do not. Matching is indexOf over the spelling (no regex is built from a path).
+//
+// A best-effort lint, not a guarantee: it catches the forward-slash spellings above,
+// and deciding whether free text points at a path has no oracle, so it has known
+// misses (measured in the F-469 acceptance round, hb-20260929-01). Any one-segment
+// spelling needs a child, so a strip path that is one segment plugin-relatively —
+// a plugin-root file such as MAINTAINERS.md, or a plugin-root dir named bare — is
+// never matched; nor is a backslash spelling (`dev\VALIDATION.md`), a bare dir
+// mention (`the dev/ folder`), another letter case (`DEV/`), or a path built in code.
+// What the release strips, and that none of it survives, is decided by
+// build/dev-only.mjs and docs-drift's two strip-set steps, not here.
+const NAME_CH = /[A-Za-z0-9_.-]/;
+const stripSpellings = [
+  ...new Set(devOnly.paths.flatMap((p) => (p !== PLUGIN_DIR && covers(PLUGIN_DIR, p) ? [p, p.slice(PLUGIN_DIR.length + 1)] : [p]))),
+];
+/** @param {string} line @returns {string | null} the first strip-path mention on the line */
+const stripMention = (line) => {
+  for (const s of stripSpellings) {
+    for (let k = line.indexOf(s); k !== -1; k = line.indexOf(s, k + 1)) {
+      const before = k > 0 ? line[k - 1] : "";
+      const after = line[k + s.length] ?? "";
+      if (before && NAME_CH.test(before)) continue;
+      if (s.includes("/")) {
+        if (after && /[A-Za-z0-9_-]/.test(after)) continue;
+        return s;
+      }
+      if (after !== "/" || !NAME_CH.test(line[k + s.length + 1] ?? "")) continue;
+      if (before === "/" && !/[A-Za-z0-9_.}>-]/.test(k > 1 ? line[k - 2] : "")) continue; // an absolute /dev/…
+      const child = /^[A-Za-z0-9_.-]+/.exec(line.slice(k + s.length + 1))?.[0].replace(/\.+$/, "") ?? "";
+      return `${s}/${child}`;
+    }
+  }
+  return null;
+};
+const shippedFiles = trackedAll.filter((f) => f.startsWith(`${PLUGIN_DIR}/`) && !isDevOnly(devOnly, f));
 let strippedRefsChecked = 0;
 for (const f of shippedFiles) {
   if (!/\.(mjs|md|json|txt)$/.test(f)) continue;
   strippedRefsChecked++;
   const lines = read(f).split("\n");
   lines.forEach((line, i) => {
-    const m = SHIPPED_STRIP_REF.exec(line);
+    const m = stripMention(line);
     if (m)
       fail(
-        `${f}:${i + 1}: shipped plugin content names a dev-only strip path (${m[0]}) — dev/ and the dev-canary skill are ` +
-          `removed on the release branch, so a user of the installed plugin cannot follow it; point at a shipped home ` +
-          `(MAINTAINERS.md, a skill reference) and keep the dev-branch material as its own note`,
+        `${f}:${i + 1}: shipped plugin content names a dev-only strip path (${m}) — the dev-only set ` +
+          `(${devOnly.paths.join(", ")}) is removed on the release branch, so a user of the installed plugin cannot ` +
+          `follow it; point at a shipped home (MAINTAINERS.md, a skill reference) and keep the dev-branch material as ` +
+          `its own note`,
       );
   });
 }
@@ -2418,6 +2482,51 @@ if (tableScopePaths.length && scopeSectionStart >= 0) {
   }
 }
 
+// ── check 24 (F-469): the CI consumers of the dev-only strip set read the declaration ──
+// docs-drift.yml held the set twice by hand — the rehearsal arm's `git rm` list and the
+// no-dev-only-content step's two `[ -e ]` tests — so a path added to the bus header's
+// `Dev-only:` line would be stripped by dev-utils release and ignored by both. Each
+// step below must run build/dev-only.mjs, the one reader, and spell no strip path
+// itself: its `run:` body is split into shell words (comment lines dropped), and a
+// word that names a strip path, or a path under one, reds. The site list is data.
+const DEV_ONLY_CONSUMERS = [
+  { file: ".github/workflows/docs-drift.yml", step: "Strip dev-only content (release-tree rehearsal arm)" },
+  { file: ".github/workflows/docs-drift.yml", step: "No dev-only content on main" },
+];
+/** @param {string} file @param {string} step @returns {string[] | null} the step's run: body lines */
+const stepRunBody = (file, step) => {
+  const lines = read(file).split(/\r?\n/);
+  const at = lines.findIndex((l) => l.trim() === `- name: ${step}`);
+  if (at === -1) return null;
+  const stepIndent = lines[at].length - lines[at].trimStart().length;
+  for (let i = at + 1; i < lines.length; i++) {
+    const l = lines[i];
+    if (l.trim() && l.length - l.trimStart().length <= stepIndent) break; // the next step or a dedent
+    const m = /^(\s*)run:\s*(.*)$/.exec(l);
+    if (!m) continue;
+    if (m[2] && !/^[|>][-+]?$/.test(m[2])) return [m[2]];
+    const body = [];
+    for (let k = i + 1; k < lines.length && (!lines[k].trim() || lines[k].length - lines[k].trimStart().length > m[1].length); k++) body.push(lines[k]);
+    return body;
+  }
+  return null;
+};
+let devOnlyConsumers = 0;
+for (const { file, step } of DEV_ONLY_CONSUMERS) {
+  const body = stepRunBody(file, step);
+  if (!body) {
+    fail(`check 24: ${file} has no step "- name: ${step}" with a run: body — the site list in check-doc-drift is stale, or the step moved (F-469)`);
+    continue;
+  }
+  const code = body.filter((l) => !l.trim().startsWith("#")).join("\n");
+  if (!code.includes("node build/dev-only.mjs"))
+    fail(`check 24: ${file} step "${step}" does not run \`node build/dev-only.mjs\` — it must read the strip set from the bus header's Dev-only: line, never keep its own list (F-469)`);
+  const named = code.split(/[\s"'`;|&()<>=]+/).filter((w) => devOnly.paths.some((p) => covers(p, w.replace(/\/+$/, ""))));
+  if (named.length)
+    fail(`check 24: ${file} step "${step}" spells the strip path(s) ${[...new Set(named)].join(", ")} itself — a second copy of the Dev-only: line; read them from \`node build/dev-only.mjs\` (F-469)`);
+  if (code.includes("node build/dev-only.mjs") && !named.length) devOnlyConsumers++;
+}
+
 // The fail() gate sits HERE, after the last check, and must stay last (F-258).
 // It used to sit immediately after check 12 — with four checks and the pass line
 // below it — so any fail() raised further down printed its message and then let the
@@ -2435,7 +2544,8 @@ const passLine =
   `0 unsanctioned hits, ${sweep19.allowLive}/${sweep19.allowRows} allowance rows live, ${MANUAL_CLASSES.length} manual classes cross-checked with AGENTS.md; ` +
   `${userSkills.length} skills documented with correct invocation labels, ` +
   `${runners.length} test runners listed in the battery fence (${pluginRunners.length} plugin test/ + ${buildRunners.length} build/test-*), ` +
-  `dev-only content contained (no .mjs under the ${DEV_ONLY_STRIP_PATHS.length} strip paths; ${strippedRefsChecked} shipped files name none of them), plugin version ${pluginVersion} ` +
+  `dev-only content contained (the strip set read from ${devOnly.source}: ${devOnly.paths.join(" ")}; no .mjs under it; ` +
+  `${strippedRefsChecked} shipped files name none of it; check 24: ${devOnlyConsumers} of ${DEV_ONLY_CONSUMERS.length} CI consumer step(s) read it), plugin version ${pluginVersion} ` +
   `matches the changelog (${trackedMd.length} tracked .md scanned, ${check8Read} files read and swept for ${INVISIBLES.length} invisible-codepoint classes, ` +
   `${sweep9Read} of ${sweep9.length} files swept for portability-duplicate definitions, ` +
   `${lcCalls} localeCompare call sites locale-pinned, ` +
