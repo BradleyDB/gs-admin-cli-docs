@@ -36,7 +36,8 @@ lines, never fenced blocks (F-328).
       release. Reopen: next release ceremony.` One already carrying an `(auto` Defer line
       has spent its free pass and blocks like a normal finding. Commit these bus edits
       on dev before cutting anything - they are decisions of record even if the gate
-      then fails. (`dev-utils release X.Y.Z --gate-only` does step 0 + the gate.)
+      then fails. (`dev-utils release X.Y.Z --gate-only` does step 0 + the gates, the
+      bus header's Dev-only: line included — and nothing else: no cut, no push.)
 - [ ] Bus terminal: every live `## F-` section is VERIFIED, WONTFIX, or
       `DEFERRED (past X.Y.Z)` for THIS version; the Under test line points at dev. (An
       OPEN normal/high finding gates a release, not a feature merge; a section deferred
@@ -71,9 +72,19 @@ lines, never fenced blocks (F-328).
 - [ ] Version bump + CHANGELOG entry (with the date) are ALREADY on dev — never on the
       release branch.
 - [ ] `git switch -c release/vX.Y.Z dev` from the dev tip; note the tip sha.
-- [ ] ONE commit beyond dev, the strip: delete `dev/` and
-      `plugins/gs-superadmin/skills/dev-canary/`. Verify both are gone from the tree
-      being PR'd. Anything else that seems to need changing belongs on dev — recut.
+- [ ] ONE commit beyond dev, the strip. The set is declared once, on the bus header's
+      `Dev-only:` line beside its `Canary:` line, and read by `build/dev-only.mjs`
+      (F-469) — never listed here:
+          git --literal-pathspecs rm -r -q -- $(node build/dev-only.mjs)
+          git commit -m "Strip dev-only content for release/vX.Y.Z"
+      Verify on the tree being PR'd (with dev/ gone, the reader takes origin/dev's bus):
+          git rev-list --count dev..HEAD --     # prints 1: the strip is the ONE commit
+          for p in $(node build/dev-only.mjs); do if [ -e "$p" ]; then echo "SURVIVED: $p"; fi; done   # prints nothing
+      Anything else that seems to need changing belongs on dev — recut. (A hand cut,
+      decided 2026-09-29 by Bradley over `dev-utils release`: nothing is pushed until the
+      stripped tree is green, and a red CI leg after the push is recut and force-pushed
+      to the same branch, so the PR stays open — dev-utils release refuses to recut over
+      an existing branch.)
 - [ ] On the STRIPPED tree: both strict validates + the full battery verbatim from both
       YAMLs. The stripped tree is a different tree — a tree-shape assumption in a
       check or test surfaces here first (F-356: test fakes flushing on exit went red on
@@ -92,10 +103,12 @@ lines, never fenced blocks (F-328).
 
 ## 5 · Merge, tag, tidy (after Bradley says merged, or `gh pr view --json state`)
 
-- [ ] `git fetch && git tag vX.Y.Z origin/main && git push origin vX.Y.Z`
-- [ ] Delete `release/vX.Y.Z` local + remote. (A release branch left behind is a
-      stranded-branch finding at the next sweep.)
-- [ ] Checkout back on dev. Never merge main into dev.
+- [ ] `dev-utils release-finish X.Y.Z` — refuses to tag until `gh pr view` reads MERGED;
+      then tags origin/main, pushes the tag, switches the checkout back to dev
+      (pull --rebase) and deletes `release/vX.Y.Z` local + remote (a release branch left
+      behind is a stranded-branch finding at the next sweep). It reads the loop from the
+      dev branch, so it runs from the release checkout the strip left. Never merge main
+      into dev.
 - [ ] GitHub Release for the tag — decided 2026-09-04 (Bradley, at the [v]0.35.4 cut):
       every release, always. Notes = the CHANGELOG entries a user gets by updating from
       the PREVIOUS released tag (all staged versions, newest first, verbatim), with a

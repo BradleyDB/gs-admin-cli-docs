@@ -344,17 +344,22 @@ try {
       check(`dev-only refusal (${label}): the checker exits 1 naming it before any check runs`,
         res.status === 1 && res.stderr.startsWith("dev-only strip set:") && res.stderr.includes(why) && !/Doc-drift check passed/.test(res.stdout), res.stderr);
     }
+    // Restore BEFORE the shape-specific arm: the last refusal left a malformed bus
+    // behind, and on a stripped tree the arm below reads it (the first stripped-tree
+    // rehearsal of this suite crashed here — F-469).
+    setRigBus(realBus);
     if (busInWorktree) {
       setRigBus(withDevOnlyValue(`${devOnly.declared.join(" ")} zzz-untracked`.trim()));
       const res = run();
       check("dev-only refusal (an untracked path): the working-tree bus's paths must be tracked — a typo strips nothing",
         res.status === 1 && res.stderr.includes("`zzz-untracked` on dev/FEEDBACK.md's Dev-only: line is not tracked here"), res.stderr);
+      setRigBus(realBus);
     } else {
       // A stripped tree reads the declaration from HEAD or dev: tracked-ness is the
       // business of the tree that carries the bus (its full arm), by design.
-      check("dev-only (stripped tree): the rig reads the set from HEAD", readDevOnlySet(rig).source === `HEAD:${BUS_FILE}`, readDevOnlySet(rig));
+      const source = (() => { try { return readDevOnlySet(rig).source; } catch (e) { return `refused: ${e.message}`; } })();
+      check("dev-only (stripped tree): the rig reads the set from HEAD", source === `HEAD:${BUS_FILE}`, source);
     }
-    setRigBus(realBus);
   }
 
   // ── check 24: the CI consumers read the set, never a list (F-469) ──────────
