@@ -152,6 +152,26 @@ rule also reads the archive.
 Under test: fix-f469-dev-only · hb-20260929-01 · 2026-09-29
 Blind spots (hb-20260929-01): the release shape (strip committed, bus only on origin/dev) is measured locally only: a scratch clone ran every docs-drift step verbatim, with the fetch step fetching from a local remote, and only that shape kills sweep mutant M5. CI first runs it on the next release PR, since a pre-merge CI probe would read an origin/dev without the line. The main-existence step's base_ref == main path also runs first there (its rehearsal-arm path runs on this handoff's dispatch). Grammar parity with dev-utils is measured at 0.5.0 only. The reader's symlink-escape refusal has no fixture. RELEASE-CHECKLIST §3's strip and verify commands ran in a scratch clone; §5's release-finish did not run (no release). No SKILL.md changed, so no walk is owed; the round's guard-wiring line is the tester's
 
+<!-- builder 2026-10-03 (JO-dashboards S1 fix batch — HANDED OFF @ hb-20261003-02; F-470 FIXED on the branch; next free F-471):
+     Riding feat/jo-dash-s1-facts -> PR #36, UNMERGED (it merges after the S1-V re-run; the merge is Bradley's). Branch
+       tip 9482657, the handoff commit; the fix is b763fcb plus the review fixes in 85dc54b.
+     Landed, each as Bradley ruled at S1-V: (1) the per-program click roll-up is tracked only when every template is,
+       not-tracked only when every one is, and any mix is unknown; (2) the response rate has one basis: all-time
+       submitted and partially submitted beside the all-time denominator, and the read accessor never returns a window
+       count beside that denominator; (3) F-470: a per-tenant unsubscribe link or host is an adapter input, a run
+       parameter (echoed, part of the run's identity, a change forces a full refresh), and the generic patterns are
+       unchanged. T-10 is typed and pinned and freezes at the merge; schemaVersion stays 1.
+     F-470: OPEN -> FIXED on the branch (Fix, Judge and the mutation copy-out are in its section there). Its
+       verification is V9 of the re-run. No other finding is open; no polish finding is open. No number consumed.
+     dev/VALIDATION.md section ENG-2 on the branch is rewritten for the re-run and keyed to hb-20261003-02: V0 is a
+       confirmation, V9 passes the new input, V11 compares all-time figures. Nothing in it is cleared.
+     Offline evidence: mutation sweep 24 of 24 as predicted (predictions first); /code-review medium, two findings,
+       both fixed with a check shown red first; local battery 46 of 47 (the red is a git-ignored local file under tsc).
+     Open PRs to dev: #36 only. Issues #11 and #12 unchanged.
+     CI on PR #36's head 9482657, quoted per job after completion:
+         docs-drift 37147224135 (pull_request): drift (full) success
+         validate-plugin 37147224088 (pull_request): changes success / manifests success / validate (ubuntu-latest) success -->
+
 <!-- tester 2026-10-03 (JO-dashboards S1-V @ hb-20261003-01 — STOPPED AT V0; F-470 logged on the branch; next free F-471):
      Under test: feat/jo-dash-s1-facts -> PR #36, UNMERGED; checkout clean and level with origin at 30342f4 (one docs-only
        commit past the handoff); the dev-canary skill read hb-20261003-01 in session. Production tenant, confirmed.
