@@ -152,6 +152,24 @@ rule also reads the archive.
 Under test: fix-f469-dev-only · hb-20260929-01 · 2026-09-29
 Blind spots (hb-20260929-01): the release shape (strip committed, bus only on origin/dev) is measured locally only: a scratch clone ran every docs-drift step verbatim, with the fetch step fetching from a local remote, and only that shape kills sweep mutant M5. CI first runs it on the next release PR, since a pre-merge CI probe would read an origin/dev without the line. The main-existence step's base_ref == main path also runs first there (its rehearsal-arm path runs on this handoff's dispatch). Grammar parity with dev-utils is measured at 0.5.0 only. The reader's symlink-escape refusal has no fixture. RELEASE-CHECKLIST §3's strip and verify commands ran in a scratch clone; §5's release-finish did not run (no release). No SKILL.md changed, so no walk is owed; the round's guard-wiring line is the tester's
 
+<!-- tester 2026-10-03 (JO-dashboards S1-V @ hb-20261003-01 — STOPPED AT V0; F-470 logged on the branch; next free F-471):
+     Under test: feat/jo-dash-s1-facts -> PR #36, UNMERGED; checkout clean and level with origin at 30342f4 (one docs-only
+       commit past the handoff); the dev-canary skill read hb-20261003-01 in session. Production tenant, confirmed.
+     V0, the contract gate, came first: Bradley ruled on the four shapes. Two change before T-10 freezes, so per his
+       kickoff the round stopped before any run of the adapter: (1) the per-program click roll-up is tracked only when
+       every template is, not-tracked only when every one is, and any mix is unknown (R1b's "a 0 is real", held at
+       program level); (2) the response rate gets one basis: all-time submitted and partially submitted beside the
+       all-time denominator (additive). Shapes 3 and 4 stand as built. Both changes are the builder's, typedef and pin
+       together, before the merge.
+     F-470 (normal) is on the branch at ac9b6cf: the content-link classifier misses a tenant's own-site unsubscribe link,
+       so unsubscribe clicks count as content. Bradley's ruling is in the section: a per-tenant input. It rides the same
+       batch.
+     Not run: V1-V13 and the spike arm (g2); they carry to the S1-V re-run on the builder's next token. The re-run's
+       picks were settled with Bradley in this session and kept in the consumer workspace (tenant data, never here).
+       Nothing in VALIDATION section ENG-2 was cleared; the round's guard-wiring line is owed by the re-run.
+     CI on PR #36's new head ac9b6cf: started by the push, pending at this stamp. Quoted per job after completion, never
+       asserted here first. -->
+
 <!-- builder 2026-10-03 (JO-dashboards S1 — ENG-1 + ENG-2 HANDED OFF @ hb-20261003-01; UNMERGED, riding a branch):
      Branch feat/jo-dash-s1-facts -> PR #36, base dev, UNMERGED. It merges only after the tester round S1-V (the plan's
        merge gate); the merge is Bradley's.
