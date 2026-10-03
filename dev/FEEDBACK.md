@@ -168,8 +168,9 @@ Blind spots (hb-20260929-01): the release shape (strip committed, bus only on or
        F-470: no transition, stays FIXED. V9 needs the snapshot. A diagnostic from run 2's click payload shows the
          unsubscribe input matching the stored links (detail in its section).
      V8 failed, so PR #36 stays unmerged. CLEANUP-PLAN section S1 was not run. Open PRs to dev: #36 only.
-     CI on PR #36's new head e97554b (pushed without [skip ci]): started by the push, pending at this stamp. Quoted
-       per job after completion, never asserted here first. -->
+     CI on PR #36's new head e97554b (pushed without [skip ci]), quoted per job after completion:
+         docs-drift 37161000488 (pull_request): drift (full) success
+         validate-plugin 37161000594 (pull_request): changes success / manifests success / validate (ubuntu-latest) success -->
 
 <!-- builder 2026-10-03 (JO-dashboards S1 fix batch — HANDED OFF @ hb-20261003-02; F-470 FIXED on the branch; next free F-471):
      Riding feat/jo-dash-s1-facts -> PR #36, UNMERGED (it merges after the S1-V re-run; the merge is Bradley's). Branch
