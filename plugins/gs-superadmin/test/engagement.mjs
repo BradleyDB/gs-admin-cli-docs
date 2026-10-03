@@ -575,6 +575,15 @@ try {
       classifyLink("https://links.example.net/u/abc", ["links.example.net"]) === "unsubscribe" && classifyLink("https://eu.links.example.net/", ["links.example.net"]) === "unsubscribe" && classifyLink("https://badlinks.example.net/u", ["links.example.net"]) === "content");
     check("F-470: the generic patterns are unchanged and still decide first: an unsubscribe wording needs no input, and mailto stays mailto on a named host",
       NON_CONTENT_LINK_RULES.length === 2 && classifyLink("https://mail.example.com/unsubscribe?t=1", LINKS) === "unsubscribe" && classifyLink("mailto:cs@acme.com", ["acme.com"]) === "mailto" && classifyLink("https://www.example.com/preferences-center") === "content");
+    check("F-470: a mailto link to a named host is never counted as a link the input named", readLinkClicks('[{"url":"mailto:cs@acme.com","clickedCount":1}]', ["acme.com"]).byInput === 0 && readLinkClicks('[{"url":"https://www.acme.com/x","clickedCount":1}]', ["acme.com"]).byInput === 1);
+    {
+      // A run directory written before the input existed: its parameters have no list at all.
+      const old = loadRun(pull({ previous: JSON.parse(JSON.stringify(pull({ variant: { cutoff: "2026-08-16" }, raw: { today: "2026-08-15", pulledAt: "2026-08-15T09:00:00-07:00" } }).snapshot)) }).runDir, {});
+      const prevAgain = JSON.parse(JSON.stringify(pull({ variant: { cutoff: "2026-08-16" }, raw: { today: "2026-08-15", pulledAt: "2026-08-15T09:00:00-07:00" } }).snapshot));
+      delete old.params.unsubscribeLinks;
+      delete prevAgain.meta.params.unsubscribeLinks;
+      check("F-470: parameters with no unsubscribe list at all read as none, not as a change: a selective pull still reduces as selective", reduceEngagement({ ...old, previous: prevAgain }).meta.refresh.mode === "selective");
+    }
     const two = resolveParams({ today: TODAY, unsubscribeLinks: ["www.acme.com/mail-settings?x=1", "links.example.net", "https://WWW.acme.com/mail-settings/"] }).unsubscribeLinks;
     check("F-470: the input repeats; values are normalized, de-duplicated and sorted, so the same links in any spelling are the same run", isDeepStrictEqual(two, ["links.example.net", "www.acme.com/mail-settings"]));
     for (const bad of ["mail-settings", "mailto:cs@acme.com", "ftp://files.acme.com/x", "https://user@www.acme.com/x", " "]) {

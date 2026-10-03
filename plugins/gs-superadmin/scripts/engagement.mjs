@@ -366,7 +366,8 @@ export function parseUnsubscribeLink(value) {
 export function matchesUnsubscribeLink(url, links) {
   if (!links.length || typeof url !== "string" || !url.trim()) return false;
   const u = asUrl(url.trim());
-  if (!u) return false;
+  // A user part means it was never a web link (mailto:cs@host parses as one).
+  if (!u || u.username || u.password) return false;
   const { host, path } = hostAndPath(u);
   return links.some((link) => {
     const cut = link.indexOf("/");
@@ -910,7 +911,7 @@ const sameList = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 // Clicks are classified at fetch time, so everything a snapshot says about
 // clicks (the clicked counts and each template's click history) was decided
 // under the unsubscribe links it was pulled with.
-const sameUnsubscribeLinks = (previous, params) => sameList(previous?.meta?.params?.unsubscribeLinks ?? [], params.unsubscribeLinks);
+const sameUnsubscribeLinks = (previous, params) => sameList(previous?.meta?.params?.unsubscribeLinks ?? [], params.unsubscribeLinks ?? []);
 /**
  * Full or selective. Selective needs a previous snapshot that the new pull
  * can extend without re-deriving anything: same tenant, same class split, same
