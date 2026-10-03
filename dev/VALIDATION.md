@@ -909,3 +909,15 @@ snapshot. Bradley's UI figures for every UI comparison below were read in this s
 Owed by the next re-run, after F-471 and F-472 are fixed: every check above except V0, from run 1, with the same inputs.
 Run 2's directory is kept in the consumer workspace (resume is the builder's call: the fixes change the failed units'
 argv, and the kept calls were pulled on 2026-10-03).
+
+Re-banked (builder, second S1 fix batch, 2026-10-03 @ hb-20261003-03): F-471 and F-472 are FIXED on the branch. The
+list above is unchanged and is still the complete list; it is owed by the next S1-V re-run on hb-20261003-03, from
+run 1, with the same inputs. The builder's call on run 2's directory: start NEW `--run` names (for example
+`s1v2-full`, `s1v2-steps`, `s1v2-selective`, `s1v2-since`) and leave the old directory alone. A resume would work,
+but it would reduce calls pulled hours apart. Two bars read differently after the fixes, and no bar changed:
+- V8 judges F-471 and F-472: every family ends `ok`, click-attr included; no unit in `failed` is `truncated`; and no
+  call's record carries a `normalizeGroupByDedup` warning.
+- V1 judges F-472's cut: a unit cut by the recipient's address must still add up, so `accounts-sum-to-program` and
+  `templates-sum-to-program` read `ok`. A mismatch there names the program and month, and is a reopen of F-472.
+- V13's estimate: the plan cannot foresee splits, so expect more calls than estimated on the mass-send days, as in
+  run 2 (194 against 139). The 2x bar on elapsed time stands.

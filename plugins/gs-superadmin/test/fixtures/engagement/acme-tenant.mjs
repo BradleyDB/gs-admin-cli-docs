@@ -21,6 +21,11 @@
 //   - a where-filter on a field the schema lacks is silently dropped
 //   - an unknown operator fails with "The filter operator cannot be left blank."
 //   - a failure is exit 1, empty stdout, text on stderr
+//   - before a request is sent, a show field whose object and field name a
+//     group-by field also has is DROPPED, whatever its aggregation, with a
+//     warning on stderr; when no show field is left the request is refused
+//     (read off the CLI's dist/artifacts/validators/report.js at 1.0.10:
+//     normalizeGroupByDedup, then assertShowFieldsNonEmpty)
 // Values are fictional throughout (acme.com is the tenant's own domain, the
 // customers live under example.com); the SHAPES are the tenant's.
 //
@@ -107,12 +112,20 @@ const OWN_SITE = {
     { stepId: "st-pf-2", stepName: "Prefs follow-up", order: 2, templateId: "tpl-prefs-mix", variants: ["var-prefs-mix"] },
   ],
 };
+// Only with the massDay variant (F-472): one program sends to sixty accounts on
+// ONE day, so a single program-day holds more accounts than a small page.
+const BLAST = {
+  id: "p-blast", name: "Acme Mass Send", model: "DRIPV2", modelName: "Email Chain", statuses: ["PROCESSING"], type: "CUSTOMER", folderId: "505",
+  months: ["2026-07"], steps: [{ stepId: "st-bl-1", stepName: "Announcement", order: 1, templateId: "tpl-blast", variants: ["var-blast"] }],
+};
+const BLAST_ACCOUNTS = Array.from({ length: 60 }, (_, i) => ({ Gsid: `co-b${pad(i + 1)}`, Name: `Acme Blast Customer ${pad(i + 1)}` }));
+const BLAST_NAMES = ["ann", "bo", "cy", "dee", "eli", "fay", "gus", "hal", "ivy", "jo", "kit", "lou", "max", "ned", "oz", "pru", "quin", "roy", "sy", "tu"];
 export const OWN_SITE_UNSUBSCRIBE = "https://www.acme.com/mail-settings";
 
 const TEMPLATE_NAMES = {
   "tpl-welcome": "Acme Welcome", "tpl-day7": "Acme Day 7", "tpl-nps": "Acme NPS Request", "tpl-renew": "Acme Renewal",
   "tpl-renew-b": "Acme Renewal Thanks", "tpl-promo": "Acme Promo", "tpl-unlisted": "Acme Unlisted", "tpl-gone": "Acme Gone",
-  "tpl-prefs": "Acme Prefs", "tpl-prefs-mix": "Acme Prefs Follow-up",
+  "tpl-prefs": "Acme Prefs", "tpl-prefs-mix": "Acme Prefs Follow-up", "tpl-blast": "Acme Announcement",
 };
 // Click behaviour per template (the five R19 fixtures ride on these):
 //   content — content-link clicks are recorded
@@ -123,7 +136,7 @@ const TEMPLATE_NAMES = {
 const CLICK_MODE = {
   "tpl-welcome": "content", "tpl-promo": "content", "tpl-unlisted": "content", "tpl-gone": "content",
   "tpl-renew": "unsub", "tpl-day7": "none", "tpl-nps": "none", "tpl-renew-b": "none",
-  "tpl-prefs": "ownsite", "tpl-prefs-mix": "ownsite-mix",
+  "tpl-prefs": "ownsite", "tpl-prefs-mix": "ownsite-mix", "tpl-blast": "content",
 };
 
 const ACCOUNTS = Array.from({ length: 12 }, (_, i) => ({ Gsid: `co-${pad(i + 1)}`, Name: `Acme Customer ${pad(i + 1)}` }));
@@ -158,6 +171,7 @@ const CONTENT_KINDS = new Set(["content", "lookalike"]);
  *   noClicksFrom    "YYYY-MM-DD" — no click is recorded on a send from this day on
  *   extraJoRow      true — the JO send log holds one send the delivery log lacks
  *   ownSiteUnsub    true — one more program, whose unsubscribe link is a page on acme's own site
+ *   massDay         true — one more program, which sends to sixty accounts on a single day
  */
 export function buildTenant(variant = {}) {
   const log = [];
@@ -167,9 +181,9 @@ export function buildTenant(variant = {}) {
   let n = 0;
   const cutoff = variant.cutoff ?? "9999-12-31";
 
-  const send = (program, step, month, { account, person, email, source = JO_SOURCE, addressType = "To" }) => {
+  const send = (program, step, month, { account, person, email, source = JO_SOURCE, addressType = "To", onDay = null }) => {
     n++;
-    const day = pad((n % 27) + 1);
+    const day = onDay ?? pad((n % 27) + 1);
     const executed = `${month}-${day}T10:00:00.000Z`;
     if (executed.slice(0, 10) >= cutoff) return;
     const tpl = step.templateId;
@@ -236,8 +250,8 @@ export function buildTenant(variant = {}) {
     }
   };
 
-  const listed = variant.ownSiteUnsub ? [...PROGRAMS, OWN_SITE] : PROGRAMS;
-  // The variant's program goes last, so every other send keeps its number.
+  const listed = [...PROGRAMS, ...(variant.ownSiteUnsub ? [OWN_SITE] : []), ...(variant.massDay ? [BLAST] : [])];
+  // A variant's program goes last, so every other send keeps its number.
   for (const program of [...PROGRAMS, UNLISTED, DELETED, ...(variant.ownSiteUnsub ? [OWN_SITE] : [])]) {
     for (const month of program.months) {
       for (const step of program.steps) {
@@ -262,6 +276,9 @@ export function buildTenant(variant = {}) {
         send({ id: "cockpit-1", name: "Cockpit", months: [] }, { templateId: null, variants: [null] }, month, { account: ACCOUNTS[1].Gsid, person: "pe-02-0", email: "user0@c02.example.com", source: "COCKPIT" });
       }
     }
+  }
+  if (variant.massDay) {
+    for (const [i, a] of BLAST_ACCOUNTS.entries()) send(BLAST, BLAST.steps[0], "2026-07", { account: a.Gsid, person: `pe-b${pad(i + 1)}`, email: `${BLAST_NAMES[i % BLAST_NAMES.length]}${i}@b${pad(i + 1)}.example.org`, onDay: "14" });
   }
   // A survey response that no JO program owns (another distribution channel).
   surveyRows.push({ Gsid: "sp-other", AOParticipantId: null, Responded: true, RespondedDate: "2026-07-09T12:00:00.000Z", ResponseStatus: "Submitted", SurveyOpened: true });
@@ -298,7 +315,7 @@ export function buildTenant(variant = {}) {
   }
   if (variant.noSurveyObject) delete schemas.survey_participant;
 
-  const tables = { email_log_v2: log, ao_emails: joLog, survey_participant: surveyRows, company: ACCOUNTS, ao_participants: [...participants.values()] };
+  const tables = { email_log_v2: log, ao_emails: joLog, survey_participant: surveyRows, company: variant.massDay ? [...ACCOUNTS, ...BLAST_ACCOUNTS] : ACCOUNTS, ao_participants: [...participants.values()] };
   const byGsid = Object.fromEntries(Object.entries(tables).map(([name, rows]) => [name, new Map(rows.map((r) => /** @type {[string, *]} */ ([r.Gsid, r])))]));
   const token = variant.token ?? { state: "valid", seconds: 3200 };
   return {
@@ -434,6 +451,17 @@ function rpRun(argv, tenant) {
     return fail("Error: whereFilters must be object");
   }
   if (!where || typeof where !== "object" || Array.isArray(where)) return fail("Error: whereFilters must be object");
+  // The CLI's request normalizer, before anything is sent: keyed by object and
+  // field name alone (a lookup path by its target object and leaf).
+  const keyOf = (e) => (e.fieldPath ? `${e.fieldPath.hops[e.fieldPath.hops.length - 1].to}::${e.fieldPath.leaf}` : `${object}::${e.name}`);
+  let dedupWarning = "";
+  if (group.length) {
+    const grouped = new Set(group.map(keyOf));
+    const kept = show.filter((e) => !grouped.has(keyOf(e)));
+    if (kept.length < show.length) dedupWarning = `[report] normalizeGroupByDedup: removed ${show.length - kept.length} showField(s) already present in groupByFields.`;
+    show = kept;
+  }
+  if (!show.length) return fail(`${dedupWarning ? `${dedupWarning}\n` : ""}Error: Report must have at least one entry in showFields (spec §2.1, EMPTY_SHOW_ME_FIELDS).`);
   let rows;
   try {
     rows = tenant.tables[object].filter((r) => (where.conditions ?? []).every((c) => evalCond(r, c, types)));
@@ -490,7 +518,7 @@ function rpRun(argv, tenant) {
   out.reverse(); // rows are not returned in any useful order
   const ps = flagValue(argv, "--page-size");
   const size = ps === undefined ? 50 : Number(ps) === -1 ? tenant.serverMax : Math.min(Number(ps), tenant.serverMax);
-  return ok(out.slice(0, size));
+  return ok(out.slice(0, size), dedupWarning);
 }
 
 /**

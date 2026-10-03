@@ -28,6 +28,13 @@
 //   - Every field a query names is checked against `rp schema` first: a filter
 //     on a field the schema lacks is silently dropped by the CLI, which widens
 //     the query instead of failing it.
+//   - No query shows a field it also groups by. The CLI keys a field by its
+//     object and name alone, aggregation ignored, and drops a show field whose
+//     key a group-by field has: silently when another show field is left, and
+//     with a refusal when none is. validateQuery refuses such a query first.
+//   - A unit that is still a full page at one program, one day and one flag
+//     partition is cut by the recipient's address (contains a character, or
+//     does not): the measures are additive, so any cut of the sends adds up.
 //   - A timed-out call is retried once on its own, then split. A "network
 //     outage" that survives one retry is a query-shape error and is not retried.
 //   - Calls run one at a time (parallel calls produced false errors), and a
@@ -498,6 +505,13 @@ export const ROW_READERS = Object.freeze({
 // ── Queries, as data ─────────────────────────────────────────────────────────
 // A unit descriptor says WHAT is asked: family, class, window, program batch.
 // buildQuery turns it into a field-spec; rpRunArgv turns that into argv.
+// The last rung of the split ladder (F-472): the address field of each send
+// log, and the characters a unit is cut on, one per level. CONTAINS and
+// DOES_NOT_CONTAINS on the same character are each other's complement, so the
+// two halves hold every send once. Only a character ever reaches a filter.
+const ADDRESS_FIELD = { [LOG]: "LowerCaseEmailId", [JO_LOG]: "ToAddress" };
+// Letters and digits only: a punctuation mark could read as a pattern wildcard.
+const ADDRESS_CUTS = [..."aeiornsltmcdhupbgkyfwvjzxq0123456789"];
 const LOG_FLAGS = ["IsSent", "IsOpened", "IsBounced", "IsRejected", "IsUnsubscribed", "IsSpam"];
 const JO_FLAGS = ["EmailSend", "EmailOpened", "Bounce", "Rejected", "Unsubscribed", "Spam"];
 const suffix = (domain) => (domain.startsWith("@") ? domain : `@${domain}`);
@@ -533,25 +547,27 @@ const FAMILIES = {
   "sent-since": { object: LOG, split: ["programs", "day"], query: (d) => ({ group: [{ name: "SourceId" }], show: [countOf], where: logWhere(d) }) },
   classes: { object: LOG, split: ["day"], query: (d) => ({ group: [{ name: "Source" }, { name: "AddressType" }], show: [countOf], where: logWhere(d, { source: false }) }) },
   template: {
-    object: LOG, split: ["programs", "day", "flags"], flags: ["IsOpened", "IsSent"],
+    object: LOG, split: ["programs", "day", "flags", "address"], flags: ["IsOpened", "IsSent"],
     query: (d) => ({
       group: [{ name: "SourceId" }, { name: "EmailTemplateId" }, { name: "EmailTemplateName" }, byMonth("ExecutedDate"), ...LOG_FLAGS.map((name) => ({ name }))],
       show: [countOf], where: logWhere(d),
     }),
   },
   account: {
-    object: LOG, split: ["programs", "day", "flags"], flags: ["IsOpened", "IsSent"],
+    object: LOG, split: ["programs", "day", "flags", "address"], flags: ["IsOpened", "IsSent"],
     query: (d) => ({ group: [{ name: "SourceId" }, PATH.company, byMonth("ExecutedDate"), ...LOG_FLAGS.map((name) => ({ name }))], show: [countOf], where: logWhere(d) }),
   },
   // Clicked sends, twice: who and when (grouped, so the month is the server's
   // bucket like every other fact), and what was clicked (plain rows, the one
   // shape LinkClickedJson is known to come back in). Joined on the row's Gsid.
+  // The count is of a field the query does not group by: COUNT of Gsid beside
+  // a group on Gsid is dropped by the CLI, which then refuses the call (F-471).
   "click-attr": {
-    object: LOG, split: ["programs", "day"],
-    query: (d) => ({ group: [{ name: "SourceId" }, { name: "EmailTemplateId" }, byMonth("ExecutedDate"), PATH.company, { name: "Gsid" }], show: [countOf], where: [...logWhere(d), cond("LinkClickedCount", "GT", 0)] }),
+    object: LOG, split: ["programs", "day", "address"],
+    query: (d) => ({ group: [{ name: "SourceId" }, { name: "EmailTemplateId" }, byMonth("ExecutedDate"), PATH.company, { name: "Gsid" }], show: [{ name: "LinkClickedCount", aggregation: "COUNT" }], where: [...logWhere(d), cond("LinkClickedCount", "GT", 0)] }),
   },
   "click-json": {
-    object: LOG, split: ["programs", "day"], sanitize: "clicks",
+    object: LOG, split: ["programs", "day", "address"], sanitize: "clicks",
     query: (d) => ({ group: [], show: [{ name: "Gsid" }, { name: "LinkClickedJson" }], where: [...logWhere(d), cond("LinkClickedCount", "GT", 0)] }),
   },
   "resp-month": {
@@ -568,14 +584,14 @@ const FAMILIES = {
   "account-names": { object: COMPANY, split: ["keys"], query: (d) => ({ group: [], show: [{ name: "Gsid" }, { name: "Name" }], where: [cond("Gsid", "IN", d.keys)] }) },
   // Step detail only (R21): the JO send log, windowed on CreatedAt.
   step: {
-    object: JO_LOG, split: ["programs", "day", "flags"], flags: ["EmailOpened", "EmailSend"], boolFlags: true,
+    object: JO_LOG, split: ["programs", "day", "flags", "address"], flags: ["EmailOpened", "EmailSend"], boolFlags: true,
     query: (d) => ({
       group: [{ name: "AdvancedOutreachId" }, { name: "StepId" }, { name: "EmailTemplateId" }, { name: "EmailTemplateVarianceId" }, { name: "EmailTemplateVarianceName" }, byMonth("CreatedAt"), ...JO_FLAGS.map((name) => ({ name }))],
       show: [countOf], where: joWhere(d),
     }),
   },
   "step-click": {
-    object: JO_LOG, split: ["programs", "day"],
+    object: JO_LOG, split: ["programs", "day", "address"],
     query: (d) => ({ group: [{ name: "AdvancedOutreachId" }, { name: "StepId" }, { name: "EmailTemplateVarianceId" }, PATH.logRow], show: [countOf], where: [...joWhere(d), cond("EmailClicked", "EQ", true)] }),
   },
   "participants-month": { object: JO_LOG, split: ["programs", "month"], query: (d) => ({ group: [{ name: "AdvancedOutreachId" }, byMonth("CreatedAt")], show: [distinct(PATH.participant)], where: joWhere(d) }) },
@@ -603,10 +619,17 @@ export function rpRunArgv(q, pageSize) {
   return argv;
 }
 
+// How the CLI keys a field when it compares show fields with group-by fields:
+// object and field name, nothing else. A lookup path is keyed by the object
+// its last hop lands on and its leaf; an aggregation or a date bucket keeps
+// the key of the field under it.
+const fieldKey = (object, e) => (e.fieldPath ? `${e.fieldPath.hops[e.fieldPath.hops.length - 1].to}::${e.fieldPath.leaf}` : `${object}::${e.name}`);
 /**
  * Every field a query names must exist (an unknown filter field is dropped
- * silently, widening the query), and nothing may group or aggregate on a
- * LOOKUP by name (it resolves to an empty name and collapses the groups).
+ * silently, widening the query), nothing may group or aggregate on a
+ * LOOKUP by name (it resolves to an empty name and collapses the groups), and
+ * nothing may be shown that is also grouped by (the CLI drops that show field,
+ * whatever its aggregation, and refuses the call when none is left).
  * @param {{object: string, show: Array<*>, group: Array<*>, where: Array<*>}} q
  * @param {Map<string, string>} types fieldName → dataType, from `rp schema`
  * @returns {string[]} problems; empty when the query is safe to run
@@ -627,6 +650,11 @@ export function validateQuery(q, types) {
       if (types.get(e.name) === "LOOKUP" && (role === "group-by" || e.aggregation))
         problems.push(`${q.object}.${e.name} is a LOOKUP and may not be grouped or aggregated by name — use a fieldPath to the target's Gsid`);
     }
+  }
+  const grouped = new Set(q.group.map((e) => fieldKey(q.object, e)));
+  for (const e of q.show) {
+    if (grouped.has(fieldKey(q.object, e)))
+      problems.push(`${fieldKey(q.object, e).replace("::", ".")} is shown and grouped by — the CLI drops a show field that a group-by field names, whatever its aggregation; show a field the query does not group by`);
   }
   return problems;
 }
@@ -683,6 +711,11 @@ export function splitUnit(d) {
         const rest = fam.boolFlags ? { field, op: "EQ", value: false } : { field, op: "NE", value: "YES" }; // NE keeps nulls
         return [{ ...d, partition: [...(d.partition ?? []), { field, op: "EQ", value: yes }] }, { ...d, partition: [...(d.partition ?? []), rest] }];
       }
+    }
+    if (how === "address") {
+      const field = ADDRESS_FIELD[fam.object];
+      const cut = ADDRESS_CUTS[(d.partition ?? []).filter((p) => p.field === field).length];
+      if (field && cut) return [{ ...d, partition: [...(d.partition ?? []), { field, op: "CONTAINS", value: cut }] }, { ...d, partition: [...(d.partition ?? []), { field, op: "DOES_NOT_CONTAINS", value: cut }] }];
     }
   }
   return null;

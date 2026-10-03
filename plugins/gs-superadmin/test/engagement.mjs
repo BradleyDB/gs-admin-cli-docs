@@ -603,6 +603,72 @@ try {
     check("F-470: dropping the input is a change too: a snapshot pulled with it is not carried into a run without it", back.mode === "full" && /unsubscribe links changed/.test(back.why), back);
   }
 
+  // ── F-471 · nothing is shown that is also grouped by ──────────────────────
+  {
+    // The CLI's key, spelled here on its own (R-10): object and field name, a
+    // lookup path by the object its last hop lands on and its leaf.
+    const keyOf = (object, e) => (e.fieldPath ? `${e.fieldPath.hops.at(-1).to}::${e.fieldPath.leaf}` : `${object}::${e.name}`);
+    const own = pull({ variant: { ownSiteUnsub: true }, raw: { unsubscribeLinks: [OWN_SITE_UNSUBSCRIBE] } });
+    const all = [...every, ...rpRuns(own.argv)];
+    const colliding = all.filter((a) => { const q = parsed(a); const g = new Set(q.group.map((e) => keyOf(q.object, e))); return q.show.some((e) => g.has(keyOf(q.object, e))); });
+    const families = new Set([base, stepPull].flatMap((p) => readFileSync(join(p.runDir, "fetch-log.jsonl"), "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l))).map((r) => r.family));
+    check("F-471: no call of any family, default or step detail, shows a field it also groups by (keyed as the CLI keys: object and field name, aggregation ignored)",
+      all.length > 60 && colliding.length === 0 && ["click-attr", "click-json", "step-click", "account", "template", "step", "uniques-month", "resp-total", "participants-month"].every((x) => families.has(x)), colliding.slice(0, 2));
+    const t = buildTenant({});
+    const old = answer(["--json", "rp", "run", "--object", "email_log_v2", "--show-fields", '[{"name":"Gsid","aggregation":"COUNT"}]', "--group-by", '[{"name":"SourceId"},{"name":"Gsid"}]', "--page-size", "10"], t);
+    const two = answer(["--json", "rp", "run", "--object", "email_log_v2", "--show-fields", '[{"name":"Gsid","aggregation":"COUNT"},{"name":"LinkClickedCount","aggregation":"COUNT"}]', "--group-by", '[{"name":"SourceId"},{"name":"Gsid"}]', "--page-size", "10"], t);
+    check("the hazard the rule exists for: COUNT of Gsid beside a group on Gsid is dropped before the request is sent, and with no show field left the call is refused; with another left it is dropped with only a warning",
+      old.status === 1 && old.stdout === "" && /normalizeGroupByDedup: removed 1 showField/.test(old.stderr) && /Report must have at least one entry in showFields/.test(old.stderr) && classifyFailure(old) === "other" &&
+        two.status === 0 && /normalizeGroupByDedup: removed 1/.test(two.stderr) && Object.keys(JSON.parse(two.stdout)[0]).every((k) => k !== "count_of_email_log_v2_Gsid"), [old, two.stderr]);
+    const types = (object) => new Map(t.schemas[object].map((x) => [x.fieldName, x.dataType]));
+    const lookupPath = { fieldPath: { leaf: "Gsid", hops: [{ through: "EmailLogId", to: "email_log_v2" }] } };
+    check("validateQuery refuses a query that shows what it groups by, plain or aggregated or through a lookup path, before it is run, and admits a count beside a path that lands on another object",
+      validateQuery({ object: "email_log_v2", show: [{ name: "Gsid", aggregation: "COUNT" }], group: [{ name: "Gsid" }], where: [] }, types("email_log_v2")).some((p) => /shown and grouped by/.test(p)) &&
+        validateQuery({ object: "email_log_v2", show: [{ name: "SourceId" }], group: [{ name: "SourceId" }], where: [] }, types("email_log_v2")).length === 1 &&
+        validateQuery({ object: "email_log_v2", show: [{ ...lookupPath, aggregation: "COUNT_DISTINCT" }], group: [{ name: "Gsid" }], where: [] }, types("email_log_v2")).some((p) => /email_log_v2\.Gsid is shown and grouped by/.test(p)) &&
+        validateQuery({ object: "ao_emails", show: [{ name: "Gsid", aggregation: "COUNT" }], group: [lookupPath], where: [] }, types("ao_emails")).length === 0);
+    const warned = [base, stepPull].flatMap((p) => readFileSync(join(p.runDir, "fetch-log.jsonl"), "utf8").split("\n").filter((l) => l.includes("normalizeGroupByDedup")));
+    check("F-471: no call draws the CLI's dropped-show-field warning: every show field the adapter asks for reaches the server", warned.length === 0, warned.slice(0, 1));
+    check("F-471: the clicked-sends attribution completes and still counts by the send's id: one row per clicked send, counted on a field the query does not group by",
+      rpRuns(base.argv).some((a) => flag(a, "--group-by")?.includes('{"name":"Gsid"}') && flag(a, "--show-fields") === '[{"name":"LinkClickedCount","aggregation":"COUNT"}]') && S.honesty.clicks.clickedSends > 0 && S.honesty.clicks.detailMissing === 0);
+  }
+
+  // ── F-472 · a program-day larger than the page ────────────────────────────
+  {
+    const big = pull({ variant: { massDay: true }, raw: { pageSize: 20 } });
+    const B = big.snapshot;
+    const day = big.tenant.tables.email_log_v2.filter((r) => r.SourceId === "p-blast");
+    const partition = day.filter((r) => r.IsOpened === "YES" && r.IsSent === "YES");
+    check("F-472 fixture: one program sends to sixty accounts on ONE day, and a single opened-and-sent partition of that day holds more accounts than the page",
+      new Set(day.map((r) => r.ExecutedDate.slice(0, 10))).size === 1 && new Set(day.map((r) => r.GsCompanyId)).size === 60 && new Set(partition.map((r) => r.GsCompanyId)).size > 20);
+    const OB = B ? oracle(big.tenant, B) : null;
+    check("F-472: a program-day whose accounts exceed the page in one flag partition completes, and every total equals a straight count: template rows, and the account table per program × month × class",
+      big.summary?.status === "ok" && !!B && B.reconciliation.ok && sameMap(factMap(B.facts.byTemplate, (r) => [r.programId, r.templateId, r.month, r.recipientClass]), OB.byTemplate) &&
+        sameMap(factMap(B.facts.byAccount, (r) => [r.programId, r.month, r.recipientClass]), factMap(B.facts.byTemplate, (r) => [r.programId, r.month, r.recipientClass])) &&
+        B.facts.byAccount.filter((r) => r.programId === "p-blast").reduce((x, r) => x + r.sent, 0) === 60, big.summary?.failed ?? String(big.error));
+    const cuts = rpRuns(big.argv).flatMap((a) => parsed(a).where.filter((c) => c.leftOperand.fieldName === "LowerCaseEmailId" && ["CONTAINS", "DOES_NOT_CONTAINS"].includes(c.operator) && !String(c.rightOperand.value).startsWith("@")));
+    check("F-472: the unit is cut by the recipient's address, below one program, one day and one flag partition, and only a single character ever reaches a filter",
+      cuts.length > 1 && cuts.every((c) => String(c.rightOperand.value).length === 1) && cuts.some((c) => c.operator === "CONTAINS") && cuts.some((c) => c.operator === "DOES_NOT_CONTAINS"), cuts.slice(0, 3));
+    const unit = { family: "account", cls: "all", programs: ["p-1"], window: { start: "2026-07-14", end: "2026-07-15" }, partition: [{ field: "IsOpened", op: "EQ", value: "YES" }, { field: "IsSent", op: "EQ", value: "YES" }] };
+    const halves = splitUnit(unit);
+    const again = splitUnit(halves[0]);
+    check("splitUnit, the address rung: after program, day and flags, a unit is cut into the sends whose address contains a character and those whose address does not (each other's complement), then on the next character",
+      isDeepStrictEqual(halves.map((h) => h.partition.at(-1)), [{ field: "LowerCaseEmailId", op: "CONTAINS", value: "a" }, { field: "LowerCaseEmailId", op: "DOES_NOT_CONTAINS", value: "a" }]) &&
+        isDeepStrictEqual(again.map((h) => h.partition.at(-1)), [{ field: "LowerCaseEmailId", op: "CONTAINS", value: "e" }, { field: "LowerCaseEmailId", op: "DOES_NOT_CONTAINS", value: "e" }]) && halves.every((h) => h.partition.length === 3));
+    const oneDay = { cls: "all", programs: ["p-1"], window: { start: "2026-07-14", end: "2026-07-15" } };
+    check("F-472 siblings: the click families and the step families have the same last rung, on their own log's address field; a distinct count is still never cut by it",
+      ["click-attr", "click-json"].every((family) => splitUnit({ family, ...oneDay })?.[0].partition[0].field === "LowerCaseEmailId") && splitUnit({ family: "step-click", ...oneDay })?.[0].partition[0].field === "ToAddress" &&
+        splitUnit({ family: "step", ...oneDay, partition: [{ field: "EmailOpened", op: "EQ", value: true }, { field: "EmailSend", op: "EQ", value: true }] })?.[1].partition.at(-1).op === "DOES_NOT_CONTAINS" &&
+        splitUnit({ family: "uniques-month", ...oneDay }) === null && splitUnit({ family: "participants-window", ...oneDay }) === null);
+    let last = { family: "click-json", ...oneDay };
+    let depth = 0;
+    for (let next = splitUnit(last); next; next = splitUnit(last)) { last = next[0]; depth++; }
+    check("the ladder still ends: when the characters run out there is nothing left to split on, and the unit fails loudly instead of looping", depth > 30 && depth < 60 && splitUnit(last) === null);
+    const tiny = pull({ variant: { massDay: true }, raw: { pageSize: 2 }, phase: "all" });
+    check("a unit no cut can bring under the page is still a failed unit and a partial run: no snapshot is built from a truncated answer",
+      tiny.summary?.status === "partial" && tiny.snapshot === null && tiny.summary.failed.some((x) => x.kind === "truncated" && /nothing left to split on/.test(x.stderr)), tiny.summary?.status ?? String(tiny.error));
+  }
+
   // ── Privacy (house rule 9) ────────────────────────────────────────────────
   {
     const text = JSON.stringify(SS);
