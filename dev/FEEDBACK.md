@@ -152,6 +152,25 @@ rule also reads the archive.
 Under test: fix-f469-dev-only · hb-20260929-01 · 2026-09-29
 Blind spots (hb-20260929-01): the release shape (strip committed, bus only on origin/dev) is measured locally only: a scratch clone ran every docs-drift step verbatim, with the fetch step fetching from a local remote, and only that shape kills sweep mutant M5. CI first runs it on the next release PR, since a pre-merge CI probe would read an origin/dev without the line. The main-existence step's base_ref == main path also runs first there (its rehearsal-arm path runs on this handoff's dispatch). Grammar parity with dev-utils is measured at 0.5.0 only. The reader's symlink-escape refusal has no fixture. RELEASE-CHECKLIST §3's strip and verify commands ran in a scratch clone; §5's release-finish did not run (no release). No SKILL.md changed, so no walk is owed; the round's guard-wiring line is the tester's
 
+<!-- builder 2026-10-03 (JO-dashboards second S1 fix batch — HANDED OFF @ hb-20261003-03; F-471 and F-472 FIXED on the branch; next free F-473):
+     Riding feat/jo-dash-s1-facts -> PR #36, UNMERGED (it merges after the next S1-V re-run; the merge is Bradley's).
+       Branch tip 96ed11e, the handoff commit; the fix is 30b69cb.
+     F-471: OPEN -> FIXED. The click-attribution call no longer counts the field it groups by; validateQuery refuses any
+       query that shows what it groups by, before it is spawned; the stand-in CLI applies the CLI's own rule. Judge: every
+       query family through the installed CLI's normalizer (1.0.10, read from disk): the old shape refused, the rest unchanged.
+     F-472: OPEN -> FIXED. The split ladder gains a last rung, a cut by the recipient's address (contains a character, or
+       does not), on every family whose measures add up. A known limit is recorded in its section: the cut assumes no
+       in-scope send lacks an address; that precondition is banked as one read beside V8.
+     F-470: unchanged, FIXED; V9 still owed. No polish finding is open. No number consumed.
+     dev/VALIDATION.md section ENG-2 on the branch is re-banked for hb-20261003-03: the list is unchanged; V8 judges both
+       fixes and V1 judges F-472's cut. Nothing in it is cleared beyond V0, which Bradley confirmed at hb-20261003-02.
+     Offline evidence: mutation sweep 10 of 10 as predicted (predictions first, re-run on the final code); an independent
+       read-only review, no confirmed defect; local battery 46 of 47 (the red is a git-ignored local file under tsc).
+     Open PRs to dev: #36 only. Issues #11 and #12 unchanged.
+     CI on PR #36's head 96ed11e, quoted per job after completion:
+         docs-drift 37163057132 (pull_request): drift (full) success
+         validate-plugin 37163057134 (pull_request): changes success / manifests success / validate (ubuntu-latest) success -->
+
 <!-- tester 2026-10-03 (JO-dashboards S1-V re-run @ hb-20261003-02 — STOPPED after run 2: V8 FAILED; claims F-471 and F-472, both OPEN on the branch; F-470 stays FIXED; next free F-473):
      Under test: feat/jo-dash-s1-facts -> PR #36, UNMERGED; checkout clean and level with origin at 9482657 (matches
        Under test); the dev-canary skill read hb-20261003-02 in session. Production tenant, confirmed; reads only.
