@@ -763,7 +763,7 @@ Pass bar:
 An A1 caveat that still names the object reopens #28; a B1 caveat that still names it is a finding against #32.
 Record the verdict here with the token, and copy it to the bus under the round's Blind spots line.
 
-## ENG-2 — the engagement adapter on a real tenant: the contract gate and thirteen live checks (banked 2026-10-03, builder, Session S1 @ hb-20261003-01; re-banked the same day for the re-run, S1 fix batch @ hb-20261003-02)
+## ENG-2 — the engagement adapter on a real tenant: the contract gate and thirteen live checks (banked 2026-10-03, builder, Session S1 @ hb-20261003-01; re-banked the same day for the re-run, S1 fix batch @ hb-20261003-02 — OPEN after the S1-V re-run @ hb-20261003-02)
 
 Owed by: the S1-V re-run, the tester round on hb-20261003-02, in the consumer workspace with the plugin loaded
 from branch `feat/jo-dash-s1-facts`. The branch does not merge before this section is cleared.
@@ -883,3 +883,29 @@ Pass bars (stated before measuring; counts are compared, not rates, because the 
 
 A verdict that any of V1, V3, V4, V8 or V13's privacy search fails keeps the branch unmerged. Record each verdict
 here with the token, and copy the measurements to the bus under the round's Blind spots line.
+
+Result (tester, S1-V re-run, 2026-10-03 @ hb-20261003-02) — OPEN; nothing CLEARED; the branch stays unmerged on V8.
+Under test: feat/jo-dash-s1-facts at 9482657, clean, canary matched; production tenant, confirmed; CLI 1.0.10; reads
+only. The picks were confirmed with Bradley before the first call, plus the re-run's inputs (both internal domains,
+"all as far as I know"; the two unsubscribe pages on the company's own site, passed as the emails print them) and
+P-multi; all kept in the consumer workspace. Run 1 (plan) ran; run 2 (full) ended partial, exit 4, after 1305 s, so
+no snapshot exists. Runs 3-5 were not run, on Bradley's call: each would hit both defects, and run 4 needs run 2's
+snapshot. Bradley's UI figures for every UI comparison below were read in this session and are kept with the picks.
+- V0: CONFIRMED by Bradley (both contract changes landed as ruled; shapes 3 and 4 stand).
+- V1: not measurable (no snapshot). Seen on the way: run 1 counted 1 deleted program id, and the adapter's own
+  describe of it read "not found" on its solo re-check (attempt 2); the by-hand describe the bar names was not made.
+- V2, V3, V4, V5, V6, V7, V10, V11, V12: not measurable (no snapshot; V6, V7, V10 and V12's per-email half also need
+  runs 3-5). V5's spam third has no UI side: the UI view shows no spam figure.
+- V8: FAILED. click-attr, 3 of 3 units, refused client-side by the CLI's request normalizer (F-471); account, 5 units
+  truncated with nothing left to split on (F-472). Every other run-2 family ended ok, resp-total included. Run 3's
+  three ao_emails shapes never ran.
+- V9: not measurable (no snapshot), so F-470 stays FIXED. Diagnostic only: run 2's click-json payload, classified
+  under the input, holds 1591 clicked sends; 59 carry a link the input named, and 36 have only non-content links, all
+  36 of them input matches.
+- V13: partly measured. Elapsed 1305 s against the plan's 1011 s (1.29x, inside the 2x bar); calls 194 against 139
+  (28 splits). Privacy search over run 2's directory: 203 files, 0 with an @, 0 with an IPv4 pattern. Step names need
+  a snapshot. Not observed: a token stop (no exit 3).
+- Spike arm (g2): not answered (needs a snapshot and run 3); carried with V12.
+Owed by the next re-run, after F-471 and F-472 are fixed: every check above except V0, from run 1, with the same inputs.
+Run 2's directory is kept in the consumer workspace (resume is the builder's call: the fixes change the failed units'
+argv, and the kept calls were pulled on 2026-10-03).
