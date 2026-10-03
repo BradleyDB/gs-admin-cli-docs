@@ -16,6 +16,9 @@
    "internalDomains": [
     "acme.com"
    ],
+   "unsubscribeLinks": [
+    "www.acme.com/mail-settings"
+   ],
    "stepDetail": true,
    "accounts": {
     "busiest": 3,
@@ -155,7 +158,7 @@
       }
      },
      "p-onboard": {
-      "state": "tracked",
+      "state": "unknown",
       "templates": {
        "tracked": 1,
        "notTracked": 0,
@@ -193,7 +196,7 @@
      "p-nps": {
       "state": "tracked",
       "evidence": {
-       "surveyParticipants": 48
+       "surveyParticipants": 52
       }
      },
      "p-onboard": {
@@ -2818,7 +2821,9 @@
   "responseParticipants": [
    {
     "programId": "p-nps",
-    "participants": 48
+    "participants": 52,
+    "submitted": 10,
+    "partiallySubmitted": 4
    }
   ],
   "uniques": [
@@ -3128,7 +3133,7 @@
    "unreadable": 0
   },
   "calls": {
-   "answered": 38,
+   "answered": 39,
    "split": 0,
    "retried": 0
   },
@@ -3152,7 +3157,8 @@
    "withContentClick": 8,
    "nonContentOnly": 6,
    "unreadable": 0,
-   "detailMissing": 0
+   "detailMissing": 0,
+   "byUnsubscribeInput": 0
   },
   "responses": {
    "available": true,

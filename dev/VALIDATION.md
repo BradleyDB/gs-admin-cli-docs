@@ -763,10 +763,13 @@ Pass bar:
 An A1 caveat that still names the object reopens #28; a B1 caveat that still names it is a finding against #32.
 Record the verdict here with the token, and copy it to the bus under the round's Blind spots line.
 
-## ENG-2 — the engagement adapter on a real tenant: the contract gate and thirteen live checks (banked 2026-10-03, builder, Session S1 @ hb-20261003-01)
+## ENG-2 — the engagement adapter on a real tenant: the contract gate and thirteen live checks (banked 2026-10-03, builder, Session S1 @ hb-20261003-01; re-banked the same day for the re-run, S1 fix batch @ hb-20261003-02)
 
-Owed by: S1-V, the tester round on the token above, in the consumer workspace with the plugin loaded from
-branch `feat/jo-dash-s1-facts`. The branch does not merge before this section is cleared.
+Owed by: the S1-V re-run, the tester round on hb-20261003-02, in the consumer workspace with the plugin loaded
+from branch `feat/jo-dash-s1-facts`. The branch does not merge before this section is cleared.
+The first S1-V round (hb-20261003-01) stopped at V0, before any tenant call: Bradley ruled two contract shapes
+changed, and the tester logged F-470 while choosing V9's program. The S1 fix batch landed all three; this section
+is rewritten for the re-run and is keyed to its token. Nothing below was run in the first round.
 Why it is banked: the adapter (`scripts/engagement.mjs`, plan items ENG-1 and ENG-2) was built offline against a
 fictional tenant whose stand-in CLI reproduces the response shapes a spike recorded. Whether the real CLI answers
 the adapter's queries the same way, and whether the numbers match the Gainsight UI, cannot be measured without a
@@ -780,7 +783,9 @@ observed beside a pass bar becomes an F-section on the bus, or a GitHub issue, b
 rules come from the record: observations left on verdicts became F-464, F-465 and F-466 only after a merge, and
 the #28 walk skipped an arm because its test object was chosen before anyone saw it could not exercise it.)
 
-Pick these BEFORE the first call, with Bradley, so no arm is skipped for want of the right program:
+Pick these BEFORE the first call, with Bradley, so no arm is skipped for want of the right program. The first
+round settled the picks; they are tenant data and stay in the consumer workspace, never here. Settle only what
+this list adds or changes:
 - P-busy: an Active program with sends in each of the last three months, whose analytics Bradley can open in the UI.
 - P-survey: a program that sends a survey and has responses.
 - T-history: a template with content-link clicks in an earlier month and none in the latest full month (the
@@ -789,27 +794,39 @@ Pick these BEFORE the first call, with Bradley, so no arm is skipped for want of
 - T-never: a template with sends and no recorded click of any kind.
 - P-unsub: a program whose only recorded clicks are on the unsubscribe link (about one program in seven with
   clicks, on the spike tenant).
-- The tenant's internal email domain(s).
+- P-multi: a program that sends more than one email, for V12's per-email half (P-busy may send only one).
+- The tenant's internal email domains, every one of them.
+- The tenant's unsubscribe link, or the external host it lives on: the link a recipient clicks to unsubscribe,
+  read from a real email. If the tenant uses more than one, all of them (F-470).
 - One calendar month for the single-month UI comparison (V12).
 
-Run (from the consumer workspace; `<slug>` is the tenant's KB folder, `<domain>` an internal domain; outputs stay
-under `.gs-superadmin/tmp/`, which the workspace ignores; the script prints counts and verdicts, never rows):
-1. `node .gs-superadmin/plugin/scripts/engagement.mjs plan --kb <slug> --internal-domain <domain> --run s1v-full`
+Run (from the consumer workspace; `<slug>` is the tenant's KB folder; outputs stay under `.gs-superadmin/tmp/`,
+which the workspace ignores; the script prints counts and verdicts, never rows). Two inputs ride EVERY line
+below, written once here as `<inputs>`:
+- `--internal-domain <domain>`, repeated once per internal domain: pass every one.
+- `--unsubscribe-link <link or host>`, repeated once per unsubscribe link. A link is matched by host and path
+  (that page and anything under it); a bare host names the whole host. Single-quote each value.
+A run resumes only with the inputs it started with, and a change to either one forces a full refresh, so keep
+`<inputs>` identical across the five lines.
+1. `node .gs-superadmin/plugin/scripts/engagement.mjs plan --kb <slug> <inputs> --run s1v-full`
    and keep its estimate (calls, seconds, what step detail adds, whether it fits the token).
-2. `node .gs-superadmin/plugin/scripts/engagement.mjs run --kb <slug> --internal-domain <domain> --run s1v-full --out .gs-superadmin/tmp/engagement/s1v-full.json`,
+2. `node .gs-superadmin/plugin/scripts/engagement.mjs run --kb <slug> <inputs> --run s1v-full --out .gs-superadmin/tmp/engagement/s1v-full.json`,
    timed. If it exits 3 (token), log in and run the same line again: it resumes.
 3. The same `run` with `--step-detail --run s1v-steps --out .gs-superadmin/tmp/engagement/s1v-steps.json`, timed.
-4. `run --kb <slug> --internal-domain <domain> --previous .gs-superadmin/tmp/engagement/s1v-full.json --run s1v-selective --out .gs-superadmin/tmp/engagement/s1v-selective.json`.
-5. `run --kb <slug> --internal-domain <domain> --sent-since 90d --run s1v-since --out .gs-superadmin/tmp/engagement/s1v-since.json`.
+4. `run --kb <slug> <inputs> --previous .gs-superadmin/tmp/engagement/s1v-full.json --run s1v-selective --out .gs-superadmin/tmp/engagement/s1v-selective.json`.
+5. `run --kb <slug> <inputs> --sent-since 90d --run s1v-since --out .gs-superadmin/tmp/engagement/s1v-since.json`.
 Read a snapshot with node one-liners that print one program's figures or a count, never the file.
 
 Pass bars (stated before measuring; counts are compared, not rates, because the UI views round differently):
-- V0 · The contract gate. Bradley reads T-10 as frozen (the typedef at the head of `scripts/engagement.mjs`) and
-  rules on the four shapes the executor chose where the plan's sketch was silent: the per-program click roll-up
-  (tracked when any template is; the counts say how partial); the response denominator as its own program-grain
-  table, all time, because no date field present on every `survey_participant` row was recorded; step name and
-  order per (template, program) pair under `uses[]`; and `meta.participantRecords` carrying the reason the
-  count is blank. A change he asks for lands before the merge, with the typedef and the pin together.
+- V0 · The contract gate, now a confirmation. Before any run, Bradley confirms that the two changes he ruled at
+  the first round's V0 landed as ruled, reading the typedef at the head of `scripts/engagement.mjs`:
+  (1) the per-program click roll-up is `tracked` only when every template is, `not-tracked` only when every
+  one is, and any mix is `unknown`, with the `{tracked, notTracked, unknown}` counts kept; (2) each
+  `facts.responseParticipants` row carries the program's all-time `submitted` and `partiallySubmitted` beside
+  its all-time `participants`, the monthly `responses` rows stay, and `readResponses` gives the all-time pair
+  with no months and counts without a denominator when months are passed. Shapes 3 and 4 stand as built. No
+  run starts until he has confirmed; a further change he asks for lands before the merge, typedef and pin
+  together.
 - V1 · Reconciliation and the excluded classes. Run 2's summary reads `reconciled: true`, every check `ok` with
   `compared` above zero. A mismatch is a finding; its `examples` name the program and month. The summary's
   `excluded` counts are plausible against the spike: CC copies a fraction of a percent of the rows, deleted
@@ -835,15 +852,22 @@ Pass bars (stated before measuring; counts are compared, not rates, because the 
   (step grain on `CreatedAt`, the click join through `EmailLogId`, distinct participants through a fieldPath).
   `honesty.rows.unreadable` is 0 and `honesty.clicks.unreadable` is 0. A failing family is a finding with its
   stderr text.
-- V9 · Content links on real URLs. P-unsub reads zero content clicks and its templates read `unknown`, not
-  `tracked`; `honesty.clicks.nonContentOnly` is above zero. If the tenant's unsubscribe links do not match the
-  classifier's patterns, that is a finding with the pattern needed (no URL is ever on disk: read one with the
-  spike's runner).
+- V9 · Content links on real URLs, and F-470's verification. With the unsubscribe input passed on every run
+  line: `meta.params.unsubscribeLinks` echoes it; P-unsub reads zero content clicks (`clicked` 0 on every one of
+  its rows) and its templates read `unknown`, not `tracked`; `honesty.clicks.nonContentOnly` is above zero, and
+  so is `honesty.clicks.byUnsubscribeInput` (0 there means the input matched no clicked link: check the value
+  against a real email before calling it a defect). This bar is the verdict on F-470: pass flips it to VERIFIED,
+  fail sends it back to OPEN with the measurement. If some unsubscribe link still reads as content with the
+  input passed, that is a reopen naming the link's shape (host plus path skeleton, ids masked; no URL is ever
+  on disk: read one with the spike's runner).
 - V10 · Participant records, run 3, P-busy: the window's `participantRecords` equals the UI's Participants.
   Record the calls and seconds the two participant families took: Bradley's ruling of 2026-10-03 keeps the
   count behind the step-detail switch until this cost is measured.
-- V11 · Responses, P-survey: Submitted and Partially submitted (summed over months) and the participant
-  denominator equal the UI's figures for that program. Also answer the open question: is there a date field
+- V11 · Responses, P-survey: the all-time Submitted, Partially submitted and participant denominator, read from
+  the program's `facts.responseParticipants` row, equal the UI's figures for that program. Compare those three,
+  not a sum over the window's months: a program older than the window has more responses than the monthly rows
+  hold. The all-time counts come from a call the first build did not make (the survey rows by program and
+  status, with no date window): if its family, `resp-total`, does not end `ok`, that is V8's finding. Also answer the open question: is there a date field
   present on EVERY `survey_participant` row? If so, name it on the bus; a month-grain denominator is an
   additive field a later session can add.
 - V12 · Month boundaries and time zone (the spike arm g2 rides here): for P-busy and the chosen month, the UI's

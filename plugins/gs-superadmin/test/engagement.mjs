@@ -32,11 +32,11 @@ import { isDeepStrictEqual } from "node:util";
 import { makeTempDir, removeTempDir, writeFiles, runNode } from "../../../test/rig.mjs";
 import {
   fetchEngagement, reduceEngagement, loadRun, resolveParams, makeGate, parseWhoami, parseSentSince, parseIdList,
-  classifyFailure, classifyLink, readLinkClicks, validateQuery, buildQuery, splitUnit, selectAccounts, decideClickState,
+  classifyFailure, classifyLink, readLinkClicks, parseUnsubscribeLink, NON_CONTENT_LINK_RULES, validateQuery, buildQuery, splitUnit, selectAccounts, decideClickState,
   openSnapshot, readClicked, clickAvailability, programClickAvailability, readResponses, monthsBetween,
   SEND_MEASURES, T10_SCHEMA_VERSION, ENGAGEMENT_READ_PATHS, joEngagementAdapter,
 } from "../scripts/engagement.mjs";
-import { buildTenant, answer, applyFaults, kbFiles, FAULT_TEXT } from "./fixtures/engagement/acme-tenant.mjs";
+import { buildTenant, answer, applyFaults, kbFiles, FAULT_TEXT, OWN_SITE_UNSUBSCRIBE } from "./fixtures/engagement/acme-tenant.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const PLUGIN = join(HERE, "..");
@@ -225,10 +225,12 @@ try {
     const want = new Map();
     const program = new Map(base.tenant.tables.ao_participants.map((p) => [p.Gsid, p.AdvancedOutreachId]));
     let participants = 0;
+    const allTime = { submitted: 0, partiallySubmitted: 0 };
     for (const r of base.tenant.tables.survey_participant) {
       const p = program.get(r.AOParticipantId);
       if (p !== "p-nps") continue;
       participants++;
+      if (r.Responded) allTime[r.ResponseStatus === "Submitted" ? "submitted" : "partiallySubmitted"]++;
       if (!r.Responded || !S.dimensions.months.includes(r.RespondedDate.slice(0, 7))) continue;
       const k = r.RespondedDate.slice(0, 7);
       const x = want.get(k) ?? { submitted: 0, partiallySubmitted: 0 };
@@ -237,9 +239,18 @@ try {
     }
     const got = new Map(S.facts.responses.map((r) => [r.month, { submitted: r.submitted, partiallySubmitted: r.partiallySubmitted }]));
     check("responses come from survey_participant, attributed per program: Submitted and Partially submitted by response month, and the program's participant rows as the denominator",
-      want.size > 1 && sameMap(got, want) && isDeepStrictEqual(S.facts.responseParticipants, [{ programId: "p-nps", participants }]) && S.honesty.responses.unattributed > 0, { got: [...got], want: [...want], rp: S.facts.responseParticipants });
+      want.size > 1 && sameMap(got, want) && S.facts.responseParticipants.length === 1 && S.facts.responseParticipants[0].participants === participants && S.honesty.responses.unattributed > 0, { got: [...got], want: [...want], rp: S.facts.responseParticipants });
+    const inWindow = [...want.values()].reduce((a, x) => ({ submitted: a.submitted + x.submitted, partiallySubmitted: a.partiallySubmitted + x.partiallySubmitted }), { submitted: 0, partiallySubmitted: 0 });
+    check("the response rate's basis is all time: responseParticipants carries the program's all-time Submitted and Partially submitted beside its all-time denominator, and both exceed the window's on a program older than the window",
+      isDeepStrictEqual(S.facts.responseParticipants, [{ programId: "p-nps", participants, ...allTime }]) && allTime.submitted > inWindow.submitted && allTime.partiallySubmitted > inWindow.partiallySubmitted, { rp: S.facts.responseParticipants, allTime, inWindow });
     const r = readResponses(S, "p-nps");
-    check("readResponses: Submitted, Partially submitted and Any response with the denominator, state tracked", r.state === "tracked" && r.anyResponse === r.submitted + r.partiallySubmitted && r.participants === participants && r.submitted > 0);
+    check("readResponses, no months: the all-time counts with the all-time denominator, one basis, state tracked",
+      isDeepStrictEqual(r, { state: "tracked", basis: "all-time", ...allTime, anyResponse: allTime.submitted + allTime.partiallySubmitted, participants }), r);
+    const m = readResponses(S, "p-nps", S.dimensions.months);
+    const one = readResponses(S, "p-nps", ["2025-10"]);
+    check("readResponses, with months: the window's counts and NO denominator (participants null), so a window numerator never sits beside the all-time denominator",
+      isDeepStrictEqual(m, { state: "tracked", basis: "months", ...inWindow, anyResponse: inWindow.submitted + inWindow.partiallySubmitted, participants: null }) &&
+        isDeepStrictEqual(one, { state: "tracked", basis: "months", ...want.get("2025-10"), anyResponse: want.get("2025-10").submitted + want.get("2025-10").partiallySubmitted, participants: null }), { m, one });
   }
 
   // ── Programs: who is in the pull ──────────────────────────────────────────
@@ -456,8 +467,8 @@ try {
   // ── Click detail (R18) and the tracking state (R19) ──────────────────────
   {
     check("LinkClickedJson is unwrapped from its `{type=json, value=[…], null=true}` string, and a bare JSON array is read too",
-      isDeepStrictEqual(readLinkClicks('{type=json, value=[{"url":"https://www.example.com/a","clickedCount":2,"ip":"203.0.113.7"}], null=true}'), { content: 1, other: 0, unreadable: false }) &&
-        isDeepStrictEqual(readLinkClicks('[{"url":"mailto:cs@acme.com","clickedCount":1,"ip":"203.0.113.7"}]'), { content: 0, other: 1, unreadable: false }) && readLinkClicks("{type=json, value=, null=true}").unreadable === true && readLinkClicks(null).unreadable === true);
+      isDeepStrictEqual(readLinkClicks('{type=json, value=[{"url":"https://www.example.com/a","clickedCount":2,"ip":"203.0.113.7"}], null=true}'), { content: 1, other: 0, byInput: 0, unreadable: false }) &&
+        isDeepStrictEqual(readLinkClicks('[{"url":"mailto:cs@acme.com","clickedCount":1,"ip":"203.0.113.7"}]'), { content: 0, other: 1, byInput: 0, unreadable: false }) && readLinkClicks("{type=json, value=, null=true}").unreadable === true && readLinkClicks(null).unreadable === true);
     check("click rate counts content links only: unsubscribe and mailto links are not content, and a link that cannot be read counts as neither",
       classifyLink("https://www.example.com/guide") === "content" && classifyLink("https://mail.example.com/unsubscribe?t=1") === "unsubscribe" && classifyLink("MAILTO:cs@acme.com") === "mailto" && classifyLink("https://x.example.com/email-preferences") === "unsubscribe" && classifyLink("") === "unreadable" && classifyLink(undefined) === "unreadable");
     const files = readdirSync(join(base.runDir, "calls")).map((f) => readFileSync(join(base.runDir, "calls", f), "utf8")).join("\n");
@@ -498,10 +509,24 @@ try {
     check("a tracked 0 reads as 0", readClicked(R, row("tpl-nps")).value === 0 && row("tpl-nps").clicked === 0);
     check("a not-tracked metric cannot be read as 0 by any accessor: readClicked gives null for every row of a not-tracked template, readResponses gives null for every figure of a not-tracked program",
       R.facts.byTemplate.filter((r) => r.templateId === "tpl-renew-b" || r.templateId === "tpl-renew").every((r) => readClicked(R, r).value === null) &&
-        isDeepStrictEqual(readResponses(R, "p-onboard"), { state: "not-tracked", submitted: null, partiallySubmitted: null, anyResponse: null, participants: null }));
-    check("the per-program roll-up: tracked when any template is, not-tracked only when every template is, and the counts say how partial",
-      isDeepStrictEqual(programClickAvailability(R, "p-renew"), { state: "not-tracked", templates: { tracked: 0, notTracked: 2, unknown: 0 } }) && isDeepStrictEqual(programClickAvailability(R, "p-onboard"), { state: "tracked", templates: { tracked: 1, notTracked: 0, unknown: 1 } }) &&
-        programClickAvailability(R, "p-pilot").state === "unknown" && programClickAvailability(R, "p-nobody").state === "unknown");
+        isDeepStrictEqual(readResponses(R, "p-onboard"), { state: "not-tracked", basis: "all-time", submitted: null, partiallySubmitted: null, anyResponse: null, participants: null }) &&
+        isDeepStrictEqual(readResponses(R, "p-onboard", R.dimensions.months), { state: "not-tracked", basis: "months", submitted: null, partiallySubmitted: null, anyResponse: null, participants: null }));
+    // The per-program roll-up (V0 shape 1), one check per case. Each reduces
+    // the baseline run again under a link-settings reading that makes the mix.
+    const rolled = (settings, p) => programClickAvailability(reduceEngagement(loadRun(base.runDir, { linkSettings: settings })), p);
+    const none = (t) => ({ [t]: { reading: "links-none-tracked", asOf: "2026-09-01" } });
+    check("roll-up, tracked + unknown: a program with one tracked template and one unknown reads unknown, and the counts say 1 and 1",
+      isDeepStrictEqual(rolled(null, "p-onboard"), { state: "unknown", templates: { tracked: 1, notTracked: 0, unknown: 1 } }), rolled(null, "p-onboard"));
+    check("roll-up, tracked + not-tracked: a program with one tracked template and one not-tracked reads unknown, never tracked and never not-tracked",
+      isDeepStrictEqual(rolled(none("tpl-day7"), "p-onboard"), { state: "unknown", templates: { tracked: 1, notTracked: 1, unknown: 0 } }), rolled(none("tpl-day7"), "p-onboard"));
+    check("roll-up, all tracked: a program reads tracked only when every one of its templates is, so its 0% is a real 0%",
+      isDeepStrictEqual(rolled({ "tpl-day7": { reading: "tracked-link-present", asOf: "2026-09-01" } }, "p-onboard"), { state: "tracked", templates: { tracked: 2, notTracked: 0, unknown: 0 } }) &&
+        isDeepStrictEqual(rolled(null, "p-promo"), { state: "tracked", templates: { tracked: 1, notTracked: 0, unknown: 0 } }), rolled(null, "p-promo"));
+    check("roll-up, all not-tracked: a program reads not-tracked only when every one of its templates is",
+      isDeepStrictEqual(rolled({ ...none("tpl-renew"), ...none("tpl-renew-b") }, "p-renew"), { state: "not-tracked", templates: { tracked: 0, notTracked: 2, unknown: 0 } }), rolled({ ...none("tpl-renew"), ...none("tpl-renew-b") }, "p-renew"));
+    check("roll-up, not-tracked + unknown reads unknown; so does a program whose sends name no template, and one the snapshot does not list",
+      isDeepStrictEqual(rolled(none("tpl-renew-b"), "p-renew"), { state: "unknown", templates: { tracked: 0, notTracked: 1, unknown: 1 } }) &&
+        isDeepStrictEqual(programClickAvailability(R, "p-pilot"), { state: "unknown", templates: { tracked: 0, notTracked: 0, unknown: 1 } }) && programClickAvailability(R, "p-nobody").state === "unknown");
     check("responses: a program with survey participants is tracked, one with none on a readable object is not-tracked", R.meta.metricAvailability.responses.programs["p-nps"].state === "tracked" && R.meta.metricAvailability.responses.programs["p-onboard"].state === "not-tracked" && R.meta.metricAvailability.responses.programs["p-onboard"].evidence.surveyParticipants === 0);
     for (const bad of [{ ...R, schemaVersion: 2 }, { ...R, schemaVersion: "1" }, { ...R, schemaVersion: undefined }, { ...R, kind: "accountTimeline" }, null, []]) {
       let msg = "";
@@ -509,6 +534,64 @@ try {
       check(`a snapshot with an unknown schemaVersion is refused loudly (${JSON.stringify(bad?.schemaVersion)} / kind ${JSON.stringify(bad?.kind)})`, /refusing to read it \(T-10\)/.test(msg), msg);
     }
     check("openSnapshot returns a current snapshot unchanged", openSnapshot(R) === R && T10_SCHEMA_VERSION === 1);
+  }
+
+  // ── F-470 · the tenant's own unsubscribe link ─────────────────────────────
+  {
+    const page = `${OWN_SITE_UNSUBSCRIBE}/topics?u=7`;
+    const INPUT = [OWN_SITE_UNSUBSCRIBE];
+    const LINKS = [parseUnsubscribeLink(OWN_SITE_UNSUBSCRIBE)];
+    const variant = { ownSiteUnsub: true };
+    const off = pull({ variant });
+    const on = pull({ variant, raw: { unsubscribeLinks: INPUT } });
+    const A = off.snapshot;
+    const B = on.snapshot;
+    const tpl = (s) => factMap(s.facts.byTemplate, (r) => [r.programId, r.templateId, r.month, r.recipientClass]);
+    const clicked = (s, t) => s.facts.byTemplate.filter((r) => r.templateId === t).reduce((x, r) => x + r.clicked, 0);
+    const named = on.tenant.tables.email_log_v2.filter((r) => r.SourceId === "p-prefs" && r.LinkClickedJson?.includes(`${OWN_SITE_UNSUBSCRIBE}/`));
+    check("F-470 fixture: the unsubscribe link is a page on the company's own site that no generic pattern matches, and sends were clicked on it",
+      NON_CONTENT_LINK_RULES.every((rule) => !rule.re.test(page)) && named.length > 3 && named.some((r) => r.EmailTemplateId === "tpl-prefs"));
+    check("F-470: without the input the own-site unsubscribe link reads as content: its clicks are counted, and the template clicked on nothing else reads tracked",
+      classifyLink(page) === "content" && clicked(A, "tpl-prefs") > 0 && clickAvailability(A, "tpl-prefs").state === "tracked" && !sameMap(tpl(A), oracle(off.tenant, A).byTemplate) && A.honesty.clicks.byUnsubscribeInput === 0);
+    check("F-470: with the input it reads as not content: every clicked count equals a straight count of the sends with a real content click",
+      classifyLink(page, LINKS) === "unsubscribe" && sameMap(tpl(B), oracle(on.tenant, B).byTemplate) && clicked(B, "tpl-prefs") === 0 && clicked(B, "tpl-prefs-mix") > 0, diffMap(tpl(B), oracle(on.tenant, B).byTemplate));
+    check("F-470: a template whose only clicks are on the named link reads unknown, never tracked, with no click history",
+      clickAvailability(B, "tpl-prefs").state === "unknown" && clickAvailability(B, "tpl-prefs").evidence.clickHistory.everClicked === false && clickAvailability(B, "tpl-prefs-mix").state === "tracked" &&
+        isDeepStrictEqual(programClickAvailability(B, "p-prefs"), { state: "unknown", templates: { tracked: 1, notTracked: 0, unknown: 1 } }));
+    check("F-470: the honesty stats say what the input did: the sends clicked on a named link are counted, and those clicked on nothing else join the non-content-only count",
+      B.honesty.clicks.byUnsubscribeInput === named.length && B.honesty.clicks.nonContentOnly - A.honesty.clicks.nonContentOnly === A.honesty.clicks.withContentClick - B.honesty.clicks.withContentClick && B.honesty.clicks.nonContentOnly > A.honesty.clicks.nonContentOnly, [A.honesty.clicks, B.honesty.clicks, named.length]);
+    check("F-470: the input is echoed in meta.params, normalized (host and path, no scheme), and is empty when none was given",
+      isDeepStrictEqual(B.meta.params.unsubscribeLinks, ["www.acme.com/mail-settings"]) && isDeepStrictEqual(A.meta.params.unsubscribeLinks, []));
+    const files = readdirSync(join(on.runDir, "calls")).map((f) => readFileSync(join(on.runDir, "calls", f), "utf8")).join("\n");
+    check("F-470: the named link's clicks are classified at fetch time like every other: no payload file holds a clicked URL", !files.includes("mail-settings") && files.includes('"byInput":1'));
+    // The sibling the report did not list: the same site's OTHER pages stay content.
+    check("F-470 sibling: a path that only begins like the named page stays content (whole segments match, never a prefix of one), and the look-alike's clicks are counted",
+      classifyLink(`${OWN_SITE_UNSUBSCRIBE}-guide`, LINKS) === "content" && classifyLink("https://www.acme.com/", LINKS) === "content" && classifyLink("https://www.acme.com/pricing", LINKS) === "content" &&
+        on.tenant.tables.email_log_v2.some((r) => r._contentClick && r.LinkClickedJson?.includes("-guide") && !r.LinkClickedJson.includes("/topics")));
+    check("F-470: a named link matches whatever the scheme, letter case, query, trailing slash or sub-path, and on a subdomain of the named host; another site's page with the same path stays content",
+      ["https://www.acme.com/mail-settings", "http://WWW.ACME.COM/Mail-Settings/", "https://www.acme.com/mail-settings?x=1#top", "www.acme.com/mail-settings/topics/weekly", "https://eu.www.acme.com/mail-settings"].every((u) => classifyLink(u, LINKS) === "unsubscribe") &&
+        classifyLink("https://www.example.com/mail-settings", LINKS) === "content" && classifyLink("https://acme.com/mail-settings", LINKS) === "content");
+    check("F-470: a value with no path names a whole host and its subdomains (an external preferences vendor), and nothing that merely ends in the same letters",
+      classifyLink("https://links.example.net/u/abc", ["links.example.net"]) === "unsubscribe" && classifyLink("https://eu.links.example.net/", ["links.example.net"]) === "unsubscribe" && classifyLink("https://badlinks.example.net/u", ["links.example.net"]) === "content");
+    check("F-470: the generic patterns are unchanged and still decide first: an unsubscribe wording needs no input, and mailto stays mailto on a named host",
+      NON_CONTENT_LINK_RULES.length === 2 && classifyLink("https://mail.example.com/unsubscribe?t=1", LINKS) === "unsubscribe" && classifyLink("mailto:cs@acme.com", ["acme.com"]) === "mailto" && classifyLink("https://www.example.com/preferences-center") === "content");
+    const two = resolveParams({ today: TODAY, unsubscribeLinks: ["www.acme.com/mail-settings?x=1", "links.example.net", "https://WWW.acme.com/mail-settings/"] }).unsubscribeLinks;
+    check("F-470: the input repeats; values are normalized, de-duplicated and sorted, so the same links in any spelling are the same run", isDeepStrictEqual(two, ["links.example.net", "www.acme.com/mail-settings"]));
+    for (const bad of ["mail-settings", "mailto:cs@acme.com", "ftp://files.acme.com/x", "https://user@www.acme.com/x", " "]) {
+      let msg = "";
+      try { resolveParams({ today: TODAY, unsubscribeLinks: [bad] }); } catch (e) { msg = e.message; }
+      check(`F-470: resolveParams refuses an --unsubscribe-link that names no web host (${JSON.stringify(bad)})`, /--unsubscribe-link takes a link or a host/.test(msg), msg);
+    }
+    // A change to the input forces a full refresh, and click evidence classified under the old input is not carried.
+    const prevOwn = JSON.parse(JSON.stringify(pull({ variant: { ...variant, cutoff: "2026-08-16" }, raw: { today: "2026-08-15", pulledAt: "2026-08-15T09:00:00-07:00" } }).snapshot));
+    const same = pull({ variant, previous: prevOwn }).snapshot;
+    const changed = pull({ variant, raw: { unsubscribeLinks: INPUT }, previous: prevOwn }).snapshot;
+    check("F-470: a change to the unsubscribe links forces a full refresh, and says so (carried months were classified under the old input)",
+      same.meta.refresh.mode === "selective" && changed.meta.refresh.mode === "full" && /unsubscribe links changed/.test(changed.meta.refresh.why) && changed.facts.byTemplate.every((r) => r.provenance === "pulled") && isDeepStrictEqual(changed.facts, B.facts), changed.meta.refresh);
+    check("F-470: click evidence classified under the old input is not carried: the template the previous snapshot called tracked on unsubscribe clicks reads unknown after the change, and tracked while the input is unchanged",
+      clickAvailability(prevOwn, "tpl-prefs").state === "tracked" && clickAvailability(same, "tpl-prefs").state === "tracked" && clickAvailability(changed, "tpl-prefs").state === "unknown" && isDeepStrictEqual(changed.meta.metricAvailability, B.meta.metricAvailability));
+    const back = pull({ variant, previous: JSON.parse(JSON.stringify(B)), phase: "plan" }).summary.estimate;
+    check("F-470: dropping the input is a change too: a snapshot pulled with it is not carried into a run without it", back.mode === "full" && /unsubscribe links changed/.test(back.why), back);
   }
 
   // ── Privacy (house rule 9) ────────────────────────────────────────────────
@@ -581,11 +664,12 @@ try {
     const reasons = [
       [{ raw: { forceFull: true } }, /asked for/],
       [{ raw: { internalDomains: ["acme.com", "example.net"] } }, /internal domains changed/],
+      [{ raw: { unsubscribeLinks: [OWN_SITE_UNSUBSCRIBE] } }, /unsubscribe links changed/],
       [{ raw: { stepDetail: true } }, /step-detail switch changed/],
       [{ raw: { accounts: { ...ACC, busiest: 4 } } }, /account selection changed/],
       [{ raw: { from: "2025-06" } }, /starts later/],
     ].map(([o, re]) => [pull({ ...o, previous: prev, phase: "plan" }).summary.estimate, re]);
-    check("a previous snapshot the new pull cannot extend forces a full refresh, and the reason is stated: forced, domains changed, step detail changed, selection changed, window reaches further back", reasons.every(([e, re]) => e.mode === "full" && re.test(e.why)), reasons.map(([e]) => e.why));
+    check("a previous snapshot the new pull cannot extend forces a full refresh, and the reason is stated: forced, domains changed, unsubscribe links changed, step detail changed, selection changed, window reaches further back", reasons.every(([e, re]) => e.mode === "full" && re.test(e.why)), reasons.map(([e]) => e.why));
     const foreign = pull({ previous: { ...prev, meta: { ...prev.meta, tenantHost: "acme-sbx.gainsightcloud.com" } }, phase: "plan" }).summary.estimate;
     check("another tenant's snapshot is never carried from", foreign.mode === "full" && /another tenant/.test(foreign.why), foreign);
   }
@@ -623,7 +707,7 @@ try {
     const LINKS = join(ROOT, "link-settings.json");
     writeFileSync(LINKS, JSON.stringify({ "tpl-nps": { reading: "tracked-link-present", asOf: "2026-09-01" }, "tpl-renew-b": { reading: "links-none-tracked", asOf: "2026-09-01" } }));
     const common = ["--workspace", WS, "--bin", FAKE, "--kb", KB_DIR, "--today", TODAY, "--pulled-at", PULLED_AT, "--from", "2026-06", "--internal-domain", "acme.com", "--step-detail", "--page-size", "400",
-      "--accounts-busiest", "3", "--accounts-low", "2", "--accounts-bounce", "2", "--accounts-low-min-delivered", "4", "--link-settings", LINKS];
+      "--accounts-busiest", "3", "--accounts-low", "2", "--accounts-bounce", "2", "--accounts-low-min-delivered", "4", "--link-settings", LINKS, "--unsubscribe-link", OWN_SITE_UNSUBSCRIBE];
     const cli = (mode, extra, env) => {
       const r = runNode(ENGINE, [mode, ...common, ...extra], { env: { ...process.env, ...env } });
       let json = null;
@@ -648,7 +732,7 @@ try {
     check("the snapshot records the CLI and plugin versions it was pulled with", snap.meta.cliVersion === CATALOG.meta.cliVersion && snap.meta.pluginVersion === JSON.parse(readFileSync(join(PLUGIN, ".claude-plugin", "plugin.json"), "utf8")).version);
     if (WRITE_GOLDEN) writeFileSync(GOLDEN, JSON.stringify(golden, null, 1) + "\n");
     check("reduce produces the expected snapshot: the run through the real process, interrupted and resumed, equals the committed fixture snapshot (versions aside)", isDeepStrictEqual(golden, JSON.parse(readFileSync(GOLDEN, "utf8"))));
-    const twin = pull({ kb: true, raw: { from: "2026-06", stepDetail: true }, linkSettings: JSON.parse(readFileSync(LINKS, "utf8")) }).snapshot;
+    const twin = pull({ kb: true, raw: { from: "2026-06", stepDetail: true, unsubscribeLinks: [OWN_SITE_UNSUBSCRIBE] }, linkSettings: JSON.parse(readFileSync(LINKS, "utf8")) }).snapshot;
     check("the two transports agree: the same pull in process reduces to the same snapshot as the CLI transport's", isDeepStrictEqual(twin, golden));
     check("the fixture snapshot shows all three tracking states and both recipient classes", new Set(Object.values(golden.meta.metricAvailability.clicks.templates).map((t) => t.state)).size === 3 && new Set(golden.facts.byStep.map((r) => r.recipientClass)).size === 2);
 
@@ -656,6 +740,11 @@ try {
     check("reduce runs on its own from the run directory and writes the same snapshot", again.code === 0 && isDeepStrictEqual(JSON.parse(readFileSync(join(ROOT, "again.json"), "utf8")), snap), again.json ?? again.stderr);
     const changed = cli("fetch", ["--run", "golden", "--sent-since", "30d"], env);
     check("a run directory is resumed only with the parameters it was started with", changed.code === 1 && /started with different parameters/.test(changed.stderr), changed.stderr);
+    const otherLink = cli("fetch", ["--run", "golden", "--unsubscribe-link", "links.example.net"], env);
+    check("F-470: the unsubscribe links are part of a run's identity: a run resumes only with the input it started with (its click payloads were classified under it), through the real process",
+      otherLink.code === 1 && /started with different parameters/.test(otherLink.stderr) && isDeepStrictEqual(snap.meta.params.unsubscribeLinks, ["www.acme.com/mail-settings"]), otherLink.stderr);
+    const badLink = cli("plan", ["--run", "bad-link", "--unsubscribe-link", "mail-settings"], env);
+    check("F-470: a value that names no web host is refused at the command line, before any call", badLink.code === 1 && /--unsubscribe-link takes a link or a host/.test(badLink.stderr) && !existsSync(join(WS, ".gs-superadmin", "tmp", "engagement", "bad-link")), badLink.stderr);
     const otherPlan = cli("fetch", ["--run", "golden", "--previous", GOLDEN], env);
     check("a run directory is resumed only with the --previous it was started with: two plans' payloads are never reduced together", otherPlan.code === 1 && /started with a different --previous/.test(otherPlan.stderr), otherPlan.stderr);
     const planned = cli("plan", ["--run", "planned"], env);

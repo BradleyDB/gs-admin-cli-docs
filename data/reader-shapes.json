@@ -2425,8 +2425,8 @@
       "floorMissing": [],
       "note": "The output is a bare array of rows whose keys are the CLI's column aliases: <object>_<Field> for a group or plain column, summarize_month_of_<object>_<Field> for a month bucket (read by its sortable k), count_of_<object>_Gsid, <target>_<lookup>__gr_<leaf> for a fieldPath group and count_distinct_of_<target>_<leaf> for a fieldPath distinct count. A null group value has no v key, which is why every cell is read with an `in` test. Every reader runs over every family's rows, so a column one family lacks is recorded as named-while-absent rather than missed.",
       "probes": {
-        "fixtures": 15,
-        "runs": 1332,
+        "fixtures": 16,
+        "runs": 1462,
         "unprobed": 0
       }
     },

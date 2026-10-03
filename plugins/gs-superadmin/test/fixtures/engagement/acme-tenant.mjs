@@ -94,17 +94,36 @@ const PROGRAMS = [
 const UNLISTED = { id: "p-unlisted", name: "Acme Unlisted Program", model: "DRIPV2", modelName: "Email Chain", statuses: ["PROCESSING"], type: "CUSTOMER", folderId: "303", months: ["2026-08"], accounts: [0, 1, 2], perAccount: 2, steps: [{ stepId: "st-ul-1", stepName: "Unlisted note", order: 1, templateId: "tpl-unlisted", variants: ["var-unlisted"] }] };
 const DELETED = { id: "p-gone", name: "Acme Deleted Program", months: ["2026-01"], accounts: [0, 1, 2, 3, 4], perAccount: 1, steps: [{ stepId: "st-gn-1", templateId: "tpl-gone", variants: ["var-gone"] }] };
 
+// Only with the ownSiteUnsub variant (F-470): a program whose emails' unsubscribe
+// link is a mail-settings page on acme's OWN site, worded so that no generic
+// unsubscribe pattern matches it. tpl-prefs is clicked on that link alone;
+// tpl-prefs-mix also has content clicks, one of them on a page of the same
+// site whose path merely begins with the same characters.
+const OWN_SITE = {
+  id: "p-prefs", name: "Acme Preferences Chain", model: "DRIPV2", modelName: "Email Chain", statuses: ["PROCESSING"], type: "CUSTOMER", folderId: "404",
+  months: monthsBetween("2026-06", LAST_MONTH), accounts: [0, 1, 2, 3, 4, 5], perAccount: 2,
+  steps: [
+    { stepId: "st-pf-1", stepName: "Prefs note", order: 1, templateId: "tpl-prefs", variants: ["var-prefs"] },
+    { stepId: "st-pf-2", stepName: "Prefs follow-up", order: 2, templateId: "tpl-prefs-mix", variants: ["var-prefs-mix"] },
+  ],
+};
+export const OWN_SITE_UNSUBSCRIBE = "https://www.acme.com/mail-settings";
+
 const TEMPLATE_NAMES = {
   "tpl-welcome": "Acme Welcome", "tpl-day7": "Acme Day 7", "tpl-nps": "Acme NPS Request", "tpl-renew": "Acme Renewal",
   "tpl-renew-b": "Acme Renewal Thanks", "tpl-promo": "Acme Promo", "tpl-unlisted": "Acme Unlisted", "tpl-gone": "Acme Gone",
+  "tpl-prefs": "Acme Prefs", "tpl-prefs-mix": "Acme Prefs Follow-up",
 };
 // Click behaviour per template (the five R19 fixtures ride on these):
 //   content — content-link clicks are recorded
 //   unsub   — the only clicks ever recorded are on the unsubscribe link
 //   none    — never clicked at all
+//   ownsite — the only clicks ever recorded are on the own-site unsubscribe page
+//   ownsite-mix — that page, and content links too
 const CLICK_MODE = {
   "tpl-welcome": "content", "tpl-promo": "content", "tpl-unlisted": "content", "tpl-gone": "content",
   "tpl-renew": "unsub", "tpl-day7": "none", "tpl-nps": "none", "tpl-renew-b": "none",
+  "tpl-prefs": "ownsite", "tpl-prefs-mix": "ownsite-mix",
 };
 
 const ACCOUNTS = Array.from({ length: 12 }, (_, i) => ({ Gsid: `co-${pad(i + 1)}`, Name: `Acme Customer ${pad(i + 1)}` }));
@@ -119,7 +138,11 @@ const LINKS = {
   content: (n) => ({ url: "https://www.example.com/guide/getting-started", clickedCount: 1 + (n % 2), ip: `203.0.113.${n % 250}` }),
   unsub: (n) => ({ url: "https://mail.example.com/unsubscribe?t=abc", clickedCount: 1, ip: `203.0.113.${n % 250}` }),
   mailto: (n) => ({ url: "mailto:cs@acme.com", clickedCount: 1, ip: `203.0.113.${n % 250}` }),
+  ownsite: (n) => ({ url: `${OWN_SITE_UNSUBSCRIBE}/topics?u=${n}`, clickedCount: 1, ip: `203.0.113.${n % 250}` }),
+  // Content, on the same site: its path only BEGINS like the unsubscribe page's.
+  lookalike: (n) => ({ url: `${OWN_SITE_UNSUBSCRIBE}-guide`, clickedCount: 1, ip: `203.0.113.${n % 250}` }),
 };
+const CONTENT_KINDS = new Set(["content", "lookalike"]);
 
 /**
  * Build the tenant. Variants (all optional) reshape it for one scenario:
@@ -134,6 +157,7 @@ const LINKS = {
  *   listNoEnvelope  true — `jo p list` repeats its rows on every page and says nothing about paging
  *   noClicksFrom    "YYYY-MM-DD" — no click is recorded on a send from this day on
  *   extraJoRow      true — the JO send log holds one send the delivery log lacks
+ *   ownSiteUnsub    true — one more program, whose unsubscribe link is a page on acme's own site
  */
 export function buildTenant(variant = {}) {
   const log = [];
@@ -155,14 +179,18 @@ export function buildTenant(variant = {}) {
     let opened = sent && n % 3 !== 0;
     if (variant.lateOpens && sent && month < "2026-07") opened = true;
     const mode = CLICK_MODE[tpl] ?? "none";
-    let links = null;
-    if (sent && opened && n % 5 === 0 && mode !== "none" && executed.slice(0, 10) < (variant.noClicksFrom ?? "9999-12-31")) {
-      if (mode === "unsub") links = [LINKS.unsub(n)];
-      else if (n % 15 === 0) links = [LINKS.unsub(n)];
-      else if (n % 25 === 0) links = [LINKS.mailto(n)];
-      else if (n % 35 === 0) links = [LINKS.content(n), LINKS.unsub(n)];
-      else links = [LINKS.content(n)];
+    let kinds = null;
+    if (sent && opened && mode.startsWith("ownsite") && n % 2 === 0) {
+      if (mode === "ownsite") kinds = ["ownsite"];
+      else kinds = n % 3 === 0 ? ["content", "ownsite"] : n % 3 === 1 ? ["lookalike"] : ["ownsite"];
+    } else if (sent && opened && n % 5 === 0 && mode !== "none" && !mode.startsWith("ownsite") && executed.slice(0, 10) < (variant.noClicksFrom ?? "9999-12-31")) {
+      if (mode === "unsub") kinds = ["unsub"];
+      else if (n % 15 === 0) kinds = ["unsub"];
+      else if (n % 25 === 0) kinds = ["mailto"];
+      else if (n % 35 === 0) kinds = ["content", "unsub"];
+      else kinds = ["content"];
     }
+    const links = kinds && kinds.map((k) => LINKS[k](n));
     const gsid = `log-${String(n).padStart(5, "0")}`;
     const row = {
       Gsid: gsid, Source: source, SourceId: program.id, SourceName: program.name, AddressType: addressType,
@@ -175,7 +203,7 @@ export function buildTenant(variant = {}) {
       LinkClickedJson: links ? (variant.rawClickJson ? JSON.stringify(links) : wrapClicks(links)) : null,
       // Oracle-only (underscore keys are invisible to answer()): what the row's
       // clicks ARE, written by the generator that chose them.
-      _contentClick: !!links && links.some((l) => l.url.startsWith("https://www.example.com/")),
+      _contentClick: !!kinds && kinds.some((k) => CONTENT_KINDS.has(k)),
     };
     log.push(row);
     if (source !== JO_SOURCE || addressType !== "To") return;
@@ -208,7 +236,9 @@ export function buildTenant(variant = {}) {
     }
   };
 
-  for (const program of [...PROGRAMS, UNLISTED, DELETED]) {
+  const listed = variant.ownSiteUnsub ? [...PROGRAMS, OWN_SITE] : PROGRAMS;
+  // The variant's program goes last, so every other send keeps its number.
+  for (const program of [...PROGRAMS, UNLISTED, DELETED, ...(variant.ownSiteUnsub ? [OWN_SITE] : [])]) {
     for (const month of program.months) {
       for (const step of program.steps) {
         if (program.internalOnly) {
@@ -235,6 +265,14 @@ export function buildTenant(variant = {}) {
   }
   // A survey response that no JO program owns (another distribution channel).
   surveyRows.push({ Gsid: "sp-other", AOParticipantId: null, Responded: true, RespondedDate: "2026-07-09T12:00:00.000Z", ResponseStatus: "Submitted", SurveyOpened: true });
+
+  // Responses to p-nps from before any window the suites pull: its all-time
+  // counts are larger than any window's, as on a program older than the window.
+  for (const [i, status] of ["Submitted", "Submitted", "Partially Submitted", null].entries()) {
+    const parId = `par-p-nps-early-${i}`;
+    participants.set(parId, { Gsid: parId, AdvancedOutreachId: "p-nps" });
+    surveyRows.push({ Gsid: `sp-early-${i}`, AOParticipantId: parId, Responded: status != null, RespondedDate: status ? `2025-03-1${i}T12:00:00.000Z` : null, ResponseStatus: status ?? "Not Responded", SurveyOpened: true });
+  }
 
   if (variant.extraJoRow) joLog.push({ ...joLog.find((r) => r.AdvancedOutreachId === "p-onboard" && r.CreatedAt.startsWith("2026-08")), Gsid: "jo-extra", EmailLogId: null });
 
@@ -266,8 +304,8 @@ export function buildTenant(variant = {}) {
   return {
     variant, tables, schemas, byGsid, token,
     baseUrl: "https://acme.gainsightcloud.com",
-    listed: PROGRAMS,
-    describable: new Map([...PROGRAMS, UNLISTED].map((p) => [p.id, p])),
+    listed,
+    describable: new Map([...listed, UNLISTED].map((p) => [p.id, p])),
     serverMax: variant.serverMax ?? 5000,
     listMax: variant.listMax ?? 1000,
   };

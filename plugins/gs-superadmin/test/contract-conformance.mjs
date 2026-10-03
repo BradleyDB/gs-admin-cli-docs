@@ -631,7 +631,11 @@ try {
       check(at("every send row: additive measures are whole numbers >= 0, class internal|external, provenance pulled|carried, month YYYY-MM"),
         sendRows.every((r) => MEASURES.every((m) => count(r[m])) && ["internal", "external"].includes(r.recipientClass) && ["pulled", "carried"].includes(r.provenance) && MONTH.test(r.month) && typeof r.pulledAt === "string"));
       check(at("responses rows: programId, month, submitted, partiallySubmitted, provenance, pulledAt; the denominator is its own program-grain table"),
-        rows(s, "responses", list("programId", "month", "submitted", "partiallySubmitted", "provenance", "pulledAt")) && s.facts.responseParticipants.length > 0 && s.facts.responseParticipants.every((r) => keys(r) === "participants,programId" && count(r.participants)), s.facts.responses[0]);
+        rows(s, "responses", list("programId", "month", "submitted", "partiallySubmitted", "provenance", "pulledAt")) && s.facts.responseParticipants.length > 0, s.facts.responses[0]);
+      check(at("responseParticipants rows: programId, participants, submitted, partiallySubmitted — the response rate's all-time basis, the two counts within the denominator"),
+        s.facts.responseParticipants.every((r) => keys(r) === list("programId", "participants", "submitted", "partiallySubmitted") && count(r.participants) && count(r.submitted) && count(r.partiallySubmitted) && r.submitted + r.partiallySubmitted <= r.participants), s.facts.responseParticipants[0]);
+      check(at("meta.params echoes the run's inputs: window, selector, internalDomains, unsubscribeLinks, stepDetail, accounts, repullMonths, pageSize"),
+        keys(s.meta.params) === list("window", "selector", "internalDomains", "unsubscribeLinks", "stepDetail", "accounts", "repullMonths", "pageSize") && Array.isArray(s.meta.params.unsubscribeLinks) && s.meta.params.unsubscribeLinks.every((l) => typeof l === "string"), keys(s.meta.params));
       check(at("uniques rows: programId, scope window|month, month (null on window), people, accounts, participantRecords, external{…}, provenance, pulledAt"),
         rows(s, "uniques", list("programId", "scope", "month", "people", "accounts", "participantRecords", "external", "provenance", "pulledAt")) &&
           s.facts.uniques.every((r) => keys(r.external) === "accounts,participantRecords,people" && ["window", "month"].includes(r.scope) && (r.scope === "window") === (r.month === null) && (steps ? count(r.participantRecords) : r.participantRecords === null && r.external.participantRecords === null)), s.facts.uniques[0]);
@@ -647,6 +651,11 @@ try {
       check(at("a program roll-up is {state, templates{tracked, notTracked, unknown}}; a response availability is {state, evidence{surveyParticipants}}"),
         Object.values(av.clicks.programs).every((p) => keys(p) === "state,templates" && STATES.includes(p.state) && keys(p.templates) === "notTracked,tracked,unknown") &&
           Object.values(av.responses.programs).every((p) => keys(p) === "evidence,state" && STATES.includes(p.state) && keys(p.evidence) === "surveyParticipants"));
+      // V0 shape 1: what a program's state MEANS is part of the contract.
+      const rolled = Object.values(av.clicks.programs);
+      const want = ({ tracked, notTracked, unknown }) => (tracked + notTracked + unknown > 0 && tracked === tracked + notTracked + unknown ? "tracked" : tracked + notTracked + unknown > 0 && notTracked === tracked + notTracked + unknown ? "not-tracked" : "unknown");
+      check(at("a program roll-up is tracked only when EVERY template is, not-tracked only when every one is, and any mix is unknown; the counts are whole numbers"),
+        rolled.every((p) => [p.templates.tracked, p.templates.notTracked, p.templates.unknown].every(count) && p.state === want(p.templates)) && rolled.some((p) => p.state === "unknown" && p.templates.tracked > 0) && rolled.some((p) => p.state === "tracked"), rolled);
       check(at("reconciliation is {ok, checks[{id, ok, compared, mismatches, examples}]}; caveats are [{id, detail}]"),
         keys(s.reconciliation) === "checks,ok" && s.reconciliation.checks.length >= 4 && s.reconciliation.checks.every((c) => keys(c) === "compared,examples,id,mismatches,ok") && s.caveats.every((c) => keys(c) === "detail,id"), s.reconciliation.checks.map((c) => c.id));
       check(at("openSnapshot admits it"), openSnapshot(s) === s);

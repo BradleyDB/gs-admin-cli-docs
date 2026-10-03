@@ -127,6 +127,7 @@ const ENG_UNITS = {
   "click-json": { cls: "all", window: ENG_SPAN },
   "resp-month": { cls: "all", window: ENG_SPAN },
   "resp-participants": { cls: "all" },
+  "resp-total": { cls: "all" },
   "account-names": { cls: "all", keys: ["co-01", "co-02"] },
   step: { cls: "all", window: ENG_SPAN, programs: ENG_PROGRAMS },
   "step-click": { cls: "all", window: ENG_SPAN, programs: ENG_PROGRAMS },

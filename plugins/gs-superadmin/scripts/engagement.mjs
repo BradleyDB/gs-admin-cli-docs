@@ -39,7 +39,9 @@
 //     Outreach" and AddressType = "To". ao_emails is read only with step detail.
 //   - Click detail is read per send from LinkClickedJson, classified at fetch
 //     time: the clicker's IP and the URLs never reach disk, only the counts of
-//     content and other links. Unsubscribe and mailto links are not content.
+//     content and other links. Unsubscribe and mailto links are not content;
+//     a tenant whose unsubscribe link carries none of the generic wording names
+//     it with --unsubscribe-link (a link or a host), a run parameter.
 //   - Account is the finest grain. No address, person id or send id reaches the
 //     snapshot; unique counts are pulled as aggregates.
 //   - Unique counts are never summed across programs or months.
@@ -121,9 +123,11 @@
  * @property {T10StepRow[]} [byStep]              only when meta.stepDetail
  * @property {T10AccountRow[]} byAccount
  * @property {T10ResponseRow[]} responses
- * @property {Array<{programId: string, participants: number}>} responseParticipants
- *   the response-rate denominator: the program's survey_participant rows, all
- *   time (additive across programs; it has no month)
+ * @property {Array<{programId: string, participants: number, submitted: number, partiallySubmitted: number}>} responseParticipants
+ *   the response rate's ONE basis, all time: the program's survey_participant
+ *   rows (the denominator) and how many of them are Submitted and Partially
+ *   submitted (additive across programs; it has no month). The monthly
+ *   `responses` rows are for trends and the date filter, never for the rate.
  * @property {T10UniquesRow[]} uniques
  *
  * @typedef {object} T10Dimensions
@@ -145,8 +149,9 @@
  *   which a later layer supplies (TPL-1); with neither, unknown
  * @typedef {object} T10Availability
  * @property {{templates: Object<string, T10ClickAvailability>, programs: Object<string, {state: TrackingState, templates: {tracked: number, notTracked: number, unknown: number}}>}} clicks
- *   the program roll-up is tracked when any of its templates is, else unknown
- *   when any is, else not-tracked; the counts say how partial it is
+ *   the program roll-up is tracked only when EVERY one of its templates is,
+ *   not-tracked only when every one is, and any mix is unknown, so a tracked
+ *   program's 0% is a real 0% (R1b); the counts say what the mix is
  * @property {{programs: Object<string, {state: TrackingState, evidence: {surveyParticipants: ?number}}>}} responses
  *
  * @typedef {object} T10Meta
@@ -327,22 +332,72 @@ export const NON_CONTENT_LINK_RULES = Object.freeze([
   { kind: "mailto", re: /^mailto:/i },
   { kind: "unsubscribe", re: /unsubscribe|opt[-_]?out|email[-_]?preferences|manage[-_]?preferences/i },
 ]);
-/** @returns {"content"|"mailto"|"unsubscribe"|"unreadable"} */
-export function classifyLink(url) {
+// The tenant's own unsubscribe link (--unsubscribe-link, repeatable): a link or
+// a host, held as `host` or `host/path`. Which page a tenant unsubscribes on is
+// a fact about the tenant, so it is an input and never a wider pattern here.
+const asUrl = (raw) => {
+  try {
+    return new URL(/^[a-z][a-z0-9+.-]*:\/\//i.test(raw) ? raw : `https://${raw}`);
+  } catch {
+    return null;
+  }
+};
+const hostAndPath = (u) => ({ host: u.hostname.toLowerCase(), path: u.pathname.replace(/\/+$/, "").toLowerCase() });
+/**
+ * One --unsubscribe-link value → `host` or `host/path` (lower case; scheme,
+ * query and trailing slash dropped), or null when it names no web host.
+ * @param {unknown} value
+ * @returns {?string}
+ */
+export function parseUnsubscribeLink(value) {
+  const raw = String(value ?? "").trim();
+  const u = raw ? asUrl(raw) : null;
+  if (!u || !/^https?:$/.test(u.protocol) || u.username || u.password || !u.hostname.includes(".")) return null;
+  const { host, path } = hostAndPath(u);
+  return host + path;
+}
+/**
+ * Whether a clicked link is one the tenant named: the same host or a subdomain
+ * of it, and, when the value has a path, that path or anything under it. Whole
+ * path segments only: `/prefs` names `/prefs/topics`, never `/prefs-guide`.
+ * @param {unknown} url
+ * @param {ReadonlyArray<string>} links parseUnsubscribeLink's output
+ */
+export function matchesUnsubscribeLink(url, links) {
+  if (!links.length || typeof url !== "string" || !url.trim()) return false;
+  const u = asUrl(url.trim());
+  if (!u) return false;
+  const { host, path } = hostAndPath(u);
+  return links.some((link) => {
+    const cut = link.indexOf("/");
+    const h = cut === -1 ? link : link.slice(0, cut);
+    const p = cut === -1 ? "" : link.slice(cut);
+    return (host === h || host.endsWith(`.${h}`)) && (!p || path === p || path.startsWith(`${p}/`));
+  });
+}
+/**
+ * @param {unknown} url
+ * @param {ReadonlyArray<string>} [unsubscribeLinks] the tenant's own (params.unsubscribeLinks)
+ * @returns {"content"|"mailto"|"unsubscribe"|"unreadable"}
+ */
+export function classifyLink(url, unsubscribeLinks = []) {
   if (typeof url !== "string" || !url.trim()) return "unreadable";
   for (const rule of NON_CONTENT_LINK_RULES) if (rule.re.test(url)) return rule.kind;
-  return "content";
+  return matchesUnsubscribeLink(url, unsubscribeLinks) ? "unsubscribe" : "content";
 }
 /**
  * One send's LinkClickedJson → link counts. The value arrives as a wrapper
  * string, `{type=json, value=[…], null=true}`, with the JSON array inside; a
  * bare JSON array is read too. Each entry carries the clicker's `ip`: nothing
- * of an entry is returned, only what its url classifies as.
+ * of an entry is returned, only what its url classifies as. `byInput` counts
+ * the links the tenant's own unsubscribe input named: 0 across a whole pull
+ * means the input matched nothing.
  * @param {unknown} raw
- * @returns {{content: number, other: number, unreadable: boolean}}
+ * @param {ReadonlyArray<string>} [unsubscribeLinks]
+ * @returns {{content: number, other: number, byInput: number, unreadable: boolean}}
  */
-export function readLinkClicks(raw) {
-  if (typeof raw !== "string") return { content: 0, other: 0, unreadable: true };
+export function readLinkClicks(raw, unsubscribeLinks = []) {
+  if (typeof raw !== "string") return { content: 0, other: 0, byInput: 0, unreadable: true };
   const start = raw.indexOf("[");
   const end = raw.lastIndexOf("]");
   let entries = null;
@@ -351,14 +406,16 @@ export function readLinkClicks(raw) {
       entries = JSON.parse(raw.slice(start, end + 1));
     } catch { /* unreadable below */ }
   }
-  if (!Array.isArray(entries)) return { content: 0, other: 0, unreadable: true };
+  if (!Array.isArray(entries)) return { content: 0, other: 0, byInput: 0, unreadable: true };
   let content = 0;
   let other = 0;
+  let byInput = 0;
   for (const e of entries) {
-    if (classifyLink(e?.url) === "content") content++;
+    if (classifyLink(e?.url, unsubscribeLinks) === "content") content++;
     else other++;
+    if (matchesUnsubscribeLink(e?.url, unsubscribeLinks)) byInput++;
   }
-  return { content, other, unreadable: false };
+  return { content, other, byInput, unreadable: false };
 }
 
 // ── Field specs, aliases and cells ───────────────────────────────────────────
@@ -421,9 +478,11 @@ export const ROW_READERS = Object.freeze({
   account: (row) => ({ ...logKey(row), accountKey: str(cellValue(row[col.hop(PATH.company)])), flags: logFlags(row) }),
   "click-attr": (row) => ({ ...logKey(row), templateId: str(cellValue(row[col.field(LOG, "EmailTemplateId")])), accountKey: str(cellValue(row[col.hop(PATH.company)])), sendId: str(cellValue(row[col.field(LOG, "Gsid")])) }),
   // Read at FETCH time: what reaches disk is the send's id and its link counts.
-  "click-json": (row) => ({ id: str(cellValue(row[col.field(LOG, "Gsid")])), ...readLinkClicks(cellValue(row[col.field(LOG, "LinkClickedJson")])) }),
+  // The links are classified with the run's own unsubscribe links (the second argument).
+  "click-json": (row, unsubscribeLinks = []) => ({ id: str(cellValue(row[col.field(LOG, "Gsid")])), ...readLinkClicks(cellValue(row[col.field(LOG, "LinkClickedJson")]), unsubscribeLinks) }),
   "resp-month": (row) => ({ programId: str(cellValue(row[col.hop(PATH.surveyProgram)])), month: cellMonth(row[col.month(SURVEY, "RespondedDate")]), status: cellValue(row[col.field(SURVEY, "ResponseStatus")]), n: cellNumber(row[col.count(SURVEY)]) }),
   "resp-participants": (row) => ({ programId: str(cellValue(row[col.hop(PATH.surveyProgram)])), n: cellNumber(row[col.count(SURVEY)]) }),
+  "resp-total": (row) => ({ programId: str(cellValue(row[col.hop(PATH.surveyProgram)])), status: cellValue(row[col.field(SURVEY, "ResponseStatus")]), n: cellNumber(row[col.count(SURVEY)]) }),
   "account-names": (row) => ({ key: str(cellValue(row[col.field(COMPANY, "Gsid")])), name: str(cellValue(row[col.field(COMPANY, "Name")])) }),
   step: (row) => ({
     programId: str(cellValue(row[col.field(JO_LOG, "AdvancedOutreachId")])), month: cellMonth(row[col.month(JO_LOG, "CreatedAt")]), n: cellNumber(row[col.count(JO_LOG)]),
@@ -502,6 +561,9 @@ const FAMILIES = {
     }),
   },
   "resp-participants": { object: SURVEY, split: [], query: () => ({ group: [PATH.surveyProgram], show: [countOf], where: [] }) },
+  // All time, like the denominator above: resp-month's query without its month
+  // bucket and its window, so the two count a response the same way.
+  "resp-total": { object: SURVEY, split: [], query: () => ({ group: [PATH.surveyProgram, { name: "ResponseStatus" }], show: [countOf], where: [cond("Responded", "EQ", true)] }) },
   "account-names": { object: COMPANY, split: ["keys"], query: (d) => ({ group: [], show: [{ name: "Gsid" }, { name: "Name" }], where: [cond("Gsid", "IN", d.keys)] }) },
   // Step detail only (R21): the JO send log, windowed on CreatedAt.
   step: {
@@ -696,6 +758,11 @@ export function resolveParams(raw) {
   const from = raw.from ?? addMonths(to, -12);
   if (!isMonth(from) || !isMonth(to) || from > to) throw new Error(`the window must be --from YYYY-MM --to YYYY-MM with from <= to (got ${from}..${to})`);
   const domains = [...new Set((raw.internalDomains ?? []).map((d) => String(d).trim().toLowerCase().replace(/^@/, "")).filter(Boolean))].sort();
+  const unsubscribeLinks = [...new Set((raw.unsubscribeLinks ?? []).map((v) => {
+    const link = parseUnsubscribeLink(v);
+    if (!link) throw new Error(`--unsubscribe-link takes a link or a host (https://www.example.com/page, or links.example.net) — got "${printable(String(v), 80)}"`);
+    return link;
+  }))].sort();
   const pageSize = raw.pageSize ?? SERVER_PAGE_MAX;
   if (!Number.isInteger(pageSize) || pageSize < 2 || pageSize > SERVER_PAGE_MAX) throw new Error(`--page-size must be 2..${SERVER_PAGE_MAX} (got ${raw.pageSize})`);
   const repullMonths = raw.repullMonths ?? 2;
@@ -725,6 +792,7 @@ export function resolveParams(raw) {
       sentSince,
     },
     internalDomains: domains,
+    unsubscribeLinks,
     stepDetail: !!raw.stepDetail,
     accounts: {
       busiest: whole(acc.busiest, 20, "--accounts-busiest"),
@@ -839,11 +907,15 @@ export function decidePrograms({ listed, base, describes, selector, sentSinceIds
 }
 
 const sameList = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+// Clicks are classified at fetch time, so everything a snapshot says about
+// clicks (the clicked counts and each template's click history) was decided
+// under the unsubscribe links it was pulled with.
+const sameUnsubscribeLinks = (previous, params) => sameList(previous?.meta?.params?.unsubscribeLinks ?? [], params.unsubscribeLinks);
 /**
  * Full or selective. Selective needs a previous snapshot that the new pull
  * can extend without re-deriving anything: same tenant, same class split, same
- * step-detail switch, same account selection, and a window that reaches back
- * at least as far. Months on or after the earlier of (the re-pull horizon's
+ * unsubscribe links, same step-detail switch, same account selection, and a
+ * window that reaches back at least as far. Months on or after the earlier of (the re-pull horizon's
  * first month, the month the previous snapshot was pulled in) are re-pulled;
  * older ones are carried, for the programs the previous snapshot already held.
  * @returns {{mode: "full"|"selective", why: string, pulledMonths: string[], carriedMonths: string[], carriedPrograms: Set<string>, previousPulledAt: ?string}}
@@ -857,6 +929,7 @@ export function decideRefresh({ params, previous, tenantHost, selectedIds }) {
   const pp = pm.params ?? {};
   if (pm.tenantHost !== tenantHost) return full("the previous snapshot is another tenant's");
   if (!sameList(pp.internalDomains ?? [], params.internalDomains)) return full("the internal domains changed");
+  if (!sameUnsubscribeLinks(previous, params)) return full("the unsubscribe links changed");
   if (!!pm.stepDetail !== params.stepDetail) return full("the step-detail switch changed");
   const { names: _n, ...accNow } = params.accounts;
   const { names: _p, ...accPrev } = pp.accounts ?? {};
@@ -969,6 +1042,7 @@ export function planUnits({ params, base, selectedIds, refresh, surveyAvailable 
   if (surveyAvailable) {
     units.push({ family: "resp-month", cls: "all", window: smallSpan });
     units.push({ family: "resp-participants", cls: "all" });
+    units.push({ family: "resp-total", cls: "all" });
   }
   if (params.stepDetail) {
     const stepMonth = (m, ids) => {
@@ -1084,7 +1158,7 @@ export function fetchEngagement(ctx) {
         // As long as the page: the server cut it and said nothing.
         const truncated = isRpRun(d) && rows != null && rows >= params.pageSize;
         if (FAMILIES[d.family]?.sanitize === "clicks" && Array.isArray(payload)) {
-          payload = payload.map(ROW_READERS["click-json"]);
+          payload = payload.map((row) => ROW_READERS["click-json"](row, params.unsubscribeLinks));
         }
         writeFileAtomicSync(join(runDir, file), JSON.stringify(payload));
         return record({ ...d, id, status: "ok", file, rows, truncated, attempt, ...(r.stderr.trim() ? { warning: printable(r.stderr, 200) } : {}) });
@@ -1420,7 +1494,7 @@ export function reduceEngagement(input) {
   // ── Clicks: who and when, joined to what was clicked, on the send's id ──
   const linksById = new Map();
   for (const u of of("click-json")) for (const r of u.rows) if (r?.id != null) linksById.set(r.id, r);
-  const clicks = { clickedSends: 0, withContentClick: 0, nonContentOnly: 0, unreadable: 0, detailMissing: 0 };
+  const clicks = { clickedSends: 0, withContentClick: 0, nonContentOnly: 0, unreadable: 0, detailMissing: 0, byUnsubscribeInput: 0 };
   const sendMonth = new Map(); // send id → [programId, templateId, month, account], for step detail
   const internalSends = new Set();
   for (const u of of("click-attr", "internal")) for (const row of u.rows) internalSends.add(ROW_READERS["click-attr"](row).sendId);
@@ -1432,6 +1506,7 @@ export function reduceEngagement(input) {
       const links = linksById.get(id);
       if (!links) { clicks.detailMissing++; continue; }
       if (links.unreadable) { clicks.unreadable++; continue; }
+      if (links.byInput) clicks.byUnsubscribeInput++;
       if (!links.content) { clicks.nonContentOnly++; continue; }
       clicks.withContentClick++;
       sendMonth.set(id, [p, t, m, account]);
@@ -1572,10 +1647,26 @@ export function reduceEngagement(input) {
       else if (selected.has(p)) participantsByProgram.set(p, n);
     }
   }
-  const responseParticipants = [...participantsByProgram].map(([programId, participants]) => ({ programId, participants })).sort(byKeys("programId"));
+  // The same program's Submitted and Partially submitted, all time: with the
+  // denominator they are the response rate's one basis.
+  const totalsByProgram = new Map();
+  for (const u of of("resp-total")) {
+    for (const row of u.rows) {
+      const { programId: p, status, n: count } = ROW_READERS["resp-total"](row);
+      if (p == null || !selected.has(p)) continue;
+      if (!totalsByProgram.has(p)) totalsByProgram.set(p, { submitted: 0, partiallySubmitted: 0 });
+      if (status === "Submitted") totalsByProgram.get(p).submitted += count ?? 0;
+      else if (status === "Partially Submitted") totalsByProgram.get(p).partiallySubmitted += count ?? 0;
+    }
+  }
+  const responseParticipants = [...participantsByProgram]
+    .map(([programId, participants]) => ({ programId, participants, submitted: totalsByProgram.get(programId)?.submitted ?? 0, partiallySubmitted: totalsByProgram.get(programId)?.partiallySubmitted ?? 0 }))
+    .sort(byKeys("programId"));
 
   // ── Availability of the optional metrics ──
-  const prevClick = previous?.meta?.metricAvailability?.clicks?.templates ?? {};
+  // Click history carries from the previous snapshot only when it was
+  // classified under the same unsubscribe links as this pull.
+  const prevClick = (sameUnsubscribeLinks(previous, params) ? previous?.meta?.metricAvailability?.clicks?.templates : null) ?? {};
   const history = new Map();
   for (const r of byTemplate) {
     if (r.templateId == null) continue;
@@ -1608,7 +1699,8 @@ export function reduceEngagement(input) {
       const state = t == null ? "unknown" : clickTemplates[t].state;
       tally[state === "tracked" ? "tracked" : state === "not-tracked" ? "notTracked" : "unknown"]++;
     }
-    clickPrograms[p] = { state: tally.tracked ? "tracked" : tally.unknown ? "unknown" : tally.notTracked ? "not-tracked" : "unknown", templates: tally };
+    const counted = tally.tracked + tally.notTracked + tally.unknown;
+    clickPrograms[p] = { state: counted && tally.tracked === counted ? "tracked" : counted && tally.notTracked === counted ? "not-tracked" : "unknown", templates: tally };
     // A program with survey participants sent a survey, so a 0 is a real 0.
     // None, on a readable object, means it sent no survey. An unreadable
     // object decides nothing.
@@ -1721,7 +1813,7 @@ export function reduceEngagement(input) {
     kind: "engagement",
     meta: {
       source: "jo-engagement",
-      params: { window: { from: params.window.from, to: params.window.to }, selector: params.selector, internalDomains: params.internalDomains, stepDetail: params.stepDetail, accounts: params.accounts, repullMonths: params.repullMonths, pageSize: params.pageSize },
+      params: { window: { from: params.window.from, to: params.window.to }, selector: params.selector, internalDomains: params.internalDomains, unsubscribeLinks: params.unsubscribeLinks, stepDetail: params.stepDetail, accounts: params.accounts, repullMonths: params.repullMonths, pageSize: params.pageSize },
       pulledAt,
       timeZone: params.timeZone,
       tenantHost: whoami.host,
@@ -1815,21 +1907,32 @@ export const programClickAvailability = (snapshot, programId) =>
   snapshot.meta.metricAvailability.clicks.programs[programId] ?? { state: "unknown", templates: { tracked: 0, notTracked: 0, unknown: 0 } };
 /**
  * A program's survey responses with their tracking state: Submitted,
- * Partially submitted, Any response, and the denominator.
+ * Partially submitted and Any response, on ONE basis per call.
+ *   no months   basis "all-time": the counts and the denominator, both all
+ *               time. This is the only pair a response rate is computed from.
+ *   months      basis "months": the counts of those response months, for a
+ *               trend or a date filter. participants is null: the denominator
+ *               has no month, so these counts never sit beside it.
  * @param {T10Snapshot} snapshot
  * @param {string} programId
- * @param {?string[]} [months] response months to count; all when omitted
- * @returns {{state: TrackingState, submitted: ?number, partiallySubmitted: ?number, anyResponse: ?number, participants: ?number}}
+ * @param {?string[]} [months] response months to count
+ * @returns {{state: TrackingState, basis: "all-time"|"months", submitted: ?number, partiallySubmitted: ?number, anyResponse: ?number, participants: ?number}}
  */
 export function readResponses(snapshot, programId, months = null) {
   const state = snapshot.meta.metricAvailability.responses.programs[programId]?.state ?? "unknown";
-  if (state === "not-tracked") return { state, submitted: null, partiallySubmitted: null, anyResponse: null, participants: null };
-  const keep = months ? new Set(months) : null;
-  const rows = snapshot.facts.responses.filter((r) => r.programId === programId && (!keep || keep.has(r.month)));
+  /** @type {"all-time"|"months"} */
+  const basis = months ? "months" : "all-time";
+  const none = { state, basis, submitted: null, partiallySubmitted: null, anyResponse: null, participants: null };
+  if (state === "not-tracked") return none;
+  if (!months) {
+    const all = snapshot.facts.responseParticipants.find((r) => r.programId === programId);
+    return all ? { state, basis, submitted: all.submitted, partiallySubmitted: all.partiallySubmitted, anyResponse: all.submitted + all.partiallySubmitted, participants: all.participants } : none;
+  }
+  const keep = new Set(months);
+  const rows = snapshot.facts.responses.filter((r) => r.programId === programId && keep.has(r.month));
   const submitted = rows.reduce((s, r) => s + r.submitted, 0);
   const partiallySubmitted = rows.reduce((s, r) => s + r.partiallySubmitted, 0);
-  const participants = snapshot.facts.responseParticipants.find((r) => r.programId === programId)?.participants ?? null;
-  return { state, submitted, partiallySubmitted, anyResponse: submitted + partiallySubmitted, participants };
+  return { state, basis, submitted, partiallySubmitted, anyResponse: submitted + partiallySubmitted, participants: null };
 }
 
 /** @type {EngagementSourceAdapter} */
@@ -1843,7 +1946,7 @@ export const joEngagementAdapter = {
 // ── CLI ──────────────────────────────────────────────────────────────────────
 const USAGE =
   "usage: engagement.mjs <plan|fetch|run> [--workspace <dir>] [--run <id>] [--kb <slugDir>] [--from YYYY-MM --to YYYY-MM] " +
-  "[--name <program>]... [--ids-file <file>] [--sent-since <date|Nd|Nm>] [--internal-domain <domain>]... [--step-detail] " +
+  "[--name <program>]... [--ids-file <file>] [--sent-since <date|Nd|Nm>] [--internal-domain <domain>]... [--unsubscribe-link <link|host>]... [--step-detail] " +
   "[--previous <snapshot.json>] [--full] [--out <snapshot.json>]  |  engagement.mjs reduce --run-dir <dir> --out <snapshot.json> [--previous <file>] [--link-settings <file>]";
 const EXIT = { ok: 0, failed: 1, "token-expired": 3, partial: 4 };
 
@@ -1896,7 +1999,7 @@ async function main() {
     params = resolveParams({
       today: opt("--today"), from: opt("--from"), to: opt("--to"),
       names: all("--name"), ids: idsFile ? parseIdList(readFileSync(resolve(idsFile), "utf8")) : [], sentSince: opt("--sent-since"),
-      internalDomains: all("--internal-domain"), stepDetail: argv.includes("--step-detail"),
+      internalDomains: all("--internal-domain"), unsubscribeLinks: all("--unsubscribe-link"), stepDetail: argv.includes("--step-detail"),
       accounts: {
         busiest: int("--accounts-busiest"), lowEngagement: int("--accounts-low"), mostBounces: int("--accounts-bounce"), lowEngagementMinDelivered: int("--accounts-low-min-delivered"),
         pinned: pinFile ? parseIdList(readFileSync(resolve(pinFile), "utf8")) : [], names: !argv.includes("--no-account-names"),
