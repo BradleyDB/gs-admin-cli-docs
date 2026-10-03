@@ -152,6 +152,35 @@ rule also reads the archive.
 Under test: fix-f469-dev-only · hb-20260929-01 · 2026-09-29
 Blind spots (hb-20260929-01): the release shape (strip committed, bus only on origin/dev) is measured locally only: a scratch clone ran every docs-drift step verbatim, with the fetch step fetching from a local remote, and only that shape kills sweep mutant M5. CI first runs it on the next release PR, since a pre-merge CI probe would read an origin/dev without the line. The main-existence step's base_ref == main path also runs first there (its rehearsal-arm path runs on this handoff's dispatch). Grammar parity with dev-utils is measured at 0.5.0 only. The reader's symlink-escape refusal has no fixture. RELEASE-CHECKLIST §3's strip and verify commands ran in a scratch clone; §5's release-finish did not run (no release). No SKILL.md changed, so no walk is owed; the round's guard-wiring line is the tester's
 
+<!-- builder 2026-10-03 (JO-dashboards S1 — ENG-1 + ENG-2 HANDED OFF @ hb-20261003-01; UNMERGED, riding a branch):
+     Branch feat/jo-dash-s1-facts -> PR #36, base dev, UNMERGED. It merges only after the tester round S1-V (the plan's
+       merge gate); the merge is Bradley's.
+     What rides it: plugin 0.44.0 — scripts/engagement.mjs (the jo-engagement adapter: plan / fetch / reduce / run) and
+       the T-10 engagement snapshot contract, frozen in that script's header and pinned in test/contract-conformance.mjs;
+       test/engagement.mjs (151 checks) over a fictional tenant; three new rows in data/reader-shapes.json (rp run,
+       rp schema, jo p list). No skill calls the script yet, and no SKILL.md changed.
+     No finding logged, no number consumed: the next free number stays F-470. Ruling (Bradley, 2026-10-03): this
+       program's FEATURE items are tracked by their plan IDs (ENG-n and the rest: CONTRIBUTING, "Reading the citations
+       in code comments"), never by an F-number. F-numbers stay for defects, including any a verdict round finds here.
+       The feature's verdict list is dev/VALIDATION.md section ENG-2 on the branch (V0-V13), keyed to the token, and
+       nothing is "noted on the verdict": an observation beside a pass bar becomes an F-section or an issue before the
+       round closes.
+     Under test on the branch: hb-20261003-01; blind spots = the Blind spots line in the branch's header.
+     Owed by the tester round (S1-V, consumer workspace, reads only): the fourteen items of VALIDATION section ENG-2
+       (V0 is Bradley's ruling on four contract shapes before T-10 freezes at merge), plus one guard-wiring line. No
+       walk is owed.
+     Ordering decision: nothing else pending touches what is verified. Open PRs to dev: #36 only. Issues #11 and #12
+       (help wanted) are untouched.
+     Local evidence on the tree committed as 522b9e7: both workflow step lists run verbatim, 43 of 45 steps green. The
+       two reds are not defects in the change. `npm run typecheck` trips on one unused variable in a git-ignored local
+       file CI never sees; the tracked tree type-checks clean. The full `npm run build` re-stamps the catalog's
+       generatedAt, so its diff is 8 timestamp lines in 7 files; the derived generators CI's drift job runs reproduce
+       the committed output exactly. /code-review medium on the working diff: 4 findings, all fixed with a check each,
+       and the suites they touch re-run green. A mutation sweep over the engine's enforced rules, predictions written
+       before any mutant ran: 24 of 24 mutants behaved as predicted. It ran before the review fixes.
+     CI on PR #36's head 3ce590c: started by the push, pending at this stamp. Quoted per job after completion, never
+       asserted here first. -->
+
 <!-- builder 2026-09-29 (F-469 round CLOSED OUT — PR #35 merged (bc8deea); F-469 VERIFIED @ hb-20260929-01):
      Round: the acceptance round at hb-20260929-01 REOPENED F-469 on check 18: a strip path that is one segment
        plugin-relatively (a plugin-root file) is never matched. On Bradley's call the tester narrowed the claim by role
