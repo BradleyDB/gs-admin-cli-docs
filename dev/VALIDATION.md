@@ -810,8 +810,10 @@ Pass bars (stated before measuring; counts are compared, not rates, because the 
   table, all time, because no date field present on every `survey_participant` row was recorded; step name and
   order per (template, program) pair under `uses[]`; and `meta.participantRecords` carrying the reason the
   count is blank. A change he asks for lands before the merge, with the typedef and the pin together.
-- V1 · Reconciliation. Run 2's summary reads `reconciled: true`, every check `ok` with `compared` above zero. A
-  mismatch is a finding; its `examples` name the program and month.
+- V1 · Reconciliation and the excluded classes. Run 2's summary reads `reconciled: true`, every check `ok` with
+  `compared` above zero. A mismatch is a finding; its `examples` name the program and month. The summary's
+  `excluded` counts are plausible against the spike: CC copies a fraction of a percent of the rows, deleted
+  programs a few percent of sends, and one deleted id, described by hand, answers "not found".
 - V2 · Uniques against the UI (R3), P-busy, all time or the UI's own range: unique recipients (`people`) is
   within one percent of the UI's Contacts, and accounts reached is plausible against the UI's account list.
   The spike measured a ratio of 0.998 for people; a larger gap is a finding.
@@ -846,11 +848,14 @@ Pass bars (stated before measuring; counts are compared, not rates, because the 
   additive field a later session can add.
 - V12 · Month boundaries and time zone (the spike arm g2 rides here): for P-busy and the chosen month, the UI's
   sent, delivered and opened for that month equal the snapshot's month row. A one-day shift at either edge is
-  a finding that names the direction.
+  a finding that names the direction. The arm's other half, per-email parity, uses run 3: one program's step
+  rows against the UI's per-email delivered and opened. Both answers also go into the spike notes.
 - V13 · Cost and privacy. Run 2's elapsed time against the estimate from step 1 (record both; an estimate off by
   more than a factor of two is a finding). Step names: `honesty.stepNames` on the real KB, and whether the
   programs without a design are the ones the KB holds only stubs for. And one search of every file under the
-  three run directories and the three snapshots for an `@`, and for an IPv4 pattern: none may be found.
+  three run directories and the three snapshots for an `@`, and for an IPv4 pattern: none may be found. If a
+  run stops on the token (exit 3), the same line resumes it: record the calls it reused. That path is pinned
+  offline, so it is recorded when it happens, not forced.
 
 A verdict that any of V1, V3, V4, V8 or V13's privacy search fails keeps the branch unmerged. Record each verdict
 here with the token, and copy the measurements to the bus under the round's Blind spots line.
