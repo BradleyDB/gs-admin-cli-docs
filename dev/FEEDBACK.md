@@ -152,6 +152,25 @@ rule also reads the archive.
 Under test: fix-f469-dev-only · hb-20260929-01 · 2026-09-29
 Blind spots (hb-20260929-01): the release shape (strip committed, bus only on origin/dev) is measured locally only: a scratch clone ran every docs-drift step verbatim, with the fetch step fetching from a local remote, and only that shape kills sweep mutant M5. CI first runs it on the next release PR, since a pre-merge CI probe would read an origin/dev without the line. The main-existence step's base_ref == main path also runs first there (its rehearsal-arm path runs on this handoff's dispatch). Grammar parity with dev-utils is measured at 0.5.0 only. The reader's symlink-escape refusal has no fixture. RELEASE-CHECKLIST §3's strip and verify commands ran in a scratch clone; §5's release-finish did not run (no release). No SKILL.md changed, so no walk is owed; the round's guard-wiring line is the tester's
 
+<!-- tester 2026-10-03 (JO-dashboards S1-V re-run @ hb-20261003-02 — STOPPED after run 2: V8 FAILED; claims F-471 and F-472, both OPEN on the branch; F-470 stays FIXED; next free F-473):
+     Under test: feat/jo-dash-s1-facts -> PR #36, UNMERGED; checkout clean and level with origin at 9482657 (matches
+       Under test); the dev-canary skill read hb-20261003-02 in session. Production tenant, confirmed; reads only.
+     V0: Bradley confirmed both contract changes landed as ruled. Nothing observed implies a contract change; T-10 is
+       still typed and pinned, not frozen (it freezes at the merge).
+     Run 1 (plan) ran; run 2 (full) ended partial (exit 4), so no snapshot was built and every snapshot check is
+       unmeasured. Runs 3-5 were not run, on Bradley's call. Verdict block, measurements and blind spots: the tester
+       comment on the branch's bus at e97554b; per-check record: dev/VALIDATION.md section ENG-2 there (OPEN).
+     Status transitions on the branch, this round:
+       F-471 logged OPEN (normal): the click-attribution query groups by the field its COUNT shows, and the CLI's
+         request normalizer drops that show field and refuses the empty request client-side, on every run.
+       F-472 logged OPEN (normal): the account pull's split ladder bottoms out at one program-day, and mass-send days
+         exceed the 5000-row page there.
+       F-470: no transition, stays FIXED. V9 needs the snapshot. A diagnostic from run 2's click payload shows the
+         unsubscribe input matching the stored links (detail in its section).
+     V8 failed, so PR #36 stays unmerged. CLEANUP-PLAN section S1 was not run. Open PRs to dev: #36 only.
+     CI on PR #36's new head e97554b (pushed without [skip ci]): started by the push, pending at this stamp. Quoted
+       per job after completion, never asserted here first. -->
+
 <!-- builder 2026-10-03 (JO-dashboards S1 fix batch — HANDED OFF @ hb-20261003-02; F-470 FIXED on the branch; next free F-471):
      Riding feat/jo-dash-s1-facts -> PR #36, UNMERGED (it merges after the S1-V re-run; the merge is Bradley's). Branch
        tip 9482657, the handoff commit; the fix is b763fcb plus the review fixes in 85dc54b.
