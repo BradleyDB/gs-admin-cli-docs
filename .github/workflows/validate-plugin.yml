@@ -196,6 +196,13 @@ jobs:
       # definition site instead of relying on transitive consumer fixtures).
       - name: Doc-lib direct fixtures
         run: node plugins/gs-superadmin/test/doc-lib-fixtures.mjs
+      # The jo-engagement adapter (ENG-2): the fictional tenant's stand-in CLI
+      # reproduces the send log's measured behaviours (silent row caps, null
+      # date ordering, LOOKUP collapse), and the snapshot must equal a straight
+      # count of the fixture's rows. Before the contract suite, which pins the
+      # same producer's output shape (T-10).
+      - name: Engagement adapter fixtures (engagement.mjs)
+        run: node plugins/gs-superadmin/test/engagement.mjs
       # Executes the frozen T-1/T-2 contracts against produced artifacts
       # (GP-B5 DS-18): manifest verbs in a temp workspace, bundled catalog
       # key sets.

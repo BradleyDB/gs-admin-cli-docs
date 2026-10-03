@@ -32,6 +32,12 @@
 //   sequences, kind literals, ticket placement, and the label-subset
 //   closure of "no other fields exist".
 //
+//   T-10 (scripts/engagement.mjs header, ENG-1): the engagement snapshot,
+//   executed through the real producer over the fictional acme tenant (the
+//   fake CLI behind --bin) — every table's key set, the conditional step
+//   tables, the enums, the three tracking states, the schemaVersion refusal —
+//   and the same pins over the committed fixture snapshot.
+//
 // The two observed-vs-typedef discrepancies this suite's probes found were
 // adjudicated as CONTRACT v3 (B2, 2026-08-16, Bradley-approved in-session):
 // endpoint entries carry {name, method, path}, and `char` is
@@ -46,6 +52,8 @@ import { fileURLToPath } from "node:url";
 import { makeTempDir, removeTempDir, writeFiles, runNode } from "../../../test/rig.mjs";
 import { parseJourneyDoc } from "../scripts/jo-report.mjs";
 import { STUB_MARKER } from "../scripts/doc-lib.mjs";
+import { openSnapshot, T10_SCHEMA_VERSION } from "../scripts/engagement.mjs";
+import { kbFiles } from "./fixtures/engagement/acme-tenant.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const MANIFEST_SCRIPT = join(HERE, "..", "scripts", "manifest.mjs");
@@ -539,6 +547,132 @@ try {
       JSON.stringify(steps) === JSON.stringify([1, 2, 3, 4, 5, 6]), steps);
   } finally {
     removeTempDir(t4);
+  }
+}
+
+// ── T-10 · engagement snapshot, executed through the real producer ───────────
+// ENG-1: the snapshot scripts/engagement.mjs writes, pulled through the real
+// process over the fictional acme tenant (test/fixtures/engagement/ — the fake
+// CLI behind --bin), once with step detail and once without, and the committed
+// fixture snapshot beside them. Key sets are hand-spelled from the frozen
+// typedef (R-10), never imported: a field added, dropped or renamed at the
+// producer reds here until the typedef and this pin move together. What the
+// values MEAN is the engagement suite's (it holds the producer to a straight
+// count of the fixture's rows); this section owns the SHAPE.
+{
+  const t10 = makeTempDir("contract-conformance-t10");
+  try {
+    const ENGINE = join(HERE, "..", "scripts", "engagement.mjs");
+    const FAKE = join(HERE, "fixtures", "engagement", "fake-gs-admin.mjs");
+    const links = join(t10, "links.json");
+    writeFiles(t10, {
+      "ws/.gs-superadmin/.keep": "",
+      "links.json": JSON.stringify({ "tpl-nps": { reading: "tracked-link-present", asOf: "2026-09-01" }, "tpl-renew-b": { reading: "links-none-tracked", asOf: "2026-09-01" } }),
+    });
+    writeFiles(join(t10, "kb"), kbFiles("acme-prod"));
+    const produce = (run, extra) => {
+      const out = join(t10, `${run}.json`);
+      const r = runNode(ENGINE, [
+        "run", "--workspace", join(t10, "ws"), "--bin", FAKE, "--kb", join(t10, "kb", "acme-prod"), "--today", "2026-09-15",
+        "--pulled-at", "2026-09-15T09:00:00-07:00", "--from", "2026-06", "--internal-domain", "acme.com", "--page-size", "400",
+        "--accounts-busiest", "3", "--accounts-low", "2", "--accounts-bounce", "2", "--accounts-low-min-delivered", "4",
+        "--link-settings", links, "--run", run, "--out", out, ...extra,
+      ]);
+      check(`T-10: the producer runs over the fixture tenant (${run})`, r.status === 0, r.stderr.slice(-400));
+      return r.status === 0 ? JSON.parse(readFileSync(out, "utf8")) : null;
+    };
+    const withSteps = produce("t10-steps", ["--step-detail"]);
+    const plain = produce("t10-plain", []);
+    const fixture = JSON.parse(readFileSync(join(HERE, "fixtures", "engagement", "snapshot-acme.json"), "utf8"));
+
+    const keys = (o) => Object.keys(o).sort().join(",");
+    const list = (...names) => names.slice().sort().join(",");
+    const MEASURES = ["sent", "delivered", "bounced", "rejected", "unsubscribed", "spamComplaints", "opened", "clicked"];
+    const ROW_BASE = ["programId", "month", "recipientClass", "provenance", "pulledAt"];
+    const STATES = ["tracked", "not-tracked", "unknown"];
+    const MONTH = /^\d{4}-(0[1-9]|1[0-2])$/;
+    const count = (v) => Number.isInteger(v) && v >= 0;
+    const rows = (s, table, rowKeys) => Array.isArray(s.facts[table]) && s.facts[table].length > 0 && s.facts[table].every((r) => keys(r) === rowKeys);
+
+    for (const [which, s, steps] of /** @type {Array<[string, *, boolean]>} */ ([["produced with step detail", withSteps, true], ["produced without step detail", plain, false], ["the committed fixture snapshot", fixture, true]])) {
+      if (!s) continue;
+      const at = (label) => `T-10 (${which}): ${label}`;
+      check(at("top level is exactly {schemaVersion 1, kind engagement, meta, dimensions, facts, honesty, reconciliation, caveats}"),
+        keys(s) === list("schemaVersion", "kind", "meta", "dimensions", "facts", "honesty", "reconciliation", "caveats") && s.schemaVersion === 1 && s.kind === "engagement", keys(s));
+      check(at("meta carries exactly the typedef keys; source jo-engagement; pulledAt has a UTC offset"),
+        keys(s.meta) === list("source", "params", "pulledAt", "timeZone", "tenantHost", "cliVersion", "pluginVersion", "window", "incompleteFrom", "dateBasis", "stepDetail", "participantRecords", "refresh", "metricAvailability") &&
+          s.meta.source === "jo-engagement" && /T\d\d:\d\d:\d\d[+-]\d\d:\d\d$/.test(s.meta.pulledAt) && s.meta.stepDetail === steps, keys(s.meta));
+      check(at("window is {from, to, start, endExclusive}; incompleteFrom is a day"), keys(s.meta.window) === list("from", "to", "start", "endExclusive") && MONTH.test(s.meta.window.from) && /^\d{4}-\d\d-\d\d$/.test(s.meta.incompleteFrom), s.meta.window);
+      check(at("dateBasis names ExecutedDate months, and ao_emails' CreatedAt only with step detail"),
+        keys(s.meta.dateBasis) === list("object", "field", "grain", "stepDetail") && s.meta.dateBasis.object === "email_log_v2" && s.meta.dateBasis.field === "ExecutedDate" && s.meta.dateBasis.grain === "month" &&
+          (steps ? keys(s.meta.dateBasis.stepDetail) === "field,object" && s.meta.dateBasis.stepDetail.field === "CreatedAt" : s.meta.dateBasis.stepDetail === null), s.meta.dateBasis);
+      check(at("participantRecords is {pulled, reason}: pulled with step detail, else the reason a reader shows"),
+        keys(s.meta.participantRecords) === "pulled,reason" && (steps ? s.meta.participantRecords.pulled === true && s.meta.participantRecords.reason === null : s.meta.participantRecords.pulled === false && s.meta.participantRecords.reason === "step-detail-off"), s.meta.participantRecords);
+      check(at("refresh is exactly {mode, why, repullMonths, pulledMonths, carriedMonths, carriedPrograms, fullPrograms, previousPulledAt}"),
+        keys(s.meta.refresh) === list("mode", "why", "repullMonths", "pulledMonths", "carriedMonths", "carriedPrograms", "fullPrograms", "previousPulledAt") && ["full", "selective"].includes(s.meta.refresh.mode), s.meta.refresh);
+
+      const d = s.dimensions;
+      check(at(`dimensions are exactly {programs, templates, accounts, months${steps ? ", steps" : ""}} — steps only with step detail`), keys(d) === (steps ? list("programs", "templates", "accounts", "months", "steps") : list("programs", "templates", "accounts", "months")), keys(d));
+      check(at("program rows: id, name, a statuses LIST, model, modelName, audienceType, supergroup, group, folderId"),
+        d.programs.length > 0 && d.programs.every((p) => keys(p) === list("id", "name", "statuses", "model", "modelName", "audienceType", "supergroup", "group", "folderId") && Array.isArray(p.statuses)), d.programs[0]);
+      check(at("template rows: id, name, uses[{programId, stepName, stepOrder, stepCount}]"),
+        d.templates.length > 0 && d.templates.every((t) => keys(t) === "id,name,uses" && t.uses.length > 0 && t.uses.every((u) => keys(u) === list("programId", "stepName", "stepOrder", "stepCount") && count(u.stepCount) && (u.stepCount === 1 || (u.stepName === null && u.stepOrder === null)))), d.templates[0]);
+      check(at("account rows: an opaque key and a name; months are YYYY-MM"), d.accounts.length > 0 && d.accounts.every((a) => keys(a) === "key,name" && typeof a.key === "string") && d.months.every((m) => MONTH.test(m)), d.accounts[0]);
+      if (steps) check(at("step rows: programId, stepId, name, order, templateId, variantId, variantName"), d.steps.length > 0 && d.steps.every((x) => keys(x) === list("programId", "stepId", "name", "order", "templateId", "variantId", "variantName")), d.steps[0]);
+
+      check(at(`facts are exactly {byTemplate, byAccount, responses, responseParticipants, uniques${steps ? ", byStep" : ""}} — byStep only with step detail`),
+        keys(s.facts) === (steps ? list("byTemplate", "byStep", "byAccount", "responses", "responseParticipants", "uniques") : list("byTemplate", "byAccount", "responses", "responseParticipants", "uniques")), keys(s.facts));
+      check(at("byTemplate rows: the row base, templateId and the eight additive measures"), rows(s, "byTemplate", list(...ROW_BASE, "templateId", ...MEASURES)), s.facts.byTemplate[0]);
+      check(at("byAccount rows: the row base, bucket, accountKey and the eight measures; accountKey is set exactly on bucket account"),
+        rows(s, "byAccount", list(...ROW_BASE, "bucket", "accountKey", ...MEASURES)) && s.facts.byAccount.every((r) => ["account", "other", "no-company-link"].includes(r.bucket) && (r.bucket === "account") === (r.accountKey !== null)) &&
+          new Set(s.facts.byAccount.map((r) => r.bucket)).size === 3, s.facts.byAccount[0]);
+      if (steps) check(at("byStep rows: the row base, stepId, variantId, templateId and the eight measures"), rows(s, "byStep", list(...ROW_BASE, "stepId", "variantId", "templateId", ...MEASURES)), s.facts.byStep[0]);
+      const sendRows = [...s.facts.byTemplate, ...s.facts.byAccount, ...(steps ? s.facts.byStep : [])];
+      check(at("every send row: additive measures are whole numbers >= 0, class internal|external, provenance pulled|carried, month YYYY-MM"),
+        sendRows.every((r) => MEASURES.every((m) => count(r[m])) && ["internal", "external"].includes(r.recipientClass) && ["pulled", "carried"].includes(r.provenance) && MONTH.test(r.month) && typeof r.pulledAt === "string"));
+      check(at("responses rows: programId, month, submitted, partiallySubmitted, provenance, pulledAt; the denominator is its own program-grain table"),
+        rows(s, "responses", list("programId", "month", "submitted", "partiallySubmitted", "provenance", "pulledAt")) && s.facts.responseParticipants.length > 0, s.facts.responses[0]);
+      check(at("responseParticipants rows: programId, participants, submitted, partiallySubmitted — the response rate's all-time basis, the two counts within the denominator"),
+        s.facts.responseParticipants.every((r) => keys(r) === list("programId", "participants", "submitted", "partiallySubmitted") && count(r.participants) && count(r.submitted) && count(r.partiallySubmitted) && r.submitted + r.partiallySubmitted <= r.participants), s.facts.responseParticipants[0]);
+      check(at("meta.params echoes the run's inputs: window, selector, internalDomains, unsubscribeLinks, stepDetail, accounts, repullMonths, pageSize"),
+        keys(s.meta.params) === list("window", "selector", "internalDomains", "unsubscribeLinks", "stepDetail", "accounts", "repullMonths", "pageSize") && Array.isArray(s.meta.params.unsubscribeLinks) && s.meta.params.unsubscribeLinks.every((l) => typeof l === "string"), keys(s.meta.params));
+      check(at("uniques rows: programId, scope window|month, month (null on window), people, accounts, participantRecords, external{…}, provenance, pulledAt"),
+        rows(s, "uniques", list("programId", "scope", "month", "people", "accounts", "participantRecords", "external", "provenance", "pulledAt")) &&
+          s.facts.uniques.every((r) => keys(r.external) === "accounts,participantRecords,people" && ["window", "month"].includes(r.scope) && (r.scope === "window") === (r.month === null) && (steps ? count(r.participantRecords) : r.participantRecords === null && r.external.participantRecords === null)), s.facts.uniques[0]);
+
+      const av = s.meta.metricAvailability;
+      const tpl = Object.values(av.clicks.templates);
+      check(at("metricAvailability is {clicks{templates, programs}, responses{programs}}, per template with a per-program roll-up"),
+        keys(av) === "clicks,responses" && keys(av.clicks) === "programs,templates" && keys(av.responses) === "programs" && tpl.length > 0 && keys(av.clicks.programs) === d.programs.map((p) => p.id).sort().join(",") && keys(av.responses.programs) === keys(av.clicks.programs));
+      check(at("a template's availability is {state, evidence{clickHistory{everClicked, firstMonth, lastMonth}, linkSettings}}; a link-settings reading is {reading, asOf}"),
+        tpl.every((t) => keys(t) === "evidence,state" && STATES.includes(t.state) && keys(t.evidence) === "clickHistory,linkSettings" && keys(t.evidence.clickHistory) === "everClicked,firstMonth,lastMonth" && typeof t.evidence.clickHistory.everClicked === "boolean" &&
+          (t.evidence.linkSettings === null || (keys(t.evidence.linkSettings) === "asOf,reading" && ["tracked-link-present", "links-none-tracked", "unreadable"].includes(t.evidence.linkSettings.reading)))), tpl[0]);
+      check(at("all three tracking states occur in the fixture pull"), new Set(tpl.map((t) => t.state)).size === 3, tpl.map((t) => t.state));
+      check(at("a program roll-up is {state, templates{tracked, notTracked, unknown}}; a response availability is {state, evidence{surveyParticipants}}"),
+        Object.values(av.clicks.programs).every((p) => keys(p) === "state,templates" && STATES.includes(p.state) && keys(p.templates) === "notTracked,tracked,unknown") &&
+          Object.values(av.responses.programs).every((p) => keys(p) === "evidence,state" && STATES.includes(p.state) && keys(p.evidence) === "surveyParticipants"));
+      // V0 shape 1: what a program's state MEANS is part of the contract.
+      const rolled = Object.values(av.clicks.programs);
+      const want = ({ tracked, notTracked, unknown }) => (tracked + notTracked + unknown > 0 && tracked === tracked + notTracked + unknown ? "tracked" : tracked + notTracked + unknown > 0 && notTracked === tracked + notTracked + unknown ? "not-tracked" : "unknown");
+      check(at("a program roll-up is tracked only when EVERY template is, not-tracked only when every one is, and any mix is unknown; the counts are whole numbers"),
+        rolled.every((p) => [p.templates.tracked, p.templates.notTracked, p.templates.unknown].every(count) && p.state === want(p.templates)) && rolled.some((p) => p.state === "unknown" && p.templates.tracked > 0) && rolled.some((p) => p.state === "tracked"), rolled);
+      check(at("reconciliation is {ok, checks[{id, ok, compared, mismatches, examples}]}; caveats are [{id, detail}]"),
+        keys(s.reconciliation) === "checks,ok" && s.reconciliation.checks.length >= 4 && s.reconciliation.checks.every((c) => keys(c) === "compared,examples,id,mismatches,ok") && s.caveats.every((c) => keys(c) === "detail,id"), s.reconciliation.checks.map((c) => c.id));
+      check(at("openSnapshot admits it"), openSnapshot(s) === s);
+    }
+
+    // The freeze itself: the version constant, the refusal, and the header that
+    // carries the contract (a typedef that stops naming a pinned key is a
+    // contract edit, and must arrive with this pin's own edit).
+    check("T-10: schemaVersion is 1 and any other value is refused loudly", T10_SCHEMA_VERSION === 1 && [2, 0, "1", null].every((v) => { try { openSnapshot({ ...fixture, schemaVersion: v }); return false; } catch (e) { return /refusing to read it \(T-10\)/.test(e.message); } }));
+    const engSrc = readFileSync(ENGINE, "utf8");
+    const header = engSrc.slice(engSrc.indexOf("// ── T-10 ·"), engSrc.indexOf("// ── The source-adapter interface"));
+    const named = (k) => new RegExp(`@property \\{[^\\n]*\\} \\[?${k}\\]?( |$)`, "m").test(header);
+    const PINNED = ["schemaVersion", "kind", "meta", "dimensions", "facts", "honesty", "reconciliation", "caveats", "byTemplate", "byStep", "byAccount", "responses", "responseParticipants", "uniques", "metricAvailability", "participantRecords", "incompleteFrom", "pulledAt", ...MEASURES];
+    check("T-10: the producer's header is marked FROZEN and names every pinned top-level key, table and measure", /FROZEN \(ENG-1, 2026-10-03\)/.test(header) && PINNED.every(named), PINNED.filter((k) => !named(k)));
+    check("T-10: the header also states the adapter interface (plan / fetch / reduce) and the transport seam", /@typedef \{object\} EngagementSourceAdapter/.test(engSrc) && /@typedef \{object\} EngagementTransport/.test(engSrc));
+  } finally {
+    removeTempDir(t10);
   }
 }
 

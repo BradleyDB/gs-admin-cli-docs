@@ -1288,10 +1288,12 @@
       "readers": [
         "jo-report.mjs parseJourneyDoc (→ embedded, classicStep / nodeStep, normCondition, normSchedule)",
         "doc-lib.mjs renderProgramDoc (→ compactProgramPayload; the writer's read)",
-        "relationships-build.mjs program token scan (spawn-traced)"
+        "relationships-build.mjs program token scan (spawn-traced)",
+        "engagement.mjs describedProgram (a program with sends that jo p list lacks: its name, model, audience, folder and status)"
       ],
       "modules": [
         "scripts/doc-lib.mjs",
+        "scripts/engagement.mjs",
         "scripts/jo-report.mjs",
         "scripts/relationships-build.mjs"
       ],
@@ -1315,6 +1317,7 @@
         "data.advancedOutreach.advancedOutreachName",
         "data.advancedOutreach.advancedOutreachStartDate",
         "data.advancedOutreach.advancedOutreachStatus",
+        "data.advancedOutreach.advancedOutreachType",
         "data.advancedOutreach.aoConfiguration",
         "data.advancedOutreach.aoConfiguration{}.scheduleInfo",
         "data.advancedOutreach.aoConfiguration{}.scheduleInfo.schedules",
@@ -1327,6 +1330,7 @@
         "data.advancedOutreach.aoConfiguration{}.scheduleInfo.schedules[].scheduleType",
         "data.advancedOutreach.aoConfiguration{}.scheduleInfo.schedules[].timeZoneName",
         "data.advancedOutreach.aoConfiguration{}.scheduleInfo.schedules[].type",
+        "data.advancedOutreach.folderId",
         "data.advancedOutreach.id",
         "data.advancedOutreach.name",
         "data.advancedOutreach.participantSourceConfigurations",
@@ -1683,7 +1687,9 @@
         "advancedOutreachStartDate",
         "advancedOutreachStatus",
         "aoConfiguration",
+        "data.advancedOutreach.advancedOutreachType",
         "data.advancedOutreach.aoConfiguration{}.scheduleInfo.schedules[].scheduleType",
+        "data.advancedOutreach.folderId",
         "data.advancedOutreach.id",
         "data.advancedOutreach.name",
         "data.advancedOutreach.participantSourceConfigurations[].config{}.filters.conditions[].alias",
@@ -1797,7 +1803,7 @@
       "floorMissing": [],
       "probes": {
         "fixtures": 3,
-        "runs": 906,
+        "runs": 935,
         "unprobed": 0
       }
     },
@@ -2255,6 +2261,279 @@
         "runs": 74,
         "unprobed": 0
       }
+    },
+    {
+      "command": "rp run",
+      "catalog": {
+        "id": "report:run",
+        "actionKey": "run-report",
+        "mcpTool": "report_run_report",
+        "endpoints": [
+          {
+            "name": "listObjects",
+            "method": "GET",
+            "path": "/v3/bi/reporting/describe/listobjects/MDA"
+          },
+          {
+            "name": "describe",
+            "method": "GET",
+            "path": "/v3/bi/reporting/describe/MDA"
+          },
+          {
+            "name": "fetchData",
+            "method": "POST",
+            "path": "/v3/bi/integrations/report/admin/fetch-data"
+          }
+        ]
+      },
+      "readers": [
+        "engagement.mjs ROW_READERS — one reader per call family of the jo-engagement adapter (send-log rows by template, account and step; distinct counts; clicked sends and their LinkClickedJson; survey responses; company names). reduceEngagement and the fetch-time click stripper read rows through these and nothing else."
+      ],
+      "modules": [
+        "scripts/engagement.mjs"
+      ],
+      "keys": [
+        "[].ao_emails_AdvancedOutreachId",
+        "[].ao_emails_AdvancedOutreachId.v",
+        "[].ao_emails_Bounce",
+        "[].ao_emails_Bounce.v",
+        "[].ao_emails_EmailOpened",
+        "[].ao_emails_EmailOpened.v",
+        "[].ao_emails_EmailSend",
+        "[].ao_emails_EmailSend.v",
+        "[].ao_emails_EmailTemplateId",
+        "[].ao_emails_EmailTemplateId.v",
+        "[].ao_emails_EmailTemplateVarianceId",
+        "[].ao_emails_EmailTemplateVarianceId.v",
+        "[].ao_emails_EmailTemplateVarianceName",
+        "[].ao_emails_EmailTemplateVarianceName.v",
+        "[].ao_emails_Rejected",
+        "[].ao_emails_Rejected.v",
+        "[].ao_emails_Spam",
+        "[].ao_emails_Spam.v",
+        "[].ao_emails_StepId",
+        "[].ao_emails_StepId.v",
+        "[].ao_emails_Unsubscribed",
+        "[].ao_emails_Unsubscribed.v",
+        "[].ao_participants_AOParticipantId__gr_AdvancedOutreachId",
+        "[].ao_participants_AOParticipantId__gr_AdvancedOutreachId.v",
+        "[].company_GsCompanyId__gr_Gsid",
+        "[].company_GsCompanyId__gr_Gsid.v",
+        "[].company_Gsid",
+        "[].company_Gsid.v",
+        "[].company_Name",
+        "[].company_Name.v",
+        "[].count_distinct_of_ao_participants_Gsid",
+        "[].count_distinct_of_ao_participants_Gsid.k",
+        "[].count_distinct_of_ao_participants_Gsid.v",
+        "[].count_distinct_of_company_Gsid",
+        "[].count_distinct_of_company_Gsid.k",
+        "[].count_distinct_of_company_Gsid.v",
+        "[].count_distinct_of_person_Gsid",
+        "[].count_distinct_of_person_Gsid.k",
+        "[].count_distinct_of_person_Gsid.v",
+        "[].count_of_ao_emails_Gsid",
+        "[].count_of_ao_emails_Gsid.k",
+        "[].count_of_ao_emails_Gsid.v",
+        "[].count_of_email_log_v2_Gsid",
+        "[].count_of_email_log_v2_Gsid.k",
+        "[].count_of_email_log_v2_Gsid.v",
+        "[].count_of_survey_participant_Gsid",
+        "[].count_of_survey_participant_Gsid.k",
+        "[].count_of_survey_participant_Gsid.v",
+        "[].email_log_v2_AddressType",
+        "[].email_log_v2_AddressType.v",
+        "[].email_log_v2_EmailLogId__gr_Gsid",
+        "[].email_log_v2_EmailLogId__gr_Gsid.v",
+        "[].email_log_v2_EmailTemplateId",
+        "[].email_log_v2_EmailTemplateId.v",
+        "[].email_log_v2_EmailTemplateName",
+        "[].email_log_v2_EmailTemplateName.v",
+        "[].email_log_v2_Gsid",
+        "[].email_log_v2_Gsid.v",
+        "[].email_log_v2_IsBounced",
+        "[].email_log_v2_IsBounced.v",
+        "[].email_log_v2_IsOpened",
+        "[].email_log_v2_IsOpened.v",
+        "[].email_log_v2_IsRejected",
+        "[].email_log_v2_IsRejected.v",
+        "[].email_log_v2_IsSent",
+        "[].email_log_v2_IsSent.v",
+        "[].email_log_v2_IsSpam",
+        "[].email_log_v2_IsSpam.v",
+        "[].email_log_v2_IsUnsubscribed",
+        "[].email_log_v2_IsUnsubscribed.v",
+        "[].email_log_v2_LinkClickedJson",
+        "[].email_log_v2_LinkClickedJson.v",
+        "[].email_log_v2_Source",
+        "[].email_log_v2_Source.v",
+        "[].email_log_v2_SourceId",
+        "[].email_log_v2_SourceId.v",
+        "[].summarize_month_of_ao_emails_CreatedAt",
+        "[].summarize_month_of_ao_emails_CreatedAt.k",
+        "[].summarize_month_of_email_log_v2_ExecutedDate",
+        "[].summarize_month_of_email_log_v2_ExecutedDate.k",
+        "[].summarize_month_of_survey_participant_RespondedDate",
+        "[].summarize_month_of_survey_participant_RespondedDate.k",
+        "[].survey_participant_ResponseStatus",
+        "[].survey_participant_ResponseStatus.v",
+        "[].url"
+      ],
+      "walks": [],
+      "enumerated": {},
+      "alternates": {
+        "[].count_distinct_of_ao_participants_Gsid.v": [
+          "[].count_distinct_of_ao_participants_Gsid.k"
+        ],
+        "[].count_distinct_of_company_Gsid.v": [
+          "[].count_distinct_of_company_Gsid.k"
+        ],
+        "[].count_distinct_of_person_Gsid.v": [
+          "[].count_distinct_of_person_Gsid.k"
+        ],
+        "[].count_of_ao_emails_Gsid.v": [
+          "[].count_of_ao_emails_Gsid.k"
+        ],
+        "[].count_of_email_log_v2_Gsid.v": [
+          "[].count_of_email_log_v2_Gsid.k"
+        ],
+        "[].count_of_survey_participant_Gsid.v": [
+          "[].count_of_survey_participant_Gsid.k"
+        ]
+      },
+      "alternatesUnmeasured": [
+        "[].url"
+      ],
+      "recognized": [],
+      "embedded": [],
+      "pluginAuthored": [],
+      "pluginKeys": [],
+      "floor": [
+        "[].ao_participants_AOParticipantId__gr_AdvancedOutreachId.v",
+        "[].company_GsCompanyId__gr_Gsid.v",
+        "[].count_distinct_of_ao_participants_Gsid.v",
+        "[].count_distinct_of_company_Gsid.v",
+        "[].count_distinct_of_person_Gsid.v",
+        "[].count_of_email_log_v2_Gsid.v",
+        "[].email_log_v2_IsOpened.v",
+        "[].email_log_v2_IsSent.v",
+        "[].email_log_v2_LinkClickedJson.v",
+        "[].email_log_v2_SourceId.v",
+        "[].summarize_month_of_ao_emails_CreatedAt.k",
+        "[].summarize_month_of_email_log_v2_ExecutedDate.k"
+      ],
+      "floorMissing": [],
+      "note": "The output is a bare array of rows whose keys are the CLI's column aliases: <object>_<Field> for a group or plain column, summarize_month_of_<object>_<Field> for a month bucket (read by its sortable k), count_of_<object>_Gsid, <target>_<lookup>__gr_<leaf> for a fieldPath group and count_distinct_of_<target>_<leaf> for a fieldPath distinct count. A null group value has no v key, which is why every cell is read with an `in` test. Every reader runs over every family's rows, so a column one family lacks is recorded as named-while-absent rather than missed.",
+      "probes": {
+        "fixtures": 16,
+        "runs": 1462,
+        "unprobed": 0
+      }
+    },
+    {
+      "command": "rp schema",
+      "catalog": {
+        "id": "report:schema",
+        "actionKey": "get-object-schema",
+        "mcpTool": "report_get_object_schema",
+        "endpoints": [
+          {
+            "name": "describe",
+            "method": "GET",
+            "path": "/v3/bi/reporting/describe/MDA"
+          }
+        ]
+      },
+      "readers": [
+        "engagement.mjs schemaTypes (field name → data type; the adapter validates every field a query names against it before the query runs, and reads an object with no fields as unavailable)"
+      ],
+      "modules": [
+        "scripts/engagement.mjs"
+      ],
+      "keys": [
+        "data",
+        "data.fields",
+        "data.fields[].dataType",
+        "data.fields[].fieldName"
+      ],
+      "walks": [],
+      "enumerated": {},
+      "alternates": {},
+      "alternatesUnmeasured": [],
+      "recognized": [],
+      "embedded": [],
+      "pluginAuthored": [],
+      "pluginKeys": [],
+      "floor": [
+        "data.fields[].dataType",
+        "data.fields[].fieldName"
+      ],
+      "floorMissing": [],
+      "probes": {
+        "fixtures": 2,
+        "runs": 11,
+        "unprobed": 0
+      }
+    },
+    {
+      "command": "jo p list",
+      "catalog": {
+        "id": "journey:programs:list",
+        "actionKey": "list-programs",
+        "mcpTool": "journey_list_programs",
+        "endpoints": [
+          {
+            "name": "default",
+            "method": "POST",
+            "path": "/v1/journey/program/list"
+          }
+        ]
+      },
+      "readers": [
+        "engagement.mjs listedPrograms (id, name, the status LIST, model, audience, folder) and listHasMore (the paging envelope)"
+      ],
+      "modules": [
+        "scripts/engagement.mjs"
+      ],
+      "keys": [
+        "data",
+        "data.advancedOutreaches",
+        "data.advancedOutreaches[].advancedOutreachId",
+        "data.advancedOutreaches[].advancedOutreachModel",
+        "data.advancedOutreaches[].advancedOutreachModelName",
+        "data.advancedOutreaches[].advancedOutreachName",
+        "data.advancedOutreaches[].advancedOutreachStatus",
+        "data.advancedOutreaches[].advancedOutreachType",
+        "data.advancedOutreaches[].folderId",
+        "data.lastPage",
+        "data.totalPages"
+      ],
+      "walks": [],
+      "enumerated": {},
+      "alternates": {
+        "data.lastPage": [
+          "data.totalPages"
+        ]
+      },
+      "alternatesUnmeasured": [],
+      "recognized": [],
+      "embedded": [],
+      "pluginAuthored": [],
+      "pluginKeys": [],
+      "floor": [
+        "data.advancedOutreaches[].advancedOutreachId",
+        "data.advancedOutreaches[].advancedOutreachName",
+        "data.advancedOutreaches[].advancedOutreachStatus",
+        "data.lastPage",
+        "data.totalPages"
+      ],
+      "floorMissing": [],
+      "note": "The KB indexer reads this command through the *indexed-list row (tenant-recorded keys). This row is the engagement adapter's direct read of the live list: program names and today's statuses for the snapshot's program dimension.",
+      "probes": {
+        "fixtures": 1,
+        "runs": 19,
+        "unprobed": 0
+      }
     }
   ],
   "ruleOuts": [
@@ -2314,6 +2593,7 @@
       "scripts/capture.mjs",
       "scripts/describe-batch.mjs",
       "scripts/doc-lib.mjs",
+      "scripts/engagement.mjs",
       "scripts/er-count.mjs",
       "scripts/extract-catalog.mjs",
       "scripts/jo-report-deps.mjs",
