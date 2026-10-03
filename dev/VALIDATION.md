@@ -919,5 +919,9 @@ but it would reduce calls pulled hours apart. Two bars read differently after th
   call's record carries a `normalizeGroupByDedup` warning.
 - V1 judges F-472's cut: a unit cut by the recipient's address must still add up, so `accounts-sum-to-program` and
   `templates-sum-to-program` read `ok`. A mismatch there names the program and month, and is a reopen of F-472.
+- One read beside V8, for F-472's known limit (the address cut assumes no in-scope send lacks an address): through the
+  spike's catalog-checked runner, COUNT of `Gsid` on `email_log_v2` with `Source EQ "Advanced Outreach"`,
+  `AddressType EQ "To"`, the window's two `ExecutedDate` bounds and `LowerCaseEmailId IS_NULL`. Record the count.
+  Zero: nothing more. Above zero: reopen F-472 with the count (no address, no id).
 - V13's estimate: the plan cannot foresee splits, so expect more calls than estimated on the mass-send days, as in
   run 2 (194 against 139). The 2x bar on elapsed time stands.
