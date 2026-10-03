@@ -5,6 +5,17 @@ marketplace doesn't pin versions — users get main — so entries describe what
 user who updates, not internal refactors. Entries before 0.8.0 were reconstructed from git
 history when this file was introduced.
 
+## 0.44.0 — 2026-10-03
+
+- **Groundwork for email engagement reporting. Nothing you can run yet.** A new script,
+  `scripts/engagement.mjs`, reads a tenant's Journey Orchestrator send log through
+  read-only `gs-admin` calls and writes one snapshot file: sent, delivered, opened,
+  bounced, rejected, unsubscribed, spam complaints and content-link clicks per program,
+  template and month; unique recipients and accounts reached per program; survey
+  responses; and a short list of accounts per program with the rest rolled into one row.
+  No skill calls it in this version, and no existing skill changes. The open-rate
+  report and the dashboards that read this file arrive in later versions.
+
 ## 0.43.3 — 2026-09-28
 
 - **The safety hook stops blocking harmless commands that only mention gs-admin.**

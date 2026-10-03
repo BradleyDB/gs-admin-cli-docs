@@ -762,3 +762,95 @@ Pass bar:
   flows cannot produce either on demand, because `--wait` writes no capture for an incomplete check.
 An A1 caveat that still names the object reopens #28; a B1 caveat that still names it is a finding against #32.
 Record the verdict here with the token, and copy it to the bus under the round's Blind spots line.
+
+## ENG-2 — the engagement adapter on a real tenant: the contract gate and thirteen live checks (banked 2026-10-03, builder, Session S1 @ hb-20261003-01)
+
+Owed by: S1-V, the tester round on the token above, in the consumer workspace with the plugin loaded from
+branch `feat/jo-dash-s1-facts`. The branch does not merge before this section is cleared.
+Why it is banked: the adapter (`scripts/engagement.mjs`, plan items ENG-1 and ENG-2) was built offline against a
+fictional tenant whose stand-in CLI reproduces the response shapes a spike recorded. Whether the real CLI answers
+the adapter's queries the same way, and whether the numbers match the Gainsight UI, cannot be measured without a
+tenant.
+Tenant: either; production reads are allowed once the tenant is confirmed (`gs-admin whoami`). Every call is a
+read: the adapter refuses a catalog-mutating command before spawning it.
+
+THIS LIST IS COMPLETE. It is everything S1-V judges, the frozen contract included; a check that is not here is
+not owed, and a thing S1-V thinks should be here is a finding. And nothing is "noted on the verdict": anything
+observed beside a pass bar becomes an F-section on the bus, or a GitHub issue, before the round closes. (Both
+rules come from the record: observations left on verdicts became F-464, F-465 and F-466 only after a merge, and
+the #28 walk skipped an arm because its test object was chosen before anyone saw it could not exercise it.)
+
+Pick these BEFORE the first call, with Bradley, so no arm is skipped for want of the right program:
+- P-busy: an Active program with sends in each of the last three months, whose analytics Bradley can open in the UI.
+- P-survey: a program that sends a survey and has responses.
+- T-history: a template with content-link clicks in an earlier month and none in the latest full month (the
+  spike's notes say which query finds one). If the tenant has none, V4's first bar is recorded as not measurable
+  and the reason is logged as a finding.
+- T-never: a template with sends and no recorded click of any kind.
+- P-unsub: a program whose only recorded clicks are on the unsubscribe link (about one program in seven with
+  clicks, on the spike tenant).
+- The tenant's internal email domain(s).
+- One calendar month for the single-month UI comparison (V12).
+
+Run (from the consumer workspace; `<slug>` is the tenant's KB folder, `<domain>` an internal domain; outputs stay
+under `.gs-superadmin/tmp/`, which the workspace ignores; the script prints counts and verdicts, never rows):
+1. `node .gs-superadmin/plugin/scripts/engagement.mjs plan --kb <slug> --internal-domain <domain> --run s1v-full`
+   and keep its estimate (calls, seconds, what step detail adds, whether it fits the token).
+2. `node .gs-superadmin/plugin/scripts/engagement.mjs run --kb <slug> --internal-domain <domain> --run s1v-full --out .gs-superadmin/tmp/engagement/s1v-full.json`,
+   timed. If it exits 3 (token), log in and run the same line again: it resumes.
+3. The same `run` with `--step-detail --run s1v-steps --out .gs-superadmin/tmp/engagement/s1v-steps.json`, timed.
+4. `run --kb <slug> --internal-domain <domain> --previous .gs-superadmin/tmp/engagement/s1v-full.json --run s1v-selective --out .gs-superadmin/tmp/engagement/s1v-selective.json`.
+5. `run --kb <slug> --internal-domain <domain> --sent-since 90d --run s1v-since --out .gs-superadmin/tmp/engagement/s1v-since.json`.
+Read a snapshot with node one-liners that print one program's figures or a count, never the file.
+
+Pass bars (stated before measuring; counts are compared, not rates, because the UI views round differently):
+- V0 · The contract gate. Bradley reads T-10 as frozen (the typedef at the head of `scripts/engagement.mjs`) and
+  rules on the four shapes the executor chose where the plan's sketch was silent: the per-program click roll-up
+  (tracked when any template is; the counts say how partial); the response denominator as its own program-grain
+  table, all time, because no date field present on every `survey_participant` row was recorded; step name and
+  order per (template, program) pair under `uses[]`; and `meta.participantRecords` carrying the reason the
+  count is blank. A change he asks for lands before the merge, with the typedef and the pin together.
+- V1 · Reconciliation. Run 2's summary reads `reconciled: true`, every check `ok` with `compared` above zero. A
+  mismatch is a finding; its `examples` name the program and month.
+- V2 · Uniques against the UI (R3), P-busy, all time or the UI's own range: unique recipients (`people`) is
+  within one percent of the UI's Contacts, and accounts reached is plausible against the UI's account list.
+  The spike measured a ratio of 0.998 for people; a larger gap is a finding.
+- V3 · The class split. With `<domain>` given, the snapshot has internal and external rows, the
+  `internal-within-all` check is `ok`, and for P-busy internal plus external `sent` equals the UI's sent count.
+- V4 · Tracking state by R19's history rule, on real data: T-history reads `tracked` and its latest full month's
+  rows read 0 clicked (a real 0); T-never reads `unknown` (the link-settings reading arrives in a later
+  session); no template reads `not-tracked`.
+- V5 · Rejected, unsubscribed and spam-complaint counts for P-busy equal the UI's counts for the same range.
+- V6 · Selective refresh. Run 4's summary reads `refresh.mode: selective`, makes fewer calls than run 2 (record
+  both counts and both elapsed times), and its template totals per program and month equal run 2's for every
+  carried month.
+- V7 · `--sent-since`. Run 5's programs are exactly the programs with a send in the last 90 days: compare its
+  program ids with `jo p list` plus one direct count of the send log since that day, per program.
+- V8 · Query shapes the spike did not run in this exact form. In each run's `fetch-log.jsonl`, every call
+  family ends `ok` with no `shape-error` and no `unparseable`: the clicked-sends attribution grouped by the
+  send's id; the plain `LinkClickedJson` rows; company names by `Gsid IN`; `SourceId IN` with up to fifty ids;
+  the Source × AddressType count; the survey month × status call; and, in run 3, the three `ao_emails` shapes
+  (step grain on `CreatedAt`, the click join through `EmailLogId`, distinct participants through a fieldPath).
+  `honesty.rows.unreadable` is 0 and `honesty.clicks.unreadable` is 0. A failing family is a finding with its
+  stderr text.
+- V9 · Content links on real URLs. P-unsub reads zero content clicks and its templates read `unknown`, not
+  `tracked`; `honesty.clicks.nonContentOnly` is above zero. If the tenant's unsubscribe links do not match the
+  classifier's patterns, that is a finding with the pattern needed (no URL is ever on disk: read one with the
+  spike's runner).
+- V10 · Participant records, run 3, P-busy: the window's `participantRecords` equals the UI's Participants.
+  Record the calls and seconds the two participant families took: Bradley's ruling of 2026-10-03 keeps the
+  count behind the step-detail switch until this cost is measured.
+- V11 · Responses, P-survey: Submitted and Partially submitted (summed over months) and the participant
+  denominator equal the UI's figures for that program. Also answer the open question: is there a date field
+  present on EVERY `survey_participant` row? If so, name it on the bus; a month-grain denominator is an
+  additive field a later session can add.
+- V12 · Month boundaries and time zone (the spike arm g2 rides here): for P-busy and the chosen month, the UI's
+  sent, delivered and opened for that month equal the snapshot's month row. A one-day shift at either edge is
+  a finding that names the direction.
+- V13 · Cost and privacy. Run 2's elapsed time against the estimate from step 1 (record both; an estimate off by
+  more than a factor of two is a finding). Step names: `honesty.stepNames` on the real KB, and whether the
+  programs without a design are the ones the KB holds only stubs for. And one search of every file under the
+  three run directories and the three snapshots for an `@`, and for an IPv4 pattern: none may be found.
+
+A verdict that any of V1, V3, V4, V8 or V13's privacy search fails keeps the branch unmerged. Record each verdict
+here with the token, and copy the measurements to the bus under the round's Blind spots line.
