@@ -212,6 +212,14 @@ jobs:
         run: node plugins/gs-superadmin/test/engagement-query.mjs
       - name: Engagement report fixtures (engagement-report.mjs)
         run: node plugins/gs-superadmin/test/engagement-report.mjs
+      # The dashboard spec (DSH-1) and program grouping (DSH-5). The grouping
+      # suite reads the adapter's committed fixture snapshot; the spec suite
+      # drives the spec's one writer as a real process and holds the spec it
+      # builds to the committed fixture spec, which the contract suite pins.
+      - name: Dashboard grouping fixtures (dashboard-groups.mjs)
+        run: node plugins/gs-superadmin/test/dashboard-groups.mjs
+      - name: Dashboard spec writer fixtures (dashboard-spec.mjs)
+        run: node plugins/gs-superadmin/test/dashboard-spec.mjs
       # Executes the frozen T-1/T-2 contracts against produced artifacts
       # (GP-B5 DS-18): manifest verbs in a temp workspace, bundled catalog
       # key sets.

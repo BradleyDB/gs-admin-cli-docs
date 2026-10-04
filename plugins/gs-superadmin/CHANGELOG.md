@@ -5,6 +5,41 @@ marketplace doesn't pin versions — users get main — so entries describe what
 user who updates, not internal refactors. Entries before 0.8.0 were reconstructed from git
 history when this file was introduced.
 
+## 0.46.0 — 2026-10-04
+
+Groundwork for the engagement dashboard. No skill changes: `/gs-superadmin:email-engagement
+report` runs as before, makes the same calls, and writes the same report.
+
+- **The engagement pull can read health data** (`engagement.mjs … --health`; off unless
+  passed, and `plan` prints what it adds either way). With it, a snapshot also holds:
+  bounced emails by program, email and month with the reason the mail service gave;
+  participants a program could not process, with the reason; each program's participants
+  by state; each program's last send day, from which Active programs that have gone
+  silent are listed; and each schedule's last-run result, read from your knowledge base.
+  A health call that fails never fails the pull: that part is recorded as not read, with
+  the reason, and is shown as missing rather than as "no failures".
+- **Error messages are masked before they are stored.** A bounce or failure reason names
+  people: addresses, ids, reference numbers. Each is replaced with a placeholder when the
+  message is fetched, so the raw text never reaches disk, and messages that differ only
+  in whom they name are counted as one.
+- **A new figure, send failures, and the error rate built on it** (send failures ÷ Sent).
+  A send failure is an attempt that bounced or was rejected, counted once even when both
+  flags are set. Every snapshot carries it whether or not `--health` is passed. A
+  refresh that continues from a snapshot made before this version pulls every table again
+  once, and says so.
+- **New script: `dashboard-spec.mjs`**, which writes the file a dashboard is built from:
+  which programs, how they are grouped, which pages and tabs. `draft`, `set`,
+  `validate`, `save` and `show` write and read a spec under
+  `<slug>/dashboards/<name>/`; `export` and `import` carry one to another machine. A
+  spec holds no path of the machine it was written on, and an import onto a different
+  tenant is refused.
+- **New script: `dashboard-groups.mjs`**, which puts every program in a supergroup and a
+  group from a spec's rules: by program characteristic (model, audience, whether it
+  sends surveys, whether its schedule recurs), by folder id, by name, by hand. Rules apply
+  in the order listed, and a program no rule reaches lands in "Ungrouped". Gainsight
+  exposes a program's folder id but not the folder's name, so a folder group takes its
+  label from you.
+
 ## 0.45.0 — 2026-10-04
 
 - **New skill: `/gs-superadmin:email-engagement`, with one mode, `report`.** It answers

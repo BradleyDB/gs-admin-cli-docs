@@ -23,9 +23,13 @@
 //               adapter counts from it, runQuery computes from it, and the
 //               glossary and the caveats block render from it.
 //   the T-10 read floor (openSnapshot, clickAvailability, readClicked,
-//               programClickAvailability, readResponses, accountAvailability):
-//               the only accessors of the optional metrics. A not-tracked
-//               metric has NO value through them: not 0, not the stored count.
+//               programClickAvailability, readResponses, accountAvailability,
+//               healthAvailability): the only accessors of the optional
+//               metrics and tables. A not-tracked metric has NO value through
+//               them: not 0, not the stored count.
+//   MASK_RULES  what is taken out of an error message before it is stored
+//               (addresses, ids, long numbers), as data. The adapter masks
+//               with them at fetch time and again when it builds the snapshot.
 //   runQuery    filter on any dimension, pick the fact table by grain, re-add
 //               the additive measures, derive rates (null, never 0, on a zero
 //               denominator), apply the uniques rules (exact per program; per
@@ -77,6 +81,9 @@ export const SOURCES = deepFreeze({
       spam: { field: "IsSpam", value: "YES" },
     },
     clicks: { countField: "LinkClickedCount", detailField: "LinkClickedJson" },
+    // Why a bounce happened, as the mail service worded it. The text holds
+    // addresses and ids, so it is never stored unmasked (MASK_RULES).
+    bounce: { typeField: "BounceType", reasonField: "BouncedReason" },
     lookups: {
       company: { through: "GsCompanyId", to: "company", leaf: "Gsid" },
       person: { through: "GsPersonId", to: "person", leaf: "Gsid" },
@@ -115,7 +122,56 @@ export const SOURCES = deepFreeze({
     statuses: { submitted: "Submitted", partiallySubmitted: "Partially Submitted" },
     lookups: { program: { through: "AOParticipantId", to: "ao_participants", leaf: "AdvancedOutreachId" } },
   },
+  // Health (HLT-1). Neither object has a date every row carries, so both are read all time.
+  failedParticipants: {
+    object: "ao_failed_participants",
+    what: "one row per participant a program could not process, with the reason",
+    standing: [],
+    programField: "AdvancedOutreachId",
+    // A JSON-typed field: the server cannot group or count it, so plain rows are read and grouped after the read.
+    reasonField: "FailureReasons",
+    occurrencesField: "OccurrenceCount",
+  },
+  participants: {
+    object: "ao_participants",
+    what: "one row per participant of a program",
+    standing: [],
+    programField: "AdvancedOutreachId",
+    stateField: "ParticipantState",
+  },
 });
+
+// ── Error messages: masked before they are stored (HLT-1) ────────────────────
+// A bounce or failure reason is free text from a mail server or the product,
+// and it names people: addresses, ids, reference numbers. The rules are data,
+// applied in this order; each replaces what it matches with a placeholder, so
+// two messages that differ only in whom they name become one message and are
+// counted together. A placeholder matches no rule, so masking twice changes
+// nothing.
+/** @type {ReadonlyArray<{id: string, what: string, re: RegExp, as: string}>} */
+export const MASK_RULES = Object.freeze([
+  { id: "email", what: "an email address, with its angle brackets when it has them", re: /<?[A-Za-z0-9._%+'-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+>?/g, as: "<email>" },
+  { id: "uuid", what: "a UUID", re: /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi, as: "<id>" },
+  { id: "ipv4", what: "an IPv4 address", re: /\b\d{1,3}(?:\.\d{1,3}){3}\b/g, as: "<ip>" },
+  { id: "token", what: "a run of 12 or more letters, digits, hyphens or underscores that holds both a letter and a digit (a record id, a message id)", re: /\b(?=[A-Za-z0-9_-]*\d)(?=[A-Za-z0-9_-]*[A-Za-z])[A-Za-z0-9_-]{12,}\b/g, as: "<id>" },
+  { id: "number", what: "a run of 5 or more digits", re: /\d{5,}/g, as: "<number>" },
+].map((r) => Object.freeze(r)));
+export const MASK_MAX_LENGTH = 300;
+/**
+ * One raw error message → the text that may be stored: every MASK_RULES match
+ * replaced, white space collapsed, cut to MASK_MAX_LENGTH. Null for no text.
+ * @param {unknown} raw
+ * @returns {?string}
+ */
+export function maskMessage(raw) {
+  if (typeof raw !== "string") return null;
+  let text = raw;
+  for (const rule of MASK_RULES) text = text.replace(rule.re, rule.as);
+  text = text.replace(/\s+/g, " ").trim();
+  if (!text) return null;
+  const points = Array.from(text);
+  return points.length > MASK_MAX_LENGTH ? `${points.slice(0, MASK_MAX_LENGTH).join("")}...` : text;
+}
 
 // R18: click figures count content links. The rules are data; a link no rule
 // names is content. The adapter classifies with them at fetch time, beside the
@@ -130,6 +186,8 @@ export const NON_CONTENT_LINK_RULES = Object.freeze([
 // kind "count":    an additive measure of the send tables. `counts` is the flag
 //                  conditions an attempt must meet ([] = every attempt); null
 //                  means it is not a flag count (clicked, read from link detail).
+//                  `match: "any"` means ONE condition is enough (the default
+//                  is all of them): an attempt meeting two still counts once.
 // kind "rate":     numerator ÷ denominator, both metric ids; null on a zero
 //                  denominator, never 0.
 // kind "distinct": an exact distinct count per program; never added up.
@@ -156,6 +214,13 @@ const METRIC_LIST = [
   { id: "unsubscribed", label: "Unsubscribed", kind: "count", source: "log", counts: [{ flag: "unsubscribed", is: true }], definition: "Attempts whose recipient unsubscribed from that email.", uiParity: null },
   { id: "spamComplaints", label: "Spam complaints", kind: "count", source: "log", counts: [{ flag: "spam", is: true }], definition: "Attempts whose recipient marked the email as spam.", uiParity: null },
   {
+    // HLT-1 (ruled 2026-10-04): what the error rate counts. Not bounced plus rejected: an attempt flagged both is one failure.
+    id: "failed", label: "Send failures", kind: "count", source: "log", match: "any", counts: [{ flag: "bounced", is: true }, { flag: "rejected", is: true }],
+    definition: "Attempts that bounced or were rejected, each counted once even when both flags are set.",
+    caveats: ["failures-are-send-failures"],
+    uiParity: null,
+  },
+  {
     id: "opened", label: "Opened", kind: "count", source: "log", counts: [{ flag: "opened", is: true }],
     definition: "Attempts flagged as opened. An open is an image-pixel load.",
     caveats: ["opens-are-pixel-loads"],
@@ -175,6 +240,7 @@ const METRIC_LIST = [
   { id: "rejectedRate", label: "Rejected rate", kind: "rate", numerator: "rejected", denominator: "sent", definition: "Rejected attempts as a share of attempts.", uiParity: null },
   { id: "unsubscribeRate", label: "Unsubscribe rate", kind: "rate", numerator: "unsubscribed", denominator: "sent", definition: "Unsubscribes as a share of attempts.", uiParity: null },
   { id: "spamRate", label: "Spam complaint rate", kind: "rate", numerator: "spamComplaints", denominator: "sent", definition: "Spam complaints as a share of attempts.", uiParity: null },
+  { id: "errorRate", label: "Error rate", kind: "rate", numerator: "failed", denominator: "sent", definition: "Attempts that bounced or were rejected, as a share of attempts.", caveats: ["failures-are-send-failures"], uiParity: null },
   {
     id: "uniqueRecipients", label: "Unique recipients", kind: "distinct", source: "log", distinctOf: "person", field: "people",
     definition: "Distinct people the program emailed, exact per program.",
@@ -198,7 +264,7 @@ const METRIC_LIST = [
   { id: "surveyParticipants", label: "Survey participants", kind: "response", source: "survey", status: "participants", tracking: "responses", definition: "Every survey participant of the program, all time. It is the response rate's denominator.", caveats: ["responses-program-level", "responses-all-time"], uiParity: "Matches the program's analytics page in Gainsight." },
   { id: "responseRate", label: "Response rate", kind: "response", source: "survey", status: "rate", numerator: "anyResponse", denominator: "surveyParticipants", tracking: "responses", definition: "The share of the program's survey participants with any response, all time.", caveats: ["responses-program-level", "responses-all-time"], uiParity: null },
 ];
-export const METRICS = deepFreeze(METRIC_LIST.map((m) => ({ counts: undefined, afterRead: [], caveats: [], tracking: null, ...m })));
+export const METRICS = deepFreeze(METRIC_LIST.map((m) => ({ counts: undefined, match: "all", afterRead: [], caveats: [], tracking: null, ...m })));
 const METRIC = Object.freeze(Object.fromEntries(METRICS.map((m) => [m.id, m])));
 /** @param {string} id @returns {*} the registry entry; an unknown id is refused */
 export function metric(id) {
@@ -215,7 +281,7 @@ export const SEND_MEASURES = Object.freeze(METRICS.filter((m) => m.kind === "cou
  * @param {Object<string, boolean>} flags wentOut, opened, bounced, rejected, unsubscribed, spam
  * @returns {string[]} measure ids
  */
-export const measuresCounted = (flags) => FLAG_COUNTS.filter((m) => m.counts.every((c) => !!flags[c.flag] === c.is)).map((m) => m.id);
+export const measuresCounted = (flags) => FLAG_COUNTS.filter((m) => m.counts[m.match === "any" ? "some" : "every"]((c) => !!flags[c.flag] === c.is)).map((m) => m.id);
 
 // ── Tracking states (R1b, R19) ───────────────────────────────────────────────
 /**
@@ -273,6 +339,17 @@ export function readClicked(snapshot, row) {
  * @returns {{pulled: boolean, reason: ?"accounts-off"}}
  */
 export const accountAvailability = (snapshot) => snapshot.meta.accounts ?? { pulled: true, reason: null };
+/**
+ * Whether the snapshot holds health facts (facts.health), and for each part of
+ * them whether it could be read. A pull that ran without health says so
+ * (reason "health-off"). A snapshot made before health facts existed carries
+ * no marker: it holds none, and its send rows carry no failure count.
+ * A reader shows the reason wherever a health figure would be; it never shows
+ * a missing part as "no failures".
+ * @param {T10Snapshot} snapshot
+ * @returns {{pulled: boolean, reason: ?string, asOf: ?string, dayWindow: ?{start: string, endExclusive: string}, parts: Object<string, {pulled: boolean, reason: ?string}>}}
+ */
+export const healthAvailability = (snapshot) => snapshot.meta.health ?? { pulled: false, reason: "predates-health", asOf: null, dayWindow: null, parts: {} };
 /** @returns {{state: TrackingState, templates: {tracked: number, notTracked: number, unknown: number}}} */
 export const programClickAvailability = (snapshot, programId) =>
   snapshot.meta.metricAvailability.clicks.programs[programId] ?? { state: "unknown", templates: { tracked: 0, notTracked: 0, unknown: 0 } };
@@ -322,6 +399,13 @@ export const REASONS = deepFreeze({
   "all-time-basis-only": "The response rate is computed all time only: its denominator has no date, so no rate exists for a date range.",
   "accounts-off": "Account data was not pulled for this snapshot: the pull ran with accounts off, because ranking every account is most of a pull's cost.",
   "step-detail-off": "Counted only with step detail, which this pull ran without.",
+  "measure-not-in-snapshot": "This snapshot was made before this figure was counted. Pull again to get it.",
+  "predates-health": "This snapshot was made before health data was pulled. Pull again to get it.",
+  "health-off": "Health data was not pulled for this snapshot: the pull ran without it.",
+  "not-in-previous": "The earlier pull this one continues from read none, so the months carried from it have none. A full pull reads them.",
+  "call-failed": "The call that reads this did not return, so there is no figure. Nothing else in the pull is affected.",
+  "no-schema": "This tenant does not have the object this is read from.",
+  "no-kb": "Schedules are read from the knowledge base, and this pull ran without one.",
 });
 /** @param {?string} id @returns {string} the reason in words; an id the table lacks is shown as itself */
 export const reasonText = (id) => (id == null ? "" : REASONS[id] ?? `No value (${id}).`);
@@ -441,10 +525,14 @@ export function runQuery(snapshot, filters, query) {
     model: (r) => programById.get(r.programId)?.model ?? null,
     audience: (r) => programById.get(r.programId)?.audienceType ?? null,
   };
-  const newGroup = (key) => ({ key, rows: [], sums: Object.fromEntries(SEND_MEASURES.map((k) => [k, 0])), programs: new Set(), months: new Set(), carried: false });
+  const newGroup = (key) => ({ key, rows: [], sums: Object.fromEntries(SEND_MEASURES.map((k) => [k, 0])), absent: new Set(), programs: new Set(), months: new Set(), carried: false });
   const addTo = (g, r) => {
     g.rows.push(r);
-    for (const k of SEND_MEASURES) g.sums[k] += r[k];
+    // A row from a snapshot made before a measure existed does not carry it: no figure, never a 0.
+    for (const k of SEND_MEASURES) {
+      if (r[k] == null) g.absent.add(k);
+      else g.sums[k] += r[k];
+    }
     g.programs.add(r.programId);
     g.months.add(r.month);
     if (r.provenance === "carried") g.carried = true;
@@ -545,7 +633,7 @@ export function runQuery(snapshot, filters, query) {
   };
 
   const cellOf = (def, g, isTotal) => {
-    if (def.kind === "count") return def.tracking === "clicks" ? clicksOf(g) : { value: g.sums[def.id] };
+    if (def.kind === "count") return def.tracking === "clicks" ? clicksOf(g) : g.absent.has(def.id) ? { value: null, why: "measure-not-in-snapshot" } : { value: g.sums[def.id] };
     if (def.kind === "rate") {
       const num = cellOf(metric(def.numerator), g, isTotal);
       const den = cellOf(metric(def.denominator), g, isTotal);
@@ -617,6 +705,40 @@ export function runQuery(snapshot, filters, query) {
   return { table, unavailable: null, rows, total: rowOf(all, true), scope };
 }
 
+// ── Health: silent programs (HLT-1) ──────────────────────────────────────────
+// There is no "last send" figure to ask the server for, so the snapshot holds
+// each program's last send DAY inside a recent day window (meta.health.dayWindow)
+// and the rule is applied here, where the threshold is a reader's choice.
+export const SILENT_DAYS_DEFAULT = 30;
+const ACTIVE_STATUS = "PROCESSING";
+const dayNumber = (day) => Date.UTC(Number(day.slice(0, 4)), Number(day.slice(5, 7)) - 1, Number(day.slice(8, 10))) / 86400000;
+/**
+ * The Active programs with no send in the last `days` days, counted back from
+ * the day the snapshot measured silence from (meta.health.asOf).
+ * daysSilent is null when the program's last send is before the day window:
+ * it has been silent for longer than the window, and lastSendMonth names the
+ * month of its last send when that month is inside the pull's window.
+ * @param {T10Snapshot} snapshot
+ * @param {{days?: number}} [opts]
+ * @returns {{unavailable: ?{reason: string}, asOf: ?string, days: number, windowDays: ?number, rows: Array<{programId: string, name: ?string, statuses: string[], selected: boolean, lastSendDay: ?string, lastSendMonth: ?string, daysSilent: ?number}>}}
+ */
+export function silentPrograms(snapshot, { days = SILENT_DAYS_DEFAULT } = {}) {
+  const h = healthAvailability(snapshot);
+  const part = h.parts.lastSends;
+  if (!h.pulled || !part?.pulled || !h.asOf || !h.dayWindow) return { unavailable: { reason: (!h.pulled ? h.reason : part?.reason) ?? "not-pulled" }, asOf: h.asOf, days, windowDays: null, rows: [] };
+  const asOf = dayNumber(h.asOf);
+  const windowDays = dayNumber(h.dayWindow.endExclusive) - dayNumber(h.dayWindow.start);
+  if (!Number.isInteger(days) || days < 1 || days > windowDays)
+    throw new Error(`engagement query: silent-program days must be a whole number from 1 to ${windowDays}, the days of sends this snapshot holds by day (got ${days})`);
+  const rows = /** @type {any[]} */ (snapshot.facts.health?.lastSends ?? [])
+    .filter((r) => r.statuses.includes(ACTIVE_STATUS))
+    .map((r) => ({ ...r, daysSilent: r.lastSendDay ? asOf - dayNumber(r.lastSendDay) : null }))
+    .filter((r) => r.daysSilent == null || r.daysSilent >= days)
+    // Longest silent first: a last send before the day window, then by days.
+    .sort((a, b) => (a.daysSilent == null ? (b.daysSilent == null ? 0 : -1) : b.daysSilent == null ? 1 : b.daysSilent - a.daysSilent) || cmp(a.programId, b.programId));
+  return { unavailable: null, asOf: h.asOf, days, windowDays, rows };
+}
+
 // ── How a cell is shown ──────────────────────────────────────────────────────
 // One renderer of the three tracking states (R1b): a tracked 0 is an ordinary
 // 0; not-tracked is words, never a number; unknown is the value with a marker.
@@ -639,8 +761,8 @@ export function formatCell(metricId, cell) {
 // ── The glossary: every number, verifiable on its own ────────────────────────
 const condText = (c) => `${c.field} ${{ EQ: "=", NE: "is not", GT: ">" }[c.op] ?? c.op} ${typeof c.value === "string" ? JSON.stringify(c.value) : String(c.value)}`;
 const lookupText = (l) => `${l.to}.${l.leaf}, through ${l.through}`;
-const flagText = (src, counts) =>
-  counts.length ? counts.map((c) => `${src.flags[c.flag].field} ${c.is ? "=" : "is not"} ${src.flags[c.flag].value}`).join(" and ") : "every row (no field condition)";
+const flagText = (src, def) =>
+  def.counts.length ? def.counts.map((c) => `${src.flags[c.flag].field} ${c.is ? "=" : "is not"} ${src.flags[c.flag].value}`).join(def.match === "any" ? " or " : " and ") : "every row (no field condition)";
 const AFTER_READ = {
   "content-links": () =>
     `Each clicked link is classified after the read. A link is not content when it matches ${NON_CONTENT_LINK_RULES.map((r) => `/${r.re.source}/ (${r.kind})`).join(" or ")}; every other link is content.`,
@@ -700,8 +822,8 @@ export function describeMetric(id, snapshot = null) {
     };
   }
   const steps = SOURCES.steps;
-  const fields = def.counts ? flagText(src, def.counts) : `${src.clicks.countField} > 0, then each link in ${src.clicks.detailField}`;
-  const stepFields = def.counts ? flagText(steps, def.counts) : `${steps.clicks.flagField} = true, kept only where the same send has a content-link click in ${src.object}`;
+  const fields = def.counts ? flagText(src, def) : `${src.clicks.countField} > 0, then each link in ${src.clicks.detailField}`;
+  const stepFields = def.counts ? flagText(steps, def) : `${steps.clicks.flagField} = true, kept only where the same send has a content-link click in ${src.object}`;
   return {
     ...base, object: src.object, fields, filters, dateField: src.dateField, calculation: "COUNT of rows", afterRead,
     perStep: stepDetail ? `${steps.object}: ${stepFields}; filter ${steps.standing.map(condText).join(" and ")}; date field ${steps.dateField}` : null,
@@ -746,6 +868,7 @@ export const CAVEATS = Object.freeze({
   "click-tracking-states": () => `Click tracking may not be enabled. "${NOT_TRACKED}" means no link in the email is click-tracked, so there is no figure. "${UNKNOWN_MARK}" means the data cannot tell whether clicks are tracked: the figure is shown, and a 0 there may not be a real 0. A program reads tracked only when every one of its templates is.`,
   "uniques-scope": () => `Unique recipients, accounts reached and participant records are exact per program, for the whole window and for each single month. They are never added across programs or months, and show ${NO_VALUE} for any other date range.`,
   "responses-program-level": () => "Survey responses are counted per program, with test participants left out. They match the program's analytics page in Gainsight. The survey's own analytics page counts every program that ever sent the survey, deleted ones included, and includes test responses, so it reads higher.",
+  "failures-are-send-failures": () => "Send failures and the error rate count attempts that bounced or were rejected. A participant a program could not process never becomes an attempt, so it is not in the rate; those are counted separately, with their reasons.",
   "responses-all-time": () => "Survey response figures and the response rate are all time, not limited to the report's window: the denominator has no date.",
   // Every snapshot.
   "incomplete-period": (d) => `Sends on or after ${d.from} are provisional: opens keep arriving, so the recent period reads low.`,
@@ -760,6 +883,8 @@ export const CAVEATS = Object.freeze({
   "responses-unreadable": (d) => `The survey object (${d.object}) could not be read on this tenant, so survey responses are unknown for every program.`,
   "reconciliation-mismatch": (d) => `RECONCILIATION FAILED in closed months (${list(d.checks ?? [])}): tables that must add up to the same totals do not. Treat the numbers as unreliable and pull again before using them.`,
   "incomplete-period-drift": (d) => `The tables differ slightly in the incomplete period, from ${d.from} (${list((d.checks ?? []).map((c) => `${c.id}: ${c.drift}`))}). This is not a failure: that period was still being written while the calls ran one after another. Closed months are compared separately.`,
+  "health-incomplete": (d) => `Some health data could not be read (${list((d.parts ?? []).map((p) => `${p.part}: ${reasonText(p.reason)}`))}). What is missing is shown as missing, never as "no failures".`,
+  "schedules-from-kb": (d) => `Schedule results come from the knowledge base, not from a live read: each is as of the date its program was last documented${d.oldest ? ` (the oldest is ${d.oldest})` : ""}. Refresh the knowledge base to bring them up to date.`,
   // From the honesty counts.
   "cc-copies-excluded": (d) => `${d.count} CC copies are left out: only "To" recipients are counted.`,
   "other-sources-excluded": (d) => `${d.count} email(s) sent by other Gainsight features are left out: only Journey Orchestrator sends are counted.`,
@@ -775,21 +900,25 @@ export const CAVEATS = Object.freeze({
  * @returns {string}
  */
 export const caveatText = (id, detail = {}) => (CAVEATS[id] ? CAVEATS[id](detail) : `${id}: ${JSON.stringify(detail)}`);
+// The snapshot's own caveats that are about its health tables: an output that
+// shows none of them does not carry these.
+const HEALTH_CAVEATS = Object.freeze(["health-incomplete", "schedules-from-kb"]);
 /**
  * The caveats block of any output over this snapshot: the snapshot's own
  * (failures first), what the pull left out, the incomplete period, and the
  * caveats of the metrics shown.
  * @param {T10Snapshot} snapshot
  * @param {string[]} metricIds the metrics the output shows
+ * @param {{health?: boolean}} [shows] health: the output shows health tables (bounce reasons, failures, silent programs, schedules)
  * @returns {Array<{id: string, text: string}>}
  */
-export function caveatsFor(snapshot, metricIds) {
+export function caveatsFor(snapshot, metricIds, { health = false } = {}) {
   const out = [];
   const push = (id, detail) => {
     if (!out.some((c) => c.id === id)) out.push({ id, text: caveatText(id, detail) });
   };
   const own = [...snapshot.caveats].sort((a, b) => Number(b.id === "reconciliation-mismatch") - Number(a.id === "reconciliation-mismatch"));
-  for (const c of own) push(c.id, c.detail);
+  for (const c of own) if (health || !HEALTH_CAVEATS.includes(c.id)) push(c.id, c.detail);
   push("incomplete-period", { from: snapshot.meta.incompleteFrom });
   for (const id of metricIds) for (const c of metric(id).caveats) push(c, {});
   for (const id of metricIds) {

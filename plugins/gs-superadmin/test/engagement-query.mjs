@@ -405,8 +405,8 @@ try {
         METRICS.every((m) => m.caveats.every((c) => typeof CAVEATS[c] === "function")) && METRICS.length === new Set(METRICS.map((m) => m.id)).size);
     check("registry: the send measures are the snapshot's own, in its order, and the count rules decide what one attempt adds to",
       isDeepStrictEqual([...SEND_MEASURES], Object.keys(T[0]).filter((k) => typeof T[0][k] === "number")) &&
-        isDeepStrictEqual(measuresCounted({ wentOut: true, opened: true }), ["sent", "delivered", "opened"]) && isDeepStrictEqual(measuresCounted({ wentOut: true, bounced: true, opened: true }), ["sent", "bounced", "opened"]) &&
-        isDeepStrictEqual(measuresCounted({}), ["sent"]) && isDeepStrictEqual(measuresCounted({ bounced: true, rejected: true, unsubscribed: true, spam: true }), ["sent", "bounced", "rejected", "unsubscribed", "spamComplaints"]));
+        isDeepStrictEqual(measuresCounted({ wentOut: true, opened: true }), ["sent", "delivered", "opened"]) && isDeepStrictEqual(measuresCounted({ wentOut: true, bounced: true, opened: true }), ["sent", "bounced", "failed", "opened"]) &&
+        isDeepStrictEqual(measuresCounted({}), ["sent"]) && isDeepStrictEqual(measuresCounted({ bounced: true, rejected: true, unsubscribed: true, spam: true }), ["sent", "bounced", "rejected", "unsubscribed", "spamComplaints", "failed"]));
     const all = glossary(METRICS.map((m) => m.id), GOLD);
     check("glossary: every metric has all five parts — the object, the field or fields and the value that counts, the filters every count carries, the date field, and the calculation — and every rate says what a zero denominator gives",
       all.length === METRICS.length && all.every((e) => e.object && e.fields && Array.isArray(e.filters) && e.filters.length > 0 && e.dateField && e.calculation) &&
@@ -438,6 +438,43 @@ try {
         glossaryNotes(GOLD)[0].includes("@acme.com") && /No internal domain/.test(glossaryNotes(/** @type {*} */ ({ meta: { params: { internalDomains: [] } } }))[0]));
     check("UI differences are stated where they exist: Sent and Delivered against the program analytics page, the classic view's bounce percentage, content-link clicks",
       /every attempt/.test(g.sent.uiParity) && /subtracts every bounce event/.test(g.delivered.uiParity) && /classic Journey Analytics/.test(g.bounced.uiParity) && /classic Journey Analytics/.test(g.bounceRate.uiParity) && /rarely match/.test(g.clicked.uiParity));
+  }
+
+  // ── Health: the error rate, and what a reader is told when health is missing (HLT-1) ──
+  {
+    const { healthAvailability, silentPrograms, maskMessage, MASK_RULES } = Q;
+    const of = (rows, k) => rows.reduce((x, r) => x + r[k], 0);
+    const byProgram = runQuery(GOLD, {}, { groupBy: ["program"], metrics: ["sent", "bounced", "rejected", "failed", "errorRate"] });
+    check("health: the error rate is send failures over Sent — per program it equals a straight sum of the rows' failed over their sent, and so does the total",
+      byProgram.rows.length > 2 && byProgram.rows.some((r) => r.cells.failed.value > 0) &&
+        byProgram.rows.every((r) => {
+          const rows = GOLD.facts.byTemplate.filter((x) => x.programId === r.key.program);
+          return r.cells.failed.value === of(rows, "failed") && r.cells.errorRate.value === of(rows, "failed") / of(rows, "sent");
+        }) && byProgram.total.cells.errorRate.value === of(GOLD.facts.byTemplate, "failed") / of(GOLD.facts.byTemplate, "sent"));
+    const byStep = runQuery(GOLD, { recipientClass: "external" }, { groupBy: ["step"], metrics: ["failed", "errorRate"] });
+    const byAccount = runQuery(GOLD, { months: [GOLD.dimensions.months[0]] }, { groupBy: ["account"], metrics: ["failed", "errorRate"] });
+    check("health: the error rate follows every filter and grain like any send measure — by step for external recipients, by account for one month — and has no value, never 0%, where nothing was sent",
+      byStep.table === "byStep" && byStep.rows.some((r) => r.cells.errorRate.value > 0) && byAccount.table === "byAccount" && byAccount.rows.every((r) => r.cells.failed.value != null) &&
+        runQuery(GOLD, { months: ["2031-01"] }, { groupBy: [], metrics: ["errorRate"] }).total.cells.errorRate.why === "zero-denominator");
+    check("health: one attempt with both flags is one failure — the count rule is any-of, where every other count is all-of",
+      isDeepStrictEqual(measuresCounted({ bounced: true, rejected: true }), ["sent", "bounced", "rejected", "failed"]) && isDeepStrictEqual(measuresCounted({ rejected: true }), ["sent", "rejected", "failed"]) && !measuresCounted({ wentOut: true, opened: true }).includes("failed"));
+    const old = /** @type {any} */ ({ ...GOLD, meta: { ...GOLD.meta, health: undefined }, facts: { ...GOLD.facts, health: undefined, byTemplate: GOLD.facts.byTemplate.map(({ failed: _f, ...r }) => r) } });
+    const oq = runQuery(old, {}, { groupBy: ["program"], metrics: ["sent", "failed", "errorRate"] });
+    check("health: a snapshot made before failures were counted has NO failure figure — null with the reason, shown as a dash, never 0 — while Sent beside it still reads; and its health marker reads as not pulled",
+      oq.rows.length > 2 && oq.rows.every((r) => r.cells.failed.value === null && r.cells.failed.why === "measure-not-in-snapshot" && r.cells.errorRate.value === null && r.cells.errorRate.why === "measure-not-in-snapshot" && r.cells.sent.value > 0) &&
+        formatCell("errorRate", oq.rows[0].cells.errorRate) === NO_VALUE && oq.total.cells.failed.value === null && isDeepStrictEqual(healthAvailability(old), { pulled: false, reason: "predates-health", asOf: null, dayWindow: null, parts: {} }) &&
+        silentPrograms(old).unavailable.reason === "predates-health" && ["measure-not-in-snapshot", "predates-health", "call-failed", "no-schema", "no-kb"].every((r) => REASONS[r]));
+    const g = Object.fromEntries(glossary(["failed", "errorRate"], GOLD).map((e) => [e.id, e]));
+    check("health glossary: send failures state both flags joined by OR, on the delivery log and per step; the error rate names its numerator and denominator",
+      g.failed.fields === "IsBounced = YES or IsRejected = YES" && /Bounce = true or Rejected = true/.test(g.failed.perStep) && g.errorRate.calculation === "Send failures ÷ Sent" && /never 0%/.test(g.errorRate.zeroDenominator) && g.sent && g.failed.object === "email_log_v2");
+    check("health caveats: an output that shows no health table does not carry the health caveats; one that does carries them, and the send-failure caveat rides the metric",
+      !caveatsFor(GOLD, ["sent", "openRate"]).some((c) => c.id === "schedules-from-kb" || c.id === "health-incomplete") && caveatsFor(GOLD, ["errorRate"], { health: true }).some((c) => c.id === "schedules-from-kb") &&
+        caveatsFor(GOLD, ["errorRate"]).some((c) => c.id === "failures-are-send-failures") && /participantStates: The call that reads this did not return/.test(caveatText("health-incomplete", { parts: [{ part: "participantStates", reason: "call-failed" }] })));
+    const silent = silentPrograms(GOLD);
+    check("health: the silent-program rule reads the snapshot's last sends — Active, and no send in the last 30 days counted back from the day the snapshot measured from",
+      silent.unavailable === null && silent.asOf === "2026-09-15" && silent.windowDays === 90 && isDeepStrictEqual(silent.rows.map((r) => r.programId), ["p-nps"]) && silent.rows[0].daysSilent >= 30 &&
+        silent.rows[0].lastSendDay === GOLD.facts.health.lastSends.find((r) => r.programId === "p-nps").lastSendDay);
+    check("health: the masking rules are exported as data and a masked text is stable under masking", MASK_RULES.length === 5 && maskMessage("to bo@c02.example.com ref 1234567") === "to <email> ref <number>" && maskMessage(maskMessage("to bo@c02.example.com ref 1234567")) === "to <email> ref <number>");
   }
 
   // ── Caveats and "data pulled" ─────────────────────────────────────────────
@@ -522,7 +559,8 @@ try {
         isDeepStrictEqual(there, golden));
       check("browser-safe: the glossary, the caveats and the read floor run there too",
         JSON.stringify(bare.glossary(["openRate", "clicked"], GOLD)) === JSON.stringify(glossary(["openRate", "clicked"], GOLD)) && JSON.stringify(bare.caveatsFor(SEL, ["sent", "clicked"])) === JSON.stringify(caveatsFor(SEL, ["sent", "clicked"])) &&
-          bare.openSnapshot(GOLD) === GOLD && bare.accountAvailability(OFF).reason === "accounts-off");
+          bare.openSnapshot(GOLD) === GOLD && bare.accountAvailability(OFF).reason === "accounts-off" && JSON.stringify(bare.silentPrograms(GOLD)) === JSON.stringify(Q.silentPrograms(GOLD)) && bare.healthAvailability(GOLD).pulled === true &&
+          bare.maskMessage("to bo@c02.example.com") === "to <email>");
     }
   }
 } finally {

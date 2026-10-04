@@ -63,6 +63,20 @@
 //     dimension are empty and the snapshot says why (meta.accounts); accounts
 //     REACHED per program, a distinct count, is pulled either way. Turning it on
 //     over a snapshot that holds none is a full refresh.
+//   - Health facts (HLT-1) are optional and OFF unless --health is passed: an
+//     output that shows no health table should not pay for their calls. Without
+//     them every health table is empty and the snapshot says why (meta.health).
+//     The failure count on every send row is not part of that switch: it is
+//     counted from the flags the pull reads anyway. Turning health on over a
+//     snapshot that holds none is a full refresh.
+//   - Health facts are diagnostic and never fail a pull: a part whose
+//     call does not return is recorded as not read, with the reason, and a
+//     reader shows it as missing, never as "no failures". An error message is
+//     masked (addresses, ids, long numbers) when it is FETCHED, so the raw text
+//     never reaches disk, and again when the snapshot is built. A failure
+//     reason is read as plain rows and grouped here: the server cannot group a
+//     JSON-typed field. A program's last send is read from day buckets: there
+//     is no "latest date" aggregate to ask for.
 //   - Nothing is read from a previous snapshot that the refresh could never
 //     carry facts from (another tenant's, or one built under earlier metric
 //     definitions): usablePrevious is the one gate, and fetch and reduce see
@@ -110,6 +124,8 @@
  *   bounced         attempts with IsBounced = YES (events, whether or not the
  *                   attempt went out)
  *   rejected / unsubscribed / spamComplaints   IsRejected / IsUnsubscribed / IsSpam = YES
+ *   failed          attempts that bounced OR were rejected, each counted once
+ *                   even when both flags are set: the error rate's numerator
  *   opened          attempts with IsOpened = YES
  *   clicked         attempts with at least one CONTENT-link click
  * Rates are a reader's job (count ÷ sent, or ÷ delivered for open and click
@@ -129,6 +145,7 @@
  * @property {number} rejected
  * @property {number} unsubscribed
  * @property {number} spamComplaints
+ * @property {number} failed            bounced or rejected, once per attempt (HLT-1; absent on a snapshot made before it was counted)
  * @property {number} opened
  * @property {number} clicked
  *
@@ -164,6 +181,30 @@
  *   are left out, as the UI's program analytics leaves them out. The monthly
  *   `responses` rows are for trends and the date filter, never for the rate.
  * @property {T10UniquesRow[]} uniques
+ * @property {T10Health} [health]                 health facts (HLT-1); five empty tables when they were not pulled (meta.health); absent on a snapshot made before they existed
+ *
+ * @typedef {object} T10Health
+ *   Every table is an array, empty when its part was not read (meta.health.parts
+ *   says why). Every message is MASKED: no address, id or long number.
+ * @property {Array<{programId: string, templateId: ?string, month: string, recipientClass: RecipientClass, bounceType: ?string, message: ?string, count: number, provenance: RowProvenance, pulledAt: string}>} bounceReasons
+ *   bounced attempts by the reason the mail service gave (null = none recorded);
+ *   additive, and per program × month they sum to the send tables' bounced
+ * @property {Array<{programId: string, message: ?string, participants: number, occurrences: number}>} participantFailures
+ *   participants a program could not process, by reason, all time. A
+ *   participant with two reasons is counted under each.
+ * @property {Array<{programId: string, state: ?string, participants: number}>} participantStates
+ *   the program's participants by state (ACTIVE, COMPLETED, DROP, KNOCKED_OFF,
+ *   PAUSED, REVIEW, SYSTEM_ERROR), all time
+ * @property {Array<{programId: string, name: ?string, statuses: string[], selected: boolean, lastSendDay: ?string, lastSendMonth: ?string}>} lastSends
+ *   each program's last send: the day, when it falls inside meta.health.dayWindow;
+ *   else the month, when it falls inside the pull's window; else neither.
+ *   selected false = a listed Active program the pull holds no sends for.
+ *   Which programs are SILENT is a reader's rule (silentPrograms), not stored.
+ * @property {Array<{programId: string, asOf: ?string, scheduleType: ?string, classification: string, cronExpression: ?string, timeZoneName: ?string, lastRunSuccess: ?boolean, lastSuccessTime: ?number, nextRunTime: ?number, runningNow: ?boolean}>} schedules
+ *   each schedule's last-run result, read from the tenant KB's program docs
+ *   (never a live call), as of the date the doc was last verified. A
+ *   documented program with no schedule has ONE row, classification
+ *   "no schedule captured"; a program the KB has no full doc for has none.
  *
  * @typedef {object} T10Dimensions
  * @property {Array<{id: string, name: ?string, statuses: string[], model: ?string, modelName: ?string, audienceType: ?string, supergroup: ?string, group: ?string, folderId: ?string}>} programs
@@ -209,6 +250,13 @@
  *   reached per program (facts.uniques) is pulled either way. ABSENT on a
  *   snapshot made before the switch existed, which always pulled the grain:
  *   read it through accountAvailability, never directly.
+ * @property {{pulled: boolean, reason: ?string, asOf: ?string, dayWindow: ?{start: string, endExclusive: string}, parts: Object<string, {pulled: boolean, reason: ?string}>}} [health]
+ *   whether facts.health was read (the run's choice: reason "health-off" when
+ *   it was not), and then part by part (bounceReasons, participantFailures,
+ *   participantStates, lastSends, schedules). asOf is the
+ *   day silence is counted back from, and dayWindow the days a last send is
+ *   known to the day. ABSENT on a snapshot made before health facts existed:
+ *   read it through healthAvailability, never directly.
  * @property {{pulled: boolean, reason: ?"step-detail-off"}} participantRecords
  *   why T10UniqueCounts.participantRecords is null when it is (a reader shows
  *   the reason; it never shows a 0)
@@ -266,16 +314,19 @@ import {
 } from "./doc-lib.mjs";
 import { printable } from "./journal-lib.mjs";
 import { buildIndex } from "./jo-report.mjs";
-import { SOURCES, NON_CONTENT_LINK_RULES, SEND_MEASURES, T10_SCHEMA_VERSION, measuresCounted, rollUpTracking, openSnapshot, accountAvailability } from "./engagement-query.mjs";
+import { classifySchedule } from "./jo-report-audit-active.mjs";
+import { SOURCES, NON_CONTENT_LINK_RULES, SEND_MEASURES, T10_SCHEMA_VERSION, measuresCounted, rollUpTracking, openSnapshot, accountAvailability, healthAvailability, maskMessage } from "./engagement-query.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 
 // The three objects read, and what every count on them carries: one statement, in SOURCES.
-const { log: LOG_SRC, steps: JO_SRC, survey: SURVEY_SRC } = SOURCES;
+const { log: LOG_SRC, steps: JO_SRC, survey: SURVEY_SRC, failedParticipants: FAILED_SRC, participants: PARTICIPANT_SRC } = SOURCES;
 const LOG = LOG_SRC.object;
 const JO_LOG = JO_SRC.object;
 const SURVEY = SURVEY_SRC.object;
 const COMPANY = LOG_SRC.lookups.company.to;
+const FAILED = FAILED_SRC.object;
+const PARTICIPANTS = PARTICIPANT_SRC.object;
 const standingValue = (src, field) => src.standing.find((c) => c.field === field)?.value;
 const SERVER_PAGE_MAX = 5000;
 // An IN list this long was measured to work; nothing longer was tried.
@@ -463,6 +514,43 @@ export function readLinkClicks(raw, unsubscribeLinks = []) {
   return { content, other, byInput, unreadable: false };
 }
 
+// ── Failure reasons: one participant's FailureReasons, masked ───────────────
+/**
+ * The reasons a participant could not be processed, as masked texts. The field
+ * is JSON-typed, and the spike recorded its plain-row value only as "a short
+ * product message", so this takes what it is given: a text, a JSON array or
+ * object (bare, or inside the `{type=json, value=…, null=…}` wrapper another
+ * JSON field arrives in), or an already-parsed value. Text that does not parse
+ * is one reason. No reason at all is [null].
+ * @param {unknown} raw
+ * @returns {Array<?string>}
+ */
+export function readFailureReasons(raw) {
+  let value = raw;
+  if (typeof value === "string") {
+    const text = value.trim();
+    const body = /^\{type=json, value=([\s\S]*), null=(?:true|false)\}$/.exec(text)?.[1] ?? text;
+    value = body;
+    if (/^[[{"]/.test(body)) {
+      try {
+        value = JSON.parse(body);
+      } catch { /* not JSON after all: the text is the reason */ }
+    }
+  }
+  const texts = [];
+  const take = (v) => {
+    if (v == null || v === "") return;
+    if (Array.isArray(v)) v.forEach(take);
+    else if (typeof v === "object") {
+      const named = [v.message, v.reason, v.failureReason, v.errorMessage].find((t) => typeof t === "string" && t);
+      texts.push(named ?? JSON.stringify(v));
+    } else texts.push(String(v));
+  };
+  take(value);
+  const masked = [...new Set(texts.map(maskMessage).filter((t) => t != null))];
+  return masked.length ? masked : [null];
+}
+
 // ── Field specs, aliases and cells ───────────────────────────────────────────
 const cond = (fieldName, operator, value) => ({ leftOperand: { fieldName }, operator, rightOperand: { value } });
 const hop = ({ leaf, through, to }) => ({ fieldPath: { leaf, hops: [{ through, to }] } });
@@ -481,6 +569,7 @@ const PATH = {
 const col = {
   field: (obj, name) => `${obj}_${name}`,
   month: (obj, name) => `summarize_month_of_${obj}_${name}`,
+  day: (obj, name) => `summarize_day_of_${obj}_${name}`,
   count: (obj) => `count_of_${obj}_Gsid`,
   hop: (p) => `${p.fieldPath.hops[0].to}_${p.fieldPath.hops[0].through}__gr_${p.fieldPath.leaf}`,
   distinct: (p) => `count_distinct_of_${p.fieldPath.hops[0].to}_${p.fieldPath.leaf}`,
@@ -496,6 +585,14 @@ const cellMonth = (cell) => {
   const k = cell && typeof cell === "object" ? cell.k : null;
   return typeof k === "string" && /^\d{4}-\d{2}/.test(k) ? k.slice(0, 7) : null;
 };
+// Day buckets carry the same sortable `k`.
+const cellDay = (cell) => {
+  const k = cell && typeof cell === "object" ? cell.k : null;
+  return typeof k === "string" && /^\d{4}-\d{2}-\d{2}/.test(k) ? k.slice(0, 10) : null;
+};
+// A free-text cell: a bounce reason comes back in `fv`, and in `v` too on only
+// some rows. A null group has neither (`fv` is then the empty string).
+const cellRaw = (cell) => (cell && typeof cell === "object" ? cell.v ?? (cell.fv === "" ? null : cell.fv) ?? null : null);
 const str = (v) => (v == null ? null : String(v));
 // A row's flags, as SOURCES names them: set when the field holds the value that
 // counts (email_log_v2 flags are YES/NO strings; ao_emails flags are booleans),
@@ -539,6 +636,15 @@ export const ROW_READERS = Object.freeze({
   "step-click": (row) => ({ sendId: str(cellValue(row[col.hop(PATH.logRow)])), stepId: str(cellValue(row[col.field(JO_LOG, "StepId")])), variantId: str(cellValue(row[col.field(JO_LOG, "EmailTemplateVarianceId")])) }),
   "participants-month": (row) => ({ programId: str(cellValue(row[col.field(JO_LOG, JO_SRC.programField)])), month: cellMonth(row[col.month(JO_LOG, JO_SRC.dateField)]), participants: cellNumber(row[col.distinct(PATH.participant)]) }),
   "participants-window": (row) => ({ programId: str(cellValue(row[col.field(JO_LOG, JO_SRC.programField)])), participants: cellNumber(row[col.distinct(PATH.participant)]) }),
+  // Health (HLT-1). The two that carry a message are read at FETCH time: what
+  // reaches disk is the masked text, never the address or id it named.
+  "health-bounce": (row) => {
+    const raw = cellRaw(row[col.field(LOG, LOG_SRC.bounce.reasonField)]);
+    return { ...logKey(row), templateId: str(cellValue(row[col.field(LOG, LOG_SRC.templateField)])), bounceType: str(cellValue(row[col.field(LOG, LOG_SRC.bounce.typeField)])), message: maskMessage(raw == null ? null : String(raw)) };
+  },
+  "health-reasons": (row) => ({ programId: str(cellValue(row[col.field(FAILED, FAILED_SRC.programField)])), occurrences: cellNumber(row[col.field(FAILED, FAILED_SRC.occurrencesField)]), messages: readFailureReasons(cellRaw(row[col.field(FAILED, FAILED_SRC.reasonField)])) }),
+  "health-states": (row) => ({ programId: str(cellValue(row[col.field(PARTICIPANTS, PARTICIPANT_SRC.programField)])), state: str(cellValue(row[col.field(PARTICIPANTS, PARTICIPANT_SRC.stateField)])), n: cellNumber(row[col.count(PARTICIPANTS)]) }),
+  "health-days": (row) => ({ programId: str(cellValue(row[col.field(LOG, LOG_SRC.programField)])), day: cellDay(row[col.day(LOG, LOG_SRC.dateField)]), n: cellNumber(row[col.count(LOG)]) }),
 });
 
 // ── Queries, as data ─────────────────────────────────────────────────────────
@@ -674,7 +780,48 @@ const FAMILIES = {
   },
   "participants-month": { object: JO_LOG, split: ["programs", "month"], query: (d) => ({ group: [joProgram, joMonth], show: [distinct(PATH.participant)], where: joWhere(d) }) },
   "participants-window": { object: JO_LOG, split: ["programs"], query: (d) => ({ group: [joProgram], show: [distinct(PATH.participant)], where: joWhere(d) }) },
+  // Health (HLT-1). `health` names the part of facts.health a family fills; a
+  // health call that fails marks that part as not read and never fails the pull.
+  // Bounced attempts by the reason given: counts, so any cut of the sends adds up.
+  "health-bounce": {
+    object: LOG, split: ["programs", "day", "address"], sanitize: "messages", health: "bounceReasons",
+    query: (d) => ({
+      group: [logProgram, logTemplate, logMonth, { name: LOG_SRC.bounce.typeField }, { name: LOG_SRC.bounce.reasonField }], show: [countOf],
+      where: [...logWhere(d), cond(LOG_SRC.flags.bounced.field, "EQ", LOG_SRC.flags.bounced.value)],
+    }),
+  },
+  // Program × day over a recent window: a program's last send day. The server has no latest-date aggregate.
+  "health-days": { object: LOG, split: ["programs", "day"], health: "lastSends", query: (d) => ({ group: [logProgram, { name: LOG_SRC.dateField, summarize: "Day" }], show: [countOf], where: logWhere(d) }) },
+  // Plain rows: grouping or distinct-counting the JSON-typed reason field fails on the server.
+  "health-reasons": {
+    object: FAILED, split: ["programs"], sanitize: "messages", health: "participantFailures",
+    query: (d) => ({ group: [], show: [{ name: FAILED_SRC.programField }, { name: FAILED_SRC.reasonField }, { name: FAILED_SRC.occurrencesField }], where: [cond(FAILED_SRC.programField, "IN", d.programs)] }),
+  },
+  // Cut by program only when a page comes back full, never on a timeout: this
+  // object's group-bys time out unpredictably, and halving a batch down to
+  // single programs after each pair of timeouts could cost more than the rest
+  // of the pull. A batch that times out twice is recorded as not read.
+  "health-states": { object: PARTICIPANTS, split: ["programs"], timeoutSplit: false, health: "participantStates", query: (d) => ({ group: [{ name: PARTICIPANT_SRC.programField }, { name: PARTICIPANT_SRC.stateField }], show: [countOf], where: [cond(PARTICIPANT_SRC.programField, "IN", d.programs)] }) },
 };
+const isHealth = (d) => !!FAMILIES[d.family]?.health;
+// The two objects only health reads. Either may be missing on a tenant.
+const HEALTH_OBJECTS = { participantFailures: FAILED, participantStates: PARTICIPANTS };
+// The classification of the one row a documented program with no schedule keeps (the schedule audit's wording).
+export const NO_SCHEDULE = "no schedule captured";
+export const HEALTH_PARTS = Object.freeze(["bounceReasons", "participantFailures", "participantStates", "lastSends", "schedules"]);
+/**
+ * The days a program's last send is read to the day: the lookback, counted
+ * back from today (or from the window's last day, when the window ends
+ * earlier), never reaching before the window.
+ * @param {*} params
+ * @returns {{asOf: string, start: string, end: string}}
+ */
+export function healthDayWindow(params) {
+  const lastDay = addDays(params.window.endExclusive, -1);
+  const asOf = [params.today < lastDay ? params.today : lastDay, params.window.start].sort().pop();
+  const start = [addDays(asOf, -(params.health.lookbackDays - 1)), params.window.start].sort().pop();
+  return { asOf, start, end: addDays(asOf, 1) };
+}
 
 export function buildQuery(d) {
   const fam = FAMILIES[d.family];
@@ -916,6 +1063,16 @@ export function resolveParams(raw) {
       // The account grain: off unless asked for (it is most of a pull's calls).
       pull: acc.pull === true,
     },
+    health: {
+      // Health facts: off unless asked for (an output that shows no health table should not pay for their calls).
+      pull: raw.health?.pull === true,
+      // How many days back a program's last send is read to the day.
+      lookbackDays: (() => {
+        const n = raw.health?.lookbackDays ?? 90;
+        if (!Number.isInteger(n) || n < 1 || n > 366) throw new Error(`--health-lookback-days must be a whole number from 1 to 366 (got ${raw.health?.lookbackDays})`);
+        return n;
+      })(),
+    },
     incompleteFrom,
     repullMonths,
     forceFull: !!raw.forceFull,
@@ -1089,6 +1246,8 @@ export function decideRefresh({ params, previous, tenantHost, selectedIds }) {
   const pp = pm.params ?? {};
   const unusable = unusableWhy(previous, tenantHost);
   if (unusable) return full(unusable);
+  // Send rows made before failures were counted carry no failure count: none of them can sit beside this build's.
+  if (previous.meta.health === undefined) return full("the previous snapshot was made before send failures and health facts were counted, so every table is pulled again");
   if (!sameList(pp.internalDomains ?? [], params.internalDomains)) return full("the internal domains changed");
   if (!sameUnsubscribeLinks(previous, params)) return full("the unsubscribe links changed");
   if (!!pm.stepDetail !== params.stepDetail) return full("the step-detail switch changed");
@@ -1096,6 +1255,8 @@ export function decideRefresh({ params, previous, tenantHost, selectedIds }) {
   if (accountAvailability(previous).pulled !== params.accounts.pull)
     return full(params.accounts.pull ? "accounts were switched on and the previous snapshot holds none, so every table is pulled again" : "accounts were switched off, so every table is pulled again without them");
   if (params.accounts.pull && !sameList(accountSelection(pp.accounts), accountSelection(params.accounts))) return full("the account selection changed");
+  // Bounce reasons carry by month like the facts: a snapshot that holds none has none to give the carried months.
+  if (params.health?.pull && !healthAvailability(previous).pulled) return full("health was switched on and the previous snapshot holds none, so every table is pulled again");
   if (pm.window.from > params.window.from) return full("the previous snapshot's window starts later than this one");
   const horizonStart = addMonths(params.window.to, -(params.repullMonths - 1));
   const prevPulledMonth = String(pm.pulledAt).slice(0, 7);
@@ -1159,7 +1320,7 @@ function packByRows(items, pageSize) {
  * run resumable (a unit's id is a hash of its argv).
  * @returns {Array<*>} unit descriptors
  */
-export function planUnits({ params, base, selectedIds, refresh, surveyAvailable }) {
+export function planUnits({ params, base, selectedIds, refresh, surveyAvailable, health = null }) {
   const units = [];
   const whole = monthWindow(params.window.from, params.window.to);
   const isFull = refresh.mode === "full";
@@ -1239,12 +1400,25 @@ export function planUnits({ params, base, selectedIds, refresh, surveyAvailable 
       if (domains.length) units.push({ family: "participants-window", cls: "external", domains, window: whole, programs: b });
     }
   }
+  // Health (HLT-1): bounce reasons are planned like the template grain, one
+  // call per pulled month (a reason is near one row per distinct text, so a
+  // whole window in one call would fill a page and split, unpriced); the rest
+  // is small, has no month, and is read again on every pull.
+  if (health) {
+    for (const m of pulled) units.push({ family: "health-bounce", cls: "all", window: monthWindow(m, m) });
+    if (!isFull && oldSpan) for (const b of batches(fullPrograms)) units.push({ family: "health-bounce", cls: "all", window: oldSpan, programs: b });
+    for (const domain of domains) units.push({ family: "health-bounce", cls: "internal", domain, window: smallSpan });
+    units.push({ family: "health-days", cls: "all", window: { start: health.dayWindow.start, end: health.dayWindow.end } });
+    for (const family of /** @type {const} */ (["health-reasons", "health-states"])) {
+      if (health.objects[FAMILIES[family].health]) for (const b of batches(selectedIds)) units.push({ family, cls: "all", programs: b });
+    }
+  }
   return units;
 }
 
 // Seconds per call, by family: medians measured on CLI 1.0.10, rounded up. An
 // estimate, printed as one; the token check before each call is what decides.
-const CALL_SECONDS = { whoami: 1, programs: 2, schema: 2, describe: 3, "uniques-month": 13, "uniques-window": 23, "account-names": 4 };
+const CALL_SECONDS = { whoami: 1, programs: 2, schema: 2, describe: 3, "uniques-month": 13, "uniques-window": 23, "account-names": 4, "health-states": 16 };
 /**
  * How many calls a planned unit is expected to take. One, unless its rows will
  * not fit a page: an account-grain unit holding a program-month that reaches
@@ -1371,8 +1545,9 @@ export function fetchEngagement(ctx) {
         // As long as the page: the server cut it and said nothing.
         const truncated = isRpRun(d) && rows != null && rows >= params.pageSize;
         say(truncated ? "ok, a full page: it will be split" : "ok");
-        if (FAMILIES[d.family]?.sanitize === "clicks" && Array.isArray(payload)) {
-          payload = payload.map((row) => ROW_READERS["click-json"](row, params.unsubscribeLinks));
+        // What must not reach disk is taken out here: a click's IP and URL, and the names in an error message.
+        if (FAMILIES[d.family]?.sanitize && Array.isArray(payload)) {
+          payload = payload.map((row) => ROW_READERS[d.family](row, params.unsubscribeLinks));
         }
         writeFileAtomicSync(join(runDir, file), JSON.stringify(payload));
         return record({ ...d, id, status: "ok", file, rows, truncated, attempt, ...(r.stderr.trim() ? { warning: printable(r.stderr, 200) } : {}) });
@@ -1420,7 +1595,7 @@ export function fetchEngagement(ctx) {
     } else rec = execute(d, id, argv);
     if (!rec) return [];
     if (rec.status === "ok" && !rec.truncated) return [rec];
-    const kids = splitUnit(d);
+    const kids = rec.status === "split" && FAMILIES[d.family]?.timeoutSplit === false ? null : splitUnit(d);
     if (!kids) {
       const failure = { id, family: d.family, kind: rec.truncated ? "truncated" : "timeout", stderr: "nothing left to split on" };
       failed.push(failure);
@@ -1431,10 +1606,26 @@ export function fetchEngagement(ctx) {
   };
   const load = (rec) => (rec.file.endsWith(".txt") ? readFileSync(join(runDir, rec.file), "utf8") : readJsonFile(join(runDir, rec.file)));
   const rowsOf = (recs) => recs.map((rec) => ({ ...rec, rows: load(rec) }));
+  // Health parts whose calls did not all return: part → what went wrong. Never a failed pull.
+  /** @type {Object<string, Array<{family: string, kind: string}>>} */
+  const healthUnread = {};
+  // Run something for health: whatever fails inside is moved out of the pull's failures.
+  const forHealth = (part, run) => {
+    const before = failed.length;
+    let got = [];
+    try {
+      got = run();
+    } catch (e) {
+      if (!(e instanceof EngagementRefusal)) throw e;
+      failed.push({ id: part, family: part, kind: "refused", stderr: printable(e.message, 300) });
+    }
+    for (const f of failed.splice(before)) (healthUnread[part] ??= []).push({ family: f.family, kind: f.kind });
+    return got;
+  };
   const conclude = (extra) => {
     const status = stop ? stop.reason : failed.length ? "partial" : "ok";
-    const summary = { status, ...(stop ? { stopped: stop.detail } : {}), calls: counts, failed, ...extra };
-    writeFileAtomicSync(join(runDir, "status.json"), JSON.stringify({ status, phase, failed, calls: counts }, null, 2));
+    const summary = { status, ...(stop ? { stopped: stop.detail } : {}), calls: counts, failed, health: { unread: healthUnread }, ...extra };
+    writeFileAtomicSync(join(runDir, "status.json"), JSON.stringify({ status, phase, failed, health: { unread: healthUnread }, calls: counts }, null, 2));
     return summary;
   };
 
@@ -1482,6 +1673,16 @@ export function fetchEngagement(ctx) {
     const got = runUnit({ family: "schema", object });
     if (got.length) types.set(object, schemaTypes(load(got[0])));
   }
+  // The two objects only health reads: one that is missing, or whose schema call fails, costs that part and nothing else.
+  /** @type {Object<string, boolean>} */
+  const healthObjects = {};
+  if (params.health.pull && !stop && !failed.length) {
+    for (const [part, object] of Object.entries(HEALTH_OBJECTS)) {
+      const got = forHealth(part, () => runUnit({ family: "schema", object }));
+      if (got.length) types.set(object, schemaTypes(load(got[0])));
+      healthObjects[part] = !!types.get(object);
+    }
+  }
   if (stop || failed.length) return conclude({ whoami });
   if (!types.get(LOG)) throw new EngagementRefusal(`${LOG} has no schema on this tenant — the delivery log cannot be read`);
   if (params.stepDetail && !types.get(JO_LOG)) throw new EngagementRefusal(`${JO_LOG} has no schema on this tenant — step detail cannot be pulled`);
@@ -1515,17 +1716,27 @@ export function fetchEngagement(ctx) {
   const selectedIds = [...decision.selected.keys()];
   const refresh = decideRefresh({ params, previous: given, tenantHost: whoami.host, selectedIds });
   const previous = usablePrevious(given, whoami.host);
-  const units = planUnits({ params, base, selectedIds, refresh, surveyAvailable });
+  const health = params.health.pull ? { dayWindow: healthDayWindow(params), objects: healthObjects } : null;
+  const units = planUnits({ params, base, selectedIds, refresh, surveyAvailable, health });
 
   // The estimates plan prints: this run, a full one, and what step detail and the account grain each add.
-  const fullUnits = refresh.mode === "full" ? units : planUnits({ params, base, selectedIds, refresh: decideRefresh({ params, previous: null, tenantHost: whoami.host, selectedIds }), surveyAvailable });
-  const without = planUnits({ params: { ...params, stepDetail: false }, base, selectedIds, refresh, surveyAvailable });
-  const withStep = planUnits({ params: { ...params, stepDetail: true }, base, selectedIds, refresh, surveyAvailable });
+  const fullUnits = refresh.mode === "full" ? units : planUnits({ params, base, selectedIds, refresh: decideRefresh({ params, previous: null, tenantHost: whoami.host, selectedIds }), surveyAvailable, health });
+  const without = planUnits({ params: { ...params, stepDetail: false }, base, selectedIds, refresh, surveyAvailable, health });
+  const withStep = planUnits({ params: { ...params, stepDetail: true }, base, selectedIds, refresh, surveyAvailable, health });
   // The account grain's cost: this run's plan without it, against the plan WITH it. Turning it on over a
   // previous snapshot that holds none is a full refresh, so that side is planned under the refresh it would get.
   const withAccounts = { ...params, accounts: { ...params.accounts, pull: true } };
-  const accountsOff = planUnits({ params: { ...params, accounts: { ...params.accounts, pull: false } }, base, selectedIds, refresh, surveyAvailable });
-  const accountsOn = planUnits({ params: withAccounts, base, selectedIds, refresh: decideRefresh({ params: withAccounts, previous: given, tenantHost: whoami.host, selectedIds }), surveyAvailable });
+  const accountsOff = planUnits({ params: { ...params, accounts: { ...params.accounts, pull: false } }, base, selectedIds, refresh, surveyAvailable, health });
+  const accountsOn = planUnits({ params: withAccounts, base, selectedIds, refresh: decideRefresh({ params: withAccounts, previous: given, tenantHost: whoami.host, selectedIds }), surveyAvailable, health });
+  // The health facts' cost, the same way: this run's plan without them, against the plan WITH them under the
+  // refresh it would get (on over a snapshot that holds none is a full refresh). With health off the two
+  // objects only health reads were not looked up, so both are assumed to exist.
+  const withHealth = { ...params, health: { ...params.health, pull: true } };
+  const healthOff = planUnits({ params, base, selectedIds, refresh, surveyAvailable, health: null });
+  const healthOn = planUnits({
+    params: withHealth, base, selectedIds, refresh: decideRefresh({ params: withHealth, previous: given, tenantHost: whoami.host, selectedIds }), surveyAvailable,
+    health: health ?? { dayWindow: healthDayWindow(params), objects: Object.fromEntries(Object.keys(HEALTH_OBJECTS).map((part) => [part, true])) },
+  });
   // Calls and seconds include the splits a program-month too large for a page will force.
   const calls = (list) => estimateCalls(list, base, params.pageSize);
   const seconds = (list) => estimateSeconds(list, base, params.pageSize);
@@ -1536,6 +1747,8 @@ export function fetchEngagement(ctx) {
     stepDetail: { on: params.stepDetail, addsCalls: calls(withStep) - calls(without), addsSeconds: seconds(withStep) - seconds(without) },
     // What the account grain costs, printed whether it is on or off (its name lookups are not counted: how many depends on the selection).
     accounts: { on: params.accounts.pull, addsCalls: calls(accountsOn) - calls(accountsOff), addsSeconds: seconds(accountsOn) - seconds(accountsOff) },
+    // What the health facts cost, printed whether they are on or off.
+    health: { on: params.health.pull, addsCalls: calls(healthOn) - calls(healthOff), addsSeconds: seconds(healthOn) - seconds(healthOff) },
     token: { expiresInSeconds: whoami.expiresInSeconds, fits: seconds(units) + params.tokenMarginSeconds <= whoami.expiresInSeconds },
   };
   const programs = { listed: listed.size, selected: selectedIds.length, deleted: decision.deleted.size, unselected: decision.unselected.size };
@@ -1546,6 +1759,7 @@ export function fetchEngagement(ctx) {
   // Phase C: the facts.
   const accountRecs = [];
   for (const d of units) {
+    if (isHealth(d)) continue; // Phase E
     const got = runUnit(d);
     if (d.family === "account" && d.cls === "all") accountRecs.push(...got);
     if (stop) break;
@@ -1563,6 +1777,12 @@ export function fetchEngagement(ctx) {
     // A name that could not be read is a blank name, never a failed pull.
     failed.splice(nameFailures);
   }
+
+  // Phase E: health, after every fact call. A token that runs out here stops the run like anywhere else (resumable; nothing made is made again).
+  for (const d of units) {
+    if (stop) break;
+    if (isHealth(d)) forHealth(FAMILIES[d.family].health, () => runUnit(d));
+  }
   return conclude({ whoami, estimate, programs });
 }
 
@@ -1571,17 +1791,22 @@ export function fetchEngagement(ctx) {
 function readKbSteps(kbDir) {
   const { index, warnings } = buildIndex({ kbDir });
   const programs = {};
+  // Each program's schedules as the same parser normalizes them for the
+  // schedule audit (lastRunSuccess and the times beside it), classified
+  // recurring or one-time by that audit's own rule; as of the doc's last check.
+  const schedules = {};
   for (const p of Object.values(index.programs)) {
     if (p.depth !== "full") continue;
+    schedules[p.id] = { asOf: p.lastVerified ?? null, schedules: p.schedules.map((sc) => ({ ...sc, classification: classifySchedule(sc) })) };
     programs[p.id] = p.steps
       .filter((s) => s.emailTemplateId != null || s.variantTemplateIds.length)
       .map((s) => ({ stepId: str(s.stepId), stepName: s.stepName ?? null, order: typeof s.order === "number" ? s.order : null, templateIds: [...new Set([s.emailTemplateId, ...s.variantTemplateIds].filter(Boolean))] }));
   }
-  return { source: "kb", programs, warnings: warnings.length };
+  return { source: "kb", programs, schedules, warnings: warnings.length };
 }
 
 // ── Reduce ───────────────────────────────────────────────────────────────────
-const zero = () => ({ sent: 0, delivered: 0, bounced: 0, rejected: 0, unsubscribed: 0, spamComplaints: 0, opened: 0, clicked: 0 });
+const zero = () => Object.fromEntries(SEND_MEASURES.map((k) => [k, 0]));
 const anyNonZero = (m) => SEND_MEASURES.some((k) => m[k] !== 0);
 // What a row's flags add to is the metric registry's rule, stated once there.
 function addFlags(m, n, f) {
@@ -1659,11 +1884,12 @@ export function decideClickState({ everClicked, reading }) {
 
 /**
  * Fetched payloads → the T-10 snapshot. Pure: no clock, no file, no call.
- * @param {{params: *, whoami: *, programPages: Array<*>, describes: Map<string, *>, units: Array<*>, kbSteps?: *, previous?: ?T10Snapshot, linkSettings?: *, surveyAvailable: boolean, calls?: *, cliVersion?: ?string, pluginVersion?: ?string}} input
+ * @param {{params: *, whoami: *, programPages: Array<*>, describes: Map<string, *>, units: Array<*>, kbSteps?: *, previous?: ?T10Snapshot, linkSettings?: *, surveyAvailable: boolean, healthState?: ?{unread: Object<string, Array<*>>, objects: Object<string, boolean>}, calls?: *, cliVersion?: ?string, pluginVersion?: ?string}} input
+ *   healthState: which health parts were not read whole, and whether the two objects only health reads exist on the tenant
  * @returns {T10Snapshot}
  */
 export function reduceEngagement(input) {
-  const { params, whoami, programPages, describes, units, kbSteps = null, previous: given = null, linkSettings = null, surveyAvailable, calls = {}, cliVersion = null, pluginVersion = null } = input;
+  const { params, whoami, programPages, describes, units, kbSteps = null, previous: given = null, linkSettings = null, surveyAvailable, healthState = null, calls = {}, cliVersion = null, pluginVersion = null } = input;
   const pulledAt = params.pulledAt;
   const windowMonths = monthsBetween(params.window.from, params.window.to);
   const inWindow = new Set(windowMonths);
@@ -2003,6 +2229,123 @@ export function reduceEngagement(input) {
     const tplByPtm = sumBy(pulledOnly(byTemplate), (r) => [r.programId, r.templateId, r.month]);
     checks.push(check("steps-sum-to-template", [...tplByPtm].flatMap(([k, m]) => ["sent", "delivered", "opened", "bounced"].map((measure) => ({ key: JSON.parse(k), month: JSON.parse(k)[2], measure, left: stepByPtm.get(k)?.[measure] ?? 0, right: m[measure] })))));
   }
+
+  // ── Health (HLT-1) ──
+  // Every table is an array; a part that was not read is empty and says why.
+  // Messages were masked at fetch time and are masked again here, so nothing
+  // unmasked reaches a snapshot whatever a payload file holds.
+  const emptyHealth = () => ({ bounceReasons: [], participantFailures: [], participantStates: [], lastSends: [], schedules: [] });
+  const healthFacts = emptyHealth();
+  /** @type {{pulled: boolean, reason: ?string, asOf: ?string, dayWindow: ?{start: string, endExclusive: string}, parts: Object<string, {pulled: boolean, reason: ?string}>}} */
+  let healthMeta = { pulled: false, reason: "health-off", asOf: null, dayWindow: null, parts: {} };
+  const healthStats = { otherPrograms: 0, unreadableRows: 0, schedules: { programsWithDoc: 0, programsWithout: 0 } };
+  if (params.health?.pull) {
+    const day = healthDayWindow(params);
+    const unread = healthState?.unread ?? {};
+    const objectState = healthState?.objects ?? {};
+    const part = (name) => (unread[name]?.length ? { pulled: false, reason: "call-failed" } : name in HEALTH_OBJECTS && !objectState[name] ? { pulled: false, reason: "no-schema" } : { pulled: true, reason: null });
+    const parts = Object.fromEntries(HEALTH_PARTS.map((name) => [name, part(name)]));
+    const prevHealth = previous ? healthAvailability(previous) : null;
+    // Carried months take their bounce reasons from the previous snapshot: one that read none has none to give.
+    if (parts.bounceReasons.pulled && refresh.mode === "selective" && !prevHealth?.parts.bounceReasons?.pulled) parts.bounceReasons = { pulled: false, reason: "not-in-previous" };
+
+    if (parts.bounceReasons.pulled) {
+      const table = new Map();
+      for (const u of of("health-bounce")) {
+        for (const r of u.rows) {
+          if (r?.programId == null || r.month == null || r.n == null) { healthStats.unreadableRows++; continue; }
+          if (!accept(r.programId, r.month)) continue;
+          const key = [r.programId, r.templateId ?? null, r.month, r.bounceType ?? null, maskMessage(r.message)];
+          const k = JSON.stringify(key);
+          if (!table.has(k)) table.set(k, { key, all: 0, internal: 0 });
+          table.get(k)[u.cls === "internal" ? "internal" : "all"] += r.n;
+        }
+      }
+      for (const e of table.values()) {
+        const [programId, templateId, month, bounceType, message] = e.key;
+        const row = { programId, templateId, month, bounceType, message };
+        const internal = Math.min(e.internal, e.all);
+        if (internal) healthFacts.bounceReasons.push({ ...row, recipientClass: "internal", count: internal, ...provenance });
+        if (e.all - internal) healthFacts.bounceReasons.push({ ...row, recipientClass: "external", count: e.all - internal, ...provenance });
+      }
+      healthFacts.bounceReasons.push(...carried(previous?.facts?.health?.bounceReasons));
+      healthFacts.bounceReasons.sort(byKeys("programId", "month", "templateId", "bounceType", "message", "recipientClass"));
+    }
+    if (parts.participantFailures.pulled) {
+      const table = new Map();
+      for (const u of of("health-reasons")) {
+        for (const r of u.rows) {
+          if (r?.programId == null) { healthStats.unreadableRows++; continue; }
+          if (!selected.has(r.programId)) { healthStats.otherPrograms++; continue; }
+          for (const raw of Array.isArray(r.messages) && r.messages.length ? r.messages : [null]) {
+            const message = maskMessage(raw);
+            const k = JSON.stringify([r.programId, message]);
+            if (!table.has(k)) table.set(k, { programId: r.programId, message, participants: 0, occurrences: 0 });
+            table.get(k).participants += 1;
+            table.get(k).occurrences += r.occurrences ?? 0;
+          }
+        }
+      }
+      healthFacts.participantFailures = [...table.values()].sort(byKeys("programId", "message"));
+    }
+    if (parts.participantStates.pulled) {
+      const table = new Map();
+      for (const u of of("health-states")) {
+        for (const row of u.rows) {
+          const { programId, state, n } = ROW_READERS["health-states"](row);
+          if (programId == null || n == null) { healthStats.unreadableRows++; continue; }
+          if (!selected.has(programId)) continue;
+          const k = JSON.stringify([programId, state]);
+          table.set(k, { programId, state, participants: (table.get(k)?.participants ?? 0) + n });
+        }
+      }
+      healthFacts.participantStates = [...table.values()].sort(byKeys("programId", "state"));
+    }
+    if (parts.lastSends.pulled) {
+      const later = (map, id, v) => { if (!(map.get(id) >= v)) map.set(id, v); };
+      const lastDay = new Map();
+      for (const u of of("health-days")) {
+        for (const row of u.rows) {
+          const { programId, day: d, n } = ROW_READERS["health-days"](row);
+          if (programId == null || d == null) { healthStats.unreadableRows++; continue; }
+          if (n) later(lastDay, programId, d);
+        }
+      }
+      const lastMonth = new Map();
+      for (const b of base.values()) if (b.sent > 0 && inWindow.has(b.month)) later(lastMonth, b.programId, b.month);
+      // Every program in the pull, and, unless the pull named its programs,
+      // every other listed Active program: one that sent nothing is the most
+      // silent of all, and the pull holds no row for it.
+      const named = params.selector.names.length > 0 || params.selector.ids.length > 0;
+      const others = named ? [] : [...listed.values()].filter((p) => !selected.has(p.id) && p.statuses.includes("PROCESSING"));
+      healthFacts.lastSends = [...[...selected.values()].map((p) => [p, true]), ...others.map((p) => [p, false])]
+        .map(([p, isSelected]) => ({ programId: p.id, name: p.name, statuses: p.statuses, selected: isSelected, lastSendDay: lastDay.get(p.id) ?? null, lastSendMonth: lastMonth.get(p.id) ?? null }))
+        .sort(byKeys("programId"));
+    }
+    if (!kbSteps?.schedules) parts.schedules = { pulled: false, reason: "no-kb" };
+    else {
+      for (const p of [...selected.keys()].sort(cmpKey)) {
+        const doc = kbSteps.schedules[p];
+        if (!doc) { healthStats.schedules.programsWithout++; continue; }
+        healthStats.schedules.programsWithDoc++;
+        // A documented program with no schedule keeps ONE row that says so (as the schedule audit does): "documented, none" is not "not documented".
+        for (const sc of doc.schedules?.length ? doc.schedules : [null]) {
+          healthFacts.schedules.push({
+            programId: p, asOf: doc.asOf ?? null, scheduleType: sc?.scheduleType ?? null, classification: sc ? String(sc.classification ?? "unknown") : NO_SCHEDULE, cronExpression: sc?.cronExpression ?? null, timeZoneName: sc?.timeZoneName ?? null,
+            lastRunSuccess: typeof sc?.lastRunSuccess === "boolean" ? sc.lastRunSuccess : null, lastSuccessTime: sc?.lastSuccessTime ?? null, nextRunTime: sc?.nextRunTime ?? null, runningNow: typeof sc?.runningNow === "boolean" ? sc.runningNow : null,
+          });
+        }
+      }
+    }
+    for (const name of HEALTH_PARTS) if (!parts[name].pulled) healthFacts[name] = [];
+    healthMeta = { pulled: true, reason: null, asOf: day.asOf, dayWindow: { start: day.start, endExclusive: day.end }, parts };
+    // Every bounced attempt is in exactly one reason group, so the two must agree.
+    if (parts.bounceReasons.pulled) {
+      const byPm = new Map();
+      for (const r of pulledOnly(healthFacts.bounceReasons)) byPm.set(JSON.stringify([r.programId, r.month]), (byPm.get(JSON.stringify([r.programId, r.month])) ?? 0) + r.count);
+      checks.push(check("bounce-reasons-sum-to-bounced", [...tplByPm].map(([k, m]) => ({ key: JSON.parse(k), month: JSON.parse(k)[1], measure: "bounced", left: byPm.get(k) ?? 0, right: m.bounced }))));
+    }
+  }
   const reconciliation = { ok: checks.every((c) => c.ok), checks };
 
   // ── Dimensions ──
@@ -2065,6 +2408,7 @@ export function reduceEngagement(input) {
     accountNames: { requested: params.accounts.names ? accountKeys.length : 0, resolved: namesResolved },
     clicks,
     responses: { available: surveyAvailable, ...respStats },
+    health: healthStats,
   };
   const caveats = [];
   if (refresh.mode === "selective") caveats.push({ id: "carried-forward-months", detail: { months: refresh.carriedMonths, repullMonths: params.repullMonths, previousPulledAt: refresh.previousPulledAt } });
@@ -2075,15 +2419,18 @@ export function reduceEngagement(input) {
   if (selected.size - withDesign) caveats.push({ id: "step-names-unavailable", detail: { programs: selected.size - withDesign, source: kbSteps ? "kb" : "none" } });
   if (!surveyAvailable) caveats.push({ id: "responses-unreadable", detail: { object: SURVEY } });
   if (!reconciliation.ok) caveats.push({ id: "reconciliation-mismatch", detail: { checks: checks.filter((c) => !c.ok).map((c) => c.id) } });
+  const healthMissing = Object.entries(healthMeta.parts).filter(([, p]) => !p.pulled).map(([name, p]) => ({ part: name, reason: p.reason }));
+  if (healthMissing.length) caveats.push({ id: "health-incomplete", detail: { parts: healthMissing } });
+  if (healthFacts.schedules.length) caveats.push({ id: "schedules-from-kb", detail: { oldest: healthFacts.schedules.map((r) => r.asOf).filter(Boolean).sort()[0] ?? null } });
   if (checks.some((c) => c.drift)) caveats.push({ id: "incomplete-period-drift", detail: { from: params.incompleteFrom, checks: checks.filter((c) => c.drift).map((c) => ({ id: c.id, drift: c.drift })) } });
 
-  const facts = { byTemplate, ...(byStep ? { byStep } : {}), byAccount, responses, responseParticipants, uniques };
+  const facts = { byTemplate, ...(byStep ? { byStep } : {}), byAccount, responses, responseParticipants, uniques, health: healthFacts };
   return {
     schemaVersion: T10_SCHEMA_VERSION,
     kind: "engagement",
     meta: {
       source: "jo-engagement",
-      params: { window: { from: params.window.from, to: params.window.to }, selector: params.selector, internalDomains: params.internalDomains, unsubscribeLinks: params.unsubscribeLinks, stepDetail: params.stepDetail, accounts: params.accounts, repullMonths: params.repullMonths, pageSize: params.pageSize },
+      params: { window: { from: params.window.from, to: params.window.to }, selector: params.selector, internalDomains: params.internalDomains, unsubscribeLinks: params.unsubscribeLinks, stepDetail: params.stepDetail, accounts: params.accounts, repullMonths: params.repullMonths, pageSize: params.pageSize, health: params.health ?? null },
       pulledAt,
       timeZone: params.timeZone,
       tenantHost: whoami.host,
@@ -2095,6 +2442,7 @@ export function reduceEngagement(input) {
       stepDetail: params.stepDetail,
       accounts: { pulled: params.accounts.pull, reason: params.accounts.pull ? null : "accounts-off" },
       participantRecords: { pulled: params.stepDetail, reason: params.stepDetail ? null : "step-detail-off" },
+      health: healthMeta,
       refresh: {
         mode: refresh.mode, why: refresh.why, repullMonths: params.repullMonths, pulledMonths: refresh.pulledMonths, carriedMonths: refresh.carriedMonths,
         carriedPrograms: refresh.carriedPrograms.size, fullPrograms: selected.size - refresh.carriedPrograms.size, previousPulledAt: refresh.previousPulledAt,
@@ -2122,6 +2470,8 @@ export function loadRun(runDir, opts = {}) {
   const { params } = readJsonFile(join(runDir, "run.json"));
   // A run started before the account switch existed pulled the account grain.
   if (params.accounts && params.accounts.pull === undefined) params.accounts.pull = true;
+  // A run started before health facts existed pulled none.
+  if (!params.health) params.health = { pull: false, lookbackDays: 90 };
   const { records } = readFetchLog(runDir);
   const ok = [...records.values()].filter((r) => r.status === "ok" && !r.truncated);
   const read = (r) => (r.file.endsWith(".txt") ? readFileSync(join(runDir, r.file), "utf8") : readJsonFile(join(runDir, r.file)));
@@ -2139,6 +2489,14 @@ export function loadRun(runDir, opts = {}) {
     previous: opts.previous ?? null,
     linkSettings: opts.linkSettings ?? null,
     surveyAvailable: !!(survey && schemaTypes(read(survey))),
+    // Which health parts were not read whole, and whether the two objects only health reads exist here.
+    healthState: {
+      unread: status.health?.unread ?? {},
+      objects: Object.fromEntries(Object.entries(HEALTH_OBJECTS).map(([part, object]) => {
+        const rec = one("schema").find((r) => r.object === object);
+        return [part, !!(rec && schemaTypes(read(rec)))];
+      })),
+    },
     // Counted from the log, so a run resumed three times reads like one that never stopped.
     calls: { answered: ok.length, split: [...records.values()].filter((r) => r.truncated || r.status === "split").length, retried: [...records.values()].filter((r) => r.attempt > 1).length },
     cliVersion: opts.cliVersion ?? null,
@@ -2162,7 +2520,7 @@ export const joEngagementAdapter = {
 // ── CLI ──────────────────────────────────────────────────────────────────────
 const USAGE =
   "usage: engagement.mjs <plan|fetch|run> [--workspace <dir>] [--run <id>] [--kb <slugDir>] [--from YYYY-MM --to YYYY-MM] " +
-  "[--name <program-name-or-id>]... [--ids-file <file>] [--sent-since <date|Nd|Nm>] [--internal-domain <domain>]... [--unsubscribe-link <link|host>]... [--step-detail] [--accounts] " +
+  "[--name <program-name-or-id>]... [--ids-file <file>] [--sent-since <date|Nd|Nm>] [--internal-domain <domain>]... [--unsubscribe-link <link|host>]... [--step-detail] [--accounts] [--health [--health-lookback-days <N>]] " +
   "[--previous <snapshot.json>] [--full] [--out <snapshot.json>]  |  engagement.mjs reduce --run-dir <dir> --out <snapshot.json> [--previous <file>] [--link-settings <file>]";
 const EXIT = { ok: 0, failed: 1, "token-expired": 3, partial: 4 };
 
@@ -2213,6 +2571,7 @@ async function main() {
   // A flag that shapes the account grain says nothing while the grain is off: refuse it rather than drop it.
   const accountFlags = ["--accounts-busiest", "--accounts-low", "--accounts-bounce", "--accounts-low-min-delivered", "--pin-accounts-file", "--no-account-names"].filter((f) => argv.includes(f));
   if (accountFlags.length && !argv.includes("--accounts")) fail(`${accountFlags.join(", ")} only applies with --accounts (the account grain is off unless asked for; plan prints what it adds)`);
+  if (argv.includes("--health-lookback-days") && !argv.includes("--health")) fail("--health-lookback-days only applies with --health (health facts are off unless asked for; plan prints what they add)");
   let params;
   try {
     params = resolveParams({
@@ -2224,7 +2583,7 @@ async function main() {
         pinned: pinFile ? parseIdList(readFileSync(resolve(pinFile), "utf8")) : [], names: !argv.includes("--no-account-names"), pull: argv.includes("--accounts"),
       },
       incompleteFrom: opt("--incomplete-from"), repullMonths: int("--repull-months"), forceFull: argv.includes("--full"),
-      pageSize: int("--page-size"), timeoutMs: int("--timeout-ms"), pulledAt: opt("--pulled-at"), timeZone: opt("--time-zone"),
+      pageSize: int("--page-size"), timeoutMs: int("--timeout-ms"), pulledAt: opt("--pulled-at"), timeZone: opt("--time-zone"), health: { pull: argv.includes("--health"), lookbackDays: int("--health-lookback-days") },
     });
   } catch (e) {
     fail(e instanceof Error ? e.message : String(e));
@@ -2286,7 +2645,9 @@ function reduceSummary(s, outPath) {
     // Null, never 0, when the account grain was not pulled; accountData says why.
     accounts: accountAvailability(s).pulled ? s.dimensions.accounts.length : null,
     accountData: accountAvailability(s),
-    rows: Object.fromEntries(Object.entries(s.facts).map(([k, v]) => [k, v.length])),
+    rows: Object.fromEntries(Object.entries(s.facts).map(([k, v]) => [k, Array.isArray(v) ? v.length : Object.fromEntries(Object.entries(v).map(([part, rows]) => [part, rows.length]))])),
+    // Which health parts were read; a part that was not says why, and its table is empty.
+    health: healthAvailability(s),
     reconciled: s.reconciliation.ok,
     reconciliation: s.reconciliation.checks.map((c) => ({ id: c.id, ok: c.ok, compared: c.compared, mismatches: c.mismatches, drift: c.drift })),
     excluded: s.honesty.excluded,
