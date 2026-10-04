@@ -155,6 +155,21 @@ Walk (hb-20261003-05): 2026-10-03 (tester) — S1-V third re-run, a RE-VERIFICAT
 Walk (hb-20261003-03): 2026-10-03 (tester) — S1-V second re-run, the first full verdict on ENG-1 and ENG-2 (feature items, no bus section carries them) and the re-verification of F-470, F-471 and F-472, against dev/VALIDATION.md section ENG-2 on the production tenant, reads only: all five runs completed (exit 0); F-470, F-471 and F-472 VERIFIED; V1 FAILED on F-473 and V11 on F-474, both logged with F-475 and F-476; Bradley ruled one metric definition (Delivered), a T-10 change for the builder before the merge; PR #36 stays unmerged. Detail in the tester comment below and in VALIDATION section ENG-2.
 Walk (hb-20261003-02): 2026-10-03 (tester) — S1-V re-run, the verdict round for ENG-1 and ENG-2 (feature items, no bus section carries them) and F-470's re-verification, against dev/VALIDATION.md section ENG-2 on the production tenant, reads only: V0 confirmed by Bradley; run 1 (plan) ok; run 2 (full) ended partial, exit 4, so no snapshot was built; V8 FAILED, F-471 and F-472 logged; runs 3-5 not run, on Bradley's call; F-470 stays FIXED, V9 not measurable. Detail in the tester comment below and in VALIDATION section ENG-2.
 
+<!-- builder 2026-10-04 (JO-dashboards S1b — POINTER: F-478 FIXED and the accounts-optional switch ride an UNMERGED branch; next free F-479):
+     Branch: feat/jo-dash-s1b-accounts-optional. PR: #37 to dev, open, left unmerged until its verdict round.
+     Handoff token: hb-20261004-01 (the Under test line, the Blind spots line and the canary are on the branch, not here).
+     F-478: FIXED on the branch (normal; Class consumer-parity), with its Fix, Judge and Sibling sweep notes there. It
+       reads OPEN in this file until PR #37 merges. No new F-number was claimed by the branch.
+     Also on the branch (plan items ENG-2 and LTR-9, no bus section): the engagement adapter's account grain is optional
+       and off unless --accounts is passed; the snapshot gains meta.accounts (additive on T-10, typedef and pin together).
+     dev/VALIDATION.md on the branch: a new section, W0 to W5, keyed to hb-20261004-01. W0 is F-478's verification
+       (offline); W1 to W5 are live reads.
+     Open polish findings: none. Plugin 0.44.0 stays unreleased; the batch is folded into its CHANGELOG entry.
+     CI on PR #37's head 0cd7344, quoted per job after completion:
+         validate-plugin 37216782425 (pull_request): changes success / manifests success / validate (ubuntu-latest) success
+         docs-drift 37216782428 (pull_request): drift (full) success
+     Open PRs to dev: #37 only (green, mergeable, held for the verdict round). Issues #11 and #12 unchanged. -->
+
 <!-- builder 2026-10-04 (JO-dashboards S1 round CLOSED OUT — PR #36 merged (ecd928d); T-10 FROZEN at schemaVersion 1; F-478 OPEN; next free F-479):
      Merged: feat/jo-dash-s1-facts -> dev, PR #36, merge commit ecd928d (Bradley's go-ahead, 2026-10-04). Plan items ENG-1
        and ENG-2 are on dev: scripts/engagement.mjs, the T-10 typedef and its pin, the fixtures and the suites. The
