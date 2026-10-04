@@ -12,7 +12,8 @@ history when this file was introduced.
   read-only `gs-admin` calls and writes one snapshot file: sent, delivered, opened,
   bounced, rejected, unsubscribed, spam complaints and content-link clicks per program,
   template and month; unique recipients and accounts reached per program; survey
-  responses; and a short list of accounts per program with the rest rolled into one row.
+  responses; and, when asked for, a short list of accounts per program with the rest
+  rolled into one row.
   No skill calls it in this version, and no existing skill changes. The open-rate
   report and the dashboards that read this file arrive in later versions.
   Three things in the file are worth knowing now. A program's click tracking reads
@@ -22,6 +23,20 @@ history when this file was introduced.
   unsubscribe link is a page on your own site, or on an outside host, name it with
   `--unsubscribe-link` (a link or a host; repeat it for several) so its clicks are not
   counted as content clicks.
+- **The per-account data in that snapshot is optional, and off unless you ask for it.**
+  Ranking every account for every program is most of a pull: on a large tenant it turned a
+  pull of a few minutes into one of about half an hour. Pass `--accounts` to include it.
+  Without it the snapshot holds no account rows and says so (`meta.accounts`), so nothing
+  that reads it can mistake "not pulled" for "no accounts"; the number of accounts each
+  program reached is still there. `plan` prints what the account data would add in calls
+  and seconds whether it is on or off. To add accounts later, run the refresh again with
+  `--accounts`: it pulls every table again and says that it did.
+- **A refresh takes nothing from a snapshot it cannot continue from.** Given another
+  tenant's snapshot as `--previous`, or one made before the metric definitions settled,
+  a refresh already pulled every number again, but it still read click history, template
+  names and account names from that file. Where two tenants share ids (a sandbox copied
+  from production), a template could read as click-tracked on the other tenant's clicks.
+  It now reads nothing from such a file.
 
 ## 0.43.3 — 2026-09-28
 
