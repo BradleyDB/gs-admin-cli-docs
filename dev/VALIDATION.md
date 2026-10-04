@@ -1067,5 +1067,5 @@ independent counts below. Pass bars as stated in the blocks above, written into 
   equal run 2's on every measure, none missing or extra. Step names: source kb, 183 programs with a design, 11 without.
   Privacy search: 0 files with an @ and 0 with an IPv4 pattern across the four run directories (1128 files) and the four
   snapshots. No token stop occurred.
-Everything else stands as CLEARED at hb-20261003-03. Logged this round: F-477 (polish, WONTFIX on Bradley's ruling). Section
+Everything else stands as CLEARED at hb-20261003-03. Logged this round: F-477 (polish, WONTFIX on Bradley's ruling) and, after the checks, F-478 (normal, OPEN: the cross-tenant carry, from the code; not one of this section's checks). Section
 CLEARED; PR #36's merge is Bradley's.
