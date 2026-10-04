@@ -156,6 +156,23 @@ Walk (hb-20261003-03): 2026-10-03 (tester) — S1-V second re-run, the first ful
 Walk (hb-20261003-02): 2026-10-03 (tester) — S1-V re-run, the verdict round for ENG-1 and ENG-2 (feature items, no bus section carries them) and F-470's re-verification, against dev/VALIDATION.md section ENG-2 on the production tenant, reads only: V0 confirmed by Bradley; run 1 (plan) ok; run 2 (full) ended partial, exit 4, so no snapshot was built; V8 FAILED, F-471 and F-472 logged; runs 3-5 not run, on Bradley's call; F-470 stays FIXED, V9 not measurable. Detail in the tester comment below and in VALIDATION section ENG-2.
 Walk (hb-20261004-01): 2026-10-04 (tester) — S1b verdict round, a RE-VERIFICATION of F-478 (W0, offline: its repro through the real process and the stand-in CLI) and of dev/VALIDATION.md section ENG-2 / LTR-9 / F-478, W1 to W5 (feature items ENG-2 and LTR-9, no bus section carries them), on the production tenant, reads only: W0 passed on all three arms, F-478 VERIFIED; all six live plans and both runs completed (exit 0); every owed check passed; the accounts-off pull took 5.2 minutes against the plan's 327 s; nothing logged; VALIDATION section CLEARED; PR #37 ready to merge (the merge is Bradley's). No SKILL.md changed, so no walk was owed. Detail in the tester comment below and in that VALIDATION section.
 
+<!-- builder 2026-10-04 (JO-dashboards S1b CLOSED OUT — PR #37 merged (3c967f1); F-478 VERIFIED; no finding open; next free F-479):
+     Merged: feat/jo-dash-s1b-accounts-optional -> dev, PR #37, merge commit 3c967f1 (Bradley's go-ahead, 2026-10-04,
+       after the verdict round passed every check). The branch is deleted, local and remote.
+     On dev now: F-478's fix (one gate for every read of a previous snapshot) and the engagement adapter's optional
+       account grain (off unless --accounts; meta.accounts, additive on T-10, typedef and pin together). Plugin 0.44.0
+       stays unreleased (one release for the whole program).
+     Findings: F-478 VERIFIED at hb-20261004-01. No finding of any tier is OPEN. dev/VALIDATION.md section
+       ENG-2 / LTR-9 / F-478: CLEARED at hb-20261004-01.
+     Under test stays feat/jo-dash-s1b-accounts-optional · hb-20261004-01 until the next handoff re-stamps it; that
+       branch no longer exists, so a tester session loads dev.
+     CI on dev after the merge (3c967f1), quoted per job after completion:
+         docs-drift 37222462137 (push): drift (full) success
+         validate-plugin 37222462068 (push): changes success / validate (ubuntu-latest) cancelled / manifests cancelled
+           (cancelled, not failed: superseded by the dispatch below, started seconds later on the same commit)
+         validate-plugin 37222472304 (workflow_dispatch): changes success / manifests success / validate (ubuntu-latest) success
+     Open PRs to dev: none. Issues #11 and #12 unchanged. Released: nothing. -->
+
 <!-- tester 2026-10-04 (JO-dashboards S1b verdict round @ hb-20261004-01 — W0 TO W5 ALL PASSED; F-478 VERIFIED; VALIDATION section ENG-2 / LTR-9 / F-478 CLEARED; nothing logged; PR #37 ready to merge; next free F-479):
      Provenance: the dev-canary skill read hb-20261004-01 in session, matching Under test; the workspace's plugin link
        resolves to this checkout's plugins/gs-superadmin; feat/jo-dash-s1b-accounts-optional clean and level with origin
