@@ -1013,3 +1013,14 @@ inputs and NEW run names (s1v3-full, s1v3-steps, s1v3-selective, s1v3-since):
 Everything else was CLEARED at hb-20261003-03 and is not owed again, except where a fix above changes what a cleared
 check read: V2 (people and accounts now come from separate calls) and V8 (six new or changed call families: totals,
 the two single-lookup uniques shapes, account-nolink, click-attr-nolink, resp-unattributed) are re-read from the new runs.
+
+Re-banked (builder, fourth S1 fix batch, 2026-10-03 @ hb-20261003-05): F-474 is FIXED on the branch, by Bradley's
+ruling after he read both UI pages: the survey figures exclude test participants, so they equal the UI's PROGRAM
+analytics. Everything in the block above is still owed, on hb-20261003-05 instead of -04 (no run was made on -04),
+with one bar changed and one read dropped:
+- V11 now judges F-474: P-survey's `facts.responseParticipants` row equals the UI's program analytics page
+  (participants 527; submitted plus partially submitted 100), and `honesty.responses.testParticipantsExcluded` is
+  above zero. The survey's own page (531 and 102) is a per-survey basis and is not the comparison.
+- The UI read banked for V11 is done (Bradley, 2026-10-03); it is not owed again.
+- V8 gains one changed shape and one new family: the three survey calls now carry `TestParticipant EQ false`, and
+  `resp-test` counts the rows left out. A failing survey family is a finding with its stderr text.

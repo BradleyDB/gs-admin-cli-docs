@@ -226,9 +226,12 @@ try {
     const program = new Map(base.tenant.tables.ao_participants.map((p) => [p.Gsid, p.AdvancedOutreachId]));
     let participants = 0;
     const allTime = { submitted: 0, partiallySubmitted: 0 };
+    let testRows = 0;
     for (const r of base.tenant.tables.survey_participant) {
       const p = program.get(r.AOParticipantId);
       if (p !== "p-nps") continue;
+      // Test participants are left out of every survey figure (F-474).
+      if (r.TestParticipant === true) { testRows++; continue; }
       participants++;
       if (r.Responded) allTime[r.ResponseStatus === "Submitted" ? "submitted" : "partiallySubmitted"]++;
       if (!r.Responded || !S.dimensions.months.includes(r.RespondedDate.slice(0, 7))) continue;
@@ -243,6 +246,10 @@ try {
     const inWindow = [...want.values()].reduce((a, x) => ({ submitted: a.submitted + x.submitted, partiallySubmitted: a.partiallySubmitted + x.partiallySubmitted }), { submitted: 0, partiallySubmitted: 0 });
     check("the response rate's basis is all time: responseParticipants carries the program's all-time Submitted and Partially submitted beside its all-time denominator, and both exceed the window's on a program older than the window",
       isDeepStrictEqual(S.facts.responseParticipants, [{ programId: "p-nps", participants, ...allTime }]) && allTime.submitted > inWindow.submitted && allTime.partiallySubmitted > inWindow.partiallySubmitted, { rp: S.facts.responseParticipants, allTime, inWindow });
+    check("F-474: test participants are left out of the denominator, of the all-time counts and of the monthly rows, as the UI's program analytics leaves them out, and the snapshot says how many were left out",
+      testRows === 3 && base.tenant.tables.survey_participant.some((x) => x.TestParticipant === true && x.Responded && S.dimensions.months.includes(x.RespondedDate.slice(0, 7))) &&
+        S.facts.responseParticipants[0].participants === participants && S.honesty.responses.testParticipantsExcluded === testRows &&
+        rpRuns(base.argv).filter((a) => flag(a, "--object") === "survey_participant" && !flag(a, "--where-filters").includes("IS_NULL") && !flag(a, "--where-filters").includes('"TestParticipant"},"operator":"EQ","rightOperand":{"value":true}')).every((a) => flag(a, "--where-filters").includes('{"leftOperand":{"fieldName":"TestParticipant"},"operator":"EQ","rightOperand":{"value":false}}')), [S.facts.responseParticipants, S.honesty.responses, testRows]);
     const r = readResponses(S, "p-nps");
     check("readResponses, no months: the all-time counts with the all-time denominator, one basis, state tracked",
       isDeepStrictEqual(r, { state: "tracked", basis: "all-time", ...allTime, anyResponse: allTime.submitted + allTime.partiallySubmitted, participants }), r);

@@ -3137,7 +3137,7 @@
    "unreadable": 0
   },
   "calls": {
-   "answered": 49,
+   "answered": 50,
    "split": 0,
    "retried": 0
   },
@@ -3167,7 +3167,8 @@
   "responses": {
    "available": true,
    "otherStatus": 0,
-   "unattributed": 1
+   "unattributed": 1,
+   "testParticipantsExcluded": 3
   }
  },
  "reconciliation": {

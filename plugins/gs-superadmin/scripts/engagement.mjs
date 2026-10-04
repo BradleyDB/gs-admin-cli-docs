@@ -142,7 +142,9 @@
  * @property {Array<{programId: string, participants: number, submitted: number, partiallySubmitted: number}>} responseParticipants
  *   the response rate's ONE basis, all time: the program's survey_participant
  *   rows (the denominator) and how many of them are Submitted and Partially
- *   submitted (additive across programs; it has no month). The monthly
+ *   submitted (additive across programs; it has no month). TEST PARTICIPANTS
+ *   ARE NOT COUNTED, here or in the monthly rows: rows flagged TestParticipant
+ *   are left out, as the UI's program analytics leaves them out. The monthly
  *   `responses` rows are for trends and the date filter, never for the rate.
  * @property {T10UniquesRow[]} uniques
  *
@@ -507,6 +509,7 @@ export const ROW_READERS = Object.freeze({
   "resp-month": (row) => ({ programId: str(cellValue(row[col.hop(PATH.surveyProgram)])), month: cellMonth(row[col.month(SURVEY, "RespondedDate")]), status: cellValue(row[col.field(SURVEY, "ResponseStatus")]), n: cellNumber(row[col.count(SURVEY)]) }),
   "resp-participants": (row) => ({ programId: str(cellValue(row[col.hop(PATH.surveyProgram)])), n: cellNumber(row[col.count(SURVEY)]) }),
   "resp-unattributed": (row) => ({ n: cellNumber(row[col.count(SURVEY)]) }),
+  "resp-test": (row) => ({ programId: str(cellValue(row[col.hop(PATH.surveyProgram)])), n: cellNumber(row[col.count(SURVEY)]) }),
   "resp-total": (row) => ({ programId: str(cellValue(row[col.hop(PATH.surveyProgram)])), status: cellValue(row[col.field(SURVEY, "ResponseStatus")]), n: cellNumber(row[col.count(SURVEY)]) }),
   "account-names": (row) => ({ key: str(cellValue(row[col.field(COMPANY, "Gsid")])), name: str(cellValue(row[col.field(COMPANY, "Name")])) }),
   step: (row) => ({
@@ -557,6 +560,10 @@ function joWhere(d) {
 // sends that lack either one, so each distinct count is asked on its own.
 const uniqueShow = (d) => [distinct(d.of === "accounts" ? PATH.company : PATH.person)];
 const noCompany = () => cond("GsCompanyId", "IS_NULL");
+// Survey figures leave out test participants, as the UI's program analytics
+// does (F-474). EQ on a boolean is the filter shape measured on this object
+// (Responded EQ true); a row whose flag is null would be left out with the tests.
+const notTest = () => cond("TestParticipant", "EQ", false);
 
 // family → {object, how it may be split, the query}. `split` is the order a
 // truncated or twice-timed-out unit is cut in; uniques are distinct counts, so
@@ -606,16 +613,18 @@ const FAMILIES = {
     object: SURVEY, split: ["day"],
     query: (d) => ({
       group: [PATH.surveyProgram, byMonth("RespondedDate"), { name: "ResponseStatus" }], show: [countOf],
-      where: [cond("Responded", "EQ", true), cond("RespondedDate", "GTE", d.window.start), cond("RespondedDate", "LT", d.window.end)],
+      where: [cond("Responded", "EQ", true), notTest(), cond("RespondedDate", "GTE", d.window.start), cond("RespondedDate", "LT", d.window.end)],
     }),
   },
-  "resp-participants": { object: SURVEY, split: [], query: () => ({ group: [PATH.surveyProgram], show: [countOf], where: [] }) },
+  "resp-participants": { object: SURVEY, split: [], query: () => ({ group: [PATH.surveyProgram], show: [countOf], where: [notTest()] }) },
+  // The test participants left out, per program: an honesty count.
+  "resp-test": { object: SURVEY, split: [], query: () => ({ group: [PATH.surveyProgram], show: [countOf], where: [cond("TestParticipant", "EQ", true)] }) },
   // Survey rows no program owns: the calls above go through the participant
   // lookup, so they never return these.
   "resp-unattributed": { object: SURVEY, split: [], query: () => ({ group: [], show: [countOf], where: [cond("AOParticipantId", "IS_NULL")] }) },
   // All time, like the denominator above: resp-month's query without its month
   // bucket and its window, so the two count a response the same way.
-  "resp-total": { object: SURVEY, split: [], query: () => ({ group: [PATH.surveyProgram, { name: "ResponseStatus" }], show: [countOf], where: [cond("Responded", "EQ", true)] }) },
+  "resp-total": { object: SURVEY, split: [], query: () => ({ group: [PATH.surveyProgram, { name: "ResponseStatus" }], show: [countOf], where: [cond("Responded", "EQ", true), notTest()] }) },
   "account-names": { object: COMPANY, split: ["keys"], query: (d) => ({ group: [], show: [{ name: "Gsid" }, { name: "Name" }], where: [cond("Gsid", "IN", d.keys)] }) },
   // Step detail only (R21): the JO send log, windowed on CreatedAt.
   step: {
@@ -1133,6 +1142,7 @@ export function planUnits({ params, base, selectedIds, refresh, surveyAvailable 
     units.push({ family: "resp-participants", cls: "all" });
     units.push({ family: "resp-total", cls: "all" });
     units.push({ family: "resp-unattributed", cls: "all" });
+    units.push({ family: "resp-test", cls: "all" });
   }
   if (params.stepDetail) {
     const stepMonth = (m, ids) => {
@@ -1767,7 +1777,7 @@ export function reduceEngagement(input) {
 
   // ── Responses ──
   const respTable = new Map();
-  const respStats = { otherStatus: 0, unattributed: 0 };
+  const respStats = { otherStatus: 0, unattributed: 0, testParticipantsExcluded: 0 };
   for (const u of of("resp-month")) {
     for (const row of u.rows) {
       const { programId: p, month: m, status, n: count } = ROW_READERS["resp-month"](row);
@@ -1793,6 +1803,12 @@ export function reduceEngagement(input) {
     }
   }
   for (const u of of("resp-unattributed")) for (const row of u.rows) respStats.unattributed += ROW_READERS["resp-unattributed"](row).n ?? 0;
+  for (const u of of("resp-test")) {
+    for (const row of u.rows) {
+      const { programId: p, n } = ROW_READERS["resp-test"](row);
+      if (p != null && selected.has(p)) respStats.testParticipantsExcluded += n ?? 0;
+    }
+  }
   // The same program's Submitted and Partially submitted, all time: with the
   // denominator they are the response rate's one basis.
   const totalsByProgram = new Map();

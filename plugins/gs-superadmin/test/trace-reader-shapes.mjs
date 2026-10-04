@@ -132,6 +132,7 @@ const ENG_UNITS = {
   "resp-participants": { cls: "all" },
   "resp-total": { cls: "all" },
   "resp-unattributed": { cls: "all" },
+  "resp-test": { cls: "all" },
   "account-names": { cls: "all", keys: ["co-01", "co-02"] },
   step: { cls: "all", window: ENG_SPAN, programs: ENG_PROGRAMS },
   "step-click": { cls: "all", window: ENG_SPAN, programs: ENG_PROGRAMS },

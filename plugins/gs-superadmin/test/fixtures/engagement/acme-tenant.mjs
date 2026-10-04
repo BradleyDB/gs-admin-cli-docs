@@ -302,6 +302,15 @@ export function buildTenant(variant = {}) {
     surveyRows.push({ Gsid: `sp-early-${i}`, AOParticipantId: parId, Responded: status != null, RespondedDate: status ? `2025-03-1${i}T12:00:00.000Z` : null, ResponseStatus: status ?? "Not Responded", SurveyOpened: true });
   }
 
+  // Test participants of p-nps (F-474): three rows the survey figures leave out,
+  // one of them a submitted response inside the window.
+  for (const [i, status] of ["Submitted", null, null].entries()) {
+    const parId = `par-p-nps-test-${i}`;
+    participants.set(parId, { Gsid: parId, AdvancedOutreachId: "p-nps" });
+    surveyRows.push({ Gsid: `sp-test-${i}`, AOParticipantId: parId, Responded: status != null, RespondedDate: status ? "2026-07-20T12:00:00.000Z" : null, ResponseStatus: status ?? "Not Responded", SurveyOpened: true, TestParticipant: true });
+  }
+  for (const r of surveyRows) if (!("TestParticipant" in r)) r.TestParticipant = false;
+
   if (variant.extraJoRow) joLog.push({ ...joLog.find((r) => r.AdvancedOutreachId === "p-onboard" && r.CreatedAt.startsWith("2026-08")), Gsid: "jo-extra", EmailLogId: null });
 
   const fields = (names, types = {}) => names.map((fieldName) => ({ fieldName, dataType: types[fieldName] ?? "STRING", meta: { filterable: true, groupable: true, aggregatable: true } }));
@@ -315,8 +324,8 @@ export function buildTenant(variant = {}) {
       { Gsid: "GSID", CreatedAt: "DATETIME", EmailSendTime: "DATETIME", EmailSend: "BOOLEAN", EmailOpened: "BOOLEAN", Bounce: "BOOLEAN", Rejected: "BOOLEAN", Unsubscribed: "BOOLEAN", Spam: "BOOLEAN", EmailClicked: "BOOLEAN", EmailLogId: "LOOKUP", GsParticipantId: "LOOKUP" }
     ),
     survey_participant: fields(
-      ["Gsid", "AOParticipantId", "Responded", "RespondedDate", "ResponseStatus", "SurveyOpened"],
-      { Gsid: "GSID", AOParticipantId: "LOOKUP", Responded: "BOOLEAN", RespondedDate: "DATETIME", SurveyOpened: "BOOLEAN" }
+      ["Gsid", "AOParticipantId", "Responded", "RespondedDate", "ResponseStatus", "SurveyOpened", "TestParticipant"],
+      { Gsid: "GSID", AOParticipantId: "LOOKUP", Responded: "BOOLEAN", RespondedDate: "DATETIME", SurveyOpened: "BOOLEAN", TestParticipant: "BOOLEAN" }
     ),
     company: fields(["Gsid", "Name"], { Gsid: "GSID" }),
   };
