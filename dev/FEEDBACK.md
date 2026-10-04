@@ -156,6 +156,22 @@ Walk (hb-20261003-03): 2026-10-03 (tester) — S1-V second re-run, the first ful
 Walk (hb-20261003-02): 2026-10-03 (tester) — S1-V re-run, the verdict round for ENG-1 and ENG-2 (feature items, no bus section carries them) and F-470's re-verification, against dev/VALIDATION.md section ENG-2 on the production tenant, reads only: V0 confirmed by Bradley; run 1 (plan) ok; run 2 (full) ended partial, exit 4, so no snapshot was built; V8 FAILED, F-471 and F-472 logged; runs 3-5 not run, on Bradley's call; F-470 stays FIXED, V9 not measurable. Detail in the tester comment below and in VALIDATION section ENG-2.
 Walk (hb-20261004-01): 2026-10-04 (tester) — S1b verdict round, a RE-VERIFICATION of F-478 (W0, offline: its repro through the real process and the stand-in CLI) and of dev/VALIDATION.md section ENG-2 / LTR-9 / F-478, W1 to W5 (feature items ENG-2 and LTR-9, no bus section carries them), on the production tenant, reads only: W0 passed on all three arms, F-478 VERIFIED; all six live plans and both runs completed (exit 0); every owed check passed; the accounts-off pull took 5.2 minutes against the plan's 327 s; nothing logged; VALIDATION section CLEARED; PR #37 ready to merge (the merge is Bradley's). No SKILL.md changed, so no walk was owed. Detail in the tester comment below and in that VALIDATION section.
 
+<!-- builder 2026-10-04 (JO-dashboards S2 — POINTER: plan items ENG-4 and ENG-3 ride an UNMERGED branch; no finding logged; next free F-479):
+     Branch: feat/jo-dash-s2-engine-report. PR: #38 to dev, open, left unmerged. It merges on green CI plus its review
+       round (done on the branch: one /code-review at medium, three findings, all fixed); its verdict is V2, after S4c.
+     Handoff token: hb-20261004-02 (the Under test line, the Blind spots line and the canary are on the branch, not here).
+     On the branch (feature items, tracked by plan ID, no bus section): scripts/engagement-query.mjs, the one
+       aggregation path over an engagement snapshot, import-free, holding the metric registry, the source facts the
+       adapter now builds its queries from, and the T-10 read floor (moved out of engagement.mjs);
+       scripts/engagement-report.mjs, the open-rate report; and a new skill, email-engagement, with one mode, report.
+       T-10 is read, not changed. engagement.mjs --name also takes a program id.
+     No F-number was claimed by the branch. No finding of any tier is OPEN.
+     dev/VALIDATION.md on the branch: a new section, ENG-3 / ENG-4, X0 to X9, keyed to hb-20261004-02, owed at V2. The
+       new skill was not walked live: X0, X4, X8 and X9 are its walk.
+     Plugin 0.45.0 on the branch, unreleased (one release for the whole program).
+     CI on PR #38's head: pending when this was written; quoted per job in a re-stamp of this pointer once it completes.
+     Open PRs to dev: #38 only. Issues #11 and #12 unchanged. -->
+
 <!-- builder 2026-10-04 (JO-dashboards S1b CLOSED OUT — PR #37 merged (3c967f1); F-478 VERIFIED; no finding open; next free F-479):
      Merged: feat/jo-dash-s1b-accounts-optional -> dev, PR #37, merge commit 3c967f1 (Bradley's go-ahead, 2026-10-04,
        after the verdict round passed every check). The branch is deleted, local and remote.
