@@ -763,7 +763,7 @@ Pass bar:
 An A1 caveat that still names the object reopens #28; a B1 caveat that still names it is a finding against #32.
 Record the verdict here with the token, and copy it to the bus under the round's Blind spots line.
 
-## ENG-2 — the engagement adapter on a real tenant: the contract gate and thirteen live checks (banked 2026-10-03, builder, Session S1 @ hb-20261003-01; re-banked the same day for the re-run, S1 fix batch @ hb-20261003-02 — OPEN after the S1-V re-run @ hb-20261003-02)
+## ENG-2 — the engagement adapter on a real tenant: the contract gate and thirteen live checks (banked 2026-10-03, builder, Session S1 @ hb-20261003-01; re-banked the same day for the re-run, S1 fix batch @ hb-20261003-02 — OPEN after the S1-V second re-run @ hb-20261003-03: V1 and V11 FAILED, the rest CLEARED)
 
 Owed by: the S1-V re-run, the tester round on hb-20261003-02, in the consumer workspace with the plugin loaded
 from branch `feat/jo-dash-s1-facts`. The branch does not merge before this section is cleared.
@@ -925,3 +925,66 @@ but it would reduce calls pulled hours apart. Two bars read differently after th
   Zero: nothing more. Above zero: reopen F-472 with the count (no address, no id).
 - V13's estimate: the plan cannot foresee splits, so expect more calls than estimated on the mass-send days, as in
   run 2 (194 against 139). The 2x bar on elapsed time stands.
+
+Result (tester, S1-V second re-run, 2026-10-03 @ hb-20261003-03) — OPEN: V1 and V11 FAILED; every other check CLEARED; the
+branch stays unmerged.
+Under test: feat/jo-dash-s1-facts at 96ed11e, clean, canary matched; production tenant, confirmed; CLI 1.0.10; reads only.
+Picks, inputs and UI figures as settled at the first re-run, confirmed with Bradley before the first call; new run names
+(s1v2-full, s1v2-steps, s1v2-selective, s1v2-since) with identical inputs on every line. All five runs completed, exit 0.
+Runs, estimate -> actual: 1 plan ok (139 calls / 1011 s; step detail +45 / +315 s); 2 full 303 calls / 1909 s; 3 step
+detail 184 / 1326 s -> 356 / 2267 s; 4 selective 29 / 241 s -> 168 / 1016 s; 5 --sent-since 90d 91 / 675 s -> 226 / 1429 s.
+How the UI comparisons were made: the UI page Bradley read for P-busy reports lifetime figures (its date-range control did
+not narrow them), and it calls the went-out count (IsSent = YES) "Sent" and that count minus every bounce event
+"Delivered". The adapter's own query shapes, run over the program's lifetime through the spike's catalog-checked runner,
+equal that page exactly on all seven counts (went-out, attempts, distinct people, bounces, rejects, unsubscribes,
+distinct participant records), and each snapshot's window counts equal the send log's window sums. Bradley then ruled
+the dashboard's terms (T-10, the builder's change before the merge): Sent = every attempt (R17 unchanged); Delivered =
+went out and did not bounce (IsSent = YES and IsBounced = NO), falling back to the original definition with a tooltip
+only if it cannot be computed.
+- V0: CLEARED @ hb-20261003-02 (Bradley's confirmation; the typedef has not changed since).
+- V1: FAILED (F-473). Run 2 reads reconciled false: templates-sum-to-program 25 of 561, accounts-sum-to-program 93 of 4488;
+  internal-within-all ok (185978 compared), clicked-within-delivered ok. Cause, measured: every send with no company link
+  is missing from the account table and from the program total (a lookup fieldPath drops rows whose lookup is null);
+  template-minus-account sent equals the no-company count in 561 of 561 program-months. F-472's address cut adds up
+  (verdict under F-472). Excluded classes plausible: CC copies 287 of 357530 rows (0.08%); 1 deleted program, 27860 sends
+  (2.6%), whose id described by hand answers "Advanced Outreach not found".
+- V2: CLEARED, through the lifetime bridge. People (distinct person) for P-busy equals the UI's Contacts exactly over the
+  page's lifetime basis (ratio 1.000); the window's 3942 people and 1485 accounts are plausible against it.
+- V3: CLEARED, through the lifetime bridge. Internal and external rows present; internal-within-all ok; for P-busy internal
+  16 + external 18014 = 18030 = the send log's window attempts; the UI's "Sent" equals the lifetime went-out count exactly.
+- V4: CLEARED. Template states: 27 tracked, 229 unknown, 0 not-tracked. T-history reads tracked (history Jan-May 2026) and
+  its September rows read clicked 0 on 15 sends, a real 0. T-never reads unknown.
+- V5: CLEARED, through the lifetime bridge. P-busy's rejected and unsubscribed equal the UI's exactly over its basis (and
+  bounced too). Spam: the UI shows no figure, so that third has no UI side; the snapshot reads 0.
+- V6: CLEARED. Run 4: refresh.mode selective (carried 11 months, re-pulled 2), 168 calls / 1016 s against run 2's 303 /
+  1909 s; all 632 carried program x month x class template rows equal run 2's on every measure, none missing or extra.
+  Its own estimate ran 4.2x short (F-476).
+- V7: CLEARED. Run 5 resolved 2026-07-05 onward to 67 programs; a direct send-log count since that day, per program, finds
+  exactly 67 programs, all in jo p list, and they are run 5's 67 (none missing, none extra); 125 counted unselected.
+- V8: CLEARED. Every family ended ok in every run, failed [] in each summary; run 3's three ao_emails shapes ok (step 25,
+  step-click 4, participants 8 + 8); no normalizeGroupByDedup line in any stderr; rows.unreadable 0, clicks.unreadable 0.
+  The banked read for F-472's known limit: in-scope sends with a null address = 0.
+- V9: CLEARED (F-470 VERIFIED). meta.params.unsubscribeLinks echoes both pages; P-unsub's 6 rows read clicked 0 and its 3
+  templates unknown; nonContentOnly 36; byUnsubscribeInput 59.
+- V10: CLEARED, through the lifetime bridge. Run 3's window participantRecords for P-busy 18030 (= its window attempts);
+  lifetime distinct participant records through the adapter's own shape equal the UI's Participants exactly. Cost of the
+  two participant families on run 3: participants-month 8 calls / 88 s, participants-window 8 calls / 59 s (16 calls /
+  146 s, about 6% of the run).
+- V11: FAILED (F-474). P-survey's facts.responseParticipants: participants 542, submitted 65, partially submitted 35. UI:
+  531, 67, 35. Submitted: Bradley identified 2 of the UI's 67 as internal test responses, and the CLI's 65 holds no test
+  row. Partial equal. The denominator's 11 is not explained by status, test flag, internal submission or sent date, and is
+  stable across three pulls. resp-total ended ok. Open question answered: SurveySentDate is set on every survey_participant
+  row attributed to a program (0 null); 798 of 257838 rows lack it, all among the rows attributed to none.
+- V12: CLEARED, both halves (spike arm g2 answered in SPIKE-NOTES). Month: P-busy's August row equals the UI's month on
+  went-out (1953) and opened (184); the UI's other two figures differ only by the labels ruled above; no one-day shift at
+  either edge. Per email (P-multi, run 3, August): opened equal on all three emails; the UI's delivered equals each email's
+  went-out minus its bounces; the UI's third email is two steps of the program.
+- V13: CLEARED. Run 2 elapsed 1909 s against 1011 s estimated (1.89x, inside 2x); 303 calls against 139 (77 splits). Step
+  names: honesty.stepNames source kb, 181 programs with a design, 11 without; the KB holds no stubs (556 journey docs, all
+  full depth, indexed 2026-09-10) and the 11 are absent from it, every one first sending in 2026-09 or later, after that
+  index, two of them the mass-send programs. Privacy search: 0 files with an @ and 0 with an IPv4 pattern across the four
+  run directories (1077 files) and four snapshots. No token stop occurred.
+Logged this round: F-473, F-474, F-475 (reconciliation reads current-month drift over a long pull as a failure; runs 2-5),
+F-476 (plan's estimate omits splits; runs 2-5). Owed by the next re-run, after the builder's batch: V1 (F-473's fix) and
+V11 (F-474), the Delivered definition's readers, F-475 and F-476 per their Fix notes; the CLEARED checks stand unless the
+batch moves what they read.
