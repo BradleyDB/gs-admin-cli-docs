@@ -155,6 +155,20 @@ Walk (hb-20261003-05): 2026-10-03 (tester) — S1-V third re-run, a RE-VERIFICAT
 Walk (hb-20261003-03): 2026-10-03 (tester) — S1-V second re-run, the first full verdict on ENG-1 and ENG-2 (feature items, no bus section carries them) and the re-verification of F-470, F-471 and F-472, against dev/VALIDATION.md section ENG-2 on the production tenant, reads only: all five runs completed (exit 0); F-470, F-471 and F-472 VERIFIED; V1 FAILED on F-473 and V11 on F-474, both logged with F-475 and F-476; Bradley ruled one metric definition (Delivered), a T-10 change for the builder before the merge; PR #36 stays unmerged. Detail in the tester comment below and in VALIDATION section ENG-2.
 Walk (hb-20261003-02): 2026-10-03 (tester) — S1-V re-run, the verdict round for ENG-1 and ENG-2 (feature items, no bus section carries them) and F-470's re-verification, against dev/VALIDATION.md section ENG-2 on the production tenant, reads only: V0 confirmed by Bradley; run 1 (plan) ok; run 2 (full) ended partial, exit 4, so no snapshot was built; V8 FAILED, F-471 and F-472 logged; runs 3-5 not run, on Bradley's call; F-470 stays FIXED, V9 not measurable. Detail in the tester comment below and in VALIDATION section ENG-2.
 
+<!-- tester 2026-10-04 (JO-dashboards S1b verdict round @ hb-20261004-01 — W0 TO W5 ALL PASSED; F-478 VERIFIED on the branch; PR #37 ready to merge; next free F-479; re-stamps the builder pointer below):
+     Riding feat/jo-dash-s1b-accounts-optional -> PR #37, UNMERGED (ready to merge; the merge is Bradley's). Branch tip
+       aade070, the verdict commit (bus statuses, Walk line, tester block; VALIDATION section ENG-2 / LTR-9 / F-478
+       CLEARED), on the handoff at 0cd7344.
+     Status on the branch: F-478 FIXED -> VERIFIED (W0: its repro through the real process and the stand-in CLI; the
+       other-tenant and earlier-definitions snapshots each reduce equal to no previous at all, and the --full control
+       still reads the history). It reads OPEN in this file until PR #37 merges. No finding logged; no number claimed.
+     W1 to W5 (accounts optional, plan items ENG-2 and LTR-9): production tenant, reads only, every check passed; the
+       accounts-off pull took 5.2 minutes. Guard-wiring ask rendered and declined. Detail in the tester comment on the branch.
+     Open PRs to dev: #37 only.
+     CI on PR #37's head aade070, quoted per job after completion:
+         validate-plugin 37221387387 (pull_request): changes success / manifests success / validate (ubuntu-latest) success
+         docs-drift 37221387383 (pull_request): drift (full) success -->
+
 <!-- builder 2026-10-04 (JO-dashboards S1b — POINTER: F-478 FIXED and the accounts-optional switch ride an UNMERGED branch; next free F-479):
      Branch: feat/jo-dash-s1b-accounts-optional. PR: #37 to dev, open, left unmerged until its verdict round.
      Handoff token: hb-20261004-01 (the Under test line, the Blind spots line and the canary are on the branch, not here).
