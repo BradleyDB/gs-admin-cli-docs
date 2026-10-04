@@ -157,6 +157,50 @@ Walk (hb-20261003-03): 2026-10-03 (tester) — S1-V second re-run, the first ful
 Walk (hb-20261003-02): 2026-10-03 (tester) — S1-V re-run, the verdict round for ENG-1 and ENG-2 (feature items, no bus section carries them) and F-470's re-verification, against dev/VALIDATION.md section ENG-2 on the production tenant, reads only: V0 confirmed by Bradley; run 1 (plan) ok; run 2 (full) ended partial, exit 4, so no snapshot was built; V8 FAILED, F-471 and F-472 logged; runs 3-5 not run, on Bradley's call; F-470 stays FIXED, V9 not measurable. Detail in the tester comment below and in VALIDATION section ENG-2.
 Walk (hb-20261004-01): 2026-10-04 (tester) — S1b verdict round, a RE-VERIFICATION of F-478 (W0, offline: its repro through the real process and the stand-in CLI) and of dev/VALIDATION.md section ENG-2 / LTR-9 / F-478, W1 to W5 (feature items ENG-2 and LTR-9, no bus section carries them), on the production tenant, reads only: W0 passed on all three arms, F-478 VERIFIED; all six live plans and both runs completed (exit 0); every owed check passed; the accounts-off pull took 5.2 minutes against the plan's 327 s; nothing logged; VALIDATION section CLEARED; PR #37 ready to merge (the merge is Bradley's). No SKILL.md changed, so no walk was owed. Detail in the tester comment below and in that VALIDATION section.
 
+<!-- builder 2026-10-04 (JO-dashboards S3 — POINTER: plan items HLT-1, DSH-1 and DSH-5 ride an UNMERGED branch; no finding logged; NO handoff token was minted; next free F-483):
+     Branch: feat/jo-dash-s3-health-spec at fa1d747. PR: #39 to dev, open, left unmerged. It merges on green CI plus its
+       review round (done on the branch: one /code-review at medium, six findings, five fixed with a check each, one
+       left to the refresh runner and recorded for it); its verdict is V2, after S4c.
+     Handoff: NOT DONE. `dev-utils handoff --branch feat/jo-dash-s3-health-spec --blind-spots "..."` refused to mint
+       this round's token: this header's S2 re-stamped pointer names an earlier token of today in its text, and that
+       token's Blind spots line was replaced by the later same-day handoff. By the standing precedent the refusal is
+       recorded and not worked around: the Under test line, the Blind spots line and the canary are unchanged, here
+       and on the branch, and still describe the S2 round. The handoff is owed on the branch on the next calendar
+       day, with the blind spots below.
+     Blind spots this round would have declared (for that handoff): built offline against the fictional tenant and
+       the stand-in CLI, no tenant read. Unmeasured, all banked: (1) the plain-row shape of a failed participant's
+       FailureReasons is ASSUMED (the spike recorded it in words only); (2) what real bounce reasons hold beyond the
+       five mask rules (address, UUID, IPv4 address, long id, digit run); (3) whether the participant object's
+       group-by returns or times out at 50 programs a call, and so what the health pull costs; (4) the bounce-reason
+       cell shape is reproduced from the spike's note, not from a captured payload; (5) no skill prose changed and
+       none was walked; (6) the review was the builder's own single pass, not an independent frame; (7) the mutation
+       sweep ran before the review fixes and was not repeated after them (each fix landed with its own check; the
+       sweep's one mismatch got a pin and was re-run KILLED).
+     On the branch (feature items, tracked by plan ID, no bus section):
+       HLT-1: health facts in the engagement snapshot, additive on T-10 (typedef and pin moved together; schemaVersion
+       stays 1). Every send row carries `failed` (bounced or rejected, once per attempt) and the registry gains the
+       error rate (failed over sent). `engagement.mjs --health`, off unless passed, pulls bounce reasons, participant
+       failures and states, each program's last send day and schedule last-run results (from the KB); error messages
+       are masked when fetched and again in reduce; a health call that fails never fails the pull.
+       DSH-1: scripts/dashboard-spec.mjs, the dashboard spec (T-11, typed and pinned; it freezes at the merge) and
+       its one writer, with export and import (no machine path; another tenant refused).
+       DSH-5: scripts/dashboard-groups.mjs, two-level program groups from rules, overrides first, Ungrouped last.
+       No SKILL.md changed; the email-engagement report makes the same calls as before.
+     A refresh that continues from a snapshot made before plugin 0.46.0 is a full one, once (its rows carry no
+       failure count). V2's kept previous snapshot is such a snapshot.
+     No F-number was claimed by the branch. F-482 (polish) is still OPEN on dev and was not taken by this round.
+     dev/VALIDATION.md on the branch: a new section, HLT-1 / DSH-1 / DSH-5, Y0 to Y12, owed at V2. It carries no
+       token yet and says why.
+     Plugin 0.46.0 on the branch, unreleased (one release for the whole program).
+     Local battery, 52 steps: 49 green on the first run; one real red fixed (a path literal in a test tripped
+       check-instance-data), two known local reds (tsc on a git-ignored file; the full build's date stamp).
+     sweep (source: the decision points of the functions added or changed, enumerated from the code; predictions
+       written before the run): 36 of 37 as predicted, three predicted survivors (equivalent mutants), one MISMATCH
+       (an unknown field holding an empty object or list was accepted by no check), pinned and re-run KILLED.
+     CI on PR #39's head fa1d747: pending when this was written; quoted per job in a re-stamp of this pointer once
+       it completes.
+     Open PRs to dev: #39 only. Issues #11 and #12 unchanged. -->
+
 <!-- builder 2026-10-04 (JO-dashboards S2 CLOSED OUT — PR #38 merged (bd27fed); F-479, F-480, F-481 VERIFIED; F-482 logged OPEN (polish); next free F-483):
      PR #38 (feat/jo-dash-s2-engine-report) was merged to dev by Bradley after the re-verification round passed R1 to
        R3. The branch is deleted, local and remote. The three S2 pointers below are history: nothing rides an unmerged
