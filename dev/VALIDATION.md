@@ -1297,10 +1297,13 @@ Picks and inputs: as for X0, from `.gs-superadmin/tmp/s1v-picks.md`. One walk fe
     `caveatCount` (compared by script). Walk: plan 8 calls / 43 s, pull 36 calls / 269 s wall against an estimate of
     35 calls / 327 s; no step made the walk stop or guess. F-481 VERIFIED.
 
-## HLT-1 / DSH-1 / DSH-5 — health facts on a real tenant with masking holding on real messages, grouping by program characteristics and by folder or name, and a spec export / import round trip (banked 2026-10-04, builder, Session S3 @ hb-20261004-04; verdict at V2)
+## HLT-1 / DSH-1 / DSH-5 — health facts on a real tenant with masking holding on real messages, grouping by program characteristics and by folder or name, and a spec export / import round trip (banked 2026-10-04, builder, Session S3; verdict at V2)
 
 Owed by: V2, the batched verdict session after S4c, in the consumer workspace with the plugin loaded from `dev`
 (the PR for `feat/jo-dash-s3-health-spec` merges on green CI plus its review round, before V2).
+Token: none yet. `dev-utils handoff` refused to mint one for this branch on 2026-10-04 (the bus header names an
+earlier token of the same day in another round's text), and the refusal was recorded, not worked around. This
+section is keyed to the token the branch's next handoff mints; the PR is #39.
 Why it is banked: the health facts, the spec writer and the grouping resolver were built offline against the
 fictional tenant and the stand-in CLI. What a real mail service writes into a bounce reason, what shape a failed
 participant's reason arrives in, whether the participant object's group-by returns or times out, and whether the
