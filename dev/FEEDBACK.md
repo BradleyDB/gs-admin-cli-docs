@@ -152,6 +152,31 @@ rule also reads the archive.
 Under test: fix-f469-dev-only · hb-20260929-01 · 2026-09-29
 Blind spots (hb-20260929-01): the release shape (strip committed, bus only on origin/dev) is measured locally only: a scratch clone ran every docs-drift step verbatim, with the fetch step fetching from a local remote, and only that shape kills sweep mutant M5. CI first runs it on the next release PR, since a pre-merge CI probe would read an origin/dev without the line. The main-existence step's base_ref == main path also runs first there (its rehearsal-arm path runs on this handoff's dispatch). Grammar parity with dev-utils is measured at 0.5.0 only. The reader's symlink-escape refusal has no fixture. RELEASE-CHECKLIST §3's strip and verify commands ran in a scratch clone; §5's release-finish did not run (no release). No SKILL.md changed, so no walk is owed; the round's guard-wiring line is the tester's
 
+<!-- builder 2026-10-03 (JO-dashboards third S1 fix batch — HANDED OFF @ hb-20261003-04; F-473, F-475, F-476 FIXED on the branch; F-474 stays OPEN; next free F-477):
+     Riding feat/jo-dash-s1-facts -> PR #36, UNMERGED (it merges after the next S1-V re-run; the merge is Bradley's).
+       Branch tip 9232cf2, the handoff commit; the fix is 1eae47d plus the review fixes in the commit before the handoff.
+     The Delivered ruling landed: Delivered is the attempts that went out and did not bounce; Sent is unchanged. T-10 is
+       typed and pinned and freezes at the merge; schemaVersion stays 1; the typedef and the pin moved together.
+     F-473: OPEN -> FIXED. Program totals and selection come from a call that names no lookup; people and accounts are
+       each counted through their own lookup; the sends with no company link, and their clicks, are read by their own
+       IS_NULL calls; the stand-in CLI now drops null-lookup rows as the server does. V1 judges it.
+     F-475: OPEN -> FIXED. Each reconciliation check separates closed months (a difference fails) from the incomplete
+       period (drift, counted and shown; the pull still reconciles). Additive on T-10.
+     F-476: OPEN -> FIXED. plan prices the splits a program-month too large for a page will force. V13 and V6 judge it.
+     F-474: stays OPEN (normal), with a builder note listing what the UI's figure is not; one UI read by Bradley is
+       banked. Whether it holds the merge is Bradley's call. No polish finding is open. No number consumed.
+     This round the builder used the live token, at Bradley's offer, reads only: the new query shapes were accepted;
+       has-a-company-link and IS_NULL were measured an exact partition of the sends and of the clicked sends; plan's
+       estimates landed within 2x of the calls the hb-20261003-03 runs took. No snapshot was built from the new code.
+     dev/VALIDATION.md section ENG-2 on the branch is re-banked for hb-20261003-04: owed again are V1, V2, V3, V8, V11,
+       V12 and V13/V6; the rest stays cleared at hb-20261003-03.
+     Offline evidence: mutation sweep 17 of 18 as predicted (the mismatch recorded under F-476); an independent
+       read-only review, two findings, both fixed; local battery 46 of 47 (the red is a git-ignored local file under tsc).
+     Open PRs to dev: #36 only. Issues #11 and #12 unchanged.
+     CI on PR #36's head 9232cf2, quoted per job after completion:
+         docs-drift 37173958472 (pull_request): drift (full) success
+         validate-plugin 37173958507 (pull_request): changes success / manifests success / validate (ubuntu-latest) success -->
+
 <!-- tester 2026-10-03 (JO-dashboards S1-V second re-run @ hb-20261003-03 — re-stamps the builder pointer below; F-470, F-471, F-472 VERIFIED; F-473..F-476 OPEN on the branch; PR #36 stays UNMERGED; next free F-477):
      Under test: feat/jo-dash-s1-facts -> PR #36, UNMERGED; checkout clean and level with origin at 96ed11e (matches Under
        test); the dev-canary skill read hb-20261003-03 in session. Production tenant, confirmed; reads only.
