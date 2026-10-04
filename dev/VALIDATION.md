@@ -1070,7 +1070,7 @@ independent counts below. Pass bars as stated in the blocks above, written into 
 Everything else stands as CLEARED at hb-20261003-03. Logged this round: F-477 (polish, WONTFIX on Bradley's ruling) and, after the checks, F-478 (normal, OPEN: the cross-tenant carry, from the code; not one of this section's checks). Section
 CLEARED; PR #36's merge is Bradley's.
 
-## ENG-2 / LTR-9 / F-478 — accounts optional on a real tenant, and F-478's repro (banked 2026-10-04, builder, Session S1b @ hb-20261004-01 — OPEN)
+## ENG-2 / LTR-9 / F-478 — accounts optional on a real tenant, and F-478's repro (banked 2026-10-04, builder, Session S1b @ hb-20261004-01 — CLEARED 2026-10-04 @ hb-20261004-01: every check CLEARED)
 
 Owed by: the S1b verdict round, the tester round on hb-20261004-01, with the plugin loaded from branch
 `feat/jo-dash-s1b-accounts-optional`. W0 is offline. W1 to W5 are live, reads only, in the consumer workspace.
@@ -1125,3 +1125,46 @@ S1-V third re-run, `.gs-superadmin/tmp/engagement/s1v3-full.json`, made before t
   `full`, and its `why` says accounts were switched off.
 
 No SKILL.md changed in this batch, so no walk is owed; the round's guard-wiring line is the tester's.
+
+### Result — S1b verdict round @ hb-20261004-01 (tester, 2026-10-04)
+
+Under test: feat/jo-dash-s1b-accounts-optional at 0cd7344, clean and level with origin; the dev-canary skill read
+hb-20261004-01 in session; the workspace's plugin link resolves to this checkout's plugins/gs-superadmin. Production
+tenant, confirmed by `gs-admin whoami` and by Bradley (one login, before W1); CLI 1.0.10 = the catalog's; every tenant
+call a read, one at a time. Round type: RE-VERIFICATION, each check against the pass bar above, written into the round
+before its first measurement. Picks and inputs as settled: every live line passed both internal domains and both
+unsubscribe links. Run names s1b-off (W1's first plan and W2), s1b-w1-on, s1b-on (W3's plan and run), s1b-w4, s1b-w5-on,
+s1b-w5-off. Every plan and run exit 0 with failed []; the deleted program's describe failed twice in each, its designed
+not-found and solo re-check.
+- W0: CLEARED (F-478 VERIFIED; detail in its Verified note). Real process and stand-in CLI, a scratch workspace over the
+  fixture KB: the other-host copy and the drift-deleted copy each reduce to a snapshot equal to the no-previous reduce
+  in every leaf but `meta.refresh.why`; the template the copy marked clicked reads `unknown`, as with no previous;
+  `previousPulledAt` null. Control (`--full`, host restored, nothing deleted): the template reads `tracked`.
+- W1: CLEARED. Accounts off: thisRun 35 calls / 327 s, `estimate.accounts` {on: false, addsCalls 264, addsSeconds 1848},
+  token fits. With `--accounts`: 299 calls / 2175 s, {on: true, 264, 1848}. 299 - 35 = 264 = addsCalls.
+- W2: CLEARED. Exit 0, reconciled true; the fetch log holds no account, account-nolink or account-names call, and no
+  call on `company` (the six payloads with a company column are email_log_v2 calls through the company lookup: the
+  accounts-reached distinct counts and the per-send click attribution, families both plans list). `meta.accounts`
+  {pulled: false, reason: "accounts-off"}; facts.byAccount and dimensions.accounts empty; no accounts-sum-to-program
+  check; caveat accounts-not-pulled present; summary `accounts: null`. All 194 programs carry accounts reached in
+  facts.uniques. `sent` per program and closed month in facts.byTemplate equals the kept snapshot's: no program-month
+  differs, none missing or extra. Cost: 36 calls / 313 s wall against the plan's 35 / 327 s (1.03x, 0.96x); 5.2 minutes,
+  inside LTR-9's 5 to 8 minute guess and far under the 16-minute finding line.
+- W3: CLEARED. `plan` first: full, 299 calls / 2175 s, fits with 3085 s left; no login needed. Run: `meta.refresh.mode`
+  full, why "accounts were switched on and the previous snapshot holds none, so every table is pulled again"; exit 0,
+  reconciled true; accounts-sum-to-program present, ok, 4504 compared, 0 mismatches (its 2 drift entries are both in
+  2026-10, the open month); `meta.accounts` {pulled: true, reason: null}; facts.byAccount holds the account, other and
+  no-company-link buckets. Cost: 315 calls / 1962 s wall (the plan said 299 / 2175 s); minus the 11
+  account-names calls and W2's 36 that is 268 (267 with the company schema read the names use also counted out),
+  against addsCalls 264: 1.02x.
+- W4: CLEARED. `estimate.mode` selective (months before 2026-09 carried from W2's snapshot); thisRun.byFamily names no
+  account family.
+- W5: CLEARED. The kept snapshot has no `meta.accounts` marker. With `--accounts` (its selection, the defaults):
+  selective, 105 calls / 817 s. Without: full, why "accounts were switched off, so every table is pulled again without
+  them", 35 calls / 327 s.
+Guard-wiring: `gs-admin jo p pause --help` -> Bradley read the rendered ask: "Mutating Gainsight command: gs-admin journey
+programs pause. This workspace is read-only by default. Workspace manifests claim multiple tenants (<slug> (<host>);
+<slug> (<host>)) — confirm `gs-admin whoami` targets the intended one before approving. ⚠ At least one of these tenants
+is PRODUCTION (recorded at setup) — verify the target before approving." DECLINED; the command never ran.
+Walk: none owed (no SKILL.md changed); the round's Walk line is on the bus header.
+Section CLEARED. PR #37's merge is Bradley's.
