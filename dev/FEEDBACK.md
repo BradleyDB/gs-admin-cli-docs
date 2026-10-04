@@ -157,6 +157,24 @@ Walk (hb-20261003-03): 2026-10-03 (tester) — S1-V second re-run, the first ful
 Walk (hb-20261003-02): 2026-10-03 (tester) — S1-V re-run, the verdict round for ENG-1 and ENG-2 (feature items, no bus section carries them) and F-470's re-verification, against dev/VALIDATION.md section ENG-2 on the production tenant, reads only: V0 confirmed by Bradley; run 1 (plan) ok; run 2 (full) ended partial, exit 4, so no snapshot was built; V8 FAILED, F-471 and F-472 logged; runs 3-5 not run, on Bradley's call; F-470 stays FIXED, V9 not measurable. Detail in the tester comment below and in VALIDATION section ENG-2.
 Walk (hb-20261004-01): 2026-10-04 (tester) — S1b verdict round, a RE-VERIFICATION of F-478 (W0, offline: its repro through the real process and the stand-in CLI) and of dev/VALIDATION.md section ENG-2 / LTR-9 / F-478, W1 to W5 (feature items ENG-2 and LTR-9, no bus section carries them), on the production tenant, reads only: W0 passed on all three arms, F-478 VERIFIED; all six live plans and both runs completed (exit 0); every owed check passed; the accounts-off pull took 5.2 minutes against the plan's 327 s; nothing logged; VALIDATION section CLEARED; PR #37 ready to merge (the merge is Bradley's). No SKILL.md changed, so no walk was owed. Detail in the tester comment below and in that VALIDATION section.
 
+<!-- builder 2026-10-04 (JO-dashboards S2 CLOSED OUT — PR #38 merged (bd27fed); F-479, F-480, F-481 VERIFIED; F-482 logged OPEN (polish); next free F-483):
+     PR #38 (feat/jo-dash-s2-engine-report) was merged to dev by Bradley after the re-verification round passed R1 to
+       R3. The branch is deleted, local and remote. The three S2 pointers below are history: nothing rides an unmerged
+       branch now.
+     On dev now (plan items ENG-4 and ENG-3): scripts/engagement-query.mjs (the one aggregation path over an engagement
+       snapshot, import-free; the metric registry, the source facts the adapter builds its queries from, the T-10 read
+       floor), scripts/engagement-report.mjs, and the email-engagement skill with its report mode. Plugin 0.45.0,
+       unreleased (one release for the whole program). T-10 unchanged.
+     Findings: F-479, F-480, F-481 VERIFIED at hb-20261004-03. F-482 OPEN, polish, logged in this commit: the tester's
+       "noticed" item from that round (the snapshot's pull time is the plan's start), which an observation-only note
+       would have lost. No normal or critical finding is open.
+     dev/VALIDATION.md section ENG-3 / ENG-4: X0, X1 and R1 to R3 carry PASSED lines; X2 to X9 stay owed at V2. X6's
+       pass bar is tightened in this commit: it compared the report's time with the field that carries F-482's defect.
+     CI on PR #38's final head 9852e3c, per job: validate-plugin 37231151041 changes success / manifests success /
+       validate (ubuntu-latest) success; docs-drift 37231151002 drift (full) success.
+     CI on the merged dev tip bd27fed, per job: docs-drift 37231464344 (push) drift (full) success; validate-plugin 37231464332 (push) changes success / manifests success / validate (ubuntu-latest) success.
+     Open PRs to dev: none. Issues #11 and #12 unchanged. Next build session: S3 (HLT-1, DSH-1, DSH-5), from dev. -->
+
 <!-- tester 2026-10-04 (JO-dashboards S2 re-verification @ hb-20261004-03 — R1 TO R3 PASSED; F-479, F-480, F-481 VERIFIED; nothing logged; PR #38 ready to merge on Bradley's call; next free F-482):
      Provenance: the dev-canary skill read hb-20261004-03 in session, matching Under test; the workspace's plugin link
        resolves to this checkout's plugins/gs-superadmin; feat/jo-dash-s2-engine-report clean and level with origin at
@@ -1966,3 +1984,10 @@ Fix: 2026-10-04 (builder) — The choice moved from prose to the script (A-8): t
 Judge: two walks over one snapshot print the same Caveats line, and it equals the step-4 summary's leadCaveats joined with '; '
 Pass bar (stated before measuring, from VALIDATION section ENG-3 / ENG-4, R3 as written): the walk's step-6 `Caveats:` line is `<caveatCount> — ` followed by the summary's `leadCaveats` entries, as written, joined with `; `; the tester chose nothing. Step 4 run again on the same snapshot (`--snapshot`, no pull): the second summary's `leadCaveats` equals the first's.
 Verified: 2026-10-04 (tester, R3 @ hb-20261004-03, same checkout and canary as F-479's verdict) — RE-VERIFICATION. The walk's step-4 summary carried two `leadCaveats` (the deleted-programs entry, then the provisional-period entry, the Fix note's order); the step-6 line was built from `caveatCount` and those entries alone, joined with `; `, with nothing chosen: the step's new wording left no placeholder to judge. Step 4 run again over the same snapshot as the skill's `--snapshot` path runs it: exit 0; `leadCaveats` and `caveatCount` equal to the first summary's, compared by script. (The R2 run over the same snapshot gave the same list too.) VERIFIED.
+
+## F-482 — OPEN
+Reported: 2026-10-04 (builder, at the S2 close-out; observed by the tester in the re-verification round @ hb-20261004-03 and recorded there as "noticed, not a finding"; logged on Bradley's call so it is not lost)
+Severity: polish — the time is early by the length of the plan step and the gap before the pull (minutes on the walks so far); no count is affected
+What: scripts/engagement.mjs fixes a run's pull time when the run's working directory is created: resolveParams stamps `pulledAt` and main writes it to `run.json`, and a resumed run keeps it by design. The email-engagement skill runs `plan` first and then `run` with the same `--run`, so the snapshot's `meta.pulledAt`, every row's `pulledAt`, and the report's "Data pulled" line all carry the time the PLAN started, not the time the facts were read. A pull resumed after a new login (exit 3, then the same command) is stamped earlier still, by however long the login took. R4 asks every view for a clear "data last pulled" date and time.
+Repro: `engagement.mjs plan --run r1 ...`, wait, then `engagement.mjs run --run r1 ... --out s.json`; compare `meta.pulledAt` in s.json with the first fact call's time in the run's `fetch-log.jsonl` order (or the wall clock). Observed: `pulledAt` is the plan's start.
+Expected: the snapshot's pull time is when the facts were read: stamped when the fetch reaches the fact calls (Phase C), or at reduce from the run's own record, and kept across a resume only from that point. This touches what T-10's `meta.pulledAt` records, by minutes and not by type, so it is Bradley's to confirm when the fix is picked up. dev/VALIDATION.md X6 was tightened in the same commit: as first written it compared the report with `meta.pulledAt` itself and would have passed.

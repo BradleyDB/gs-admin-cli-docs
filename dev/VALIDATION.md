@@ -1240,8 +1240,11 @@ and the tenant's internal domains and unsubscribe links, all in the consumer wor
   Pass bar: Survey participants and Any response equal the figures of the program's analytics page that the S1-V
   third re-run recorded for V11 (kept with the picks); the section says the figures are all time.
 - X6 (data pulled, tracking states, caveats). Read X0's and X4's reports.
-  Pass bar: the header's "Data pulled" time is the pull's (the snapshot's `meta.pulledAt`), with the window and the
-  provisional date; each click cell reads as the snapshot's click state for that template or program says (a plain
+  Pass bar: the header's "Data pulled" time is when the pull's fact calls ran, judged against the wall clock the
+  tester notes when the `run` step starts and ends, NOT against the snapshot's `meta.pulledAt` alone (amended
+  2026-10-04 at the S2 close-out: the two agree with each other even when both carry the plan's start; F-482. Until
+  F-482 is fixed this clause FAILS by the length of the plan step, and the verdict cites F-482 rather than logging
+  it again), with the window and the provisional date; each click cell reads as the snapshot's click state for that template or program says (a plain
   number when tracked, "Not tracked", or a number marked "(tracking unknown)"); the caveats block names the
   incomplete period, the opens caveat, the content-links caveat, and what the pull left out (CC copies, other
   sources) with counts.
