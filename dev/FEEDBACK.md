@@ -152,16 +152,19 @@ rule also reads the archive.
 Under test: fix-f469-dev-only · hb-20260929-01 · 2026-09-29
 Blind spots (hb-20260929-01): the release shape (strip committed, bus only on origin/dev) is measured locally only: a scratch clone ran every docs-drift step verbatim, with the fetch step fetching from a local remote, and only that shape kills sweep mutant M5. CI first runs it on the next release PR, since a pre-merge CI probe would read an origin/dev without the line. The main-existence step's base_ref == main path also runs first there (its rehearsal-arm path runs on this handoff's dispatch). Grammar parity with dev-utils is measured at 0.5.0 only. The reader's symlink-escape refusal has no fixture. RELEASE-CHECKLIST §3's strip and verify commands ran in a scratch clone; §5's release-finish did not run (no release). No SKILL.md changed, so no walk is owed; the round's guard-wiring line is the tester's
 
-<!-- tester 2026-10-03 (JO-dashboards S1-V third re-run @ hb-20261003-05 — EVERY OWED CHECK PASSED; F-473..F-476 VERIFIED; F-477 claimed here, logged and closed WONTFIX; PR #36 ready to merge; next free F-478):
-     Riding feat/jo-dash-s1-facts -> PR #36, UNMERGED (ready to merge; the merge is Bradley's). Branch tip f378505, the
-       verdict commit (bus statuses and VALIDATION section ENG-2 CLEARED), on the handoff at 7cc5d79.
+<!-- tester 2026-10-03 (JO-dashboards S1-V third re-run @ hb-20261003-05 — EVERY OWED CHECK PASSED; F-473..F-476 VERIFIED; F-477 and F-478 claimed here (F-477 WONTFIX, F-478 OPEN); PR #36 ready to merge; next free F-479; re-stamped):
+     Riding feat/jo-dash-s1-facts -> PR #36, UNMERGED (ready to merge; the merge is Bradley's). Branch tip d8031fb, which
+       logs F-478; the verdict commit is f378505 (bus statuses and VALIDATION section ENG-2 CLEARED), on the handoff at 7cc5d79.
      Status on the branch: F-470..F-476 VERIFIED; F-477 WONTFIX (polish: the readers count a went-out send with a null
-       bounce flag as delivered; Bradley ruled it unreachable on the measured data, not to be built for). Nothing OPEN.
+       bounce flag as delivered; Bradley ruled it unreachable on the measured data, not to be built for); F-478 OPEN
+       (normal: a refresh reads click history, template names and account names from the previous snapshot without the
+       tenant check the facts pass; logged on Bradley's call, from the code). F-478 gates the release, not this merge.
      Production tenant, reads only; all five runs ok; detail in the tester comment on the branch.
      Open PRs to dev: #36 only.
-     CI on PR #36's head f378505, quoted per job after completion:
-         validate-plugin 37183252807 (pull_request): changes success / manifests success / validate (ubuntu-latest) success
-         docs-drift 37183252786 (pull_request): drift (full) success -->
+     CI on PR #36's head d8031fb, quoted per job after completion:
+         validate-plugin 37183947827 (pull_request): changes success / manifests success / validate (ubuntu-latest) success
+         docs-drift 37183947798 (pull_request): drift (full) success -->
+
 
 <!-- builder 2026-10-03 (JO-dashboards fourth S1 fix batch — HANDED OFF @ hb-20261003-05; F-474 FIXED on the branch; nothing OPEN; next free F-477):
      Riding feat/jo-dash-s1-facts -> PR #36, UNMERGED (it merges after the next S1-V re-run; the merge is Bradley's).
