@@ -157,6 +157,21 @@ Walk (hb-20261003-03): 2026-10-03 (tester) — S1-V second re-run, the first ful
 Walk (hb-20261003-02): 2026-10-03 (tester) — S1-V re-run, the verdict round for ENG-1 and ENG-2 (feature items, no bus section carries them) and F-470's re-verification, against dev/VALIDATION.md section ENG-2 on the production tenant, reads only: V0 confirmed by Bradley; run 1 (plan) ok; run 2 (full) ended partial, exit 4, so no snapshot was built; V8 FAILED, F-471 and F-472 logged; runs 3-5 not run, on Bradley's call; F-470 stays FIXED, V9 not measurable. Detail in the tester comment below and in VALIDATION section ENG-2.
 Walk (hb-20261004-01): 2026-10-04 (tester) — S1b verdict round, a RE-VERIFICATION of F-478 (W0, offline: its repro through the real process and the stand-in CLI) and of dev/VALIDATION.md section ENG-2 / LTR-9 / F-478, W1 to W5 (feature items ENG-2 and LTR-9, no bus section carries them), on the production tenant, reads only: W0 passed on all three arms, F-478 VERIFIED; all six live plans and both runs completed (exit 0); every owed check passed; the accounts-off pull took 5.2 minutes against the plan's 327 s; nothing logged; VALIDATION section CLEARED; PR #37 ready to merge (the merge is Bradley's). No SKILL.md changed, so no walk was owed. Detail in the tester comment below and in that VALIDATION section.
 
+<!-- builder 2026-10-04 (JO-dashboards S3 CLOSED OUT — PR #39 merged (5910c24); T-11 FROZEN at schemaVersion 1; no finding logged; next free F-483):
+     PR #39 (feat/jo-dash-s3-health-spec) was merged to dev on Bradley's go-ahead, on green CI plus its review round, as
+       the plan's merge gate for this session has it. Its verdict is V2, after S4c: dev/VALIDATION.md section
+       HLT-1 / DSH-1 / DSH-5, Y0 to Y12, is OPEN and carries no token.
+     Contracts: T-11 (the dashboard spec, scripts/dashboard-spec.mjs) is frozen from this merge. T-10 gained its
+       additive health fields (the failure count on every send row, facts.health, meta.health); schemaVersion 1.
+     Handoff: still NOT minted. dev-utils handoff was tried again from dev after the merge and refused the same way
+       (this header names an earlier token of today in another round's text). Recorded, not worked around. The
+       Under test line still names the S2 round; the next build session's own handoff mints the next token.
+     Owed: Bradley's rulings on S3's executor's choices (Y0), which the next build session asks for before any code.
+     Branch deleted, local and remote. Plugin 0.46.0 on dev, unreleased (one release for the whole program).
+     CI on the merged tip 5910c24: docs-drift 37243701141 and validate-plugin 37243701079 were running when this was
+       written; a red one is a finding for the next session's kickoff, which reads the open PRs and the dev log.
+     F-482 (polish) is still OPEN. Open PRs to dev: none. Issues #11 and #12 unchanged. -->
+
 <!-- builder 2026-10-04 (JO-dashboards S3 — POINTER: plan items HLT-1, DSH-1 and DSH-5 ride an UNMERGED branch; no finding logged; NO handoff token was minted; next free F-483):
      Branch: feat/jo-dash-s3-health-spec at fa1d747. PR: #39 to dev, open, left unmerged. It merges on green CI plus its
        review round (done on the branch: one /code-review at medium, six findings, five fixed with a check each, one
