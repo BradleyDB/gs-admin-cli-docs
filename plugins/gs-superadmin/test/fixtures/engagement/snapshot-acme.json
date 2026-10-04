@@ -26,7 +26,8 @@
     "mostBounces": 2,
     "lowEngagementMinDelivered": 4,
     "pinned": [],
-    "names": true
+    "names": true,
+    "pull": true
    },
    "repullMonths": 2,
    "pageSize": 400
@@ -53,6 +54,10 @@
    }
   },
   "stepDetail": true,
+  "accounts": {
+   "pulled": true,
+   "reason": null
+  },
   "participantRecords": {
    "pulled": true,
    "reason": null

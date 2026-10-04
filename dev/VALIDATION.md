@@ -1069,3 +1069,59 @@ independent counts below. Pass bars as stated in the blocks above, written into 
   snapshots. No token stop occurred.
 Everything else stands as CLEARED at hb-20261003-03. Logged this round: F-477 (polish, WONTFIX on Bradley's ruling) and, after the checks, F-478 (normal, OPEN: the cross-tenant carry, from the code; not one of this section's checks). Section
 CLEARED; PR #36's merge is Bradley's.
+
+## ENG-2 / LTR-9 / F-478 — accounts optional on a real tenant, and F-478's repro (banked 2026-10-04, builder, Session S1b @ hb-20261004-01 — OPEN)
+
+Owed by: the S1b verdict round, the tester round on hb-20261004-01, with the plugin loaded from branch
+`feat/jo-dash-s1b-accounts-optional`. W0 is offline. W1 to W5 are live, reads only, in the consumer workspace.
+Why it is banked: the batch was built offline against the fictional tenant. What the account grain costs on a real
+tenant, and whether a pull without it finishes in the time the plan estimated, cannot be measured without one. W0
+is here because the verdict of record on F-478 is the tester's, from the finding's own repro, not the builder's suite.
+Tenant: the S1-V tenant (production reads are allowed once `gs-admin whoami` confirms it). Every call is a read.
+
+THIS LIST IS COMPLETE. It is everything this round judges; a check that is not here is not owed, and a thing the
+round thinks should be here is a finding. Nothing is "noted on the verdict": anything observed beside a pass bar
+becomes an F-section on the bus, or a GitHub issue, before the round closes.
+
+Picks and inputs: already settled, in the consumer workspace (`.gs-superadmin/tmp/s1v-picks.md`: both internal
+domains and the tenant's unsubscribe links). Nothing new is picked. Every live run line passes every internal
+domain and every unsubscribe link, as the ENG-2 section's lines did. `<prev>` below is the snapshot kept from the
+S1-V third re-run, `.gs-superadmin/tmp/engagement/s1v3-full.json`, made before the switch existed.
+
+- W0 (offline; F-478's verification). The finding's repro through the real process and the stand-in CLI, not the
+  builder's suite: one `run` over the fixture tenant (`--bin plugins/gs-superadmin/test/fixtures/engagement/fake-gs-admin.mjs`,
+  `--accounts`) to get a run directory and a snapshot; copy the snapshot, change its `meta.tenantHost`, and mark a
+  template this pull never saw clicked as clicked in `meta.metricAvailability.clicks.templates`; then
+  `reduce --run-dir <dir> --previous <the copy>` and `reduce --run-dir <dir>` with no previous.
+  Pass bar: the two snapshots are equal in everything but `meta.refresh.why` (which names the reason), so the
+  template reads as it does with no previous and `meta.refresh.previousPulledAt` is null. The same with the copy's
+  host restored and `drift` deleted from each of its reconciliation checks (a snapshot built under earlier
+  definitions). And the control: with the host restored and nothing deleted, `--full` on a fresh run, the template
+  reads `tracked`: this tenant's own snapshot still gives its history.
+- W1 (live; the cost up front). `plan` twice over the 13-month window: with nothing said about accounts, and with
+  `--accounts`.
+  Pass bar: both print `estimate.accounts` with the same `addsCalls` and `addsSeconds`, `on` false then true; the
+  difference between the two plans' `thisRun.calls` equals `addsCalls`; and the plan without accounts fits the token.
+  Record both plans' calls and seconds.
+- W2 (live; one timed pull with accounts off). `run` with nothing said about accounts, no `--previous`, timed.
+  Pass bar: exit 0, `reconciled: true`; the fetch log holds no `account`, `account-nolink` or `account-names` call
+  and no call on `company`; the snapshot's `meta.accounts` is `{pulled: false, reason: "accounts-off"}`,
+  `facts.byAccount` and `dimensions.accounts` are empty, no `accounts-sum-to-program` check is present, the caveat
+  `accounts-not-pulled` is, and the summary prints `accounts: null`; every program still carries accounts reached in
+  `facts.uniques`; `sent` per program and closed month in `facts.byTemplate` equals `<prev>`'s. Cost: calls and
+  seconds within 2x of W1's estimate for that plan (the F-476 bar). Record the wall time beside the plan's 5 to 8
+  minute estimate (LTR-9); a pull over 16 minutes is a finding.
+- W3 (live; accounts added on a later pass). `run --accounts --previous <W2's snapshot>`, timed. `plan` first: if it
+  does not fit the token, log in again before the run.
+  Pass bar: `meta.refresh.mode` is `full` and `why` says accounts were switched on and every table is pulled again;
+  exit 0, `reconciled: true`, with `accounts-sum-to-program` present and ok over the closed months;
+  `meta.accounts` is `{pulled: true, reason: null}` and `facts.byAccount` holds all three buckets. Cost: W3's calls
+  minus W2's is within 2x of W1's `addsCalls` (the name lookups are not in that figure; count them out).
+- W4 (live, plan only; accounts stay off). `plan --previous <W2's snapshot>` with nothing said about accounts.
+  Pass bar: `estimate.mode` is `selective`, and `thisRun.byFamily` names no account family.
+- W5 (live, plan only; a snapshot from before the switch). `plan --accounts --previous <prev>` with the account
+  selection `<prev>` was made with, then the same without `--accounts`.
+  Pass bar: the first is `selective` (a snapshot with no marker counts as having pulled accounts); the second is
+  `full`, and its `why` says accounts were switched off.
+
+No SKILL.md changed in this batch, so no walk is owed; the round's guard-wiring line is the tester's.

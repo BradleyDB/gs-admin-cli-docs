@@ -7,8 +7,8 @@
 //
 // Subcommands:
 //   plan    the cheap tenant-wide calls, then an estimate of the rest (calls and
-//           seconds, full and selective, and what step detail adds) against the
-//           token's remaining life
+//           seconds, full and selective, and what step detail and the account
+//           grain each add, whether on or off) against the token's remaining life
 //   fetch   every call, one at a time, one payload file per call; resumable
 //   reduce  fetched files → the snapshot; a pure function of the run directory
 //   run     plan, fetch and reduce in order
@@ -58,6 +58,15 @@
 //   - Account is the finest grain. No address, person id or send id reaches the
 //     snapshot; unique counts are pulled as aggregates.
 //   - Unique counts are never summed across programs or months.
+//   - The account grain is optional and OFF unless --accounts is passed: it is
+//     most of a pull's calls. Without it the account table and the account
+//     dimension are empty and the snapshot says why (meta.accounts); accounts
+//     REACHED per program, a distinct count, is pulled either way. Turning it on
+//     over a snapshot that holds none is a full refresh.
+//   - Nothing is read from a previous snapshot that the refresh could never
+//     carry facts from (another tenant's, or one built under earlier metric
+//     definitions): usablePrevious is the one gate, and fetch and reduce see
+//     the previous snapshot only through it.
 //
 // Step names come from the tenant KB (jo-report's parser over the program
 // docs), never from a second describe loop: a program the KB lacks a full doc
@@ -137,7 +146,7 @@
  * @typedef {object} T10Facts
  * @property {T10TemplateRow[]} byTemplate        always present (R21)
  * @property {T10StepRow[]} [byStep]              only when meta.stepDetail
- * @property {T10AccountRow[]} byAccount
+ * @property {T10AccountRow[]} byAccount          empty when the account grain was not pulled (meta.accounts)
  * @property {T10ResponseRow[]} responses
  * @property {Array<{programId: string, participants: number, submitted: number, partiallySubmitted: number}>} responseParticipants
  *   the response rate's ONE basis, all time: the program's survey_participant
@@ -157,7 +166,7 @@
  *   step of that program's design (stepCount 1); 0 = no design in the KB
  * @property {Array<{programId: string, stepId: ?string, name: ?string, order: ?number, templateId: ?string, variantId: ?string, variantName: ?string}>} [steps]
  *   only when meta.stepDetail
- * @property {Array<{key: string, name: ?string}>} accounts   the selected accounts; key is opaque
+ * @property {Array<{key: string, name: ?string}>} accounts   the selected accounts; key is opaque. Empty when the account grain was not pulled (meta.accounts)
  * @property {string[]} months
  *
  * @typedef {object} T10ClickAvailability
@@ -184,6 +193,14 @@
  * @property {string} incompleteFrom              sends on or after this day are provisional
  * @property {{object: string, field: string, grain: "month", stepDetail: ?{object: string, field: string}}} dateBasis
  * @property {boolean} stepDetail
+ * @property {{pulled: boolean, reason: ?"accounts-off"}} [accounts]
+ *   whether the account grain was pulled. When it was not (the run's choice:
+ *   it is most of a pull's cost), facts.byAccount and dimensions.accounts are
+ *   empty, the accounts-sum-to-program check is absent, and a reader shows the
+ *   reason; it never shows an empty account list as "no accounts". Accounts
+ *   reached per program (facts.uniques) is pulled either way. ABSENT on a
+ *   snapshot made before the switch existed, which always pulled the grain:
+ *   read it through accountAvailability, never directly.
  * @property {{pulled: boolean, reason: ?"step-detail-off"}} participantRecords
  *   why T10UniqueCounts.participantRecords is null when it is (a reader shows
  *   the reason; it never shows a 0)
@@ -879,6 +896,8 @@ export function resolveParams(raw) {
       lowEngagementMinDelivered: whole(acc.lowEngagementMinDelivered, 10, "--accounts-low-min-delivered"),
       pinned: [...new Set((acc.pinned ?? []).map((s) => String(s).trim()).filter(Boolean))].sort(),
       names: acc.names !== false,
+      // The account grain: off unless asked for (it is most of a pull's calls).
+      pull: acc.pull === true,
     },
     incompleteFrom,
     repullMonths,
@@ -999,6 +1018,39 @@ const sameList = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 // Clicks are classified at fetch time, so everything a snapshot says about
 // clicks (the clicked counts and each template's click history) was decided
 // under the unsubscribe links it was pulled with.
+/**
+ * Why a previous snapshot can never be continued from, or null when it can.
+ * The ONE statement of it: decideRefresh gives it as the reason for a full
+ * refresh, and usablePrevious withholds the snapshot from every other read.
+ * @param {T10Snapshot} previous
+ * @param {string} tenantHost
+ * @returns {?string}
+ */
+function unusableWhy(previous, tenantHost) {
+  // A snapshot from before the reconciliation checks carried drift counted
+  // Delivered differently and held no send without a company link: its months
+  // cannot sit beside this build's. (Only snapshots made before T-10 froze.)
+  if ((previous.reconciliation?.checks ?? []).some((c) => !("drift" in c))) return "the previous snapshot was built under earlier metric definitions";
+  if (previous.meta?.tenantHost !== tenantHost) return "the previous snapshot is another tenant's";
+  return null;
+}
+/**
+ * The previous snapshot as this pull may read it: this tenant's, built under
+ * the current definitions, or nothing. Fetch and reduce read the previous
+ * snapshot ONLY through this, so what a refresh could never carry facts from
+ * gives it no click history, no name and no account selection either, on a
+ * full refresh as on a selective one.
+ * @param {?T10Snapshot} previous
+ * @param {string} tenantHost
+ * @returns {?T10Snapshot}
+ */
+export const usablePrevious = (previous, tenantHost) => (previous && !unusableWhy(previous, tenantHost) ? previous : null);
+// The account selection as decideRefresh compares it: names are a display
+// choice, and the switch itself is compared through the snapshot's marker.
+const accountSelection = (a) => {
+  const { names: _n, pull: _p, ...rest } = a ?? {};
+  return rest;
+};
 const sameUnsubscribeLinks = (previous, params) => sameList(previous?.meta?.params?.unsubscribeLinks ?? [], params.unsubscribeLinks ?? []);
 /**
  * Full or selective. Selective needs a previous snapshot that the new pull
@@ -1011,22 +1063,21 @@ const sameUnsubscribeLinks = (previous, params) => sameList(previous?.meta?.para
  */
 export function decideRefresh({ params, previous, tenantHost, selectedIds }) {
   const months = monthsBetween(params.window.from, params.window.to);
-  const full = (why) => ({ mode: /** @type {"full"} */ ("full"), why, pulledMonths: months, carriedMonths: [], carriedPrograms: new Set(), previousPulledAt: previous?.meta?.pulledAt ?? null });
+  // previousPulledAt names the pull this one continues from: none, when the snapshot given cannot be continued from.
+  const full = (why) => ({ mode: /** @type {"full"} */ ("full"), why, pulledMonths: months, carriedMonths: [], carriedPrograms: new Set(), previousPulledAt: usablePrevious(previous, tenantHost)?.meta?.pulledAt ?? null });
   if (params.forceFull) return full("a full refresh was asked for");
   if (!previous) return full("no previous snapshot");
   const pm = previous.meta;
   const pp = pm.params ?? {};
-  // A snapshot from before the reconciliation checks carried drift counted
-  // Delivered differently and held no send without a company link: its months
-  // cannot sit beside this build's. (Only snapshots made before T-10 froze.)
-  if ((previous.reconciliation?.checks ?? []).some((c) => !("drift" in c))) return full("the previous snapshot was built under earlier metric definitions");
-  if (pm.tenantHost !== tenantHost) return full("the previous snapshot is another tenant's");
+  const unusable = unusableWhy(previous, tenantHost);
+  if (unusable) return full(unusable);
   if (!sameList(pp.internalDomains ?? [], params.internalDomains)) return full("the internal domains changed");
   if (!sameUnsubscribeLinks(previous, params)) return full("the unsubscribe links changed");
   if (!!pm.stepDetail !== params.stepDetail) return full("the step-detail switch changed");
-  const { names: _n, ...accNow } = params.accounts;
-  const { names: _p, ...accPrev } = pp.accounts ?? {};
-  if (!sameList(accPrev, accNow)) return full("the account selection changed");
+  // An account table is whole or absent: its rows are never carried beside months that have none.
+  if (accountAvailability(previous).pulled !== params.accounts.pull)
+    return full(params.accounts.pull ? "accounts were switched on and the previous snapshot holds none, so every table is pulled again" : "accounts were switched off, so every table is pulled again without them");
+  if (params.accounts.pull && !sameList(accountSelection(pp.accounts), accountSelection(params.accounts))) return full("the account selection changed");
   if (pm.window.from > params.window.from) return full("the previous snapshot's window starts later than this one");
   const horizonStart = addMonths(params.window.to, -(params.repullMonths - 1));
   const prevPulledMonth = String(pm.pulledAt).slice(0, 7);
@@ -1124,16 +1175,21 @@ export function planUnits({ params, base, selectedIds, refresh, surveyAvailable 
     });
     for (const b of packByRows(items, params.pageSize)) units.push({ family: "account", cls: "all", window: monthWindow(m, m), programs: b });
   };
-  for (const m of pulled) accountMonth(m, selectedIds);
-  for (const m of oldMonths) accountMonth(m, fullPrograms);
-  units.push({ family: "account-nolink", cls: "all", window: smallSpan });
+  const accounts = params.accounts.pull;
+  if (accounts) {
+    for (const m of pulled) accountMonth(m, selectedIds);
+    for (const m of oldMonths) accountMonth(m, fullPrograms);
+    units.push({ family: "account-nolink", cls: "all", window: smallSpan });
+  }
   units.push({ family: "click-attr", cls: "all", window: smallSpan });
   units.push({ family: "click-attr-nolink", cls: "all", window: smallSpan });
   units.push({ family: "click-json", cls: "all", window: smallSpan });
   for (const domain of domains) {
     units.push({ family: "template", cls: "internal", domain, window: smallSpan });
-    units.push({ family: "account", cls: "internal", domain, window: smallSpan });
-    units.push({ family: "account-nolink", cls: "internal", domain, window: smallSpan });
+    if (accounts) {
+      units.push({ family: "account", cls: "internal", domain, window: smallSpan });
+      units.push({ family: "account-nolink", cls: "internal", domain, window: smallSpan });
+    }
     units.push({ family: "click-attr", cls: "internal", domain, window: smallSpan });
     units.push({ family: "click-attr-nolink", cls: "internal", domain, window: smallSpan });
   }
@@ -1239,7 +1295,7 @@ const isRpRun = (d) => d.family in FAMILIES;
  * @returns {*} the fetch summary (also written to `<runDir>/status.json`)
  */
 export function fetchEngagement(ctx) {
-  const { params, runDir, transport, gate, kbDir = null, previous = null, phase = "all", now = Date.now, onCall = () => {} } = ctx;
+  const { params, runDir, transport, gate, kbDir = null, previous: given = null, phase = "all", now = Date.now, onCall = () => {} } = ctx;
   mkdirSync(join(runDir, "calls"), { recursive: true });
   const { records } = readFetchLog(runDir);
   const logPath = join(runDir, "fetch-log.jsonl");
@@ -1384,7 +1440,7 @@ export function fetchEngagement(ctx) {
     pages.push(payload);
     if (!listHasMore(payload, page)) break;
   }
-  const objects = [LOG, SURVEY, ...(params.stepDetail ? [JO_LOG] : []), ...(params.accounts.names ? [COMPANY] : [])];
+  const objects = [LOG, SURVEY, ...(params.stepDetail ? [JO_LOG] : []), ...(params.accounts.pull && params.accounts.names ? [COMPANY] : [])];
   for (const object of objects) {
     const got = runUnit({ family: "schema", object });
     if (got.length) types.set(object, schemaTypes(load(got[0])));
@@ -1420,13 +1476,19 @@ export function fetchEngagement(ctx) {
   if (stop || failed.length) return conclude({ whoami });
   decision = decidePrograms({ listed, base, describes, selector: params.selector, sentSinceIds });
   const selectedIds = [...decision.selected.keys()];
-  const refresh = decideRefresh({ params, previous, tenantHost: whoami.host, selectedIds });
+  const refresh = decideRefresh({ params, previous: given, tenantHost: whoami.host, selectedIds });
+  const previous = usablePrevious(given, whoami.host);
   const units = planUnits({ params, base, selectedIds, refresh, surveyAvailable });
 
-  // The estimates plan prints: this run, a full one, and what step detail adds.
+  // The estimates plan prints: this run, a full one, and what step detail and the account grain each add.
   const fullUnits = refresh.mode === "full" ? units : planUnits({ params, base, selectedIds, refresh: decideRefresh({ params, previous: null, tenantHost: whoami.host, selectedIds }), surveyAvailable });
   const without = planUnits({ params: { ...params, stepDetail: false }, base, selectedIds, refresh, surveyAvailable });
   const withStep = planUnits({ params: { ...params, stepDetail: true }, base, selectedIds, refresh, surveyAvailable });
+  // The account grain's cost: this run's plan without it, against the plan WITH it. Turning it on over a
+  // previous snapshot that holds none is a full refresh, so that side is planned under the refresh it would get.
+  const withAccounts = { ...params, accounts: { ...params.accounts, pull: true } };
+  const accountsOff = planUnits({ params: { ...params, accounts: { ...params.accounts, pull: false } }, base, selectedIds, refresh, surveyAvailable });
+  const accountsOn = planUnits({ params: withAccounts, base, selectedIds, refresh: decideRefresh({ params: withAccounts, previous: given, tenantHost: whoami.host, selectedIds }), surveyAvailable });
   // Calls and seconds include the splits a program-month too large for a page will force.
   const calls = (list) => estimateCalls(list, base, params.pageSize);
   const seconds = (list) => estimateSeconds(list, base, params.pageSize);
@@ -1435,6 +1497,8 @@ export function fetchEngagement(ctx) {
     thisRun: { calls: calls(units), seconds: seconds(units), units: units.length, byFamily: familyCounts(units, base, params.pageSize) },
     full: { calls: calls(fullUnits), seconds: seconds(fullUnits) },
     stepDetail: { on: params.stepDetail, addsCalls: calls(withStep) - calls(without), addsSeconds: seconds(withStep) - seconds(without) },
+    // What the account grain costs, printed whether it is on or off (its name lookups are not counted: how many depends on the selection).
+    accounts: { on: params.accounts.pull, addsCalls: calls(accountsOn) - calls(accountsOff), addsSeconds: seconds(accountsOn) - seconds(accountsOff) },
     token: { expiresInSeconds: whoami.expiresInSeconds, fits: seconds(units) + params.tokenMarginSeconds <= whoami.expiresInSeconds },
   };
   const programs = { listed: listed.size, selected: selectedIds.length, deleted: decision.deleted.size, unselected: decision.unselected.size };
@@ -1567,7 +1631,7 @@ export function decideClickState({ everClicked, reading }) {
  * @returns {T10Snapshot}
  */
 export function reduceEngagement(input) {
-  const { params, whoami, programPages, describes, units, kbSteps = null, previous = null, linkSettings = null, surveyAvailable, calls = {}, cliVersion = null, pluginVersion = null } = input;
+  const { params, whoami, programPages, describes, units, kbSteps = null, previous: given = null, linkSettings = null, surveyAvailable, calls = {}, cliVersion = null, pluginVersion = null } = input;
   const pulledAt = params.pulledAt;
   const windowMonths = monthsBetween(params.window.from, params.window.to);
   const inWindow = new Set(windowMonths);
@@ -1581,7 +1645,9 @@ export function reduceEngagement(input) {
   const decision = decidePrograms({ listed, base, describes, selector: params.selector, sentSinceIds });
   if (decision.pendingDescribes.length) throw new Error(`engagement reduce: ${decision.pendingDescribes.length} program id(s) with sends were never described — the fetch is incomplete`);
   const { selected, deleted, unselected } = decision;
-  const refresh = decideRefresh({ params, previous, tenantHost: whoami.host, selectedIds: [...selected.keys()] });
+  const refresh = decideRefresh({ params, previous: given, tenantHost: whoami.host, selectedIds: [...selected.keys()] });
+  // From here on the previous snapshot is this tenant's own history, or nothing.
+  const previous = usablePrevious(given, whoami.host);
   const pulledSet = new Set(refresh.pulledMonths);
   const carriedSet = new Set(refresh.carriedMonths);
   const pulledFor = (p) => (refresh.carriedPrograms.has(p) ? pulledSet : inWindow);
@@ -1664,7 +1730,7 @@ export function reduceEngagement(input) {
       const slots = internalSends.has(id) ? ["all", "internal"] : ["all"];
       for (const s of slots) {
         cellOf(tplTable, [p, t, m])[s].clicked += 1;
-        cellOf(accTable, [p, account, m])[s].clicked += 1;
+        if (params.accounts.pull) cellOf(accTable, [p, account, m])[s].clicked += 1;
       }
     }
   }
@@ -1896,7 +1962,7 @@ export function reduceEngagement(input) {
   const accByPm = sumBy(pulledOnly(byAccount), (r) => [r.programId, r.month]);
   const checks = [
     check("templates-sum-to-program", [...tplByPm].map(([k, m]) => ({ key: JSON.parse(k), month: JSON.parse(k)[1], measure: "sent", left: m.sent, right: base.get(k)?.sent ?? null }))),
-    check("accounts-sum-to-program", [...tplByPm].flatMap(([k, m]) => SEND_MEASURES.map((measure) => ({ key: JSON.parse(k), month: JSON.parse(k)[1], measure, left: accByPm.get(k)?.[measure] ?? 0, right: m[measure] })))),
+    ...(params.accounts.pull ? [check("accounts-sum-to-program", [...tplByPm].flatMap(([k, m]) => SEND_MEASURES.map((measure) => ({ key: JSON.parse(k), month: JSON.parse(k)[1], measure, left: accByPm.get(k)?.[measure] ?? 0, right: m[measure] }))))] : []),
     check("internal-within-all", deficits, tplTable.size + accTable.size),
     // Within SENT, not delivered: an attempt that went out, was clicked and bounced afterwards is clicked and not delivered.
     check("clicked-within-sent", pulledOnly(byTemplate).map((r) => ({ key: [r.programId, r.templateId, r.month, r.recipientClass], month: r.month, measure: "clicked", left: Math.min(r.clicked, r.sent), right: r.clicked }))),
@@ -1962,7 +2028,8 @@ export function reduceEngagement(input) {
     rows: rowStats,
     calls,
     noTemplateId: { sent: noTemplateSent },
-    noCompanyLink: { sent: byAccount.filter((r) => r.bucket === "no-company-link" && r.provenance === "pulled").reduce((s, r) => s + r.sent, 0) },
+    // Counted from the account grain: not known when that grain was not pulled.
+    noCompanyLink: { sent: !params.accounts.pull ? null : byAccount.filter((r) => r.bucket === "no-company-link" && r.provenance === "pulled").reduce((s, r) => s + r.sent, 0) },
     stepNames: { source: kbSteps ? "kb" : "none", programsWithDesign: withDesign, programsWithout: selected.size - withDesign },
     accountNames: { requested: params.accounts.names ? accountKeys.length : 0, resolved: namesResolved },
     clicks,
@@ -1972,6 +2039,7 @@ export function reduceEngagement(input) {
   if (refresh.mode === "selective") caveats.push({ id: "carried-forward-months", detail: { months: refresh.carriedMonths, repullMonths: params.repullMonths, previousPulledAt: refresh.previousPulledAt } });
   if (deleted.size) caveats.push({ id: "deleted-programs-excluded", detail: excluded.deletedPrograms });
   if (!params.stepDetail) caveats.push({ id: "participant-records-not-pulled", detail: { reason: "step-detail-off" } });
+  if (!params.accounts.pull) caveats.push({ id: "accounts-not-pulled", detail: { reason: "accounts-off" } });
   if (noDomains) caveats.push({ id: "recipient-class-not-configured", detail: {} });
   if (selected.size - withDesign) caveats.push({ id: "step-names-unavailable", detail: { programs: selected.size - withDesign, source: kbSteps ? "kb" : "none" } });
   if (!surveyAvailable) caveats.push({ id: "responses-unreadable", detail: { object: SURVEY } });
@@ -1994,6 +2062,7 @@ export function reduceEngagement(input) {
       incompleteFrom: params.incompleteFrom,
       dateBasis: { object: LOG, field: "ExecutedDate", grain: "month", stepDetail: params.stepDetail ? { object: JO_LOG, field: "CreatedAt" } : null },
       stepDetail: params.stepDetail,
+      accounts: { pulled: params.accounts.pull, reason: params.accounts.pull ? null : "accounts-off" },
       participantRecords: { pulled: params.stepDetail, reason: params.stepDetail ? null : "step-detail-off" },
       refresh: {
         mode: refresh.mode, why: refresh.why, repullMonths: params.repullMonths, pulledMonths: refresh.pulledMonths, carriedMonths: refresh.carriedMonths,
@@ -2020,6 +2089,8 @@ export function loadRun(runDir, opts = {}) {
   if (status.status !== "ok" || status.phase !== "all")
     throw new Error(`engagement reduce: the run at ${runDir} is not complete (status ${status.status}, phase ${status.phase}) — re-run fetch to resume it`);
   const { params } = readJsonFile(join(runDir, "run.json"));
+  // A run started before the account switch existed pulled the account grain.
+  if (params.accounts && params.accounts.pull === undefined) params.accounts.pull = true;
   const { records } = readFetchLog(runDir);
   const ok = [...records.values()].filter((r) => r.status === "ok" && !r.truncated);
   const read = (r) => (r.file.endsWith(".txt") ? readFileSync(join(runDir, r.file), "utf8") : readJsonFile(join(runDir, r.file)));
@@ -2073,6 +2144,15 @@ export function readClicked(snapshot, row) {
   const { state } = clickAvailability(snapshot, row.templateId);
   return { state, value: state === "not-tracked" ? null : row.clicked };
 }
+/**
+ * Whether the snapshot holds the account grain, and the reason when it does
+ * not. A reader shows the reason wherever account data would be; it never
+ * shows the empty table as "no accounts". A snapshot made before the switch
+ * existed carries no marker and pulled the grain.
+ * @param {T10Snapshot} snapshot
+ * @returns {{pulled: boolean, reason: ?"accounts-off"}}
+ */
+export const accountAvailability = (snapshot) => snapshot.meta.accounts ?? { pulled: true, reason: null };
 /** @returns {{state: TrackingState, templates: {tracked: number, notTracked: number, unknown: number}}} */
 export const programClickAvailability = (snapshot, programId) =>
   snapshot.meta.metricAvailability.clicks.programs[programId] ?? { state: "unknown", templates: { tracked: 0, notTracked: 0, unknown: 0 } };
@@ -2117,7 +2197,7 @@ export const joEngagementAdapter = {
 // ── CLI ──────────────────────────────────────────────────────────────────────
 const USAGE =
   "usage: engagement.mjs <plan|fetch|run> [--workspace <dir>] [--run <id>] [--kb <slugDir>] [--from YYYY-MM --to YYYY-MM] " +
-  "[--name <program>]... [--ids-file <file>] [--sent-since <date|Nd|Nm>] [--internal-domain <domain>]... [--unsubscribe-link <link|host>]... [--step-detail] " +
+  "[--name <program>]... [--ids-file <file>] [--sent-since <date|Nd|Nm>] [--internal-domain <domain>]... [--unsubscribe-link <link|host>]... [--step-detail] [--accounts] " +
   "[--previous <snapshot.json>] [--full] [--out <snapshot.json>]  |  engagement.mjs reduce --run-dir <dir> --out <snapshot.json> [--previous <file>] [--link-settings <file>]";
 const EXIT = { ok: 0, failed: 1, "token-expired": 3, partial: 4 };
 
@@ -2165,6 +2245,9 @@ async function main() {
   if (!catalog) fail("no catalog found (workspace or bundled) — cannot verify the adapter's commands are read-only; refusing");
   const idsFile = opt("--ids-file");
   const pinFile = opt("--pin-accounts-file");
+  // A flag that shapes the account grain says nothing while the grain is off: refuse it rather than drop it.
+  const accountFlags = ["--accounts-busiest", "--accounts-low", "--accounts-bounce", "--accounts-low-min-delivered", "--pin-accounts-file", "--no-account-names"].filter((f) => argv.includes(f));
+  if (accountFlags.length && !argv.includes("--accounts")) fail(`${accountFlags.join(", ")} only applies with --accounts (the account grain is off unless asked for; plan prints what it adds)`);
   let params;
   try {
     params = resolveParams({
@@ -2173,7 +2256,7 @@ async function main() {
       internalDomains: all("--internal-domain"), unsubscribeLinks: all("--unsubscribe-link"), stepDetail: argv.includes("--step-detail"),
       accounts: {
         busiest: int("--accounts-busiest"), lowEngagement: int("--accounts-low"), mostBounces: int("--accounts-bounce"), lowEngagementMinDelivered: int("--accounts-low-min-delivered"),
-        pinned: pinFile ? parseIdList(readFileSync(resolve(pinFile), "utf8")) : [], names: !argv.includes("--no-account-names"),
+        pinned: pinFile ? parseIdList(readFileSync(resolve(pinFile), "utf8")) : [], names: !argv.includes("--no-account-names"), pull: argv.includes("--accounts"),
       },
       incompleteFrom: opt("--incomplete-from"), repullMonths: int("--repull-months"), forceFull: argv.includes("--full"),
       pageSize: int("--page-size"), timeoutMs: int("--timeout-ms"), pulledAt: opt("--pulled-at"), timeZone: opt("--time-zone"),
@@ -2235,7 +2318,9 @@ function reduceSummary(s, outPath) {
     refresh: s.meta.refresh,
     programs: s.dimensions.programs.length,
     templates: s.dimensions.templates.length,
-    accounts: s.dimensions.accounts.length,
+    // Null, never 0, when the account grain was not pulled; accountData says why.
+    accounts: accountAvailability(s).pulled ? s.dimensions.accounts.length : null,
+    accountData: accountAvailability(s),
     rows: Object.fromEntries(Object.entries(s.facts).map(([k, v]) => [k, v.length])),
     reconciled: s.reconciliation.ok,
     reconciliation: s.reconciliation.checks.map((c) => ({ id: c.id, ok: c.ok, compared: c.compared, mismatches: c.mismatches, drift: c.drift })),

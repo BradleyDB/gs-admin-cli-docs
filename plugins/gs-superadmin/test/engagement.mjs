@@ -33,7 +33,7 @@ import { makeTempDir, removeTempDir, writeFiles, runNode } from "../../../test/r
 import {
   fetchEngagement, reduceEngagement, loadRun, resolveParams, makeGate, parseWhoami, parseSentSince, parseIdList,
   expectedCalls, classifyFailure, classifyLink, readLinkClicks, parseUnsubscribeLink, NON_CONTENT_LINK_RULES, validateQuery, buildQuery, splitUnit, selectAccounts, decideClickState,
-  openSnapshot, readClicked, clickAvailability, programClickAvailability, readResponses, monthsBetween,
+  openSnapshot, readClicked, clickAvailability, programClickAvailability, accountAvailability, readResponses, monthsBetween,
   SEND_MEASURES, T10_SCHEMA_VERSION, ENGAGEMENT_READ_PATHS, joEngagementAdapter,
 } from "../scripts/engagement.mjs";
 import { buildTenant, answer, applyFaults, kbFiles, FAULT_TEXT, OWN_SITE_UNSUBSCRIBE } from "./fixtures/engagement/acme-tenant.mjs";
@@ -63,8 +63,9 @@ const KB_DIR = join(ROOT, "kb", "acme-prod");
 writeFiles(join(ROOT, "kb"), kbFiles("acme-prod"));
 let runSeq = 0;
 // Small selection numbers so the fixture's twelve accounts overflow them and
-// the "all other accounts" row has something in it.
-const ACC = { busiest: 3, lowEngagement: 2, mostBounces: 2, lowEngagementMinDelivered: 4 };
+// the "all other accounts" row has something in it. The account grain is ON
+// for the suite's pulls (the adapter's own default is off; its block is below).
+const ACC = { busiest: 3, lowEngagement: 2, mostBounces: 2, lowEngagementMinDelivered: 4, pull: true };
 const TODAY = "2026-09-15";
 const PULLED_AT = "2026-09-15T09:00:00-07:00";
 
@@ -161,6 +162,12 @@ const factMap = (rows, keyOf) => {
 };
 const sameMap = (a, b) => isDeepStrictEqual([...a].sort(), [...b].sort());
 const diffMap = (a, b) => [...new Set([...a.keys(), ...b.keys()])].filter((k) => !isDeepStrictEqual(a.get(k), b.get(k))).slice(0, 4).map((k) => ({ k, got: a.get(k), want: b.get(k) }));
+// Where two values first differ, for a failing whole-snapshot comparison's detail.
+const firstDiff = (a, b, path = "") => {
+  if (isDeepStrictEqual(a, b)) return null;
+  if (a && b && typeof a === "object" && typeof b === "object") for (const k of new Set([...Object.keys(a), ...Object.keys(b)])) { const d = firstDiff(a[k], b[k], `${path}/${k}`); if (d) return d; }
+  return { path, left: a, right: b };
+};
 const rpRuns = (argv) => argv.filter((a) => a.includes("rp") && a.includes("run"));
 const flag = (a, name) => a[a.indexOf(name) + 1];
 const parsed = (a) => ({
@@ -777,6 +784,120 @@ try {
         expectedCalls(u(["nobody"]), b, 5000) === 1 && expectedCalls({ ...u(["p"]), cls: "internal" }, b, 5000) === 1 && expectedCalls({ family: "template", cls: "all", window: u([]).window }, b, 5000) === 1);
   }
 
+  // ── The account grain is optional, and off unless asked for (it is most of a pull's calls) ──
+  {
+    const OFF = { accounts: { ...ACC, pull: false } };
+    const off = pull({ kb: true, raw: OFF });
+    const N = off.snapshot;
+    const families = (p) => new Set(readFileSync(join(p.runDir, "fetch-log.jsonl"), "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l).family));
+    const ACCOUNT_FAMILIES = ["account", "account-nolink", "account-names"];
+    check("accounts are off unless asked for: with nothing said the run's parameter is pull false, and only an explicit true turns the grain on",
+      resolveParams({}).accounts.pull === false && resolveParams({ accounts: {} }).accounts.pull === false && resolveParams({ accounts: { pull: "yes" } }).accounts.pull === false && resolveParams({ accounts: { pull: true } }).accounts.pull === true);
+    check("accounts off: the pull makes no account-grain call and no company call, and every other call it makes is one the pull with accounts makes too",
+      off.summary?.status === "ok" && !ACCOUNT_FAMILIES.some((x) => families(off).has(x)) && !off.argv.some((a) => flag(a, "--object") === "company") &&
+        ACCOUNT_FAMILIES.every((x) => families(base).has(x)) && off.argv.every((a) => base.argv.some((b) => isDeepStrictEqual(a, b))) && off.argv.length < base.argv.length, [off.summary?.calls, base.summary.calls]);
+    check("accounts off: the account table and the account dimension are EMPTY and the snapshot says why (meta.accounts, a caveat); nothing reads as an account list with nobody in it",
+      N.facts.byAccount.length === 0 && N.dimensions.accounts.length === 0 && isDeepStrictEqual(N.meta.accounts, { pulled: false, reason: "accounts-off" }) && N.caveats.some((c) => c.id === "accounts-not-pulled") &&
+        N.honesty.noCompanyLink.sent === null && N.honesty.accountNames.requested === 0 && isDeepStrictEqual(S.meta.accounts, { pulled: true, reason: null }) && !S.caveats.some((c) => c.id === "accounts-not-pulled"));
+    // Everything that is not about the account grain, compared whole: no list of tables to keep in step.
+    const sansAccounts = (snap) => {
+      const c = JSON.parse(JSON.stringify(snap));
+      c.facts.byAccount = []; c.dimensions.accounts = []; c.meta.accounts = null; c.meta.params.accounts = null;
+      c.honesty.noCompanyLink = null; c.honesty.accountNames = null; c.honesty.calls = null; c.honesty.rows = null;
+      c.reconciliation.checks = c.reconciliation.checks.filter((k) => k.id !== "accounts-sum-to-program").map((k) => (k.id === "internal-within-all" ? { ...k, compared: null } : k));
+      c.caveats = c.caveats.filter((k) => k.id !== "accounts-not-pulled");
+      return c;
+    };
+    check("accounts off: everything else is the same pull — with the account grain's own parts set aside, the snapshot equals the pull with accounts (templates, clicks and their states, responses, uniques with accounts REACHED per program, the other checks)",
+      isDeepStrictEqual(sansAccounts(N), sansAccounts(S)) && N.facts.uniques.some((r) => r.accounts > 0) && N.reconciliation.ok, N.reconciliation.checks.map((c) => c.id));
+    check("accounts off: the account reconciliation check is ABSENT, not passed on nothing", !N.reconciliation.checks.some((c) => c.id === "accounts-sum-to-program") && S.reconciliation.checks.some((c) => c.id === "accounts-sum-to-program" && c.compared > 0));
+    check("the cost is shown up front, on or off: plan prints what the account grain adds in calls and seconds either way, the same figure, and it is the difference between the two plans",
+      off.summary.estimate.accounts.on === false && base.summary.estimate.accounts.on === true && isDeepStrictEqual({ ...off.summary.estimate.accounts, on: null }, { ...base.summary.estimate.accounts, on: null }) &&
+        base.summary.estimate.accounts.addsCalls > 0 && base.summary.estimate.accounts.addsSeconds > 0 && base.summary.estimate.thisRun.calls - off.summary.estimate.thisRun.calls === base.summary.estimate.accounts.addsCalls &&
+        base.summary.estimate.thisRun.seconds - off.summary.estimate.thisRun.seconds === base.summary.estimate.accounts.addsSeconds, [off.summary.estimate.accounts, base.summary.estimate.accounts]);
+    const AUG = { today: "2026-08-15", pulledAt: "2026-08-15T09:00:00-07:00" };
+    const prevOff = JSON.parse(JSON.stringify(pull({ variant: { cutoff: "2026-08-16" }, raw: { ...AUG, ...OFF } }).snapshot));
+    const later = pull({ previous: prevOff });
+    // The judge of "correct": the same month's snapshot WITH accounts, refreshed in full. Both remember the same
+    // click history (a click month that has left the window), so the two must agree on everything but the stated reason.
+    const prevOn = JSON.parse(JSON.stringify(pull({ variant: { cutoff: "2026-08-16" }, raw: AUG }).snapshot));
+    const first = pull({ previous: prevOn, raw: { forceFull: true } });
+    const sansRefresh = (snap) => ({ ...snap, meta: { ...snap.meta, refresh: { ...snap.meta.refresh, why: null } } });
+    check("accounts can be ADDED on a later pass: turning them on over a snapshot that holds none is a full refresh that says what it did, and the snapshot equals a full refresh over the same month's snapshot WITH accounts",
+      later.snapshot.meta.refresh.mode === "full" && /accounts were switched on and the previous snapshot holds none, so every table is pulled again/.test(later.snapshot.meta.refresh.why) && later.snapshot.meta.refresh.carriedMonths.length === 0 &&
+        isDeepStrictEqual(sansRefresh(later.snapshot), sansRefresh(first.snapshot)) && later.snapshot.facts.byAccount.length > 0 && later.snapshot.reconciliation.checks.some((c) => c.id === "accounts-sum-to-program" && c.ok), [later.snapshot.meta.refresh.why, firstDiff(sansRefresh(later.snapshot), sansRefresh(first.snapshot))]);
+    const stay = pull({ previous: prevOff, raw: OFF });
+    check("…and a refresh that keeps them off stays selective, with no account call and the marker still set", stay.snapshot.meta.refresh.mode === "selective" && stay.snapshot.facts.byAccount.length === 0 && !ACCOUNT_FAMILIES.some((x) => families(stay).has(x)) && stay.snapshot.meta.accounts.pulled === false);
+    const offPlan = pull({ previous: prevOff, raw: OFF, phase: "plan" }).summary.estimate;
+    const onPlan = pull({ previous: prevOff, phase: "plan" }).summary.estimate;
+    check("the cost of ADDING accounts is the cost of the refresh that adds them: over a snapshot that holds none, a selective plan with accounts off prints what the full refresh with accounts would add to it, not the account calls of a selective one",
+      offPlan.mode === "selective" && onPlan.mode === "full" && offPlan.accounts.addsCalls === onPlan.thisRun.calls - offPlan.thisRun.calls && offPlan.accounts.addsSeconds === onPlan.thisRun.seconds - offPlan.thisRun.seconds &&
+        offPlan.accounts.addsCalls > base.summary.estimate.accounts.addsCalls, [offPlan.accounts, offPlan.thisRun, onPlan.thisRun]);
+    const oldRun = pull({});
+    const oldParams = JSON.parse(readFileSync(join(oldRun.runDir, "run.json"), "utf8"));
+    delete oldParams.params.accounts.pull;
+    writeFileSync(join(oldRun.runDir, "run.json"), JSON.stringify(oldParams));
+    check("a run directory fetched before the switch existed pulled the account grain, and reduces to the snapshot it always did: the account table filled and the marker saying pulled",
+      isDeepStrictEqual(reduceEngagement(loadRun(oldRun.runDir, { cliVersion: "fixture", pluginVersion: "fixture" })), oldRun.snapshot) && oldRun.snapshot.facts.byAccount.length > 0);
+    const offOtherCounts = pull({ previous: prevOff, raw: { accounts: { ...ACC, pull: false, busiest: 9 } }, phase: "plan" }).summary.estimate;
+    check("with accounts off the selection numbers decide nothing: changing one does not force a full refresh", offOtherCounts.mode === "selective", offOtherCounts.why);
+    const dropped = pull({ previous: prevOn, raw: OFF, phase: "plan" }).summary.estimate;
+    const legacy = JSON.parse(JSON.stringify(prevOn));
+    delete legacy.meta.accounts;
+    delete legacy.meta.params.accounts.pull;
+    const overLegacy = pull({ previous: legacy });
+    check("turning accounts off over a snapshot that has them is a full refresh too, and says so", dropped.mode === "full" && /accounts were switched off, so every table is pulled again without them/.test(dropped.why), dropped.why);
+    check("a snapshot made before the switch existed counts as having pulled accounts: it carries no marker, reads as pulled, a refresh with accounts on carries from it, and one with accounts off is a full refresh",
+      isDeepStrictEqual(accountAvailability(legacy), { pulled: true, reason: null }) && overLegacy.snapshot.meta.refresh.mode === "selective" && overLegacy.snapshot.facts.byAccount.some((r) => r.provenance === "carried") &&
+        pull({ previous: legacy, raw: OFF, phase: "plan" }).summary.estimate.mode === "full", overLegacy.snapshot.meta.refresh);
+    check("accountAvailability is the one reader of the marker: the reason when the grain was not pulled, pulled when it was", isDeepStrictEqual(accountAvailability(N), { pulled: false, reason: "accounts-off" }) && isDeepStrictEqual(accountAvailability(S), { pulled: true, reason: null }));
+    const offSteps = pull({ kb: true, raw: { ...OFF, stepDetail: true } }).snapshot;
+    check("accounts off with step detail on: the step table is whole and reconciles, and the two markers are independent", offSteps.facts.byStep.length > 0 && offSteps.reconciliation.ok && offSteps.meta.participantRecords.pulled === true && offSteps.meta.accounts.pulled === false && isDeepStrictEqual(offSteps.facts.byStep, SS.facts.byStep));
+  }
+
+  // ── F-478 · nothing is read from a previous snapshot the refresh could never carry from ──
+  {
+    const AUG = { today: "2026-08-15", pulledAt: "2026-08-15T09:00:00-07:00" };
+    const prev = pull({ variant: { cutoff: "2026-08-16" }, raw: AUG }).snapshot;
+    // A previous snapshot that says something else in EVERY leaf a lookup could bring back, under the same ids:
+    // every number moved, every boolean flipped, every name changed. Nothing here lists which lookups exist.
+    const poison = (v, key = "") =>
+      Array.isArray(v) ? v.map((x) => poison(x, key))
+        : v && typeof v === "object" ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, poison(x, k)]))
+          : typeof v === "number" ? v + 7 : typeof v === "boolean" ? !v : typeof v === "string" && /name$/i.test(key) ? `OTHER ${v}` : v;
+    const HOST = prev.meta.tenantHost;
+    const poisoned = (edit) => { const p = poison(prev); p.schemaVersion = prev.schemaVersion; p.meta.params = prev.meta.params; p.meta.accounts = prev.meta.accounts; p.meta.stepDetail = prev.meta.stepDetail; edit(p); return p; };
+    const foreign = poisoned((p) => { p.meta.tenantHost = "acme-sbx.gainsightcloud.com"; });
+    const earlier = poisoned((p) => { for (const c of p.reconciliation.checks) { delete c.drift; delete c.driftExamples; } });
+    const own = poisoned(() => {});
+    // The fallbacks are reached when this pull cannot name a template or an account itself: take the names out of what it fetched.
+    const run = pull({});
+    const nameless = { ...run.input, units: run.input.units.filter((u) => u.family !== "account-names").map((u) => (u.family === "template" ? { ...u, rows: u.rows.map((row) => Object.fromEntries(Object.entries(row).filter(([k]) => !/EmailTemplateName$/.test(k)))) } : u)) };
+    const reduceWith = (previous, params = nameless.params) => reduceEngagement({ ...nameless, params, previous });
+    const sansWhy = (snap) => ({ ...snap, meta: { ...snap.meta, refresh: { ...snap.meta.refresh, why: null } } });
+    const alone = reduceWith(null);
+    check("F-478 fixture: this pull names no template and no account itself, so the fallbacks to a previous snapshot are live", alone.dimensions.templates.every((t) => t.name === null) && alone.dimensions.accounts.length > 0 && alone.dimensions.accounts.every((a) => a.name === null) && HOST === run.snapshot.meta.tenantHost);
+    const viaForeign = reduceWith(foreign);
+    check("F-478: reduced against ANOTHER TENANT'S snapshot, the new snapshot equals the one reduced with no previous at all (the stated reason aside): no click history, no template name, no account name, no pull date crosses tenants",
+      viaForeign.meta.refresh.mode === "full" && /another tenant/.test(viaForeign.meta.refresh.why) && isDeepStrictEqual(sansWhy(viaForeign), sansWhy(alone)) && !JSON.stringify(viaForeign).includes("OTHER "), viaForeign.meta.refresh);
+    const viaEarlier = reduceWith(earlier);
+    check("F-478: the same holds for this tenant's own snapshot built under EARLIER METRIC DEFINITIONS: the new snapshot equals the one reduced with no previous at all",
+      viaEarlier.meta.refresh.mode === "full" && /earlier metric definitions/.test(viaEarlier.meta.refresh.why) && isDeepStrictEqual(sansWhy(viaEarlier), sansWhy(alone)), viaEarlier.meta.refresh);
+    const forced = { ...nameless.params, forceFull: true };
+    const viaOwn = reduceWith(own, forced);
+    const flipped = Object.keys(alone.meta.metricAvailability.clicks.templates).filter((t) => clickAvailability(alone, t).state !== "tracked" && clickAvailability(viaOwn, t).state === "tracked");
+    check("F-478 control: this tenant's OWN previous snapshot still gives its history to a full refresh — the same poisoned snapshot, under this tenant's host, supplies click history, template names, account names and its pull date",
+      viaOwn.meta.refresh.mode === "full" && flipped.length > 0 && viaOwn.dimensions.templates.some((t) => /^OTHER /.test(t.name ?? "")) && viaOwn.dimensions.accounts.some((a) => /^OTHER /.test(a.name ?? "")) &&
+        viaOwn.meta.refresh.previousPulledAt === prev.meta.pulledAt && !isDeepStrictEqual(sansWhy(viaOwn), sansWhy(reduceWith(null, forced))), [flipped, viaOwn.meta.refresh]);
+    const through = pull({ previous: foreign });
+    check("F-478, through fetch as well: a pull given another tenant's snapshot makes exactly the calls a first pull makes and builds the same snapshot",
+      isDeepStrictEqual(through.argv, run.argv) && isDeepStrictEqual(sansWhy(through.snapshot), sansWhy(run.snapshot)), through.snapshot.meta.refresh);
+    // The sibling the report did not list: the unsubscribe-link gate on click history must hold on a usable snapshot too.
+    const links = { ...forced, unsubscribeLinks: ["links.example.net"] };
+    const viaOwnOtherLinks = reduceWith(own, links);
+    check("click history is still withheld from this tenant's own snapshot when it was classified under other unsubscribe links, while its names are not", isDeepStrictEqual(viaOwnOtherLinks.meta.metricAvailability, reduceWith(null, links).meta.metricAvailability) && viaOwnOtherLinks.dimensions.templates.some((t) => /^OTHER /.test(t.name ?? "")));
+  }
+
   // ── Privacy (house rule 9) ────────────────────────────────────────────────
   {
     const text = JSON.stringify(SS);
@@ -894,7 +1015,7 @@ try {
     const LINKS = join(ROOT, "link-settings.json");
     writeFileSync(LINKS, JSON.stringify({ "tpl-nps": { reading: "tracked-link-present", asOf: "2026-09-01" }, "tpl-renew-b": { reading: "links-none-tracked", asOf: "2026-09-01" } }));
     const common = ["--workspace", WS, "--bin", FAKE, "--kb", KB_DIR, "--today", TODAY, "--pulled-at", PULLED_AT, "--from", "2026-06", "--internal-domain", "acme.com", "--step-detail", "--page-size", "400",
-      "--accounts-busiest", "3", "--accounts-low", "2", "--accounts-bounce", "2", "--accounts-low-min-delivered", "4", "--link-settings", LINKS, "--unsubscribe-link", OWN_SITE_UNSUBSCRIBE];
+      "--accounts", "--accounts-busiest", "3", "--accounts-low", "2", "--accounts-bounce", "2", "--accounts-low-min-delivered", "4", "--link-settings", LINKS, "--unsubscribe-link", OWN_SITE_UNSUBSCRIBE];
     const cli = (mode, extra, env) => {
       const r = runNode(ENGINE, [mode, ...common, ...extra], { env: { ...process.env, ...env } });
       let json = null;
@@ -938,6 +1059,15 @@ try {
     check("exit codes: plan exits 0 and prints the estimate, with what step detail adds", planned.code === 0 && planned.json?.estimate.stepDetail.on === true && planned.json.estimate.stepDetail.addsSeconds > 0 && planned.json.whoami.host === "acme.gainsightcloud.com", planned.json ?? planned.stderr);
     const failing = cli("fetch", ["--run", "partial"], { ...env, FAKE_FAULTS: JSON.stringify([{ match: '"LinkClickedJson"', kind: "generic", times: 99 }]) });
     check("exit codes: a run with a failed call exits 4 (partial), names the unit, and stays resumable", failing.code === 4 && failing.json?.status === "partial" && failing.json.failed[0].family === "click-json", failing.json ?? failing.stderr);
+    const bare = ["--workspace", WS, "--bin", FAKE, "--today", TODAY, "--pulled-at", PULLED_AT, "--from", "2026-06", "--page-size", "400"];
+    const plainOut = join(ROOT, "snapshot-default.json");
+    const plainRun = runNode(ENGINE, ["run", ...bare, "--run", "default-off", "--out", plainOut], { env: { ...process.env, FAKE_STATE: state } });
+    const plainJson = plainRun.status === 0 ? JSON.parse(plainRun.stdout) : null;
+    check("the process, with nothing said about accounts: the snapshot holds no account grain and says why, and the summary reports accounts as null with the reason, never as 0",
+      plainRun.status === 0 && plainJson.accounts === null && isDeepStrictEqual(plainJson.accountData, { pulled: false, reason: "accounts-off" }) && plainJson.rows.byAccount === 0 && plainJson.caveats.includes("accounts-not-pulled") &&
+        plainJson.estimate.accounts.on === false && plainJson.estimate.accounts.addsCalls > 0 && accountAvailability(JSON.parse(readFileSync(plainOut, "utf8"))).pulled === false, plainJson ?? plainRun.stderr.slice(-300));
+    const stray = runNode(ENGINE, ["plan", ...bare, "--run", "stray-flag", "--accounts-busiest", "5"], { env: { ...process.env, FAKE_STATE: state } });
+    check("a flag that shapes the account grain is refused without --accounts, never silently dropped", stray.status === 1 && /--accounts-busiest only applies with --accounts/.test(stray.stderr) && !existsSync(join(WS, ".gs-superadmin", "tmp", "engagement", "stray-flag")), stray.stderr.slice(-300));
     const noWs = runNode(ENGINE, ["plan", "--workspace", join(ROOT, "nowhere"), "--bin", FAKE]);
     check("the adapter is inert outside a gs-superadmin workspace", noWs.status === 1 && /no gs-superadmin workspace here/.test(noWs.stderr));
     writeFiles(join(ROOT, "kb-other"), Object.fromEntries(Object.entries(kbFiles("acme-sbx")).map(([k, v]) => [k, v.replace("https://acme.gainsightcloud.com", "https://acme-sbx.gainsightcloud.com")])));

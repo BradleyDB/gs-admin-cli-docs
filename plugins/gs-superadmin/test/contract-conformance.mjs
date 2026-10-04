@@ -52,7 +52,8 @@ import { fileURLToPath } from "node:url";
 import { makeTempDir, removeTempDir, writeFiles, runNode } from "../../../test/rig.mjs";
 import { parseJourneyDoc } from "../scripts/jo-report.mjs";
 import { STUB_MARKER } from "../scripts/doc-lib.mjs";
-import { openSnapshot, T10_SCHEMA_VERSION } from "../scripts/engagement.mjs";
+import { isDeepStrictEqual } from "node:util";
+import { openSnapshot, accountAvailability, T10_SCHEMA_VERSION } from "../scripts/engagement.mjs";
 import { kbFiles } from "./fixtures/engagement/acme-tenant.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -570,19 +571,21 @@ try {
       "links.json": JSON.stringify({ "tpl-nps": { reading: "tracked-link-present", asOf: "2026-09-01" }, "tpl-renew-b": { reading: "links-none-tracked", asOf: "2026-09-01" } }),
     });
     writeFiles(join(t10, "kb"), kbFiles("acme-prod"));
+    const ACCOUNTS_ON = ["--accounts", "--accounts-busiest", "3", "--accounts-low", "2", "--accounts-bounce", "2", "--accounts-low-min-delivered", "4"];
     const produce = (run, extra) => {
       const out = join(t10, `${run}.json`);
       const r = runNode(ENGINE, [
         "run", "--workspace", join(t10, "ws"), "--bin", FAKE, "--kb", join(t10, "kb", "acme-prod"), "--today", "2026-09-15",
         "--pulled-at", "2026-09-15T09:00:00-07:00", "--from", "2026-06", "--internal-domain", "acme.com", "--page-size", "400",
-        "--accounts-busiest", "3", "--accounts-low", "2", "--accounts-bounce", "2", "--accounts-low-min-delivered", "4",
         "--link-settings", links, "--run", run, "--out", out, ...extra,
       ]);
       check(`T-10: the producer runs over the fixture tenant (${run})`, r.status === 0, r.stderr.slice(-400));
       return r.status === 0 ? JSON.parse(readFileSync(out, "utf8")) : null;
     };
-    const withSteps = produce("t10-steps", ["--step-detail"]);
-    const plain = produce("t10-plain", []);
+    const withSteps = produce("t10-steps", ["--step-detail", ...ACCOUNTS_ON]);
+    const plain = produce("t10-plain", ACCOUNTS_ON);
+    // The adapter's default: the account grain is not pulled unless --accounts is passed.
+    const noAccounts = produce("t10-noacc", []);
     const fixture = JSON.parse(readFileSync(join(HERE, "fixtures", "engagement", "snapshot-acme.json"), "utf8"));
 
     const keys = (o) => Object.keys(o).sort().join(",");
@@ -594,13 +597,13 @@ try {
     const count = (v) => Number.isInteger(v) && v >= 0;
     const rows = (s, table, rowKeys) => Array.isArray(s.facts[table]) && s.facts[table].length > 0 && s.facts[table].every((r) => keys(r) === rowKeys);
 
-    for (const [which, s, steps] of /** @type {Array<[string, *, boolean]>} */ ([["produced with step detail", withSteps, true], ["produced without step detail", plain, false], ["the committed fixture snapshot", fixture, true]])) {
+    for (const [which, s, steps, accounts] of /** @type {Array<[string, *, boolean, boolean]>} */ ([["produced with step detail", withSteps, true, true], ["produced without step detail", plain, false, true], ["produced without accounts (the default)", noAccounts, false, false], ["the committed fixture snapshot", fixture, true, true]])) {
       if (!s) continue;
       const at = (label) => `T-10 (${which}): ${label}`;
       check(at("top level is exactly {schemaVersion 1, kind engagement, meta, dimensions, facts, honesty, reconciliation, caveats}"),
         keys(s) === list("schemaVersion", "kind", "meta", "dimensions", "facts", "honesty", "reconciliation", "caveats") && s.schemaVersion === 1 && s.kind === "engagement", keys(s));
       check(at("meta carries exactly the typedef keys; source jo-engagement; pulledAt has a UTC offset"),
-        keys(s.meta) === list("source", "params", "pulledAt", "timeZone", "tenantHost", "cliVersion", "pluginVersion", "window", "incompleteFrom", "dateBasis", "stepDetail", "participantRecords", "refresh", "metricAvailability") &&
+        keys(s.meta) === list("source", "params", "pulledAt", "timeZone", "tenantHost", "cliVersion", "pluginVersion", "window", "incompleteFrom", "dateBasis", "stepDetail", "accounts", "participantRecords", "refresh", "metricAvailability") &&
           s.meta.source === "jo-engagement" && /T\d\d:\d\d:\d\d[+-]\d\d:\d\d$/.test(s.meta.pulledAt) && s.meta.stepDetail === steps, keys(s.meta));
       check(at("window is {from, to, start, endExclusive}; incompleteFrom is a day"), keys(s.meta.window) === list("from", "to", "start", "endExclusive") && MONTH.test(s.meta.window.from) && /^\d{4}-\d\d-\d\d$/.test(s.meta.incompleteFrom), s.meta.window);
       check(at("dateBasis names ExecutedDate months, and ao_emails' CreatedAt only with step detail"),
@@ -608,6 +611,12 @@ try {
           (steps ? keys(s.meta.dateBasis.stepDetail) === "field,object" && s.meta.dateBasis.stepDetail.field === "CreatedAt" : s.meta.dateBasis.stepDetail === null), s.meta.dateBasis);
       check(at("participantRecords is {pulled, reason}: pulled with step detail, else the reason a reader shows"),
         keys(s.meta.participantRecords) === "pulled,reason" && (steps ? s.meta.participantRecords.pulled === true && s.meta.participantRecords.reason === null : s.meta.participantRecords.pulled === false && s.meta.participantRecords.reason === "step-detail-off"), s.meta.participantRecords);
+      check(at("accounts is {pulled, reason}: pulled, or the reason a reader shows; with the account grain not pulled the account table and the account dimension are empty arrays, never absent and never partly filled, and a caveat says so"),
+        keys(s.meta.accounts) === "pulled,reason" && Array.isArray(s.facts.byAccount) && Array.isArray(s.dimensions.accounts) &&
+          (accounts ? s.meta.accounts.pulled === true && s.meta.accounts.reason === null && s.facts.byAccount.length > 0 && !s.caveats.some((c) => c.id === "accounts-not-pulled")
+            : s.meta.accounts.pulled === false && s.meta.accounts.reason === "accounts-off" && s.facts.byAccount.length === 0 && s.dimensions.accounts.length === 0 && s.caveats.some((c) => c.id === "accounts-not-pulled")), s.meta.accounts);
+      check(at("accountAvailability reads the marker, and reads a snapshot made before the switch existed (no marker) as pulled"),
+        isDeepStrictEqual(accountAvailability(s), s.meta.accounts) && isDeepStrictEqual(accountAvailability({ ...s, meta: { ...s.meta, accounts: undefined } }), { pulled: true, reason: null }));
       check(at("refresh is exactly {mode, why, repullMonths, pulledMonths, carriedMonths, carriedPrograms, fullPrograms, previousPulledAt}"),
         keys(s.meta.refresh) === list("mode", "why", "repullMonths", "pulledMonths", "carriedMonths", "carriedPrograms", "fullPrograms", "previousPulledAt") && ["full", "selective"].includes(s.meta.refresh.mode), s.meta.refresh);
 
@@ -617,13 +626,13 @@ try {
         d.programs.length > 0 && d.programs.every((p) => keys(p) === list("id", "name", "statuses", "model", "modelName", "audienceType", "supergroup", "group", "folderId") && Array.isArray(p.statuses)), d.programs[0]);
       check(at("template rows: id, name, uses[{programId, stepName, stepOrder, stepCount}]"),
         d.templates.length > 0 && d.templates.every((t) => keys(t) === "id,name,uses" && t.uses.length > 0 && t.uses.every((u) => keys(u) === list("programId", "stepName", "stepOrder", "stepCount") && count(u.stepCount) && (u.stepCount === 1 || (u.stepName === null && u.stepOrder === null)))), d.templates[0]);
-      check(at("account rows: an opaque key and a name; months are YYYY-MM"), d.accounts.length > 0 && d.accounts.every((a) => keys(a) === "key,name" && typeof a.key === "string") && d.months.every((m) => MONTH.test(m)), d.accounts[0]);
+      check(at("account rows: an opaque key and a name; months are YYYY-MM"), (d.accounts.length > 0 || !accounts) && d.accounts.every((a) => keys(a) === "key,name" && typeof a.key === "string") && d.months.every((m) => MONTH.test(m)), d.accounts[0]);
       if (steps) check(at("step rows: programId, stepId, name, order, templateId, variantId, variantName"), d.steps.length > 0 && d.steps.every((x) => keys(x) === list("programId", "stepId", "name", "order", "templateId", "variantId", "variantName")), d.steps[0]);
 
       check(at(`facts are exactly {byTemplate, byAccount, responses, responseParticipants, uniques${steps ? ", byStep" : ""}} — byStep only with step detail`),
         keys(s.facts) === (steps ? list("byTemplate", "byStep", "byAccount", "responses", "responseParticipants", "uniques") : list("byTemplate", "byAccount", "responses", "responseParticipants", "uniques")), keys(s.facts));
       check(at("byTemplate rows: the row base, templateId and the eight additive measures"), rows(s, "byTemplate", list(...ROW_BASE, "templateId", ...MEASURES)), s.facts.byTemplate[0]);
-      check(at("byAccount rows: the row base, bucket, accountKey and the eight measures; accountKey is set exactly on bucket account"),
+      if (accounts) check(at("byAccount rows: the row base, bucket, accountKey and the eight measures; accountKey is set exactly on bucket account"),
         rows(s, "byAccount", list(...ROW_BASE, "bucket", "accountKey", ...MEASURES)) && s.facts.byAccount.every((r) => ["account", "other", "no-company-link"].includes(r.bucket) && (r.bucket === "account") === (r.accountKey !== null)) &&
           new Set(s.facts.byAccount.map((r) => r.bucket)).size === 3, s.facts.byAccount[0]);
       if (steps) check(at("byStep rows: the row base, stepId, variantId, templateId and the eight measures"), rows(s, "byStep", list(...ROW_BASE, "stepId", "variantId", "templateId", ...MEASURES)), s.facts.byStep[0]);
@@ -659,7 +668,7 @@ try {
       check(at("a program roll-up is tracked only when EVERY template is, not-tracked only when every one is, and any mix is unknown; the counts are whole numbers"),
         rolled.every((p) => [p.templates.tracked, p.templates.notTracked, p.templates.unknown].every(count) && p.state === want(p.templates)) && rolled.some((p) => p.state === "unknown" && p.templates.tracked > 0) && rolled.some((p) => p.state === "tracked"), rolled);
       check(at("reconciliation is {ok, checks[{id, ok, compared, mismatches, examples, drift, driftExamples}]}: closed months fail, the incomplete period drifts; caveats are [{id, detail}]"),
-        keys(s.reconciliation) === "checks,ok" && s.reconciliation.checks.length >= 4 && s.reconciliation.checks.every((c) => keys(c) === "compared,drift,driftExamples,examples,id,mismatches,ok" && count(c.drift) && count(c.mismatches) && c.ok === (c.mismatches === 0)) &&
+        keys(s.reconciliation) === "checks,ok" && s.reconciliation.checks.length >= (accounts ? 4 : 3) && s.reconciliation.checks.some((c) => c.id === "accounts-sum-to-program") === accounts && s.reconciliation.checks.every((c) => keys(c) === "compared,drift,driftExamples,examples,id,mismatches,ok" && count(c.drift) && count(c.mismatches) && c.ok === (c.mismatches === 0)) &&
           s.reconciliation.ok === s.reconciliation.checks.every((c) => c.ok) && s.caveats.every((c) => keys(c) === "detail,id"), s.reconciliation.checks.map((c) => c.id));
       check(at("openSnapshot admits it"), openSnapshot(s) === s);
     }
@@ -671,7 +680,7 @@ try {
     const engSrc = readFileSync(ENGINE, "utf8");
     const header = engSrc.slice(engSrc.indexOf("// ── T-10 ·"), engSrc.indexOf("// ── The source-adapter interface"));
     const named = (k) => new RegExp(`@property \\{[^\\n]*\\} \\[?${k}\\]?( |$)`, "m").test(header);
-    const PINNED = ["schemaVersion", "kind", "meta", "dimensions", "facts", "honesty", "reconciliation", "caveats", "byTemplate", "byStep", "byAccount", "responses", "responseParticipants", "uniques", "metricAvailability", "participantRecords", "incompleteFrom", "pulledAt", ...MEASURES];
+    const PINNED = ["schemaVersion", "kind", "meta", "dimensions", "facts", "honesty", "reconciliation", "caveats", "byTemplate", "byStep", "byAccount", "responses", "responseParticipants", "uniques", "metricAvailability", "participantRecords", "accounts", "incompleteFrom", "pulledAt", ...MEASURES];
     check("T-10: the producer's header is marked FROZEN and names every pinned top-level key, table and measure", /FROZEN \(ENG-1, 2026-10-03\)/.test(header) && PINNED.every(named), PINNED.filter((k) => !named(k)));
     check("T-10: the header also states the adapter interface (plan / fetch / reduce) and the transport seam", /@typedef \{object\} EngagementSourceAdapter/.test(engSrc) && /@typedef \{object\} EngagementTransport/.test(engSrc));
   } finally {
