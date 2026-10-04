@@ -182,6 +182,37 @@ Walk (hb-20261004-01): 2026-10-04 (tester) — S1b verdict round, a RE-VERIFICAT
        is the plan's start, not the pull's; X6 at V2 judges it.
      Open PRs to dev: #38 (unmerged; the merge is Bradley's). -->
 
+<!-- builder 2026-10-04 (JO-dashboards S2 — POINTER RE-STAMPED @ hb-20261004-03: F-479, F-480 and F-481 claimed by the branch and FIXED there; next free F-482; re-stamps the pointer below):
+     Branch: feat/jo-dash-s2-engine-report at 8c699d7. PR: #38 to dev, open, unmerged.
+     What moved since the pointer below: a tester's early spot check of X0 and X1 at hb-20261004-02 (production
+       tenant, reads only) PASSED both and logged three polish findings on the branch: F-479 (progress lines said
+       "failed" for a deleted program's describe beside a clean summary), F-480 (the report's Re-run code span held
+       its explanation, so the copied command did not parse) and F-481 (the skill's final Caveats line was left to
+       the reader's judgment). The builder fixed all three on the branch; each reads FIXED there, with Fix and Judge
+       notes, and reads nothing in this file until PR #38 merges. The numbers F-479 to F-481 are taken.
+     Handoff token: hb-20261004-03 (Under test line, Blind spots line and canary are on the branch).
+     dev/VALIDATION.md on the branch, section ENG-3 / ENG-4: X0 and X1 carry the spot check's PASSED lines; R1 to R3
+       are the three fixes' re-verification, owed by one tester round before the merge (Bradley's call); X2 to X9
+       stay owed at V2.
+     CI on PR #38's head 8c699d7: pending when this was written.
+     Open PRs to dev: #38 only. Issues #11 and #12 unchanged. -->
+
+<!-- builder 2026-10-04 (JO-dashboards S2 — POINTER: plan items ENG-4 and ENG-3 ride an UNMERGED branch; no finding logged; next free F-479):
+     Branch: feat/jo-dash-s2-engine-report. PR: #38 to dev, open, left unmerged. It merges on green CI plus its review
+       round (done on the branch: one /code-review at medium, three findings, all fixed); its verdict is V2, after S4c.
+     Handoff token: hb-20261004-02 (the Under test line, the Blind spots line and the canary are on the branch, not here).
+     On the branch (feature items, tracked by plan ID, no bus section): scripts/engagement-query.mjs, the one
+       aggregation path over an engagement snapshot, import-free, holding the metric registry, the source facts the
+       adapter now builds its queries from, and the T-10 read floor (moved out of engagement.mjs);
+       scripts/engagement-report.mjs, the open-rate report; and a new skill, email-engagement, with one mode, report.
+       T-10 is read, not changed. engagement.mjs --name also takes a program id.
+     No F-number was claimed by the branch. No finding of any tier is OPEN.
+     dev/VALIDATION.md on the branch: a new section, ENG-3 / ENG-4, X0 to X9, keyed to hb-20261004-02, owed at V2. The
+       new skill was not walked live: X0, X4, X8 and X9 are its walk.
+     Plugin 0.45.0 on the branch, unreleased (one release for the whole program).
+     CI on PR #38's head: pending when this was written; quoted per job in a re-stamp of this pointer once it completes.
+     Open PRs to dev: #38 only. Issues #11 and #12 unchanged. -->
+
 <!-- builder 2026-10-04 (JO-dashboards S1b CLOSED OUT — PR #37 merged (3c967f1); F-478 VERIFIED; no finding open; next free F-479):
      Merged: feat/jo-dash-s1b-accounts-optional -> dev, PR #37, merge commit 3c967f1 (Bradley's go-ahead, 2026-10-04,
        after the verdict round passed every check). The branch is deleted, local and remote.
