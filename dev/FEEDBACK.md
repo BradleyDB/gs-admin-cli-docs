@@ -155,6 +155,24 @@ Walk (hb-20261003-05): 2026-10-03 (tester) — S1-V third re-run, a RE-VERIFICAT
 Walk (hb-20261003-03): 2026-10-03 (tester) — S1-V second re-run, the first full verdict on ENG-1 and ENG-2 (feature items, no bus section carries them) and the re-verification of F-470, F-471 and F-472, against dev/VALIDATION.md section ENG-2 on the production tenant, reads only: all five runs completed (exit 0); F-470, F-471 and F-472 VERIFIED; V1 FAILED on F-473 and V11 on F-474, both logged with F-475 and F-476; Bradley ruled one metric definition (Delivered), a T-10 change for the builder before the merge; PR #36 stays unmerged. Detail in the tester comment below and in VALIDATION section ENG-2.
 Walk (hb-20261003-02): 2026-10-03 (tester) — S1-V re-run, the verdict round for ENG-1 and ENG-2 (feature items, no bus section carries them) and F-470's re-verification, against dev/VALIDATION.md section ENG-2 on the production tenant, reads only: V0 confirmed by Bradley; run 1 (plan) ok; run 2 (full) ended partial, exit 4, so no snapshot was built; V8 FAILED, F-471 and F-472 logged; runs 3-5 not run, on Bradley's call; F-470 stays FIXED, V9 not measurable. Detail in the tester comment below and in VALIDATION section ENG-2.
 
+<!-- builder 2026-10-04 (JO-dashboards S1 round CLOSED OUT — PR #36 merged (ecd928d); T-10 FROZEN at schemaVersion 1; F-478 OPEN; next free F-479):
+     Merged: feat/jo-dash-s1-facts -> dev, PR #36, merge commit ecd928d (Bradley's go-ahead, 2026-10-04). Plan items ENG-1
+       and ENG-2 are on dev: scripts/engagement.mjs, the T-10 typedef and its pin, the fixtures and the suites. The
+       branch is deleted, local and remote. Plugin 0.44.0 stays unreleased (one release for the whole program).
+     T-10, the engagement snapshot, is FROZEN from this merge: an additive field rides the change that needs it, typedef
+       and pin together; removing or re-typing a field, or changing what a measure counts, bumps schemaVersion.
+     Findings from the round: F-470 to F-476 VERIFIED; F-477 WONTFIX (Bradley's ruling); F-478 OPEN (normal): it gates the
+       release, not this merge, and is the next builder batch's, with the accounts-optional switch (a fresh branch).
+     dev/VALIDATION.md section ENG-2: CLEARED at hb-20261003-05.
+     Under test stays feat/jo-dash-s1-facts · hb-20261003-05 until the next handoff re-stamps it; that branch no longer
+       exists, so a tester session loads dev.
+     CI on dev after the merge (ecd928d), quoted per job after completion:
+         docs-drift 37184757257 (push): drift (full) success
+         validate-plugin 37184757234 (push): changes success / validate (ubuntu-latest) cancelled / manifests cancelled
+           (cancelled, not failed: superseded by the dispatch below, started seconds later on the same commit)
+         validate-plugin 37184764956 (workflow_dispatch): changes success / manifests success / validate (ubuntu-latest) success
+     Open PRs to dev: none. Issues #11 and #12 unchanged. Released: nothing. -->
+
 <!-- tester 2026-10-03 (JO-dashboards S1-V third re-run @ hb-20261003-05 — ALL FIVE RUNS COMPLETE; EVERY OWED CHECK PASSED; F-473, F-474, F-475, F-476 VERIFIED; F-477 logged WONTFIX; F-478 logged OPEN; VALIDATION ENG-2 CLEARED; PR #36 ready to merge; next free F-479):
      Provenance: the dev-canary skill read hb-20261003-05 in session, matching Under test; the workspace's plugin link
        resolves to this checkout's plugins/gs-superadmin; feat/jo-dash-s1-facts clean and level with origin at 7cc5d79.
