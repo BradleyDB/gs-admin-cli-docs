@@ -1276,10 +1276,20 @@ Picks and inputs: as for X0, from `.gs-superadmin/tmp/s1v-picks.md`. One walk fe
   program, not a failure`. The skill's step 2 says the lines are progress only. If the picks no longer reach a
   deleted program (`programs.deleted` is 0), say so and judge R1 on the offline arm instead: the same plan through
   `--bin plugins/gs-superadmin/test/fixtures/engagement/fake-gs-admin.mjs` in a scratch workspace, window from 2026-01.
+  - Tester, 2026-10-04 @ hb-20261004-03: PASSED, on the live arm (the picks still reach a deleted program). Plan exit 0,
+    `failed: []`, 8 calls / 43 s wall; no progress line contains `failed`; both not-found lines word for word; step 2
+    says the lines are progress only. F-479 VERIFIED.
 - R2 (F-480). In the walk's report, copy the footer's `Re-run:` code span exactly and run it.
   Pass bar: the span holds a command and nothing else; it runs (exit 0) and writes a second report beside the first,
   pulling nothing; the explanation that it pulls nothing is in the header's snapshot line.
+  - Tester, 2026-10-04 @ hb-20261004-03: PASSED. The footer is `Re-run: ` plus one code span; its bytes, extracted by
+    script and run through bash, parse and exit 0, writing a second report beside the first; no new pull working
+    directory; the header's snapshot line carries the explanation. F-480 VERIFIED.
 - R3 (F-481). Read the walk's step-6 block and the step-4 summary.
   Pass bar: the `Caveats:` line is `<caveatCount> — ` followed by the summary's `leadCaveats` entries, as written,
   joined with `; `; the tester chose nothing. Run step 4 again on the same snapshot (`--snapshot`, no pull): the
   second summary's `leadCaveats` equals the first's.
+  - Tester, 2026-10-04 @ hb-20261004-03: PASSED. The step-6 Caveats line was `caveatCount` plus the two `leadCaveats`
+    joined with `; `, nothing chosen; step 4 run again over the same snapshot gave equal `leadCaveats` and
+    `caveatCount` (compared by script). Walk: plan 8 calls / 43 s, pull 36 calls / 269 s wall against an estimate of
+    35 calls / 327 s; no step made the walk stop or guess. F-481 VERIFIED.
