@@ -763,7 +763,7 @@ Pass bar:
 An A1 caveat that still names the object reopens #28; a B1 caveat that still names it is a finding against #32.
 Record the verdict here with the token, and copy it to the bus under the round's Blind spots line.
 
-## ENG-2 — the engagement adapter on a real tenant: the contract gate and thirteen live checks (banked 2026-10-03, builder, Session S1 @ hb-20261003-01; re-banked the same day for the re-run, S1 fix batch @ hb-20261003-02 — OPEN after the S1-V second re-run @ hb-20261003-03: V1 and V11 FAILED, the rest CLEARED)
+## ENG-2 — the engagement adapter on a real tenant: the contract gate and thirteen live checks (banked 2026-10-03, builder, Session S1 @ hb-20261003-01; re-banked the same day for the re-run, S1 fix batch @ hb-20261003-02 — CLEARED at the S1-V third re-run @ hb-20261003-05: every check CLEARED)
 
 Owed by: the S1-V re-run, the tester round on hb-20261003-02, in the consumer workspace with the plugin loaded
 from branch `feat/jo-dash-s1-facts`. The branch does not merge before this section is cleared.
@@ -1024,3 +1024,48 @@ with one bar changed and one read dropped:
 - The UI read banked for V11 is done (Bradley, 2026-10-03); it is not owed again.
 - V8 gains one changed shape and one new family: the three survey calls now carry `TestParticipant EQ false`, and
   `resp-test` counts the rows left out. A failing survey family is a finding with its stderr text.
+
+Result (tester, S1-V third re-run, 2026-10-03 @ hb-20261003-05) — CLEARED: every check owed by the two blocks above passed;
+F-473, F-474, F-475 and F-476 VERIFIED; the branch is ready to merge.
+Under test: feat/jo-dash-s1-facts at 7cc5d79, clean, canary matched; production tenant, confirmed; CLI 1.0.10; reads only.
+Picks, inputs and UI figures as settled, confirmed with Bradley before the first call; V11 compared with the program
+analytics page as re-banked. New run names (s1v3-full, s1v3-steps, s1v3-selective, s1v3-since), identical inputs on every
+line; run 4's --previous was s1v3-full.json. All five runs completed, exit 0, failed [] and reconciled true in each.
+Runs, estimate -> actual: 1 plan ok (299 calls / 2175 s; step detail +45 / +315 s); 2 full 299 / 2175 s -> 315 / 2090 s;
+3 step detail 344 / 2490 s -> 369 / 2498 s; 4 selective 105 / 817 s -> 181 / 1096 s; 5 --sent-since 90d 187 / 1391 s ->
+239 / 1658 s. Six direct reads through the spike's catalog-checked runner, with the adapter's own filters, were the
+independent counts below. Pass bars as stated in the blocks above, written into the round before the first run.
+- Delivered (Bradley's ruling, read by V3, V12 and the per-email half): Bradley confirmed the typedef's delivered lines read
+  as he ruled, and ruled that a went-out send with a null bounce flag does not count; there are none (F-477, WONTFIX on his
+  ruling). Run 2's delivered equals a direct strict count (IsSent YES and IsBounced NO) for 193 of 194 programs over the
+  window; the one other program's only month is the current one, where the direct read, taken minutes later, was 32
+  higher (incomplete-period drift, F-475). Went-out rows with a null IsBounced: 0; rows with a null IsSent: 0.
+- V1: CLEARED (F-473 VERIFIED). templates-sum-to-program 563 compared, accounts-sum-to-program 4504, internal-within-all
+  186009, clicked-within-sent 1125, all 0 closed-month mismatches; the same in runs 3-5 (steps-sum-to-template 4148 in
+  run 3). noCompanyLink.sent 25867 = direct IS_NULL count; clickedSends 1236 = direct clicked count; both programs whose
+  every send lacks a company link are in the snapshot; unselected programs 0. Excluded classes as before: CC copies 288,
+  1 deleted program (27860 sends), non-JO sources 677.
+- F-475: VERIFIED. Every difference in every run is in 2026-10, reported as drift (run 2: 3; run 3: 2 and 2; runs 4 and 5:
+  2 each), reconciled true, caveat incomplete-period-drift; no closed-month difference occurred.
+- V2: CLEARED. P-busy: window people 3942, accounts 1485 (each now from its own call); lifetime distinct people through the
+  new single-lookup shape 5106 = the UI's Contacts exactly.
+- V3: CLEARED. Internal and external rows present, internal-within-all ok; delivered as above.
+- V8: CLEARED. Every family ended ok in every run, including totals, both single-lookup uniques shapes, account-nolink,
+  click-attr-nolink, resp-unattributed, the three survey calls with TestParticipant EQ false and the new resp-test; run 3's
+  ao_emails shapes ok (step 25, step-click 4, participants 8 + 8); no normalizeGroupByDedup line in any stderr; no
+  shape-error or unparseable; rows.unreadable 0, clicks.unreadable 0. The deleted program's describe failed twice, its
+  designed not-found and solo re-check.
+- V11: CLEARED (F-474 VERIFIED). P-survey: participants 527, submitted 65, partially submitted 35 (100) = the program
+  analytics page; testParticipantsExcluded 92.
+- V12: CLEARED. P-busy, August: sent 1992, delivered 1952 = the direct strict count (1953 went out, 1 of them bounced),
+  opened 184 = the UI. The UI's 1913 is went-out less every bounce event (40), a basis the ruling does not use. Per email
+  (P-multi, run 3, August): step delivered 660, 634, 9 and 9 = the direct strict counts on ao_emails; every bounce event
+  that month (20) is on an attempt that never went out, and no Bounce is null; opened 84, 81 and 6 = the UI's three
+  emails.
+- V13 and V6: CLEARED (F-476 VERIFIED). Estimate pairs above, the worst 1.72x on calls (run 4), all inside 2x. Run 4:
+  refresh.mode selective, 11 months carried, 181 calls / 1096 s against run 2's 315 / 2090 s; all 993 carried template rows
+  equal run 2's on every measure, none missing or extra. Step names: source kb, 183 programs with a design, 11 without.
+  Privacy search: 0 files with an @ and 0 with an IPv4 pattern across the four run directories (1128 files) and the four
+  snapshots. No token stop occurred.
+Everything else stands as CLEARED at hb-20261003-03. Logged this round: F-477 (polish, WONTFIX on Bradley's ruling). Section
+CLEARED; PR #36's merge is Bradley's.
