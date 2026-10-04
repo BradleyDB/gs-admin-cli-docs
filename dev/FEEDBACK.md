@@ -152,6 +152,22 @@ rule also reads the archive.
 Under test: fix-f469-dev-only · hb-20260929-01 · 2026-09-29
 Blind spots (hb-20260929-01): the release shape (strip committed, bus only on origin/dev) is measured locally only: a scratch clone ran every docs-drift step verbatim, with the fetch step fetching from a local remote, and only that shape kills sweep mutant M5. CI first runs it on the next release PR, since a pre-merge CI probe would read an origin/dev without the line. The main-existence step's base_ref == main path also runs first there (its rehearsal-arm path runs on this handoff's dispatch). Grammar parity with dev-utils is measured at 0.5.0 only. The reader's symlink-escape refusal has no fixture. RELEASE-CHECKLIST §3's strip and verify commands ran in a scratch clone; §5's release-finish did not run (no release). No SKILL.md changed, so no walk is owed; the round's guard-wiring line is the tester's
 
+<!-- builder 2026-10-03 (JO-dashboards fourth S1 fix batch — HANDED OFF @ hb-20261003-05; F-474 FIXED on the branch; nothing OPEN; next free F-477):
+     Riding feat/jo-dash-s1-facts -> PR #36, UNMERGED (it merges after the next S1-V re-run; the merge is Bradley's).
+       Branch tip 7cc5d79, the handoff commit; the fix is 5285b2b. No tester run was made on hb-20261003-04; this token
+       supersedes it and carries everything that handoff did (the block below).
+     F-474: OPEN -> FIXED. Explained by two UI reads Bradley made, then ruled by him: the survey figures exclude test
+       participants, so they equal the UI's program analytics; the survey's own page is a per-survey basis, already out
+       of scope. The three survey calls carry the filter; one more call counts the rows left out. V11 judges it.
+     Status on the branch: F-470, F-471, F-472 VERIFIED; F-473, F-474, F-475, F-476 FIXED. No polish finding is open.
+     dev/VALIDATION.md section ENG-2 is re-banked for hb-20261003-05: what the block below lists, with V11's bar changed.
+     Not run against the server: the token the builder used earlier had expired. Offline: sweep 4 of 4 as predicted; the
+       two engagement suites, the doc gates and the tracked-tree typecheck re-run; no full local battery for this change.
+     Open PRs to dev: #36 only. Issues #11 and #12 unchanged.
+     CI on PR #36's head 7cc5d79, quoted per job after completion:
+         validate-plugin 37175450173 (pull_request): changes success / manifests success / validate (ubuntu-latest) success
+         docs-drift 37175450339 (pull_request): drift (full) success -->
+
 <!-- builder 2026-10-03 (JO-dashboards third S1 fix batch — HANDED OFF @ hb-20261003-04; F-473, F-475, F-476 FIXED on the branch; F-474 stays OPEN; next free F-477):
      Riding feat/jo-dash-s1-facts -> PR #36, UNMERGED (it merges after the next S1-V re-run; the merge is Bradley's).
        Branch tip 9232cf2, the handoff commit; the fix is 1eae47d plus the review fixes in the commit before the handoff.
