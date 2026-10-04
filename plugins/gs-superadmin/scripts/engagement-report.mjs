@@ -288,9 +288,23 @@ export function buildReport(snapshot, opts = {}) {
   const unmatchedNames = (selector.names ?? []).filter((n) => !known.has(termKey(n)));
   if (unmatchedNames.length) caveats.unshift(`No program with sends in the window is named ${unmatchedNames.map((n) => `"${n}"`).join(", ")}: nothing was pulled for ${unmatchedNames.length === 1 ? "it" : "them"}. A name must match exactly; a program with no send in the window is not in the pull.`);
   if (opts.excludeInternal) caveats.push("Internal recipients are left out of every send figure (`--exclude-internal`). Survey figures and the status of click tracking are not split by recipient.");
+  // The one or two caveats a reader should hear first, chosen HERE in a fixed
+  // order so two runs over one snapshot name the same ones (F-481). The last
+  // entry applies to every snapshot, so the list is never empty.
+  const own = (id) => snapshot.caveats.find((c) => c.id === id)?.detail;
+  const carriedMonths = own("carried-forward-months")?.months?.length ?? 0;
+  const leadCaveats = [
+    own("reconciliation-mismatch") ? "reconciliation FAILED in closed months: treat the numbers as unreliable" : null,
+    unmatchedNames.length ? `no program with sends in the window is named ${unmatchedNames.map((n) => `"${n}"`).join(", ")}` : null,
+    carriedMonths ? `${carriedMonths} month(s) carried forward from an earlier pull, not read again` : null,
+    own("recipient-class-not-configured") ? "no internal domain was named, so internal recipients are not separated" : null,
+    own("deleted-programs-excluded") ? `${own("deleted-programs-excluded").programs} deleted program(s) left out` : null,
+    `sends on or after ${meta.incompleteFrom} are provisional`,
+  ].filter(Boolean).slice(0, 2);
   return {
     sections,
     caveats,
+    leadCaveats,
     csv,
     counts: {
       programsInSnapshot: snapshot.dimensions.programs.length,
@@ -359,12 +373,14 @@ async function main() {
         ...(failed ? ["> **RECONCILIATION FAILED.** Tables that must add up to the same totals do not, in months that are closed. Treat every number below as unreliable and pull again.", ""] : []),
         `- pull: ${meta.refresh.mode} (${meta.refresh.why})`,
         `- recipients: ${opts.excludeInternal ? "external only" : "all"}${meta.params?.internalDomains?.length ? `; internal domains: ${meta.params.internalDomains.join(", ")}` : "; no internal domain was named"}`,
-        `- snapshot: ${snapPath}`,
+        `- snapshot: ${snapPath} (the Re-run command at the foot of this report rebuilds it from this file; it pulls nothing)`,
       ].join("\n"),
       ...built.sections,
     ],
     caveats: built.caveats,
-    rerun: `${rerun}  (rebuilds this report from the same snapshot; it pulls nothing)`,
+    // The command alone: the shared renderer puts this inside a code span, and
+    // what a code span holds is what gets copied and run (F-480).
+    rerun,
   });
   mkdirSync(resolve(reportDir), { recursive: true });
   const outPath = reportPath(reportDir, "engagement", generatedAt.slice(0, 10));
@@ -403,6 +419,7 @@ async function main() {
     // Closed-month mismatches are a failure; drift in the incomplete period is not.
     reconciliation: { closedMonthsOk: snapshot.reconciliation.ok, failedChecks: snapshot.reconciliation.checks.filter((c) => !c.ok).map((c) => c.id), incompletePeriodDrift: drift },
     caveatCount: built.caveats.length,
+    leadCaveats: built.leadCaveats,
     rerun,
   });
 }

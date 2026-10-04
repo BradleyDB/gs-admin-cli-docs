@@ -142,6 +142,12 @@ try {
     const byTpl = report(["--snapshot", offPath, "--report", outDir(), "--by-template"]);
     check("per-step rows appear only when the snapshot carries step detail: with it off, --by-template gives the template table and NO step table",
       byTpl.code === 0 && byTpl.md.includes("## Emails by template") && !byTpl.md.includes("## Emails by step") && byTpl.json.counts.stepRows === null && byTpl.json.counts.templateRows > 0);
+    check("F-481: the summary names the one or two caveats to lead with, chosen by the script in a fixed order; on a clean full pull with an internal domain that is the provisional period alone",
+      isDeepStrictEqual(first.json.leadCaveats, ["sends on or after 2026-09-01 are provisional"]));
+    const footer = /\nRe-run: `([^`]+)`\n/.exec(md1)?.[1];
+    check("F-480: the report's Re-run code span holds the command and nothing else — exactly the summary's rerun, ending at its last argument — and the explanation sits outside it, beside the snapshot path",
+      footer === first.json.rerun && !/\(|\)/.test(footer.split(" --snapshot ")[1]) && footer.endsWith(`--report ${dir1.replace(/\\/g, "/")}`) === first.json.rerun.endsWith(`--report ${dir1.replace(/\\/g, "/")}`) && /^- snapshot: .* \(the Re-run command at the foot of this report rebuilds it from this file; it pulls nothing\)$/m.test(md1),
+      [footer, first.json.rerun]);
     check("without --by-template there is no per-template table", !md1.includes("## Emails by template") && first.json.counts.templateRows === null);
   }
 
@@ -205,7 +211,8 @@ try {
     const mixedReport = report(["--snapshot", mixedPath, "--report", outDir()]);
     check("--name takes a program's id as well as its name (email-report's vocabulary), and a name that matched no program is said first in the caveats, never passed over",
       mixed.code === 0 && isDeepStrictEqual(names(mixedReport), ["Acme NPS Survey"]) && isDeepStrictEqual(mixedReport.json.unmatchedNames, ["Acme Renewl Dynamic"]) &&
-        section(mixedReport.md, "## Caveats & data gaps").split("\n")[2].startsWith('- No program with sends in the window is named "Acme Renewl Dynamic"'), [mixed.stderr?.slice(-200), mixedReport.json]);
+        section(mixedReport.md, "## Caveats & data gaps").split("\n")[2].startsWith('- No program with sends in the window is named "Acme Renewl Dynamic"') &&
+        isDeepStrictEqual(mixedReport.json.leadCaveats, ['no program with sends in the window is named "Acme Renewl Dynamic"', "sends on or after 2026-09-01 are provisional"]), [mixed.stderr?.slice(-200), mixedReport.json]);
   }
 
   // ══ The full report: accounts and step detail on (the committed fixture snapshot) ══
@@ -315,7 +322,7 @@ try {
     check("a report over a selective refresh carries the carried-forward caveat — which months, the pull they came from, the horizon — and says the refresh was selective",
       prevRun.code === 0 && selRun.code === 0 && SEL.meta.refresh.mode === "selective" && sel.code === 0 && sel.md.includes("- pull: selective (") &&
         SEL.meta.refresh.carriedMonths.every((m) => section(sel.md, "## Caveats & data gaps").includes(m)) && section(sel.md, "## Caveats & data gaps").includes("carried forward from the pull of 2026-08-15T09:00:00-07:00") &&
-        isDeepStrictEqual(sel.json.pull.carriedMonths, SEL.meta.refresh.carriedMonths) && readFileSync(join(ROOT, "csv-sel", "engagement-programs.csv"), "utf8").includes(",yes,"), [selRun.stderr?.slice(-200), sel.json?.pull]);
+        isDeepStrictEqual(sel.json.pull.carriedMonths, SEL.meta.refresh.carriedMonths) && sel.json.leadCaveats[0] === `${SEL.meta.refresh.carriedMonths.length} month(s) carried forward from an earlier pull, not read again` && sel.json.leadCaveats.length === 2 && readFileSync(join(ROOT, "csv-sel", "engagement-programs.csv"), "utf8").includes(",yes,"), [selRun.stderr?.slice(-200), sel.json?.pull]);
     check("a full pull's report carries no carried-forward caveat", !md1.includes("carried forward"));
 
     const failed = structuredClone(GOLD);
@@ -325,7 +332,7 @@ try {
     const bad = report(["--snapshot", snapshotFile("failed", failed), "--report", outDir()]);
     check("a closed-month reconciliation mismatch is a FAILURE the report leads with: a banner before any table, the caveat first in the block, and the summary names the failed check",
       bad.code === 0 && bad.md.indexOf("RECONCILIATION FAILED") < bad.md.indexOf("## Headline by status") && bad.md.indexOf("RECONCILIATION FAILED") > 0 && section(bad.md, "## Caveats & data gaps").split("\n")[2].startsWith("- RECONCILIATION FAILED") &&
-        bad.json.reconciliation.closedMonthsOk === false && isDeepStrictEqual(bad.json.reconciliation.failedChecks, ["accounts-sum-to-program"]), bad.json?.reconciliation);
+        bad.json.reconciliation.closedMonthsOk === false && /^reconciliation FAILED/.test(bad.json.leadCaveats[0]) && isDeepStrictEqual(bad.json.reconciliation.failedChecks, ["accounts-sum-to-program"]), bad.json?.reconciliation);
     const drifting = structuredClone(GOLD);
     drifting.reconciliation.checks[0] = { ...drifting.reconciliation.checks[0], drift: 3 };
     drifting.caveats.push({ id: "incomplete-period-drift", detail: { from: "2026-09-01", checks: [{ id: "templates-sum-to-program", drift: 3 }] } });
@@ -367,6 +374,11 @@ try {
     const adapterFlags = flags(readFileSync(ENGINE, "utf8"));
     const reportFlags = flags(readFileSync(REPORT, "utf8"));
     const skillOnly = new Set(["--snapshot", "--csv", "--xlsx", "--slug"]);
+    const fence = skill.slice(skill.indexOf("### 6 — Final report")).split("```")[1];
+    const rules = skill.slice(skill.indexOf("Substitute from the step-4 summary JSON"));
+    const placeholders = [...new Set([...fence.matchAll(/<[a-zA-Z ]+>/g)].map((m) => m[0]))];
+    check("F-481: every placeholder of the final block has a substitution rule, and none asks the reader to choose: the Caveats line is filled from the summary's leadCaveats",
+      placeholders.length >= 12 && placeholders.every((ph) => rules.includes(`\`${ph}\``)) && fence.includes("<N> — <lead>") && rules.includes("`leadCaveats`") && !/most affect/.test(skill), placeholders.filter((ph) => !rules.includes(`\`${ph}\``)));
     const table = (heading) => [...(skill.split(heading)[1] ?? "").split("\n\n")[1].matchAll(/^\| `(--[a-z-]+)/gm)].map((m) => m[1]);
     const pullFlags = table("Pull flags");
     const repFlags = table("Report flags");

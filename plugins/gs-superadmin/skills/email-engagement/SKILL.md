@@ -107,6 +107,10 @@ node .gs-superadmin/plugin/scripts/engagement.mjs plan --kb <slug> --run <run> <
 - `<pull flags>` is every pull flag the user gave, from the table above, unchanged; a
   repeatable flag appears once per value. Omit it when the user gave none.
 
+The script prints one progress line per call on stderr, here and in step 3. They are
+progress only: a line that says a call is being tried once more, or was not found, is not
+a failure. The exit code and the summary decide.
+
 By exit code, before reading anything else:
 
 - `3` — the login is missing or expired (`status` is `token-expired`; there is no estimate).
@@ -192,7 +196,7 @@ skill; if that skill is unavailable, deliver the CSVs and say so (rule canon:
   Accounts:    <accounts line>
   Report:      <report path><extras>
   Snapshot:    <snapshot path>
-  Caveats:     <N> — <the one or two that most affect trust in this report>
+  Caveats:     <N> — <lead>
   Re-run:      <rerun>
 ```
 
@@ -211,9 +215,8 @@ Substitute from the step-4 summary JSON:
 - If `unmatchedNames` is not empty, add one line under `Programs:` in the same indentation:
   `Not found:   <names>`, with `<names>` = the entries of `unmatchedNames`, each in double
   quotes, comma-separated. Omit the line when it is empty.
-- `<N>` — `caveatCount`; then name the one or two caveats from the report that most affect
-  trust: a reconciliation failure first, then carried-forward months, then a missing
-  internal domain.
+- `<N>` — `caveatCount`. `<lead>` — the entries of `leadCaveats`, as written, joined with `; `.
+  The script chooses them (one or two, in a fixed order); do not pick others.
 - `<rerun>` — `rerun`. It rebuilds the report from the same snapshot and pulls nothing.
 
 Then answer the user's question from the finished report's own rows, quoting its numbers

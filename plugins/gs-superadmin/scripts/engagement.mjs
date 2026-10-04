@@ -1302,6 +1302,8 @@ function readFetchLog(runDir) {
 }
 
 const TEXT_FAMILIES = new Set(["whoami"]);
+// How a first failure that gets one more try reads in a progress line.
+const PROGRESS_KIND = { timeout: "timed out", outage: "no answer", "not-found": "not found" };
 const isRpRun = (d) => d.family in FAMILIES;
 
 /**
@@ -1343,11 +1345,16 @@ export function fetchEngagement(ctx) {
       }
       const r = transport.run({ id, argv, timeoutMs: params.timeoutMs });
       counts.made++;
-      onCall(`${id} ${r.ok ? "ok" : "failed"} (${r.ms} ms)`);
+      // The progress line says what was RECORDED for the call, once that is
+      // decided: a not-found that is retried and then settled as a deleted
+      // program never failed, and a line reading "failed" beside a summary
+      // with no failure leaves the reader to guess which to believe (F-479).
+      const say = (what) => onCall(`${id} ${what} (${r.ms} ms)`);
       // Non-empty stderr is not a failure: the CLI warns there and exits 0.
       if (r.ok) {
         const file = `calls/${id}.${TEXT_FAMILIES.has(d.family) ? "txt" : "json"}`;
         if (TEXT_FAMILIES.has(d.family)) {
+          say("ok");
           writeFileAtomicSync(join(runDir, file), r.stdout);
           return record({ ...d, id, status: "ok", file, attempt });
         }
@@ -1355,6 +1362,7 @@ export function fetchEngagement(ctx) {
         try {
           payload = JSON.parse(r.stdout);
         } catch {
+          say("failed: the answer is not JSON");
           failed.push({ id, family: d.family, kind: "unparseable" });
           record({ ...d, id, status: "failed", kind: "unparseable", attempt });
           return null;
@@ -1362,6 +1370,7 @@ export function fetchEngagement(ctx) {
         const rows = Array.isArray(payload) ? payload.length : null;
         // As long as the page: the server cut it and said nothing.
         const truncated = isRpRun(d) && rows != null && rows >= params.pageSize;
+        say(truncated ? "ok, a full page: it will be split" : "ok");
         if (FAMILIES[d.family]?.sanitize === "clicks" && Array.isArray(payload)) {
           payload = payload.map((row) => ROW_READERS["click-json"](row, params.unsubscribeLinks));
         }
@@ -1370,18 +1379,28 @@ export function fetchEngagement(ctx) {
       }
       const kind = classifyFailure(r);
       if (kind === "auth-expired") {
+        say("stopped: the token expired");
         stop = { reason: "token-expired", detail: "the CLI reported the token expired" };
         return null;
       }
       // Once more, on its own, before anything is concluded from it.
-      if (attempt === 1 && (kind === "timeout" || kind === "outage" || kind === "not-found")) { counts.retried++; continue; }
-      if (kind === "timeout") return record({ ...d, id, status: "split", kind, attempt });
+      if (attempt === 1 && (kind === "timeout" || kind === "outage" || kind === "not-found")) {
+        say(`${PROGRESS_KIND[kind]}: trying once more`);
+        counts.retried++;
+        continue;
+      }
+      if (kind === "timeout") {
+        say("timed out twice: it will be split");
+        return record({ ...d, id, status: "split", kind, attempt });
+      }
       if (kind === "not-found" && d.family === "describe") {
+        say("not found twice: recorded as a deleted program, not a failure");
         const file = `calls/${id}.json`;
         writeFileAtomicSync(join(runDir, file), JSON.stringify({ notFound: true }));
         return record({ ...d, id, status: "ok", file, notFound: true, attempt });
       }
       const failure = { id, family: d.family, kind: kind === "outage" ? "shape-error" : kind, stderr: printable(r.stderr, 300) };
+      say(`failed: ${failure.kind}`);
       failed.push(failure);
       record({ ...d, ...failure, status: "failed", attempt });
       return null;
