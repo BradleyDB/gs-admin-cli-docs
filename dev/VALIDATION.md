@@ -1296,3 +1296,95 @@ Picks and inputs: as for X0, from `.gs-superadmin/tmp/s1v-picks.md`. One walk fe
     joined with `; `, nothing chosen; step 4 run again over the same snapshot gave equal `leadCaveats` and
     `caveatCount` (compared by script). Walk: plan 8 calls / 43 s, pull 36 calls / 269 s wall against an estimate of
     35 calls / 327 s; no step made the walk stop or guess. F-481 VERIFIED.
+
+## HLT-1 / DSH-1 / DSH-5 — health facts on a real tenant with masking holding on real messages, grouping by program characteristics and by folder or name, and a spec export / import round trip (banked 2026-10-04, builder, Session S3 @ hb-20261004-04; verdict at V2)
+
+Owed by: V2, the batched verdict session after S4c, in the consumer workspace with the plugin loaded from `dev`
+(the PR for `feat/jo-dash-s3-health-spec` merges on green CI plus its review round, before V2).
+Why it is banked: the health facts, the spec writer and the grouping resolver were built offline against the
+fictional tenant and the stand-in CLI. What a real mail service writes into a bounce reason, what shape a failed
+participant's reason arrives in, whether the participant object's group-by returns or times out, and whether the
+grouping rules read sensibly on real program names and folders cannot be measured without a tenant.
+Tenant: the S1-V tenant (production reads are allowed once `gs-admin whoami` confirms it). Every call is a read.
+
+THIS LIST IS COMPLETE. It is everything this round judges for HLT-1, DSH-1 and DSH-5; a check that is not here is
+not owed, and a thing the round thinks should be here is a finding. Nothing is "noted on the verdict": anything
+observed beside a pass bar becomes an F-section on the bus, or a GitHub issue, before the round closes.
+
+Picks and inputs, settled before the first call: the tenant's internal domains and unsubscribe links, P-busy and
+P-survey from the S1-V rounds, and one closed month `<M>` (all in the consumer workspace,
+`.gs-superadmin/tmp/s1v-picks.md`; tenant data, never copied here). Before Y9, Bradley names two folder ids with the
+label each should carry, and says whether program names follow a separator convention. `<common>` stands for every
+`--internal-domain` and `--unsubscribe-link`, once each. No pick, id, name, count or message text is copied into
+this file or the bus: results are recorded as passed or failed, ratios and orders of magnitude.
+
+- Y0 (the contract, before any call). Bradley reads the executor's choices in the plan's As-shipped (S3) notes
+  under HLT-1, DSH-1 and DSH-5 and rules on each: health facts off unless `--health` is passed; messages at
+  template grain even with step detail on; schedules read from the KB, not live; participant failures all time;
+  the spec's `health.silentDays`, `purpose` and `tenantHost` fields and its `save` and `list` verbs; one rule per
+  level with `within`.
+  Pass bar: each is confirmed or overruled before T-11 has a second reader (S4a). An overrule that removes or
+  re-types a field is the builder's change before S4a starts.
+- Y1 (health facts on a real tenant). `engagement.mjs plan <common> --health --kb <slug> --run v2-health`, then
+  `run` with the same flags and `--out <slug>/reports-adhoc/v2-health.json`.
+  Pass bar: exit 0 with `ok: true`; `health.pulled` true; every part of `health.parts` is either pulled or carries
+  a reason, and a part that is not pulled has an empty table and a `health-incomplete` caveat naming it. The pull's
+  health calls are within 2x of `estimate.health.addsCalls` (read both from the summary and the fetch log's
+  `health-` records). Record the health calls made, their seconds, how many split, and which parts were not read.
+  The same pull without `--health` (plan only) plans exactly `addsCalls` fewer calls.
+- Y2 (masking holds on real messages). Over Y1's snapshot and Y1's run directory, by script: search every
+  `facts.health` message, and every payload file of a `health-bounce` or `health-reasons` call, for an `@`, a run
+  of five or more digits, and an IPv4 address.
+  Pass bar: zero hits in the snapshot and zero in the payload files (the raw text never reached disk). Then Bradley
+  reads the twenty most frequent masked bounce messages and every participant-failure message: none names a
+  person, an address or a record, and each still says what went wrong. Record the ratio of distinct masked bounce
+  messages to bounced attempts (grouping works when it is far below 1) and any text a rule should have caught and
+  did not (a finding, with the pattern described, never quoted).
+- Y3 (the failed-participant reason's shape, which the build assumed). One direct read of five plain rows of
+  `ao_failed_participants` showing `FailureReasons`, through the spike's catalog-checked runner, scrubbed: record
+  the cell's SHAPE only (text; JSON array; an object; the `{type=json, value=…}` wrapper).
+  Pass bar: Y1's `participantFailures` messages are sentences a person can act on, not JSON text and not a key
+  dump. A shape `readFailureReasons` reads as one opaque blob is a finding.
+- Y4 (bounce reasons reconcile). In Y1's snapshot the reconciliation check `bounce-reasons-sum-to-bounced` is ok
+  with no closed-month mismatch. For P-busy and `<M>`, one direct count of `IsBounced = YES` attempts equals the
+  sum of that program-month's `bounceReasons` counts.
+- Y5 (send failures, counted once). For P-busy and `<M>`: three direct counts (`IsBounced = YES`; `IsRejected =
+  YES`; both) give bounced + rejected - both, which must equal the snapshot's `failed` for that program-month, and
+  the report's error rate is that over Sent. Record whether any attempt on the tenant carries both flags (if none
+  does, say so: the union is then unexercised here).
+- Y6 (silent programs). `silentPrograms` over Y1's snapshot at 30 days (a node one-liner over the snapshot file).
+  Pass bar: Bradley recognises the list: every program on it is Active and has not sent in 30 days, and no Active
+  program he knows to be silent is missing. For two programs on it, a direct program x day read of the last 90
+  days shows no later send. An Active program with no send in the window at all is on the list with no dates.
+- Y7 (participant states and failures). For P-survey: a direct group-by of `ao_participants` by `ParticipantState`
+  equals the snapshot's `participantStates` rows, and a direct count of its `ao_failed_participants` rows equals
+  the sum of its `participantFailures` rows' participants when every row carries one reason (when rows carry
+  several, the sum is larger: record which holds). Record whether any `health-states` batch timed
+  out, and that a timed-out batch made exactly two attempts and left the part marked not read.
+- Y8 (schedules, from the KB). For one program whose schedule Bradley can see failing or healthy in the Gainsight
+  UI: the snapshot's `schedules` row reads the same `lastRunSuccess`, with `asOf` the date its KB doc was last
+  verified, and the `schedules-from-kb` caveat is present. A program with no full KB doc has no row. If the KB is
+  stale against the UI, that is the caveat working, not a failure; record the age.
+- Y9 (grouping by program characteristics). `dashboard-spec.mjs draft --kb <slug> --slug v2-groups`, then `set`
+  `groups.rules` to: a supergroup rule on `sendsSurveys` true, one on `audience` USER, one on `recurring` true and
+  one on `recurring` false; a group rule on each survey model inside the survey supergroup. `save`, then
+  `dashboard-groups.mjs suggest-input --snapshot <Y1> --out <tmp>` and `resolve --snapshot <Y1> --spec <saved>`.
+  Pass bar: the summary line and counts print and no program name reaches stdout; Bradley checks ten assignments
+  against the Gainsight UI, a Dynamic Program that sends a survey among them (it must read as sending surveys);
+  the count of programs whose `recurring` is unknown equals the programs with no full KB doc; nothing is assigned
+  on a guess. The suggestion file is small enough to read (record its size) and holds no account or address.
+- Y10 (grouping by the tenant's folder ids, or by a naming pattern). `draft` again over the saved spec; `set` a
+  folder rule with Bradley's two folder ids and labels, and, if names follow a convention, a name-segment rule;
+  `save`; `resolve` with `--previous <an earlier snapshot>`.
+  Pass bar: every program of those two folders is in the labelled group and no other program is; a folder given
+  no label reads "Folder <id>"; the line reads "N new programs ungrouped" with N the ungrouped programs the
+  earlier snapshot did not hold; a program no rule reaches is in "Ungrouped".
+- Y11 (a spec export / import round trip). `export --slug v2-groups --out <tmp>/v2-groups.export.json`; copy the
+  prod KB's `_manifest.json` into a scratch folder and `import` there; then `import` into the sandbox's KB folder.
+  Pass bar: the imported `spec.json` is byte for byte the original; the export file holds no path of the machine
+  (search it for the user profile path and a drive letter); the sandbox import is refused naming both tenants and
+  writes nothing; a second import over the first is refused without `--replace`.
+- Y12 (the spec in words). `show --slug v2-groups`.
+  Pass bar: every setting reads as a sentence a person who has not seen the spec can follow; the group rules read
+  in their order with their labels; nothing is described that the spec does not hold. Wording Bradley would
+  change is a polish finding with the sentence's label, not its text.

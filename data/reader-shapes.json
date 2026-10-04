@@ -2287,7 +2287,7 @@
         ]
       },
       "readers": [
-        "engagement.mjs ROW_READERS — one reader per call family of the jo-engagement adapter (send-log rows by template, account and step; distinct counts; clicked sends and their LinkClickedJson; survey responses; company names). reduceEngagement and the fetch-time click stripper read rows through these and nothing else."
+        "engagement.mjs ROW_READERS — one reader per call family of the jo-engagement adapter (send-log rows by template, account and step; distinct counts; clicked sends and their LinkClickedJson; survey responses; company names; and the health reads: bounced attempts with their reason, a program's send days, failed participants with their reasons, participants by state). reduceEngagement and the fetch-time click stripper read rows through these and nothing else."
       ],
       "modules": [
         "scripts/engagement.mjs"
@@ -2315,8 +2315,20 @@
         "[].ao_emails_StepId.v",
         "[].ao_emails_Unsubscribed",
         "[].ao_emails_Unsubscribed.v",
+        "[].ao_failed_participants_AdvancedOutreachId",
+        "[].ao_failed_participants_AdvancedOutreachId.v",
+        "[].ao_failed_participants_FailureReasons",
+        "[].ao_failed_participants_FailureReasons.fv",
+        "[].ao_failed_participants_FailureReasons.v",
+        "[].ao_failed_participants_OccurrenceCount",
+        "[].ao_failed_participants_OccurrenceCount.k",
+        "[].ao_failed_participants_OccurrenceCount.v",
         "[].ao_participants_AOParticipantId__gr_AdvancedOutreachId",
         "[].ao_participants_AOParticipantId__gr_AdvancedOutreachId.v",
+        "[].ao_participants_AdvancedOutreachId",
+        "[].ao_participants_AdvancedOutreachId.v",
+        "[].ao_participants_ParticipantState",
+        "[].ao_participants_ParticipantState.v",
         "[].company_GsCompanyId__gr_Gsid",
         "[].company_GsCompanyId__gr_Gsid.v",
         "[].company_Gsid",
@@ -2335,6 +2347,9 @@
         "[].count_of_ao_emails_Gsid",
         "[].count_of_ao_emails_Gsid.k",
         "[].count_of_ao_emails_Gsid.v",
+        "[].count_of_ao_participants_Gsid",
+        "[].count_of_ao_participants_Gsid.k",
+        "[].count_of_ao_participants_Gsid.v",
         "[].count_of_email_log_v2_Gsid",
         "[].count_of_email_log_v2_Gsid.k",
         "[].count_of_email_log_v2_Gsid.v",
@@ -2343,6 +2358,11 @@
         "[].count_of_survey_participant_Gsid.v",
         "[].email_log_v2_AddressType",
         "[].email_log_v2_AddressType.v",
+        "[].email_log_v2_BounceType",
+        "[].email_log_v2_BounceType.v",
+        "[].email_log_v2_BouncedReason",
+        "[].email_log_v2_BouncedReason.fv",
+        "[].email_log_v2_BouncedReason.v",
         "[].email_log_v2_EmailLogId__gr_Gsid",
         "[].email_log_v2_EmailLogId__gr_Gsid.v",
         "[].email_log_v2_EmailTemplateId",
@@ -2369,6 +2389,8 @@
         "[].email_log_v2_Source.v",
         "[].email_log_v2_SourceId",
         "[].email_log_v2_SourceId.v",
+        "[].summarize_day_of_email_log_v2_ExecutedDate",
+        "[].summarize_day_of_email_log_v2_ExecutedDate.k",
         "[].summarize_month_of_ao_emails_CreatedAt",
         "[].summarize_month_of_ao_emails_CreatedAt.k",
         "[].summarize_month_of_email_log_v2_ExecutedDate",
@@ -2382,6 +2404,12 @@
       "walks": [],
       "enumerated": {},
       "alternates": {
+        "[].ao_failed_participants_FailureReasons.v": [
+          "[].ao_failed_participants_FailureReasons.fv"
+        ],
+        "[].ao_failed_participants_OccurrenceCount.v": [
+          "[].ao_failed_participants_OccurrenceCount.k"
+        ],
         "[].count_distinct_of_ao_participants_Gsid.v": [
           "[].count_distinct_of_ao_participants_Gsid.k"
         ],
@@ -2394,6 +2422,9 @@
         "[].count_of_ao_emails_Gsid.v": [
           "[].count_of_ao_emails_Gsid.k"
         ],
+        "[].count_of_ao_participants_Gsid.v": [
+          "[].count_of_ao_participants_Gsid.k"
+        ],
         "[].count_of_email_log_v2_Gsid.v": [
           "[].count_of_email_log_v2_Gsid.k"
         ],
@@ -2405,7 +2436,10 @@
         "[].url"
       ],
       "recognized": [],
-      "embedded": [],
+      "embedded": [
+        "[].ao_failed_participants_FailureReasons.fv",
+        "[].ao_failed_participants_FailureReasons.v"
+      ],
       "pluginAuthored": [],
       "pluginKeys": [],
       "floor": [
@@ -2425,8 +2459,8 @@
       "floorMissing": [],
       "note": "The output is a bare array of rows whose keys are the CLI's column aliases: <object>_<Field> for a group or plain column, summarize_month_of_<object>_<Field> for a month bucket (read by its sortable k), count_of_<object>_Gsid, <target>_<lookup>__gr_<leaf> for a fieldPath group and count_distinct_of_<target>_<leaf> for a fieldPath distinct count. A null group value has no v key, which is why every cell is read with an `in` test. Every reader runs over every family's rows, so a column one family lacks is recorded as named-while-absent rather than missed.",
       "probes": {
-        "fixtures": 21,
-        "runs": 2374,
+        "fixtures": 25,
+        "runs": 3269,
         "unprobed": 0
       }
     },
@@ -2578,6 +2612,10 @@
       "why": "the SessionStart hook — parses its OWN child's summary (scaffold.mjs check --json, F-396), never tenant output; the child hashes template files and parses no JSON at all"
     },
     {
+      "file": "scripts/dashboard-spec.mjs",
+      "why": "the dashboard spec writer — parses the JSON values of its own --set flags; the files it reads are specs it wrote, never tenant output"
+    },
+    {
       "file": "hooks/gs-admin-guard.mjs",
       "why": "hook stdin + the catalog — never tenant output"
     }
@@ -2591,6 +2629,7 @@
     "files": [
       "hooks/gs-admin-guard.mjs",
       "scripts/capture.mjs",
+      "scripts/dashboard-spec.mjs",
       "scripts/describe-batch.mjs",
       "scripts/doc-lib.mjs",
       "scripts/engagement.mjs",

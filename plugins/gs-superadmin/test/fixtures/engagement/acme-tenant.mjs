@@ -30,10 +30,18 @@
 //     warning on stderr; when no show field is left the request is refused
 //     (read off the CLI's dist/artifacts/validators/report.js at 1.0.10:
 //     normalizeGroupByDedup, then assertShowFieldsNonEmpty)
+//   - a field typed JSONSTRING cannot be grouped by or distinct-counted: the
+//     call fails with the "network outage" text; plain rows of it are returned
+//   - day buckets are summarize_day_of_<obj>_<Field> with k = YYYY-MM-DD
+//   - a bounce reason comes back in `fv`, and in `v` too on only some rows
 // Every behaviour above was measured on a real tenant. One is still ASSUMED,
 // measured only where it has nothing to act on: DOES_NOT_CONTAINS keeps a row
 // whose field is null (the measured tenant has no in-scope send with a null
-// address).
+// address). One SHAPE is assumed as well, because the spike recorded it only
+// in words: a failed participant's FailureReasons is "a short product message"
+// in plain rows. The fixture writes it as plain text, and one row as a JSON
+// array of texts; the adapter's reader takes either, and the live check banked
+// beside HLT-1 reads the real one.
 // Values are fictional throughout (acme.com is the tenant's own domain, the
 // customers live under example.com); the SHAPES are the tenant's.
 //
@@ -71,6 +79,8 @@ const PROGRAMS = [
   {
     id: "p-onboard", name: "Acme Onboarding Chain", model: "DRIPV2", modelName: "Email Chain", statuses: ["PROCESSING"], type: "CUSTOMER", folderId: "101",
     months: monthsBetween(FIRST_MONTH, LAST_MONTH), accounts: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9], perAccount: 2, internalOn: 0,
+    // Its last scheduled run FAILED (the health facts read this from the KB doc).
+    schedules: [{ type: "CRON", cronExpression: "0 0 8 ? * MON *", lastRunSuccess: false, lastSuccessTime: 1756712400000, nextRunTime: 1757926800000, runningNow: false, timeZoneName: "America/Los_Angeles", jobType: "PARTICIPANT_SYNC" }],
     steps: [
       { stepId: "st-ob-1", stepName: "Welcome", order: 1, templateId: "tpl-welcome", variants: ["var-welcome-a", "var-welcome-b"] },
       { stepId: "st-ob-2", stepName: "Day 7 check-in", order: 2, templateId: "tpl-day7", variants: ["var-day7"] },
@@ -79,6 +89,7 @@ const PROGRAMS = [
   {
     id: "p-nps", name: "Acme NPS Survey", model: "CSAT_SURVEY_V2", modelName: "CSAT Survey", statuses: ["PROCESSING"], type: "CUSTOMER", folderId: "101",
     months: ["2025-10", "2026-01", "2026-04", "2026-07"], accounts: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11], perAccount: 1, survey: true,
+    schedules: [{ type: "CRON", cronExpression: "0 0 9 1 * ? *", lastRunSuccess: true, lastSuccessTime: 1756717200000, nextRunTime: 1759309200000, runningNow: false, timeZoneName: "America/Los_Angeles", jobType: "PARTICIPANT_SYNC" }],
     steps: [{ stepId: "st-nps-1", stepName: "Survey email", order: 1, templateId: "tpl-nps", variants: ["var-nps"] }],
   },
   {
@@ -126,6 +137,14 @@ const BLAST = {
   id: "p-blast", name: "Acme Mass Send", model: "DRIPV2", modelName: "Email Chain", statuses: ["PROCESSING"], type: "CUSTOMER", folderId: "505",
   months: ["2026-07"], steps: [{ stepId: "st-bl-1", stepName: "Announcement", order: 1, templateId: "tpl-blast", variants: ["var-blast"] }],
 };
+// Only with the silent variant (HLT-1): an Active program whose last send is
+// months back (before the day window the health facts read), and an Active
+// program that has never sent anything in the window at all.
+const QUIET = {
+  id: "p-quiet", name: "Acme Quiet Chain", model: "DRIPV2", modelName: "Email Chain", statuses: ["PROCESSING"], type: "CUSTOMER", folderId: "606",
+  months: ["2026-02"], accounts: [0, 1], perAccount: 1, steps: [{ stepId: "st-qt-1", stepName: "Quiet note", order: 1, templateId: "tpl-quiet", variants: ["var-quiet"] }],
+};
+const NEVER = { id: "p-never", name: "Acme Never Sent", model: "DRIPV2", modelName: "Email Chain", statuses: ["PROCESSING"], type: "CUSTOMER", folderId: "606", months: [], steps: [] };
 const BLAST_ACCOUNTS = Array.from({ length: 60 }, (_, i) => ({ Gsid: `co-b${pad(i + 1)}`, Name: `Acme Blast Customer ${pad(i + 1)}` }));
 const BLAST_NAMES = ["ann", "bo", "cy", "dee", "eli", "fay", "gus", "hal", "ivy", "jo", "kit", "lou", "max", "ned", "oz", "pru", "quin", "roy", "sy", "tu"];
 export const OWN_SITE_UNSUBSCRIBE = "https://www.acme.com/mail-settings";
@@ -133,7 +152,7 @@ export const OWN_SITE_UNSUBSCRIBE = "https://www.acme.com/mail-settings";
 const TEMPLATE_NAMES = {
   "tpl-welcome": "Acme Welcome", "tpl-day7": "Acme Day 7", "tpl-nps": "Acme NPS Request", "tpl-renew": "Acme Renewal",
   "tpl-renew-b": "Acme Renewal Thanks", "tpl-promo": "Acme Promo", "tpl-unlisted": "Acme Unlisted", "tpl-gone": "Acme Gone",
-  "tpl-prefs": "Acme Prefs", "tpl-prefs-mix": "Acme Prefs Follow-up", "tpl-blast": "Acme Announcement",
+  "tpl-prefs": "Acme Prefs", "tpl-prefs-mix": "Acme Prefs Follow-up", "tpl-blast": "Acme Announcement", "tpl-quiet": "Acme Quiet",
 };
 // Click behaviour per template (the five R19 fixtures ride on these):
 //   content — content-link clicks are recorded
@@ -153,6 +172,26 @@ const INTERNAL_PEOPLE = [
   { id: "pe-int-2", email: `raj@${INTERNAL_DOMAIN}` },
   { id: "pe-int-3", email: `lee@${INTERNAL_DOMAIN}` },
 ];
+
+// ── Raw error messages (HLT-1) ──────────────────────────────────────────────
+// What a mail service writes for a bounce: free text that NAMES the recipient
+// and carries ids. Every address and id here is fictional. `kind` is the
+// oracle's key: which message a row is, written by the generator that chose it.
+export const BOUNCE_REASONS = [
+  { kind: "unknown-user", text: (email, n) => `550 5.1.1 <${email}>: Recipient address rejected: User unknown in virtual mailbox table (ref ${8842100000 + n})` },
+  { kind: "policy", text: (email, n) => `smtp;554 5.7.1 Message for ${email} blocked by policy at 203.0.113.${n % 250}, id=4f9a2c1e-0000-4000-8000-${String(100000000000 + n)}` },
+  { kind: "mailbox-full", text: () => "452 4.2.2 Mailbox full" },
+  { kind: "none", text: () => null },
+];
+const bounceReason = (n) => BOUNCE_REASONS[n % BOUNCE_REASONS.length];
+// What the product writes for a participant it could not process.
+export const FAILURE_REASONS = [
+  { kind: "invalid-email", text: (i) => `Email address first.last${i}@c0${(i % 9) + 1}.example.com is invalid` },
+  { kind: "no-company", text: (i) => `Participant 1P02ACMEX${String(1000000 + i)}ZQ has no company` },
+  // One row carries its reasons as a JSON array of texts.
+  { kind: "array", text: () => JSON.stringify(["Missing required field: Email", "Duplicate participant"]) },
+];
+const PARTICIPANT_STATES = ["ACTIVE", "COMPLETED", "ACTIVE", "COMPLETED", "DROP", "ACTIVE", "SYSTEM_ERROR", "COMPLETED", "KNOCKED_OFF"];
 
 const wrapClicks = (entries) => `{type=json, value=${JSON.stringify(entries)}, null=true}`;
 const LINKS = {
@@ -182,6 +221,9 @@ const CONTENT_KINDS = new Set(["content", "lookalike"]);
  *   massDay         true — one more program, which sends to sixty accounts on a single day
  *   massMonth       "YYYY-MM" — the month of that day (default 2026-07)
  *   orphanClicks    true — the sends with no company link are clicked on a content link (F-473)
+ *   bothFlags       true — some attempts that bounced at send are ALSO flagged rejected (one failure, two flags)
+ *   silent          true — two more Active programs: one whose last send is months back, one with no send at all
+ *   noHealthObjects true — ao_failed_participants and ao_participants have no schema
  */
 export function buildTenant(variant = {}) {
   const log = [];
@@ -199,7 +241,7 @@ export function buildTenant(variant = {}) {
     const tpl = step.templateId;
     const sent = n % 11 !== 0;
     const bounced = sent ? n % 37 === 0 : n % 2 === 0;
-    const rejected = !sent && !bounced;
+    const rejected = (!sent && !bounced) || (!!variant.bothFlags && !sent && bounced && n % 4 === 0);
     let opened = sent && n % 3 !== 0;
     if (variant.lateOpens && sent && month < "2026-07") opened = true;
     const mode = CLICK_MODE[tpl] ?? "none";
@@ -223,12 +265,15 @@ export function buildTenant(variant = {}) {
       ExecutedDate: executed, SentDate: sent ? executed : null,
       IsSent: sent ? "YES" : "NO", IsOpened: opened ? "YES" : "NO", IsBounced: bounced ? "YES" : "NO",
       IsRejected: rejected ? "YES" : "NO", IsUnsubscribed: sent && n % 53 === 0 ? "YES" : "NO", IsSpam: sent && n % 97 === 0 ? "YES" : "NO",
+      BounceType: bounced ? (n % 3 === 0 ? "SOFT_BOUNCE" : "HARD_BOUNCE") : null,
+      BouncedReason: bounced ? bounceReason(n).text(email, n) : null,
       LowerCaseEmailId: email, GsCompanyId: account, GsPersonId: person,
       LinkClickedCount: links ? links.reduce((a, l) => a + l.clickedCount, 0) : 0,
       LinkClickedJson: links ? (variant.rawClickJson ? JSON.stringify(links) : wrapClicks(links)) : null,
       // Oracle-only (underscore keys are invisible to answer()): what the row's
       // clicks ARE, written by the generator that chose them.
       _contentClick: !!kinds && kinds.some((k) => CONTENT_KINDS.has(k)),
+      _bounceKind: bounced ? bounceReason(n).kind : null,
     };
     log.push(row);
     if (source !== JO_SOURCE || addressType !== "To") return;
@@ -237,7 +282,7 @@ export function buildTenant(variant = {}) {
     // months, so participant records outnumber people.
     const entry = program.id === "p-onboard" ? Math.floor(program.months.indexOf(month) / 6) : 0;
     const parId = `par-${program.id}-${person}-${entry}`;
-    participants.set(parId, { Gsid: parId, AdvancedOutreachId: program.id });
+    if (!participants.has(parId)) participants.set(parId, { Gsid: parId, AdvancedOutreachId: program.id, ParticipantState: PARTICIPANT_STATES[participants.size % PARTICIPANT_STATES.length] });
     const variantId = step.variants[n % step.variants.length];
     joLog.push({
       Gsid: `jo-${String(n).padStart(5, "0")}`, AdvancedOutreachId: program.id, StepId: step.stepId,
@@ -261,9 +306,9 @@ export function buildTenant(variant = {}) {
     }
   };
 
-  const listed = [...PROGRAMS, ...(variant.ownSiteUnsub ? [OWN_SITE] : []), ...(variant.massDay ? [BLAST] : [])];
+  const listed = [...PROGRAMS, ...(variant.ownSiteUnsub ? [OWN_SITE] : []), ...(variant.massDay ? [BLAST] : []), ...(variant.silent ? [QUIET, NEVER] : [])];
   // A variant's program goes last, so every other send keeps its number.
-  for (const program of [...PROGRAMS, UNLISTED, DELETED, ...(variant.ownSiteUnsub ? [OWN_SITE] : [])]) {
+  for (const program of [...PROGRAMS, UNLISTED, DELETED, ...(variant.ownSiteUnsub ? [OWN_SITE] : []), ...(variant.silent ? [QUIET] : [])]) {
     for (const month of program.months) {
       for (const step of program.steps) {
         if (program.internalOnly) {
@@ -298,7 +343,7 @@ export function buildTenant(variant = {}) {
   // counts are larger than any window's, as on a program older than the window.
   for (const [i, status] of ["Submitted", "Submitted", "Partially Submitted", null].entries()) {
     const parId = `par-p-nps-early-${i}`;
-    participants.set(parId, { Gsid: parId, AdvancedOutreachId: "p-nps" });
+    participants.set(parId, { Gsid: parId, AdvancedOutreachId: "p-nps", ParticipantState: "COMPLETED" });
     surveyRows.push({ Gsid: `sp-early-${i}`, AOParticipantId: parId, Responded: status != null, RespondedDate: status ? `2025-03-1${i}T12:00:00.000Z` : null, ResponseStatus: status ?? "Not Responded", SurveyOpened: true });
   }
 
@@ -306,17 +351,27 @@ export function buildTenant(variant = {}) {
   // one of them a submitted response inside the window.
   for (const [i, status] of ["Submitted", null, null].entries()) {
     const parId = `par-p-nps-test-${i}`;
-    participants.set(parId, { Gsid: parId, AdvancedOutreachId: "p-nps" });
+    participants.set(parId, { Gsid: parId, AdvancedOutreachId: "p-nps", ParticipantState: "COMPLETED" });
     surveyRows.push({ Gsid: `sp-test-${i}`, AOParticipantId: parId, Responded: status != null, RespondedDate: status ? "2026-07-20T12:00:00.000Z" : null, ResponseStatus: status ?? "Not Responded", SurveyOpened: true, TestParticipant: true });
   }
   for (const r of surveyRows) if (!("TestParticipant" in r)) r.TestParticipant = false;
+
+  // Participants the programs could not process: one row each, with the reason
+  // as the product wrote it. p-gone's are a deleted program's and must be left out.
+  const failedParticipants = [];
+  for (const [programId, count] of /** @type {Array<[string, number]>} */ ([["p-onboard", 7], ["p-renew", 4], ["p-gone", 2]])) {
+    for (let i = 0; i < count; i++) {
+      const reason = FAILURE_REASONS[(i + (programId === "p-renew" ? 1 : 0)) % FAILURE_REASONS.length];
+      failedParticipants.push({ Gsid: `fp-${programId}-${i}`, AdvancedOutreachId: programId, FailureReasons: reason.text(i), OccurrenceCount: 1 + (i % 3), _failureKind: reason.kind });
+    }
+  }
 
   if (variant.extraJoRow) joLog.push({ ...joLog.find((r) => r.AdvancedOutreachId === "p-onboard" && r.CreatedAt.startsWith("2026-08")), Gsid: "jo-extra", EmailLogId: null });
 
   const fields = (names, types = {}) => names.map((fieldName) => ({ fieldName, dataType: types[fieldName] ?? "STRING", meta: { filterable: true, groupable: true, aggregatable: true } }));
   const schemas = {
     email_log_v2: fields(
-      ["Gsid", "Source", "SourceId", "SourceName", "AddressType", "EmailTemplateId", "EmailTemplateName", "ExecutedDate", "SentDate", "IsSent", "IsOpened", "IsBounced", "IsRejected", "IsUnsubscribed", "IsSpam", "LowerCaseEmailId", "GsCompanyId", "GsPersonId", "LinkClickedCount", "LinkClickedJson"],
+      ["Gsid", "Source", "SourceId", "SourceName", "AddressType", "EmailTemplateId", "EmailTemplateName", "ExecutedDate", "SentDate", "IsSent", "IsOpened", "IsBounced", "IsRejected", "IsUnsubscribed", "IsSpam", "BounceType", "BouncedReason", "LowerCaseEmailId", "GsCompanyId", "GsPersonId", "LinkClickedCount", "LinkClickedJson"],
       { Gsid: "GSID", ExecutedDate: "DATETIME", SentDate: "DATETIME", LowerCaseEmailId: "EMAIL", GsCompanyId: "LOOKUP", GsPersonId: "LOOKUP", LinkClickedCount: "NUMBER" }
     ),
     ao_emails: fields(
@@ -328,14 +383,17 @@ export function buildTenant(variant = {}) {
       { Gsid: "GSID", AOParticipantId: "LOOKUP", Responded: "BOOLEAN", RespondedDate: "DATETIME", SurveyOpened: "BOOLEAN", TestParticipant: "BOOLEAN" }
     ),
     company: fields(["Gsid", "Name"], { Gsid: "GSID" }),
+    ao_failed_participants: fields(["Gsid", "AdvancedOutreachId", "FailureReasons", "OccurrenceCount"], { Gsid: "GSID", FailureReasons: "JSONSTRING", OccurrenceCount: "NUMBER" }),
+    ao_participants: fields(["Gsid", "AdvancedOutreachId", "ParticipantState"], { Gsid: "GSID" }),
   };
+  if (variant.noHealthObjects) { delete schemas.ao_failed_participants; delete schemas.ao_participants; }
   if (variant.dropSchemaField) {
     const { object, field } = variant.dropSchemaField;
     schemas[object] = schemas[object].filter((f) => f.fieldName !== field);
   }
   if (variant.noSurveyObject) delete schemas.survey_participant;
 
-  const tables = { email_log_v2: log, ao_emails: joLog, survey_participant: surveyRows, company: variant.massDay ? [...ACCOUNTS, ...BLAST_ACCOUNTS] : ACCOUNTS, ao_participants: [...participants.values()] };
+  const tables = { email_log_v2: log, ao_emails: joLog, survey_participant: surveyRows, company: variant.massDay ? [...ACCOUNTS, ...BLAST_ACCOUNTS] : ACCOUNTS, ao_participants: [...participants.values()], ao_failed_participants: failedParticipants };
   const byGsid = Object.fromEntries(Object.entries(tables).map(([name, rows]) => [name, new Map(rows.map((r) => /** @type {[string, *]} */ ([r.Gsid, r])))]));
   const token = variant.token ?? { state: "valid", seconds: 3200 };
   return {
@@ -362,6 +420,8 @@ export function programPayload(p) {
       advancedOutreach: {
         advancedOutreachId: p.id, advancedOutreachName: p.name, advancedOutreachModel: p.model, advancedOutreachModelName: p.modelName,
         advancedOutreachType: p.type, advancedOutreachStatus: p.statuses[0], folderId: p.folderId, stepJson: JSON.stringify(stepJson),
+        // A schedule sits on the participant source, as embedded JSON.
+        ...(p.schedules ? { participantSourceConfigurations: [{ participantSourceConfigurationId: `psc-${p.id}`, participantSourceType: "QUERY", scheduleInfo: JSON.stringify({ schedules: p.schedules }) }] } : {}),
       },
       versions: [],
     },
@@ -375,8 +435,8 @@ export const listedPrograms = () => PROGRAMS;
 // never showed setup.
 export function kbFiles(slug = "acme-prod") {
   const files = {
-    [`${slug}/_manifest.json`]: JSON.stringify({ slug, baseUrl: "https://acme.gainsightcloud.com", environment: "production", created: "2026-01-01T00:00:00.000Z", last_refresh: null, inventory: {} }, null, 2),
   };
+  const inventory = {};
   for (const p of PROGRAMS) {
     if (!p.steps.length || p.id === "p-promo") continue;
     files[`${slug}/journey/${p.id}.md`] = [
@@ -385,7 +445,10 @@ export function kbFiles(slug = "acme-prod") {
       `- key: journey/${p.id}`, `- id: ${p.id}`, `- name: ${p.name}`, "",
       "```json", JSON.stringify(programPayload(p), null, 2), "```", "",
     ].join("\n");
+    // When the doc was last checked against the tenant: what a schedule result read from it is "as of".
+    inventory[`journey/${p.id}`] = { last_verified: p.id === "p-onboard" ? "2026-09-01T00:00:00.000Z" : "2026-08-20T00:00:00.000Z" };
   }
+  files[`${slug}/_manifest.json`] = JSON.stringify({ slug, baseUrl: "https://acme.gainsightcloud.com", environment: "production", created: "2026-01-01T00:00:00.000Z", last_refresh: null, inventory }, null, 2);
   return files;
 }
 
@@ -413,6 +476,11 @@ const monthCell = (iso) => {
   const y = iso.slice(0, 4);
   const m = iso.slice(5, 7);
   return { k: `${y}-${m}-01`, v: `${m}-01-${y}`, fv: `${MON[Number(m) - 1]}-${y}` };
+};
+const dayCell = (iso) => {
+  if (iso == null) return { fv: "" };
+  const [y, m, d] = [iso.slice(0, 4), iso.slice(5, 7), iso.slice(8, 10)];
+  return { k: `${y}-${m}-${d}`, v: `${m}-${d}-${y}`, fv: `${d}-${MON[Number(m) - 1]}-${y}` };
 };
 const plainCell = (v, type) => {
   if (v == null) return { fv: "" };
@@ -482,6 +550,9 @@ function rpRun(argv, tenant) {
     show = kept;
   }
   if (!show.length) return fail(`${dedupWarning ? `${dedupWarning}\n` : ""}Error: Report must have at least one entry in showFields (spec §2.1, EMPTY_SHOW_ME_FIELDS).`);
+  // A JSON-typed field can be shown, never grouped by or distinct-counted: the
+  // server fails with a text that reads like an outage.
+  if ([...group, ...show.filter((e) => e.aggregation === "COUNT_DISTINCT")].some((e) => !e.fieldPath && types.get(e.name) === "JSONSTRING")) return fail(FAULT_TEXT.outage);
   let rows;
   try {
     rows = tenant.tables[object].filter((r) => (where.conditions ?? []).every((c) => evalCond(r, c, types)));
@@ -501,6 +572,7 @@ function rpRun(argv, tenant) {
       return [`${hop.to}_${hop.through}__gr_${g.fieldPath.leaf}`, v == null ? { fv: "" } : { v, fv: String(v) }];
     }
     if (g.summarize === "Month") return [`summarize_month_of_${object}_${g.name}`, monthCell(row[g.name])];
+    if (g.summarize === "Day") return [`summarize_day_of_${object}_${g.name}`, dayCell(row[g.name])];
     // Grouping on a LOOKUP resolves to the target's name field, which is empty:
     // no `v`, and every row lands in ONE group.
     if (types.get(g.name) === "LOOKUP") return [`${object}_${g.name}__gr_Name`, { fv: "" }];
@@ -539,6 +611,11 @@ function rpRun(argv, tenant) {
     }
   } catch (e) {
     return fail(e.message);
+  }
+  // A bounce reason is in `fv` on every row and in `v` on only some of them.
+  for (const r of out) {
+    const cell = r[`${object}_BouncedReason`];
+    if (cell && typeof cell.v === "string" && cell.v.length % 2 === 1) delete cell.v;
   }
   out.reverse(); // rows are not returned in any useful order
   const ps = flagValue(argv, "--page-size");

@@ -138,6 +138,10 @@ const ENG_UNITS = {
   "step-click": { cls: "all", window: ENG_SPAN, programs: ENG_PROGRAMS },
   "participants-month": { cls: "all", window: ENG_SPAN, programs: ENG_PROGRAMS },
   "participants-window": { cls: "all", window: ENG_SPAN, programs: ENG_PROGRAMS },
+  "health-bounce": { cls: "all", window: ENG_SPAN },
+  "health-days": { cls: "all", window: ENG_SPAN },
+  "health-reasons": { cls: "all", programs: ENG_PROGRAMS },
+  "health-states": { cls: "all", programs: ENG_PROGRAMS },
 };
 const engAnswer = (argv) => JSON.parse(answer(argv, ENG_TENANT).stdout);
 const ENG_RP_RUN = Object.entries(ENG_UNITS).map(([family, d]) => engAnswer(rpRunArgv(buildQuery({ family, ...d }), 5000)).slice(0, 6));
@@ -327,7 +331,7 @@ readers: ["jo-report.mjs parseJourneyDoc (→ embedded, classicStep / nodeStep, 
   },
   {
     command: "rp run",
-    readers: ["engagement.mjs ROW_READERS — one reader per call family of the jo-engagement adapter (send-log rows by template, account and step; distinct counts; clicked sends and their LinkClickedJson; survey responses; company names). reduceEngagement and the fetch-time click stripper read rows through these and nothing else."],
+    readers: ["engagement.mjs ROW_READERS — one reader per call family of the jo-engagement adapter (send-log rows by template, account and step; distinct counts; clicked sends and their LinkClickedJson; survey responses; company names; and the health reads: bounced attempts with their reason, a program's send days, failed participants with their reasons, participants by state). reduceEngagement and the fetch-time click stripper read rows through these and nothing else."],
     modules: ["scripts/engagement.mjs"],
     calls: Object.entries(ROW_READERS).map(([family, reader]) => ({ reader: `ROW_READERS["${family}"]`, mode: /** @type {"object"} */ ("object"), fn: (rows) => (Array.isArray(rows) ? rows : []).map((row) => reader(row)) })),
     fixtures: ENG_RP_RUN,
@@ -424,6 +428,7 @@ const RULE_OUTS = [
   { file: "scripts/journal.mjs", why: "the guard journal" },
   { file: "scripts/journal-lib.mjs", why: "the guard journal's writer" },
   { file: "scripts/plugin-link.mjs", why: "the SessionStart hook — parses its OWN child's summary (scaffold.mjs check --json, F-396), never tenant output; the child hashes template files and parses no JSON at all" },
+  { file: "scripts/dashboard-spec.mjs", why: "the dashboard spec writer — parses the JSON values of its own --set flags; the files it reads are specs it wrote, never tenant output" },
   { file: "hooks/gs-admin-guard.mjs", why: "hook stdin + the catalog — never tenant output" },
 ];
 const ENUM_RE = /JSON\.parse|parseDocJson|extractFencedJson|parseLiveDepsAreas/;

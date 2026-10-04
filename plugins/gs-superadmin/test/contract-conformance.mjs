@@ -35,8 +35,16 @@
 //   T-10 (scripts/engagement.mjs header, ENG-1): the engagement snapshot,
 //   executed through the real producer over the fictional acme tenant (the
 //   fake CLI behind --bin) — every table's key set, the conditional step
-//   tables, the enums, the three tracking states, the schemaVersion refusal —
-//   and the same pins over the committed fixture snapshot.
+//   tables, the enums, the three tracking states, the schemaVersion refusal,
+//   the additive health facts (HLT-1: the failure count on every send row, the
+//   five health tables and their part-by-part marker) — and the same pins over
+//   the committed fixture snapshot.
+//
+//   T-11 (scripts/dashboard-spec.mjs header, DSH-1): the dashboard spec,
+//   executed through its one writer (draft, set, save in a throwaway KB of
+//   the fictional acme tenant) — every object's key set, the enums, the two
+//   presets' defaults, the version refusal — and the same pins over the
+//   committed fixture spec.
 //
 // The two observed-vs-typedef discrepancies this suite's probes found were
 // adjudicated as CONTRACT v3 (B2, 2026-08-16, Bradley-approved in-session):
@@ -53,8 +61,9 @@ import { makeTempDir, removeTempDir, writeFiles, runNode } from "../../../test/r
 import { parseJourneyDoc } from "../scripts/jo-report.mjs";
 import { STUB_MARKER } from "../scripts/doc-lib.mjs";
 import { isDeepStrictEqual } from "node:util";
-import { openSnapshot, accountAvailability, T10_SCHEMA_VERSION } from "../scripts/engagement-query.mjs";
+import { openSnapshot, accountAvailability, healthAvailability, T10_SCHEMA_VERSION } from "../scripts/engagement-query.mjs";
 import { kbFiles } from "./fixtures/engagement/acme-tenant.mjs";
+import { openSpec, T11_SCHEMA_VERSION } from "../scripts/dashboard-spec.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const MANIFEST_SCRIPT = join(HERE, "..", "scripts", "manifest.mjs");
@@ -582,15 +591,15 @@ try {
       check(`T-10: the producer runs over the fixture tenant (${run})`, r.status === 0, r.stderr.slice(-400));
       return r.status === 0 ? JSON.parse(readFileSync(out, "utf8")) : null;
     };
-    const withSteps = produce("t10-steps", ["--step-detail", ...ACCOUNTS_ON]);
-    const plain = produce("t10-plain", ACCOUNTS_ON);
-    // The adapter's default: the account grain is not pulled unless --accounts is passed.
+    const withSteps = produce("t10-steps", ["--step-detail", "--health", ...ACCOUNTS_ON]);
+    const plain = produce("t10-plain", ["--health", ...ACCOUNTS_ON]);
+    // The adapter's default: neither the account grain nor the health facts are pulled unless asked for.
     const noAccounts = produce("t10-noacc", []);
     const fixture = JSON.parse(readFileSync(join(HERE, "fixtures", "engagement", "snapshot-acme.json"), "utf8"));
 
     const keys = (o) => Object.keys(o).sort().join(",");
     const list = (...names) => names.slice().sort().join(",");
-    const MEASURES = ["sent", "delivered", "bounced", "rejected", "unsubscribed", "spamComplaints", "opened", "clicked"];
+    const MEASURES = ["sent", "delivered", "bounced", "rejected", "unsubscribed", "spamComplaints", "failed", "opened", "clicked"];
     const ROW_BASE = ["programId", "month", "recipientClass", "provenance", "pulledAt"];
     const STATES = ["tracked", "not-tracked", "unknown"];
     const MONTH = /^\d{4}-(0[1-9]|1[0-2])$/;
@@ -603,7 +612,7 @@ try {
       check(at("top level is exactly {schemaVersion 1, kind engagement, meta, dimensions, facts, honesty, reconciliation, caveats}"),
         keys(s) === list("schemaVersion", "kind", "meta", "dimensions", "facts", "honesty", "reconciliation", "caveats") && s.schemaVersion === 1 && s.kind === "engagement", keys(s));
       check(at("meta carries exactly the typedef keys; source jo-engagement; pulledAt has a UTC offset"),
-        keys(s.meta) === list("source", "params", "pulledAt", "timeZone", "tenantHost", "cliVersion", "pluginVersion", "window", "incompleteFrom", "dateBasis", "stepDetail", "accounts", "participantRecords", "refresh", "metricAvailability") &&
+        keys(s.meta) === list("source", "params", "pulledAt", "timeZone", "tenantHost", "cliVersion", "pluginVersion", "window", "incompleteFrom", "dateBasis", "stepDetail", "accounts", "participantRecords", "health", "refresh", "metricAvailability") &&
           s.meta.source === "jo-engagement" && /T\d\d:\d\d:\d\d[+-]\d\d:\d\d$/.test(s.meta.pulledAt) && s.meta.stepDetail === steps, keys(s.meta));
       check(at("window is {from, to, start, endExclusive}; incompleteFrom is a day"), keys(s.meta.window) === list("from", "to", "start", "endExclusive") && MONTH.test(s.meta.window.from) && /^\d{4}-\d\d-\d\d$/.test(s.meta.incompleteFrom), s.meta.window);
       check(at("dateBasis names ExecutedDate months, and ao_emails' CreatedAt only with step detail"),
@@ -629,27 +638,65 @@ try {
       check(at("account rows: an opaque key and a name; months are YYYY-MM"), (d.accounts.length > 0 || !accounts) && d.accounts.every((a) => keys(a) === "key,name" && typeof a.key === "string") && d.months.every((m) => MONTH.test(m)), d.accounts[0]);
       if (steps) check(at("step rows: programId, stepId, name, order, templateId, variantId, variantName"), d.steps.length > 0 && d.steps.every((x) => keys(x) === list("programId", "stepId", "name", "order", "templateId", "variantId", "variantName")), d.steps[0]);
 
-      check(at(`facts are exactly {byTemplate, byAccount, responses, responseParticipants, uniques${steps ? ", byStep" : ""}} — byStep only with step detail`),
-        keys(s.facts) === (steps ? list("byTemplate", "byStep", "byAccount", "responses", "responseParticipants", "uniques") : list("byTemplate", "byAccount", "responses", "responseParticipants", "uniques")), keys(s.facts));
-      check(at("byTemplate rows: the row base, templateId and the eight additive measures"), rows(s, "byTemplate", list(...ROW_BASE, "templateId", ...MEASURES)), s.facts.byTemplate[0]);
-      if (accounts) check(at("byAccount rows: the row base, bucket, accountKey and the eight measures; accountKey is set exactly on bucket account"),
+      check(at(`facts are exactly {byTemplate, byAccount, responses, responseParticipants, uniques, health${steps ? ", byStep" : ""}} — byStep only with step detail`),
+        keys(s.facts) === (steps ? list("byTemplate", "byStep", "byAccount", "responses", "responseParticipants", "uniques", "health") : list("byTemplate", "byAccount", "responses", "responseParticipants", "uniques", "health")), keys(s.facts));
+      check(at("byTemplate rows: the row base, templateId and the nine additive measures"), rows(s, "byTemplate", list(...ROW_BASE, "templateId", ...MEASURES)), s.facts.byTemplate[0]);
+      if (accounts) check(at("byAccount rows: the row base, bucket, accountKey and the nine measures; accountKey is set exactly on bucket account"),
         rows(s, "byAccount", list(...ROW_BASE, "bucket", "accountKey", ...MEASURES)) && s.facts.byAccount.every((r) => ["account", "other", "no-company-link"].includes(r.bucket) && (r.bucket === "account") === (r.accountKey !== null)) &&
           new Set(s.facts.byAccount.map((r) => r.bucket)).size === 3, s.facts.byAccount[0]);
-      if (steps) check(at("byStep rows: the row base, stepId, variantId, templateId and the eight measures"), rows(s, "byStep", list(...ROW_BASE, "stepId", "variantId", "templateId", ...MEASURES)), s.facts.byStep[0]);
+      if (steps) check(at("byStep rows: the row base, stepId, variantId, templateId and the nine measures"), rows(s, "byStep", list(...ROW_BASE, "stepId", "variantId", "templateId", ...MEASURES)), s.facts.byStep[0]);
       const sendRows = [...s.facts.byTemplate, ...s.facts.byAccount, ...(steps ? s.facts.byStep : [])];
       check(at("Delivered is the attempts that went out and did not bounce: no row holds more delivered plus bounced than sent"),
         sendRows.every((r) => r.delivered + r.bounced <= r.sent) && sendRows.some((r) => r.bounced > 0));
+      // HLT-1, additive: the error rate's numerator, on every send row.
+      check(at("failed is the attempts that bounced or were rejected, each once: on every send row it is at least the larger of the two counts and at most their sum, and never more than sent"),
+        sendRows.every((r) => r.failed >= Math.max(r.bounced, r.rejected) && r.failed <= r.bounced + r.rejected && r.failed <= r.sent) && sendRows.some((r) => r.failed > 0));
       check(at("every send row: additive measures are whole numbers >= 0, class internal|external, provenance pulled|carried, month YYYY-MM"),
         sendRows.every((r) => MEASURES.every((m) => count(r[m])) && ["internal", "external"].includes(r.recipientClass) && ["pulled", "carried"].includes(r.provenance) && MONTH.test(r.month) && typeof r.pulledAt === "string"));
       check(at("responses rows: programId, month, submitted, partiallySubmitted, provenance, pulledAt; the denominator is its own program-grain table"),
         rows(s, "responses", list("programId", "month", "submitted", "partiallySubmitted", "provenance", "pulledAt")) && s.facts.responseParticipants.length > 0, s.facts.responses[0]);
       check(at("responseParticipants rows: programId, participants, submitted, partiallySubmitted — the response rate's all-time basis, the two counts within the denominator"),
         s.facts.responseParticipants.every((r) => keys(r) === list("programId", "participants", "submitted", "partiallySubmitted") && count(r.participants) && count(r.submitted) && count(r.partiallySubmitted) && r.submitted + r.partiallySubmitted <= r.participants), s.facts.responseParticipants[0]);
-      check(at("meta.params echoes the run's inputs: window, selector, internalDomains, unsubscribeLinks, stepDetail, accounts, repullMonths, pageSize"),
-        keys(s.meta.params) === list("window", "selector", "internalDomains", "unsubscribeLinks", "stepDetail", "accounts", "repullMonths", "pageSize") && Array.isArray(s.meta.params.unsubscribeLinks) && s.meta.params.unsubscribeLinks.every((l) => typeof l === "string"), keys(s.meta.params));
+      check(at("meta.params echoes the run's inputs: window, selector, internalDomains, unsubscribeLinks, stepDetail, accounts, repullMonths, pageSize, health"),
+        keys(s.meta.params) === list("window", "selector", "internalDomains", "unsubscribeLinks", "stepDetail", "accounts", "repullMonths", "pageSize", "health") && keys(s.meta.params.health) === "lookbackDays,pull" && s.meta.params.health.pull === accounts && Array.isArray(s.meta.params.unsubscribeLinks) && s.meta.params.unsubscribeLinks.every((l) => typeof l === "string"), keys(s.meta.params));
       check(at("uniques rows: programId, scope window|month, month (null on window), people, accounts, participantRecords, external{…}, provenance, pulledAt"),
         rows(s, "uniques", list("programId", "scope", "month", "people", "accounts", "participantRecords", "external", "provenance", "pulledAt")) &&
           s.facts.uniques.every((r) => keys(r.external) === "accounts,participantRecords,people" && ["window", "month"].includes(r.scope) && (r.scope === "window") === (r.month === null) && (steps ? count(r.participantRecords) : r.participantRecords === null && r.external.participantRecords === null)), s.facts.uniques[0]);
+
+      // HLT-1, additive: the health facts and their part-by-part marker.
+      const PARTS = ["bounceReasons", "participantFailures", "participantStates", "lastSends", "schedules"];
+      const DAY = /^\d{4}-\d\d-\d\d$/;
+      const h = s.facts.health;
+      const hm = s.meta.health;
+      const text = (v) => v === null || (typeof v === "string" && v.length > 0);
+      check(at("meta.health is always {pulled, reason, asOf, dayWindow, parts}; with health not pulled it is the reason a reader shows (health-off), no day window and no parts, and every health table is an empty array, never absent"),
+        keys(hm) === list("pulled", "reason", "asOf", "dayWindow", "parts") && keys(h) === list(...PARTS) && PARTS.every((p) => Array.isArray(h[p])) && hm.pulled === accounts &&
+          (hm.pulled || (hm.reason === "health-off" && hm.asOf === null && hm.dayWindow === null && keys(hm.parts) === "" && PARTS.every((p) => h[p].length === 0) && !s.caveats.some((c) => c.id === "health-incomplete"))), hm);
+      check(at("healthAvailability reads the marker, and reads a snapshot made before health facts existed (no marker) as not pulled, with the reason"),
+        isDeepStrictEqual(healthAvailability(s), hm) && isDeepStrictEqual(healthAvailability({ ...s, meta: { ...s.meta, health: undefined } }), { pulled: false, reason: "predates-health", asOf: null, dayWindow: null, parts: {} }));
+      // The runs with accounts on are the runs with health on.
+      if (accounts) {
+      check(at("meta.health, pulled: the day silence is counted from, the days held by day {start, endExclusive}, and each of the five parts as {pulled, reason}"),
+        hm.pulled === true && hm.reason === null && DAY.test(hm.asOf) && keys(hm.dayWindow) === "endExclusive,start" && DAY.test(hm.dayWindow.start) && hm.dayWindow.start <= hm.asOf && hm.asOf < hm.dayWindow.endExclusive &&
+          keys(hm.parts) === list(...PARTS) && PARTS.every((p) => keys(hm.parts[p]) === "pulled,reason" && typeof hm.parts[p].pulled === "boolean" && (hm.parts[p].pulled ? hm.parts[p].reason === null : typeof hm.parts[p].reason === "string")), hm);
+      check(at("facts.health is exactly the five tables, each an array, and a part that was not read is an empty one"),
+        keys(h) === list(...PARTS) && PARTS.every((p) => Array.isArray(h[p]) && (hm.parts[p].pulled || h[p].length === 0)), keys(h));
+      check(at("bounceReasons rows: programId, templateId, month, recipientClass, bounceType, message, count, provenance, pulledAt — a count of at least 1, a message that is text or null"),
+        h.bounceReasons.length > 0 && h.bounceReasons.every((r) => keys(r) === list("programId", "templateId", "month", "recipientClass", "bounceType", "message", "count", "provenance", "pulledAt") && count(r.count) && r.count > 0 && MONTH.test(r.month) &&
+          ["internal", "external"].includes(r.recipientClass) && ["pulled", "carried"].includes(r.provenance) && text(r.message) && text(r.bounceType)), h.bounceReasons[0]);
+      check(at("participantFailures rows: programId, message, participants, occurrences; participantStates rows: programId, state, participants"),
+        h.participantFailures.length > 0 && h.participantFailures.every((r) => keys(r) === list("programId", "message", "participants", "occurrences") && count(r.participants) && r.participants > 0 && count(r.occurrences) && text(r.message)) &&
+          h.participantStates.length > 0 && h.participantStates.every((r) => keys(r) === list("programId", "state", "participants") && count(r.participants) && text(r.state)), [h.participantFailures[0], h.participantStates[0]]);
+      check(at("lastSends rows: programId, name, a statuses LIST, selected, lastSendDay (a day inside the day window, or null), lastSendMonth (YYYY-MM or null) — one per program in the pull"),
+        h.lastSends.length >= d.programs.length && d.programs.every((p) => h.lastSends.some((r) => r.programId === p.id && r.selected === true)) &&
+          h.lastSends.every((r) => keys(r) === list("programId", "name", "statuses", "selected", "lastSendDay", "lastSendMonth") && Array.isArray(r.statuses) && typeof r.selected === "boolean" &&
+            (r.lastSendDay === null || (DAY.test(r.lastSendDay) && r.lastSendDay >= hm.dayWindow.start && r.lastSendDay < hm.dayWindow.endExclusive)) && (r.lastSendMonth === null || MONTH.test(r.lastSendMonth))), h.lastSends[0]);
+      check(at("schedules rows: programId, asOf, scheduleType, classification, cronExpression, timeZoneName, lastRunSuccess (boolean or null), lastSuccessTime, nextRunTime, runningNow"),
+        h.schedules.length > 0 && h.schedules.every((r) => keys(r) === list("programId", "asOf", "scheduleType", "classification", "cronExpression", "timeZoneName", "lastRunSuccess", "lastSuccessTime", "nextRunTime", "runningNow") &&
+          [true, false, null].includes(r.lastRunSuccess) && typeof r.classification === "string") && h.schedules.some((r) => r.lastRunSuccess === false), h.schedules[0]);
+      check(at("every stored message is MASKED: no address, no run of five or more digits, in any health table"),
+        [...h.bounceReasons, ...h.participantFailures].every((r) => r.message === null || (!r.message.includes("@") && !/\d{5,}/.test(r.message))) && [...h.bounceReasons, ...h.participantFailures].some((r) => /<email>|<id>|<number>/.test(r.message ?? "")));
+      }
 
       const av = s.meta.metricAvailability;
       const tpl = Object.values(av.clicks.templates);
@@ -680,11 +727,95 @@ try {
     const engSrc = readFileSync(ENGINE, "utf8");
     const header = engSrc.slice(engSrc.indexOf("// ── T-10 ·"), engSrc.indexOf("// ── The source-adapter interface"));
     const named = (k) => new RegExp(`@property \\{[^\\n]*\\} \\[?${k}\\]?( |$)`, "m").test(header);
-    const PINNED = ["schemaVersion", "kind", "meta", "dimensions", "facts", "honesty", "reconciliation", "caveats", "byTemplate", "byStep", "byAccount", "responses", "responseParticipants", "uniques", "metricAvailability", "participantRecords", "accounts", "incompleteFrom", "pulledAt", ...MEASURES];
+    const PINNED = ["schemaVersion", "kind", "meta", "dimensions", "facts", "honesty", "reconciliation", "caveats", "byTemplate", "byStep", "byAccount", "responses", "responseParticipants", "uniques", "metricAvailability", "participantRecords", "accounts", "incompleteFrom", "pulledAt", "health", "bounceReasons", "participantFailures", "participantStates", "lastSends", "schedules", ...MEASURES];
     check("T-10: the producer's header is marked FROZEN and names every pinned top-level key, table and measure", /FROZEN \(ENG-1, 2026-10-03\)/.test(header) && PINNED.every(named), PINNED.filter((k) => !named(k)));
     check("T-10: the header also states the adapter interface (plan / fetch / reduce) and the transport seam", /@typedef \{object\} EngagementSourceAdapter/.test(engSrc) && /@typedef \{object\} EngagementTransport/.test(engSrc));
   } finally {
     removeTempDir(t10);
+  }
+}
+
+// ── T-11 · dashboard spec, executed through its one writer ───────────────────
+// DSH-1: the spec scripts/dashboard-spec.mjs writes — a new draft saved as it
+// stands (the defaults), and one changed through set — and the committed
+// fixture spec beside them. Key sets are hand-spelled from the frozen typedef,
+// never imported: a field added, dropped or renamed at the writer reds here
+// until the typedef, its description and this pin move together. What a value
+// MEANS is the spec suite's (test/dashboard-spec.mjs); this section owns the
+// SHAPE.
+{
+  const t11 = makeTempDir("contract-conformance-t11");
+  try {
+    const WRITER = join(HERE, "..", "scripts", "dashboard-spec.mjs");
+    const KB = join(t11, "acme-prod");
+    writeFiles(t11, { "acme-prod/_manifest.json": JSON.stringify({ slug: "acme-prod", baseUrl: "https://acme.gainsightcloud.com", environment: "production", inventory: {} }) });
+    const write = (slug, sets) => {
+      const steps = [["draft", "--slug", slug], ...(sets.length ? [["set", "--slug", slug, ...sets.flatMap(([p, v]) => ["--set", p + "=" + JSON.stringify(v)])]] : []), ["save", "--slug", slug]];
+      const ok = steps.every(([mode, ...args]) => runNode(WRITER, [mode, "--kb", KB, ...args]).status === 0);
+      check("T-11: the writer drafts" + (sets.length ? ", sets" : "") + " and saves (" + slug + ")", ok);
+      return ok ? JSON.parse(readFileSync(join(KB, "dashboards", slug, "spec.json"), "utf8")) : null;
+    };
+    const defaults = write("t11-defaults", []);
+    const changed = write("t11-changed", [
+      ["sources.0.params.internalDomains", ["acme.com"]], ["accounts.pull", true], ["sources.0.params.stepDetail", true],
+      ["groups.rules", [{ kind: "characteristic", level: "supergroup", characteristic: "sendsSurveys", is: true, label: "Surveys" }, { kind: "folder", level: "group", folders: [{ id: "202", label: "Renewals" }] }]],
+      ["groups.overrides.p-pilot", { supergroup: "Internal" }],
+      ["pages.0.panels", [{ id: "programs", tab: "engagement", type: "table", title: "Programs", query: { groupBy: ["program"], metrics: ["sent", "openRate"] } }]],
+    ]);
+    const fixture = JSON.parse(readFileSync(join(HERE, "fixtures", "engagement", "spec-acme.json"), "utf8"));
+
+    const keys = (o) => Object.keys(o).sort().join(",");
+    const list = (...names) => names.slice().sort().join(",");
+    const TAB_IDS = ["engagement", "health", "templates", "about"];
+    const STATUSES = ["PROCESSING", "PAUSE", "NEW", "STOP"];
+    const whole = (v, min) => Number.isInteger(v) && v >= min;
+    for (const [which, s] of /** @type {Array<[string, *]>} */ ([["the defaults", defaults], ["changed through set", changed], ["the committed fixture spec", fixture]])) {
+      if (!s) continue;
+      const at = (label) => "T-11 (" + which + "): " + label;
+      check(at("top level is exactly {schemaVersion 1, kind dashboard-spec, slug, title, owner, purpose, tenantHost, sources, globalFilters, accounts, groups, health, pages, freshness, refresh, publish, native}"),
+        keys(s) === list("schemaVersion", "kind", "slug", "title", "owner", "purpose", "tenantHost", "sources", "globalFilters", "accounts", "groups", "health", "pages", "freshness", "refresh", "publish", "native") &&
+          s.schemaVersion === 1 && s.kind === "dashboard-spec" && typeof s.slug === "string" && typeof s.title === "string" && s.tenantHost === "acme.gainsightcloud.com", keys(s));
+      check(at("a source is {adapter jo-engagement, params}; params are exactly {windowMonths, selector{sentSince, names, ids}, internalDomains, unsubscribeLinks, testAccounts, pinnedAccounts, stepDetail, repullMonths} — the step-detail switch a boolean"),
+        s.sources.length >= 1 && s.sources.every((src) => keys(src) === "adapter,params" && src.adapter === "jo-engagement" &&
+          keys(src.params) === list("windowMonths", "selector", "internalDomains", "unsubscribeLinks", "testAccounts", "pinnedAccounts", "stepDetail", "repullMonths") && keys(src.params.selector) === "ids,names,sentSince" &&
+          whole(src.params.windowMonths, 1) && whole(src.params.repullMonths, 1) && typeof src.params.stepDetail === "boolean" &&
+          [src.params.internalDomains, src.params.unsubscribeLinks, src.params.testAccounts, src.params.pinnedAccounts, src.params.selector.names, src.params.selector.ids].every(Array.isArray)), s.sources[0]);
+      check(at("globalFilters are {id, enabled} for dateRange, programs, group and status, and {id, enabled, default all|external} for recipientClass"),
+        s.globalFilters.map((f) => f.id).join() === "dateRange,programs,group,status,recipientClass" && s.globalFilters.every((f) => typeof f.enabled === "boolean" && keys(f) === (f.id === "recipientClass" ? "default,enabled,id" : "enabled,id")) &&
+          ["all", "external"].includes(s.globalFilters.at(-1).default), s.globalFilters);
+      check(at("accounts is exactly {pull, busiest, lowEngagement, mostBounces, lowEngagementMinDelivered}: the switch a boolean, the four selection counts whole numbers"),
+        keys(s.accounts) === list("pull", "busiest", "lowEngagement", "mostBounces", "lowEngagementMinDelivered") && typeof s.accounts.pull === "boolean" && ["busiest", "lowEngagement", "mostBounces", "lowEngagementMinDelivered"].every((k) => whole(s.accounts[k], 0)), s.accounts);
+      check(at("groups is exactly {rules, overrides}: every rule carries a kind and one of the two levels, an override names a supergroup, a group or both"),
+        keys(s.groups) === "overrides,rules" && Array.isArray(s.groups.rules) && s.groups.rules.every((r) => ["characteristic", "folder", "namePattern", "programField", "manual"].includes(r.kind) && ["supergroup", "group"].includes(r.level)) &&
+          Object.values(s.groups.overrides).every((o) => Object.keys(o).length > 0 && Object.keys(o).every((k) => ["supergroup", "group"].includes(k))), s.groups);
+      check(at("health is {silentDays}, freshness {maxAgeDays}, refresh {cadence, ownerNote}, publish {target none, config {}}, native {reports[]}"),
+        keys(s.health) === "silentDays" && whole(s.health.silentDays, 1) && keys(s.freshness) === "maxAgeDays" && whole(s.freshness.maxAgeDays, 1) && keys(s.refresh) === "cadence,ownerNote" && ["weekly", "monthly", "quarterly", "manual"].includes(s.refresh.cadence) &&
+          keys(s.publish) === "config,target" && s.publish.target === "none" && keys(s.publish.config) === "" && keys(s.native) === "reports" && Array.isArray(s.native.reports), [s.health, s.freshness, s.refresh, s.publish, s.native]);
+      check(at("a page is exactly {id, preset admin|exec, title, statusDefault, tabs, panels, accountNames, sourceDetail}; statusDefault is a list of statuses or null for every status; tabs are the four, in order, each {id, enabled}, About on"),
+        s.pages.length >= 1 && s.pages.every((p) => keys(p) === list("id", "preset", "title", "statusDefault", "tabs", "panels", "accountNames", "sourceDetail") && ["admin", "exec"].includes(p.preset) &&
+          (p.statusDefault === null || (Array.isArray(p.statusDefault) && p.statusDefault.length > 0 && p.statusDefault.every((x) => STATUSES.includes(x)))) &&
+          p.tabs.map((t) => t.id).join() === TAB_IDS.join() && p.tabs.every((t) => keys(t) === "enabled,id" && typeof t.enabled === "boolean") && p.tabs.find((t) => t.id === "about").enabled === true &&
+          typeof p.accountNames === "boolean" && typeof p.sourceDetail === "boolean" && Array.isArray(p.panels)), s.pages[0]);
+      check(at("a panel is {id, tab, type, title, query{metrics, groupBy?, sort?, having?, limit?}, columns?}: a query for the engine, never a widget of its own"),
+        s.pages.flatMap((p) => p.panels).every((pn) => ["id", "tab", "type", "title", "query"].every((k) => k in pn) && Object.keys(pn).every((k) => ["id", "tab", "type", "title", "query", "columns"].includes(k)) && ["kpi", "bar", "line", "table", "watchlist"].includes(pn.type) &&
+          Array.isArray(pn.query.metrics) && pn.query.metrics.length > 0 && Object.keys(pn.query).every((k) => ["groupBy", "metrics", "sort", "having", "limit"].includes(k))), s.pages[0].panels[0]);
+      check(at("openSpec admits it"), openSpec(s) === s);
+    }
+    if (defaults) {
+      check("T-11 defaults: the admin page shows Active programs at first and every tab; the exec page every status, with Health and Templates off and no account names (R23, R6); accounts and step detail are off; the cadence is monthly (R8)",
+        isDeepStrictEqual(defaults.pages.map((p) => [p.id, p.preset, p.statusDefault, p.tabs.filter((t) => t.enabled).map((t) => t.id).join(), p.accountNames]), [["admin", "admin", ["PROCESSING"], "engagement,health,templates,about", true], ["exec", "exec", null, "engagement,about", false]]) &&
+          defaults.accounts.pull === false && isDeepStrictEqual([defaults.accounts.busiest, defaults.accounts.lowEngagement, defaults.accounts.mostBounces, defaults.accounts.lowEngagementMinDelivered], [20, 15, 15, 10]) &&
+          defaults.sources[0].params.stepDetail === false && defaults.refresh.cadence === "monthly" && isDeepStrictEqual(defaults.groups, { rules: [], overrides: {} }), defaults.pages);
+    }
+    check("T-11: schemaVersion is 1 and any other value is refused loudly", T11_SCHEMA_VERSION === 1 && [2, 0, "1", null].every((v) => { try { openSpec({ ...fixture, schemaVersion: v }); return false; } catch (e) { return /refusing to read it \(T-11\)/.test(e.message); } }));
+    const src = readFileSync(WRITER, "utf8");
+    const header = src.slice(src.indexOf("// ── T-11 ·"), src.indexOf("import { existsSync"));
+    const named = (k) => new RegExp("@property \\{[^\\n]*\\} \\[?(params\\.)?" + k + "\\]?( |$)", "m").test(header);
+    const PINNED = ["schemaVersion", "kind", "slug", "title", "owner", "purpose", "tenantHost", "sources", "globalFilters", "accounts", "groups", "health", "pages", "freshness", "refresh", "publish", "native",
+      "adapter", "params", "windowMonths", "selector", "internalDomains", "unsubscribeLinks", "testAccounts", "pinnedAccounts", "stepDetail", "repullMonths", "rules", "overrides", "level", "preset", "statusDefault", "tabs", "panels", "accountNames", "sourceDetail", "query", "columns"];
+    check("T-11: the writer's header is marked FROZEN and names every pinned field", /FROZEN \(DSH-1, 2026-10-04\)/.test(header) && PINNED.every(named), PINNED.filter((k) => !named(k)));
+  } finally {
+    removeTempDir(t11);
   }
 }
 
