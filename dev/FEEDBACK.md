@@ -156,6 +156,21 @@ Walk (hb-20261003-03): 2026-10-03 (tester) — S1-V second re-run, the first ful
 Walk (hb-20261003-02): 2026-10-03 (tester) — S1-V re-run, the verdict round for ENG-1 and ENG-2 (feature items, no bus section carries them) and F-470's re-verification, against dev/VALIDATION.md section ENG-2 on the production tenant, reads only: V0 confirmed by Bradley; run 1 (plan) ok; run 2 (full) ended partial, exit 4, so no snapshot was built; V8 FAILED, F-471 and F-472 logged; runs 3-5 not run, on Bradley's call; F-470 stays FIXED, V9 not measurable. Detail in the tester comment below and in VALIDATION section ENG-2.
 Walk (hb-20261004-01): 2026-10-04 (tester) — S1b verdict round, a RE-VERIFICATION of F-478 (W0, offline: its repro through the real process and the stand-in CLI) and of dev/VALIDATION.md section ENG-2 / LTR-9 / F-478, W1 to W5 (feature items ENG-2 and LTR-9, no bus section carries them), on the production tenant, reads only: W0 passed on all three arms, F-478 VERIFIED; all six live plans and both runs completed (exit 0); every owed check passed; the accounts-off pull took 5.2 minutes against the plan's 327 s; nothing logged; VALIDATION section CLEARED; PR #37 ready to merge (the merge is Bradley's). No SKILL.md changed, so no walk was owed. Detail in the tester comment below and in that VALIDATION section.
 
+<!-- builder 2026-10-04 (JO-dashboards S2 — POINTER RE-STAMPED @ hb-20261004-03: F-479, F-480 and F-481 claimed by the branch and FIXED there; next free F-482; re-stamps the pointer below):
+     Branch: feat/jo-dash-s2-engine-report at 8c699d7. PR: #38 to dev, open, unmerged.
+     What moved since the pointer below: a tester's early spot check of X0 and X1 at hb-20261004-02 (production
+       tenant, reads only) PASSED both and logged three polish findings on the branch: F-479 (progress lines said
+       "failed" for a deleted program's describe beside a clean summary), F-480 (the report's Re-run code span held
+       its explanation, so the copied command did not parse) and F-481 (the skill's final Caveats line was left to
+       the reader's judgment). The builder fixed all three on the branch; each reads FIXED there, with Fix and Judge
+       notes, and reads nothing in this file until PR #38 merges. The numbers F-479 to F-481 are taken.
+     Handoff token: hb-20261004-03 (Under test line, Blind spots line and canary are on the branch).
+     dev/VALIDATION.md on the branch, section ENG-3 / ENG-4: X0 and X1 carry the spot check's PASSED lines; R1 to R3
+       are the three fixes' re-verification, owed by one tester round before the merge (Bradley's call); X2 to X9
+       stay owed at V2.
+     CI on PR #38's head 8c699d7: pending when this was written.
+     Open PRs to dev: #38 only. Issues #11 and #12 unchanged. -->
+
 <!-- builder 2026-10-04 (JO-dashboards S2 — POINTER: plan items ENG-4 and ENG-3 ride an UNMERGED branch; no finding logged; next free F-479):
      Branch: feat/jo-dash-s2-engine-report. PR: #38 to dev, open, left unmerged. It merges on green CI plus its review
        round (done on the branch: one /code-review at medium, three findings, all fixed); its verdict is V2, after S4c.
