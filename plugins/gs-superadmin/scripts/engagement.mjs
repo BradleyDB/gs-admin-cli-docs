@@ -68,6 +68,14 @@
 //     definitions): usablePrevious is the one gate, and fetch and reduce see
 //     the previous snapshot only through it.
 //
+// Where each number is read from (objects, standing filters, date fields, the
+// flag fields and the value that counts) is stated ONCE, in
+// engagement-query.mjs's SOURCES and METRICS: the queries below are built from
+// those tables and the rows are counted with them, so the glossary a report
+// shows is the formula this file ran. That module is import-free (every
+// dashboard page inlines it), which is why the facts live there and are
+// imported here, and why the T-10 read floor lives there too.
+//
 // Step names come from the tenant KB (jo-report's parser over the program
 // docs), never from a second describe loop: a program the KB lacks a full doc
 // for has its sends reported under template names alone, and the count is in
@@ -258,17 +266,17 @@ import {
 } from "./doc-lib.mjs";
 import { printable } from "./journal-lib.mjs";
 import { buildIndex } from "./jo-report.mjs";
+import { SOURCES, NON_CONTENT_LINK_RULES, SEND_MEASURES, T10_SCHEMA_VERSION, measuresCounted, rollUpTracking, openSnapshot, accountAvailability } from "./engagement-query.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 
-export const T10_SCHEMA_VERSION = 1;
-export const SEND_MEASURES = Object.freeze(["sent", "delivered", "bounced", "rejected", "unsubscribed", "spamComplaints", "opened", "clicked"]);
-
-const LOG = "email_log_v2";
-const JO_LOG = "ao_emails";
-const SURVEY = "survey_participant";
-const COMPANY = "company";
-const JO_SOURCE = "Advanced Outreach";
+// The three objects read, and what every count on them carries: one statement, in SOURCES.
+const { log: LOG_SRC, steps: JO_SRC, survey: SURVEY_SRC } = SOURCES;
+const LOG = LOG_SRC.object;
+const JO_LOG = JO_SRC.object;
+const SURVEY = SURVEY_SRC.object;
+const COMPANY = LOG_SRC.lookups.company.to;
+const standingValue = (src, field) => src.standing.find((c) => c.field === field)?.value;
 const SERVER_PAGE_MAX = 5000;
 // An IN list this long was measured to work; nothing longer was tried.
 const IN_BATCH = 50;
@@ -364,13 +372,10 @@ export function classifyFailure(r) {
 }
 
 // ── Click detail: LinkClickedJson, classified and stripped ───────────────────
-// R18: click rate counts content links. The rules are data; a link no rule
-// names is content. A link that cannot be read counts as neither.
-/** @type {ReadonlyArray<{kind: "mailto"|"unsubscribe", re: RegExp}>} */
-export const NON_CONTENT_LINK_RULES = Object.freeze([
-  { kind: "mailto", re: /^mailto:/i },
-  { kind: "unsubscribe", re: /unsubscribe|opt[-_]?out|email[-_]?preferences|manage[-_]?preferences/i },
-]);
+// R18: click rate counts content links. The rules are data
+// (NON_CONTENT_LINK_RULES, in engagement-query.mjs beside the metric they
+// define); a link no rule names is content. A link that cannot be read counts
+// as neither.
 // The tenant's own unsubscribe link (--unsubscribe-link, repeatable): a link or
 // a host, held as `host` or `host/path`. Which page a tenant unsubscribes on is
 // a fact about the tenant, so it is an input and never a wider pattern here.
@@ -460,16 +465,17 @@ export function readLinkClicks(raw, unsubscribeLinks = []) {
 
 // ── Field specs, aliases and cells ───────────────────────────────────────────
 const cond = (fieldName, operator, value) => ({ leftOperand: { fieldName }, operator, rightOperand: { value } });
-const hop = (leaf, through, to) => ({ fieldPath: { leaf, hops: [{ through, to }] } });
+const hop = ({ leaf, through, to }) => ({ fieldPath: { leaf, hops: [{ through, to }] } });
+const standing = (src) => src.standing.map((c) => cond(c.field, c.op, c.value));
 const byMonth = (name) => ({ name, summarize: "Month" });
 const countOf = { name: "Gsid", aggregation: "COUNT" };
 const distinct = (path) => ({ ...path, aggregation: "COUNT_DISTINCT" });
 const PATH = {
-  company: hop("Gsid", "GsCompanyId", COMPANY),
-  person: hop("Gsid", "GsPersonId", "person"),
-  surveyProgram: hop("AdvancedOutreachId", "AOParticipantId", "ao_participants"),
-  participant: hop("Gsid", "GsParticipantId", "ao_participants"),
-  logRow: hop("Gsid", "EmailLogId", LOG),
+  company: hop(LOG_SRC.lookups.company),
+  person: hop(LOG_SRC.lookups.person),
+  surveyProgram: hop(SURVEY_SRC.lookups.program),
+  participant: hop(JO_SRC.lookups.participant),
+  logRow: hop(JO_SRC.lookups.logRow),
 };
 // How the CLI names result columns (read off the response samples).
 const col = {
@@ -491,18 +497,14 @@ const cellMonth = (cell) => {
   return typeof k === "string" && /^\d{4}-\d{2}/.test(k) ? k.slice(0, 7) : null;
 };
 const str = (v) => (v == null ? null : String(v));
-const yes = (cell) => cellValue(cell) === "YES";
-const truthy = (cell) => cellValue(cell) === true;
-// email_log_v2 flags are YES/NO strings; ao_emails flags are booleans.
-const logFlags = (row) => ({
-  delivered: yes(row[col.field(LOG, "IsSent")]) && !yes(row[col.field(LOG, "IsBounced")]), opened: yes(row[col.field(LOG, "IsOpened")]), bounced: yes(row[col.field(LOG, "IsBounced")]),
-  rejected: yes(row[col.field(LOG, "IsRejected")]), unsubscribed: yes(row[col.field(LOG, "IsUnsubscribed")]), spam: yes(row[col.field(LOG, "IsSpam")]),
-});
-const joFlags = (row) => ({
-  delivered: truthy(row[col.field(JO_LOG, "EmailSend")]) && !truthy(row[col.field(JO_LOG, "Bounce")]), opened: truthy(row[col.field(JO_LOG, "EmailOpened")]), bounced: truthy(row[col.field(JO_LOG, "Bounce")]),
-  rejected: truthy(row[col.field(JO_LOG, "Rejected")]), unsubscribed: truthy(row[col.field(JO_LOG, "Unsubscribed")]), spam: truthy(row[col.field(JO_LOG, "Spam")]),
-});
-const logKey = (row) => ({ programId: str(cellValue(row[col.field(LOG, "SourceId")])), month: cellMonth(row[col.month(LOG, "ExecutedDate")]), n: cellNumber(row[col.count(LOG)]) });
+// A row's flags, as SOURCES names them: set when the field holds the value that
+// counts (email_log_v2 flags are YES/NO strings; ao_emails flags are booleans),
+// and not set on anything else, a null included. Which measures a flag
+// combination adds to is the registry's rule (measuresCounted), not this file's.
+const flagsOf = (src) => (row) => Object.fromEntries(Object.entries(src.flags).map(([flag, def]) => [flag, cellValue(row[col.field(src.object, def.field)]) === def.value]));
+const logFlags = flagsOf(LOG_SRC);
+const joFlags = flagsOf(JO_SRC);
+const logKey = (row) => ({ programId: str(cellValue(row[col.field(LOG, LOG_SRC.programField)])), month: cellMonth(row[col.month(LOG, LOG_SRC.dateField)]), n: cellNumber(row[col.count(LOG)]) });
 const logUniqueCounts = (row) => ({ people: cellNumber(row[col.distinct(PATH.person)]), accounts: cellNumber(row[col.distinct(PATH.company)]) });
 
 // One reader per call family: a result row → plain fields. These are the ONLY
@@ -522,21 +524,21 @@ export const ROW_READERS = Object.freeze({
   "click-attr-nolink": (row) => ({ ...logKey(row), templateId: str(cellValue(row[col.field(LOG, "EmailTemplateId")])), sendId: str(cellValue(row[col.field(LOG, "Gsid")])) }),
   // Read at FETCH time: what reaches disk is the send's id and its link counts.
   // The links are classified with the run's own unsubscribe links (the second argument).
-  "click-json": (row, unsubscribeLinks = []) => ({ id: str(cellValue(row[col.field(LOG, "Gsid")])), ...readLinkClicks(cellValue(row[col.field(LOG, "LinkClickedJson")]), unsubscribeLinks) }),
-  "resp-month": (row) => ({ programId: str(cellValue(row[col.hop(PATH.surveyProgram)])), month: cellMonth(row[col.month(SURVEY, "RespondedDate")]), status: cellValue(row[col.field(SURVEY, "ResponseStatus")]), n: cellNumber(row[col.count(SURVEY)]) }),
+  "click-json": (row, unsubscribeLinks = []) => ({ id: str(cellValue(row[col.field(LOG, "Gsid")])), ...readLinkClicks(cellValue(row[col.field(LOG, LOG_SRC.clicks.detailField)]), unsubscribeLinks) }),
+  "resp-month": (row) => ({ programId: str(cellValue(row[col.hop(PATH.surveyProgram)])), month: cellMonth(row[col.month(SURVEY, SURVEY_SRC.dateField)]), status: cellValue(row[col.field(SURVEY, SURVEY_SRC.statusField)]), n: cellNumber(row[col.count(SURVEY)]) }),
   "resp-participants": (row) => ({ programId: str(cellValue(row[col.hop(PATH.surveyProgram)])), n: cellNumber(row[col.count(SURVEY)]) }),
   "resp-unattributed": (row) => ({ n: cellNumber(row[col.count(SURVEY)]) }),
   "resp-test": (row) => ({ programId: str(cellValue(row[col.hop(PATH.surveyProgram)])), n: cellNumber(row[col.count(SURVEY)]) }),
-  "resp-total": (row) => ({ programId: str(cellValue(row[col.hop(PATH.surveyProgram)])), status: cellValue(row[col.field(SURVEY, "ResponseStatus")]), n: cellNumber(row[col.count(SURVEY)]) }),
+  "resp-total": (row) => ({ programId: str(cellValue(row[col.hop(PATH.surveyProgram)])), status: cellValue(row[col.field(SURVEY, SURVEY_SRC.statusField)]), n: cellNumber(row[col.count(SURVEY)]) }),
   "account-names": (row) => ({ key: str(cellValue(row[col.field(COMPANY, "Gsid")])), name: str(cellValue(row[col.field(COMPANY, "Name")])) }),
   step: (row) => ({
-    programId: str(cellValue(row[col.field(JO_LOG, "AdvancedOutreachId")])), month: cellMonth(row[col.month(JO_LOG, "CreatedAt")]), n: cellNumber(row[col.count(JO_LOG)]),
+    programId: str(cellValue(row[col.field(JO_LOG, JO_SRC.programField)])), month: cellMonth(row[col.month(JO_LOG, JO_SRC.dateField)]), n: cellNumber(row[col.count(JO_LOG)]),
     stepId: str(cellValue(row[col.field(JO_LOG, "StepId")])), templateId: str(cellValue(row[col.field(JO_LOG, "EmailTemplateId")])),
     variantId: str(cellValue(row[col.field(JO_LOG, "EmailTemplateVarianceId")])), variantName: str(cellValue(row[col.field(JO_LOG, "EmailTemplateVarianceName")])), flags: joFlags(row),
   }),
   "step-click": (row) => ({ sendId: str(cellValue(row[col.hop(PATH.logRow)])), stepId: str(cellValue(row[col.field(JO_LOG, "StepId")])), variantId: str(cellValue(row[col.field(JO_LOG, "EmailTemplateVarianceId")])) }),
-  "participants-month": (row) => ({ programId: str(cellValue(row[col.field(JO_LOG, "AdvancedOutreachId")])), month: cellMonth(row[col.month(JO_LOG, "CreatedAt")]), participants: cellNumber(row[col.distinct(PATH.participant)]) }),
-  "participants-window": (row) => ({ programId: str(cellValue(row[col.field(JO_LOG, "AdvancedOutreachId")])), participants: cellNumber(row[col.distinct(PATH.participant)]) }),
+  "participants-month": (row) => ({ programId: str(cellValue(row[col.field(JO_LOG, JO_SRC.programField)])), month: cellMonth(row[col.month(JO_LOG, JO_SRC.dateField)]), participants: cellNumber(row[col.distinct(PATH.participant)]) }),
+  "participants-window": (row) => ({ programId: str(cellValue(row[col.field(JO_LOG, JO_SRC.programField)])), participants: cellNumber(row[col.distinct(PATH.participant)]) }),
 });
 
 // ── Queries, as data ─────────────────────────────────────────────────────────
@@ -546,41 +548,56 @@ export const ROW_READERS = Object.freeze({
 // log, and the characters a unit is cut on, one per level. CONTAINS and
 // DOES_NOT_CONTAINS on the same character are each other's complement, so the
 // two halves hold every send once. Only a character ever reaches a filter.
-const ADDRESS_FIELD = { [LOG]: "LowerCaseEmailId", [JO_LOG]: "ToAddress" };
+const ADDRESS_FIELD = { [LOG]: LOG_SRC.addressField, [JO_LOG]: JO_SRC.addressField };
 // Letters and digits only: a punctuation mark could read as a pattern wildcard.
 const ADDRESS_CUTS = [..."aeiornsltmcdhupbgkyfwvjzxq0123456789"];
-const LOG_FLAGS = ["IsSent", "IsOpened", "IsBounced", "IsRejected", "IsUnsubscribed", "IsSpam"];
-const JO_FLAGS = ["EmailSend", "EmailOpened", "Bounce", "Rejected", "Unsubscribed", "Spam"];
+const flagFields = (src) => Object.values(src.flags).map((f) => f.field);
+const LOG_FLAGS = flagFields(LOG_SRC);
+const JO_FLAGS = flagFields(JO_SRC);
+// The two flags a full unit is cut on, in this order (opened first: it halves a sent-heavy unit best).
+const cutFlags = (src) => [src.flags.opened.field, src.flags.wentOut.field];
+const flagValue = (src, field) => Object.values(src.flags).find((f) => f.field === field)?.value;
+const sourceOf = (object) => (object === JO_LOG ? JO_SRC : LOG_SRC);
 const suffix = (domain) => (domain.startsWith("@") ? domain : `@${domain}`);
 
 function logWhere(d, { source = true } = {}) {
   if (!d.window?.start || !d.window?.end) throw new Error(`engagement: ${d.family} has no two-sided window`);
   const w = [];
-  if (source) w.push(cond("Source", "EQ", JO_SOURCE), cond("AddressType", "EQ", "To"));
-  w.push(cond("ExecutedDate", "GTE", d.window.start), cond("ExecutedDate", "LT", d.window.end));
-  if (d.programs) w.push(cond("SourceId", "IN", d.programs));
-  if (d.cls === "internal") w.push(cond("LowerCaseEmailId", "ENDS_WITH", suffix(d.domain)));
-  if (d.cls === "external") for (const dom of d.domains) w.push(cond("LowerCaseEmailId", "DOES_NOT_CONTAINS", suffix(dom)));
+  if (source) w.push(...standing(LOG_SRC));
+  w.push(cond(LOG_SRC.dateField, "GTE", d.window.start), cond(LOG_SRC.dateField, "LT", d.window.end));
+  if (d.programs) w.push(cond(LOG_SRC.programField, "IN", d.programs));
+  if (d.cls === "internal") w.push(cond(LOG_SRC.addressField, "ENDS_WITH", suffix(d.domain)));
+  if (d.cls === "external") for (const dom of d.domains) w.push(cond(LOG_SRC.addressField, "DOES_NOT_CONTAINS", suffix(dom)));
   for (const p of d.partition ?? []) w.push(cond(p.field, p.op, p.value));
   return w;
 }
 function joWhere(d) {
   if (!d.window?.start || !d.window?.end) throw new Error(`engagement: ${d.family} has no two-sided window`);
-  const w = [cond("AddressType", "EQ", "To"), cond("CreatedAt", "GTE", d.window.start), cond("CreatedAt", "LT", d.window.end)];
-  if (d.programs) w.push(cond("AdvancedOutreachId", "IN", d.programs));
-  if (d.cls === "internal") w.push(cond("ToAddress", "ENDS_WITH", suffix(d.domain)));
-  if (d.cls === "external") for (const dom of d.domains) w.push(cond("ToAddress", "DOES_NOT_CONTAINS", suffix(dom)));
+  const w = [...standing(JO_SRC), cond(JO_SRC.dateField, "GTE", d.window.start), cond(JO_SRC.dateField, "LT", d.window.end)];
+  if (d.programs) w.push(cond(JO_SRC.programField, "IN", d.programs));
+  if (d.cls === "internal") w.push(cond(JO_SRC.addressField, "ENDS_WITH", suffix(d.domain)));
+  if (d.cls === "external") for (const dom of d.domains) w.push(cond(JO_SRC.addressField, "DOES_NOT_CONTAINS", suffix(dom)));
   for (const p of d.partition ?? []) w.push(cond(p.field, p.op, p.value));
   return w;
 }
 // One lookup per call (F-473): a call that counts through two lookups drops the
 // sends that lack either one, so each distinct count is asked on its own.
 const uniqueShow = (d) => [distinct(d.of === "accounts" ? PATH.company : PATH.person)];
-const noCompany = () => cond("GsCompanyId", "IS_NULL");
+const noCompany = () => cond(LOG_SRC.lookups.company.through, "IS_NULL");
+const clickedOnly = () => cond(LOG_SRC.clicks.countField, "GT", 0);
+const clickCount = { name: LOG_SRC.clicks.countField, aggregation: "COUNT" };
+const logMonth = byMonth(LOG_SRC.dateField);
+const joMonth = byMonth(JO_SRC.dateField);
+const logProgram = { name: LOG_SRC.programField };
+const joProgram = { name: JO_SRC.programField };
+const logTemplate = { name: LOG_SRC.templateField };
 // Survey figures leave out test participants, as the UI's program analytics
 // does (F-474). EQ on a boolean is the filter shape measured on this object
 // (Responded EQ true); a row whose flag is null would be left out with the tests.
-const notTest = () => cond("TestParticipant", "EQ", false);
+const notTest = () => standing(SURVEY_SRC);
+const testOnly = () => SURVEY_SRC.standing.map((c) => cond(c.field, c.op, !c.value));
+const responded = () => cond(SURVEY_SRC.responded.field, SURVEY_SRC.responded.op, SURVEY_SRC.responded.value);
+const surveyStatus = { name: SURVEY_SRC.statusField };
 
 // family → {object, how it may be split, the query}. `split` is the order a
 // truncated or twice-timed-out unit is cut in; uniques are distinct counts, so
@@ -588,26 +605,26 @@ const notTest = () => cond("TestParticipant", "EQ", false);
 const FAMILIES = {
   // The program totals: every send, through no lookup. Which programs have
   // sends, and what the template table must sum to, are read from this.
-  totals: { object: LOG, split: ["programs", "day"], query: (d) => ({ group: [{ name: "SourceId" }, byMonth("ExecutedDate")], show: [countOf], where: logWhere(d) }) },
-  "uniques-month": { object: LOG, split: ["programs", "month"], query: (d) => ({ group: [{ name: "SourceId" }, byMonth("ExecutedDate")], show: uniqueShow(d), where: logWhere(d) }) },
-  "uniques-window": { object: LOG, split: ["programs"], query: (d) => ({ group: [{ name: "SourceId" }], show: uniqueShow(d), where: logWhere(d) }) },
-  "sent-since": { object: LOG, split: ["programs", "day"], query: (d) => ({ group: [{ name: "SourceId" }], show: [countOf], where: logWhere(d) }) },
-  classes: { object: LOG, split: ["day"], query: (d) => ({ group: [{ name: "Source" }, { name: "AddressType" }], show: [countOf], where: logWhere(d, { source: false }) }) },
+  totals: { object: LOG, split: ["programs", "day"], query: (d) => ({ group: [logProgram, logMonth], show: [countOf], where: logWhere(d) }) },
+  "uniques-month": { object: LOG, split: ["programs", "month"], query: (d) => ({ group: [logProgram, logMonth], show: uniqueShow(d), where: logWhere(d) }) },
+  "uniques-window": { object: LOG, split: ["programs"], query: (d) => ({ group: [logProgram], show: uniqueShow(d), where: logWhere(d) }) },
+  "sent-since": { object: LOG, split: ["programs", "day"], query: (d) => ({ group: [logProgram], show: [countOf], where: logWhere(d) }) },
+  classes: { object: LOG, split: ["day"], query: (d) => ({ group: LOG_SRC.standing.map((c) => ({ name: c.field })), show: [countOf], where: logWhere(d, { source: false }) }) },
   template: {
-    object: LOG, split: ["programs", "day", "flags", "address"], flags: ["IsOpened", "IsSent"],
+    object: LOG, split: ["programs", "day", "flags", "address"], flags: cutFlags(LOG_SRC),
     query: (d) => ({
-      group: [{ name: "SourceId" }, { name: "EmailTemplateId" }, { name: "EmailTemplateName" }, byMonth("ExecutedDate"), ...LOG_FLAGS.map((name) => ({ name }))],
+      group: [logProgram, logTemplate, { name: "EmailTemplateName" }, logMonth, ...LOG_FLAGS.map((name) => ({ name }))],
       show: [countOf], where: logWhere(d),
     }),
   },
   account: {
-    object: LOG, split: ["programs", "day", "flags", "address"], flags: ["IsOpened", "IsSent"],
-    query: (d) => ({ group: [{ name: "SourceId" }, PATH.company, byMonth("ExecutedDate"), ...LOG_FLAGS.map((name) => ({ name }))], show: [countOf], where: logWhere(d) }),
+    object: LOG, split: ["programs", "day", "flags", "address"], flags: cutFlags(LOG_SRC),
+    query: (d) => ({ group: [logProgram, PATH.company, logMonth, ...LOG_FLAGS.map((name) => ({ name }))], show: [countOf], where: logWhere(d) }),
   },
   // The sends with no company link, which the account call above never returns.
   "account-nolink": {
-    object: LOG, split: ["programs", "day", "flags", "address"], flags: ["IsOpened", "IsSent"],
-    query: (d) => ({ group: [{ name: "SourceId" }, byMonth("ExecutedDate"), ...LOG_FLAGS.map((name) => ({ name }))], show: [countOf], where: [...logWhere(d), noCompany()] }),
+    object: LOG, split: ["programs", "day", "flags", "address"], flags: cutFlags(LOG_SRC),
+    query: (d) => ({ group: [logProgram, logMonth, ...LOG_FLAGS.map((name) => ({ name }))], show: [countOf], where: [...logWhere(d), noCompany()] }),
   },
   // Clicked sends, twice: who and when (grouped, so the month is the server's
   // bucket like every other fact), and what was clicked (plain rows, the one
@@ -616,47 +633,47 @@ const FAMILIES = {
   // a group on Gsid is dropped by the CLI, which then refuses the call (F-471).
   "click-attr": {
     object: LOG, split: ["programs", "day", "address"],
-    query: (d) => ({ group: [{ name: "SourceId" }, { name: "EmailTemplateId" }, byMonth("ExecutedDate"), PATH.company, { name: "Gsid" }], show: [{ name: "LinkClickedCount", aggregation: "COUNT" }], where: [...logWhere(d), cond("LinkClickedCount", "GT", 0)] }),
+    query: (d) => ({ group: [logProgram, logTemplate, logMonth, PATH.company, { name: "Gsid" }], show: [clickCount], where: [...logWhere(d), clickedOnly()] }),
   },
   "click-attr-nolink": {
     object: LOG, split: ["programs", "day", "address"],
-    query: (d) => ({ group: [{ name: "SourceId" }, { name: "EmailTemplateId" }, byMonth("ExecutedDate"), { name: "Gsid" }], show: [{ name: "LinkClickedCount", aggregation: "COUNT" }], where: [...logWhere(d), cond("LinkClickedCount", "GT", 0), noCompany()] }),
+    query: (d) => ({ group: [logProgram, logTemplate, logMonth, { name: "Gsid" }], show: [clickCount], where: [...logWhere(d), clickedOnly(), noCompany()] }),
   },
   "click-json": {
     object: LOG, split: ["programs", "day", "address"], sanitize: "clicks",
-    query: (d) => ({ group: [], show: [{ name: "Gsid" }, { name: "LinkClickedJson" }], where: [...logWhere(d), cond("LinkClickedCount", "GT", 0)] }),
+    query: (d) => ({ group: [], show: [{ name: "Gsid" }, { name: LOG_SRC.clicks.detailField }], where: [...logWhere(d), clickedOnly()] }),
   },
   "resp-month": {
     object: SURVEY, split: ["day"],
     query: (d) => ({
-      group: [PATH.surveyProgram, byMonth("RespondedDate"), { name: "ResponseStatus" }], show: [countOf],
-      where: [cond("Responded", "EQ", true), notTest(), cond("RespondedDate", "GTE", d.window.start), cond("RespondedDate", "LT", d.window.end)],
+      group: [PATH.surveyProgram, byMonth(SURVEY_SRC.dateField), surveyStatus], show: [countOf],
+      where: [responded(), ...notTest(), cond(SURVEY_SRC.dateField, "GTE", d.window.start), cond(SURVEY_SRC.dateField, "LT", d.window.end)],
     }),
   },
-  "resp-participants": { object: SURVEY, split: [], query: () => ({ group: [PATH.surveyProgram], show: [countOf], where: [notTest()] }) },
+  "resp-participants": { object: SURVEY, split: [], query: () => ({ group: [PATH.surveyProgram], show: [countOf], where: notTest() }) },
   // The test participants left out, per program: an honesty count.
-  "resp-test": { object: SURVEY, split: [], query: () => ({ group: [PATH.surveyProgram], show: [countOf], where: [cond("TestParticipant", "EQ", true)] }) },
+  "resp-test": { object: SURVEY, split: [], query: () => ({ group: [PATH.surveyProgram], show: [countOf], where: testOnly() }) },
   // Survey rows no program owns: the calls above go through the participant
   // lookup, so they never return these.
-  "resp-unattributed": { object: SURVEY, split: [], query: () => ({ group: [], show: [countOf], where: [cond("AOParticipantId", "IS_NULL")] }) },
+  "resp-unattributed": { object: SURVEY, split: [], query: () => ({ group: [], show: [countOf], where: [cond(SURVEY_SRC.lookups.program.through, "IS_NULL")] }) },
   // All time, like the denominator above: resp-month's query without its month
   // bucket and its window, so the two count a response the same way.
-  "resp-total": { object: SURVEY, split: [], query: () => ({ group: [PATH.surveyProgram, { name: "ResponseStatus" }], show: [countOf], where: [cond("Responded", "EQ", true), notTest()] }) },
+  "resp-total": { object: SURVEY, split: [], query: () => ({ group: [PATH.surveyProgram, surveyStatus], show: [countOf], where: [responded(), ...notTest()] }) },
   "account-names": { object: COMPANY, split: ["keys"], query: (d) => ({ group: [], show: [{ name: "Gsid" }, { name: "Name" }], where: [cond("Gsid", "IN", d.keys)] }) },
   // Step detail only (R21): the JO send log, windowed on CreatedAt.
   step: {
-    object: JO_LOG, split: ["programs", "day", "flags", "address"], flags: ["EmailOpened", "EmailSend"], boolFlags: true,
+    object: JO_LOG, split: ["programs", "day", "flags", "address"], flags: cutFlags(JO_SRC),
     query: (d) => ({
-      group: [{ name: "AdvancedOutreachId" }, { name: "StepId" }, { name: "EmailTemplateId" }, { name: "EmailTemplateVarianceId" }, { name: "EmailTemplateVarianceName" }, byMonth("CreatedAt"), ...JO_FLAGS.map((name) => ({ name }))],
+      group: [joProgram, { name: "StepId" }, { name: JO_SRC.templateField }, { name: "EmailTemplateVarianceId" }, { name: "EmailTemplateVarianceName" }, joMonth, ...JO_FLAGS.map((name) => ({ name }))],
       show: [countOf], where: joWhere(d),
     }),
   },
   "step-click": {
     object: JO_LOG, split: ["programs", "day", "address"],
-    query: (d) => ({ group: [{ name: "AdvancedOutreachId" }, { name: "StepId" }, { name: "EmailTemplateVarianceId" }, PATH.logRow], show: [countOf], where: [...joWhere(d), cond("EmailClicked", "EQ", true)] }),
+    query: (d) => ({ group: [joProgram, { name: "StepId" }, { name: "EmailTemplateVarianceId" }, PATH.logRow], show: [countOf], where: [...joWhere(d), cond(JO_SRC.clicks.flagField, "EQ", true)] }),
   },
-  "participants-month": { object: JO_LOG, split: ["programs", "month"], query: (d) => ({ group: [{ name: "AdvancedOutreachId" }, byMonth("CreatedAt")], show: [distinct(PATH.participant)], where: joWhere(d) }) },
-  "participants-window": { object: JO_LOG, split: ["programs"], query: (d) => ({ group: [{ name: "AdvancedOutreachId" }], show: [distinct(PATH.participant)], where: joWhere(d) }) },
+  "participants-month": { object: JO_LOG, split: ["programs", "month"], query: (d) => ({ group: [joProgram, joMonth], show: [distinct(PATH.participant)], where: joWhere(d) }) },
+  "participants-window": { object: JO_LOG, split: ["programs"], query: (d) => ({ group: [joProgram], show: [distinct(PATH.participant)], where: joWhere(d) }) },
 };
 
 export function buildQuery(d) {
@@ -768,8 +785,8 @@ export function splitUnit(d) {
     if (how === "flags") {
       const field = fam.flags[(d.partition ?? []).length];
       if (field) {
-        const yes = fam.boolFlags ? true : "YES";
-        const rest = fam.boolFlags ? { field, op: "EQ", value: false } : { field, op: "NE", value: "YES" }; // NE keeps nulls
+        const yes = flagValue(sourceOf(fam.object), field);
+        const rest = typeof yes === "boolean" ? { field, op: "EQ", value: false } : { field, op: "NE", value: yes }; // NE keeps nulls
         return [{ ...d, partition: [...(d.partition ?? []), { field, op: "EQ", value: yes }] }, { ...d, partition: [...(d.partition ?? []), rest] }];
       }
     }
@@ -994,7 +1011,8 @@ export function decidePrograms({ listed, base, describes, selector, sentSinceIds
   const wantNames = new Set(selector.names.map(termKey));
   const wantIds = new Set(selector.ids);
   const picks = (p) =>
-    (!wantNames.size && !wantIds.size ? true : wantIds.has(p.id) || (p.name != null && wantNames.has(termKey(p.name)))) &&
+    // --name takes a name or an id, as it does in email-report: one flag vocabulary across the report skills.
+    (!wantNames.size && !wantIds.size ? true : wantIds.has(p.id) || wantNames.has(termKey(p.id)) || (p.name != null && wantNames.has(termKey(p.name)))) &&
     (!selector.sentSince || sentSinceIds.has(p.id));
   const selected = new Map();
   const deleted = new Set();
@@ -1284,6 +1302,8 @@ function readFetchLog(runDir) {
 }
 
 const TEXT_FAMILIES = new Set(["whoami"]);
+// How a first failure that gets one more try reads in a progress line.
+const PROGRESS_KIND = { timeout: "timed out", outage: "no answer", "not-found": "not found" };
 const isRpRun = (d) => d.family in FAMILIES;
 
 /**
@@ -1325,11 +1345,16 @@ export function fetchEngagement(ctx) {
       }
       const r = transport.run({ id, argv, timeoutMs: params.timeoutMs });
       counts.made++;
-      onCall(`${id} ${r.ok ? "ok" : "failed"} (${r.ms} ms)`);
+      // The progress line says what was RECORDED for the call, once that is
+      // decided: a not-found that is retried and then settled as a deleted
+      // program never failed, and a line reading "failed" beside a summary
+      // with no failure leaves the reader to guess which to believe (F-479).
+      const say = (what) => onCall(`${id} ${what} (${r.ms} ms)`);
       // Non-empty stderr is not a failure: the CLI warns there and exits 0.
       if (r.ok) {
         const file = `calls/${id}.${TEXT_FAMILIES.has(d.family) ? "txt" : "json"}`;
         if (TEXT_FAMILIES.has(d.family)) {
+          say("ok");
           writeFileAtomicSync(join(runDir, file), r.stdout);
           return record({ ...d, id, status: "ok", file, attempt });
         }
@@ -1337,6 +1362,7 @@ export function fetchEngagement(ctx) {
         try {
           payload = JSON.parse(r.stdout);
         } catch {
+          say("failed: the answer is not JSON");
           failed.push({ id, family: d.family, kind: "unparseable" });
           record({ ...d, id, status: "failed", kind: "unparseable", attempt });
           return null;
@@ -1344,6 +1370,7 @@ export function fetchEngagement(ctx) {
         const rows = Array.isArray(payload) ? payload.length : null;
         // As long as the page: the server cut it and said nothing.
         const truncated = isRpRun(d) && rows != null && rows >= params.pageSize;
+        say(truncated ? "ok, a full page: it will be split" : "ok");
         if (FAMILIES[d.family]?.sanitize === "clicks" && Array.isArray(payload)) {
           payload = payload.map((row) => ROW_READERS["click-json"](row, params.unsubscribeLinks));
         }
@@ -1352,18 +1379,28 @@ export function fetchEngagement(ctx) {
       }
       const kind = classifyFailure(r);
       if (kind === "auth-expired") {
+        say("stopped: the token expired");
         stop = { reason: "token-expired", detail: "the CLI reported the token expired" };
         return null;
       }
       // Once more, on its own, before anything is concluded from it.
-      if (attempt === 1 && (kind === "timeout" || kind === "outage" || kind === "not-found")) { counts.retried++; continue; }
-      if (kind === "timeout") return record({ ...d, id, status: "split", kind, attempt });
+      if (attempt === 1 && (kind === "timeout" || kind === "outage" || kind === "not-found")) {
+        say(`${PROGRESS_KIND[kind]}: trying once more`);
+        counts.retried++;
+        continue;
+      }
+      if (kind === "timeout") {
+        say("timed out twice: it will be split");
+        return record({ ...d, id, status: "split", kind, attempt });
+      }
       if (kind === "not-found" && d.family === "describe") {
+        say("not found twice: recorded as a deleted program, not a failure");
         const file = `calls/${id}.json`;
         writeFileAtomicSync(join(runDir, file), JSON.stringify({ notFound: true }));
         return record({ ...d, id, status: "ok", file, notFound: true, attempt });
       }
       const failure = { id, family: d.family, kind: kind === "outage" ? "shape-error" : kind, stderr: printable(r.stderr, 300) };
+      say(`failed: ${failure.kind}`);
       failed.push(failure);
       record({ ...d, ...failure, status: "failed", attempt });
       return null;
@@ -1546,14 +1583,9 @@ function readKbSteps(kbDir) {
 // ── Reduce ───────────────────────────────────────────────────────────────────
 const zero = () => ({ sent: 0, delivered: 0, bounced: 0, rejected: 0, unsubscribed: 0, spamComplaints: 0, opened: 0, clicked: 0 });
 const anyNonZero = (m) => SEND_MEASURES.some((k) => m[k] !== 0);
+// What a row's flags add to is the metric registry's rule, stated once there.
 function addFlags(m, n, f) {
-  m.sent += n;
-  if (f.delivered) m.delivered += n;
-  if (f.bounced) m.bounced += n;
-  if (f.rejected) m.rejected += n;
-  if (f.unsubscribed) m.unsubscribed += n;
-  if (f.spam) m.spamComplaints += n;
-  if (f.opened) m.opened += n;
+  for (const k of measuresCounted(f)) m[k] += n;
 }
 // A table keyed by a JSON array, each entry holding the all-recipients and
 // internal-recipients measures; external is derived (the measures are additive).
@@ -1851,8 +1883,8 @@ export function reduceEngagement(input) {
       if (p == null || m == null || !accept(p, m)) continue;
       const k = JSON.stringify([p, m]);
       if (!respTable.has(k)) respTable.set(k, { programId: p, month: m, submitted: 0, partiallySubmitted: 0, ...provenance });
-      if (status === "Submitted") respTable.get(k).submitted += n;
-      else if (status === "Partially Submitted") respTable.get(k).partiallySubmitted += n;
+      if (status === SURVEY_SRC.statuses.submitted) respTable.get(k).submitted += n;
+      else if (status === SURVEY_SRC.statuses.partiallySubmitted) respTable.get(k).partiallySubmitted += n;
       else respStats.otherStatus += n;
     }
   }
@@ -1883,8 +1915,8 @@ export function reduceEngagement(input) {
       const { programId: p, status, n: count } = ROW_READERS["resp-total"](row);
       if (p == null || !selected.has(p)) continue;
       if (!totalsByProgram.has(p)) totalsByProgram.set(p, { submitted: 0, partiallySubmitted: 0 });
-      if (status === "Submitted") totalsByProgram.get(p).submitted += count ?? 0;
-      else if (status === "Partially Submitted") totalsByProgram.get(p).partiallySubmitted += count ?? 0;
+      if (status === SURVEY_SRC.statuses.submitted) totalsByProgram.get(p).submitted += count ?? 0;
+      else if (status === SURVEY_SRC.statuses.partiallySubmitted) totalsByProgram.get(p).partiallySubmitted += count ?? 0;
     }
   }
   const responseParticipants = [...participantsByProgram]
@@ -1927,8 +1959,7 @@ export function reduceEngagement(input) {
       const state = t == null ? "unknown" : clickTemplates[t].state;
       tally[state === "tracked" ? "tracked" : state === "not-tracked" ? "notTracked" : "unknown"]++;
     }
-    const counted = tally.tracked + tally.notTracked + tally.unknown;
-    clickPrograms[p] = { state: counted && tally.tracked === counted ? "tracked" : counted && tally.notTracked === counted ? "not-tracked" : "unknown", templates: tally };
+    clickPrograms[p] = { state: rollUpTracking(tally), templates: tally };
     // A program with survey participants sent a survey, so a 0 is a real 0.
     // None, on a readable object, means it sent no survey. An unreadable
     // object decides nothing.
@@ -2018,8 +2049,8 @@ export function reduceEngagement(input) {
   for (const u of of("classes")) {
     for (const row of u.rows) {
       const { source, addressType, n } = ROW_READERS.classes(row);
-      if (source !== JO_SOURCE) excluded.nonJoSources += n ?? 0;
-      else if (addressType !== "To") excluded.ccCopies += n ?? 0;
+      if (source !== standingValue(LOG_SRC, "Source")) excluded.nonJoSources += n ?? 0;
+      else if (addressType !== standingValue(LOG_SRC, "AddressType")) excluded.ccCopies += n ?? 0;
     }
   }
   const withDesign = [...selected.keys()].filter((p) => design[p]).length;
@@ -2060,7 +2091,7 @@ export function reduceEngagement(input) {
       pluginVersion,
       window: params.window,
       incompleteFrom: params.incompleteFrom,
-      dateBasis: { object: LOG, field: "ExecutedDate", grain: "month", stepDetail: params.stepDetail ? { object: JO_LOG, field: "CreatedAt" } : null },
+      dateBasis: { object: LOG, field: LOG_SRC.dateField, grain: "month", stepDetail: params.stepDetail ? { object: JO_LOG, field: JO_SRC.dateField } : null },
       stepDetail: params.stepDetail,
       accounts: { pulled: params.accounts.pull, reason: params.accounts.pull ? null : "accounts-off" },
       participantRecords: { pulled: params.stepDetail, reason: params.stepDetail ? null : "step-detail-off" },
@@ -2115,76 +2146,10 @@ export function loadRun(runDir, opts = {}) {
   };
 }
 
-// ── T-10 read floor ──────────────────────────────────────────────────────────
-// The accessors every reader of a snapshot goes through until the shared query
-// engine (ENG-4) takes them over. A not-tracked metric has NO value here: not
-// 0, not the stored count — null.
-/**
- * @param {unknown} json a parsed snapshot file
- * @returns {T10Snapshot}
- */
-export function openSnapshot(json) {
-  const s = /** @type {any} */ (json);
-  if (!s || typeof s !== "object" || Array.isArray(s)) throw new Error("engagement snapshot: not an object — refusing to read it (T-10)");
-  if (s.schemaVersion !== T10_SCHEMA_VERSION)
-    throw new Error(`engagement snapshot: schemaVersion ${JSON.stringify(s.schemaVersion)} is not ${T10_SCHEMA_VERSION} — refusing to read it (T-10); re-pull with this plugin version, or update the plugin`);
-  if (s.kind !== "engagement") throw new Error(`engagement snapshot: kind ${JSON.stringify(s.kind)} is not "engagement" — refusing to read it (T-10)`);
-  return s;
-}
-const UNKNOWN_CLICKS = Object.freeze({ state: "unknown", evidence: { clickHistory: { everClicked: false, firstMonth: null, lastMonth: null }, linkSettings: null } });
-/** @returns {T10ClickAvailability} a template the snapshot does not list is unknown */
-export const clickAvailability = (snapshot, templateId) => snapshot.meta.metricAvailability.clicks.templates[templateId] ?? UNKNOWN_CLICKS;
-/**
- * A send row's click count with its tracking state.
- * @param {T10Snapshot} snapshot
- * @param {{templateId: ?string, clicked: number}} row
- * @returns {{state: TrackingState, value: ?number}}
- */
-export function readClicked(snapshot, row) {
-  const { state } = clickAvailability(snapshot, row.templateId);
-  return { state, value: state === "not-tracked" ? null : row.clicked };
-}
-/**
- * Whether the snapshot holds the account grain, and the reason when it does
- * not. A reader shows the reason wherever account data would be; it never
- * shows the empty table as "no accounts". A snapshot made before the switch
- * existed carries no marker and pulled the grain.
- * @param {T10Snapshot} snapshot
- * @returns {{pulled: boolean, reason: ?"accounts-off"}}
- */
-export const accountAvailability = (snapshot) => snapshot.meta.accounts ?? { pulled: true, reason: null };
-/** @returns {{state: TrackingState, templates: {tracked: number, notTracked: number, unknown: number}}} */
-export const programClickAvailability = (snapshot, programId) =>
-  snapshot.meta.metricAvailability.clicks.programs[programId] ?? { state: "unknown", templates: { tracked: 0, notTracked: 0, unknown: 0 } };
-/**
- * A program's survey responses with their tracking state: Submitted,
- * Partially submitted and Any response, on ONE basis per call.
- *   no months   basis "all-time": the counts and the denominator, both all
- *               time. This is the only pair a response rate is computed from.
- *   months      basis "months": the counts of those response months, for a
- *               trend or a date filter. participants is null: the denominator
- *               has no month, so these counts never sit beside it.
- * @param {T10Snapshot} snapshot
- * @param {string} programId
- * @param {?string[]} [months] response months to count
- * @returns {{state: TrackingState, basis: "all-time"|"months", submitted: ?number, partiallySubmitted: ?number, anyResponse: ?number, participants: ?number}}
- */
-export function readResponses(snapshot, programId, months = null) {
-  const state = snapshot.meta.metricAvailability.responses.programs[programId]?.state ?? "unknown";
-  /** @type {"all-time"|"months"} */
-  const basis = months ? "months" : "all-time";
-  const none = { state, basis, submitted: null, partiallySubmitted: null, anyResponse: null, participants: null };
-  if (state === "not-tracked") return none;
-  if (!months) {
-    const all = snapshot.facts.responseParticipants.find((r) => r.programId === programId);
-    return all ? { state, basis, submitted: all.submitted, partiallySubmitted: all.partiallySubmitted, anyResponse: all.submitted + all.partiallySubmitted, participants: all.participants } : none;
-  }
-  const keep = new Set(months);
-  const rows = snapshot.facts.responses.filter((r) => r.programId === programId && keep.has(r.month));
-  const submitted = rows.reduce((s, r) => s + r.submitted, 0);
-  const partiallySubmitted = rows.reduce((s, r) => s + r.partiallySubmitted, 0);
-  return { state, basis, submitted, partiallySubmitted, anyResponse: submitted + partiallySubmitted, participants: null };
-}
+// The T-10 read floor (openSnapshot, clickAvailability, readClicked,
+// accountAvailability, programClickAvailability, readResponses) lives in
+// engagement-query.mjs, the module every reader of a snapshot loads. This file
+// imports the two it uses itself.
 
 /** @type {EngagementSourceAdapter} */
 export const joEngagementAdapter = {
@@ -2197,7 +2162,7 @@ export const joEngagementAdapter = {
 // ── CLI ──────────────────────────────────────────────────────────────────────
 const USAGE =
   "usage: engagement.mjs <plan|fetch|run> [--workspace <dir>] [--run <id>] [--kb <slugDir>] [--from YYYY-MM --to YYYY-MM] " +
-  "[--name <program>]... [--ids-file <file>] [--sent-since <date|Nd|Nm>] [--internal-domain <domain>]... [--unsubscribe-link <link|host>]... [--step-detail] [--accounts] " +
+  "[--name <program-name-or-id>]... [--ids-file <file>] [--sent-since <date|Nd|Nm>] [--internal-domain <domain>]... [--unsubscribe-link <link|host>]... [--step-detail] [--accounts] " +
   "[--previous <snapshot.json>] [--full] [--out <snapshot.json>]  |  engagement.mjs reduce --run-dir <dir> --out <snapshot.json> [--previous <file>] [--link-settings <file>]";
 const EXIT = { ok: 0, failed: 1, "token-expired": 3, partial: 4 };
 

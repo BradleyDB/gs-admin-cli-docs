@@ -1168,3 +1168,128 @@ programs pause. This workspace is read-only by default. Workspace manifests clai
 is PRODUCTION (recorded at setup) — verify the target before approving." DECLINED; the command never ran.
 Walk: none owed (no SKILL.md changed); the round's Walk line is on the bus header.
 Section CLEARED. PR #37's merge is Bradley's.
+
+## ENG-3 / ENG-4 — the open-rate report walked on a real tenant, at program level and at account level (banked 2026-10-04, builder, Session S2 @ hb-20261004-02; verdict at V2)
+
+Owed by: V2, the batched verdict session after S4c, in the consumer workspace with the plugin loaded from `dev`
+(PR for `feat/jo-dash-s2-engine-report` merges on green CI plus its review round, before V2).
+Why it is banked: the query engine and the report were built offline against the fictional tenant and the stand-in
+CLI. Whether the skill's prose drives the three scripts without improvising, whether the report's numbers can be
+rebuilt in Gainsight from its own glossary, and how the report reads on real program and account names cannot be
+measured without a tenant.
+Tenant: the S1-V tenant (production reads are allowed once `gs-admin whoami` confirms it). Every call is a read.
+
+THIS LIST IS COMPLETE. It is everything this round judges for ENG-3 and ENG-4; a check that is not here is not owed,
+and a thing the round thinks should be here is a finding. Nothing is "noted on the verdict": anything observed beside
+a pass bar becomes an F-section on the bus, or a GitHub issue, before the round closes.
+
+Picks and inputs, settled before the first call: the three programs the S1-V rounds used (P-busy, P-multi, P-survey)
+and the tenant's internal domains and unsubscribe links, all in the consumer workspace
+(`.gs-superadmin/tmp/s1v-picks.md`; tenant data, never copied here). Every line below passes every internal domain
+(`--internal-domain`, once each) and every unsubscribe link (`--unsubscribe-link`, once each); `<picks>` stands for
+`--name '<P-busy>' --name '<P-multi>' --name '<P-survey>'`. One closed month, `<M>`, is picked for X2 before any call.
+
+- X0 (the skill walk at program level: accounts off, the default, with `--xlsx`). In a fresh session:
+  `/gs-superadmin:email-engagement report <picks> --by-template --xlsx`.
+  Pass bar: the skill runs its steps as written. It plans first and states the estimate in one line before pulling;
+  it pulls with the same `--run` it planned with; the snapshot lands at `<slug>/reports-adhoc/engagement-<run>.json`
+  and the report at `<slug>/reports-adhoc/engagement-<date>.md`; the workbook holds one sheet per CSV written (five:
+  status, programs, templates, glossary, caveats); the final block is printed in the skill's literal shape with every
+  placeholder filled from the summary; every `gs-admin` call was a read and none drew the guard; and no payload,
+  snapshot or CSV content was read into the session. Record the plan's calls and seconds and the pull's wall time.
+  - Early spot check, tester, 2026-10-04 @ hb-20261004-02: PASSED. Plan: 9 calls made (2 of them retries), 94 s wall;
+    estimate 35 calls / 327 s, so pulled in the foreground without an ask. Pull: 36 calls made (the 35 planned plus its
+    own whoami), 7 reused from the plan, 0 retried, 272 s wall, exit 0, reconciled. Each clause: plan before pull, the
+    estimate stated in one line first; the same `--run` on both; snapshot and report at the stated paths; workbook with
+    the five named sheets; final block in the literal shape, every placeholder from the step-4 summary; no gs-admin call
+    drew the guard; no payload, snapshot or CSV read (the run's fetch log and status file, both metadata, were read to
+    explain F-479's stderr). One guess, at step 6's Caveats line: F-481. Logged: F-479, F-480, F-481, all polish.
+    Not a fresh session in the strict sense: the kickoff had the tester read SKILL.md before invoking it.
+- X1 (accounts off: the reason where the watch list would be). Read X0's report.
+  Pass bar: the "Account watch list" section says it is not included, gives the reason the snapshot's marker carries
+  (`meta.accounts.reason`, `accounts-off`) in words, and says how to turn it on (`--accounts`); it holds no table, no
+  empty list and no zero. The Programs table still shows a number under Accounts reached for every program. The
+  Participant records column is a dash for every program, and the note under the table says why and how to turn it
+  on (`--step-detail`). The caveats block carries both.
+  - Early spot check, tester, 2026-10-04 @ hb-20261004-02: PASSED, read from X0's report. Watch list: "Not included",
+    the accounts-off reason in words, `--accounts` named; no table, list or zero. Accounts reached: a number on every
+    program row (the total row a dash, as the note under the table says). Participant records: a dash on every row,
+    with the note giving why and `--step-detail`. Caveats: both present (participant records blank; no account data,
+    with accounts reached counted either way). Nothing logged.
+- X2 (a number rebuilt from the glossary alone). `/gs-superadmin:email-engagement report --name '<P-busy>' --from <M> --to <M>`,
+  then, using ONLY what that report's "How each number is calculated" section states for Sent, Delivered, Opened and
+  Unique recipients (object, fields and values, filters, date field), build each count as one direct read through
+  the spike's catalog-checked runner.
+  Pass bar: all four direct counts equal the report's Programs row for P-busy, and the open rate equals
+  Opened ÷ Delivered to one decimal. A count that cannot be built from the glossary text alone is a finding.
+- X3 (template and step names). In X0's "Emails by template" table, Bradley reads P-multi's emails in the Gainsight
+  UI.
+  Pass bar: every row names the template and the step the UI shows for it (order and name); a template that sits on
+  two or more steps reads "(on N steps)"; no row shows a raw id where the UI shows a name, unless the report's
+  caveats say that program has no full KB doc.
+- X4 (the skill walk at account level, with `--xlsx`). In a fresh session:
+  `/gs-superadmin:email-engagement report <picks> --accounts --step-detail --by-template --xlsx`.
+  Pass bar: the plan's estimate is stated before the pull. The report holds an "Account watch list" with, for each
+  program that has qualifying accounts, a low-engagement table and a deliverability table; every low-engagement
+  account has at least the stated minimum delivered; neither table lists "All other accounts" or "No company link".
+  One account from P-busy's low-engagement table, picked before looking: its Sent, Delivered and Opened equal a
+  direct count for that company and program over the window (one read through the runner, filtered on the company).
+  The "Emails by step" table is present, with step and variant names; Participant records are numbers; the workbook
+  holds seven sheets (the five of X0 plus steps and watch-list). Record the pull's calls and wall time.
+- X5 (survey responses). In X0's report, the "Survey responses (all time)" row for P-survey.
+  Pass bar: Survey participants and Any response equal the figures of the program's analytics page that the S1-V
+  third re-run recorded for V11 (kept with the picks); the section says the figures are all time.
+- X6 (data pulled, tracking states, caveats). Read X0's and X4's reports.
+  Pass bar: the header's "Data pulled" time is the pull's (the snapshot's `meta.pulledAt`), with the window and the
+  provisional date; each click cell reads as the snapshot's click state for that template or program says (a plain
+  number when tracked, "Not tracked", or a number marked "(tracking unknown)"); the caveats block names the
+  incomplete period, the opens caveat, the content-links caveat, and what the pull left out (CC copies, other
+  sources) with counts.
+- X7 (a pull that continues from an earlier snapshot). `/gs-superadmin:email-engagement report <picks> --previous <X0's snapshot>`.
+  Pass bar: the plan's `estimate.mode` is `selective`; the report's header says the pull was selective; the caveats
+  block carries the carried-forward caveat, naming the carried months and X0's pull time; the Programs numbers for
+  the carried months equal X0's (compare one closed month with `--from`/`--to` reports from both snapshots via
+  `--snapshot`, which pulls nothing).
+- X8 (a plain question). In a fresh session, with no slash command: "what's the open rate for <P-busy>?".
+  Pass bar: this skill is the one that runs (not email-report), in `report` mode, with `--name` for the program; it
+  plans and states the estimate before pulling; it answers from the finished report's Programs row, quoting the
+  figures as written.
+- X9 (the ask before a long pull; plan only). `/gs-superadmin:email-engagement report --accounts`, with no selector.
+  Pass bar: after the plan, the skill states the estimate and asks before pulling (the estimate is over ten minutes
+  on this tenant), offering to narrow with `--sent-since`. The tester answers stop; no pull is made.
+
+Also owed at V2, from the ledger: the round's guard-wiring line is the tester's.
+
+### F-479 / F-480 / F-481 — re-verification before the merge of PR #38 (banked 2026-10-04, builder @ hb-20261004-03)
+
+Owed by: one tester round on hb-20261004-03, with the plugin loaded from branch `feat/jo-dash-s2-engine-report`, in
+the consumer workspace. Live, reads only. It gates the merge of PR #38 on Bradley's call; X2 to X9 above are NOT part
+of it and stay owed at V2.
+THIS LIST IS COMPLETE for this round. An observation beside a pass bar becomes an F-section or an issue before the
+round closes.
+Picks and inputs: as for X0, from `.gs-superadmin/tmp/s1v-picks.md`. One walk feeds all three checks:
+`/gs-superadmin:email-engagement report <picks> --by-template`, with every internal domain and every unsubscribe link.
+
+- R1 (F-479). Read the stderr of the walk's plan beside its summary.
+  Pass bar: with `programs.deleted` 1 or more and `failed: []`, no progress line contains the word `failed`; the
+  deleted program's describe reads `not found: trying once more` and then `not found twice: recorded as a deleted
+  program, not a failure`. The skill's step 2 says the lines are progress only. If the picks no longer reach a
+  deleted program (`programs.deleted` is 0), say so and judge R1 on the offline arm instead: the same plan through
+  `--bin plugins/gs-superadmin/test/fixtures/engagement/fake-gs-admin.mjs` in a scratch workspace, window from 2026-01.
+  - Tester, 2026-10-04 @ hb-20261004-03: PASSED, on the live arm (the picks still reach a deleted program). Plan exit 0,
+    `failed: []`, 8 calls / 43 s wall; no progress line contains `failed`; both not-found lines word for word; step 2
+    says the lines are progress only. F-479 VERIFIED.
+- R2 (F-480). In the walk's report, copy the footer's `Re-run:` code span exactly and run it.
+  Pass bar: the span holds a command and nothing else; it runs (exit 0) and writes a second report beside the first,
+  pulling nothing; the explanation that it pulls nothing is in the header's snapshot line.
+  - Tester, 2026-10-04 @ hb-20261004-03: PASSED. The footer is `Re-run: ` plus one code span; its bytes, extracted by
+    script and run through bash, parse and exit 0, writing a second report beside the first; no new pull working
+    directory; the header's snapshot line carries the explanation. F-480 VERIFIED.
+- R3 (F-481). Read the walk's step-6 block and the step-4 summary.
+  Pass bar: the `Caveats:` line is `<caveatCount> — ` followed by the summary's `leadCaveats` entries, as written,
+  joined with `; `; the tester chose nothing. Run step 4 again on the same snapshot (`--snapshot`, no pull): the
+  second summary's `leadCaveats` equals the first's.
+  - Tester, 2026-10-04 @ hb-20261004-03: PASSED. The step-6 Caveats line was `caveatCount` plus the two `leadCaveats`
+    joined with `; `, nothing chosen; step 4 run again over the same snapshot gave equal `leadCaveats` and
+    `caveatCount` (compared by script). Walk: plan 8 calls / 43 s, pull 36 calls / 269 s wall against an estimate of
+    35 calls / 327 s; no step made the walk stop or guess. F-481 VERIFIED.

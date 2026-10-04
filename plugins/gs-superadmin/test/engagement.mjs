@@ -32,10 +32,15 @@ import { isDeepStrictEqual } from "node:util";
 import { makeTempDir, removeTempDir, writeFiles, runNode } from "../../../test/rig.mjs";
 import {
   fetchEngagement, reduceEngagement, loadRun, resolveParams, makeGate, parseWhoami, parseSentSince, parseIdList,
-  expectedCalls, classifyFailure, classifyLink, readLinkClicks, parseUnsubscribeLink, NON_CONTENT_LINK_RULES, validateQuery, buildQuery, splitUnit, selectAccounts, decideClickState,
-  openSnapshot, readClicked, clickAvailability, programClickAvailability, accountAvailability, readResponses, monthsBetween,
-  SEND_MEASURES, T10_SCHEMA_VERSION, ENGAGEMENT_READ_PATHS, joEngagementAdapter,
+  expectedCalls, classifyFailure, classifyLink, readLinkClicks, parseUnsubscribeLink, validateQuery, buildQuery, splitUnit, selectAccounts, decideClickState,
+  monthsBetween, ENGAGEMENT_READ_PATHS, joEngagementAdapter,
 } from "../scripts/engagement.mjs";
+// The T-10 read floor and the tables the adapter counts with live in the query
+// module (ENG-4); the adapter imports them, and so does this suite.
+import {
+  openSnapshot, readClicked, clickAvailability, programClickAvailability, accountAvailability, readResponses,
+  NON_CONTENT_LINK_RULES, SEND_MEASURES, T10_SCHEMA_VERSION,
+} from "../scripts/engagement-query.mjs";
 import { buildTenant, answer, applyFaults, kbFiles, FAULT_TEXT, OWN_SITE_UNSUBSCRIBE } from "./fixtures/engagement/acme-tenant.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -77,6 +82,7 @@ function pull({ variant = {}, raw = {}, faults = [], previous = null, kb = false
   const tenant = buildTenant(variant);
   const dir = runDir ?? join(ROOT, `run-${++runSeq}`);
   const argv = [];
+  const progress = [];
   const counts = {};
   const transport = {
     name: "fake",
@@ -96,7 +102,7 @@ function pull({ variant = {}, raw = {}, faults = [], previous = null, kb = false
   let summary = null;
   let error = null;
   try {
-    summary = fetchEngagement({ params, runDir: dir, transport, gate, kbDir: kb ? KB_DIR : null, previous, phase, now });
+    summary = fetchEngagement({ params, runDir: dir, transport, gate, kbDir: kb ? KB_DIR : null, previous, phase, now, onCall: (line) => progress.push(line) });
   } catch (e) {
     error = e;
   }
@@ -106,7 +112,7 @@ function pull({ variant = {}, raw = {}, faults = [], previous = null, kb = false
     input = loadRun(dir, { previous, linkSettings, cliVersion: "fixture", pluginVersion: "fixture" });
     snapshot = reduceEngagement(input);
   }
-  return { tenant, params, summary, error, snapshot, input, argv, runDir: dir };
+  return { tenant, params, summary, error, snapshot, input, argv, progress, runDir: dir };
 }
 
 // ── The oracle: straight counts over the fixture's rows ──────────────────────
@@ -273,6 +279,17 @@ try {
   check("status is a LIST: a Dynamic Program edited while live carries two", isDeepStrictEqual(S.dimensions.programs.find((p) => p.id === "p-renew").statuses, ["PAUSE", "NEW"]));
   check("deleted programs (sends in the log, absent from jo p list, describe says not found) are excluded and counted",
     !ids.includes("p-gone") && isDeepStrictEqual(S.honesty.excluded.deletedPrograms, { programs: 1, sent: 5 }) && S.caveats.some((c) => c.id === "deleted-programs-excluded"), S.honesty.excluded);
+  {
+    const gone = base.progress.filter((l) => l.startsWith("describe-") && !l.includes(" ok ("));
+    check("F-479: the progress lines state each call's RECORDED outcome: the deleted program's two describes read 'not found: trying once more' and 'recorded as a deleted program, not a failure', and no line of a clean pull says failed",
+      gone.length === 2 && /^describe-[0-9a-f]+ not found: trying once more \(\d+ ms\)$/.test(gone[0]) && /^describe-[0-9a-f]+ not found twice: recorded as a deleted program, not a failure \(\d+ ms\)$/.test(gone[1]) &&
+        base.summary.status === "ok" && base.summary.failed.length === 0 && !base.progress.some((l) => /failed/.test(l)) && base.progress.length === base.summary.calls.made && base.progress.filter((l) => / ok \(\d+ ms\)$/.test(l)).length === base.summary.calls.made - 2,
+      [gone, base.progress.filter((l) => !/ ok \(/.test(l))]);
+    const broken = pull({ faults: [{ match: '"LinkClickedJson"', kind: "generic", times: 99 }] });
+    check("F-479: a call that IS recorded as failed says failed, with its kind, exactly once per failure in the summary",
+      broken.summary.status === "partial" && broken.summary.failed.length >= 1 && broken.progress.filter((l) => /failed: /.test(l)).length === broken.summary.failed.length && broken.progress.some((l) => /^click-json-[0-9a-f]+ failed: other \(\d+ ms\)$/.test(l)),
+      [broken.summary.failed, broken.progress.filter((l) => /failed/.test(l))]);
+  }
   check("a not-found is re-checked once, on its own, before it is believed: the deleted program was described exactly twice", base.argv.filter((a) => a.includes("describe") && a.includes("p-gone")).length === 2);
   check("a program the list missed but describe finds is IN, with its status read from describe's string form", ids.includes("p-unlisted") && isDeepStrictEqual(S.dimensions.programs.find((p) => p.id === "p-unlisted").statuses, ["PROCESSING"]));
   check("CC copies carry AddressType = CC: left out by the To filter and counted; non-JO sources left out by the Source filter and counted",

@@ -1,6 +1,6 @@
 ---
 name: dev-canary
-description: DEV CANARY — under test feat/jo-dash-s1b-accounts-optional · hb-20261004-01 · 2026-10-04. Visible only when this plugin is loaded from a dev working tree; removed before merge to main. If invoked, report this token and stop.
+description: DEV CANARY — under test feat/jo-dash-s2-engine-report · hb-20261004-03 · 2026-10-04. Visible only when this plugin is loaded from a dev working tree; removed before merge to main. If invoked, report this token and stop.
 ---
 
 Load-provenance marker for the /dev-loop workflow. The token above is

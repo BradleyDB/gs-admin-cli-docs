@@ -157,6 +157,11 @@ Re-run to keep documenting in batches: `/gs-superadmin:setup --budget 50` or
   mention a phrase, a program's full email inventory, a schedule audit of everything
   active, or object/field usage in participant sources. Also answers natural questions
   like "which emails mention the renewal reminder?".
+- **`/gs-superadmin:email-engagement`** — read-only open-rate report from the tenant's
+  send log: per program, sent, unique recipients, accounts reached, delivered, opened and
+  open rate, with clicks, survey responses, an optional account watch list, and a glossary
+  that says how every number is calculated. Also answers questions like "what's the open
+  rate for the onboarding program?".
 - **`/gs-superadmin:deps-report`** — tenant-wide impact analysis: every documented asset
   (rules, journeys, reports, connector jobs, data designers, scorecards) that depends on
   a given object, field, or external connection. Also triggered by questions like "what

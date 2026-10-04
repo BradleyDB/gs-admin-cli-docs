@@ -118,6 +118,13 @@ const RESTRICTED = {
       "the workspace plugin-link writer runs at every plugin session start (hooks.json SessionStart) — " +
       "a local import would widen the syntax-failure surface of the one script every session depends on",
   },
+  "plugins/gs-superadmin/scripts/engagement-query.mjs": {
+    mode: "none",
+    id: "ENG-4",
+    why:
+      "the one aggregation path over an engagement snapshot: every dashboard page carries this file's exact " +
+      "bytes inline and runs them in a browser, where no import resolves — not even a node: builtin",
+  },
   "build/defect-classes.mjs": {
     mode: "none",
     id: "W10",
