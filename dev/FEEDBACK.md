@@ -197,8 +197,9 @@ Walk (hb-20261004-01): 2026-10-04 (tester) — S1b verdict round, a RE-VERIFICAT
      sweep (source: the decision points of the functions added or changed, enumerated from the code; predictions
        written before the run): 36 of 37 as predicted, three predicted survivors (equivalent mutants), one MISMATCH
        (an unknown field holding an empty object or list was accepted by no check), pinned and re-run KILLED.
-     CI on PR #39's head fa1d747: pending when this was written; quoted per job in a re-stamp of this pointer once
-       it completes.
+     CI on PR #39's head fa1d747, per job (re-stamped 2026-10-04 at close-out): validate-plugin 37241095032 changes /
+       manifests / validate (ubuntu-latest) success; docs-drift 37241094937 drift (full) success. The PR reads
+       MERGEABLE / CLEAN. The merge is Bradley's; the handoff is still owed (see above).
      Open PRs to dev: #39 only. Issues #11 and #12 unchanged. -->
 
 <!-- builder 2026-10-04 (JO-dashboards S2 CLOSED OUT — PR #38 merged (bd27fed); F-479, F-480, F-481 VERIFIED; F-482 logged OPEN (polish); next free F-483):
