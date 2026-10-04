@@ -53,7 +53,7 @@ import { makeTempDir, removeTempDir, writeFiles, runNode } from "../../../test/r
 import { parseJourneyDoc } from "../scripts/jo-report.mjs";
 import { STUB_MARKER } from "../scripts/doc-lib.mjs";
 import { isDeepStrictEqual } from "node:util";
-import { openSnapshot, accountAvailability, T10_SCHEMA_VERSION } from "../scripts/engagement.mjs";
+import { openSnapshot, accountAvailability, T10_SCHEMA_VERSION } from "../scripts/engagement-query.mjs";
 import { kbFiles } from "./fixtures/engagement/acme-tenant.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));

@@ -32,10 +32,15 @@ import { isDeepStrictEqual } from "node:util";
 import { makeTempDir, removeTempDir, writeFiles, runNode } from "../../../test/rig.mjs";
 import {
   fetchEngagement, reduceEngagement, loadRun, resolveParams, makeGate, parseWhoami, parseSentSince, parseIdList,
-  expectedCalls, classifyFailure, classifyLink, readLinkClicks, parseUnsubscribeLink, NON_CONTENT_LINK_RULES, validateQuery, buildQuery, splitUnit, selectAccounts, decideClickState,
-  openSnapshot, readClicked, clickAvailability, programClickAvailability, accountAvailability, readResponses, monthsBetween,
-  SEND_MEASURES, T10_SCHEMA_VERSION, ENGAGEMENT_READ_PATHS, joEngagementAdapter,
+  expectedCalls, classifyFailure, classifyLink, readLinkClicks, parseUnsubscribeLink, validateQuery, buildQuery, splitUnit, selectAccounts, decideClickState,
+  monthsBetween, ENGAGEMENT_READ_PATHS, joEngagementAdapter,
 } from "../scripts/engagement.mjs";
+// The T-10 read floor and the tables the adapter counts with live in the query
+// module (ENG-4); the adapter imports them, and so does this suite.
+import {
+  openSnapshot, readClicked, clickAvailability, programClickAvailability, accountAvailability, readResponses,
+  NON_CONTENT_LINK_RULES, SEND_MEASURES, T10_SCHEMA_VERSION,
+} from "../scripts/engagement-query.mjs";
 import { buildTenant, answer, applyFaults, kbFiles, FAULT_TEXT, OWN_SITE_UNSUBSCRIBE } from "./fixtures/engagement/acme-tenant.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));

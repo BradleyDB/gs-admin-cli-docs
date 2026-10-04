@@ -7,7 +7,8 @@ left off. In short:
 - **A local knowledge base of your tenant** — every rule, journey, scorecard, report,
   connector, … indexed and documented as markdown Claude can cite.
 - **Everyday admin skills** — drift detection, naming audits, deprecations, reviewable
-  change plans, email/schedule reports, tenant-wide impact analysis, upstream bug reports.
+  change plans, email/schedule reports, email engagement reports, tenant-wide impact
+  analysis, upstream bug reports.
 - **A safety net** — every `gs-admin` command the CLI catalog marks mutating triggers a
   human approval prompt, and approved changes are journaled. Reads run freely;
   catalog-mutating commands ask (see [the gate you're relying on](#how-the-plugin-protects-your-tenant)
@@ -84,9 +85,10 @@ skill from the catalog below, e.g.:
 
 > **How invocation works — read this first.** Most skills fire **only** on their exact
 > slash command: typing "audit my rule names" in plain English does nothing — you must
-> type `/gs-superadmin:audit`. Exactly two skills — `email-report` and `deps-report` —
-> are also triggered by natural-language questions ("which emails mention X?",
-> "what breaks if I change this field?"). The table's **Invoke** column marks each one.
+> type `/gs-superadmin:audit`. Exactly three skills — `email-report`, `email-engagement`
+> and `deps-report` — are also triggered by natural-language questions ("which emails
+> mention X?", "what's the open rate for program Y?", "what breaks if I change this
+> field?"). The table's **Invoke** column marks each one.
 
 | Skill | What it does | Invoke |
 |-------|--------------|--------|
@@ -96,6 +98,7 @@ skill from the catalog below, e.g.:
 | [`/gs-superadmin:deprecate`](#deprecate-an-asset) | Walk an asset through the deprecation checklist | slash only |
 | [`/gs-superadmin:change-request`](#plan--execute-a-config-change) | Turn a ticket or request into a reviewable, KB-cited implementation plan | slash only |
 | [`/gs-superadmin:email-report`](#report-on-jo-emails--schedules) | Read-only Journey Orchestrator email & schedule reports (4 modes) | slash + natural language |
+| [`/gs-superadmin:email-engagement`](#report-on-email-engagement) | Read-only open-rate and engagement report per JO program, from the tenant's send log | slash + natural language |
 | [`/gs-superadmin:deps-report`](#tenant-wide-dependency-search) | Tenant-wide "what depends on this object/field/connection?" impact analysis | slash + natural language |
 | [`/gs-superadmin:report-bug`](#report-a-cli-bug-upstream) | Capture a `gs-admin` CLI misbehavior as a vendor-ready bug report | slash only |
 
@@ -246,6 +249,63 @@ matches `Some Field`, with near-misses listed but never counted. The skill refre
 statuses with a live sweep and offers a budget-gated KB gap-fill first — single-quote
 names (they contain `|`), and note the audit's per-step sends column is honestly
 `not available via CLI`. Never mutates the tenant.
+
+## Report on email engagement
+
+```
+/gs-superadmin:email-engagement report --sent-since 90d --internal-domain acme.com
+/gs-superadmin:email-engagement report --name 'Onboarding|Welcome Series' --by-template --step-detail
+/gs-superadmin:email-engagement report --accounts --xlsx
+```
+
+Also answers natural questions — "what's the open rate for the onboarding program?",
+"which programs have low open rates?" — without the slash command.
+
+Where `email-report` says what your emails say and when they run, this says how they
+performed. It reads the tenant's send log through read-only `gs-admin` calls into one
+snapshot file, then writes a report from it:
+
+- **A headline by status** and **one row per program**: sent, unique recipients, accounts
+  reached, delivered, opened and open rate side by side, then clicks and bounces.
+- **Survey responses** for programs that sent a survey: submitted, partially submitted,
+  any response, and the response rate.
+- **`--by-template`** — one row per program and template, with the step it sits on; and
+  one row per step and variant when the pull ran with `--step-detail`.
+- **`--accounts`** — an account watch list per program: the lowest open rates among
+  accounts with enough delivered email, and the accounts with the most bounces. Account
+  data is off unless you pass the flag, because ranking every account is most of a pull:
+  on a large tenant it turned a pull of a few minutes into about half an hour. Without it
+  the report says so where the watch list would be; it never shows an empty list.
+- **How each number is calculated** — for every metric shown: the Gainsight object it is
+  read from, the fields and the value that counts, the filters every count carries, the
+  date field, and the calculation. You can rebuild any figure in a Gainsight report and
+  compare.
+- **Caveats & data gaps**, always, with the date and time the data was pulled.
+
+Things worth knowing before you read the numbers:
+
+- **Sent is every attempt; Delivered is what went out and did not bounce.** Open rate and
+  click rate divide by Delivered. The Gainsight program analytics page uses the same words
+  for different counts, and the glossary says how they differ.
+- **Clicks count content links only**, not unsubscribe or mailto links, so they will rarely
+  match the Gainsight UI. If your unsubscribe link is a page on your own site, name it with
+  `--unsubscribe-link`. Click tracking is often off: a click cell reads a number when
+  clicks are tracked (a 0 is a real 0), `Not tracked` when no link is tracked, and a
+  number marked `(tracking unknown)` when the data cannot tell.
+- **Unique recipients and accounts reached are exact per program** and are never added
+  across programs.
+- **The current month is provisional**: opens keep arriving.
+- **The pull takes minutes, not seconds.** The skill prints the estimate first and asks
+  before a pull of more than about ten minutes. `--sent-since 90d` or `--name` narrows it.
+  A pull the login expires under stops cleanly and continues where it stopped after
+  `gs-admin login`.
+
+Reports land in `<slug>/reports-adhoc/` beside the snapshot they were written from;
+`--csv` or `--xlsx` adds spreadsheet output, and `--snapshot <file>` writes a report from
+a snapshot you already have without pulling again. Program status never limits what is
+pulled: the tables show Active programs unless you named programs, `--include-paused`
+adds Paused ones, `--all` shows every status, and the report states how many it hides.
+Never mutates the tenant.
 
 ## Tenant-wide dependency search
 
@@ -448,7 +508,7 @@ editing session has unsaved changes (the Journey cache is keyed by program id, n
   journey/ journey-email-templates/ rules-engine/ data-management/ data-designer/
   connectors/ scorecard/ report/ …    one folder per indexed asset type (manifest domain)
   changes/                  change plans (change-request skill) + JOURNAL.md (change journal)
-  reports-adhoc/            email-report / deps-report output
+  reports-adhoc/            email-report / email-engagement / deps-report output
   relationships/
     field-to-rule.md
     field-to-scorecard.md

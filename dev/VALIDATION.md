@@ -1168,3 +1168,81 @@ programs pause. This workspace is read-only by default. Workspace manifests clai
 is PRODUCTION (recorded at setup) — verify the target before approving." DECLINED; the command never ran.
 Walk: none owed (no SKILL.md changed); the round's Walk line is on the bus header.
 Section CLEARED. PR #37's merge is Bradley's.
+
+## ENG-3 / ENG-4 — the open-rate report walked on a real tenant, at program level and at account level (banked 2026-10-04, builder, Session S2 @ hb-20261004-02; verdict at V2)
+
+Owed by: V2, the batched verdict session after S4c, in the consumer workspace with the plugin loaded from `dev`
+(PR for `feat/jo-dash-s2-engine-report` merges on green CI plus its review round, before V2).
+Why it is banked: the query engine and the report were built offline against the fictional tenant and the stand-in
+CLI. Whether the skill's prose drives the three scripts without improvising, whether the report's numbers can be
+rebuilt in Gainsight from its own glossary, and how the report reads on real program and account names cannot be
+measured without a tenant.
+Tenant: the S1-V tenant (production reads are allowed once `gs-admin whoami` confirms it). Every call is a read.
+
+THIS LIST IS COMPLETE. It is everything this round judges for ENG-3 and ENG-4; a check that is not here is not owed,
+and a thing the round thinks should be here is a finding. Nothing is "noted on the verdict": anything observed beside
+a pass bar becomes an F-section on the bus, or a GitHub issue, before the round closes.
+
+Picks and inputs, settled before the first call: the three programs the S1-V rounds used (P-busy, P-multi, P-survey)
+and the tenant's internal domains and unsubscribe links, all in the consumer workspace
+(`.gs-superadmin/tmp/s1v-picks.md`; tenant data, never copied here). Every line below passes every internal domain
+(`--internal-domain`, once each) and every unsubscribe link (`--unsubscribe-link`, once each); `<picks>` stands for
+`--name '<P-busy>' --name '<P-multi>' --name '<P-survey>'`. One closed month, `<M>`, is picked for X2 before any call.
+
+- X0 (the skill walk at program level: accounts off, the default, with `--xlsx`). In a fresh session:
+  `/gs-superadmin:email-engagement report <picks> --by-template --xlsx`.
+  Pass bar: the skill runs its steps as written. It plans first and states the estimate in one line before pulling;
+  it pulls with the same `--run` it planned with; the snapshot lands at `<slug>/reports-adhoc/engagement-<run>.json`
+  and the report at `<slug>/reports-adhoc/engagement-<date>.md`; the workbook holds one sheet per CSV written (five:
+  status, programs, templates, glossary, caveats); the final block is printed in the skill's literal shape with every
+  placeholder filled from the summary; every `gs-admin` call was a read and none drew the guard; and no payload,
+  snapshot or CSV content was read into the session. Record the plan's calls and seconds and the pull's wall time.
+- X1 (accounts off: the reason where the watch list would be). Read X0's report.
+  Pass bar: the "Account watch list" section says it is not included, gives the reason the snapshot's marker carries
+  (`meta.accounts.reason`, `accounts-off`) in words, and says how to turn it on (`--accounts`); it holds no table, no
+  empty list and no zero. The Programs table still shows a number under Accounts reached for every program. The
+  Participant records column is a dash for every program, and the note under the table says why and how to turn it
+  on (`--step-detail`). The caveats block carries both.
+- X2 (a number rebuilt from the glossary alone). `/gs-superadmin:email-engagement report --name '<P-busy>' --from <M> --to <M>`,
+  then, using ONLY what that report's "How each number is calculated" section states for Sent, Delivered, Opened and
+  Unique recipients (object, fields and values, filters, date field), build each count as one direct read through
+  the spike's catalog-checked runner.
+  Pass bar: all four direct counts equal the report's Programs row for P-busy, and the open rate equals
+  Opened ÷ Delivered to one decimal. A count that cannot be built from the glossary text alone is a finding.
+- X3 (template and step names). In X0's "Emails by template" table, Bradley reads P-multi's emails in the Gainsight
+  UI.
+  Pass bar: every row names the template and the step the UI shows for it (order and name); a template that sits on
+  two or more steps reads "(on N steps)"; no row shows a raw id where the UI shows a name, unless the report's
+  caveats say that program has no full KB doc.
+- X4 (the skill walk at account level, with `--xlsx`). In a fresh session:
+  `/gs-superadmin:email-engagement report <picks> --accounts --step-detail --by-template --xlsx`.
+  Pass bar: the plan's estimate is stated before the pull. The report holds an "Account watch list" with, for each
+  program that has qualifying accounts, a low-engagement table and a deliverability table; every low-engagement
+  account has at least the stated minimum delivered; neither table lists "All other accounts" or "No company link".
+  One account from P-busy's low-engagement table, picked before looking: its Sent, Delivered and Opened equal a
+  direct count for that company and program over the window (one read through the runner, filtered on the company).
+  The "Emails by step" table is present, with step and variant names; Participant records are numbers; the workbook
+  holds seven sheets (the five of X0 plus steps and watch-list). Record the pull's calls and wall time.
+- X5 (survey responses). In X0's report, the "Survey responses (all time)" row for P-survey.
+  Pass bar: Survey participants and Any response equal the figures of the program's analytics page that the S1-V
+  third re-run recorded for V11 (kept with the picks); the section says the figures are all time.
+- X6 (data pulled, tracking states, caveats). Read X0's and X4's reports.
+  Pass bar: the header's "Data pulled" time is the pull's (the snapshot's `meta.pulledAt`), with the window and the
+  provisional date; each click cell reads as the snapshot's click state for that template or program says (a plain
+  number when tracked, "Not tracked", or a number marked "(tracking unknown)"); the caveats block names the
+  incomplete period, the opens caveat, the content-links caveat, and what the pull left out (CC copies, other
+  sources) with counts.
+- X7 (a pull that continues from an earlier snapshot). `/gs-superadmin:email-engagement report <picks> --previous <X0's snapshot>`.
+  Pass bar: the plan's `estimate.mode` is `selective`; the report's header says the pull was selective; the caveats
+  block carries the carried-forward caveat, naming the carried months and X0's pull time; the Programs numbers for
+  the carried months equal X0's (compare one closed month with `--from`/`--to` reports from both snapshots via
+  `--snapshot`, which pulls nothing).
+- X8 (a plain question). In a fresh session, with no slash command: "what's the open rate for <P-busy>?".
+  Pass bar: this skill is the one that runs (not email-report), in `report` mode, with `--name` for the program; it
+  plans and states the estimate before pulling; it answers from the finished report's Programs row, quoting the
+  figures as written.
+- X9 (the ask before a long pull; plan only). `/gs-superadmin:email-engagement report --accounts`, with no selector.
+  Pass bar: after the plan, the skill states the estimate and asks before pulling (the estimate is over ten minutes
+  on this tenant), offering to narrow with `--sent-since`. The tester answers stop; no pull is made.
+
+Also owed at V2, from the ledger: the round's guard-wiring line is the tester's.

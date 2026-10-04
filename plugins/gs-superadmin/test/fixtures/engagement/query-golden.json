@@ -1,0 +1,2010 @@
+{
+ "programs": {
+  "table": "byTemplate",
+  "unavailable": null,
+  "scope": {
+   "months": [
+    "2026-06",
+    "2026-07",
+    "2026-08",
+    "2026-09"
+   ],
+   "fullWindow": true,
+   "programs": 5,
+   "programsHiddenByStatus": 0
+  },
+  "rows": [
+   {
+    "key": {
+     "program": "p-onboard"
+    },
+    "label": {
+     "program": "Acme Onboarding Chain",
+     "statuses": [
+      "PROCESSING"
+     ],
+     "model": "Email Chain"
+    },
+    "carried": false,
+    "incomplete": true,
+    "cells": {
+     "sent": {
+      "value": 176,
+      "shown": "176"
+     },
+     "uniqueRecipients": {
+      "value": 22,
+      "shown": "22"
+     },
+     "accountsReached": {
+      "value": 10,
+      "shown": "10"
+     },
+     "delivered": {
+      "value": 155,
+      "shown": "155"
+     },
+     "opened": {
+      "value": 107,
+      "shown": "107"
+     },
+     "openRate": {
+      "value": 0.6903225806451613,
+      "shown": "69.0%"
+     },
+     "clicked": {
+      "value": 7,
+      "state": "unknown",
+      "shown": "7 (tracking unknown)"
+     },
+     "clickRate": {
+      "value": 0.04516129032258064,
+      "state": "unknown",
+      "shown": "4.5% (tracking unknown)"
+     },
+     "participantRecords": {
+      "value": 44,
+      "shown": "44"
+     },
+     "responseRate": {
+      "value": null,
+      "state": "not-tracked",
+      "why": "no-survey",
+      "basis": "all-time",
+      "shown": "—"
+     }
+    }
+   },
+   {
+    "key": {
+     "program": "p-renew"
+    },
+    "label": {
+     "program": "Acme Renewal Dynamic",
+     "statuses": [
+      "PAUSE",
+      "NEW"
+     ],
+     "model": "Dynamic Program"
+    },
+    "carried": false,
+    "incomplete": true,
+    "cells": {
+     "sent": {
+      "value": 72,
+      "shown": "72"
+     },
+     "uniqueRecipients": {
+      "value": 6,
+      "shown": "6"
+     },
+     "accountsReached": {
+      "value": 6,
+      "shown": "6"
+     },
+     "delivered": {
+      "value": 64,
+      "shown": "64"
+     },
+     "opened": {
+      "value": 43,
+      "shown": "43"
+     },
+     "openRate": {
+      "value": 0.671875,
+      "shown": "67.2%"
+     },
+     "clicked": {
+      "value": 0,
+      "state": "unknown",
+      "shown": "0 (tracking unknown)"
+     },
+     "clickRate": {
+      "value": 0,
+      "state": "unknown",
+      "shown": "0.0% (tracking unknown)"
+     },
+     "participantRecords": {
+      "value": 6,
+      "shown": "6"
+     },
+     "responseRate": {
+      "value": null,
+      "state": "not-tracked",
+      "why": "no-survey",
+      "basis": "all-time",
+      "shown": "—"
+     }
+    }
+   },
+   {
+    "key": {
+     "program": "p-pilot"
+    },
+    "label": {
+     "program": "Acme Internal Pilot",
+     "statuses": [
+      "PROCESSING"
+     ],
+     "model": "Email Chain"
+    },
+    "carried": false,
+    "incomplete": true,
+    "cells": {
+     "sent": {
+      "value": 12,
+      "shown": "12"
+     },
+     "uniqueRecipients": {
+      "value": 3,
+      "shown": "3"
+     },
+     "accountsReached": {
+      "value": 0,
+      "shown": "0"
+     },
+     "delivered": {
+      "value": 10,
+      "shown": "10"
+     },
+     "opened": {
+      "value": 8,
+      "shown": "8"
+     },
+     "openRate": {
+      "value": 0.8,
+      "shown": "80.0%"
+     },
+     "clicked": {
+      "value": 0,
+      "state": "unknown",
+      "shown": "0 (tracking unknown)"
+     },
+     "clickRate": {
+      "value": 0,
+      "state": "unknown",
+      "shown": "0.0% (tracking unknown)"
+     },
+     "participantRecords": {
+      "value": 3,
+      "shown": "3"
+     },
+     "responseRate": {
+      "value": null,
+      "state": "not-tracked",
+      "why": "no-survey",
+      "basis": "all-time",
+      "shown": "—"
+     }
+    }
+   },
+   {
+    "key": {
+     "program": "p-nps"
+    },
+    "label": {
+     "program": "Acme NPS Survey",
+     "statuses": [
+      "PROCESSING"
+     ],
+     "model": "CSAT Survey"
+    },
+    "carried": false,
+    "incomplete": false,
+    "cells": {
+     "sent": {
+      "value": 12,
+      "shown": "12"
+     },
+     "uniqueRecipients": {
+      "value": 12,
+      "shown": "12"
+     },
+     "accountsReached": {
+      "value": 12,
+      "shown": "12"
+     },
+     "delivered": {
+      "value": 11,
+      "shown": "11"
+     },
+     "opened": {
+      "value": 7,
+      "shown": "7"
+     },
+     "openRate": {
+      "value": 0.6363636363636364,
+      "shown": "63.6%"
+     },
+     "clicked": {
+      "value": 0,
+      "state": "tracked",
+      "shown": "0"
+     },
+     "clickRate": {
+      "value": 0,
+      "state": "tracked",
+      "shown": "0.0%"
+     },
+     "participantRecords": {
+      "value": 12,
+      "shown": "12"
+     },
+     "responseRate": {
+      "value": 0.2692307692307692,
+      "state": "tracked",
+      "basis": "all-time",
+      "shown": "26.9%"
+     }
+    }
+   },
+   {
+    "key": {
+     "program": "p-unlisted"
+    },
+    "label": {
+     "program": "Acme Unlisted Program",
+     "statuses": [
+      "PROCESSING"
+     ],
+     "model": "Email Chain"
+    },
+    "carried": false,
+    "incomplete": false,
+    "cells": {
+     "sent": {
+      "value": 6,
+      "shown": "6"
+     },
+     "uniqueRecipients": {
+      "value": 6,
+      "shown": "6"
+     },
+     "accountsReached": {
+      "value": 3,
+      "shown": "3"
+     },
+     "delivered": {
+      "value": 6,
+      "shown": "6"
+     },
+     "opened": {
+      "value": 4,
+      "shown": "4"
+     },
+     "openRate": {
+      "value": 0.6666666666666666,
+      "shown": "66.7%"
+     },
+     "clicked": {
+      "value": 1,
+      "state": "tracked",
+      "shown": "1"
+     },
+     "clickRate": {
+      "value": 0.16666666666666666,
+      "state": "tracked",
+      "shown": "16.7%"
+     },
+     "participantRecords": {
+      "value": 6,
+      "shown": "6"
+     },
+     "responseRate": {
+      "value": null,
+      "state": "not-tracked",
+      "why": "no-survey",
+      "basis": "all-time",
+      "shown": "—"
+     }
+    }
+   }
+  ],
+  "total": {
+   "key": {},
+   "label": {},
+   "carried": false,
+   "incomplete": true,
+   "cells": {
+    "sent": {
+     "value": 278,
+     "shown": "278"
+    },
+    "uniqueRecipients": {
+     "value": null,
+     "why": "not-additive",
+     "shown": "—"
+    },
+    "accountsReached": {
+     "value": null,
+     "why": "not-additive",
+     "shown": "—"
+    },
+    "delivered": {
+     "value": 246,
+     "shown": "246"
+    },
+    "opened": {
+     "value": 169,
+     "shown": "169"
+    },
+    "openRate": {
+     "value": 0.6869918699186992,
+     "shown": "68.7%"
+    },
+    "clicked": {
+     "value": 8,
+     "state": "unknown",
+     "shown": "8 (tracking unknown)"
+    },
+    "clickRate": {
+     "value": 0.032520325203252036,
+     "state": "unknown",
+     "shown": "3.3% (tracking unknown)"
+    },
+    "participantRecords": {
+     "value": null,
+     "why": "not-additive",
+     "shown": "—"
+    },
+    "responseRate": {
+     "value": 0.2692307692307692,
+     "state": "tracked",
+     "basis": "all-time",
+     "shown": "26.9%"
+    }
+   }
+  }
+ },
+ "programs, active, external, one month": {
+  "table": "byTemplate",
+  "unavailable": null,
+  "scope": {
+   "months": [
+    "2026-08"
+   ],
+   "fullWindow": false,
+   "programs": 4,
+   "programsHiddenByStatus": 1
+  },
+  "rows": [
+   {
+    "key": {
+     "program": "p-onboard"
+    },
+    "label": {
+     "program": "Acme Onboarding Chain",
+     "statuses": [
+      "PROCESSING"
+     ],
+     "model": "Email Chain"
+    },
+    "carried": false,
+    "incomplete": false,
+    "cells": {
+     "sent": {
+      "value": 42,
+      "shown": "42"
+     },
+     "uniqueRecipients": {
+      "value": 21,
+      "shown": "21"
+     },
+     "openRate": {
+      "value": 0.75,
+      "shown": "75.0%"
+     },
+     "clickRate": {
+      "value": 0.05555555555555555,
+      "state": "unknown",
+      "shown": "5.6% (tracking unknown)"
+     }
+    }
+   },
+   {
+    "key": {
+     "program": "p-unlisted"
+    },
+    "label": {
+     "program": "Acme Unlisted Program",
+     "statuses": [
+      "PROCESSING"
+     ],
+     "model": "Email Chain"
+    },
+    "carried": false,
+    "incomplete": false,
+    "cells": {
+     "sent": {
+      "value": 6,
+      "shown": "6"
+     },
+     "uniqueRecipients": {
+      "value": 6,
+      "shown": "6"
+     },
+     "openRate": {
+      "value": 0.6666666666666666,
+      "shown": "66.7%"
+     },
+     "clickRate": {
+      "value": 0.16666666666666666,
+      "state": "tracked",
+      "shown": "16.7%"
+     }
+    }
+   }
+  ],
+  "total": {
+   "key": {},
+   "label": {},
+   "carried": false,
+   "incomplete": false,
+   "cells": {
+    "sent": {
+     "value": 48,
+     "shown": "48"
+    },
+    "uniqueRecipients": {
+     "value": null,
+     "why": "not-additive",
+     "shown": "—"
+    },
+    "openRate": {
+     "value": 0.7380952380952381,
+     "shown": "73.8%"
+    },
+    "clickRate": {
+     "value": 0.07142857142857142,
+     "state": "unknown",
+     "shown": "7.1% (tracking unknown)"
+    }
+   }
+  }
+ },
+ "templates": {
+  "table": "byTemplate",
+  "unavailable": null,
+  "scope": {
+   "months": [
+    "2026-06",
+    "2026-07",
+    "2026-08",
+    "2026-09"
+   ],
+   "fullWindow": true,
+   "programs": 5,
+   "programsHiddenByStatus": 0
+  },
+  "rows": [
+   {
+    "key": {
+     "program": "p-pilot",
+     "template": null
+    },
+    "label": {
+     "program": "Acme Internal Pilot",
+     "statuses": [
+      "PROCESSING"
+     ],
+     "model": "Email Chain",
+     "template": null,
+     "stepName": null,
+     "stepOrder": null,
+     "stepCount": null
+    },
+    "carried": false,
+    "incomplete": true,
+    "cells": {
+     "sent": {
+      "value": 12,
+      "shown": "12"
+     },
+     "delivered": {
+      "value": 10,
+      "shown": "10"
+     },
+     "opened": {
+      "value": 8,
+      "shown": "8"
+     },
+     "openRate": {
+      "value": 0.8,
+      "shown": "80.0%"
+     },
+     "clicked": {
+      "value": 0,
+      "state": "unknown",
+      "shown": "0 (tracking unknown)"
+     },
+     "clickRate": {
+      "value": 0,
+      "state": "unknown",
+      "shown": "0.0% (tracking unknown)"
+     }
+    }
+   },
+   {
+    "key": {
+     "program": "p-nps",
+     "template": "tpl-nps"
+    },
+    "label": {
+     "program": "Acme NPS Survey",
+     "statuses": [
+      "PROCESSING"
+     ],
+     "model": "CSAT Survey",
+     "template": "Acme NPS Request",
+     "stepName": "Survey email",
+     "stepOrder": 1,
+     "stepCount": 1
+    },
+    "carried": false,
+    "incomplete": false,
+    "cells": {
+     "sent": {
+      "value": 12,
+      "shown": "12"
+     },
+     "delivered": {
+      "value": 11,
+      "shown": "11"
+     },
+     "opened": {
+      "value": 7,
+      "shown": "7"
+     },
+     "openRate": {
+      "value": 0.6363636363636364,
+      "shown": "63.6%"
+     },
+     "clicked": {
+      "value": 0,
+      "state": "tracked",
+      "shown": "0"
+     },
+     "clickRate": {
+      "value": 0,
+      "state": "tracked",
+      "shown": "0.0%"
+     }
+    }
+   },
+   {
+    "key": {
+     "program": "p-onboard",
+     "template": "tpl-welcome"
+    },
+    "label": {
+     "program": "Acme Onboarding Chain",
+     "statuses": [
+      "PROCESSING"
+     ],
+     "model": "Email Chain",
+     "template": "Acme Welcome",
+     "stepName": "Welcome",
+     "stepOrder": 1,
+     "stepCount": 1
+    },
+    "carried": false,
+    "incomplete": true,
+    "cells": {
+     "sent": {
+      "value": 88,
+      "shown": "88"
+     },
+     "delivered": {
+      "value": 77,
+      "shown": "77"
+     },
+     "opened": {
+      "value": 54,
+      "shown": "54"
+     },
+     "openRate": {
+      "value": 0.7012987012987013,
+      "shown": "70.1%"
+     },
+     "clicked": {
+      "value": 7,
+      "state": "tracked",
+      "shown": "7"
+     },
+     "clickRate": {
+      "value": 0.09090909090909091,
+      "state": "tracked",
+      "shown": "9.1%"
+     }
+    }
+   },
+   {
+    "key": {
+     "program": "p-onboard",
+     "template": "tpl-day7"
+    },
+    "label": {
+     "program": "Acme Onboarding Chain",
+     "statuses": [
+      "PROCESSING"
+     ],
+     "model": "Email Chain",
+     "template": "Acme Day 7",
+     "stepName": "Day 7 check-in",
+     "stepOrder": 2,
+     "stepCount": 1
+    },
+    "carried": false,
+    "incomplete": true,
+    "cells": {
+     "sent": {
+      "value": 88,
+      "shown": "88"
+     },
+     "delivered": {
+      "value": 78,
+      "shown": "78"
+     },
+     "opened": {
+      "value": 53,
+      "shown": "53"
+     },
+     "openRate": {
+      "value": 0.6794871794871795,
+      "shown": "67.9%"
+     },
+     "clicked": {
+      "value": 0,
+      "state": "unknown",
+      "shown": "0 (tracking unknown)"
+     },
+     "clickRate": {
+      "value": 0,
+      "state": "unknown",
+      "shown": "0.0% (tracking unknown)"
+     }
+    }
+   },
+   {
+    "key": {
+     "program": "p-renew",
+     "template": "tpl-renew-b"
+    },
+    "label": {
+     "program": "Acme Renewal Dynamic",
+     "statuses": [
+      "PAUSE",
+      "NEW"
+     ],
+     "model": "Dynamic Program",
+     "template": "Acme Renewal Thanks",
+     "stepName": "Renewal thanks",
+     "stepOrder": 3,
+     "stepCount": 1
+    },
+    "carried": false,
+    "incomplete": true,
+    "cells": {
+     "sent": {
+      "value": 24,
+      "shown": "24"
+     },
+     "delivered": {
+      "value": 20,
+      "shown": "20"
+     },
+     "opened": {
+      "value": 14,
+      "shown": "14"
+     },
+     "openRate": {
+      "value": 0.7,
+      "shown": "70.0%"
+     },
+     "clicked": {
+      "value": null,
+      "state": "not-tracked",
+      "why": "not-tracked",
+      "shown": "Not tracked"
+     },
+     "clickRate": {
+      "value": null,
+      "state": "not-tracked",
+      "why": "not-tracked",
+      "shown": "Not tracked"
+     }
+    }
+   },
+   {
+    "key": {
+     "program": "p-renew",
+     "template": "tpl-renew"
+    },
+    "label": {
+     "program": "Acme Renewal Dynamic",
+     "statuses": [
+      "PAUSE",
+      "NEW"
+     ],
+     "model": "Dynamic Program",
+     "template": "Acme Renewal",
+     "stepName": null,
+     "stepOrder": null,
+     "stepCount": 2
+    },
+    "carried": false,
+    "incomplete": true,
+    "cells": {
+     "sent": {
+      "value": 48,
+      "shown": "48"
+     },
+     "delivered": {
+      "value": 44,
+      "shown": "44"
+     },
+     "opened": {
+      "value": 29,
+      "shown": "29"
+     },
+     "openRate": {
+      "value": 0.6590909090909091,
+      "shown": "65.9%"
+     },
+     "clicked": {
+      "value": 0,
+      "state": "unknown",
+      "shown": "0 (tracking unknown)"
+     },
+     "clickRate": {
+      "value": 0,
+      "state": "unknown",
+      "shown": "0.0% (tracking unknown)"
+     }
+    }
+   },
+   {
+    "key": {
+     "program": "p-unlisted",
+     "template": "tpl-unlisted"
+    },
+    "label": {
+     "program": "Acme Unlisted Program",
+     "statuses": [
+      "PROCESSING"
+     ],
+     "model": "Email Chain",
+     "template": "Acme Unlisted",
+     "stepName": null,
+     "stepOrder": null,
+     "stepCount": 0
+    },
+    "carried": false,
+    "incomplete": false,
+    "cells": {
+     "sent": {
+      "value": 6,
+      "shown": "6"
+     },
+     "delivered": {
+      "value": 6,
+      "shown": "6"
+     },
+     "opened": {
+      "value": 4,
+      "shown": "4"
+     },
+     "openRate": {
+      "value": 0.6666666666666666,
+      "shown": "66.7%"
+     },
+     "clicked": {
+      "value": 1,
+      "state": "tracked",
+      "shown": "1"
+     },
+     "clickRate": {
+      "value": 0.16666666666666666,
+      "state": "tracked",
+      "shown": "16.7%"
+     }
+    }
+   }
+  ],
+  "total": {
+   "key": {},
+   "label": {},
+   "carried": false,
+   "incomplete": true,
+   "cells": {
+    "sent": {
+     "value": 278,
+     "shown": "278"
+    },
+    "delivered": {
+     "value": 246,
+     "shown": "246"
+    },
+    "opened": {
+     "value": 169,
+     "shown": "169"
+    },
+    "openRate": {
+     "value": 0.6869918699186992,
+     "shown": "68.7%"
+    },
+    "clicked": {
+     "value": 8,
+     "state": "unknown",
+     "shown": "8 (tracking unknown)"
+    },
+    "clickRate": {
+     "value": 0.032520325203252036,
+     "state": "unknown",
+     "shown": "3.3% (tracking unknown)"
+    }
+   }
+  }
+ },
+ "steps": {
+  "table": "byStep",
+  "unavailable": null,
+  "scope": {
+   "months": [
+    "2026-06",
+    "2026-07",
+    "2026-08",
+    "2026-09"
+   ],
+   "fullWindow": true,
+   "programs": 5,
+   "programsHiddenByStatus": 0
+  },
+  "rows": [
+   {
+    "key": {
+     "program": "p-pilot",
+     "step": "st-pl-1",
+     "variant": null
+    },
+    "label": {
+     "program": "Acme Internal Pilot",
+     "statuses": [
+      "PROCESSING"
+     ],
+     "model": "Email Chain",
+     "step": null,
+     "stepOrder": null,
+     "template": null,
+     "templateId": null,
+     "variant": null
+    },
+    "carried": false,
+    "incomplete": true,
+    "cells": {
+     "sent": {
+      "value": 12,
+      "shown": "12"
+     },
+     "openRate": {
+      "value": 0.8,
+      "shown": "80.0%"
+     },
+     "clicked": {
+      "value": 0,
+      "state": "unknown",
+      "shown": "0 (tracking unknown)"
+     }
+    }
+   },
+   {
+    "key": {
+     "program": "p-nps",
+     "step": "st-nps-1",
+     "variant": "var-nps"
+    },
+    "label": {
+     "program": "Acme NPS Survey",
+     "statuses": [
+      "PROCESSING"
+     ],
+     "model": "CSAT Survey",
+     "step": "Survey email",
+     "stepOrder": 1,
+     "template": "Acme NPS Request",
+     "templateId": "tpl-nps",
+     "variant": "var-nps name"
+    },
+    "carried": false,
+    "incomplete": false,
+    "cells": {
+     "sent": {
+      "value": 12,
+      "shown": "12"
+     },
+     "openRate": {
+      "value": 0.6363636363636364,
+      "shown": "63.6%"
+     },
+     "clicked": {
+      "value": 0,
+      "state": "tracked",
+      "shown": "0"
+     }
+    }
+   },
+   {
+    "key": {
+     "program": "p-onboard",
+     "step": "st-ob-2",
+     "variant": "var-day7"
+    },
+    "label": {
+     "program": "Acme Onboarding Chain",
+     "statuses": [
+      "PROCESSING"
+     ],
+     "model": "Email Chain",
+     "step": "Day 7 check-in",
+     "stepOrder": 2,
+     "template": "Acme Day 7",
+     "templateId": "tpl-day7",
+     "variant": "var-day7 name"
+    },
+    "carried": false,
+    "incomplete": true,
+    "cells": {
+     "sent": {
+      "value": 88,
+      "shown": "88"
+     },
+     "openRate": {
+      "value": 0.6794871794871795,
+      "shown": "67.9%"
+     },
+     "clicked": {
+      "value": 0,
+      "state": "unknown",
+      "shown": "0 (tracking unknown)"
+     }
+    }
+   },
+   {
+    "key": {
+     "program": "p-onboard",
+     "step": "st-ob-1",
+     "variant": "var-welcome-a"
+    },
+    "label": {
+     "program": "Acme Onboarding Chain",
+     "statuses": [
+      "PROCESSING"
+     ],
+     "model": "Email Chain",
+     "step": "Welcome",
+     "stepOrder": 1,
+     "template": "Acme Welcome",
+     "templateId": "tpl-welcome",
+     "variant": "var-welcome-a name"
+    },
+    "carried": false,
+    "incomplete": true,
+    "cells": {
+     "sent": {
+      "value": 44,
+      "shown": "44"
+     },
+     "openRate": {
+      "value": 0.6923076923076923,
+      "shown": "69.2%"
+     },
+     "clicked": {
+      "value": 5,
+      "state": "tracked",
+      "shown": "5"
+     }
+    }
+   },
+   {
+    "key": {
+     "program": "p-onboard",
+     "step": "st-ob-1",
+     "variant": "var-welcome-b"
+    },
+    "label": {
+     "program": "Acme Onboarding Chain",
+     "statuses": [
+      "PROCESSING"
+     ],
+     "model": "Email Chain",
+     "step": "Welcome",
+     "stepOrder": 1,
+     "template": "Acme Welcome",
+     "templateId": "tpl-welcome",
+     "variant": "var-welcome-b name"
+    },
+    "carried": false,
+    "incomplete": true,
+    "cells": {
+     "sent": {
+      "value": 44,
+      "shown": "44"
+     },
+     "openRate": {
+      "value": 0.7105263157894737,
+      "shown": "71.1%"
+     },
+     "clicked": {
+      "value": 2,
+      "state": "tracked",
+      "shown": "2"
+     }
+    }
+   },
+   {
+    "key": {
+     "program": "p-renew",
+     "step": "st-rn-1",
+     "variant": "var-renew"
+    },
+    "label": {
+     "program": "Acme Renewal Dynamic",
+     "statuses": [
+      "PAUSE",
+      "NEW"
+     ],
+     "model": "Dynamic Program",
+     "step": "Renewal notice",
+     "stepOrder": 1,
+     "template": "Acme Renewal",
+     "templateId": "tpl-renew",
+     "variant": "var-renew name"
+    },
+    "carried": false,
+    "incomplete": true,
+    "cells": {
+     "sent": {
+      "value": 24,
+      "shown": "24"
+     },
+     "openRate": {
+      "value": 0.6190476190476191,
+      "shown": "61.9%"
+     },
+     "clicked": {
+      "value": 0,
+      "state": "unknown",
+      "shown": "0 (tracking unknown)"
+     }
+    }
+   },
+   {
+    "key": {
+     "program": "p-renew",
+     "step": "st-rn-2",
+     "variant": "var-renew"
+    },
+    "label": {
+     "program": "Acme Renewal Dynamic",
+     "statuses": [
+      "PAUSE",
+      "NEW"
+     ],
+     "model": "Dynamic Program",
+     "step": "Renewal reminder",
+     "stepOrder": 2,
+     "template": "Acme Renewal",
+     "templateId": "tpl-renew",
+     "variant": "var-renew name"
+    },
+    "carried": false,
+    "incomplete": true,
+    "cells": {
+     "sent": {
+      "value": 24,
+      "shown": "24"
+     },
+     "openRate": {
+      "value": 0.6956521739130435,
+      "shown": "69.6%"
+     },
+     "clicked": {
+      "value": 0,
+      "state": "unknown",
+      "shown": "0 (tracking unknown)"
+     }
+    }
+   },
+   {
+    "key": {
+     "program": "p-renew",
+     "step": "st-rn-3",
+     "variant": "var-renew-b"
+    },
+    "label": {
+     "program": "Acme Renewal Dynamic",
+     "statuses": [
+      "PAUSE",
+      "NEW"
+     ],
+     "model": "Dynamic Program",
+     "step": "Renewal thanks",
+     "stepOrder": 3,
+     "template": "Acme Renewal Thanks",
+     "templateId": "tpl-renew-b",
+     "variant": "var-renew-b name"
+    },
+    "carried": false,
+    "incomplete": true,
+    "cells": {
+     "sent": {
+      "value": 24,
+      "shown": "24"
+     },
+     "openRate": {
+      "value": 0.7,
+      "shown": "70.0%"
+     },
+     "clicked": {
+      "value": null,
+      "state": "not-tracked",
+      "why": "not-tracked",
+      "shown": "Not tracked"
+     }
+    }
+   },
+   {
+    "key": {
+     "program": "p-unlisted",
+     "step": "st-ul-1",
+     "variant": "var-unlisted"
+    },
+    "label": {
+     "program": "Acme Unlisted Program",
+     "statuses": [
+      "PROCESSING"
+     ],
+     "model": "Email Chain",
+     "step": null,
+     "stepOrder": null,
+     "template": "Acme Unlisted",
+     "templateId": "tpl-unlisted",
+     "variant": "var-unlisted name"
+    },
+    "carried": false,
+    "incomplete": false,
+    "cells": {
+     "sent": {
+      "value": 6,
+      "shown": "6"
+     },
+     "openRate": {
+      "value": 0.6666666666666666,
+      "shown": "66.7%"
+     },
+     "clicked": {
+      "value": 1,
+      "state": "tracked",
+      "shown": "1"
+     }
+    }
+   }
+  ],
+  "total": {
+   "key": {},
+   "label": {},
+   "carried": false,
+   "incomplete": true,
+   "cells": {
+    "sent": {
+     "value": 278,
+     "shown": "278"
+    },
+    "openRate": {
+     "value": 0.6869918699186992,
+     "shown": "68.7%"
+    },
+    "clicked": {
+     "value": 8,
+     "state": "unknown",
+     "shown": "8 (tracking unknown)"
+    }
+   }
+  }
+ },
+ "accounts of one program": {
+  "table": "byAccount",
+  "unavailable": null,
+  "scope": {
+   "months": [
+    "2026-06",
+    "2026-07",
+    "2026-08",
+    "2026-09"
+   ],
+   "fullWindow": true,
+   "programs": 1,
+   "programsHiddenByStatus": 0
+  },
+  "rows": [
+   {
+    "key": {
+     "account": "other"
+    },
+    "label": {
+     "account": "All other accounts"
+    },
+    "carried": false,
+    "incomplete": true,
+    "cells": {
+     "sent": {
+      "value": 64,
+      "shown": "64"
+     },
+     "delivered": {
+      "value": 56,
+      "shown": "56"
+     },
+     "opened": {
+      "value": 39,
+      "shown": "39"
+     },
+     "openRate": {
+      "value": 0.6964285714285714,
+      "shown": "69.6%"
+     },
+     "bounced": {
+      "value": 4,
+      "shown": "4"
+     },
+     "bounceRate": {
+      "value": 0.0625,
+      "shown": "6.3%"
+     }
+    }
+   },
+   {
+    "key": {
+     "account": "co-01"
+    },
+    "label": {
+     "account": "Acme Customer 01"
+    },
+    "carried": false,
+    "incomplete": true,
+    "cells": {
+     "sent": {
+      "value": 24,
+      "shown": "24"
+     },
+     "delivered": {
+      "value": 21,
+      "shown": "21"
+     },
+     "opened": {
+      "value": 15,
+      "shown": "15"
+     },
+     "openRate": {
+      "value": 0.7142857142857143,
+      "shown": "71.4%"
+     },
+     "bounced": {
+      "value": 3,
+      "shown": "3"
+     },
+     "bounceRate": {
+      "value": 0.125,
+      "shown": "12.5%"
+     }
+    }
+   },
+   {
+    "key": {
+     "account": "co-02"
+    },
+    "label": {
+     "account": "Acme Customer 02"
+    },
+    "carried": false,
+    "incomplete": true,
+    "cells": {
+     "sent": {
+      "value": 16,
+      "shown": "16"
+     },
+     "delivered": {
+      "value": 15,
+      "shown": "15"
+     },
+     "opened": {
+      "value": 11,
+      "shown": "11"
+     },
+     "openRate": {
+      "value": 0.7333333333333333,
+      "shown": "73.3%"
+     },
+     "bounced": {
+      "value": 1,
+      "shown": "1"
+     },
+     "bounceRate": {
+      "value": 0.0625,
+      "shown": "6.3%"
+     }
+    }
+   },
+   {
+    "key": {
+     "account": "co-03"
+    },
+    "label": {
+     "account": "Acme Customer 03"
+    },
+    "carried": false,
+    "incomplete": true,
+    "cells": {
+     "sent": {
+      "value": 16,
+      "shown": "16"
+     },
+     "delivered": {
+      "value": 16,
+      "shown": "16"
+     },
+     "opened": {
+      "value": 11,
+      "shown": "11"
+     },
+     "openRate": {
+      "value": 0.6875,
+      "shown": "68.8%"
+     },
+     "bounced": {
+      "value": 0,
+      "shown": "0"
+     },
+     "bounceRate": {
+      "value": 0,
+      "shown": "0.0%"
+     }
+    }
+   },
+   {
+    "key": {
+     "account": "co-04"
+    },
+    "label": {
+     "account": "Acme Customer 04"
+    },
+    "carried": false,
+    "incomplete": true,
+    "cells": {
+     "sent": {
+      "value": 16,
+      "shown": "16"
+     },
+     "delivered": {
+      "value": 14,
+      "shown": "14"
+     },
+     "opened": {
+      "value": 9,
+      "shown": "9"
+     },
+     "openRate": {
+      "value": 0.6428571428571429,
+      "shown": "64.3%"
+     },
+     "bounced": {
+      "value": 0,
+      "shown": "0"
+     },
+     "bounceRate": {
+      "value": 0,
+      "shown": "0.0%"
+     }
+    }
+   },
+   {
+    "key": {
+     "account": "co-07"
+    },
+    "label": {
+     "account": "Acme Customer 07"
+    },
+    "carried": false,
+    "incomplete": true,
+    "cells": {
+     "sent": {
+      "value": 16,
+      "shown": "16"
+     },
+     "delivered": {
+      "value": 14,
+      "shown": "14"
+     },
+     "opened": {
+      "value": 9,
+      "shown": "9"
+     },
+     "openRate": {
+      "value": 0.6428571428571429,
+      "shown": "64.3%"
+     },
+     "bounced": {
+      "value": 0,
+      "shown": "0"
+     },
+     "bounceRate": {
+      "value": 0,
+      "shown": "0.0%"
+     }
+    }
+   },
+   {
+    "key": {
+     "account": "co-09"
+    },
+    "label": {
+     "account": "Acme Customer 09"
+    },
+    "carried": false,
+    "incomplete": true,
+    "cells": {
+     "sent": {
+      "value": 16,
+      "shown": "16"
+     },
+     "delivered": {
+      "value": 13,
+      "shown": "13"
+     },
+     "opened": {
+      "value": 9,
+      "shown": "9"
+     },
+     "openRate": {
+      "value": 0.6923076923076923,
+      "shown": "69.2%"
+     },
+     "bounced": {
+      "value": 3,
+      "shown": "3"
+     },
+     "bounceRate": {
+      "value": 0.1875,
+      "shown": "18.8%"
+     }
+    }
+   },
+   {
+    "key": {
+     "account": "no-company-link"
+    },
+    "label": {
+     "account": "No company link"
+    },
+    "carried": false,
+    "incomplete": true,
+    "cells": {
+     "sent": {
+      "value": 8,
+      "shown": "8"
+     },
+     "delivered": {
+      "value": 6,
+      "shown": "6"
+     },
+     "opened": {
+      "value": 4,
+      "shown": "4"
+     },
+     "openRate": {
+      "value": 0.6666666666666666,
+      "shown": "66.7%"
+     },
+     "bounced": {
+      "value": 2,
+      "shown": "2"
+     },
+     "bounceRate": {
+      "value": 0.25,
+      "shown": "25.0%"
+     }
+    }
+   }
+  ],
+  "total": {
+   "key": {},
+   "label": {},
+   "carried": false,
+   "incomplete": true,
+   "cells": {
+    "sent": {
+     "value": 176,
+     "shown": "176"
+    },
+    "delivered": {
+     "value": 155,
+     "shown": "155"
+    },
+    "opened": {
+     "value": 107,
+     "shown": "107"
+    },
+    "openRate": {
+     "value": 0.6903225806451613,
+     "shown": "69.0%"
+    },
+    "bounced": {
+     "value": 13,
+     "shown": "13"
+    },
+    "bounceRate": {
+     "value": 0.07386363636363637,
+     "shown": "7.4%"
+    }
+   }
+  }
+ },
+ "trend": {
+  "table": "byTemplate",
+  "unavailable": null,
+  "scope": {
+   "months": [
+    "2026-06",
+    "2026-07",
+    "2026-08",
+    "2026-09"
+   ],
+   "fullWindow": true,
+   "programs": 5,
+   "programsHiddenByStatus": 0
+  },
+  "rows": [
+   {
+    "key": {
+     "month": "2026-06"
+    },
+    "label": {},
+    "carried": false,
+    "incomplete": false,
+    "cells": {
+     "sent": {
+      "value": 65,
+      "shown": "65"
+     },
+     "openRate": {
+      "value": 0.7017543859649122,
+      "shown": "70.2%"
+     },
+     "bounceRate": {
+      "value": 0.07692307692307693,
+      "shown": "7.7%"
+     },
+     "anyResponse": {
+      "value": 0,
+      "state": "tracked",
+      "basis": "months",
+      "shown": "0"
+     }
+    }
+   },
+   {
+    "key": {
+     "month": "2026-07"
+    },
+    "label": {},
+    "carried": false,
+    "incomplete": false,
+    "cells": {
+     "sent": {
+      "value": 77,
+      "shown": "77"
+     },
+     "openRate": {
+      "value": 0.6617647058823529,
+      "shown": "66.2%"
+     },
+     "bounceRate": {
+      "value": 0.07792207792207792,
+      "shown": "7.8%"
+     },
+     "anyResponse": {
+      "value": 2,
+      "state": "tracked",
+      "basis": "months",
+      "shown": "2"
+     }
+    }
+   },
+   {
+    "key": {
+     "month": "2026-08"
+    },
+    "label": {},
+    "carried": false,
+    "incomplete": false,
+    "cells": {
+     "sent": {
+      "value": 71,
+      "shown": "71"
+     },
+     "openRate": {
+      "value": 0.7301587301587301,
+      "shown": "73.0%"
+     },
+     "bounceRate": {
+      "value": 0.08450704225352113,
+      "shown": "8.5%"
+     },
+     "anyResponse": {
+      "value": 1,
+      "state": "tracked",
+      "basis": "months",
+      "shown": "1"
+     }
+    }
+   },
+   {
+    "key": {
+     "month": "2026-09"
+    },
+    "label": {},
+    "carried": false,
+    "incomplete": true,
+    "cells": {
+     "sent": {
+      "value": 65,
+      "shown": "65"
+     },
+     "openRate": {
+      "value": 0.6551724137931034,
+      "shown": "65.5%"
+     },
+     "bounceRate": {
+      "value": 0.06153846153846154,
+      "shown": "6.2%"
+     },
+     "anyResponse": {
+      "value": 0,
+      "state": "tracked",
+      "basis": "months",
+      "shown": "0"
+     }
+    }
+   }
+  ],
+  "total": {
+   "key": {},
+   "label": {},
+   "carried": false,
+   "incomplete": true,
+   "cells": {
+    "sent": {
+     "value": 278,
+     "shown": "278"
+    },
+    "openRate": {
+     "value": 0.6869918699186992,
+     "shown": "68.7%"
+    },
+    "bounceRate": {
+     "value": 0.07553956834532374,
+     "shown": "7.6%"
+    },
+    "anyResponse": {
+     "value": 0,
+     "state": "tracked",
+     "basis": "months",
+     "shown": "0"
+    }
+   }
+  }
+ },
+ "accounts off": {
+  "table": "byAccount",
+  "unavailable": {
+   "reason": "accounts-off"
+  },
+  "scope": {
+   "months": [
+    "2026-06",
+    "2026-07",
+    "2026-08",
+    "2026-09"
+   ],
+   "fullWindow": true,
+   "programs": 5,
+   "programsHiddenByStatus": 0
+  },
+  "rows": [],
+  "total": null
+ },
+ "programs, accounts and step detail off": {
+  "table": "byTemplate",
+  "unavailable": null,
+  "scope": {
+   "months": [
+    "2026-06",
+    "2026-07",
+    "2026-08",
+    "2026-09"
+   ],
+   "fullWindow": true,
+   "programs": 5,
+   "programsHiddenByStatus": 0
+  },
+  "rows": [
+   {
+    "key": {
+     "program": "p-pilot"
+    },
+    "label": {
+     "program": "Acme Internal Pilot",
+     "statuses": [
+      "PROCESSING"
+     ],
+     "model": "Email Chain"
+    },
+    "carried": false,
+    "incomplete": true,
+    "cells": {
+     "sent": {
+      "value": 12,
+      "shown": "12"
+     },
+     "uniqueRecipients": {
+      "value": 3,
+      "shown": "3"
+     },
+     "accountsReached": {
+      "value": 0,
+      "shown": "0"
+     },
+     "participantRecords": {
+      "value": null,
+      "why": "step-detail-off",
+      "shown": "—"
+     },
+     "openRate": {
+      "value": 0.8,
+      "shown": "80.0%"
+     },
+     "clickRate": {
+      "value": 0,
+      "state": "unknown",
+      "shown": "0.0% (tracking unknown)"
+     }
+    }
+   },
+   {
+    "key": {
+     "program": "p-nps"
+    },
+    "label": {
+     "program": "Acme NPS Survey",
+     "statuses": [
+      "PROCESSING"
+     ],
+     "model": "CSAT Survey"
+    },
+    "carried": false,
+    "incomplete": false,
+    "cells": {
+     "sent": {
+      "value": 12,
+      "shown": "12"
+     },
+     "uniqueRecipients": {
+      "value": 12,
+      "shown": "12"
+     },
+     "accountsReached": {
+      "value": 12,
+      "shown": "12"
+     },
+     "participantRecords": {
+      "value": null,
+      "why": "step-detail-off",
+      "shown": "—"
+     },
+     "openRate": {
+      "value": 0.6363636363636364,
+      "shown": "63.6%"
+     },
+     "clickRate": {
+      "value": 0,
+      "state": "unknown",
+      "shown": "0.0% (tracking unknown)"
+     }
+    }
+   },
+   {
+    "key": {
+     "program": "p-onboard"
+    },
+    "label": {
+     "program": "Acme Onboarding Chain",
+     "statuses": [
+      "PROCESSING"
+     ],
+     "model": "Email Chain"
+    },
+    "carried": false,
+    "incomplete": true,
+    "cells": {
+     "sent": {
+      "value": 176,
+      "shown": "176"
+     },
+     "uniqueRecipients": {
+      "value": 22,
+      "shown": "22"
+     },
+     "accountsReached": {
+      "value": 10,
+      "shown": "10"
+     },
+     "participantRecords": {
+      "value": null,
+      "why": "step-detail-off",
+      "shown": "—"
+     },
+     "openRate": {
+      "value": 0.6903225806451613,
+      "shown": "69.0%"
+     },
+     "clickRate": {
+      "value": 0.04516129032258064,
+      "state": "unknown",
+      "shown": "4.5% (tracking unknown)"
+     }
+    }
+   },
+   {
+    "key": {
+     "program": "p-renew"
+    },
+    "label": {
+     "program": "Acme Renewal Dynamic",
+     "statuses": [
+      "PAUSE",
+      "NEW"
+     ],
+     "model": "Dynamic Program"
+    },
+    "carried": false,
+    "incomplete": true,
+    "cells": {
+     "sent": {
+      "value": 72,
+      "shown": "72"
+     },
+     "uniqueRecipients": {
+      "value": 6,
+      "shown": "6"
+     },
+     "accountsReached": {
+      "value": 6,
+      "shown": "6"
+     },
+     "participantRecords": {
+      "value": null,
+      "why": "step-detail-off",
+      "shown": "—"
+     },
+     "openRate": {
+      "value": 0.671875,
+      "shown": "67.2%"
+     },
+     "clickRate": {
+      "value": 0,
+      "state": "unknown",
+      "shown": "0.0% (tracking unknown)"
+     }
+    }
+   },
+   {
+    "key": {
+     "program": "p-unlisted"
+    },
+    "label": {
+     "program": "Acme Unlisted Program",
+     "statuses": [
+      "PROCESSING"
+     ],
+     "model": "Email Chain"
+    },
+    "carried": false,
+    "incomplete": false,
+    "cells": {
+     "sent": {
+      "value": 6,
+      "shown": "6"
+     },
+     "uniqueRecipients": {
+      "value": 6,
+      "shown": "6"
+     },
+     "accountsReached": {
+      "value": 3,
+      "shown": "3"
+     },
+     "participantRecords": {
+      "value": null,
+      "why": "step-detail-off",
+      "shown": "—"
+     },
+     "openRate": {
+      "value": 0.6666666666666666,
+      "shown": "66.7%"
+     },
+     "clickRate": {
+      "value": 0.16666666666666666,
+      "state": "tracked",
+      "shown": "16.7%"
+     }
+    }
+   }
+  ],
+  "total": {
+   "key": {},
+   "label": {},
+   "carried": false,
+   "incomplete": true,
+   "cells": {
+    "sent": {
+     "value": 278,
+     "shown": "278"
+    },
+    "uniqueRecipients": {
+     "value": null,
+     "why": "not-additive",
+     "shown": "—"
+    },
+    "accountsReached": {
+     "value": null,
+     "why": "not-additive",
+     "shown": "—"
+    },
+    "participantRecords": {
+     "value": null,
+     "why": "not-additive",
+     "shown": "—"
+    },
+    "openRate": {
+     "value": 0.6869918699186992,
+     "shown": "68.7%"
+    },
+    "clickRate": {
+     "value": 0.032520325203252036,
+     "state": "unknown",
+     "shown": "3.3% (tracking unknown)"
+    }
+   }
+  }
+ }
+}

@@ -203,6 +203,15 @@ jobs:
       # same producer's output shape (T-10).
       - name: Engagement adapter fixtures (engagement.mjs)
         run: node plugins/gs-superadmin/test/engagement.mjs
+      # The query engine (ENG-4) and the open-rate report (ENG-3) read the
+      # adapter's snapshot. Both suites pull their snapshots through the real
+      # adapter process and the stand-in CLI, hold the numbers to straight
+      # counts, and pin a committed golden; the engine's bytes are also run in
+      # a context with no Node globals, since every page will inline them.
+      - name: Engagement query engine fixtures (engagement-query.mjs)
+        run: node plugins/gs-superadmin/test/engagement-query.mjs
+      - name: Engagement report fixtures (engagement-report.mjs)
+        run: node plugins/gs-superadmin/test/engagement-report.mjs
       # Executes the frozen T-1/T-2 contracts against produced artifacts
       # (GP-B5 DS-18): manifest verbs in a temp workspace, bundled catalog
       # key sets.

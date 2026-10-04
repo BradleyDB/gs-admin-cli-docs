@@ -5,6 +5,38 @@ marketplace doesn't pin versions — users get main — so entries describe what
 user who updates, not internal refactors. Entries before 0.8.0 were reconstructed from git
 history when this file was introduced.
 
+## 0.45.0 — 2026-10-04
+
+- **New skill: `/gs-superadmin:email-engagement`, with one mode, `report`.** It answers
+  "how did our emails perform?" from your tenant's send log, where `email-report` answers
+  what the emails say and when they run. It pulls the send log for a period through
+  read-only `gs-admin` calls, then writes a report to `<slug>/reports-adhoc/`: a headline
+  by status, and one row per program with sent, unique recipients, accounts reached,
+  delivered, opened and open rate side by side, then clicks, bounces and survey responses.
+  `--by-template` adds a row per template with the step it sits on, and a row per step
+  and variant when you pull with `--step-detail`. `--csv` and `--xlsx` add spreadsheets.
+  It is also triggered by a plain question such as "what's the open rate for the
+  onboarding program?".
+- **Every number in the report says how it was calculated.** A section at the end lists,
+  for each metric, the Gainsight object it is read from, the fields and the value that
+  counts, the filters every count carries, the date field and the calculation, so you can
+  rebuild any figure in a Gainsight report and compare. It also says where a figure will
+  not match the Gainsight UI and why: Sent counts every attempt, Delivered is what went
+  out and did not bounce, and clicks count content links only.
+- **Click cells tell "not tracked" apart from a real zero.** A click figure reads a plain
+  number when clicks are tracked, `Not tracked` when no link in the email is tracked, and
+  a number marked `(tracking unknown)` when the data cannot tell. A rate with nothing to
+  divide by is blank, never 0%.
+- **The account watch list is opt-in.** Pass `--accounts` to get, per program, the
+  accounts with the lowest open rates and the most bounces. It is off by default because
+  it is most of a pull's cost; without it the report says so where the list would be and
+  how to turn it on, rather than showing an empty list.
+- **The pull tells you its cost first.** The skill prints the estimated calls and minutes
+  before pulling and asks before a pull of more than about ten minutes. A pull the login
+  expires under stops cleanly and continues where it stopped after `gs-admin login`.
+- **`engagement.mjs --name` takes a program's id as well as its name**, as
+  `email-report`'s `--name` does.
+
 ## 0.44.0 — 2026-10-03
 
 - **Groundwork for email engagement reporting. Nothing you can run yet.** A new script,
