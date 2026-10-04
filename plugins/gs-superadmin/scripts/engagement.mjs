@@ -35,6 +35,12 @@
 //   - A unit that is still a full page at one program, one day and one flag
 //     partition is cut by the recipient's address (contains a character, or
 //     does not): the measures are additive, so any cut of the sends adds up.
+//   - A lookup path decides WHICH account or person a send belongs to, never
+//     whether the send is counted. The server drops every row whose lookup is
+//     null from a call that groups or aggregates through that lookup, so the
+//     program totals come from a call that names no lookup, each distinct
+//     count is asked through its own lookup alone, and the sends with no
+//     company link are read by their own calls (GsCompanyId IS_NULL).
 //   - A timed-out call is retried once on its own, then split. A "network
 //     outage" that survives one retry is a query-shape error and is not retried.
 //   - Calls run one at a time (parallel calls produced false errors), and a
@@ -80,9 +86,12 @@
  * What each measure counts (email_log_v2, Source = "Advanced Outreach",
  * AddressType = "To"; R16-R22):
  *   sent            every attempt whose ExecutedDate falls in the month
- *   delivered       attempts with IsSent = YES
- *   bounced         attempts with IsBounced = YES (events; a row can be both
- *                   delivered and bounced)
+ *   delivered       attempts that went out and did not bounce: IsSent = YES and
+ *                   IsBounced not YES (on the step table, EmailSend true and
+ *                   Bounce not true). An attempt that went out and bounced
+ *                   afterwards counts as bounced, not delivered.
+ *   bounced         attempts with IsBounced = YES (events, whether or not the
+ *                   attempt went out)
  *   rejected / unsubscribed / spamComplaints   IsRejected / IsUnsubscribed / IsSpam = YES
  *   opened          attempts with IsOpened = YES
  *   clicked         attempts with at least one CONTENT-link click
@@ -186,7 +195,11 @@
  * @property {T10Dimensions} dimensions
  * @property {T10Facts} facts
  * @property {Object<string, *>} honesty           what was seen, excluded and could not be read
- * @property {{ok: boolean, checks: Array<{id: string, ok: boolean, compared: number, mismatches: number, examples: Array<Object<string, *>>}>}} reconciliation
+ * @property {{ok: boolean, checks: Array<{id: string, ok: boolean, compared: number, mismatches: number, examples: Array<Object<string, *>>, drift: number, driftExamples: Array<Object<string, *>>}>}} reconciliation
+ *   ok, mismatches and examples are about CLOSED months only. A difference in a
+ *   month on or after meta.incompleteFrom is counted in drift: that month is
+ *   still being written while the calls are made one after another, so two
+ *   calls minutes apart can disagree without anything being wrong.
  * @property {Array<{id: string, detail: Object<string, *>}>} caveats   this snapshot's own; metric caveats live with the metric definitions
  */
 
@@ -463,11 +476,11 @@ const yes = (cell) => cellValue(cell) === "YES";
 const truthy = (cell) => cellValue(cell) === true;
 // email_log_v2 flags are YES/NO strings; ao_emails flags are booleans.
 const logFlags = (row) => ({
-  delivered: yes(row[col.field(LOG, "IsSent")]), opened: yes(row[col.field(LOG, "IsOpened")]), bounced: yes(row[col.field(LOG, "IsBounced")]),
+  delivered: yes(row[col.field(LOG, "IsSent")]) && !yes(row[col.field(LOG, "IsBounced")]), opened: yes(row[col.field(LOG, "IsOpened")]), bounced: yes(row[col.field(LOG, "IsBounced")]),
   rejected: yes(row[col.field(LOG, "IsRejected")]), unsubscribed: yes(row[col.field(LOG, "IsUnsubscribed")]), spam: yes(row[col.field(LOG, "IsSpam")]),
 });
 const joFlags = (row) => ({
-  delivered: truthy(row[col.field(JO_LOG, "EmailSend")]), opened: truthy(row[col.field(JO_LOG, "EmailOpened")]), bounced: truthy(row[col.field(JO_LOG, "Bounce")]),
+  delivered: truthy(row[col.field(JO_LOG, "EmailSend")]) && !truthy(row[col.field(JO_LOG, "Bounce")]), opened: truthy(row[col.field(JO_LOG, "EmailOpened")]), bounced: truthy(row[col.field(JO_LOG, "Bounce")]),
   rejected: truthy(row[col.field(JO_LOG, "Rejected")]), unsubscribed: truthy(row[col.field(JO_LOG, "Unsubscribed")]), spam: truthy(row[col.field(JO_LOG, "Spam")]),
 });
 const logKey = (row) => ({ programId: str(cellValue(row[col.field(LOG, "SourceId")])), month: cellMonth(row[col.month(LOG, "ExecutedDate")]), n: cellNumber(row[col.count(LOG)]) });
@@ -478,18 +491,22 @@ const logUniqueCounts = (row) => ({ people: cellNumber(row[col.distinct(PATH.per
 // (test/trace-reader-shapes.mjs) measures the adapter's whole read surface by
 // running them. Parse, don't validate: a cell that is not there reads as null.
 export const ROW_READERS = Object.freeze({
+  totals: (row) => logKey(row),
   "uniques-month": (row) => ({ ...logKey(row), ...logUniqueCounts(row) }),
   "uniques-window": (row) => ({ programId: str(cellValue(row[col.field(LOG, "SourceId")])), ...logUniqueCounts(row) }),
   "sent-since": (row) => ({ programId: str(cellValue(row[col.field(LOG, "SourceId")])) }),
   classes: (row) => ({ source: cellValue(row[col.field(LOG, "Source")]), addressType: cellValue(row[col.field(LOG, "AddressType")]), n: cellNumber(row[col.count(LOG)]) }),
   template: (row) => ({ ...logKey(row), templateId: str(cellValue(row[col.field(LOG, "EmailTemplateId")])), templateName: str(cellValue(row[col.field(LOG, "EmailTemplateName")])), flags: logFlags(row) }),
   account: (row) => ({ ...logKey(row), accountKey: str(cellValue(row[col.hop(PATH.company)])), flags: logFlags(row) }),
+  "account-nolink": (row) => ({ ...logKey(row), flags: logFlags(row) }),
   "click-attr": (row) => ({ ...logKey(row), templateId: str(cellValue(row[col.field(LOG, "EmailTemplateId")])), accountKey: str(cellValue(row[col.hop(PATH.company)])), sendId: str(cellValue(row[col.field(LOG, "Gsid")])) }),
+  "click-attr-nolink": (row) => ({ ...logKey(row), templateId: str(cellValue(row[col.field(LOG, "EmailTemplateId")])), sendId: str(cellValue(row[col.field(LOG, "Gsid")])) }),
   // Read at FETCH time: what reaches disk is the send's id and its link counts.
   // The links are classified with the run's own unsubscribe links (the second argument).
   "click-json": (row, unsubscribeLinks = []) => ({ id: str(cellValue(row[col.field(LOG, "Gsid")])), ...readLinkClicks(cellValue(row[col.field(LOG, "LinkClickedJson")]), unsubscribeLinks) }),
   "resp-month": (row) => ({ programId: str(cellValue(row[col.hop(PATH.surveyProgram)])), month: cellMonth(row[col.month(SURVEY, "RespondedDate")]), status: cellValue(row[col.field(SURVEY, "ResponseStatus")]), n: cellNumber(row[col.count(SURVEY)]) }),
   "resp-participants": (row) => ({ programId: str(cellValue(row[col.hop(PATH.surveyProgram)])), n: cellNumber(row[col.count(SURVEY)]) }),
+  "resp-unattributed": (row) => ({ n: cellNumber(row[col.count(SURVEY)]) }),
   "resp-total": (row) => ({ programId: str(cellValue(row[col.hop(PATH.surveyProgram)])), status: cellValue(row[col.field(SURVEY, "ResponseStatus")]), n: cellNumber(row[col.count(SURVEY)]) }),
   "account-names": (row) => ({ key: str(cellValue(row[col.field(COMPANY, "Gsid")])), name: str(cellValue(row[col.field(COMPANY, "Name")])) }),
   step: (row) => ({
@@ -536,14 +553,20 @@ function joWhere(d) {
   for (const p of d.partition ?? []) w.push(cond(p.field, p.op, p.value));
   return w;
 }
-const logUniques = [countOf, distinct(PATH.person), distinct(PATH.company)];
+// One lookup per call (F-473): a call that counts through two lookups drops the
+// sends that lack either one, so each distinct count is asked on its own.
+const uniqueShow = (d) => [distinct(d.of === "accounts" ? PATH.company : PATH.person)];
+const noCompany = () => cond("GsCompanyId", "IS_NULL");
 
 // family → {object, how it may be split, the query}. `split` is the order a
 // truncated or twice-timed-out unit is cut in; uniques are distinct counts, so
 // they are never cut inside a month, and a whole-window count never by time.
 const FAMILIES = {
-  "uniques-month": { object: LOG, split: ["programs", "month"], query: (d) => ({ group: [{ name: "SourceId" }, byMonth("ExecutedDate")], show: logUniques, where: logWhere(d) }) },
-  "uniques-window": { object: LOG, split: ["programs"], query: (d) => ({ group: [{ name: "SourceId" }], show: logUniques, where: logWhere(d) }) },
+  // The program totals: every send, through no lookup. Which programs have
+  // sends, and what the template table must sum to, are read from this.
+  totals: { object: LOG, split: ["programs", "day"], query: (d) => ({ group: [{ name: "SourceId" }, byMonth("ExecutedDate")], show: [countOf], where: logWhere(d) }) },
+  "uniques-month": { object: LOG, split: ["programs", "month"], query: (d) => ({ group: [{ name: "SourceId" }, byMonth("ExecutedDate")], show: uniqueShow(d), where: logWhere(d) }) },
+  "uniques-window": { object: LOG, split: ["programs"], query: (d) => ({ group: [{ name: "SourceId" }], show: uniqueShow(d), where: logWhere(d) }) },
   "sent-since": { object: LOG, split: ["programs", "day"], query: (d) => ({ group: [{ name: "SourceId" }], show: [countOf], where: logWhere(d) }) },
   classes: { object: LOG, split: ["day"], query: (d) => ({ group: [{ name: "Source" }, { name: "AddressType" }], show: [countOf], where: logWhere(d, { source: false }) }) },
   template: {
@@ -557,6 +580,11 @@ const FAMILIES = {
     object: LOG, split: ["programs", "day", "flags", "address"], flags: ["IsOpened", "IsSent"],
     query: (d) => ({ group: [{ name: "SourceId" }, PATH.company, byMonth("ExecutedDate"), ...LOG_FLAGS.map((name) => ({ name }))], show: [countOf], where: logWhere(d) }),
   },
+  // The sends with no company link, which the account call above never returns.
+  "account-nolink": {
+    object: LOG, split: ["programs", "day", "flags", "address"], flags: ["IsOpened", "IsSent"],
+    query: (d) => ({ group: [{ name: "SourceId" }, byMonth("ExecutedDate"), ...LOG_FLAGS.map((name) => ({ name }))], show: [countOf], where: [...logWhere(d), noCompany()] }),
+  },
   // Clicked sends, twice: who and when (grouped, so the month is the server's
   // bucket like every other fact), and what was clicked (plain rows, the one
   // shape LinkClickedJson is known to come back in). Joined on the row's Gsid.
@@ -565,6 +593,10 @@ const FAMILIES = {
   "click-attr": {
     object: LOG, split: ["programs", "day", "address"],
     query: (d) => ({ group: [{ name: "SourceId" }, { name: "EmailTemplateId" }, byMonth("ExecutedDate"), PATH.company, { name: "Gsid" }], show: [{ name: "LinkClickedCount", aggregation: "COUNT" }], where: [...logWhere(d), cond("LinkClickedCount", "GT", 0)] }),
+  },
+  "click-attr-nolink": {
+    object: LOG, split: ["programs", "day", "address"],
+    query: (d) => ({ group: [{ name: "SourceId" }, { name: "EmailTemplateId" }, byMonth("ExecutedDate"), { name: "Gsid" }], show: [{ name: "LinkClickedCount", aggregation: "COUNT" }], where: [...logWhere(d), cond("LinkClickedCount", "GT", 0), noCompany()] }),
   },
   "click-json": {
     object: LOG, split: ["programs", "day", "address"], sanitize: "clicks",
@@ -578,6 +610,9 @@ const FAMILIES = {
     }),
   },
   "resp-participants": { object: SURVEY, split: [], query: () => ({ group: [PATH.surveyProgram], show: [countOf], where: [] }) },
+  // Survey rows no program owns: the calls above go through the participant
+  // lookup, so they never return these.
+  "resp-unattributed": { object: SURVEY, split: [], query: () => ({ group: [], show: [countOf], where: [cond("AOParticipantId", "IS_NULL")] }) },
   // All time, like the denominator above: resp-month's query without its month
   // bucket and its window, so the two count a response the same way.
   "resp-total": { object: SURVEY, split: [], query: () => ({ group: [PATH.surveyProgram, { name: "ResponseStatus" }], show: [countOf], where: [cond("Responded", "EQ", true)] }) },
@@ -896,13 +931,24 @@ export function listHasMore(payload, page) {
 function readBase(units, stats) {
   const base = new Map();
   for (const u of units) {
-    if (u.family !== "uniques-month" || u.cls !== "all") continue;
+    if (u.family !== "totals" || u.cls !== "all") continue;
     for (const row of u.rows) {
       stats.seen++;
-      const { programId, month, n, people, accounts } = ROW_READERS["uniques-month"](row);
+      const { programId, month, n } = ROW_READERS.totals(row);
       if (programId == null || month == null || n == null) { stats.unreadable++; continue; }
       stats.parsed++;
-      base.set(JSON.stringify([programId, month]), { programId, month, sent: n, people, accounts });
+      const k = JSON.stringify([programId, month]);
+      // A split unit's leaves each carry part of a program-month.
+      base.set(k, { programId, month, sent: (base.get(k)?.sent ?? 0) + n, accounts: null });
+    }
+  }
+  // Distinct accounts per program-month, for the row estimates only.
+  for (const u of units) {
+    if (u.family !== "uniques-month" || u.cls !== "all" || u.of !== "accounts") continue;
+    for (const row of u.rows) {
+      const r = ROW_READERS["uniques-month"](row);
+      const b = base.get(JSON.stringify([r.programId, r.month]));
+      if (b) b.accounts = r.accounts;
     }
   }
   return base;
@@ -1046,11 +1092,12 @@ export function planUnits({ params, base, selectedIds, refresh, surveyAvailable 
   const domains = params.internalDomains;
   const sentIn = (id, m) => base.get(JSON.stringify([id, m]))?.sent ?? 0;
 
-  units.push({ family: "uniques-window", cls: "all", window: whole });
+  units.push({ family: "uniques-month", cls: "all", of: "people", window: whole });
+  for (const of of ["people", "accounts"]) units.push({ family: "uniques-window", cls: "all", of, window: whole });
   units.push({ family: "classes", cls: "all", window: smallSpan });
-  if (domains.length) {
-    units.push({ family: "uniques-window", cls: "external", domains, window: whole });
-    units.push({ family: "uniques-month", cls: "external", domains, window: smallSpan });
+  for (const of of domains.length ? ["people", "accounts"] : []) {
+    units.push({ family: "uniques-window", cls: "external", of, domains, window: whole });
+    units.push({ family: "uniques-month", cls: "external", of, domains, window: smallSpan });
   }
   // Template grain: tenant-wide, one call per pulled month; old months only
   // for the programs the previous snapshot did not hold.
@@ -1066,17 +1113,22 @@ export function planUnits({ params, base, selectedIds, refresh, surveyAvailable 
   };
   for (const m of pulled) accountMonth(m, selectedIds);
   for (const m of oldMonths) accountMonth(m, fullPrograms);
+  units.push({ family: "account-nolink", cls: "all", window: smallSpan });
   units.push({ family: "click-attr", cls: "all", window: smallSpan });
+  units.push({ family: "click-attr-nolink", cls: "all", window: smallSpan });
   units.push({ family: "click-json", cls: "all", window: smallSpan });
   for (const domain of domains) {
     units.push({ family: "template", cls: "internal", domain, window: smallSpan });
     units.push({ family: "account", cls: "internal", domain, window: smallSpan });
+    units.push({ family: "account-nolink", cls: "internal", domain, window: smallSpan });
     units.push({ family: "click-attr", cls: "internal", domain, window: smallSpan });
+    units.push({ family: "click-attr-nolink", cls: "internal", domain, window: smallSpan });
   }
   if (surveyAvailable) {
     units.push({ family: "resp-month", cls: "all", window: smallSpan });
     units.push({ family: "resp-participants", cls: "all" });
     units.push({ family: "resp-total", cls: "all" });
+    units.push({ family: "resp-unattributed", cls: "all" });
   }
   if (params.stepDetail) {
     const stepMonth = (m, ids) => {
@@ -1105,10 +1157,41 @@ export function planUnits({ params, base, selectedIds, refresh, surveyAvailable 
 // Seconds per call, by family: medians measured on CLI 1.0.10, rounded up. An
 // estimate, printed as one; the token check before each call is what decides.
 const CALL_SECONDS = { whoami: 1, programs: 2, schema: 2, describe: 3, "uniques-month": 13, "uniques-window": 23, "account-names": 4 };
-export const estimateSeconds = (units) => units.reduce((s, u) => s + (CALL_SECONDS[u.family] ?? 7), 0);
-const familyCounts = (units) => {
+/**
+ * How many calls a planned unit is expected to take. One, unless its rows will
+ * not fit a page: an account-grain unit holding a program-month that reaches
+ * more accounts than a page is split until every leaf fits, and each split
+ * costs the call that came back full. The tree is priced from the cheap
+ * tenant-wide call: about one row and a half per account reached (never more
+ * rows than sends), leaves half a page full, two calls per leaf, and two more
+ * for every rung the ladder climbs before the address cut (the window halved
+ * down to one day, then the two flags), as when the sends sit on one day.
+ * Measured against four real pulls, this lands within 2x of the calls made.
+ * @param {*} u a planned unit
+ * @param {Map<string, {sent: number, accounts: ?number}>} base
+ * @param {number} pageSize
+ * @returns {number}
+ */
+export function expectedCalls(u, base, pageSize) {
+  if (u.family !== "account" || u.cls !== "all" || !u.programs) return 1;
+  const month = u.window.start.slice(0, 7);
+  const rungs = Math.ceil(Math.log2(Math.max(2, daysBetween(u.window.start, u.window.end)))) + 2;
+  let calls = 0;
+  let fits = false;
+  for (const id of u.programs) {
+    const b = base.get(JSON.stringify([id, month]));
+    const rows = b ? Math.min(b.sent, Math.ceil(Math.max(1, b.accounts ?? b.sent) * 1.5)) : 0;
+    if (rows >= pageSize) calls += 1 + 2 * rungs + 2 * Math.ceil(rows / (pageSize / 2));
+    else fits = true;
+  }
+  return calls + (fits || !calls ? 1 : 0);
+}
+const priced = (units, base, pageSize) => units.map((u) => ({ family: u.family, calls: expectedCalls(u, base, pageSize) }));
+export const estimateCalls = (units, base, pageSize) => priced(units, base, pageSize).reduce((s, u) => s + u.calls, 0);
+export const estimateSeconds = (units, base, pageSize) => priced(units, base, pageSize).reduce((s, u) => s + u.calls * (CALL_SECONDS[u.family] ?? 7), 0);
+const familyCounts = (units, base, pageSize) => {
   const out = {};
-  for (const u of units) out[u.family] = (out[u.family] ?? 0) + 1;
+  for (const u of priced(units, base, pageSize)) out[u.family] = (out[u.family] ?? 0) + u.calls;
   return out;
 };
 
@@ -1298,7 +1381,10 @@ export function fetchEngagement(ctx) {
   const surveyAvailable = !!types.get(SURVEY);
 
   const whole = monthWindow(params.window.from, params.window.to);
-  const baseUnits = rowsOf(runUnit({ family: "uniques-month", cls: "all", window: whole }));
+  const baseUnits = [
+    ...rowsOf(runUnit({ family: "totals", cls: "all", window: whole })),
+    ...(stop ? [] : rowsOf(runUnit({ family: "uniques-month", cls: "all", of: "accounts", window: whole }))),
+  ];
   let sentSinceIds = new Set();
   if (params.selector.sentSince && !stop) {
     const since = rowsOf(runUnit({ family: "sent-since", cls: "all", window: { start: params.selector.sentSince.date, end: addDays(params.today, 1) } }));
@@ -1327,12 +1413,15 @@ export function fetchEngagement(ctx) {
   const fullUnits = refresh.mode === "full" ? units : planUnits({ params, base, selectedIds, refresh: decideRefresh({ params, previous: null, tenantHost: whoami.host, selectedIds }), surveyAvailable });
   const without = planUnits({ params: { ...params, stepDetail: false }, base, selectedIds, refresh, surveyAvailable });
   const withStep = planUnits({ params: { ...params, stepDetail: true }, base, selectedIds, refresh, surveyAvailable });
+  // Calls and seconds include the splits a program-month too large for a page will force.
+  const calls = (list) => estimateCalls(list, base, params.pageSize);
+  const seconds = (list) => estimateSeconds(list, base, params.pageSize);
   const estimate = {
     mode: refresh.mode, why: refresh.why,
-    thisRun: { calls: units.length, seconds: estimateSeconds(units), byFamily: familyCounts(units) },
-    full: { calls: fullUnits.length, seconds: estimateSeconds(fullUnits) },
-    stepDetail: { on: params.stepDetail, addsCalls: withStep.length - without.length, addsSeconds: estimateSeconds(withStep) - estimateSeconds(without) },
-    token: { expiresInSeconds: whoami.expiresInSeconds, fits: estimateSeconds(units) + params.tokenMarginSeconds <= whoami.expiresInSeconds },
+    thisRun: { calls: calls(units), seconds: seconds(units), units: units.length, byFamily: familyCounts(units, base, params.pageSize) },
+    full: { calls: calls(fullUnits), seconds: seconds(fullUnits) },
+    stepDetail: { on: params.stepDetail, addsCalls: calls(withStep) - calls(without), addsSeconds: seconds(withStep) - seconds(without) },
+    token: { expiresInSeconds: whoami.expiresInSeconds, fits: seconds(units) + params.tokenMarginSeconds <= whoami.expiresInSeconds },
   };
   const programs = { listed: listed.size, selected: selectedIds.length, deleted: decision.deleted.size, unselected: decision.unselected.size };
   writeFileAtomicSync(join(runDir, "plan.json"), JSON.stringify({ estimate, programs, refresh: { ...refresh, carriedPrograms: [...refresh.carriedPrograms] } }, null, 2));
@@ -1525,16 +1614,30 @@ export function reduceEngagement(input) {
     }
   }
 
+  // The sends with no company link: their own bucket, from their own calls.
+  for (const u of of("account-nolink")) {
+    for (const row of u.rows) {
+      rowStats.seen++;
+      const { programId: p, month: m, n, flags } = ROW_READERS["account-nolink"](row);
+      if (p == null || m == null || n == null) { rowStats.unreadable++; continue; }
+      rowStats.parsed++;
+      if (!accept(p, m)) continue;
+      addFlags(cellOf(accTable, [p, null, m])[u.cls === "internal" ? "internal" : "all"], n, flags);
+    }
+  }
+
   // ── Clicks: who and when, joined to what was clicked, on the send's id ──
   const linksById = new Map();
   for (const u of of("click-json")) for (const r of u.rows) if (r?.id != null) linksById.set(r.id, r);
   const clicks = { clickedSends: 0, withContentClick: 0, nonContentOnly: 0, unreadable: 0, detailMissing: 0, byUnsubscribeInput: 0 };
   const sendMonth = new Map(); // send id → [programId, templateId, month, account], for step detail
   const internalSends = new Set();
-  for (const u of of("click-attr", "internal")) for (const row of u.rows) internalSends.add(ROW_READERS["click-attr"](row).sendId);
-  for (const u of of("click-attr", "all")) {
+  // A clicked send is in exactly one of the two families: with a company link, or without.
+  const clickFamilies = ["click-attr", "click-attr-nolink"];
+  for (const family of clickFamilies) for (const u of of(family, "internal")) for (const row of u.rows) internalSends.add(ROW_READERS[family](row).sendId);
+  for (const u of clickFamilies.flatMap((family) => of(family, "all"))) {
     for (const row of u.rows) {
-      const { programId: p, month: m, sendId: id, templateId: t, accountKey: account } = ROW_READERS["click-attr"](row);
+      const { programId: p, month: m, sendId: id, templateId: t, accountKey: account = null } = ROW_READERS[u.family](row);
       if (p == null || m == null || id == null || !accept(p, m)) continue;
       clicks.clickedSends++;
       const links = linksById.get(id);
@@ -1561,7 +1664,7 @@ export function reduceEngagement(input) {
       const ext = zero();
       for (const k of SEND_MEASURES) {
         ext[k] = e.all[k] - e.internal[k];
-        if (ext[k] < 0) { deficits.push({ key: e.key, measure: k, all: e.all[k], internal: e.internal[k] }); ext[k] = 0; }
+        if (ext[k] < 0) { deficits.push({ key: e.key, month: e.key[e.key.length - 1], measure: k, left: e.internal[k], right: e.all[k] }); ext[k] = 0; }
       }
       if (anyNonZero(e.internal)) rows.push({ ...fields(e.key), recipientClass: "internal", ...e.internal, ...provenance });
       if (anyNonZero(ext)) rows.push({ ...fields(e.key), recipientClass: "external", ...ext, ...provenance });
@@ -1628,14 +1731,17 @@ export function reduceEngagement(input) {
       for (const row of u.rows) {
         const r = ROW_READERS[family](row);
         if (r.programId == null || (monthly && r.month == null)) continue;
-        out.set(JSON.stringify([r.programId, monthly ? r.month : null]), r);
+        // One call per lookup: each fills its own count for the program.
+        const k = JSON.stringify([r.programId, monthly ? r.month : null]);
+        out.set(k, { ...out.get(k), ...Object.fromEntries(Object.entries(r).filter(([, v]) => v != null)) });
       }
     }
     return out;
   };
   const both = (family, monthly) => ({ all: uniqueCounts(family, "all", monthly), ext: uniqueCounts(family, "external", monthly) });
-  const logCounts = (r) => ({ people: r ? r.people : 0, accounts: r ? r.accounts : 0 });
-  const partCount = (map, key) => (params.stepDetail ? (map.has(key) ? map.get(key).participants : 0) : null);
+  // A program none of whose sends has the link is in no row of that call: 0.
+  const logCounts = (r) => ({ people: r?.people ?? 0, accounts: r?.accounts ?? 0 });
+  const partCount = (map, key) => (params.stepDetail ? map.get(key)?.participants ?? 0 : null);
   const uniques = [];
   const uw = both("uniques-window", false);
   const um = both("uniques-month", true);
@@ -1650,7 +1756,7 @@ export function reduceEngagement(input) {
   };
   for (const p of selected.keys()) {
     uniques.push(uniqueRow(p, "window", null, uw, pw));
-    for (const m of windowMonths) if (pulledFor(p).has(m) && um.all.has(JSON.stringify([p, m]))) uniques.push(uniqueRow(p, "month", m, um, pmn));
+    for (const m of windowMonths) if (pulledFor(p).has(m) && (base.get(JSON.stringify([p, m]))?.sent ?? 0) > 0) uniques.push(uniqueRow(p, "month", m, um, pmn));
   }
   uniques.push(...carried((previous?.facts?.uniques ?? []).filter((r) => r.scope === "month")));
   uniques.sort(byKeys("programId", "scope", "month"));
@@ -1662,8 +1768,7 @@ export function reduceEngagement(input) {
     for (const row of u.rows) {
       const { programId: p, month: m, status, n: count } = ROW_READERS["resp-month"](row);
       const n = count ?? 0;
-      if (p == null) { respStats.unattributed += n; continue; }
-      if (m == null || !accept(p, m)) continue;
+      if (p == null || m == null || !accept(p, m)) continue;
       const k = JSON.stringify([p, m]);
       if (!respTable.has(k)) respTable.set(k, { programId: p, month: m, submitted: 0, partiallySubmitted: 0, ...provenance });
       if (status === "Submitted") respTable.get(k).submitted += n;
@@ -1677,10 +1782,10 @@ export function reduceEngagement(input) {
     for (const row of u.rows) {
       const { programId: p, n: count } = ROW_READERS["resp-participants"](row);
       const n = count ?? 0;
-      if (p == null) respStats.unattributed += n;
-      else if (selected.has(p)) participantsByProgram.set(p, n);
+      if (p != null && selected.has(p)) participantsByProgram.set(p, n);
     }
   }
+  for (const u of of("resp-unattributed")) for (const row of u.rows) respStats.unattributed += ROW_READERS["resp-unattributed"](row).n ?? 0;
   // The same program's Submitted and Partially submitted, all time: with the
   // denominator they are the response rate's one basis.
   const totalsByProgram = new Map();
@@ -1753,22 +1858,30 @@ export function reduceEngagement(input) {
     }
     return out;
   };
-  const check = (id, pairs) => {
+  // A month on or after incompleteFrom is still being written while the calls
+  // are made, so a difference there is drift, reported with its size; a
+  // difference in a closed month is a failure.
+  const incompleteMonth = params.incompleteFrom.slice(0, 7);
+  const check = (id, pairs, compared = pairs.length) => {
     const bad = pairs.filter((p) => p.left !== p.right);
-    return { id, ok: !bad.length, compared: pairs.length, mismatches: bad.length, examples: bad.slice(0, 10) };
+    const closed = bad.filter((p) => p.month < incompleteMonth);
+    const drift = bad.filter((p) => p.month >= incompleteMonth);
+    const shown = (list) => list.slice(0, 10).map(({ month: _m, ...rest }) => rest);
+    return { id, ok: !closed.length, compared, mismatches: closed.length, examples: shown(closed), drift: drift.length, driftExamples: shown(drift) };
   };
   const tplByPm = sumBy(pulledOnly(byTemplate), (r) => [r.programId, r.month]);
   const accByPm = sumBy(pulledOnly(byAccount), (r) => [r.programId, r.month]);
   const checks = [
-    check("templates-sum-to-program", [...tplByPm].map(([k, m]) => ({ key: JSON.parse(k), measure: "sent", left: m.sent, right: base.get(k)?.sent ?? null }))),
-    check("accounts-sum-to-program", [...tplByPm].flatMap(([k, m]) => SEND_MEASURES.map((measure) => ({ key: JSON.parse(k), measure, left: accByPm.get(k)?.[measure] ?? 0, right: m[measure] })))),
-    { id: "internal-within-all", ok: !deficits.length, compared: tplTable.size + accTable.size, mismatches: deficits.length, examples: deficits.slice(0, 10) },
-    check("clicked-within-delivered", pulledOnly(byTemplate).map((r) => ({ key: [r.programId, r.templateId, r.month, r.recipientClass], measure: "clicked", left: Math.min(r.clicked, r.delivered), right: r.clicked }))),
+    check("templates-sum-to-program", [...tplByPm].map(([k, m]) => ({ key: JSON.parse(k), month: JSON.parse(k)[1], measure: "sent", left: m.sent, right: base.get(k)?.sent ?? null }))),
+    check("accounts-sum-to-program", [...tplByPm].flatMap(([k, m]) => SEND_MEASURES.map((measure) => ({ key: JSON.parse(k), month: JSON.parse(k)[1], measure, left: accByPm.get(k)?.[measure] ?? 0, right: m[measure] })))),
+    check("internal-within-all", deficits, tplTable.size + accTable.size),
+    // Within SENT, not delivered: an attempt that went out, was clicked and bounced afterwards is clicked and not delivered.
+    check("clicked-within-sent", pulledOnly(byTemplate).map((r) => ({ key: [r.programId, r.templateId, r.month, r.recipientClass], month: r.month, measure: "clicked", left: Math.min(r.clicked, r.sent), right: r.clicked }))),
   ];
   if (byStep) {
     const stepByPtm = sumBy(pulledOnly(byStep), (r) => [r.programId, r.templateId, r.month]);
     const tplByPtm = sumBy(pulledOnly(byTemplate), (r) => [r.programId, r.templateId, r.month]);
-    checks.push(check("steps-sum-to-template", [...tplByPtm].flatMap(([k, m]) => ["sent", "delivered", "opened", "bounced"].map((measure) => ({ key: JSON.parse(k), measure, left: stepByPtm.get(k)?.[measure] ?? 0, right: m[measure] })))));
+    checks.push(check("steps-sum-to-template", [...tplByPtm].flatMap(([k, m]) => ["sent", "delivered", "opened", "bounced"].map((measure) => ({ key: JSON.parse(k), month: JSON.parse(k)[2], measure, left: stepByPtm.get(k)?.[measure] ?? 0, right: m[measure] })))));
   }
   const reconciliation = { ok: checks.every((c) => c.ok), checks };
 
@@ -1840,6 +1953,7 @@ export function reduceEngagement(input) {
   if (selected.size - withDesign) caveats.push({ id: "step-names-unavailable", detail: { programs: selected.size - withDesign, source: kbSteps ? "kb" : "none" } });
   if (!surveyAvailable) caveats.push({ id: "responses-unreadable", detail: { object: SURVEY } });
   if (!reconciliation.ok) caveats.push({ id: "reconciliation-mismatch", detail: { checks: checks.filter((c) => !c.ok).map((c) => c.id) } });
+  if (checks.some((c) => c.drift)) caveats.push({ id: "incomplete-period-drift", detail: { from: params.incompleteFrom, checks: checks.filter((c) => c.drift).map((c) => ({ id: c.id, drift: c.drift })) } });
 
   const facts = { byTemplate, ...(byStep ? { byStep } : {}), byAccount, responses, responseParticipants, uniques };
   return {
@@ -2101,7 +2215,7 @@ function reduceSummary(s, outPath) {
     accounts: s.dimensions.accounts.length,
     rows: Object.fromEntries(Object.entries(s.facts).map(([k, v]) => [k, v.length])),
     reconciled: s.reconciliation.ok,
-    reconciliation: s.reconciliation.checks.map((c) => ({ id: c.id, ok: c.ok, compared: c.compared, mismatches: c.mismatches })),
+    reconciliation: s.reconciliation.checks.map((c) => ({ id: c.id, ok: c.ok, compared: c.compared, mismatches: c.mismatches, drift: c.drift })),
     excluded: s.honesty.excluded,
     caveats: s.caveats.map((c) => c.id),
   };

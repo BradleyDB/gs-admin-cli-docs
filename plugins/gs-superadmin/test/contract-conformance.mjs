@@ -628,6 +628,8 @@ try {
           new Set(s.facts.byAccount.map((r) => r.bucket)).size === 3, s.facts.byAccount[0]);
       if (steps) check(at("byStep rows: the row base, stepId, variantId, templateId and the eight measures"), rows(s, "byStep", list(...ROW_BASE, "stepId", "variantId", "templateId", ...MEASURES)), s.facts.byStep[0]);
       const sendRows = [...s.facts.byTemplate, ...s.facts.byAccount, ...(steps ? s.facts.byStep : [])];
+      check(at("Delivered is the attempts that went out and did not bounce: no row holds more delivered plus bounced than sent"),
+        sendRows.every((r) => r.delivered + r.bounced <= r.sent) && sendRows.some((r) => r.bounced > 0));
       check(at("every send row: additive measures are whole numbers >= 0, class internal|external, provenance pulled|carried, month YYYY-MM"),
         sendRows.every((r) => MEASURES.every((m) => count(r[m])) && ["internal", "external"].includes(r.recipientClass) && ["pulled", "carried"].includes(r.provenance) && MONTH.test(r.month) && typeof r.pulledAt === "string"));
       check(at("responses rows: programId, month, submitted, partiallySubmitted, provenance, pulledAt; the denominator is its own program-grain table"),
@@ -656,8 +658,9 @@ try {
       const want = ({ tracked, notTracked, unknown }) => (tracked + notTracked + unknown > 0 && tracked === tracked + notTracked + unknown ? "tracked" : tracked + notTracked + unknown > 0 && notTracked === tracked + notTracked + unknown ? "not-tracked" : "unknown");
       check(at("a program roll-up is tracked only when EVERY template is, not-tracked only when every one is, and any mix is unknown; the counts are whole numbers"),
         rolled.every((p) => [p.templates.tracked, p.templates.notTracked, p.templates.unknown].every(count) && p.state === want(p.templates)) && rolled.some((p) => p.state === "unknown" && p.templates.tracked > 0) && rolled.some((p) => p.state === "tracked"), rolled);
-      check(at("reconciliation is {ok, checks[{id, ok, compared, mismatches, examples}]}; caveats are [{id, detail}]"),
-        keys(s.reconciliation) === "checks,ok" && s.reconciliation.checks.length >= 4 && s.reconciliation.checks.every((c) => keys(c) === "compared,examples,id,mismatches,ok") && s.caveats.every((c) => keys(c) === "detail,id"), s.reconciliation.checks.map((c) => c.id));
+      check(at("reconciliation is {ok, checks[{id, ok, compared, mismatches, examples, drift, driftExamples}]}: closed months fail, the incomplete period drifts; caveats are [{id, detail}]"),
+        keys(s.reconciliation) === "checks,ok" && s.reconciliation.checks.length >= 4 && s.reconciliation.checks.every((c) => keys(c) === "compared,drift,driftExamples,examples,id,mismatches,ok" && count(c.drift) && count(c.mismatches) && c.ok === (c.mismatches === 0)) &&
+          s.reconciliation.ok === s.reconciliation.checks.every((c) => c.ok) && s.caveats.every((c) => keys(c) === "detail,id"), s.reconciliation.checks.map((c) => c.id));
       check(at("openSnapshot admits it"), openSnapshot(s) === s);
     }
 

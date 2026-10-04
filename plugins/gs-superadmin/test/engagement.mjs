@@ -32,7 +32,7 @@ import { isDeepStrictEqual } from "node:util";
 import { makeTempDir, removeTempDir, writeFiles, runNode } from "../../../test/rig.mjs";
 import {
   fetchEngagement, reduceEngagement, loadRun, resolveParams, makeGate, parseWhoami, parseSentSince, parseIdList,
-  classifyFailure, classifyLink, readLinkClicks, parseUnsubscribeLink, NON_CONTENT_LINK_RULES, validateQuery, buildQuery, splitUnit, selectAccounts, decideClickState,
+  expectedCalls, classifyFailure, classifyLink, readLinkClicks, parseUnsubscribeLink, NON_CONTENT_LINK_RULES, validateQuery, buildQuery, splitUnit, selectAccounts, decideClickState,
   openSnapshot, readClicked, clickAvailability, programClickAvailability, readResponses, monthsBetween,
   SEND_MEASURES, T10_SCHEMA_VERSION, ENGAGEMENT_READ_PATHS, joEngagementAdapter,
 } from "../scripts/engagement.mjs";
@@ -122,7 +122,7 @@ function oracle(tenant, snapshot) {
       const k = keyOf(r).join("|");
       const m = out.get(k) ?? blank();
       m.sent++;
-      if (r.IsSent === "YES") m.delivered++;
+      if (r.IsSent === "YES" && r.IsBounced !== "YES") m.delivered++;
       if (r.IsBounced === "YES") m.bounced++;
       if (r.IsRejected === "YES") m.rejected++;
       if (r.IsUnsubscribed === "YES") m.unsubscribed++;
@@ -323,7 +323,7 @@ try {
     const p = pull({ phase: "plan" });
     let refused = "";
     try { loadRun(p.runDir); } catch (e) { refused = e.message; }
-    check("plan makes only the cheap tenant-wide calls, writes the estimate, and leaves a run reduce refuses", p.summary.status === "ok" && rpRuns(p.argv).length === 1 && existsSync(join(p.runDir, "plan.json")) && /not complete/.test(refused), [rpRuns(p.argv).length, refused]);
+    check("plan makes only the cheap tenant-wide calls, writes the estimate, and leaves a run reduce refuses", p.summary.status === "ok" && rpRuns(p.argv).length === 2 && existsSync(join(p.runDir, "plan.json")) && /not complete/.test(refused), [rpRuns(p.argv).length, refused]);
   }
 
   // ── Step detail (R21) ─────────────────────────────────────────────────────
@@ -362,7 +362,8 @@ try {
     const again = reduceEngagement(loadRun(base.runDir, { cliVersion: "fixture", pluginVersion: "fixture" }));
     check("reduce is pure: the same run directory reduces to the same snapshot, twice", isDeepStrictEqual(again, S));
     const input = loadRun(base.runDir, { cliVersion: "fixture", pluginVersion: "fixture" });
-    const unit = input.units.find((u) => u.family === "account" && u.cls === "all" && u.rows.length);
+    // A closed month: a difference in the incomplete period would be drift (F-475).
+    const unit = input.units.find((u) => u.family === "account" && u.cls === "all" && u.rows.length && u.window.start < "2026-09-01");
     unit.rows[0].count_of_email_log_v2_Gsid.v += 3;
     unit.rows[0].count_of_email_log_v2_Gsid.k += 3;
     const off = reduceEngagement(input);
@@ -667,6 +668,106 @@ try {
     const tiny = pull({ variant: { massDay: true }, raw: { pageSize: 2 }, phase: "all" });
     check("a unit no cut can bring under the page is still a failed unit and a partial run: no snapshot is built from a truncated answer",
       tiny.summary?.status === "partial" && tiny.snapshot === null && tiny.summary.failed.some((x) => x.kind === "truncated" && /nothing left to split on/.test(x.stderr)), tiny.summary?.status ?? String(tiny.error));
+  }
+
+  // ── F-473 · a lookup never decides whether a send is counted ──────────────
+  {
+    const t = base.tenant;
+    const run = (group, show, where = []) => JSON.parse(answer(["--json", "rp", "run", "--object", "email_log_v2", "--show-fields", JSON.stringify(show), ...(group.length ? ["--group-by", JSON.stringify(group)] : []), "--where-filters", JSON.stringify({ conditions: where }), "--page-size", "5000"], t).stdout);
+    const company = { fieldPath: { leaf: "Gsid", hops: [{ through: "GsCompanyId", to: "company" }] } };
+    const count = [{ name: "Gsid", aggregation: "COUNT" }];
+    const total = (rows) => rows.reduce((x, r) => x + r.count_of_email_log_v2_Gsid.v, 0);
+    const nolink = t.tables.email_log_v2.filter((r) => r.GsCompanyId == null).length;
+    check("the hazard the rule exists for: a call that groups or aggregates through a lookup path drops every row whose lookup is null — no null group, and not in the count — while a plain group on a field keeps them",
+      nolink > 0 && total(run([company], count)) === t.tables.email_log_v2.length - nolink && run([company], count).every((r) => "v" in r.company_GsCompanyId__gr_Gsid) &&
+        total(run([{ name: "SourceId" }], [...count, { ...company, aggregation: "COUNT_DISTINCT" }])) === t.tables.email_log_v2.length - nolink && total(run([{ name: "SourceId" }], count)) === t.tables.email_log_v2.length &&
+        total(run([{ name: "SourceId" }], count, [{ leftOperand: { fieldName: "GsCompanyId" }, operator: "IS_NULL", rightOperand: {} }])) === nolink);
+    const lookups = (a) => { const q = parsed(a); return [...q.group, ...q.show.filter((e) => e.aggregation)].filter((e) => e.fieldPath).map((e) => e.fieldPath.hops[0].through); };
+    const twoOrCounted = every.filter((a) => flag(a, "--object") === "email_log_v2" && (new Set(lookups(a)).size > 1 || (lookups(a).length && parsed(a).show.some((e) => e.aggregation === "COUNT" && e.name === "Gsid") && !parsed(a).group.some((e) => e.fieldPath))));
+    check("F-473: no call asks for a count of sends, or for two distinct counts, through a lookup: the program totals come from a call that names none, and people and accounts are each asked on their own",
+      twoOrCounted.length === 0 && every.some((a) => { const q = parsed(a); return q.object === "email_log_v2" && !lookups(a).length && q.group.length === 2 && q.group[0].name === "SourceId" && q.group[1].summarize === "Month" && q.show.length === 1; }) &&
+        every.some((a) => lookups(a).join() === "GsPersonId") && every.some((a) => lookups(a).join() === "GsCompanyId" && !parsed(a).group.some((e) => e.fieldPath)), twoOrCounted.slice(0, 1));
+    const pilot = O.rows.filter((r) => r.SourceId === "p-pilot");
+    check("F-473: a program whose EVERY send lacks a company link is still selected, its sends are in the template table and in its no-company-link rows, and it reaches 0 accounts",
+      pilot.length > 0 && pilot.every((r) => r.GsCompanyId == null) && ids.includes("p-pilot") && S.facts.byTemplate.filter((r) => r.programId === "p-pilot").reduce((x, r) => x + r.sent, 0) === pilot.length &&
+        S.facts.byAccount.filter((r) => r.programId === "p-pilot").every((r) => r.bucket === "no-company-link") && S.facts.byAccount.filter((r) => r.programId === "p-pilot").reduce((x, r) => x + r.sent, 0) === pilot.length &&
+        S.facts.uniques.find((r) => r.programId === "p-pilot" && r.scope === "window").accounts === 0 && S.facts.uniques.find((r) => r.programId === "p-pilot" && r.scope === "window").people === 3);
+    const all = O.rows.filter((r) => r.GsCompanyId == null).length;
+    check("F-473: every send with no company link is counted once, in its program's no-company-link rows, and the honesty count says how many",
+      S.honesty.noCompanyLink.sent === all && S.facts.byAccount.filter((r) => r.bucket === "no-company-link").reduce((x, r) => x + r.sent, 0) === all && all > 30);
+    const variant = { orphanClicks: true };
+    const oc = pull({ variant });
+    const OC = oracle(oc.tenant, oc.snapshot);
+    const orphanClicked = OC.rows.filter((r) => r.GsCompanyId == null && r._contentClick).length;
+    check("F-473: a clicked send with no company link is attributed like any other: clicked counts equal a straight count, in the template table and in the no-company-link rows",
+      orphanClicked > 0 && sameMap(factMap(oc.snapshot.facts.byTemplate, (r) => [r.programId, r.templateId, r.month, r.recipientClass]), OC.byTemplate) &&
+        oc.snapshot.facts.byAccount.filter((r) => r.bucket === "no-company-link").reduce((x, r) => x + r.clicked, 0) === orphanClicked && oc.snapshot.honesty.clicks.clickedSends === OC.rows.filter((r) => r.LinkClickedCount > 0).length && oc.snapshot.reconciliation.ok,
+      [orphanClicked, oc.snapshot.honesty.clicks]);
+    check("F-473: survey rows that no program owns are counted by their own call (the calls through the participant lookup never return them)",
+      S.honesty.responses.unattributed === base.tenant.tables.survey_participant.filter((r) => r.AOParticipantId == null).length && S.honesty.responses.unattributed > 0 && rpRuns(base.argv).some((a) => flag(a, "--object") === "survey_participant" && flag(a, "--where-filters").includes('"IS_NULL"')));
+  }
+
+  // ── Delivered (ruling 2026-10-03) ─────────────────────────────────────────
+  {
+    const after = O.rows.filter((r) => r.IsSent === "YES" && r.IsBounced === "YES").length;
+    const sum = (k) => S.facts.byTemplate.reduce((x, r) => x + r[k], 0);
+    check("Delivered is the attempts that went out and did not bounce: an attempt that went out and bounced afterwards is bounced, not delivered, and Sent still counts every attempt",
+      after > 0 && sum("delivered") === O.rows.filter((r) => r.IsSent === "YES").length - after && sum("bounced") === O.rows.filter((r) => r.IsBounced === "YES").length && sum("sent") === O.rows.length && S.facts.byTemplate.every((r) => r.delivered + r.bounced <= r.sent));
+    const stepSum = (k) => SS.facts.byStep.reduce((x, r) => x + r[k], 0);
+    check("…and the step table agrees: its delivered is EmailSend true and Bounce not true, equal to the template table's", stepSum("delivered") === SS.facts.byTemplate.reduce((x, r) => x + r.delivered, 0) && stepSum("delivered") < stepSum("sent") - stepSum("bounced") + after + 1);
+  }
+
+  // ── F-475 · the incomplete period drifts; closed months fail ──────────────
+  {
+    const seed = (month) => {
+      const input = loadRun(base.runDir, { cliVersion: "fixture", pluginVersion: "fixture" });
+      const unit = input.units.find((u) => u.family === "template" && u.cls === "all" && u.rows.some((r) => r.summarize_month_of_email_log_v2_ExecutedDate.k.startsWith(month)));
+      const row = unit.rows.find((r) => r.summarize_month_of_email_log_v2_ExecutedDate.k.startsWith(month));
+      row.count_of_email_log_v2_Gsid.v += 2;
+      row.count_of_email_log_v2_Gsid.k += 2;
+      return reduceEngagement(input);
+    };
+    const now = seed("2026-09");
+    const closed = seed("2026-08");
+    const c = (snap, id) => snap.reconciliation.checks.find((x) => x.id === id);
+    check("F-475: a difference in the incomplete period is drift, reported with its size, and does not fail the pull: two sends that arrived between two calls leave reconciled true",
+      S.meta.incompleteFrom === "2026-09-01" && now.reconciliation.ok === true && c(now, "templates-sum-to-program").ok === true && c(now, "templates-sum-to-program").drift === 1 && c(now, "templates-sum-to-program").mismatches === 0 &&
+        c(now, "templates-sum-to-program").driftExamples[0].left === c(now, "templates-sum-to-program").driftExamples[0].right + 2 && c(now, "accounts-sum-to-program").drift >= 1 &&
+        isDeepStrictEqual(now.caveats.find((x) => x.id === "incomplete-period-drift")?.detail.from, "2026-09-01") && !now.caveats.some((x) => x.id === "reconciliation-mismatch"), now.reconciliation.checks);
+    check("F-475: the same difference in a closed month is still a failure: reconciled false, the mismatch counted and shown, and no drift",
+      closed.reconciliation.ok === false && c(closed, "templates-sum-to-program").mismatches === 1 && c(closed, "templates-sum-to-program").drift === 0 && closed.caveats.some((x) => x.id === "reconciliation-mismatch") && !closed.caveats.some((x) => x.id === "incomplete-period-drift"));
+    check("F-475: a clean pull has no drift and no drift caveat, and every check carries the count", S.reconciliation.checks.every((x) => x.drift === 0 && x.driftExamples.length === 0) && !S.caveats.some((x) => x.id === "incomplete-period-drift"));
+    const moved = pull({ raw: { incompleteFrom: "2026-08-10" } });
+    const input = loadRun(moved.runDir, {});
+    const tu = input.units.find((u) => u.family === "template" && u.cls === "all" && u.rows.some((r) => r.summarize_month_of_email_log_v2_ExecutedDate.k.startsWith("2026-08")));
+    tu.rows.find((r) => r.summarize_month_of_email_log_v2_ExecutedDate.k.startsWith("2026-08")).count_of_email_log_v2_Gsid.v += 1;
+    check("F-475: the boundary is meta.incompleteFrom's month, wherever it is set", reduceEngagement(input).reconciliation.ok === true && reduceEngagement(input).reconciliation.checks.find((x) => x.id === "templates-sum-to-program").drift === 1);
+  }
+
+  // ── F-476 · the estimate prices the splits ────────────────────────────────
+  {
+    const variant = { massDay: true };
+    const raw = { pageSize: 50 };
+    const full = pull({ variant, raw });
+    const flat = pull({ raw });
+    const within = (est, actual) => est <= actual * 2 && actual <= est * 2;
+    check("F-476 fixture: at this page only the mass-send program-day splits; the same pull without it makes exactly the calls it plans",
+      flat.summary.calls.split === 0 && flat.summary.estimate.thisRun.calls === flat.summary.estimate.thisRun.units && full.summary.calls.split > 3, [flat.summary.calls, full.summary.calls]);
+    const planned = full.summary.estimate.thisRun;
+    const afterPlan = full.summary.calls.made - (flat.summary.calls.made - flat.summary.estimate.thisRun.calls) ;
+    check("F-476: plan prices the splits it will meet: on a tenant with a mass-send day the estimated calls are within 2x of the calls the facts actually took, and above the count of unsplit units",
+      planned.calls > planned.units && within(planned.calls, afterPlan) && planned.byFamily.account > flat.summary.estimate.thisRun.byFamily.account + 3 && planned.seconds > flat.summary.estimate.thisRun.seconds, [planned, afterPlan, full.summary.calls]);
+    const prev = JSON.parse(JSON.stringify(pull({ variant: { cutoff: "2026-08-16" }, raw: { ...raw, today: "2026-08-15", pulledAt: "2026-08-15T09:00:00-07:00" } }).snapshot));
+    const sel = pull({ variant: { massDay: true, massMonth: "2026-09" }, raw, previous: prev });
+    const selPlanned = sel.summary.estimate.thisRun;
+    const selActual = sel.summary.calls.made - (flat.summary.calls.made - flat.summary.estimate.thisRun.calls);
+    check("F-476: the selective refresh, the pull users run most, is priced the same way: its estimate is within 2x of what it took when the re-pull months hold the mass-send day",
+      sel.snapshot.meta.refresh.mode === "selective" && sel.summary.calls.split > 3 && selPlanned.calls > selPlanned.units && within(selPlanned.calls, selActual), [selPlanned, selActual, sel.summary.calls]);
+    const b = new Map([[JSON.stringify(["p", "2026-07"]), { sent: 9000, accounts: 6000 }], [JSON.stringify(["q", "2026-07"]), { sent: 40, accounts: 30 }], [JSON.stringify(["r", "2026-07"]), { sent: 9000, accounts: null }]]);
+    const u = (programs) => ({ family: "account", cls: "all", window: { start: "2026-07-01", end: "2026-08-01" }, programs });
+    check("expectedCalls: one call for a unit that fits; for a program-month over the page, the call that comes back full, two per rung down to one day and the two flags (seven rungs for a 31-day month), and two per half-page leaf; rows are 1.5 per account and never more than the sends; other families and classes are one call",
+      expectedCalls(u(["q"]), b, 5000) === 1 && expectedCalls(u(["p"]), b, 5000) === 1 + 2 * 7 + 2 * Math.ceil(9000 / 2500) && expectedCalls(u(["p", "q"]), b, 5000) === 1 + 14 + 2 * 4 + 1 && expectedCalls(u(["r"]), b, 5000) === 1 + 14 + 2 * 4 &&
+        expectedCalls(u(["nobody"]), b, 5000) === 1 && expectedCalls({ ...u(["p"]), cls: "internal" }, b, 5000) === 1 && expectedCalls({ family: "template", cls: "all", window: u([]).window }, b, 5000) === 1);
   }
 
   // ── Privacy (house rule 9) ────────────────────────────────────────────────

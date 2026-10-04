@@ -21,11 +21,19 @@
 //   - a where-filter on a field the schema lacks is silently dropped
 //   - an unknown operator fails with "The filter operator cannot be left blank."
 //   - a failure is exit 1, empty stdout, text on stderr
+//   - a call that names a lookup path as a group-by or an aggregate DROPS every
+//     row whose lookup is null: it comes back neither as a null group nor in a
+//     count (measured on a production tenant, F-473; a PLAIN null field does
+//     come back, as a group with no `v`)
 //   - before a request is sent, a show field whose object and field name a
 //     group-by field also has is DROPPED, whatever its aggregation, with a
 //     warning on stderr; when no show field is left the request is refused
 //     (read off the CLI's dist/artifacts/validators/report.js at 1.0.10:
 //     normalizeGroupByDedup, then assertShowFieldsNonEmpty)
+// Every behaviour above was measured on a real tenant. One is still ASSUMED,
+// measured only where it has nothing to act on: DOES_NOT_CONTAINS keeps a row
+// whose field is null (the measured tenant has no in-scope send with a null
+// address).
 // Values are fictional throughout (acme.com is the tenant's own domain, the
 // customers live under example.com); the SHAPES are the tenant's.
 //
@@ -172,6 +180,8 @@ const CONTENT_KINDS = new Set(["content", "lookalike"]);
  *   extraJoRow      true — the JO send log holds one send the delivery log lacks
  *   ownSiteUnsub    true — one more program, whose unsubscribe link is a page on acme's own site
  *   massDay         true — one more program, which sends to sixty accounts on a single day
+ *   massMonth       "YYYY-MM" — the month of that day (default 2026-07)
+ *   orphanClicks    true — the sends with no company link are clicked on a content link (F-473)
  */
 export function buildTenant(variant = {}) {
   const log = [];
@@ -204,6 +214,7 @@ export function buildTenant(variant = {}) {
       else if (n % 35 === 0) kinds = ["content", "unsub"];
       else kinds = ["content"];
     }
+    if (variant.orphanClicks && account == null && sent && opened && (program.id === "p-onboard" || program.id === "p-pilot")) kinds = ["content"];
     const links = kinds && kinds.map((k) => LINKS[k](n));
     const gsid = `log-${String(n).padStart(5, "0")}`;
     const row = {
@@ -278,7 +289,7 @@ export function buildTenant(variant = {}) {
     }
   }
   if (variant.massDay) {
-    for (const [i, a] of BLAST_ACCOUNTS.entries()) send(BLAST, BLAST.steps[0], "2026-07", { account: a.Gsid, person: `pe-b${pad(i + 1)}`, email: `${BLAST_NAMES[i % BLAST_NAMES.length]}${i}@b${pad(i + 1)}.example.org`, onDay: "14" });
+    for (const [i, a] of BLAST_ACCOUNTS.entries()) send(BLAST, BLAST.steps[0], variant.massMonth ?? "2026-07", { account: a.Gsid, person: `pe-b${pad(i + 1)}`, email: `${BLAST_NAMES[i % BLAST_NAMES.length]}${i}@b${pad(i + 1)}.example.org`, onDay: "14" });
   }
   // A survey response that no JO program owns (another distribution channel).
   surveyRows.push({ Gsid: "sp-other", AOParticipantId: null, Responded: true, RespondedDate: "2026-07-09T12:00:00.000Z", ResponseStatus: "Submitted", SurveyOpened: true });
@@ -467,6 +478,11 @@ function rpRun(argv, tenant) {
     rows = tenant.tables[object].filter((r) => (where.conditions ?? []).every((c) => evalCond(r, c, types)));
   } catch (e) {
     return fail(e.message);
+  }
+  // A lookup path in a group-by or an aggregate is an inner join: a row whose
+  // lookup is null is gone from the whole answer.
+  for (const e of [...group, ...show.filter((x) => x.aggregation)]) {
+    if (e.fieldPath) rows = rows.filter((r) => hopValue(tenant, r, e.fieldPath) != null);
   }
 
   const groupKeyAndCell = (g, row) => {

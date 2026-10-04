@@ -988,3 +988,28 @@ Logged this round: F-473, F-474, F-475 (reconciliation reads current-month drift
 F-476 (plan's estimate omits splits; runs 2-5). Owed by the next re-run, after the builder's batch: V1 (F-473's fix) and
 V11 (F-474), the Delivered definition's readers, F-475 and F-476 per their Fix notes; the CLEARED checks stand unless the
 batch moves what they read.
+
+Re-banked (builder, third S1 fix batch, 2026-10-03 @ hb-20261003-04): F-473, F-475 and F-476 are FIXED on the branch,
+F-474 stays OPEN, and the Delivered ruling landed (went out and did not bounce; the T-10 typedef and its pin moved
+together). The list above is unchanged and still complete. Owed by the next S1-V re-run on hb-20261003-04, with the same
+inputs and NEW run names (s1v3-full, s1v3-steps, s1v3-selective, s1v3-since):
+- Run 4's `--previous` must be THIS round's run 2 (s1v3-full.json). A snapshot from an earlier round holds the old
+  Delivered and lacks the no-company-link sends in its carried months; carrying from it would mix two definitions.
+- V1 judges F-473: over the closed months `templates-sum-to-program` and `accounts-sum-to-program` read ok;
+  `honesty.noCompanyLink.sent` equals a direct count of the selected programs' in-scope sends with
+  `GsCompanyId IS_NULL`; clicked sends attributed (`honesty.clicks.clickedSends`) equal a direct count of the selected
+  programs' clicked sends; and the listed program whose every send lacks a company link is in the snapshot.
+- F-475 is judged on the same summaries: any difference in the current month is reported as `drift` on its check
+  with `reconciled: true`; a difference in a closed month still reads `ok: false` and is a finding.
+- F-476 is judged by V13 and V6 as written: each run's estimate against its calls and seconds, the selective run
+  included, inside the 2x bar.
+- The Delivered change is judged by V3, V12 and the per-email half: with the new definition the snapshot's delivered
+  should now equal the UI's "Delivered" where the UI's page is lifetime and the program's sends sit inside the window,
+  and otherwise equal a direct count of went-out-and-not-bounced. Opened and Sent are unchanged.
+- V11 and F-474, one read in the UI, by Bradley: what the 531 is. Its label and tooltip; whether the page has a date
+  range or a test-participant toggle; and whether the survey has been sent by more than this one program. The CLI side
+  is exhausted (the builder's note under F-474 lists what 531 is not). Record the answer; the fix, or the R3
+  divergence note, follows from it.
+Everything else was CLEARED at hb-20261003-03 and is not owed again, except where a fix above changes what a cleared
+check read: V2 (people and accounts now come from separate calls) and V8 (six new or changed call families: totals,
+the two single-lookup uniques shapes, account-nolink, click-attr-nolink, resp-unattributed) are re-read from the new runs.

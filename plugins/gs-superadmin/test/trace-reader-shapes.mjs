@@ -117,17 +117,21 @@ const ENG_TENANT = buildTenant({});
 const ENG_SPAN = { start: "2026-06-01", end: "2026-10-01" };
 const ENG_PROGRAMS = ["p-onboard", "p-nps", "p-renew"];
 const ENG_UNITS = {
-  "uniques-month": { cls: "all", window: ENG_SPAN },
-  "uniques-window": { cls: "all", window: ENG_SPAN },
+  totals: { cls: "all", window: ENG_SPAN },
+  "uniques-month": { cls: "all", of: "accounts", window: ENG_SPAN },
+  "uniques-window": { cls: "all", of: "people", window: ENG_SPAN },
   "sent-since": { cls: "all", window: ENG_SPAN },
   classes: { cls: "all", window: ENG_SPAN },
   template: { cls: "all", window: ENG_SPAN },
   account: { cls: "all", window: ENG_SPAN, programs: ENG_PROGRAMS },
+  "account-nolink": { cls: "all", window: ENG_SPAN },
   "click-attr": { cls: "all", window: ENG_SPAN },
+  "click-attr-nolink": { cls: "all", window: ENG_SPAN },
   "click-json": { cls: "all", window: ENG_SPAN },
   "resp-month": { cls: "all", window: ENG_SPAN },
   "resp-participants": { cls: "all" },
   "resp-total": { cls: "all" },
+  "resp-unattributed": { cls: "all" },
   "account-names": { cls: "all", keys: ["co-01", "co-02"] },
   step: { cls: "all", window: ENG_SPAN, programs: ENG_PROGRAMS },
   "step-click": { cls: "all", window: ENG_SPAN, programs: ENG_PROGRAMS },
