@@ -152,6 +152,27 @@ rule also reads the archive.
 Under test: fix-f469-dev-only · hb-20260929-01 · 2026-09-29
 Blind spots (hb-20260929-01): the release shape (strip committed, bus only on origin/dev) is measured locally only: a scratch clone ran every docs-drift step verbatim, with the fetch step fetching from a local remote, and only that shape kills sweep mutant M5. CI first runs it on the next release PR, since a pre-merge CI probe would read an origin/dev without the line. The main-existence step's base_ref == main path also runs first there (its rehearsal-arm path runs on this handoff's dispatch). Grammar parity with dev-utils is measured at 0.5.0 only. The reader's symlink-escape refusal has no fixture. RELEASE-CHECKLIST §3's strip and verify commands ran in a scratch clone; §5's release-finish did not run (no release). No SKILL.md changed, so no walk is owed; the round's guard-wiring line is the tester's
 
+<!-- tester 2026-10-03 (JO-dashboards S1-V second re-run @ hb-20261003-03 — re-stamps the builder pointer below; F-470, F-471, F-472 VERIFIED; F-473..F-476 OPEN on the branch; PR #36 stays UNMERGED; next free F-477):
+     Under test: feat/jo-dash-s1-facts -> PR #36, UNMERGED; checkout clean and level with origin at 96ed11e (matches Under
+       test); the dev-canary skill read hb-20261003-03 in session. Production tenant, confirmed; reads only.
+     All five runs completed (exit 0); every snapshot built. Verdict block, measurements and blind spots: the tester
+       comment on the branch's bus at 1fae94a; per-check record: dev/VALIDATION.md section ENG-2 there (OPEN: V1 and V11
+       FAILED, the other twelve CLEARED).
+     Status transitions on the branch, this round:
+       F-470 FIXED -> VERIFIED (V9).
+       F-471 FIXED -> VERIFIED (V8, every family ok in every run, step-click included).
+       F-472 FIXED -> VERIFIED (V8 and V1's cut, judged against a direct count; null-address count 0).
+       F-473 logged OPEN (normal): a lookup fieldPath drops every row whose lookup is null, server side; the account table,
+         click attribution and program selection lose the sends with no company link. Holds the merge (V1).
+       F-474 logged OPEN (normal): the survey response denominator reads above the UI on the parity program (V11).
+       F-475 logged OPEN (normal): reconciliation reads current-month drift over a long pull as a failure.
+       F-476 logged OPEN (normal): plan's cost estimate omits splits (the selective refresh ran 4.2x its estimate).
+     Ruled by Bradley this round, owed by the builder before the merge: Delivered = went out and did not bounce (Sent
+       stays every attempt); a T-10 definition change, no schemaVersion bump (T-10 is not frozen).
+     PR #36 stays unmerged. CLEANUP-PLAN section S1 not run. Open PRs to dev: #36 only.
+     CI on PR #36's new head 1fae94a (pushed without [skip ci]), quoted per job after completion:
+         docs-drift 37170758686 (pull_request): drift (full) success
+         validate-plugin 37170758671 (pull_request): changes success / manifests success / validate (ubuntu-latest) success -->
 <!-- builder 2026-10-03 (JO-dashboards second S1 fix batch — HANDED OFF @ hb-20261003-03; F-471 and F-472 FIXED on the branch; next free F-473):
      Riding feat/jo-dash-s1-facts -> PR #36, UNMERGED (it merges after the next S1-V re-run; the merge is Bradley's).
        Branch tip 96ed11e, the handoff commit; the fix is 30b69cb.
