@@ -1197,12 +1197,25 @@ and the tenant's internal domains and unsubscribe links, all in the consumer wor
   status, programs, templates, glossary, caveats); the final block is printed in the skill's literal shape with every
   placeholder filled from the summary; every `gs-admin` call was a read and none drew the guard; and no payload,
   snapshot or CSV content was read into the session. Record the plan's calls and seconds and the pull's wall time.
+  - Early spot check, tester, 2026-10-04 @ hb-20261004-02: PASSED. Plan: 9 calls made (2 of them retries), 94 s wall;
+    estimate 35 calls / 327 s, so pulled in the foreground without an ask. Pull: 36 calls made (the 35 planned plus its
+    own whoami), 7 reused from the plan, 0 retried, 272 s wall, exit 0, reconciled. Each clause: plan before pull, the
+    estimate stated in one line first; the same `--run` on both; snapshot and report at the stated paths; workbook with
+    the five named sheets; final block in the literal shape, every placeholder from the step-4 summary; no gs-admin call
+    drew the guard; no payload, snapshot or CSV read (the run's fetch log and status file, both metadata, were read to
+    explain F-479's stderr). One guess, at step 6's Caveats line: F-481. Logged: F-479, F-480, F-481, all polish.
+    Not a fresh session in the strict sense: the kickoff had the tester read SKILL.md before invoking it.
 - X1 (accounts off: the reason where the watch list would be). Read X0's report.
   Pass bar: the "Account watch list" section says it is not included, gives the reason the snapshot's marker carries
   (`meta.accounts.reason`, `accounts-off`) in words, and says how to turn it on (`--accounts`); it holds no table, no
   empty list and no zero. The Programs table still shows a number under Accounts reached for every program. The
   Participant records column is a dash for every program, and the note under the table says why and how to turn it
   on (`--step-detail`). The caveats block carries both.
+  - Early spot check, tester, 2026-10-04 @ hb-20261004-02: PASSED, read from X0's report. Watch list: "Not included",
+    the accounts-off reason in words, `--accounts` named; no table, list or zero. Accounts reached: a number on every
+    program row (the total row a dash, as the note under the table says). Participant records: a dash on every row,
+    with the note giving why and `--step-detail`. Caveats: both present (participant records blank; no account data,
+    with accounts reached counted either way). Nothing logged.
 - X2 (a number rebuilt from the glossary alone). `/gs-superadmin:email-engagement report --name '<P-busy>' --from <M> --to <M>`,
   then, using ONLY what that report's "How each number is calculated" section states for Sent, Delivered, Opened and
   Unique recipients (object, fields and values, filters, date field), build each count as one direct read through
