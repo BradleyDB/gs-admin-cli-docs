@@ -846,6 +846,10 @@ try {
       [{ raw: { from: "2025-06" } }, /starts later/],
     ].map(([o, re]) => [pull({ ...o, previous: prev, phase: "plan" }).summary.estimate, re]);
     check("a previous snapshot the new pull cannot extend forces a full refresh, and the reason is stated: forced, domains changed, unsubscribe links changed, step detail changed, selection changed, window reaches further back", reasons.every(([e, re]) => e.mode === "full" && re.test(e.why)), reasons.map(([e]) => e.why));
+    const older = JSON.parse(JSON.stringify(prev));
+    for (const c of older.reconciliation.checks) { delete c.drift; delete c.driftExamples; }
+    const dated = pull({ previous: older, phase: "plan" }).summary.estimate;
+    check("a snapshot built under earlier metric definitions (before Delivered changed and the no-company-link sends were read) is never carried from", dated.mode === "full" && /earlier metric definitions/.test(dated.why), dated);
     const foreign = pull({ previous: { ...prev, meta: { ...prev.meta, tenantHost: "acme-sbx.gainsightcloud.com" } }, phase: "plan" }).summary.estimate;
     check("another tenant's snapshot is never carried from", foreign.mode === "full" && /another tenant/.test(foreign.why), foreign);
   }

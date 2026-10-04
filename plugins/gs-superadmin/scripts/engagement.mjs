@@ -1007,6 +1007,10 @@ export function decideRefresh({ params, previous, tenantHost, selectedIds }) {
   if (!previous) return full("no previous snapshot");
   const pm = previous.meta;
   const pp = pm.params ?? {};
+  // A snapshot from before the reconciliation checks carried drift counted
+  // Delivered differently and held no send without a company link: its months
+  // cannot sit beside this build's. (Only snapshots made before T-10 froze.)
+  if ((previous.reconciliation?.checks ?? []).some((c) => !("drift" in c))) return full("the previous snapshot was built under earlier metric definitions");
   if (pm.tenantHost !== tenantHost) return full("the previous snapshot is another tenant's");
   if (!sameList(pp.internalDomains ?? [], params.internalDomains)) return full("the internal domains changed");
   if (!sameUnsubscribeLinks(previous, params)) return full("the unsubscribe links changed");
@@ -1782,7 +1786,10 @@ export function reduceEngagement(input) {
     for (const row of u.rows) {
       const { programId: p, n: count } = ROW_READERS["resp-participants"](row);
       const n = count ?? 0;
-      if (p != null && selected.has(p)) participantsByProgram.set(p, n);
+      // A participant that names no program: its lookup is set, its program is
+      // not. Unattributed too, beside the rows with no participant at all.
+      if (p == null) respStats.unattributed += n;
+      else if (selected.has(p)) participantsByProgram.set(p, n);
     }
   }
   for (const u of of("resp-unattributed")) for (const row of u.rows) respStats.unattributed += ROW_READERS["resp-unattributed"](row).n ?? 0;
