@@ -1259,3 +1259,27 @@ and the tenant's internal domains and unsubscribe links, all in the consumer wor
   on this tenant), offering to narrow with `--sent-since`. The tester answers stop; no pull is made.
 
 Also owed at V2, from the ledger: the round's guard-wiring line is the tester's.
+
+### F-479 / F-480 / F-481 — re-verification before the merge of PR #38 (banked 2026-10-04, builder @ hb-20261004-03)
+
+Owed by: one tester round on hb-20261004-03, with the plugin loaded from branch `feat/jo-dash-s2-engine-report`, in
+the consumer workspace. Live, reads only. It gates the merge of PR #38 on Bradley's call; X2 to X9 above are NOT part
+of it and stay owed at V2.
+THIS LIST IS COMPLETE for this round. An observation beside a pass bar becomes an F-section or an issue before the
+round closes.
+Picks and inputs: as for X0, from `.gs-superadmin/tmp/s1v-picks.md`. One walk feeds all three checks:
+`/gs-superadmin:email-engagement report <picks> --by-template`, with every internal domain and every unsubscribe link.
+
+- R1 (F-479). Read the stderr of the walk's plan beside its summary.
+  Pass bar: with `programs.deleted` 1 or more and `failed: []`, no progress line contains the word `failed`; the
+  deleted program's describe reads `not found: trying once more` and then `not found twice: recorded as a deleted
+  program, not a failure`. The skill's step 2 says the lines are progress only. If the picks no longer reach a
+  deleted program (`programs.deleted` is 0), say so and judge R1 on the offline arm instead: the same plan through
+  `--bin plugins/gs-superadmin/test/fixtures/engagement/fake-gs-admin.mjs` in a scratch workspace, window from 2026-01.
+- R2 (F-480). In the walk's report, copy the footer's `Re-run:` code span exactly and run it.
+  Pass bar: the span holds a command and nothing else; it runs (exit 0) and writes a second report beside the first,
+  pulling nothing; the explanation that it pulls nothing is in the header's snapshot line.
+- R3 (F-481). Read the walk's step-6 block and the step-4 summary.
+  Pass bar: the `Caveats:` line is `<caveatCount> — ` followed by the summary's `leadCaveats` entries, as written,
+  joined with `; `; the tester chose nothing. Run step 4 again on the same snapshot (`--snapshot`, no pull): the
+  second summary's `leadCaveats` equals the first's.
