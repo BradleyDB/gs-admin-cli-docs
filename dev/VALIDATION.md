@@ -1328,6 +1328,11 @@ this file or the bus: results are recorded as passed or failed, ratios and order
   level with `within`.
   Pass bar: each is confirmed or overruled before T-11 has a second reader (S4a). An overrule that removes or
   re-types a field is the builder's change before S4a starts.
+  RULED (Bradley, 2026-10-04, at S4a's kickoff, before any S4a code): every choice is confirmed or refined, and
+  none removes or re-types a T-10 or T-11 field. The rulings are in the maintainer's plan, each headed "Rulings
+  (Bradley, 2026-10-04, at S4a's kickoff)" under HLT-1, DSH-1, DSH-5 and DSH-2; this file points there and copies
+  none of it. One is an additive overrule (the reporting window may also be fixed, or since a date). What the
+  rulings add to this round is in Y1, Y2, Y6 and the spike arm below; what they ask of later builds is in the plan.
 - Y1 (health facts on a real tenant). `engagement.mjs plan <common> --health --kb <slug> --run v2-health`, then
   `run` with the same flags and `--out <slug>/reports-adhoc/v2-health.json`.
   Pass bar: exit 0 with `ok: true`; `health.pulled` true; every part of `health.parts` is either pulled or carries
@@ -1335,6 +1340,11 @@ this file or the bus: results are recorded as passed or failed, ratios and order
   health calls are within 2x of `estimate.health.addsCalls` (read both from the summary and the fetch log's
   `health-` records). Record the health calls made, their seconds, how many split, and which parts were not read.
   The same pull without `--health` (plan only) plans exactly `addsCalls` fewer calls.
+  Added by the Y0 rulings, BEFORE the pull: one server-side COUNT of `ao_failed_participants` rows for the
+  selected programs (no rows read), through the spike's catalog-checked runner. The pull reads that object as
+  plain rows, 50 programs a call, and its size on a real tenant has never been measured. Pass bar: the count's
+  order of magnitude is recorded, and the pull's `health-reasons` calls and seconds are in proportion to it (pages
+  of 5000). A count that makes the plain-row read a matter of minutes or more is a finding, not a pass.
 - Y2 (masking holds on real messages). Over Y1's snapshot and Y1's run directory, by script: search every
   `facts.health` message, and every payload file of a `health-bounce` or `health-reasons` call, for an `@`, a run
   of five or more digits, and an IPv4 address.
@@ -1343,6 +1353,14 @@ this file or the bus: results are recorded as passed or failed, ratios and order
   person, an address or a record, and each still says what went wrong. Record the ratio of distinct masked bounce
   messages to bounced attempts (grouping works when it is far below 1) and any text a rule should have caught and
   did not (a finding, with the pattern described, never quoted).
+  Added by the Y0 rulings (failure categories and the "expected" class): Bradley marks the most frequent reasons,
+  bounce reasons and participant-failure reasons alike, each as one of: a reason whose text carries a value and so
+  needs collapsing to a category; a failure that is expected by design; a real failure that is already clean. For
+  every reason marked for collapsing, its EXACT wording up to the value is captured into the consumer workspace
+  (tenant data: never into this file, the bus or the repo), because the category patterns are written from the
+  captured text and never from memory. Pass bar: the marked list exists in the workspace with the wording of each
+  candidate category complete (none cut off), and the count of rows the "expected" reasons account for is
+  recorded as an order of magnitude.
 - Y3 (the failed-participant reason's shape, which the build assumed). One direct read of five plain rows of
   `ao_failed_participants` showing `FailureReasons`, through the spike's catalog-checked runner, scrubbed: record
   the cell's SHAPE only (text; JSON array; an object; the `{type=json, value=…}` wrapper).
@@ -1359,6 +1377,15 @@ this file or the bus: results are recorded as passed or failed, ratios and order
   Pass bar: Bradley recognises the list: every program on it is Active and has not sent in 30 days, and no Active
   program he knows to be silent is missing. For two programs on it, a direct program x day read of the last 90
   days shows no later send. An Active program with no send in the window at all is on the list with no dates.
+  Added by the Y0 rulings (what "stopped working" means). Over the build that carries the cadence-aware rule:
+  Bradley reads each list it produces, and every one must read true to him: "Possible silent failure" (a recurring
+  schedule was due and nothing was sent since; a quarterly program is not on it at 30 days), "Schedule run failed",
+  "No recent sends" (a program judged against its own history: the starting rule, which this read is the judge
+  of), "One-time and ad-hoc programs" (never on a silent list, each with its last send, the months it sent in and
+  its templates), and Active programs with no send in the window, listed apart from the alarms. Two reads besides:
+  whether a schedule's start and end dates are in the `jo p describe` payload (an ended schedule must not read
+  as broken; record the field names and shapes only), and whether any tenant-wide reportable object holds
+  schedule or query run results (record its API name and field types, or that none was found).
 - Y7 (participant states and failures). For P-survey: a direct group-by of `ao_participants` by `ParticipantState`
   equals the snapshot's `participantStates` rows, and a direct count of its `ao_failed_participants` rows equals
   the sum of its `participantFailures` rows' participants when every row carries one reason (when rows carry
@@ -1391,3 +1418,101 @@ this file or the bus: results are recorded as passed or failed, ratios and order
   Pass bar: every setting reads as a sentence a person who has not seen the spec can follow; the group rules read
   in their order with their labels; nothing is described that the spec does not hold. Wording Bradley would
   change is a polish finding with the sentence's label, not its text.
+
+Spike arm (added by the Y0 rulings; reads only, shapes and orders of magnitude only, through the catalog-checked
+runner; answers go to the maintainer's spike notes, never here). Whether participant failures can be dated, tried
+in this order, stopping at the first that holds:
+- (p1) A failed-participants HISTORY object: one row per occurrence, with a date. Confirm its API name, its field
+  types, whether its failed-participant id is a declared LOOKUP that walks to the program, its row count for the
+  dashboard's window, and how far back it keeps rows. It is usable only COUNTED server-side and windowed (never
+  read as rows): one count by month, and by program through the lookup with the null-lookup rows counted apart.
+  If the id is plain text, only tenant-wide counts by month and type are possible; record which.
+- (p2) Else `ao_failed_participants`' last-updated date as a "last seen": is it on every row, does it move with
+  `OccurrenceCount`, and was it ever set in bulk (one date on most rows)?
+- (p3) Else participant failures stay all time, with the page saying so wherever the figure shows.
+Participant states (`ao_participants`) are expected to stay all time whichever holds.
+
+## DSH-2 — the dashboard page built over a real snapshot: filtered in a browser, its size measured, a CSV export opened in a spreadsheet (banked 2026-10-04, builder, Session S4a; verdict at V2)
+
+Owed by: V2, the batched verdict session after S4c, in the consumer workspace with the plugin loaded from `dev`
+(the PR for `feat/jo-dash-s4a-runtime` is held open until the architecture review R1 has run, then merges on green
+CI plus its review round, before V2).
+Token: the one this branch's handoff minted, on the bus's `Under test:` line beside this branch's name.
+Why it is banked: the page builder, the runtime every page inlines and the suite were built offline against the
+fictional tenant, the stand-in CLI and generated snapshots. How big a page is over a real pull, how a real browser
+handles a real program list, what a real spreadsheet makes of the CSV, and whether real program and account names
+render and export cleanly cannot be measured without a tenant. No gs-admin call is made in this section: every
+step reads files the earlier sections' pulls wrote.
+Tenant data stays in the workspace: pages, CSVs and snapshots live under the workspace's ignored paths; no name,
+count, size beyond an order of magnitude, or message text is copied into this file or the bus.
+
+THIS LIST IS COMPLETE. It is everything this round judges for DSH-2; a check that is not here is not owed, and a
+thing the round thinks should be here is a finding. Nothing is "noted on the verdict": anything observed beside a
+pass bar becomes an F-section on the bus, or a GitHub issue, before the round closes.
+
+Inputs: Y1's snapshot (health on, accounts off) and the saved `v2-groups` spec from Y9/Y10; W3's `s1b-on.json`
+(accounts on, pulled before the failure count existed) where a step names it. A browser that runs the page's
+script: the built-in browser pane shows a local file as a static picture (that is Z9's point), so for Z3 to Z6
+either serve the page's folder on localhost or open the file in a desktop browser.
+
+- Z0 (the contract, before anything is built). Bradley reads the executor's choices in the plan's As-shipped (S4a)
+  note under DSH-2 and rules on each: the account filter as a per-page control that appears only when a page lists
+  accounts (not a T-11 global filter); the line to copy naming the `dashboard edit` and `refresh` modes S5 builds;
+  a page keyed on `accountNames` (not the preset) for dropping account data; the health tables dropped from a page
+  whose Health tab is off; the About tab's content until DSH-4; the one default table a preset shows until DSH-4.
+  Pass bar: each is confirmed or overruled; an overrule that changes what a page embeds is the builder's change
+  before V2 builds a page.
+- Z1 (build over a real snapshot). `node .gs-superadmin/plugin/scripts/dashboard-page.mjs --spec
+  <slug>/dashboards/v2-groups/spec.json --snapshot <Y1 snapshot> --out-dir <slug>/dashboards/v2-groups/pages`.
+  Pass bar: exit 0; `latest-admin.html` and `latest-exec.html` written; the summary prints a size report per page
+  (total bytes and the data, engine, runtime and pre-render shares) and `ungrouped` reads the same line Y10's
+  `resolve` printed. Record each page's megabytes and the data share, as orders of magnitude; whether the warning
+  fired. Then the same command over `s1b-on.json` (accounts on, no failure count) into a second folder: exit 0, and
+  the admin page's Health tab shows no zero for send failures: the cells are blank and the table says the snapshot
+  predates the figure, with the refresh line to copy.
+- Z2 (the numbers are the engine's, through the embedded data). A node one-liner over the admin page: take the text
+  of `<script id="gs-data">`, `JSON.parse` it, `unpackSnapshot` it (from `dashboard-runtime.mjs`) and compare with
+  the page's own copy of the snapshot computed by `pageSnapshot` (from `dashboard-page.mjs`) with
+  `util.isDeepStrictEqual`. Pass bar: equal. Then, with the status filter set to every status, the program table
+  on the admin page shows, for five programs Bradley picks, the same sent, delivered, opened and open rate as the
+  open-rate report X-walk wrote over the same snapshot (both come from `runQuery`; a difference is a packing or
+  filter defect).
+- Z3 (filtered in a browser). Open the admin page. Pass bar, each in turn, with the table and the summary line
+  changing accordingly and no console error: the month range narrowed to one closed month (the incomplete mark
+  disappears); the program search for a word that matches a handful, then Select none, then two programs ticked
+  ("2 of N selected"); a supergroup then a group inside it from Y9's rules; a status added and removed (the "hidden
+  by status" count moves); internal recipients left out (the figures fall or hold, never rise); Reset filters. For
+  two of these states Bradley records the figures of one program and a node one-liner runs `runQuery` with the
+  same filters over the snapshot file: equal.
+- Z4 (the address). After Z3's two states: reload the page with its hash and the same view is drawn; the hash holds
+  program ids, status codes, months and positions only (no program name, group label or account name, checked by
+  eye and by `decodeURIComponent`); open the page in a private window with the hash and the view is the same.
+- Z5 (what the page cannot do, on real data). On the admin page over Y1's snapshot: the Health tab is on (the spec
+  turned it on) and its panel draws; the Templates tab is off in every spec so far, so it shows dimmed as "(off)"
+  and opening it shows the notice with "new pull" and the line to copy; the recipients toggle is enabled (the pull
+  named internal domains). Over `s1b-on.json` with the spec's account panels, the account filter lists accounts
+  and the watch-list panel draws; over Y1's snapshot the same spec shows the accounts-off notice in the three
+  places (watch list, account table, account filter) and no empty table. On the leaders' page: no Health or
+  Templates tab at all; an account panel, if the spec lists one, shows the statement with no line to copy;
+  `grep -c` of two account names from the admin page returns 0 on the leaders' page file.
+- Z6 (a CSV export opened in a spreadsheet). On the admin page, with a filter applied (one month, external
+  recipients), Columns with two hidden, Download CSV on the program table. Open the file in Excel or an equivalent.
+  Pass bar: one row per table row, the header names the visible columns only, program names with commas, quotes or
+  accents arrive intact, rates are fractions (0.6123, not 61.23%), a blank cell is blank, the tracking column reads
+  tracked, not-tracked or unknown; no cell is evaluated as a formula (if a program name starts with =, +, - or @,
+  the cell shows the name as text with a leading apostrophe; if none does, say so: the neutralisation is then
+  unexercised here, the offline fixture covers it); the file's name carries the dashboard, the page, the table and
+  the pull's date and time. The browser's network log shows the page's own load and nothing else, the download
+  included.
+- Z7 (size and speed). Record, as orders of magnitude: the admin page's megabytes over Y1's snapshot and over
+  `s1b-on.json`; the time to open each (DOMContentLoaded from the browser's performance entry) and the time a
+  status change takes to redraw (by feel, under about a second). Pass bar: both pages under 5 MB with accounts off;
+  with accounts on, the page opens and filters in seconds and the size is recorded against R24's estimate.
+- Z8 (real names render inert). Pick the program, template and account names with the most punctuation on the
+  tenant (an ampersand, angle brackets, quotes, an apostrophe). Pass bar: each shows literally in the list, the
+  table, the badges and the CSV; no name changes the page's layout or opens a tag.
+- Z9 (readable without JavaScript). Open the admin page in the built-in browser pane as a local file (a static
+  picture, no script) or with JavaScript disabled. Pass bar: the default view is readable: the data-pulled line,
+  the summary line with the status default, the first tab's table; the controls show as disabled.
+- Z10 (column choices are remembered). Hide two columns on the program table, reload: still hidden; open the
+  leaders' page: its own columns, untouched; a private window: the panel's own columns.

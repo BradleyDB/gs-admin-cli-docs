@@ -386,6 +386,8 @@ export function readResponses(snapshot, programId, months = null) {
 // ── Why a cell has no value ──────────────────────────────────────────────────
 // A null value always says why. `accounts-off` and `step-detail-off` are the
 // snapshot's own markers (meta.accounts.reason, meta.participantRecords.reason).
+// Every id here is classified by the page runtime (dashboard-runtime.mjs:
+// LACKS, NOT_LACKS, LACKS_LATER), and its suite reds an id that is in none.
 export const REASONS = deepFreeze({
   "zero-denominator": "Nothing to divide by: the denominator is 0, so there is no rate (not a 0%).",
   "not-tracked": "Not tracked: no link in this email is click-tracked, so there is no click figure.",
@@ -406,6 +408,11 @@ export const REASONS = deepFreeze({
   "call-failed": "The call that reads this did not return, so there is no figure. Nothing else in the pull is affected.",
   "no-schema": "This tenant does not have the object this is read from.",
   "no-kb": "Schedules are read from the knowledge base, and this pull ran without one.",
+  // What a dashboard PAGE does not carry, though the pull may hold it (DSH-2).
+  "accounts-not-on-page": "Account detail is not part of this page.",
+  "tab-off": "This tab is turned off for this page, so what it shows is not part of the page.",
+  "no-internal-domain": "No internal email domain is named for this dashboard, so every recipient counts as external and there is nothing to leave out.",
+  "test-accounts-need-accounts": "Accounts named as test accounts are not left out: this filter works by email domain, and the pull holds no account data to subtract them with.",
 });
 /** @param {?string} id @returns {string} the reason in words; an id the table lacks is shown as itself */
 export const reasonText = (id) => (id == null ? "" : REASONS[id] ?? `No value (${id}).`);
