@@ -157,6 +157,45 @@ Walk (hb-20261003-03): 2026-10-03 (tester) — S1-V second re-run, the first ful
 Walk (hb-20261003-02): 2026-10-03 (tester) — S1-V re-run, the verdict round for ENG-1 and ENG-2 (feature items, no bus section carries them) and F-470's re-verification, against dev/VALIDATION.md section ENG-2 on the production tenant, reads only: V0 confirmed by Bradley; run 1 (plan) ok; run 2 (full) ended partial, exit 4, so no snapshot was built; V8 FAILED, F-471 and F-472 logged; runs 3-5 not run, on Bradley's call; F-470 stays FIXED, V9 not measurable. Detail in the tester comment below and in VALIDATION section ENG-2.
 Walk (hb-20261004-01): 2026-10-04 (tester) — S1b verdict round, a RE-VERIFICATION of F-478 (W0, offline: its repro through the real process and the stand-in CLI) and of dev/VALIDATION.md section ENG-2 / LTR-9 / F-478, W1 to W5 (feature items ENG-2 and LTR-9, no bus section carries them), on the production tenant, reads only: W0 passed on all three arms, F-478 VERIFIED; all six live plans and both runs completed (exit 0); every owed check passed; the accounts-off pull took 5.2 minutes against the plan's 327 s; nothing logged; VALIDATION section CLEARED; PR #37 ready to merge (the merge is Bradley's). No SKILL.md changed, so no walk was owed. Detail in the tester comment below and in that VALIDATION section.
 
+<!-- builder 2026-10-04 (JO-dashboards S4a — POINTER: plan item DSH-2 rides an UNMERGED branch; no finding logged; NO handoff token was minted; next free F-483):
+     Branch: feat/jo-dash-s4a-runtime at 1275ba0. PR: #40 to dev, open, left unmerged. It is HELD OPEN until the
+       architecture review (R1) has run (Bradley, 2026-10-04): green CI plus its review round do not merge it on
+       their own. Its verdict is V2, after S4c. The review round ran on the branch: one /code-review at medium, four
+       findings, each fixed with a check shown red with the fix reverted.
+     Handoff: NOT DONE. `dev-utils handoff --branch feat/jo-dash-s4a-runtime --blind-spots "..."` refused to mint
+       this round's token the way S3's did: this header names an earlier token of today in a pointer's text. By the
+       standing precedent the refusal is recorded and not worked around: the Under test line, the Blind spots line
+       and the canary are unchanged, here and on the branch, and still describe the S2 round. The handoff is owed on
+       the branch on the next calendar day, with the blind spots below.
+     Blind spots this round would have declared (for that handoff): built offline against the fictional tenant,
+       the stand-in CLI and generated snapshots; no tenant read. Unmeasured, all banked in dev/VALIDATION.md section
+       DSH-2 (Z0 to Z10, verdict at V2): (1) a page over a real snapshot: its size, a real browser on a real program
+       list, what a spreadsheet makes of the CSV, whether real names render and export cleanly; (2) the three lacks
+       on real data (accounts off in three places, an offered tab, the recipients toggle); the no-internal-domain
+       case stays offline-only, no real pull without a domain exists; (3) the executor's choices under Z0. Owed
+       elsewhere, not a blind spot: the page's line to copy names the `dashboard edit` and `refresh` modes S5
+       builds, and nothing holds it to the skill's mode table until then. Offline: the full CI battery green (51
+       steps; the two reds are CI-only plumbing and the known git-ignored file under tsc), the full build
+       reproducing the tree except date stamps, plugin validate, typecheck; a vacuity sweep with predictions written
+       first, 30 mutants, 29 as predicted, the mismatch and the predicted survivor pinned and re-run KILLED; the DOM
+       wiring driven in a real browser on the fixture pages, a hostile-name page and a 400-program page, not under a
+       committed test (the committed stand-in document covers storage, one filter change and the hash); the review
+       was the builder's own single pass.
+     On the branch (feature item DSH-2, tracked by plan ID, no bus section): scripts/dashboard-page.mjs (spec +
+       snapshot → one self-contained latest-<page>.html per page: data embedded compactly, engagement-query.mjs and
+       dashboard-runtime.mjs inlined byte for byte, the default view pre-rendered, a size report with the 5 MB
+       warning and the 15 MB leaders'-page refusal, a tenant check), scripts/dashboard-runtime.mjs (import-free by
+       gate: the filter bar, tabs in three states, the table panel that takes only the engine's result, column
+       choices, the URL hash with ids only, one CSV builder, and the LACKS table with its one function and one
+       renderer; NOT_LACKS and LACKS_LATER close the engine's REASONS both ways), four page-level ids added to the
+       engine's REASONS, test/dashboard-page.mjs (102 checks), CI step, AGENTS.md battery line, the import gate's
+       RESTRICTED row, the tracer's rule-outs (data/reader-shapes.json regenerated), MAINTAINERS.md, CHANGELOG,
+       plugin 0.47.0 unreleased. T-10 and T-11 read, neither changed. dev/VALIDATION.md: Y0 marked ruled, Y1 / Y2 /
+       Y6 extended and the spike arm added as the kickoff rulings ask; section DSH-2 banked for V2.
+     CI on PR #40's head: changes success; drift (full), manifests and validate (ubuntu-latest) were running when
+       this was written; quoted per job on the next re-stamp. F-482 (polish) still OPEN, not taken. Open PRs to dev:
+       #40 only. -->
+
 <!-- builder 2026-10-04 (JO-dashboards S3 CLOSED OUT — PR #39 merged (5910c24); T-11 FROZEN at schemaVersion 1; no finding logged; next free F-483):
      PR #39 (feat/jo-dash-s3-health-spec) was merged to dev on Bradley's go-ahead, on green CI plus its review round, as
        the plan's merge gate for this session has it. Its verdict is V2, after S4c: dev/VALIDATION.md section
