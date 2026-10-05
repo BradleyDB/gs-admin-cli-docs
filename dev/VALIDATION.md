@@ -1437,7 +1437,9 @@ Participant states (`ao_participants`) are expected to stay all time whichever h
 Owed by: V2, the batched verdict session after S4c, in the consumer workspace with the plugin loaded from `dev`
 (the PR for `feat/jo-dash-s4a-runtime` is held open until the architecture review R1 has run, then merges on green
 CI plus its review round, before V2).
-Token: the one this branch's handoff minted, on the bus's `Under test:` line beside this branch's name.
+Token: none yet. `dev-utils handoff --branch feat/jo-dash-s4a-runtime` refused to mint one on 2026-10-04 (the bus header
+names an earlier token of the same day in another round's text: the same refusal S3 met), and the refusal was recorded,
+not worked around. This section is keyed to the token the branch's next handoff mints; the PR is #40.
 Why it is banked: the page builder, the runtime every page inlines and the suite were built offline against the
 fictional tenant, the stand-in CLI and generated snapshots. How big a page is over a real pull, how a real browser
 handles a real program list, what a real spreadsheet makes of the CSV, and whether real program and account names
