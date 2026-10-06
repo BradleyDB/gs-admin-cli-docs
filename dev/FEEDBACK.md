@@ -196,6 +196,24 @@ Walk (hb-20261004-01): 2026-10-04 (tester) — S1b verdict round, a RE-VERIFICAT
        this was written; quoted per job on the next re-stamp. F-482 (polish) still OPEN, not taken. Open PRs to dev:
        #40 only. -->
 
+<!-- tester 2026-10-05 (JO-dashboards S4a — POINTER RE-STAMPED after the SHORT SPOT CHECK @ hb-20261004-04: Z0 ruled; Y3, Z2 CLEARED; Y1, Z1, Z7 FAILED; F-476 REOPENED and F-483, F-484, F-485, F-486 claimed by the branch; next free F-487; re-stamps the builder pointer above):
+     Branch: feat/jo-dash-s4a-runtime at 548cc22 (the round's bus commit 611ec8c, then dev merged in with both sides of
+       the bus kept, because the tester block and this pointer met at one spot and left PR #40 CONFLICTING). PR #40
+       open, MERGEABLE / CLEAN, still HELD for R1; this round does not change that.
+     Handoff: hb-20261004-04 was minted on the branch (ffdf08a) after the pointer above; the Under test line and the
+       canary there read it, and the tester matched both in session.
+     Statuses on the branch: F-476 OPEN again (first reopen: the estimate does not price the health families' splits);
+       F-483 OPEN polish (a plan made before midnight cannot be run after it); F-484 OPEN normal (health failure text
+       kept at the text's grain: participant failures unreadable at order 10^6 rows, bounce reasons barely grouped, the
+       admin page with health order 8 MB); F-485 OPEN polish and F-486 OPEN polish, both S4a's (the size report omits the
+       health tables; an on tab with nothing to draw is a bare pane). Detail in the branch's tester comment and Walk line.
+     VALIDATION on the branch: section HLT-1 / DSH-1 / DSH-5, Y1 FAILED and Y3 CLEARED; section DSH-2, Z0 ruled and
+       CLEARED, Z1 FAILED, Z2 CLEARED, Z7 FAILED; both sections OPEN, every other Y and Z check owed at V2.
+     CI on PR #40's head 548cc22, per job: validate-plugin 37397625489 changes success, manifests success, validate
+       (ubuntu-latest) success; docs-drift 37397625563 drift (full) success; GitGuardian pass. (On the round's own commit
+       611ec8c only GitGuardian ran: the PR was conflicting.)
+     Open PRs to dev: #40 only. F-482 (polish) still OPEN. -->
+
 <!-- builder 2026-10-04 (JO-dashboards S3 CLOSED OUT — PR #39 merged (5910c24); T-11 FROZEN at schemaVersion 1; no finding logged; next free F-483):
      PR #39 (feat/jo-dash-s3-health-spec) was merged to dev on Bradley's go-ahead, on green CI plus its review round, as
        the plan's merge gate for this session has it. Its verdict is V2, after S4c: dev/VALIDATION.md section
