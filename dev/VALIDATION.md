@@ -1345,6 +1345,19 @@ this file or the bus: results are recorded as passed or failed, ratios and order
   plain rows, 50 programs a call, and its size on a real tenant has never been measured. Pass bar: the count's
   order of magnitude is recorded, and the pull's `health-reasons` calls and seconds are in proportion to it (pages
   of 5000). A count that makes the plain-row read a matter of minutes or more is a finding, not a pass.
+  FAILED (spot check @ hb-20261004-04, tester, 2026-10-05; production, reads only; pass bar as written above).
+  Count first, through the spike's runner, before the pull: `ao_failed_participants` holds order 10^6 rows for the
+  194 selected programs. A second count, grouped by program (same object, same filter), shows 190 programs with
+  rows, one holding 89% of them and 9 over one 5000-row page, so the plain-row read takes minutes and cannot
+  finish (F-484). The pull (run `spot-health`, the plan's flags; resumed once with `--today` set to the plan's
+  date after the day turned, F-483): exit 0, `ok: true`, reconciled, 226 calls (82 split, 2 retried), 1954 s.
+  `health.pulled` true; four parts read; `participantFailures` not read, its table empty, the `health-incomplete`
+  caveat naming it (its reason reads `call-failed`; the run's status file records the nine units as truncated).
+  Health calls 187 / 1400 s against `estimate.health` 24 calls / 204 s (7.8x the calls): `health-bounce` 73
+  against 15 (29 full pages split), `health-reasons` 109 against 4 (61 full pages; 9 units with nothing left to
+  split on), `health-days` 1, `health-states` 4 (no timeout). Outside the 2x bar: F-476 reopened. Not measured:
+  the plan without `--health` was not re-run (the plan's own by-family list gives 59 - 24 = 35, the figure S1b's
+  W1 measured; arithmetic, not this clause's measurement).
 - Y2 (masking holds on real messages). Over Y1's snapshot and Y1's run directory, by script: search every
   `facts.health` message, and every payload file of a `health-bounce` or `health-reasons` call, for an `@`, a run
   of five or more digits, and an IPv4 address.
@@ -1366,6 +1379,12 @@ this file or the bus: results are recorded as passed or failed, ratios and order
   the cell's SHAPE only (text; JSON array; an object; the `{type=json, value=…}` wrapper).
   Pass bar: Y1's `participantFailures` messages are sentences a person can act on, not JSON text and not a key
   dump. A shape `readFailureReasons` reads as one opaque blob is a finding.
+  CLEARED for the shape (spot check @ hb-20261004-04, tester, 2026-10-05; production, reads only): five plain rows
+  through the spike's runner (scrubbed copy kept with the maintainer's spike shapes). Each `FailureReasons` cell is
+  PLAIN TEXT in the usual `{v, fv}` pair: not JSON, no `{type=json, value=…}` wrapper, no array, one reason per
+  cell in all five. `readFailureReasons` over the five raw cells returns one product sentence each, a person can act
+  on every one (two carry a `{null}` value marker). The half judged on Y1's `participantFailures` messages is
+  unmeasured: that part was not read (F-484). Blind spot: five rows; a cell holding several reasons was not seen.
 - Y4 (bounce reasons reconcile). In Y1's snapshot the reconciliation check `bounce-reasons-sum-to-bounced` is ok
   with no closed-month mismatch. For P-busy and `<M>`, one direct count of `IsBounced = YES` attempts equals the
   sum of that program-month's `bounceReasons` counts.
@@ -1464,6 +1483,14 @@ either serve the page's folder on localhost or open the file in a desktop browse
   whose Health tab is off; the About tab's content until DSH-4; the one default table a preset shows until DSH-4.
   Pass bar: each is confirmed or overruled; an overrule that changes what a page embeds is the builder's change
   before V2 builds a page.
+  CLEARED (spot check @ hb-20261004-04, tester, 2026-10-04, before any call; one question per choice): all six
+  ruled, none changes what a page embeds, so nothing is owed by the builder before a page is built. (1) the account
+  control per page: confirmed. (2) the line to copy: ruled a deterministic command built from the LACKS row's
+  setting path, not a skill mode; R1 names the entry command and a later build respells `COPY_LINES`; the
+  skill-mode text stays as a placeholder until then, with no change to PR #40. (3) `pages[].accountNames` decides,
+  the preset only sets its default: confirmed. (4) health tables dropped from a page whose Health tab is off:
+  confirmed. (5) the interim About tab: confirmed until S4b. (6) the interim default Programs table: confirmed until
+  S4b. Detail in the maintainer's plan, as an addendum under the As-shipped (S4a) note.
 - Z1 (build over a real snapshot). `node .gs-superadmin/plugin/scripts/dashboard-page.mjs --spec
   <slug>/dashboards/v2-groups/spec.json --snapshot <Y1 snapshot> --out-dir <slug>/dashboards/v2-groups/pages`.
   Pass bar: exit 0; `latest-admin.html` and `latest-exec.html` written; the summary prints a size report per page
@@ -1472,6 +1499,17 @@ either serve the page's folder on localhost or open the file in a desktop browse
   fired. Then the same command over `s1b-on.json` (accounts on, no failure count) into a second folder: exit 0, and
   the admin page's Health tab shows no zero for send failures: the cells are blank and the table says the snapshot
   predates the figure, with the refresh line to copy.
+  FAILED on its second half (spot check @ hb-20261004-04, tester, 2026-10-05; no gs-admin call). Built with a minimal
+  saved spec in place of `v2-groups` (the spec writer's draft, one set of the internal domains and unsubscribe
+  links, save; no group rules, so `ungrouped` counts every program and there is no Y10 line to compare). Over Y1's
+  snapshot: exit 0 in under a second, both pages written, a size report per page with the four shares; admin order
+  8 MB, data 98% of it, the 5 MB warning fired; exec order 0.5 MB. Over `s1b-on.json`: exit 0; admin order 1 MB, exec
+  order 0.5 MB. The admin page's Health tab (on) is a bare heading before and after the script runs: no table, no
+  statement, no line to copy, because the interim default panel sits on Engagement only (Z0 choice 6). It shows no
+  zero, but not the statement this bar asks for. With a send-failures panel added in memory, the same runtime over
+  the same page data gives every `failed` cell null with `measure-not-in-snapshot`, the compact notice and the
+  refresh line, and no zero: the mechanism holds where a panel draws it. Findings: F-485 (the size report and its
+  warning), F-486 (an on tab with nothing to draw).
 - Z2 (the numbers are the engine's, through the embedded data). A node one-liner over the admin page: take the text
   of `<script id="gs-data">`, `JSON.parse` it, `unpackSnapshot` it (from `dashboard-runtime.mjs`) and compare with
   the page's own copy of the snapshot computed by `pageSnapshot` (from `dashboard-page.mjs`) with
@@ -1479,6 +1517,11 @@ either serve the page's folder on localhost or open the file in a desktop browse
   on the admin page shows, for five programs Bradley picks, the same sent, delivered, opened and open rate as the
   open-rate report X-walk wrote over the same snapshot (both come from `runQuery`; a difference is a packing or
   filter defect).
+  CLEARED (spot check @ hb-20261004-04, tester, 2026-10-05; no gs-admin call): over the admin page built on Y1's
+  snapshot, the unpacked `gs-data` and `pageSnapshot` of the grouped snapshot are `isDeepStrictEqual`. The five
+  programs are the ones Bradley named in the picks file (P-busy, P-survey, P-unsub, P-multi and the mass-send Email
+  Chain); with every status, the page's program table and the open-rate report written offline over the same
+  snapshot (`engagement-report.mjs --snapshot … --all`) show the same sent, delivered, opened and open rate on 5 of 5.
 - Z3 (filtered in a browser). Open the admin page. Pass bar, each in turn, with the table and the summary line
   changing accordingly and no console error: the month range narrowed to one closed month (the incomplete mark
   disappears); the program search for a word that matches a handful, then Select none, then two programs ticked
@@ -1510,6 +1553,15 @@ either serve the page's folder on localhost or open the file in a desktop browse
   `s1b-on.json`; the time to open each (DOMContentLoaded from the browser's performance entry) and the time a
   status change takes to redraw (by feel, under about a second). Pass bar: both pages under 5 MB with accounts off;
   with accounts on, the page opens and filters in seconds and the size is recorded against R24's estimate.
+  FAILED on size (spot check @ hb-20261004-04, tester, 2026-10-05; no gs-admin call). Measured in a real browser
+  engine: headless Chrome over the DevTools protocol, the pages served on localhost (no browser pane), two runs
+  each. Admin over Y1's snapshot (accounts off): order 8 MB, over the 5 MB bar; DOMContentLoaded 127 to 153 ms; a
+  status change redrawn in 14 to 29 ms. Admin over `s1b-on.json` (accounts on): order 1 MB; DOMContentLoaded 32 to
+  53 ms; redraw 13 to 26 ms. Exec over Y1's snapshot: order 0.5 MB, 20 ms, 21 to 25 ms. Each page requested itself
+  and nothing else (the browser's own favicon probe aside), with no console error from the page. Account data on the
+  accounts-on page is about 0.55 MB (admin data less exec data), about 2x R24's 0.3 MB estimate, order 10^4 account
+  rows. Speed passes by a wide margin; the size failure is the health tables (order 18 of the snapshot's 18.5 MB),
+  F-484 and F-485.
 - Z8 (real names render inert). Pick the program, template and account names with the most punctuation on the
   tenant (an ampersand, angle brackets, quotes, an apostrophe). Pass bar: each shows literally in the list, the
   table, the badges and the CSV; no name changes the page's layout or opens a tag.
