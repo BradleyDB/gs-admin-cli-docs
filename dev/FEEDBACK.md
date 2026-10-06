@@ -158,6 +158,12 @@ Walk (hb-20261003-03): 2026-10-03 (tester) — S1-V second re-run, the first ful
 Walk (hb-20261003-02): 2026-10-03 (tester) — S1-V re-run, the verdict round for ENG-1 and ENG-2 (feature items, no bus section carries them) and F-470's re-verification, against dev/VALIDATION.md section ENG-2 on the production tenant, reads only: V0 confirmed by Bradley; run 1 (plan) ok; run 2 (full) ended partial, exit 4, so no snapshot was built; V8 FAILED, F-471 and F-472 logged; runs 3-5 not run, on Bradley's call; F-470 stays FIXED, V9 not measurable. Detail in the tester comment below and in VALIDATION section ENG-2.
 Walk (hb-20261004-01): 2026-10-04 (tester) — S1b verdict round, a RE-VERIFICATION of F-478 (W0, offline: its repro through the real process and the stand-in CLI) and of dev/VALIDATION.md section ENG-2 / LTR-9 / F-478, W1 to W5 (feature items ENG-2 and LTR-9, no bus section carries them), on the production tenant, reads only: W0 passed on all three arms, F-478 VERIFIED; all six live plans and both runs completed (exit 0); every owed check passed; the accounts-off pull took 5.2 minutes against the plan's 327 s; nothing logged; VALIDATION section CLEARED; PR #37 ready to merge (the merge is Bradley's). No SKILL.md changed, so no walk was owed. Detail in the tester comment below and in that VALIDATION section.
 
+<!-- builder 2026-10-05 (JO-dashboards S4a — POINTER re-stamped after processing the spot check's feedback; F-485 FIXED on the branch; F-476, F-483, F-484 scheduled for S3b and F-486 for S4b; next free F-487):
+     Branch: feat/jo-dash-s4a-runtime at b9ed9fd. PR: #40 to dev, open, unmerged, HELD FOR R1 (CI on the head b9ed9fd, per job: validate-plugin changes, manifests and validate (ubuntu-latest) success; docs-drift drift (full) success — runs: validate-plugin 37398964876;docs-drift 37398964887).
+     F-485 (polish) FIXED on the branch, with a check red with the fix reverted: the size report walks every embedded table (the health five included) and the warning names the largest tables and the remedy that follows from them. Verdict at V2 (polish rides the round's one verdict).
+     Not taken, by design, before the architecture review: F-476 (reopened) and F-483 ride S3b with F-482 (the health families the estimate would price are the ones S3b replaces; the run clock is one mechanism); F-484 (normal) rides S3b as its Expected says, and raises two questions for R1 first: whether a category changes what a health message row means (T-10), and whether a page embeds health message tables at all or only their aggregates (the order-8 MB page of Z7); F-486 (polish) rides S4b, which decides what every tab shows. Each carries a dated Builder note on the branch.
+     Open PRs to dev: #40 only. F-482 (polish) still OPEN, rides S3b. -->
+
 <!-- tester 2026-10-05 (JO-dashboards SHORT SPOT CHECK @ hb-20261004-04 before R1 — Z0 RULED; Y3, Z2 CLEARED; Y1, Z1, Z7 FAILED; F-476 REOPENED; F-483..F-486 logged; PR #40 stays unmerged, held for R1; next free F-487):
      Under test: feat/jo-dash-s4a-runtime, clean and level with origin at ffdf08a; the gs-superadmin:dev-canary skill
        read hb-20261004-04 in session, matching the Under test line; plugin loaded from the working tree. CI on
@@ -235,6 +241,24 @@ Walk (hb-20261004-01): 2026-10-04 (tester) — S1b verdict round, a RE-VERIFICAT
      CI on PR #40's head: changes success; drift (full), manifests and validate (ubuntu-latest) were running when
        this was written; quoted per job on the next re-stamp. F-482 (polish) still OPEN, not taken. Open PRs to dev:
        #40 only. -->
+
+<!-- tester 2026-10-05 (JO-dashboards S4a — POINTER RE-STAMPED after the SHORT SPOT CHECK @ hb-20261004-04: Z0 ruled; Y3, Z2 CLEARED; Y1, Z1, Z7 FAILED; F-476 REOPENED and F-483, F-484, F-485, F-486 claimed by the branch; next free F-487; re-stamps the builder pointer above):
+     Branch: feat/jo-dash-s4a-runtime at 548cc22 (the round's bus commit 611ec8c, then dev merged in with both sides of
+       the bus kept, because the tester block and this pointer met at one spot and left PR #40 CONFLICTING). PR #40
+       open, MERGEABLE / CLEAN, still HELD for R1; this round does not change that.
+     Handoff: hb-20261004-04 was minted on the branch (ffdf08a) after the pointer above; the Under test line and the
+       canary there read it, and the tester matched both in session.
+     Statuses on the branch: F-476 OPEN again (first reopen: the estimate does not price the health families' splits);
+       F-483 OPEN polish (a plan made before midnight cannot be run after it); F-484 OPEN normal (health failure text
+       kept at the text's grain: participant failures unreadable at order 10^6 rows, bounce reasons barely grouped, the
+       admin page with health order 8 MB); F-485 OPEN polish and F-486 OPEN polish, both S4a's (the size report omits the
+       health tables; an on tab with nothing to draw is a bare pane). Detail in the branch's tester comment and Walk line.
+     VALIDATION on the branch: section HLT-1 / DSH-1 / DSH-5, Y1 FAILED and Y3 CLEARED; section DSH-2, Z0 ruled and
+       CLEARED, Z1 FAILED, Z2 CLEARED, Z7 FAILED; both sections OPEN, every other Y and Z check owed at V2.
+     CI on PR #40's head 548cc22, per job: validate-plugin 37397625489 changes success, manifests success, validate
+       (ubuntu-latest) success; docs-drift 37397625563 drift (full) success; GitGuardian pass. (On the round's own commit
+       611ec8c only GitGuardian ran: the PR was conflicting.)
+     Open PRs to dev: #40 only. F-482 (polish) still OPEN. -->
 
 <!-- builder 2026-10-04 (JO-dashboards S3 CLOSED OUT — PR #39 merged (5910c24); T-11 FROZEN at schemaVersion 1; no finding logged; next free F-483):
      PR #39 (feat/jo-dash-s3-health-spec) was merged to dev on Bradley's go-ahead, on green CI plus its review round, as
