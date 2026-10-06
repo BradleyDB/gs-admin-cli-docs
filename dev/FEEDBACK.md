@@ -158,6 +158,27 @@ Walk (hb-20261003-03): 2026-10-03 (tester) — S1-V second re-run, the first ful
 Walk (hb-20261003-02): 2026-10-03 (tester) — S1-V re-run, the verdict round for ENG-1 and ENG-2 (feature items, no bus section carries them) and F-470's re-verification, against dev/VALIDATION.md section ENG-2 on the production tenant, reads only: V0 confirmed by Bradley; run 1 (plan) ok; run 2 (full) ended partial, exit 4, so no snapshot was built; V8 FAILED, F-471 and F-472 logged; runs 3-5 not run, on Bradley's call; F-470 stays FIXED, V9 not measurable. Detail in the tester comment below and in VALIDATION section ENG-2.
 Walk (hb-20261004-01): 2026-10-04 (tester) — S1b verdict round, a RE-VERIFICATION of F-478 (W0, offline: its repro through the real process and the stand-in CLI) and of dev/VALIDATION.md section ENG-2 / LTR-9 / F-478, W1 to W5 (feature items ENG-2 and LTR-9, no bus section carries them), on the production tenant, reads only: W0 passed on all three arms, F-478 VERIFIED; all six live plans and both runs completed (exit 0); every owed check passed; the accounts-off pull took 5.2 minutes against the plan's 327 s; nothing logged; VALIDATION section CLEARED; PR #37 ready to merge (the merge is Bradley's). No SKILL.md changed, so no walk was owed. Detail in the tester comment below and in that VALIDATION section.
 
+<!-- builder 2026-10-05 (JO-dashboards S4a CLOSED OUT — PR #40 merged (1eb993c) after R1; F-485 FIXED (verdict at V2); F-476, F-483, F-484 ride S3b with F-482, F-486 rides S4b; next free F-487):
+     R1, the design review as something people use, ran today with Bradley in the session (no code, no PR, no tenant).
+       Every finding was ruled; none asked for a change to PR #40's code, and none removes or re-types a T-10 or T-11
+       field (F-484's categories are additive as ruled). The rulings live in the maintainer's plan under the items
+       they govern; the S3b prompt was written and S4b and S5 regenerated there. Order from here: S3b, then S4b.
+     PR #40 (feat/jo-dash-s4a-runtime) was merged to dev on Bradley's go-ahead, on green CI plus its review round.
+       dev was first merged into the branch (79b9e27: the bus kept both sides, this pointer and the tester's spot-check
+       block), and CI on 79b9e27 read per job: validate-plugin 37411566333 changes, manifests and validate (ubuntu-latest)
+       pass; docs-drift 37411566246 drift (full) pass; GitGuardian pass. Its verdict is V2: dev/VALIDATION.md section
+       DSH-2, Z0 to Z10, stays OPEN (Z0 ruled; Z2 CLEARED; Z1 and Z7 FAILED at the spot check, both carried by the
+       findings below), keyed to hb-20261004-04.
+     Contracts: nothing new frozen. The page runtime (DSH-2) is on dev for S3b and S4b to build on.
+     Statuses: F-485 FIXED (polish; rides V2's one verdict). F-476 OPEN (reopened), F-482 OPEN, F-483 OPEN, F-484 OPEN:
+       all four ride S3b, the health batch, whose prompt names them. F-486 OPEN rides S4b.
+     Branch deleted, local and remote. Plugin 0.47.0 on dev, unreleased (one release for the whole program).
+     CI on the merged tip 1eb993c: the push-triggered validate-plugin 37412212792 was cancelled (changes and manifests
+       pass, validate cancelled), superseded by the dispatch 37412260347, which was in progress (changes and manifests
+       pass, validate running) with docs-drift 37412212771 drift (full) running when this was written; a red one is a
+       finding for the next session's kickoff, which reads the open PRs and the dev log.
+     Open PRs to dev: none. Issues #11 and #12 unchanged. -->
+
 <!-- builder 2026-10-05 (JO-dashboards S4a — POINTER re-stamped after processing the spot check's feedback; F-485 FIXED on the branch; F-476, F-483, F-484 scheduled for S3b and F-486 for S4b; next free F-487):
      Branch: feat/jo-dash-s4a-runtime at b9ed9fd. PR: #40 to dev, open, unmerged, HELD FOR R1 (CI on the head b9ed9fd, per job: validate-plugin changes, manifests and validate (ubuntu-latest) success; docs-drift drift (full) success — runs: validate-plugin 37398964876;docs-drift 37398964887).
      F-485 (polish) FIXED on the branch, with a check red with the fix reverted: the size report walks every embedded table (the health five included) and the warning names the largest tables and the remedy that follows from them. Verdict at V2 (polish rides the round's one verdict).
