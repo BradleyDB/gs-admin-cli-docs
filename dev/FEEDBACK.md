@@ -2212,3 +2212,27 @@ What: a tab that is on draws its panels and nothing else. When no panel sits on 
 Repro: build any spec's admin page with the presets' panels (`panels: []`); open the Health or Templates tab.
 Expected: an on tab with nothing to draw goes through the lacks plumbing like an offered one (Templates: its not-held lack; no panel: a statement), or the default panels cover every on tab and a check refuses an on tab with none. Either is the builder's call.
 Builder note: 2026-10-05 — rides S4b (DSH-4), which decides what every tab shows; the Templates on-state before TPL-1 is S4c's. The interim content was confirmed at Z0 "until S4b". Not taken on feat/jo-dash-s4a-runtime, which is held for R1.
+
+## F-487 — OPEN
+Reported: 2026-10-06 (tester, consumer workspace on the installed plugin 0.43.3; read-only live probes on a production tenant, CLI 1.0.10; no handoff under test)
+Priority: Bradley, 2026-10-06 — high priority; pull it forward in work order (the tier below governs ceremony, not order)
+Severity: normal — shipped dependency answers are silently incomplete for most journey programs, and shipped text states a false limitation
+What: for a JO program whose participant source is `QUERY_BUILDER` (a Power List), neither `deps` (email-report, `jo-report-deps.mjs`) nor deps-report (`tenant-deps.mjs`) says where the participants come from, and an `--object` or connection search never matches the program. Journey object matching reads source filter conditions only, and these sources carry none. On the measured tenant that is 377 programs (34 PROCESSING). Every live list sampled reads Salesforce objects (Contact and custom objects) through one SFDC connection, so "what depends on SFDC Contact" returns no journeys today.
+The shipped reason is false. `jo-report-deps.mjs` (~71, ~1063–1071, ~1635), CHANGELOG 0.23.0, README and email-report SKILL.md all say Power Lists "have no CLI surface at all". In fact the source's `ruleId` describes through `gs-admin --json re r describe --id <ruleId>`, as a hidden rule with `ruleType: ADVANCED_OUTREACH_QUERY_BUILDER`. Its raw `taskDetails[]` carry `schemaObject`, `connectionId` and `outputFields` (7 of 7 rules sampled). Two traps for the parser:
+- The CLI's flattened `_task*`/`_filterConditions` views are `[]` for this rule type, so the raw tasks must be parsed.
+- These rules are absent from the KB `rules-engine/` crawl, which is why the July GSID cross-reference found no journey→rule edges.
+What the CLI does NOT return is the list's filters (`criteriaDetails: null`; `--task-id` is a silent no-op). That half is upstream, filed as KI-027.
+Same audit, any source type: neither tool reads two surfaces that do name objects and fields.
+- `aoConfiguration.dynamicFields`: DYNAMIC_QUERY_V2 carries object, field and the full lookup path; SURVEY_QUERY carries survey-answer filters.
+- Flow-canvas branch conditions (`stepJson.nodes[].outPorts[].conditions`): on QUERY-source programs these hold the program's exclusion logic.
+QUERY-type sources and Data Designer designs remain unreachable through the CLI. DATA_DESIGNER sources' own filters are already read correctly from `config.filters`.
+Repro:
+1. In a workspace with a deep-ingested journey domain, pick a program doc whose `participantSourceType` is `QUERY_BUILDER` and note its `ruleId`.
+2. `gs-admin --json re r describe --id <ruleId>` → `ruleType: ADVANCED_OUTREACH_QUERY_BUILDER`; `taskDetails[].schemaObject` (e.g. `Contact`) and `connectionId` are present.
+3. Run `/gs-superadmin:deps-report` for that object or that connection, and `/gs-superadmin:email-report` deps mode with `--object` set to that object. The program is absent from both. Email-report labels its source "Power List `<id>` — not resolvable via CLI".
+Expected:
+- QUERY_BUILDER sources resolve to object, connection and output-field rows, so object and connection searches match them.
+- A standing caveat says the list's filters are unreadable: `criteriaDetails: null` does not mean unfiltered.
+- Dynamic fields and branch conditions produce object/field rows.
+- The "no CLI surface" text is corrected everywhere it ships.
+The design calls are the builder's: a KB capture step vs a report-time live read, the C1 source-entry shape, and how a filterless QUERY_BUILDER row matches `--object`.
