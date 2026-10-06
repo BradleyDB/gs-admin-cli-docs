@@ -237,7 +237,7 @@ tfoot td{font-weight:600}
  * @param {string} args.engineSource  engagement-query.mjs, as on disk
  * @param {string} args.runtimeSource dashboard-runtime.mjs, as on disk
  * @param {{warnBytes: number, refuseExecBytes: number}} [args.budget]
- * @returns {{html: ?string, report: {page: string, preset: string, file: string, written: boolean, bytes: Object<string, number>, megabytes: number, rows: Object<string, number>, programs: number, warning: ?string, refused: ?string}}}
+ * @returns {{html: ?string, report: {page: string, preset: string, file: string, written: boolean, bytes: Object<string, number>, megabytes: number, rows: Object<string, number>, tables: Object<string, {rows: number, bytes: number}>, programs: number, warning: ?string, refused: ?string}}}
  */
 export function buildPage({ spec, snapshot, pageId, engineSource, runtimeSource, budget = PAGE_BUDGET }) {
   const page = spec.pages.find((p) => p.id === pageId);
@@ -266,11 +266,27 @@ export function buildPage({ spec, snapshot, pageId, engineSource, runtimeSource,
     `<script type="module">\n${runtimeSource}\n;boot(globalThis);\n</script>\n</body>\n</html>\n`;
   const bytes = { total: bytesOf(html), data: bytesOf(data), engine: bytesOf(engineSource), runtime: bytesOf(runtimeSource), prerender: bytesOf(prerender), style: bytesOf(STYLE) };
   const megabytes = Number((bytes.total / MB).toFixed(2));
-  const facts = /** @type {any} */ (model.snapshot.facts);
-  const rows = Object.fromEntries(Object.entries(facts).filter(([, t]) => typeof t?.n === "number").map(([k, t]) => [k, t.n]));
-  const refused = page.preset === "exec" && bytes.total > budget.refuseExecBytes ? `the page is ${megabytes} MB, over the ${budget.refuseExecBytes / MB} MB a leaders' page may be; it was not written. Narrow the programs or the window.` : null;
-  const warning = !refused && bytes.total > budget.warnBytes ? `the page is ${megabytes} MB, over the ${budget.warnBytes / MB} MB budget: it will be slow to open and to filter. Narrow the programs or the window, or turn customer lists off.` : null;
-  return { html: refused ? null : html, report: { page: page.id, preset: page.preset, file: pageFileName(page.id), written: false, bytes, megabytes, rows, programs: snapshot.dimensions.programs.length, warning, refused } };
+  // Every packed table the page embeds, at any depth (the health five sit under facts.health), with its rows and
+  // its bytes, so the warning can name what is actually large (F-485).
+  const tables = {};
+  const walk = (group, prefix) => {
+    for (const [k, v] of Object.entries(group)) {
+      if (v && typeof v === "object" && typeof v.n === "number" && v.c) tables[prefix + k] = { rows: v.n, bytes: bytesOf(JSON.stringify(v)) };
+      else if (v && typeof v === "object" && !Array.isArray(v)) walk(v, `${prefix}${k}.`);
+    }
+  };
+  walk(model.snapshot.facts, "");
+  const rows = Object.fromEntries(Object.entries(tables).map(([k, t]) => [k, t.rows]));
+  const largest = Object.entries(tables).sort((a, b) => b[1].bytes - a[1].bytes).slice(0, 2).filter(([, t]) => t.bytes > 0);
+  const named = largest.map(([k, t]) => `${k} (${Number((t.bytes / MB).toFixed(2))} MB)`).join(" and ");
+  // What would make the page smaller follows from where the bytes are.
+  const remedy = largest[0]?.[0].startsWith("health.") ? "The Health tab's data makes the size: turn the tab off for this page, or narrow the programs or the window."
+    : largest[0]?.[0] === "byAccount" ? "Customer lists make the size: turn them off, or narrow the programs or the window."
+    : "Narrow the programs or the window.";
+  const mostly = named ? ` Most of it is ${named}.` : "";
+  const refused = page.preset === "exec" && bytes.total > budget.refuseExecBytes ? `the page is ${megabytes} MB, over the ${budget.refuseExecBytes / MB} MB a leaders' page may be; it was not written.${mostly} ${remedy}` : null;
+  const warning = !refused && bytes.total > budget.warnBytes ? `the page is ${megabytes} MB, over the ${budget.warnBytes / MB} MB budget: it will be slow to open and to filter.${mostly} ${remedy}` : null;
+  return { html: refused ? null : html, report: { page: page.id, preset: page.preset, file: pageFileName(page.id), written: false, bytes, megabytes, rows, tables, programs: snapshot.dimensions.programs.length, warning, refused } };
 }
 const escTitle = (v) => String(v).replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c]);
 

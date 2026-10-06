@@ -632,7 +632,7 @@ try {
     const r = ADMIN.report;
     check("the builder measures every page and reports it: the total is the file's real size in bytes, with what the data, the engine, the runtime and the pre-render each take, and the rows of each embedded table",
       r.bytes.total === Buffer.byteLength(ADMIN.html, "utf8") && r.bytes.engine === Buffer.byteLength(SOURCES.engineSource) && r.bytes.runtime === Buffer.byteLength(SOURCES.runtimeSource) && r.bytes.data === Buffer.byteLength(admin.data) && r.bytes.prerender === Buffer.byteLength(admin.prerender) &&
-        r.rows.byTemplate === 30 && r.rows.byAccount === 67 && r.megabytes === Number((r.bytes.total / MB).toFixed(2)) && r.warning === null && r.refused === null && r.file === "latest-admin.html" && pageFileName("exec") === "latest-exec.html", r);
+        r.rows.byTemplate === 30 && r.rows.byAccount === 67 && r.rows["health.bounceReasons"] === PULLED.facts.health.bounceReasons.length && r.rows["health.schedules"] === PULLED.facts.health.schedules.length && Object.keys(r.tables).length === 11 && r.tables.byAccount.bytes > 0 && r.tables.byAccount.bytes < r.bytes.data && r.megabytes === Number((r.bytes.total / MB).toFixed(2)) && r.warning === null && r.refused === null && r.file === "latest-admin.html" && pageFileName("exec") === "latest-exec.html", r);
     check("the budget is 5 MB to warn and 15 MB to refuse a leaders' page, under the 16 MB a hosted page may be", PAGE_BUDGET.warnBytes === 5 * MB && PAGE_BUDGET.refuseExecBytes === 15 * MB && PAGE_BUDGET.refuseExecBytes < 16e6);
     // One oversized snapshot, written to disk and built through the real process with the real budget.
     const big = generated({ programs: 400, templates: 30, months: 13, measure: 9 });
@@ -644,13 +644,20 @@ try {
     try { json = JSON.parse(run.stdout); } catch { /* failure path */ }
     const [a, e] = [json?.pages?.find((p) => p.page === "admin"), json?.pages?.find((p) => p.page === "exec")];
     check("an oversized fixture triggers the size warning: its admin page is over 5 MB, so it is written, and the report and stderr both say how big it is and what would make it smaller",
-      !!a && a.bytes.total > PAGE_BUDGET.warnBytes && a.written === true && existsSync(join(out, "latest-admin.html")) && readFileSync(join(out, "latest-admin.html")).length === a.bytes.total && /over the 5 MB budget/.test(a.warning) && a.refused === null && run.stderr.includes(`page "admin": the page is ${a.megabytes} MB, over the 5 MB budget`),
+      !!a && a.bytes.total > PAGE_BUDGET.warnBytes && a.written === true && existsSync(join(out, "latest-admin.html")) && readFileSync(join(out, "latest-admin.html")).length === a.bytes.total && /over the 5 MB budget.*Most of it is byTemplate \(\d+(\.\d+)? MB\).*Narrow the programs or the window\.$/.test(a.warning) && a.refused === null && run.stderr.includes(`page "admin": the page is ${a.megabytes} MB, over the 5 MB budget`),
       [a?.megabytes, a?.warning, run.stderr.slice(0, 300)]);
     check("a leaders' page over 15 MB is refused: it is not written, the summary names it and says why, and the run exits 1 though the admin page was written",
       !!e && e.bytes.total > PAGE_BUDGET.refuseExecBytes && e.written === false && !existsSync(join(out, "latest-exec.html")) && /over the 15 MB a leaders' page may be; it was not written/.test(e.refused) && e.warning === null && run.status === 1 && json.ok === false && isDeepStrictEqual(json.refused, ["exec"]),
       [e?.megabytes, e?.refused, run.status]);
     const small = build(SPEC, PULLED, "exec", { warnBytes: 1000, refuseExecBytes: 2000 });
     const warned = build(SPEC, PULLED, "admin", { warnBytes: 1000, refuseExecBytes: 2000 });
+    // F-485: the health tables sit one level down; they are counted, and the warning names what is large and the remedy that follows.
+    const heavy = structuredClone(PULLED);
+    heavy.facts.health.bounceReasons = Array.from({ length: 40000 }, (_, i) => ({ ...PULLED.facts.health.bounceReasons[0], message: `550 5.1.1 <email>: user unknown, reference <number>, incident ${i} of the day on a long line of text` }));
+    const heavyPage = build(SPEC, heavy);
+    check("F-485: a page whose size is its health tables says so: the report counts them, the warning names the largest table with its megabytes and the remedy is the Health tab, not customer lists; a page that is large for another reason gets that reason's remedy",
+      heavyPage.report.rows["health.bounceReasons"] === 40000 && heavyPage.report.bytes.total > PAGE_BUDGET.warnBytes && /Most of it is health\.bounceReasons \(\d+(\.\d+)? MB\)/.test(heavyPage.report.warning) && /The Health tab's data makes the size: turn the tab off for this page/.test(heavyPage.report.warning) && !/customer lists/.test(heavyPage.report.warning) &&
+        /Customer lists make the size/.test(build(SPEC, PULLED, "admin", { warnBytes: 1000, refuseExecBytes: 2000 }).report.warning) === (Object.entries(build(SPEC, PULLED).report.tables).sort((x, y) => y[1].bytes - x[1].bytes)[0][0] === "byAccount"), heavyPage.report.warning);
     check("the two limits are separate: an admin page over both is warned about and still built, never refused; a leaders' page over the refusal limit comes back with no page at all",
       small.html === null && !!small.report.refused && warned.html !== null && !!warned.report.warning && warned.report.refused === null);
   }

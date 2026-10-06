@@ -34,8 +34,9 @@ before.
   filter when no internal domain is set, which is shown switched off with the reason.
 - **A leaders' page carries no account data** unless the spec says it may name accounts,
   and a page with the Health tab off carries no error messages.
-- **The builder reports each page's size**, warns above 5 MB, and does not write a
-  leaders' page above 15 MB.
+- **The builder reports each page's size**, table by table, warns above 5 MB naming what is
+  large and what would make the page smaller, and does not write a leaders' page above
+  15 MB.
 
 ## 0.46.0 — 2026-10-04
 
