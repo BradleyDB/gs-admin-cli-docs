@@ -220,6 +220,12 @@ jobs:
         run: node plugins/gs-superadmin/test/dashboard-groups.mjs
       - name: Dashboard spec writer fixtures (dashboard-spec.mjs)
         run: node plugins/gs-superadmin/test/dashboard-spec.mjs
+      # The dashboard page (DSH-2): the builder and the runtime every page
+      # inlines. A built page's two scripts and its embedded data are run in a
+      # context with no Node globals and held to the engine in Node over the
+      # original snapshot, filter state by filter state.
+      - name: Dashboard page fixtures (dashboard-page.mjs, dashboard-runtime.mjs)
+        run: node plugins/gs-superadmin/test/dashboard-page.mjs
       # Executes the frozen T-1/T-2 contracts against produced artifacts
       # (GP-B5 DS-18): manifest verbs in a temp workspace, bundled catalog
       # key sets.

@@ -5,6 +5,39 @@ marketplace doesn't pin versions — users get main — so entries describe what
 user who updates, not internal refactors. Entries before 0.8.0 were reconstructed from git
 history when this file was introduced.
 
+## 0.47.0 — 2026-10-04
+
+More groundwork for the engagement dashboard: the page itself. No skill changes, and
+nothing builds a page for you yet; `/gs-superadmin:email-engagement report` runs as
+before.
+
+- **New script: `dashboard-page.mjs`**, which turns a dashboard spec and an engagement
+  snapshot into one HTML file per page of the spec (`latest-<page>.html`). A page is a
+  single file that opens from disk and asks the network for nothing: its data, the code
+  that calculates every figure and the default view are all inside it, and the default
+  view reads even without JavaScript.
+- **Filters that recompute the page in the browser**, with the same code that computes
+  the report: a month range; a searchable list of every program with its status and
+  group, select all or none; group; status; and leaving out internal recipients. The
+  status filter starts on Active programs on an admin page and on every status on a
+  leaders' page, and the page always says how many programs the status filter hides. The
+  filters you set are kept in the page's address, so a view can be bookmarked or shared.
+- **Every table can hide or show its columns** (remembered in your browser) **and
+  download what it shows as a CSV.** A cell a spreadsheet would run as a formula is
+  written as plain text.
+- **What a page does not have, it says where the data would be.** A page cannot change a
+  setting or pull data, so instead of an empty table or a zero it states the reason and,
+  on an admin page, what it would take: whether it needs a new pull or only a rebuild,
+  which setting to change, and a line to copy. A leaders' page gets the statement alone.
+  This covers a snapshot pulled without accounts, a tab that is turned off (offered,
+  dimmed, on an admin page; absent on a leaders' page), and the internal-recipients
+  filter when no internal domain is set, which is shown switched off with the reason.
+- **A leaders' page carries no account data** unless the spec says it may name accounts,
+  and a page with the Health tab off carries no error messages.
+- **The builder reports each page's size**, table by table, warns above 5 MB naming what is
+  large and what would make the page smaller, and does not write a leaders' page above
+  15 MB.
+
 ## 0.46.0 — 2026-10-04
 
 Groundwork for the engagement dashboard. No skill changes: `/gs-superadmin:email-engagement
