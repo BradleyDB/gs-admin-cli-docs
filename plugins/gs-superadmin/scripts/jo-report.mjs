@@ -84,10 +84,12 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 // is written INTO the index (`domains`) beside the build's `warnings`, so the
 // four report modes — which read the index, never the KB folders — can carry
 // what the build saw (F-429 second pass, consumer-parity; writeModeReport).
-// `rules` rides along (F-487): the deps mode resolves a Power List source to
-// its rule doc in the rules lane, and reads the folder from the index like the
-// other two — the report modes read the index, never the KB folders.
-const { lanes: JO_LANES, defaults: JO_DEFAULTS } = laneTable({ journey: "journey", templates: "templates", rules: "rules" });
+// `rules`, `objects` and `datasets` ride along (F-487): the deps mode resolves
+// a Power List source to its rule doc in the rules lane, canonicalizes the
+// Gainsight objects it names through the data-management lane, and looks a
+// Data Designer source up in the datasets lane — all read from the index like
+// the other two: the report modes read the index, never the KB folders.
+const { lanes: JO_LANES, defaults: JO_DEFAULTS } = laneTable({ journey: "journey", templates: "templates", rules: "rules", objects: "objects", datasets: "datasets" });
 function resolveJoDirs(kbDir, inventory, warnings) {
   let domainsIndexed = {};
   try {

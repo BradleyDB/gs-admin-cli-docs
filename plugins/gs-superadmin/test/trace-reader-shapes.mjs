@@ -67,7 +67,7 @@ import {
   extractRuleUsages, extractReportUsages, extractJobUsages, extractDesignerUsages,
   extractDatasetUsages, extractConnection, extractExternalAction,
 } from "../scripts/tenant-deps.mjs";
-import { extractPowerList } from "../scripts/jo-report-deps.mjs";
+import { extractPowerList, extractObjectIdentity } from "../scripts/jo-report-deps.mjs";
 import { parseJourneyDoc } from "../scripts/jo-report.mjs";
 import {
   renderTemplateDoc, collectScorecardMeasures, parseLiveDepsAreas, depsCaptureReadiness,
@@ -214,6 +214,22 @@ const ENTRIES = [
     fixtures: [FX.CONN_1, FX.CONN_2, FX.CONN_SNOW, FX.CONN_FLAT_S3],
     floor: ["pnpConnectionsInfo.connectionId", "pnpConnectionsInfo.connectionName", "pnpConnectionsInfo.connectionType", "connectionId", "connectionName", "connectionType"],
     note: "Both row shapes are read as data since F-388 (plugin 0.36.1): the nested 1.0.8 row and the flat 1.0.9 row. The flat keys are floor.",
+  },
+  {
+    command: "dm o describe",
+    readers: ["jo-report-deps.mjs extractObjectIdentity (F-487 reopen: the Gainsight object registry — GSID ↔ system name ↔ label — both deps surfaces canonicalize Power List object identities through makeObjectResolver; the doc's bullets are read first, this payload read when no bullet names the object)"],
+    modules: ["scripts/jo-report-deps.mjs"],
+    calls: [{ reader: "extractObjectIdentity", mode: "object", fn: extractObjectIdentity }],
+    fixtures: [FX.DM_OBJECT_COMPANY, FX.DM_OBJECT_PROJECT_FACT],
+    floor: ["data.objectId", "data.name", "data.label", "data.dbName"],
+  },
+  {
+    command: "dm o list",
+    readers: ["jo-report-deps.mjs extractObjectIdentity over a shallow-crawl stub's list row (no objectId on the row — such an entry resolves by name and label only)"],
+    modules: ["scripts/jo-report-deps.mjs"],
+    calls: [{ reader: "extractObjectIdentity (list row)", mode: "object", fn: extractObjectIdentity }],
+    fixtures: [FX.DM_LIST_ROW],
+    floor: ["name", "label"],
   },
   {
     command: "jo dd list",

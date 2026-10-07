@@ -30,6 +30,13 @@ on a fresh workspace, so a new install needs nothing extra.
   task, and the provenance section carries a Power List detail block. Power List rules
   are documented into the rules-engine folder beside the Rules Engine rules; the
   tenant-wide report reads them through the programs and never lists them as rules.
+- **Object identities are canonical, not payload-shaped.** A Power List names a Gainsight
+  object by its GSID; the reports now resolve it through the `data-management` domain's
+  docs, so `--object` matches on the system name, the label or the GSID alike and every
+  row carries the system name with the label beside it — a lookup target under its own
+  identity, never the base object's label. A field read through a relationship path (one
+  hop or several) matches on its own API name. A workspace that never indexed
+  `data-management` gets a caveat saying so.
 - **What the CLI does not return is said, not guessed.** A Power List's *filter*
   criteria are not in the payload (`criteriaDetails` is null and `--task-id` is a no-op
   for this rule type — upstream KI-027), so a match means the list READS the object,
@@ -47,8 +54,11 @@ on a fresh workspace, so a new install needs nothing extra.
   program → Rules Engine rule edge to draw). `collectionId == ruleId` was also false:
   on 23% of the measured sources they differ, so the rule id is read, never derived.
 - New script `power-list-gaps.mjs` builds the work list from the program docs on disk;
-  refresh and setup run it. The measured read surface (`data/reader-shapes.json`) gains
-  the keys these readers dereference.
+  refresh and setup run it. A referenced rule counts as documented only when its doc is
+  readable on disk — a rule the manifest calls documented whose doc is gone, or one whose
+  describe never landed, is re-documented on the next refresh, and a deps report's
+  missing-rule caveat names the programs that reference it. The measured read surface
+  (`data/reader-shapes.json`) gains the keys these readers dereference.
 
 ## 0.43.3 — 2026-09-28
 

@@ -914,6 +914,11 @@ export const RULE_POWER_LIST = {
         ruleId: "pl-rule-1", taskId: "t2", name: null, datasetName: "Fetch from Company", schemaObject: "gsid-company-0001", connectionId: "GAINSIGHT_API", childrenTaskIds: ["t3"],
         outputFields: [
           { outputFieldName: "ARR", fieldAlias: "ARR", label: "ARR", fieldName: "ARR", dataType: "number", objectName: "t2", objectIdentifier: "gsid-company-0001", collectionId: "gsid-company-0001", meta: { originalFieldName: "Arr__gc", originalDataType: "CURRENCY", originalObjectName: "gsid-company-0001", originalSchemaType: "MDA", originalBaseObjectName: "gsid-company-0001", originalObjectLabel: "Company" } },
+          // a Gainsight LOOKUP field (F-487 reopen, instance 1b): originalObjectName is the lookup TARGET's GSID while
+          // originalObjectLabel is still the task's BASE object's label — the target's own label comes from the registry
+          { outputFieldName: "Project Score", fieldAlias: "Project_Score", label: "Project Score", fieldName: "Project_Score", dataType: "number", objectName: "t2", objectIdentifier: "gsid-company-0001", meta: { originalFieldName: "Score__gc", originalDataType: "NUMBER", originalObjectName: "gsid-project-fact-0002", originalSchemaType: "MDA", originalBaseObjectName: "gsid-company-0001", originalObjectLabel: "Company", originalPathMetaData: { path: { lookupId: "lk-1", lookupName: "project_health_fact__gc_gsid" } } } },
+          // a MULTI-HOP SFDC path (instance 2): two relationship hops — the field's own API name is the LAST segment
+          { outputFieldName: "Owner Manager Email", fieldAlias: "Owner_Manager_Email", label: "Owner ➝ Manager ➝ Email", fieldName: "Owner_Manager_Email", dataType: "string", objectName: "t2", objectIdentifier: "gsid-company-0001", meta: { originalFieldName: "Owner.Manager.Email", originalDataType: "EMAIL", originalObjectName: "User", originalSchemaType: "SFDC", originalPathMetaData: { path: { relationshipName: "Owner" } } } },
         ],
       },
       {
@@ -927,6 +932,29 @@ export const RULE_POWER_LIST = {
     gsRuleMetaActionDetails: null,
   },
 };
+
+// The data-management lane's docs (F-487 reopen): a full `dm o describe` doc
+// (the CLI's detail root `$.data`: objectId, name, dbName, label, group,
+// dataStore, columns, … — measured on a live KB 2026-10-06; fictional values)
+// and a shallow-crawl stub's `dm o list` row (`$.data.liteObjects[]`: name,
+// label, group, dataStoreType, recordCount — the CLI manifest's table
+// columns; the row carries no objectId). The registry reads both.
+export const DM_OBJECT_COMPANY = {
+  result: true,
+  data: {
+    objectId: "gsid-company-0001", name: "company", dbName: "company_acme", label: "Company", description: "Acme company master",
+    schemaId: "sch-1", group: "STANDARD", dataStore: "HAPOSTGRES", cdcStore: false, primaryKeys: ["gsid"], lowVolume: false, assetType: "OBJECT",
+    columns: [{ name: "Gsid", label: "GSID", type: "GSID" }, { name: "Arr__gc", label: "ARR", type: "CURRENCY" }, { name: "Name", label: "Name", type: "STRING" }],
+  },
+};
+export const DM_OBJECT_PROJECT_FACT = {
+  result: true,
+  data: {
+    objectId: "gsid-project-fact-0002", name: "project_health_fact__gc", dbName: "project_health_fact__gc", label: "Project Health Fact", description: "",
+    schemaId: "sch-2", group: "CUSTOM", dataStore: "HAPOSTGRES", columns: [{ name: "Gsid", label: "GSID", type: "GSID" }, { name: "Score__gc", label: "Score", type: "NUMBER" }],
+  },
+};
+export const DM_LIST_ROW = { name: "survey_participant", label: "Survey Participant", group: "SYSTEM", dataStoreType: "HAPOSTGRES", recordCount: 12, modifiedDateStr: "2026-09-01 00:00:00 UTC" };
 
 // A program on a Power List (QUERY_BUILDER) source — `ruleId` is a direct key
 // on the source and here DIFFERS from the collection id (a program version
