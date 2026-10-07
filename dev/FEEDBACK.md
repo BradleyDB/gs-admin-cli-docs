@@ -161,15 +161,29 @@ Walk (hb-20261006-01): 2026-10-06 (tester) — F-487 acceptance round, dev/VALID
 Walk (hb-20261006-02): 2026-10-06 (tester) — F-487 second verdict round (re-verification), dev/VALIDATION.md section F-487 P5, P7, P8 to P11, production tenant, reads only: /gs-superadmin:refresh typed by Bradley once (step 3b described nothing: every Power List doc readable); /gs-superadmin:email-report deps and /gs-superadmin:deps-report each invoked once by the tester; P10's three manifest states re-documented on a scratch copy of the KB (three describes). P5, P7, P9, P11 CLEARED; P8 and P10 FAILED; F-487 REOPENED a second time (system-name terms miss Gainsight objects because the registry reads the display-name bullet; dynamic-field rows bypass the registry; email-report omits a program matched only through an unreadable list, with no caveat). Rule 5: a Redesign: line before any third fix. Detail under F-487's verdict and in that VALIDATION section.
 Walk (hb-20261006-03): 2026-10-06 (tester) — F-487 third verdict round (re-verification under the Redesign), dev/VALIDATION.md section F-487 P12 and P13 only, production tenant, reads only, no tenant call, refresh not run (no Power List doc changed): offline suites green at the stated counts; /gs-superadmin:deps-report and /gs-superadmin:email-report deps each invoked by the tester on a scratch copy of the KB (email-report's live sweep substituted by same-day pages; no live corroboration); no SKILL.md changed, so no walk was owed; no approval prompt rendered, per Bradley. P12 CLEARED (every data-management object a list, dynamic field or branch condition reads: identical sets, kinds and rows by `- id:`, GSID and label); P13 FAILED on the tenant-wide caveat (rule id and count, no program names, no not-evidence clause); F-487 REOPENED a third time — the valve, DEFERRED past 0.48.0, is Bradley's call. Amended the same day: Bradley ruled P13's tenant-wide names clause bar overreach (the Fix note claimed names on the JO surface only; round 2 accepted the aggregate text), so F-487 VERIFIED by ruling and the missing detail logged as F-488 (polish). Detail under F-487's verdict and in that VALIDATION section.
 
-<!-- builder 2026-10-06 (F-487 — POINTER re-stamped after the second verdict: REOPENED again @ hb-20261006-02 (P8, P10; the class sharpened), rule 5 spent on ONE Redesign (the model replaced is named on the entry), FIXED again on the branch, third handoff minted; next free F-488):
-     Branch: feat/f487-power-list-sources at 23ebe4e (c32da73 first batch, 95d2c8a handoff -01, 6bc64df verdict 1, 28ab1e3 second batch, 6e460db handoff -02,
-       df589b8 verdict 2, 663c035 third batch under the Redesign, 23ebe4e handoff -03). PR: #41 to dev, open, unmerged, awaiting the F-487 third verdict round.
-       Handoff: hb-20261006-03 on the branch (its Under test, Blind spots and canary live there).
-     Status transitions on the branch: OPEN -> FIXED -> REOPENED @ -01 -> FIXED -> REOPENED @ -02 (second reopen) -> Redesign: + FIXED (third batch).
-       Per the loop a THIRD reopen of this mechanism is DEFERRED (past 0.48.0), reopen trigger next change to the Power List identity/caveat readers — Bradley decides then.
-       Numbers consumed: none. Live checks: dev/VALIDATION.md section F-487 — P0 to P4, P6 CLEARED @ -01; P5, P7, P9, P11 CLEARED @ -02; P12, P13 re-banked under the Redesign.
-     Polish carried, untouched (scheduled elsewhere): F-482, F-483, F-486 (S3b/S4b); normal F-476, F-484 (S3b).
-     CI: the PR suite runs on 23ebe4e (not a [skip ci] tip); per-job conclusions to be quoted here after they finish (F-340), re-stamped with the merge sha when #41 merges.
+<!-- builder 2026-10-07 (F-487 CLOSED OUT on dev — PR #41 merged (a5d8a0b) after the third verdict (VERIFIED by Bradley's ruling @ hb-20261006-03) and the release-gate review; F-488 and F-489 OPEN polish, folded into the dashboards round; next free F-490):
+     PR #41 (feat/f487-power-list-sources) was merged to dev on Bradley's go-ahead, on green CI plus its review round.
+       Branch tip at merge: f7a65ef (c32da73 first batch, 28ab1e3 second batch, 663c035 third batch under the Redesign — the three CODE commits;
+       the handoffs -01/-02/-03, the three verdicts, fcb16c8 the ruling, 9bdc02e the F-489 log, f7a65ef an empty non-skip commit that re-fired the
+       PR suite after GitHub's 2026-10-07 outage dropped the pull_request events for 9bdc02e). CI on f7a65ef read per job: validate-plugin
+       37648886984 changes, manifests and validate (ubuntu-latest) success; docs-drift 37648886924 drift (full) success; GitGuardian pass.
+       The dev push runs on a5d8a0b (validate-plugin 37653856491, docs-drift 37653856433) were in progress at this stamp; their per-job
+       conclusions are quoted in the 0.43.4 close-out note (F-340), never assumed here.
+     Release-gate review (dev/RELEASE-CHECKLIST.md section 2, run on the SOURCE branch at fcb16c8 before the merge, since the payload ships
+       as a hotfix cut from main, not a release of dev): /code-review medium over origin/dev...feat/f487-power-list-sources — 1 finding, low,
+       logged as F-489 (polish; Bradley: not taken in the hotfix); /security-review over the same diff — no findings, highest severity none
+       (filenames pass docBaseName, shell hints pass sq, the describe is spawned as an argv array). MEDIUM, not LOW, because #41 had no review
+       round of its own before this one (PRs #38-#40 each had one).
+     Status transitions: F-487 OPEN -> FIXED -> REOPENED @ -01 -> FIXED -> REOPENED @ -02 -> Redesign: + FIXED -> REOPENED @ -03 (P13) ->
+       VERIFIED by Bradley's ruling 2026-10-06 (P13's tenant-wide clause ruled bar overreach; the measurements stand). Numbers consumed:
+       F-488 (tester, polish — the tenant-wide caveat's program names), F-489 (builder, polish — refresh 3b-3's --command fallback).
+       Live checks: dev/VALIDATION.md section F-487 — P0 to P13 CLEARED or ruled; nothing re-banked.
+     Ships as HOTFIX 0.43.4 cut from main (Bradley, 2026-10-06): dev carries the UNRELEASED JO-dashboards work (0.44.0-0.47.0) which R12
+       holds to ONE release with F-476 and F-484 open against it, so the three code commits above are cherry-picked onto release/v0.43.4
+       from main; the version on dev stays the dashboards' staged 0.47.0 after a dev-side consistency commit (CHANGELOG entry retitled 0.43.4
+       and moved below 0.44.0). Procedure: the maintainer's hotfix plan; its "Hotfix from main" section is drafted into RELEASE-CHECKLIST after.
+     Polish carried, untouched (scheduled elsewhere): F-482, F-483, F-486 (S3b/S4b); normal F-476, F-484 (S3b); F-488, F-489 ride the
+       dashboards round (Bradley, 2026-10-07).
      Dashboards work not touched: engagement*.mjs, dashboard-*.mjs, the email-engagement skill. -->
 <!-- builder 2026-10-05 (JO-dashboards S4a CLOSED OUT — PR #40 merged (1eb993c) after R1; F-485 FIXED (verdict at V2); F-476, F-483, F-484 ride S3b with F-482, F-486 rides S4b; next free F-487):
      R1, the design review as something people use, ran today with Bradley in the session (no code, no PR, no tenant).
