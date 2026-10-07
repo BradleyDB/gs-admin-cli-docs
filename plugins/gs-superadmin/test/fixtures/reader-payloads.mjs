@@ -1002,6 +1002,14 @@ export const JOURNEY_QB_AO = {
         fieldInfo: { dataType: "string", label: "SURVEY_QUERY_dyn-survey-1", type: "field", entity: "Survey User Answer", questionId: "q-nps-1", answerId: ["a-1", "a-2"], surveyId: "svy-renewal-1" },
         report: { reportType: "NEW-STACK", reportMaster: { ReportInfo: [] } },
       },
+      // a dynamic field on a GAINSIGHT object, named by its system name (F-487
+      // second reopen, instance 1b): canonicalized like every other row kind,
+      // so a GSID term reaches the program through it
+      {
+        criterionType: "DYNAMIC_QUERY_V2", fieldId: "dyn-company-arr", label: "Company ARR",
+        fieldInfo: { type: "BASE_FIELD", fieldName: "Arr__gc", key: "Arr__gc", dataType: "CURRENCY", label: "ARR", objectName: "company", objectLabel: "Company", objectId: "gsid-company-0001" },
+        filters: { conditions: [], expression: "" },
+      },
     ],
     participantSyncScheduleDisabled: false,
   }),

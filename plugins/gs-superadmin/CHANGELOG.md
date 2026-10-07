@@ -32,11 +32,15 @@ on a fresh workspace, so a new install needs nothing extra.
   tenant-wide report reads them through the programs and never lists them as rules.
 - **Object identities are canonical, not payload-shaped.** A Power List names a Gainsight
   object by its GSID; the reports now resolve it through the `data-management` domain's
-  docs, so `--object` matches on the system name, the label or the GSID alike and every
-  row carries the system name with the label beside it — a lookup target under its own
-  identity, never the base object's label. A field read through a relationship path (one
-  hop or several) matches on its own API name. A workspace that never indexed
-  `data-management` gets a caveat saying so.
+  docs — keyed on the object's system name as the KB keys it — so `--object` matches on
+  the system name, the label or the GSID alike, on every row kind (a Power List's objects
+  and fields, a dynamic field, a branch condition), and every row carries the system name
+  with the label beside it — a lookup target under its own identity, never the base
+  object's label. A field read through a relationship path (one hop or several) matches
+  on its own API name. A workspace that never indexed `data-management` gets a caveat
+  saying so. And every report states every Power List rule your programs reference whose
+  doc is not readable, whatever your search terms matched — an absent program is never
+  silent evidence.
 - **What the CLI does not return is said, not guessed.** A Power List's *filter*
   criteria are not in the payload (`criteriaDetails` is null and `--task-id` is a no-op
   for this rule type — upstream KI-027), so a match means the list READS the object,

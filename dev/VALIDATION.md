@@ -1671,3 +1671,22 @@ on the production KB after one `/gs-superadmin:refresh`:
   standing caveat carries the dynamic-program sentence (P5's bar, restated as the class test).
   CLEARED (F-487 second verdict round @ hb-20261006-02, tester, 2026-10-06; production, reads only). Email-report deps over the two objects the dynamic programs' fields read: every program in the usage table (order 10^2) has a provenance row; the dynamic program's cell and the standing sentence render as P5 states.
 Section FAILED (F-487 second verdict round @ hb-20261006-02, tester, 2026-10-06; production, reads only): P8 and P10 failed, F-487 reopened a second time; P5, P7, P9 and P11 cleared (P0 to P4 and P6 cleared at hb-20261006-01).
+
+### Re-banked for the F-487 third round, under the Redesign (builder, 2026-10-06, feat/f487-power-list-sources; the branch's next handoff token)
+
+P5, P7, P9 and P11 CLEARED @ hb-20261006-02 and are not re-run. P8 and P10 are replaced by the verdict's sharper
+class tests, one per invariant:
+
+- P12 (invariant A, class test i) — for EVERY object in the `data-management` lane that any Power List, dynamic field
+  or branch condition reads (enumerate them from the raw docs, never a sample): `/gs-superadmin:deps-report --object
+  <the doc's "- id:">`, `--object <GSID>` and `--object <label>` return identical sets of journey programs AND identical
+  row kinds per program; every row carries the `- id:` value as the object name with the label beside it; the
+  summary's objectRegistrySize equals the lane's doc count. Pass bar: identical sets and kinds for every object, zero
+  rows carrying a GSID or a display name as the object name. Note the case the verdict found: an object whose
+  `- id:` differs from its label (579 of 594 docs on this KB) — those are the ones that decide it.
+- P13 (invariant B, class test ii) — on a scratch copy of the KB, with ONE referenced Power List rule's doc unreadable
+  (moved out), run `/gs-superadmin:email-report` deps mode and `/gs-superadmin:deps-report` each with a term that
+  matches nothing (an object no program reads) and again with the SFDC object that list reads. Pass bar: all four
+  runs carry a caveat naming the rule id, its referencing programs (count and names) and `/gs-superadmin:refresh` as
+  the remedy, with "their absence from the tables above is not evidence"; powerListRulesMissing 1 on the JO surface
+  and journeyPowerListRulesMissing 1 on the tenant-wide one, whatever the terms. Restore the doc.
