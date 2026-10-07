@@ -1571,7 +1571,7 @@ either serve the page's folder on localhost or open the file in a desktop browse
 - Z10 (column choices are remembered). Hide two columns on the program table, reload: still hidden; open the
   leaders' page: its own columns, untouched; a private window: the panel's own columns.
 
-## F-487 — Power List sources on a real tenant: the refresh capture and both deps surfaces (banked 2026-10-06, builder, feat/f487-power-list-sources; verdict at the branch's handoff token)
+## F-487 — Power List sources on a real tenant: the refresh capture and both deps surfaces (banked 2026-10-06, builder, feat/f487-power-list-sources; verdict at the branch's handoff token — CLEARED 2026-10-06 @ hb-20261006-03, by Bradley's ruling on P13; shipped as plugin 0.43.4)
 
 Owed by: the F-487 verdict round, in the consumer workspace with the plugin loaded from the branch (the token the
 branch's handoff mints; written with a placeholder here and keyed to that token at the handoff).
