@@ -1451,7 +1451,7 @@ in this order, stopping at the first that holds:
 - (p3) Else participant failures stay all time, with the page saying so wherever the figure shows.
 Participant states (`ao_participants`) are expected to stay all time whichever holds.
 
-### Re-banked for V2 after the S3b health batch (builder, 2026-10-07, feat/jo-dash-s3b-health-batch; keyed to the token the branch's handoff mints)
+### Re-banked for V2 after the S3b health batch (builder, 2026-10-07, feat/jo-dash-s3b-health-batch @ hb-20261007-02, PR #43)
 
 Y0 was RULED at S4a's kickoff and Y3 CLEARED at the spot check; both stand. Y4, Y5, Y7, Y8, Y9, Y10, Y11 and Y12
 stay owed as written above. Y1, Y2 and Y6 are REPLACED by the versions below (the S3b batch changed what they
