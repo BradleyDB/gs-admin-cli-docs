@@ -46,6 +46,7 @@ import {
 import { parseLiveDepsAreas, parseLiveDeps, prepFieldTerm, compileAliasPrefix, addNearMisses } from "../scripts/jo-report-deps.mjs";
 import { parseJourneyDoc } from "../scripts/jo-report.mjs";
 import { renderProgramDoc } from "../scripts/doc-lib.mjs";
+import { RULE_POWER_LIST, JOURNEY_QB_AO } from "./fixtures/reader-payloads.mjs"; // F-487
 
 const SCRIPT = join(dirname(fileURLToPath(import.meta.url)), "..", "scripts", "tenant-deps.mjs");
 const ROOT = join(tmpdir(), `gs-superadmin-tenant-deps-${process.pid}`);
@@ -1815,6 +1816,64 @@ check("e2e: blank term → exit 1", emptyTerm.status === 1, emptyTerm.stderr?.sl
     parity(s5d, md5d, csv5d) && /2 domains record "connectors list"/.test(md5d) && /2 domains record "connectors list"/.test(csv5d.replace(/""/g, '"')),
     { mdHas: (s5d?.warnings ?? []).map((w) => md5d.includes(w)), csvHas: (s5d?.warnings ?? []).map((w) => csv5d.includes(w)) }
   );
+}
+
+// ── e2e F-487: Power List sources on the tenant-wide surface ─────────────────
+// Its own KB: a Power List rule doc beside a Rules Engine rule in the rules
+// lane, the connector the list reads through, a program on the list, and a
+// program whose list has no doc. The journey matches --object and
+// --connection THROUGH the list; the rules lane skips the Power List doc and
+// says so; the missing list is one aggregate caveat with the refresh remedy.
+{
+  const KB4 = join(ROOT, "kb-f487");
+  const doc4 = (domain, base, name, payload) => {
+    mkdirSync(join(KB4, domain), { recursive: true });
+    writeFileSync(join(KB4, domain, `${base}.md`), [`# ${name}`, "", `- key: ${domain}/${base}`, `- id: ${base}`, `- name: ${name}`, "", "```json", JSON.stringify(payload, null, 1), "```", ""].join("\n"), "utf8");
+  };
+  doc4("connectors", "conn-sfdc-1", "Acme Prod SFDC", CONN_1);
+  doc4("rules-engine", "pl-rule-1", "Acme Renewal Contacts", RULE_POWER_LIST);
+  doc4("rules-engine", "rule-ext-1", "Acme|LOAD| CSM to Company", RULE_EXT);
+  mkdirSync(join(KB4, "journey"), { recursive: true });
+  writeFileSync(join(KB4, "journey", "prog-qb.md"), renderProgramDoc({ result: true, data: { advancedOutreach: JOURNEY_QB_AO } }, { key: "journey/prog-qb" }).doc, "utf8");
+  const orphanAo = { ...JOURNEY_QB_AO, advancedOutreachId: "prog-orphan", advancedOutreachName: "Acme Orphan List Program", aoConfiguration: JSON.stringify({ dynamicFields: [] }), stepJson: JSON.stringify({ nodes: [] }),
+    participantSourceConfigurations: [{ ...JOURNEY_QB_AO.participantSourceConfigurations[0], participantSourceConfigurationId: "cfg-o", participantSourceName: "Acme Missing List", participantSourceCollectionId: "pl-missing-9", ruleId: "pl-missing-9" }] };
+  writeFileSync(join(KB4, "journey", "prog-orphan.md"), renderProgramDoc({ result: true, data: { advancedOutreach: orphanAo } }, { key: "journey/prog-orphan" }).doc, "utf8");
+  writeFileSync(join(KB4, "_manifest.json"), JSON.stringify({
+    slug: "acme-f487", baseUrl: "https://acme.gainsightcloud.com", environment: "sandbox",
+    inventory: {
+      "journey/prog-qb": { domain: "journey", id: "prog-qb", depth: "full", last_verified: "2026-10-01T00:00:00.000Z" },
+      "journey/prog-orphan": { domain: "journey", id: "prog-orphan", depth: "full", last_verified: "2026-10-01T00:00:00.000Z" },
+      "rules-engine/pl-rule-1": { domain: "rules-engine", id: "pl-rule-1", depth: "full", last_verified: "2026-10-01T00:00:00.000Z" },
+      "rules-engine/rule-ext-1": { domain: "rules-engine", id: "rule-ext-1", depth: "full", last_verified: "2026-10-01T00:00:00.000Z" },
+    },
+  }), "utf8");
+  const run4 = (...terms) => {
+    const r = spawnSync(process.execPath, [SCRIPT, "--kb", KB4, ...terms, "--report", join(ROOT, "rep-f487")], { encoding: "utf8" });
+    let s = null;
+    try { s = JSON.parse(r.stdout); } catch { /* asserted below */ }
+    return { r, s, md: s?.reportPath && existsSync(s.reportPath) ? readFileSync(s.reportPath, "utf8") : "" };
+  };
+  const a = run4("--object", "Contact", "--connection", "Acme Prod SFDC");
+  check("e2e F-487: exit 0, summary JSON", a.r.status === 0 && a.s?.ok === true, { status: a.r.status, stderr: a.r.stderr?.slice(0, 400) });
+  check("e2e F-487: the journey matches --object Contact AND --connection (by NAME, resolved from the connectors lane) THROUGH its Power List; the orphan-list program matches nothing",
+    a.s?.counts?.journeysMatched === 1 && /\| Acme Renewal Outreach \(prog-qb\) \|/.test(a.md) && /object `Contact`/.test(a.md) && /connection `Acme Prod SFDC`/.test(a.md) && a.md.includes("Acme Prod SFDC (SFDC)") && !a.md.includes("| Acme Orphan List Program (prog-orphan) |"),
+    { counts: a.s?.counts, rows: a.md.split("\n").filter((l) => l.includes("Acme Renewal Outreach")).slice(0, 4) });
+  check("e2e F-487: the rules lane parses the Rules Engine rule, SKIPS the Power List doc (counted, not a parse miss), and matches the SFDC rule on the connection as before",
+    a.s?.counts?.rulesScanned === 1 && a.s?.counts?.rulesPowerListDocs === 1 && a.s?.counts?.rulesMatched === 1 && !a.md.includes("had no parseable describe payload") &&
+      a.md.includes("Rules Engine: 1 doc(s) under rules-engine/ are Power List rules (ADVANCED_OUTREACH_QUERY_BUILDER) — read through the journey programs that reference them"),
+    { counts: a.s?.counts, caveats: a.md.split("\n").filter((l) => /Rules Engine:/.test(l)) });
+  check("e2e F-487: Power List accounting on the JSON surface (2 sources, 1 resolved, 1 rule missing, 0 QUERY sources)",
+    a.s?.counts?.journeyPowerListSources === 2 && a.s?.counts?.journeyPowerListsResolved === 1 && a.s?.counts?.journeyPowerListRulesMissing === 1 && a.s?.counts?.journeyQuerySources === 0, a.s?.counts);
+  check("e2e F-487: ONE aggregate caveat names the missing rule id, the program count, the resolved ratio and the refresh remedy; and the standing filter-limit caveat",
+    a.md.includes("1 Power List rule(s) referenced by 2 journey program(s) have no readable KB doc under rules-engine/ (1 of 2 Power List sources resolved): `pl-missing-9`") &&
+      a.md.includes("Run `/gs-superadmin:refresh`") && a.md.includes("Power List sources (2, 1 resolved) contribute the objects, connection and output fields their rule's tasks READ") && a.md.includes("a match means the list reads the object, never how it filters it"),
+    a.md.split("\n").filter((l) => l.includes("Power List")));
+  const b = run4("--object", "Company");
+  check("e2e F-487: --object Company matches the Gainsight object by its LABEL on a Power List row (the row carries the GSID with the label beside it)",
+    b.s?.counts?.journeysMatched === 1 && b.md.includes('gsid-company-0001 ("Company")'), { counts: b.s?.counts, rows: b.md.split("\n").filter((l) => l.includes("gsid-company")) });
+  const c = run4("--field", "Project Status");
+  check("e2e F-487: --field matches the branch condition's label and the dynamic field (program-level rows, no connection)",
+    c.s?.counts?.journeysMatched === 1 && c.md.includes("branch condition") && c.md.includes("dynamic field"), { counts: c.s?.counts });
 }
 
 rmSync(ROOT, { recursive: true, force: true });

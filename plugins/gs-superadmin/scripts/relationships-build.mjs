@@ -23,11 +23,15 @@
 // Rules Engine rules do not load participants into Journey Orchestrator
 // programs: programs draw participants from Power Lists, backed by CSV
 // uploads, ad-hoc queries, or Data Designer / DD-template datasets — never a
-// rule. That is Gainsight product architecture (tenant-agnostic), and it was
-// live-confirmed by a full GSID cross-reference between rule and program docs
-// finding zero shared-id edges. process-maps.md states this instead of
-// inviting a hand-built program→rule map. The journey-side edges that ARE
-// derivable from deep docs:
+// rule a user sees. That is Gainsight product architecture (tenant-agnostic).
+// A Power List IS a rule underneath (ruleType ADVANCED_OUTREACH_QUERY_BUILDER,
+// hidden from `re r list`, described by the `ruleId` on the program's source —
+// F-487), which is why the full GSID cross-reference between rule and program
+// docs found zero shared-id edges: those rules were never in the crawl. The
+// deps tools (jo-report-deps / tenant-deps) read what each Power List draws
+// from through the docs setup/refresh capture; this builder still draws no
+// program→rule edge, and process-maps.md states this instead of inviting a
+// hand-built one. The journey-side edges that ARE derivable from deep docs:
 // - program → email template: GSID co-occurrence between a program doc's
 //   payload JSON and the email-template inventory ids → program-to-template.md
 //   (below).
@@ -700,9 +704,12 @@ pm +=
   "Rules Engine rules do **not** load participants into Journey Orchestrator programs — " +
   "there is no journey → rule map to build. Programs draw participants from **Power " +
   "Lists**, backed by CSV uploads, ad-hoc queries, or Data Designer / DD-template " +
-  "datasets — never a rule (Gainsight product architecture, tenant-agnostic; " +
-  "live-confirmed by a full GSID cross-reference between rule and program docs finding " +
-  "zero shared-id edges). The journey-side edges that ARE derivable from deep docs: " +
+  "datasets — never a rule a user sees (Gainsight product architecture, tenant-agnostic). " +
+  "A Power List is itself a hidden rule (`ADVANCED_OUTREACH_QUERY_BUILDER`, absent from " +
+  "`re r list`, described by the `ruleId` on the program's source), captured by " +
+  "setup/refresh and read by the deps reports for what it draws from — which is why a " +
+  "GSID cross-reference between rule and program docs finds zero shared-id edges. " +
+  "The journey-side edges that ARE derivable from deep docs: " +
   "**program → email template** (generated as `program-to-template.md` alongside this " +
   "file) and **program → Power List → source** (CSV / query / Data Designer), parseable " +
   "from the PowerList config block in each program's step JSON but not yet automated — " +

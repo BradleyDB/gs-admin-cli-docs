@@ -677,6 +677,22 @@ first two and the three-level composite doc for designers.
 preference from the top of this phase — if the user opted in, pause and verify before
 starting the next domain.
 
+**Power List rules — after the journey domain's last batch of this run (every Phase 5
+run, `--deep <journey-domain>` included; F-487).** A program on a Power List
+(`QUERY_BUILDER`) source draws its participants from a hidden rule — ruleType
+`ADVANCED_OUTREACH_QUERY_BUILDER`, absent from every `re r list` page, described only by
+the `ruleId` the program's source carries — so Phase 4's crawl never registers it and
+the deps reports are blind to that program until its rule doc exists. Derive the work
+list from the program docs on disk, register it as a declared subset of the rules
+domain, and document exactly those entries (the three commands and their rules are
+`/gs-superadmin:refresh` step 3b, the canon — same `power-list-gaps.mjs` →
+`upsert-batch --partial` → `describe-batch.mjs --keys-file` sequence, same stop rule and
+`aborted` handling as above; it consumes the shared budget like any describe). Under a
+shallow crawl the journey domain is stubs and the work list is empty until
+`--deep <journey-domain>` runs — say so, never "no Power Lists". The docs land beside
+the Rules Engine rules in the rules domain's folder; readers tell them apart by rule
+type. Report the step's line (refresh step 4's "Power Lists:" shape) in the final report.
+
 **Every completeness statement comes from ONE `report` invocation at a quiescent
 point** (F-455). When the last `describe-batch` or `stub` invocation of this run has
 exited and nothing is still writing the manifest, run the report once:
@@ -718,11 +734,15 @@ It derives the four maps from the KB docs: `field-to-rule.md`,
 `field-to-scorecard.md` (with a flagged section for **dangling measure references**
 — a real tenant-hygiene signal, not an error), `process-maps.md` (rule → CTA), and
 `program-to-template.md` (program → email template from GSID co-occurrence; raw and
-compacted program docs both work). **There is no journey → rule map to build**:
-Rules Engine rules do not load participants into JO programs — programs draw
-participants from Power Lists (CSV uploads, ad-hoc queries, Data Designer datasets),
-never a rule (Gainsight product architecture, tenant-agnostic; live-confirmed by a
-full GSID cross-reference finding zero shared-id edges). process-maps.md states
+compacted program docs both work). **There is no journey → Rules Engine rule map to
+build**: Rules Engine rules do not load participants into JO programs — programs draw
+participants from Power Lists (plus CSV uploads, ad-hoc queries, Data Designer
+datasets), never a rule a user sees (Gainsight product architecture, tenant-agnostic).
+A Power List IS a rule underneath — ruleType `ADVANCED_OUTREACH_QUERY_BUILDER`, hidden
+from `re r list` and described only by the `ruleId` its source carries (F-487), which is
+why a GSID cross-reference between the rule and program docs found zero shared-id
+edges: the rules were never in the crawl. Phase 5's Power List step captures them from
+the program docs; the deps tools read what each list draws from. process-maps.md states
 this — never hand-build a program→rule map.
 
 The builder reads each lane's folder name from the manifest's recordings (the domain

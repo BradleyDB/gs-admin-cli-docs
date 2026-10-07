@@ -14,8 +14,19 @@
 //   node describe-batch.mjs --manifest <slug>/_manifest.json --domain <d> \
 //     [--command "gs-admin --json <ns> <describe-cmd> --id {id}"] \
 //     --out-dir <slug>/<domain> [--limit N] [--statuses a,b] [--upgrade] \
+//     [--keys-file <json-array-of-manifest-keys>] \
 //     [--doc-mode raw|template|program|designer] [--if-changed] \
 //     [--spawn-budget 30] [--timeout-ms 120000] [--bin <path-to-gs-admin-js>]
+//
+// --keys-file (F-487) restricts the batch to the named manifest keys
+// ("<domain>/<id>") — the selectable ones among them (same `next` predicate:
+// pending/stale/failed, or --upgrade's stubs), in `next`'s order, the first
+// --limit of them. A gap-fill that just registered a subset (power-list-gaps
+// → upsert-batch --partial) documents ITS entries and nothing else the domain
+// holds: a refresh without --document is detect-only for everything it did
+// not register itself. `moreRemaining` then means "named keys still untried
+// after this chunk" (plus the budget/auth early-stop cases), never the rest
+// of the domain.
 //
 // Designer doc-mode (GP-B5 W9 — the default whenever the describe command
 // resolves to the catalog's `data-designer templates describe`, whatever the
@@ -266,6 +277,20 @@ if (!Number.isFinite(timeoutMs) || timeoutMs < 1000) fail("--timeout-ms must be 
 const upgrade = argv.includes("--upgrade");
 const ifChanged = argv.includes("--if-changed");
 const statuses = opt("--statuses"); // passed through to `next` when given
+// --keys-file (F-487): the batch is the selectable entries among these keys
+const keysFileOpt = opt("--keys-file");
+let keySet = null;
+if (keysFileOpt !== undefined) {
+  let keys;
+  try {
+    keys = readJsonFile(resolve(keysFileOpt)); // BOM-tolerant (doc-lib, F-118)
+  } catch (e) {
+    fail(`--keys-file ${keysFileOpt}: ${e?.message ?? e}`);
+  }
+  if (!Array.isArray(keys) || keys.some((k) => typeof k !== "string" || !k.includes("/")))
+    fail(`--keys-file must be a JSON array of manifest keys ("<domain>/<id>"), got ${Array.isArray(keys) ? "an array with a non-key entry" : typeof keys}`);
+  keySet = new Set(keys);
+}
 // Email-template payloads must never land in a doc as raw JSON (~50 KB of
 // entity-escaped HTML apiece) — that domain defaults to the compact renderer.
 // Journey-program payloads are worse (~287 KB of mostly flow-canvas geometry)
@@ -421,7 +446,21 @@ const selectionArgs = (lim) => {
 };
 // --limit 0 never reaches `next` (which requires a positive limit): it is a
 // bounded no-op by contract — same summary shape, nothing selected (F-170).
-const batch = limit === 0 ? { count: 0, entries: [] } : runManifest(selectionArgs(limit));
+// With --keys-file the whole selectable domain is read (`next` sorts and
+// caps; the named keys can sit anywhere in that order) and the batch is the
+// named ones, first --limit of them; `keysUntried` is what moreRemaining
+// reports (F-487).
+const NEXT_ALL = 100000;
+let keysUntried = 0;
+const selectBatch = () => {
+  if (limit === 0) return { count: 0, entries: [] };
+  if (keySet === null) return runManifest(selectionArgs(limit));
+  const all = runManifest(selectionArgs(NEXT_ALL));
+  const wanted = (Array.isArray(all.entries) ? all.entries : []).filter((e) => keySet.has(e.key));
+  keysUntried = Math.max(0, wanted.length - limit);
+  return { count: Math.min(wanted.length, limit), entries: wanted.slice(0, limit) };
+};
+const batch = selectBatch();
 
 // Progress for the whole domain — read fresh from the manifest so the numbers
 // are true whatever mix of statuses the batch carries. Best-effort by design:
@@ -877,8 +916,9 @@ for (const entry of batch.entries) {
 }
 
 // The moreRemaining probe is one more manifest.mjs spawn; a run that stopped
-// early already knows the answer, so it is not spawned (review round).
-const more = budgetExhausted || aborted !== null ? { count: 1 } : runManifest(selectionArgs(1));
+// early already knows the answer, so it is not spawned (review round). Under
+// --keys-file the answer is the named keys this chunk did not reach (F-487).
+const more = budgetExhausted || aborted !== null ? { count: 1 } : keySet !== null ? { count: keysUntried } : runManifest(selectionArgs(1));
 console.log(
   JSON.stringify(
     {
