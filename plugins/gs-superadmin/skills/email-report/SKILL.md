@@ -232,12 +232,16 @@ conventions caveat into step 7.
 directory step 3 indexed) so the report can resolve participant-source
 provenance: Data Designer sources resolve to their KB docs (asset name,
 description, matched columns tied to the DD's field dictionary), CSV sources
-show their uploaded filename, and Power Lists render as honestly not
-resolvable. Running from the workspace root the script can also derive the KB
+show their uploaded filename, and Power List sources resolve to their rule's
+KB doc in the rules domain — the objects, connection and output fields the
+list reads (its filter criteria are not returned by the CLI, and the report
+says so). Running from the workspace root the script can also derive the KB
 dir from the index slug, but pass the flag anyway — explicit beats derived. If
 the report caveats that a Data Designer's KB doc is missing, the caveat names
 the exact fetch commands; offer them to the user as a follow-up, don't run
-them unprompted mid-report.
+them unprompted mid-report. If it caveats that a Power List rule has no KB
+doc, the remedy is `/gs-superadmin:refresh` (it registers and documents every
+Power List rule the documented programs reference) — offer it the same way.
 
 **deps mode only — capture live dependents first.** `--object` matching in the KB scan
 is filter-conditions-only; the live capture supplies the mapping/SELECT-side usage

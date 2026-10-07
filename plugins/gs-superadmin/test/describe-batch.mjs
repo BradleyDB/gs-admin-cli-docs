@@ -336,6 +336,30 @@ check(
 r = batch(["--domain", "rules-engine-rules", "--out-dir", OUT, "--bin", FAKE, "--command", DESCRIBE]);
 check("resume: re-run selects only the failed entry", r.code === 0 && r.json?.selected === 1 && r.json?.documented === 0 && r.json?.failed === 1, r);
 
+// ── --keys-file (F-487): the batch is the selectable entries among the named
+//    keys and nothing else the domain holds ──────────────────────────────────
+{
+  manifest("mark", ["--key", "rules-engine-rules/r-1", "--status", "stale"]);
+  manifest("mark", ["--key", "rules-engine-rules/r-2", "--status", "stale"]);
+  const KEYS = join(ROOT, "keys.json");
+  // r-2 is deliberately NOT named: stale, selectable, and must stay untouched
+  writeFileSync(KEYS, JSON.stringify(["rules-engine-rules/r-1", "rules-engine-rules/r-fail", "rules-engine-rules/r-not-in-manifest"]));
+  r = batch(["--domain", "rules-engine-rules", "--out-dir", OUT, "--bin", FAKE, "--command", DESCRIBE, "--keys-file", KEYS, "--limit", "1"]);
+  check("keys-file: the first --limit of the NAMED selectable keys in next's order (r-1 before the failed r-fail); the unnamed stale r-2 is not selected", r.code === 0 && r.json?.selected === 1 && r.json?.documented === 1 && r.json?.docs?.some((d) => /r-1\.md$/.test(d)), r.json);
+  check("keys-file: moreRemaining means named keys still untried (r-fail), never the rest of the domain", r.json?.moreRemaining === true, r.json);
+  inv = JSON.parse(readFileSync(M, "utf8")).inventory;
+  check("keys-file: the unnamed stale entry is untouched by the run", inv["rules-engine-rules/r-2"].status === "stale", inv["rules-engine-rules/r-2"]);
+  r = batch(["--domain", "rules-engine-rules", "--out-dir", OUT, "--bin", FAKE, "--command", DESCRIBE, "--keys-file", KEYS, "--limit", "5"]);
+  check("keys-file: the next chunk takes the remaining named key (the failed one, retried), an unknown key is ignored, and moreRemaining is false", r.code === 0 && r.json?.selected === 1 && r.json?.failed === 1 && r.json?.moreRemaining === false, r.json);
+  writeFileSync(KEYS, JSON.stringify({ not: "an array" }));
+  r = batch(["--domain", "rules-engine-rules", "--out-dir", OUT, "--bin", FAKE, "--command", DESCRIBE, "--keys-file", KEYS]);
+  check("keys-file: a file that is not a JSON array of keys is refused, naming the flag", r.code === 1 && /--keys-file/.test(r.stderr), r.stderr);
+  r = batch(["--domain", "rules-engine-rules", "--out-dir", OUT, "--bin", FAKE, "--command", DESCRIBE, "--keys-file", join(ROOT, "absent-keys.json")]);
+  check("keys-file: an unreadable file is refused, naming the flag", r.code === 1 && /--keys-file/.test(r.stderr), r.stderr);
+  // leave the domain as the resume case left it: r-2 documented again
+  manifest("mark", ["--key", "rules-engine-rules/r-2", "--status", "documented"]);
+}
+
 // ── --upgrade: stub → full overwrite ─────────────────────────────────────────
 const chainsList = join(ROOT, "chains.json");
 writeFileSync(chainsList, JSON.stringify({ data: [{ workflowId: "wf-1", name: "Nightly Chain" }] }));

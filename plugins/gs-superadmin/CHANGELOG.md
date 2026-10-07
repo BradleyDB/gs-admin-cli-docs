@@ -5,6 +5,65 @@ marketplace doesn't pin versions — users get main — so entries describe what
 user who updates, not internal refactors. Entries before 0.8.0 were reconstructed from git
 history when this file was introduced.
 
+## 0.43.4 — 2026-10-06
+
+Dependency answers now see Power List programs (F-487). On a typical tenant most
+journey programs draw participants from a **Power List**, and until now neither
+`/gs-superadmin:deps-report` nor `/gs-superadmin:email-report deps` could say what one
+reads: "what depends on Salesforce Contact" returned no journeys at all, and the
+reports said Power Lists "have no CLI surface". That was false.
+
+**If you installed before 0.43.4: run `/gs-superadmin:refresh` once.** A Power List is a
+hidden rule the CLI can describe but never lists, so your workspace holds none of them
+yet. Refresh now registers every Power List rule your documented programs reference and
+documents it (one `re r describe` per list — a few hundred calls at most, inside one
+login); after that first run it only picks up new ones. Until you run it, the deps reports
+name each unresolved Power List in their caveats, with the remedy. Setup does the same
+on a fresh workspace, so a new install needs nothing extra.
+
+- **Power List sources resolve.** Every `QUERY_BUILDER` participant source carries the
+  id of its rule, and `gs-admin --json re r describe --id <ruleId>` returns the objects,
+  connection and output fields the list's tasks read (an SFDC object through a named
+  connection, a Gainsight object, a merge of earlier tasks). Both deps surfaces attribute
+  those to the program: `--object Contact` and `--connection <your SFDC connection>` now
+  match the journeys that read through a Power List, each row naming the list and the
+  task, and the provenance section carries a Power List detail block. Power List rules
+  are documented into the rules-engine folder beside the Rules Engine rules; the
+  tenant-wide report reads them through the programs and never lists them as rules.
+- **Object identities are canonical, not payload-shaped.** A Power List names a Gainsight
+  object by its GSID; the reports now resolve it through the `data-management` domain's
+  docs — keyed on the object's system name as the KB keys it — so `--object` matches on
+  the system name, the label or the GSID alike, on every row kind (a Power List's objects
+  and fields, a dynamic field, a branch condition), and every row carries the system name
+  with the label beside it — a lookup target under its own identity, never the base
+  object's label. A field read through a relationship path (one hop or several) matches
+  on its own API name. A workspace that never indexed `data-management` gets a caveat
+  saying so. And every report states every Power List rule your programs reference whose
+  doc is not readable, whatever your search terms matched — an absent program is never
+  silent evidence.
+- **What the CLI does not return is said, not guessed.** A Power List's *filter*
+  criteria are not in the payload (`criteriaDetails` is null and `--task-id` is a no-op
+  for this rule type — upstream KI-027), so a match means the list READS the object,
+  never how it filters it; every report says so. A dynamic program's own participant
+  query (`QUERY` source) is returned by no command at all, and is reported as such.
+- **Two more surfaces are scanned on every program:** the dynamic fields in
+  `aoConfiguration` (a `DYNAMIC_QUERY_V2` field names the object and field it reads and
+  carries its own filter conditions; a `SURVEY_QUERY` field names a survey question) and
+  the flow canvas's branch conditions (an Evaluate step's ports: a participant custom
+  field, or a dynamic field by id). On a dynamic program these are the only places its
+  routing logic names objects.
+- **The false text is corrected everywhere it shipped** — the provenance cell, the
+  standing caveat, the README, the email-report skill and the setup skill's Phase 6 note
+  (a Power List is a rule, just not one `re r list` shows; there is still no
+  program → Rules Engine rule edge to draw). `collectionId == ruleId` was also false:
+  on 23% of the measured sources they differ, so the rule id is read, never derived.
+- New script `power-list-gaps.mjs` builds the work list from the program docs on disk;
+  refresh and setup run it. A referenced rule counts as documented only when its doc is
+  readable on disk — a rule the manifest calls documented whose doc is gone, or one whose
+  describe never landed, is re-documented on the next refresh, and a deps report's
+  missing-rule caveat names the programs that reference it. The measured read surface
+  (`data/reader-shapes.json`) gains the keys these readers dereference.
+
 ## 0.43.3 — 2026-09-28
 
 - **The safety hook stops blocking harmless commands that only mention gs-admin.**

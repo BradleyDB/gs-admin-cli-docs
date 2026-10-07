@@ -470,11 +470,14 @@ When you discover new relationships (e.g., a rule writes to a field that a score
   script reports actionTypes it doesn't recognize inside the maps (never silently
   dropped) and flags **dangling measure references** (rule→measure GSIDs resolving to
   no documented scorecard — a tenant hygiene signal worth relaying).
-- **There is no journey → rule participant edge to discover**: Rules Engine rules do
-  not load participants into JO programs — programs draw participants from Power
-  Lists (CSV uploads, ad-hoc queries, or Data Designer / DD-template datasets), never
-  a rule. Trace program → Power List → source from the PowerList config in each
-  program doc instead of hunting for rule references.
+- **There is no journey → Rules Engine rule participant edge to discover**: Rules
+  Engine rules do not load participants into JO programs — programs draw participants
+  from Power Lists (plus CSV uploads, ad-hoc queries, or Data Designer / DD-template
+  datasets), never a rule a user sees. A Power List is itself a hidden rule the CLI
+  describes by the `ruleId` on the program's source; setup/refresh capture those, and
+  the deps reports read what each list draws from (objects, connection, output
+  fields — its filters are not returned by the CLI). Trace program → Power List →
+  source from those docs instead of hunting for rule references.
 
 ---
 
