@@ -879,3 +879,149 @@ export const DESIGNER_DRILLDOWN = {
     },
   },
 };
+
+// ── F-487: Power Lists — the hidden rule behind a QUERY_BUILDER source ───────
+// `re r describe --id <ruleId>` of an ADVANCED_OUTREACH_QUERY_BUILDER rule, the
+// shape measured live 2026-10-06 (CLI 1.0.10, seven rules on one production
+// tenant; all values here fictional, acme). What matters for the readers:
+// data.taskDetails[] sits at the TOP of `data` (not under ruleDetails, where
+// the Rules Engine reader looks); schemaObject is an SFDC API name, a
+// Gainsight object GSID, or a prior task id (a derived merge/filter task);
+// connectionId is a connector GUID, GAINSIGHT_API, or null; every output
+// field's meta names its ORIGINAL object and field (a lookup path lands on the
+// related object — Account via Contact — spelled as the SOQL path from the
+// task's object); criteriaDetails is null and every `_…` derived view is
+// empty — the list's filters are not in the payload (KI-027).
+export const RULE_POWER_LIST = {
+  result: true,
+  data: {
+    ruleDetails: {
+      ruleId: "pl-rule-1", ruleName: "Acme Renewal Contacts", ruleType: "ADVANCED_OUTREACH_QUERY_BUILDER",
+      sourceType: "ADVANCED_OUTREACH_QUERY_BUILDER", active: true, selectedSchemaSource: "DATASET",
+      _ruleType: "ADVANCED_OUTREACH_QUERY_BUILDER", _statusText: "Active",
+      _flatMappings: [], _configTasks: [], _taskDetailRows: [], _taskCriteriaConditions: [], _filterConditions: [], _configActions: [], _actionMappings: [],
+    },
+    actionDetails: [{ actionId: "act-pl-1", actionType: "AO_ADD_PARTICIPANT", ruleId: "pl-rule-1", taskId: null, criteriaId: null, actionInfo: { actionType: "AO_ADD_PARTICIPANT" } }],
+    taskDetails: [
+      {
+        ruleId: "pl-rule-1", taskId: "t1", name: null, datasetName: "contacts", schemaObject: "Contact", connectionId: "conn-sfdc-1", childrenTaskIds: ["t3"],
+        outputFields: [
+          { outputFieldName: "Contact Email", fieldAlias: "Contact_Email", label: "Email", fieldName: "Contact_Email", dataType: "string", objectName: "t1", objectIdentifier: "Contact", meta: { originalObjectName: "Contact", originalFieldName: "Email", originalDataType: "EMAIL", originalSchemaType: "SFDC" } },
+          { outputFieldName: "Account 18 Digit ID", fieldAlias: "Account_18_Digit_ID", label: "Account ➝ Account 18 Digit ID", fieldName: "Account_18_Digit_ID", dataType: "string", objectName: "t1", objectIdentifier: "Contact", meta: { originalObjectName: "Account", originalPathMetaData: { path: { relationshipName: "Account" } }, originalFieldName: "Account.CaseSafeID__c", originalDataType: "STRING", originalSchemaType: "SFDC" } },
+        ],
+      },
+      {
+        ruleId: "pl-rule-1", taskId: "t2", name: null, datasetName: "Fetch from Company", schemaObject: "gsid-company-0001", connectionId: "GAINSIGHT_API", childrenTaskIds: ["t3"],
+        outputFields: [
+          { outputFieldName: "ARR", fieldAlias: "ARR", label: "ARR", fieldName: "ARR", dataType: "number", objectName: "t2", objectIdentifier: "gsid-company-0001", collectionId: "gsid-company-0001", meta: { originalFieldName: "Arr__gc", originalDataType: "CURRENCY", originalObjectName: "gsid-company-0001", originalSchemaType: "MDA", originalBaseObjectName: "gsid-company-0001", originalObjectLabel: "Company" } },
+          // a Gainsight LOOKUP field (F-487 reopen, instance 1b): originalObjectName is the lookup TARGET's GSID while
+          // originalObjectLabel is still the task's BASE object's label — the target's own label comes from the registry
+          { outputFieldName: "Project Score", fieldAlias: "Project_Score", label: "Project Score", fieldName: "Project_Score", dataType: "number", objectName: "t2", objectIdentifier: "gsid-company-0001", meta: { originalFieldName: "Score__gc", originalDataType: "NUMBER", originalObjectName: "gsid-project-fact-0002", originalSchemaType: "MDA", originalBaseObjectName: "gsid-company-0001", originalObjectLabel: "Company", originalPathMetaData: { path: { lookupId: "lk-1", lookupName: "project_health_fact__gc_gsid" } } } },
+          // a MULTI-HOP SFDC path (instance 2): two relationship hops — the field's own API name is the LAST segment
+          { outputFieldName: "Owner Manager Email", fieldAlias: "Owner_Manager_Email", label: "Owner ➝ Manager ➝ Email", fieldName: "Owner_Manager_Email", dataType: "string", objectName: "t2", objectIdentifier: "gsid-company-0001", meta: { originalFieldName: "Owner.Manager.Email", originalDataType: "EMAIL", originalObjectName: "User", originalSchemaType: "SFDC", originalPathMetaData: { path: { relationshipName: "Owner" } } } },
+        ],
+      },
+      {
+        ruleId: "pl-rule-1", taskId: "t3", name: null, datasetName: "Merge", schemaObject: "t1", connectionId: null, childrenTaskIds: [],
+        outputFields: [
+          { outputFieldName: "Contact Email", fieldAlias: "Contact_Email", label: "Contact Email", fieldName: "Contact_Email", dataType: "string", objectName: "t3", objectIdentifier: "t1", name: "t1.Contact_Email", entity: "t1", meta: { originalDataType: "EMAIL", originalFieldName: "Email", originalObjectName: "Contact", originalSchemaType: "SFDC" } },
+        ],
+      },
+    ],
+    criteriaDetails: null,
+    gsRuleMetaActionDetails: null,
+  },
+};
+
+// The data-management lane's docs (F-487 reopen): a full `dm o describe` doc
+// (the CLI's detail root `$.data`: objectId, name, dbName, label, group,
+// dataStore, columns, … — measured on a live KB 2026-10-06; fictional values)
+// and a shallow-crawl stub's `dm o list` row (`$.data.liteObjects[]`: name,
+// label, group, dataStoreType, recordCount — the CLI manifest's table
+// columns; the row carries no objectId). The registry reads both.
+export const DM_OBJECT_COMPANY = {
+  result: true,
+  data: {
+    objectId: "gsid-company-0001", name: "company", dbName: "company_acme", label: "Company", description: "Acme company master",
+    schemaId: "sch-1", group: "STANDARD", dataStore: "HAPOSTGRES", cdcStore: false, primaryKeys: ["gsid"], lowVolume: false, assetType: "OBJECT",
+    columns: [{ name: "Gsid", label: "GSID", type: "GSID" }, { name: "Arr__gc", label: "ARR", type: "CURRENCY" }, { name: "Name", label: "Name", type: "STRING" }],
+  },
+};
+export const DM_OBJECT_PROJECT_FACT = {
+  result: true,
+  data: {
+    objectId: "gsid-project-fact-0002", name: "project_health_fact__gc", dbName: "project_health_fact__gc", label: "Project Health Fact", description: "",
+    schemaId: "sch-2", group: "CUSTOM", dataStore: "HAPOSTGRES", columns: [{ name: "Gsid", label: "GSID", type: "GSID" }, { name: "Score__gc", label: "Score", type: "NUMBER" }],
+  },
+};
+export const DM_LIST_ROW = { name: "survey_participant", label: "Survey Participant", group: "SYSTEM", dataStoreType: "HAPOSTGRES", recordCount: 12, modifiedDateStr: "2026-09-01 00:00:00 UTC" };
+
+// A program on a Power List (QUERY_BUILDER) source — `ruleId` is a direct key
+// on the source and here DIFFERS from the collection id (a program version
+// that kept the list name but got a new rule, the 23% case) — plus the two
+// program-level surfaces F-487 reads on every source type: a DYNAMIC_QUERY_V2
+// dynamic field with its own filter conditions, a SURVEY_QUERY dynamic field,
+// and an Evaluate node whose outPorts carry branch conditions on a participant
+// custom field (FIELD) and on the dynamic field (DYNAMIC_QUERY_V2, by id).
+export const JOURNEY_QB_AO = {
+  advancedOutreachId: "prog-qb", advancedOutreachName: "Acme Renewal Outreach",
+  advancedOutreachStatus: ["PROCESSING"], advancedOutreachModel: "DYNAMIC_PROGRAM", advancedOutreachModelName: "Dynamic Program",
+  stepJson: JSON.stringify({
+    nodes: [
+      { type: "START", id: "n1", name: "Audience", nodeType: "START", properties: { x: 1, y: 2 } },
+      {
+        type: "EVALUATE", id: "n2", name: "Evaluate", nodeType: "EVALUATE",
+        outPorts: [
+          {
+            portId: "p1", name: "Open Projects", expression: "A AND B", outComeEvent: "EVALUATE", defaultPath: false,
+            conditions: [
+              { fieldType: "STATIC_CONDITION", alias: "A", left: { type: "FIELD", label: "Stage", dataType: "string", properties: { comparisonOperator: "IN", rightOperandType: "VALUE", filterValue: { value: ["closed won"] } }, fieldConfig: { objectName: "ao_participant_custom_fields", field: "cf-stage-1" } }, operator: "IN", right: { type: "VALUE", dataType: "string", fieldConfig: { value: ["closed won"] } } },
+              { fieldType: "CREATE_CONDITION", alias: "B", left: { type: "DYNAMIC_QUERY_V2", label: "Project Status", dataType: "picklist", properties: { comparisonOperator: "NOT_IN" }, fieldConfig: { fieldId: "dyn-project-status" } }, operator: "NOT_IN", right: { type: "VALUE", dataType: "picklist", fieldConfig: { value: ["Completed"] } } },
+            ],
+          },
+          { portId: "p2", name: "Everyone else", expression: "", defaultPath: true, conditions: [] },
+        ],
+      },
+    ],
+  }),
+  aoConfiguration: JSON.stringify({
+    emailConfig: {},
+    dynamicFields: [
+      {
+        criterionType: "DYNAMIC_QUERY_V2", fieldId: "dyn-project-status", label: "Project Status",
+        fieldInfo: { type: "BASE_FIELD", fieldName: "Status__c", key: "Status__c", dataType: "PICKLIST", label: "Status", objectName: "Project__c", objectLabel: "Project", objectId: "Project__c" },
+        filters: {
+          conditions: [
+            { leftOperand: { type: "BASE_FIELD", fieldName: "Id", label: "Account ID", dataType: "string", objectName: "Account", objectLabel: "Account", key: "RelatedAccount__c_Id" }, filterAlias: "A", comparisonOperator: "EQ", rightOperandType: "FIELD", filterField: { fieldName: "cf-acct-1", label: "B_Related Account ID" } },
+          ],
+          expression: "A",
+        },
+      },
+      {
+        criterionType: "SURVEY_QUERY", fieldId: "dyn-survey-1", label: "SURVEY_QUERY_dyn-survey-1",
+        fieldInfo: { dataType: "string", label: "SURVEY_QUERY_dyn-survey-1", type: "field", entity: "Survey User Answer", questionId: "q-nps-1", answerId: ["a-1", "a-2"], surveyId: "svy-renewal-1" },
+        report: { reportType: "NEW-STACK", reportMaster: { ReportInfo: [] } },
+      },
+      // a dynamic field on a GAINSIGHT object, named by its system name (F-487
+      // second reopen, instance 1b): canonicalized like every other row kind,
+      // so a GSID term reaches the program through it
+      {
+        criterionType: "DYNAMIC_QUERY_V2", fieldId: "dyn-company-arr", label: "Company ARR",
+        fieldInfo: { type: "BASE_FIELD", fieldName: "Arr__gc", key: "Arr__gc", dataType: "CURRENCY", label: "ARR", objectName: "company", objectLabel: "Company", objectId: "gsid-company-0001" },
+        filters: { conditions: [], expression: "" },
+      },
+    ],
+    participantSyncScheduleDisabled: false,
+  }),
+  participantSourceConfigurations: [{
+    participantSourceConfigurationId: "cfg-qb-1",
+    participantSourceType: "QUERY_BUILDER",
+    participantSourceName: "Acme Renewal Contacts",
+    participantSourceCollectionId: "pl-coll-old-1",
+    ruleId: "pl-rule-1",
+    participantOperationType: "ADD_ALL_PARTICIPANT_IN_POWER_LIST_AND_ANY_IN_FUTURE",
+    mappingInformation: JSON.stringify({ recipientEmailAddress: "Contact_Email", sfdcAccountId: "Account_18_Digit_ID" }),
+    customMappings: JSON.stringify({ "cf-stage-1": { fieldName: "Stage", disallowNulls: false } }),
+    honorPowerListRefreshConfig: false,
+  }],
+};

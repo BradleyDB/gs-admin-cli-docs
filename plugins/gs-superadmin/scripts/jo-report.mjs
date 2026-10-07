@@ -46,7 +46,23 @@
 // - participantSourceConfigurations[]: mappingInformation (stringified map),
 //   customMappings (stringified map keyed by field gsid — normalized to an
 //   array here), config (stringified; filters.conditions[] entries wrap the
-//   field in leftOperand{objectName, fieldName, label}).
+//   field in leftOperand{objectName, fieldName, label}), and — on a
+//   QUERY_BUILDER (Power List) source — `ruleId`, a DIRECT key naming the
+//   hidden rule the list is built on (F-487; measured 2026-10-06 over every
+//   source row of a production tenant: 100% of QUERY_BUILDER rows carry it,
+//   and on 23% it differs from participantSourceCollectionId — program
+//   versions share a list name but not a rule id — so the rule id is read,
+//   never derived from the collection id).
+// - aoConfiguration (stringified) .dynamicFields[]: the program's calculated
+//   fields — DYNAMIC_QUERY_V2 carries the object + field it reads
+//   (fieldInfo{objectName, objectLabel, fieldName, label}) and its own
+//   filters.conditions[]; SURVEY_QUERY carries a survey/question/answer
+//   reference and no object (F-487).
+// - stepJson (flow canvas) nodes[].outPorts[].conditions[]: the branch
+//   conditions of an Evaluate/decision node — `left` is a participant custom
+//   field (type FIELD: fieldConfig{objectName, field}) or a dynamic field
+//   (type DYNAMIC_QUERY_V2: fieldConfig{fieldId}, joined to dynamicFields by
+//   id at report time) (F-487).
 // Every embedded layer is parsed via embedded(): string → JSON.parse,
 // object/array → as-is, so both raw and compacted doc generations parse
 // (requirement confirmed S1, 2026-07-12). Re-verify after any CLI upgrade.
@@ -68,7 +84,12 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 // is written INTO the index (`domains`) beside the build's `warnings`, so the
 // four report modes — which read the index, never the KB folders — can carry
 // what the build saw (F-429 second pass, consumer-parity; writeModeReport).
-const { lanes: JO_LANES, defaults: JO_DEFAULTS } = laneTable({ journey: "journey", templates: "templates" });
+// `rules`, `objects` and `datasets` ride along (F-487): the deps mode resolves
+// a Power List source to its rule doc in the rules lane, canonicalizes the
+// Gainsight objects it names through the data-management lane, and looks a
+// Data Designer source up in the datasets lane — all read from the index like
+// the other two: the report modes read the index, never the KB folders.
+const { lanes: JO_LANES, defaults: JO_DEFAULTS } = laneTable({ journey: "journey", templates: "templates", rules: "rules", objects: "objects", datasets: "datasets" });
 function resolveJoDirs(kbDir, inventory, warnings) {
   let domainsIndexed = {};
   try {
@@ -189,6 +210,49 @@ const normCondition = (c) => {
     fieldLabel: c.fieldLabel ?? lo.fieldLabel ?? lo.label ?? null,
     comparisonOperator: c.comparisonOperator ?? null,
     filterAlias: c.filterAlias ?? c.alias ?? null,
+  };
+};
+
+// One aoConfiguration.dynamicFields[] entry → the C1 dynamic-field shape
+// (F-487). DYNAMIC_QUERY_V2 names the object + field it reads in fieldInfo
+// and carries its own filter conditions; SURVEY_QUERY names a survey question
+// (fieldInfo.entity is the answer object's display name, surveyId/questionId
+// the reference) and no object. Measured on live payloads 2026-10-06.
+const normDynamicField = (d) => {
+  const fi = d?.fieldInfo && typeof d.fieldInfo === "object" ? d.fieldInfo : {};
+  const conds = d?.filters?.conditions;
+  const survey = fi.surveyId != null || fi.questionId != null
+    ? { surveyId: fi.surveyId ?? null, questionId: fi.questionId ?? null }
+    : null;
+  return {
+    fieldId: d.fieldId != null ? String(d.fieldId) : null,
+    criterionType: d.criterionType ?? null,
+    label: d.label ?? fi.label ?? null,
+    objectName: fi.objectName ?? (survey ? fi.entity ?? null : null),
+    objectLabel: fi.objectLabel ?? null,
+    fieldName: fi.fieldName ?? null,
+    fieldLabel: fi.label ?? null,
+    survey,
+    conditions: Array.isArray(conds) ? conds.filter((x) => x && typeof x === "object").map(normCondition) : [],
+  };
+};
+
+// One flow-canvas outPort condition → the C1 branch-condition shape (F-487).
+// `left.type` FIELD is a participant custom field (fieldConfig{objectName,
+// field}); DYNAMIC_QUERY_V2 is a dynamic field by id (fieldConfig{fieldId}),
+// resolved against the program's dynamicFields at report time, never here.
+const normBranchCondition = (c, port) => {
+  const left = c?.left && typeof c.left === "object" ? c.left : {};
+  const fc = left.fieldConfig && typeof left.fieldConfig === "object" ? left.fieldConfig : {};
+  return {
+    port: port?.name ?? null,
+    alias: c.alias ?? null,
+    operator: c.operator ?? left.properties?.comparisonOperator ?? null,
+    leftType: left.type ?? null,
+    label: left.label ?? null,
+    objectName: fc.objectName ?? null,
+    fieldName: fc.field ?? null,
+    fieldId: fc.fieldId != null ? String(fc.fieldId) : null,
   };
 };
 
@@ -313,6 +377,7 @@ function classicStep(s, i, errors) {
     tokens: [],
     boundAssets: [],
     timer: null,
+    branchConditions: [], // classic steps carry none — one step shape for both generations (F-487)
   };
   if (s.stepType === "TIMER")
     step.timer = { timerType: s.timerType ?? null, timerValue: s.timerValue ?? null, uiTimerValue: s.uiTimerValue ?? null };
@@ -341,7 +406,13 @@ function nodeStep(n, i, errors) {
     tokens: [],
     boundAssets: [],
     timer: embedded(n.exitTimer, `steps[${i}].exitTimer`, errors) ?? n.exitTimer ?? null,
+    branchConditions: [],
   };
+  // Branch conditions (F-487): the Evaluate node's exclusion/routing logic —
+  // on a QUERY-source program the only place its participant criteria show.
+  for (const port of Array.isArray(n.outPorts) ? n.outPorts : [])
+    for (const c of Array.isArray(port?.conditions) ? port.conditions : [])
+      if (c && typeof c === "object") step.branchConditions.push(normBranchCondition(c, port));
   applyEmailRefs(step, embedded(n.actionConfig, `steps[${i}].actionConfig`, errors), {
     nodeSurveyId: n.surveyIdFromEmailActionV2 ?? null,
     where: `steps[${i}]`,
@@ -381,6 +452,7 @@ export function parseJourneyDoc(md, docPath = "") {
     schedules: [],
     steps: [],
     sources: [],
+    dynamicFields: [],
   };
 
   const fence = extractFencedJson(md);
@@ -418,7 +490,11 @@ export function parseJourneyDoc(md, docPath = "") {
     if (Array.isArray(list)) for (const s of list) if (s && typeof s === "object") entry.schedules.push(normSchedule(s));
   };
   const aoConf = embedded(ao.aoConfiguration, "aoConfiguration", parseErrors);
-  if (aoConf && typeof aoConf === "object") addSchedules(aoConf.scheduleInfo, "aoConfiguration.scheduleInfo");
+  if (aoConf && typeof aoConf === "object") {
+    addSchedules(aoConf.scheduleInfo, "aoConfiguration.scheduleInfo");
+    if (Array.isArray(aoConf.dynamicFields))
+      entry.dynamicFields = aoConf.dynamicFields.filter((d) => d && typeof d === "object").map(normDynamicField);
+  }
   addSchedules(ao.scheduleInfo, "scheduleInfo");
 
   const sj = embedded(ao.stepJson, "stepJson", parseErrors);
@@ -438,6 +514,9 @@ export function parseJourneyDoc(md, docPath = "") {
       participantSourceCollectionId: c.participantSourceCollectionId ?? null,
       participantSourceType: c.participantSourceType ?? null,
       participantOperationType: c.participantOperationType ?? null,
+      // The Power List's rule id, verbatim (F-487) — the one pointer that
+      // resolves a QUERY_BUILDER source; null on every other source type.
+      ruleId: c.ruleId != null ? String(c.ruleId) : null,
       mappings: { standard: {}, custom: [] },
       conditions: [],
     };

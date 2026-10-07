@@ -114,6 +114,15 @@ import {
   addNearMisses,
   aliasMatchingLine,
   aliasFieldCaveats,
+  // F-487: Power List (QUERY_BUILDER) sources resolve to their rule doc in
+  // the rules lane — the resolver, the payload discriminator and the source
+  // classifier are the JO deps mode's, so the two surfaces read one shape.
+  makePowerListResolver,
+  makeObjectResolver,
+  isPowerListPayload,
+  powerListRuleId,
+  classifySource,
+  POWER_LIST_RULE_TYPE,
 } from "./jo-report-deps.mjs";
 
 // ── domain constants ─────────────────────────────────────────────────────────
@@ -132,6 +141,7 @@ const { lanes: LANE_LIST_PATHS, defaults: DOMAINS } = laneTable({
   jobs: "jobs",
   designers: "designers",
   datasets: "datasets",
+  objects: "objects", // the Gainsight object registry (F-487 reopen) — read, never scanned as a dependent domain
   connections: "connections",
   scorecards: "scorecards",
   extActions: "extActions",
@@ -196,6 +206,9 @@ export const AREA_DOMAIN = {
  * @property {?string}  fieldName
  * @property {?string}  fieldLabel
  * @property {string[]} altFields    aliases / custom-mapping strings
+ * @property {string[]} [altObjects] other spellings of the object (a Gainsight
+ *                                   object's GSID and dbName beside its system
+ *                                   name — F-487 reopen: identities are canonical)
  * @property {?{id: ?string, name: ?string, type: ?string}} connection
  * @property {?{id: ?string, name: ?string}} extAction
  * @property {string}   detail
@@ -1009,14 +1022,22 @@ export function extractDatasetUsages(payload) {
 // JO program (C1 entry from parseJourneyDoc) → generic rows, via ER-7's own
 // candidate extractor so the two views can never disagree about what a
 // participant source references. C1 mapping rows carry no object names
-// (ER-7's standing caveat) — that honesty note is inherited here.
-export function journeyUsageRows(entry) {
-  return usageCandidates(entry).map((c) =>
+// (ER-7's standing caveat) — that honesty note is inherited here. Since
+// F-487 the candidates also cover a Power List source's objects, connection
+// and output fields (through `powerLists`, the rules-lane resolver), the
+// program's dynamic fields and its branch conditions — so a journey row can
+// carry a connection (a Power List task's) and an object label (a Gainsight
+// object's) like a rule row does.
+export function journeyUsageRows(entry, { powerLists = null, objects = null } = {}) {
+  return usageCandidates(entry, { powerLists, objects }).map((c) =>
     row(c.usage, {
       objectName: c.objectName ?? null,
+      objectLabel: c.objectLabel ?? null,
+      altObjects: Array.isArray(c.objectAliases) ? c.objectAliases : [],
       fieldName: c.fieldName ?? null,
       fieldLabel: c.fieldLabel ?? null,
       altFields: Array.isArray(c.strings) ? c.strings : [],
+      connection: c.connection ? { id: c.connection.id ?? null, name: c.connection.name ?? null, type: c.connection.type ?? null } : null,
       detail: `source "${c.source}" — ${c.detail}`,
     })
   );
@@ -1197,7 +1218,7 @@ export function matchRow(r, { objectTerms = [], fieldTerms = [], connTerms = [],
   /** @type {MatchHit[]} */
   const matches = [];
   for (const t of objectTerms)
-    if (eqTerm(r.objectName, t.lowered) || eqTerm(r.objectLabel, t.lowered)) {
+    if (eqTerm(r.objectName, t.lowered) || eqTerm(r.objectLabel, t.lowered) || (Array.isArray(r.altObjects) && r.altObjects.some((a) => eqTerm(a, t.lowered)))) {
       matches.push({ kind: "object", term: t.term });
       break;
     }
@@ -1399,6 +1420,22 @@ export async function run(argv) {
   }
   const extNameById = new Map(extRegistry.filter((ea) => ea.id != null).map((ea) => [String(ea.id), ea.name]));
   const connNameById = new Map(registry.filter((c) => c.id != null).map((c) => [String(c.id), c.name]));
+  // Connection type by id too (F-487): a Power List task records only the
+  // connection's GUID; the connectors lane says it is SFDC/SNOWFLAKE/…, which
+  // is what a type-level --connection term matches on.
+  const connTypeById = new Map(registry.filter((c) => c.id != null).map((c) => [String(c.id), c.type]));
+
+  // Power List rule docs (F-487): the rules lane holds them beside the Rules
+  // Engine rules (one describe command, one folder — refresh/setup register
+  // them from the program docs); one resolver serves every journey doc, and
+  // its `problems` list is the caveat's input.
+  const powerLists = makePowerListResolver({ kbDir, folder: laneDirs.rules });
+  // The Gainsight object registry (F-487 reopen): GSID ↔ system name ↔ label
+  // from the data-management lane, so a Power List's objects match on every
+  // spelling the KB records and carry their own label.
+  const objects = makeObjectResolver({ kbDir, folder: laneDirs.objects });
+  const plStats = { sources: 0, resolved: 0, querySources: 0, programsWithPowerLists: 0 };
+  const missingRefPrograms = new Map(); // ruleId → Set of program ids that reference an unresolved rule
 
   // Alias pattern in force (ER-22/ER-23; DS-27): explicit --alias-prefix wins
   // — an invalid EXPLICIT regex fails loudly, never degrades silently —
@@ -1447,7 +1484,10 @@ export async function run(argv) {
     // A domain whose parsed docs all yield nothing is the signature of a
     // reader that no longer understands the payload shape (F-342/F-343 were
     // exactly that) — it must surface as a caveat, never as a confident zero.
-    const stats = { docs: 0, parsed: 0, stubs: 0, yielding: 0, blindFieldRows: 0, /** @type {Record<string, number>} */ blindByReason: {}, matchedAssets: 0, rows: 0 };
+    // powerListDocs (F-487): rules-lane docs that are Power List rules — read
+    // through the journeys that reference them, never as Rules Engine assets
+    // (the list is not a rule a user sees), and not a parse miss.
+    const stats = { docs: 0, parsed: 0, stubs: 0, powerListDocs: 0, yielding: 0, blindFieldRows: 0, /** @type {Record<string, number>} */ blindByReason: {}, matchedAssets: 0, rows: 0 };
     const assets = [];
     for (const path of listDocs(spec.dir)) {
       stats.docs++;
@@ -1464,13 +1504,43 @@ export async function run(argv) {
           continue;
         }
         stats.parsed++;
+        // Power List accounting (F-487): how many of this program's sources
+        // are Power Lists, and how many of those resolved to a rule doc
+        let plHere = 0;
+        for (const s of entry.sources) {
+          const kind = classifySource(s);
+          if (kind === "query") plStats.querySources++;
+          if (kind !== "power-list") continue;
+          plHere++;
+          plStats.sources++;
+          const rid = powerListRuleId(s);
+          const pl = powerLists(rid);
+          if (pl && !pl.problem) plStats.resolved++;
+          else if (rid != null) {
+            if (!missingRefPrograms.has(rid)) missingRefPrograms.set(rid, new Set());
+            missingRefPrograms.get(rid).add(entry.id ?? path);
+          }
+        }
+        if (plHere) plStats.programsWithPowerLists++;
         out = {
           asset: { id: entry.id, name: entry.name, status: entry.status ? `${entry.status} (kb)` : null },
-          rows: journeyUsageRows(entry),
+          rows: journeyUsageRows(entry, { powerLists, objects }),
         };
+        // A Power List task's connection is a bare GUID — name and type it
+        // from the connectors lane (matching never depends on this; an
+        // unresolved id renders as-is), the way rule callout rows are.
+        for (const r of out.rows) {
+          if (!r.connection || r.connection.id == null) continue;
+          if (r.connection.name == null) r.connection.name = connNameById.get(String(r.connection.id)) ?? null;
+          if (r.connection.type == null) r.connection.type = connTypeById.get(String(r.connection.id)) ?? null;
+        }
       } else {
         const payload = parseDocJson(text);
         if (!payload) continue;
+        if (domainKey === "rules" && isPowerListPayload(payload)) {
+          stats.powerListDocs++;
+          continue;
+        }
         stats.parsed++;
         out = spec.extract(payload);
         // Callout/action-step rows come out of the extractor with bare GUIDs
@@ -1805,8 +1875,10 @@ export async function run(argv) {
   const caveats = [];
   for (const k of domainKeys) {
     const { stats } = results[k];
-    // journey stubs are not payload failures — they carry their own caveat below
-    const miss = stats.docs - stats.parsed - stats.stubs;
+    // journey stubs are not payload failures — they carry their own caveat
+    // below; Power List rule docs in the rules lane are read through the
+    // journeys (F-487), not misses either
+    const miss = stats.docs - stats.parsed - stats.stubs - stats.powerListDocs;
     if (miss > 0)
       caveats.push(`${DOMAIN_TABLE[k].title}: ${miss} of ${stats.docs} doc(s) had no parseable describe payload — their usage is invisible to this scan.`);
     // Yield honesty (F-343, the F-228 pattern one layer up): every doc PARSED
@@ -1866,7 +1938,46 @@ export async function run(argv) {
   );
   if (terms.objectTerms.length)
     caveats.push(
-      "JO participant-source mapping rows carry no object names (C1 fact, inherited from the deps mode) — a journey using a matched object only via mappings shows under --field terms or in the live section, never under --object."
+      "JO participant-source mapping rows carry no object names (C1 fact, inherited from the deps mode) — a journey using a matched object only via a CSV or Data Designer source's mappings shows under --field terms or in the live section, never under --object. " +
+        "Journey rows that DO carry objects: filter conditions, Power List task objects and output fields, dynamic fields and branch conditions (F-487)."
+    );
+  // Power Lists (F-487): what resolved, what did not, and the standing
+  // limit — one aggregate caveat per state, never one line per program on a
+  // tenant-wide scan (hundreds of programs share a few dozen lists).
+  if (plStats.sources > 0) {
+    const problems = powerLists.problems;
+    if (problems.length) {
+      // the programs that reference the UNRESOLVED rules, never every Power
+      // List program in the KB (F-487 reopen, instance 4)
+      const affected = new Set();
+      for (const s of missingRefPrograms.values()) for (const id of s) affected.add(id);
+      const sample = problems.slice(0, 8).map((p) => `\`${p.ruleId}\`${p.reason === "missing" ? "" : ` (${p.reason})`} (${missingRefPrograms.get(p.ruleId)?.size ?? 0} program(s))`).join(", ");
+      caveats.push(
+        `${problems.length} Power List rule(s) referenced by ${affected.size} journey program(s) have no readable KB doc under ${laneDirs.rules}/ ` +
+          `(${plStats.resolved} of ${plStats.sources} Power List sources resolved): ${sample}${problems.length > 8 ? `, … (${problems.length - 8} more)` : ""} — ` +
+          `those programs' Power List objects, connections and output fields are NOT in this report, so an --object or --connection search cannot reach them through that source. ` +
+          `Run \`/gs-superadmin:refresh\` — its Power List step re-documents every referenced rule whose doc is not readable on disk, whatever the manifest says — then re-run.`
+      );
+    }
+    if (objects.size === 0)
+      caveats.push(
+        `Gainsight objects named by Power Lists could NOT be canonicalized: the KB holds no readable data-management doc ` +
+          `(folder ${laneDirs.objects}/: ${objects.stats.folderPresent ? `${objects.stats.docs} doc(s), ${objects.stats.parsed} with an object identity` : "absent"}) — ` +
+          `those rows carry the GSID the payload names and only a GSID or payload-label term matches them; index the data-management domain (setup) and re-run for system-name matching.`
+      );
+    caveats.push(
+      `Power List sources (${plStats.sources}, ${plStats.resolved} resolved) contribute the objects, connection and output fields their rule's tasks READ ` +
+        `(the rule is hidden from \`re r list\`; its ${POWER_LIST_RULE_TYPE} doc is captured by refresh/setup from the program's \`ruleId\`); the list's FILTER criteria are not ` +
+        `returned by the CLI (upstream KI-027), so a match means the list reads the object, never how it filters it.`
+    );
+  }
+  if (plStats.querySources > 0)
+    caveats.push(
+      `${plStats.querySources} journey source(s) are a dynamic program's own participant query (QUERY): no CLI command returns the query, so only those programs' dynamic fields and branch conditions were scanned.`
+    );
+  if (results.rules.stats.powerListDocs > 0)
+    caveats.push(
+      `Rules Engine: ${results.rules.stats.powerListDocs} doc(s) under ${laneDirs.rules}/ are Power List rules (${POWER_LIST_RULE_TYPE}) — read through the journey programs that reference them, not listed as Rules Engine assets.`
     );
   if (results.datasets.stats.matchedAssets > 0)
     caveats.push(
@@ -2094,6 +2205,14 @@ export async function run(argv) {
       ]),
       ["connectionsRegistry", registry.length],
       ["connectionsMatched", matchedConnections.length],
+      // F-487: Power List resolution on the JSON surface too
+      ["journeyPowerListSources", plStats.sources],
+      ["journeyPowerListsResolved", plStats.resolved],
+      ["journeyPowerListRulesMissing", powerLists.problems.length],
+      ["objectRegistryDocs", objects.stats.docs],
+      ["objectRegistrySize", objects.size],
+      ["journeyQuerySources", plStats.querySources],
+      ["rulesPowerListDocs", results.rules.stats.powerListDocs],
       ["externalActionsRegistry", extRegistry.length],
       ["externalActionsMatched", matchedExtActions.length],
       // per-lane docs-vs-parsed honesty on the JSON surface too (F-388) —

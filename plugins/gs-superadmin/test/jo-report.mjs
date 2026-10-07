@@ -71,7 +71,7 @@ function check(label, cond, detail) {
 // The classic-generation builders (emailAction, makeAo) and the flow-canvas
 // nodes AO live in the shared reader payload corpus
 // (test/fixtures/reader-payloads.mjs) — the tracer parses the same docs.
-import { makeAo, JOURNEY_NODES_AO } from "./fixtures/reader-payloads.mjs";
+import { makeAo, JOURNEY_NODES_AO, JOURNEY_QB_AO } from "./fixtures/reader-payloads.mjs";
 
 /** @param {*} payload  @param {{id: string, name: string, pretty?: boolean, fenceBody?: string, h1?: string, fence?: boolean}} opts
  *  `h1` defaults to the name (the writer's shape); `fence: false` renders a fence-less metadata doc. */
@@ -362,15 +362,15 @@ const idx = loadIndex(OUT1);
   check("C1: slug/baseUrl/environment from manifest", idx.slug === "fixture-tenant" && idx.baseUrl === "https://fixture-tenant.example.com" && idx.environment === "sandbox", idx.slug);
   const p1 = idx.programs["prog-1"];
   const pKeys = Object.keys(p1 ?? {}).sort();
-  check("C1: program entry field list", JSON.stringify(pKeys) === JSON.stringify(["depth", "docPath", "id", "lastVerified", "model", "modelName", "name", "schedules", "sources", "startDate", "status", "statusSource", "steps"]), pKeys);
+  check("C1: program entry field list (+dynamicFields, F-487)", JSON.stringify(pKeys) === JSON.stringify(["depth", "docPath", "dynamicFields", "id", "lastVerified", "model", "modelName", "name", "schedules", "sources", "startDate", "status", "statusSource", "steps"]), pKeys);
   const sKeys = Object.keys(p1?.steps?.[0] ?? {}).sort();
-  check("C1 v2: step entry field list (+tokens, +boundAssets)", JSON.stringify(sKeys) === JSON.stringify(["actionType", "boundAssets", "emailTemplateId", "emailTemplateName", "order", "outboundAction", "stepId", "stepName", "stepType", "timer", "tokens", "variantTemplateIds"]), sKeys);
+  check("C1 v2: step entry field list (+tokens, +boundAssets, +branchConditions)", JSON.stringify(sKeys) === JSON.stringify(["actionType", "boundAssets", "branchConditions", "emailTemplateId", "emailTemplateName", "order", "outboundAction", "stepId", "stepName", "stepType", "timer", "tokens", "variantTemplateIds"]), sKeys);
   const tokKeys = Object.keys(p1?.steps?.[1]?.tokens?.[0] ?? {}).sort();
   check("C1 v2: step token entry field list", JSON.stringify(tokKeys) === JSON.stringify(["fieldId", "fieldName", "kind", "label", "objectName", "survey", "tokenKey"]), tokKeys);
   const schedKeys = Object.keys(p1?.schedules?.[0] ?? {}).sort();
   check("C1: schedule entry field list", JSON.stringify(schedKeys) === JSON.stringify(["cronExpression", "jobType", "lastRunSuccess", "lastSuccessTime", "nextRunTime", "runningNow", "scheduleType", "timeZoneName"]), schedKeys);
   const srcKeys = Object.keys(p1?.sources?.[0] ?? {}).sort();
-  check("C1 v2: source entry field list (+3 provenance fields)", JSON.stringify(srcKeys) === JSON.stringify(["conditions", "configId", "mappings", "name", "participantOperationType", "participantSourceCollectionId", "participantSourceType", "type"]), srcKeys);
+  check("C1 v2: source entry field list (+3 provenance fields, +ruleId F-487)", JSON.stringify(srcKeys) === JSON.stringify(["conditions", "configId", "mappings", "name", "participantOperationType", "participantSourceCollectionId", "participantSourceType", "ruleId", "type"]), srcKeys);
   const condKeys = Object.keys(p1?.sources?.[0]?.conditions?.[0] ?? {}).sort();
   check("C1: condition entry field list", JSON.stringify(condKeys) === JSON.stringify(["comparisonOperator", "fieldLabel", "fieldName", "filterAlias", "objectName"]), condKeys);
   const tKeys = Object.keys(idx.templates["tpl-aaa"] ?? {}).sort();
@@ -704,6 +704,36 @@ check("isActive: PROCESSING only by default, PAUSE via includePaused", isActive(
   check("dispatcher: unknown mode exits 1 with usage", bad.status === 1 && /usage/.test(bad.stderr), { status: bad.status, stderr: bad.stderr });
   const noFlags = spawnSync(process.execPath, [JO_REPORT, "index"], { encoding: "utf8" });
   check("dispatcher: index without --kb/--out exits 1 with usage", noFlags.status === 1 && /usage/.test(noFlags.stderr), { status: noFlags.status, stderr: noFlags.stderr });
+}
+
+// ── F-487: a Power List source's ruleId, the program's dynamic fields, and the
+//    flow canvas's branch conditions — the three surfaces the deps tools read ──
+{
+  const doc = journeyDoc({ result: true, data: { advancedOutreach: JOURNEY_QB_AO } }, { id: "prog-qb", name: "Acme Renewal Outreach" });
+  const { entry, parseErrors } = parseJourneyDoc(doc, "kb/journey/prog-qb.md");
+  check("F-487: no parse errors on the Power List program", parseErrors.length === 0, parseErrors);
+  const src = entry.sources[0];
+  check("F-487: QUERY_BUILDER source carries ruleId verbatim, distinct from the collection id (never derived)", src?.ruleId === "pl-rule-1" && src?.participantSourceCollectionId === "pl-coll-old-1" && src?.participantSourceType === "QUERY_BUILDER", src);
+  check("F-487: a source without the key reads ruleId null (every other type)", parseJourneyDoc(journeyDoc(payload1, { id: "prog-1", name: "Test Program" }), "x.md").entry.sources[0]?.ruleId === null, null);
+  const dyn = entry.dynamicFields;
+  check("F-487: dynamicFields — DYNAMIC_QUERY_V2 names its object + field and carries its own filter conditions (leftOperand unwrapped)",
+    dyn.length === 3 && dyn[0].fieldId === "dyn-project-status" && dyn[0].criterionType === "DYNAMIC_QUERY_V2" && dyn[0].label === "Project Status" &&
+      dyn[0].objectName === "Project__c" && dyn[0].objectLabel === "Project" && dyn[0].fieldName === "Status__c" && dyn[0].fieldLabel === "Status" && dyn[0].survey === null &&
+      dyn[0].conditions.length === 1 && dyn[0].conditions[0].objectName === "Account" && dyn[0].conditions[0].fieldName === "Id" && dyn[0].conditions[0].comparisonOperator === "EQ" && dyn[0].conditions[0].filterAlias === "A",
+    dyn[0]);
+  check("F-487: dynamicFields — SURVEY_QUERY names the survey question (entity as the object, no field)",
+    dyn[1].criterionType === "SURVEY_QUERY" && dyn[1].objectName === "Survey User Answer" && dyn[1].fieldName === null && dyn[1].survey?.surveyId === "svy-renewal-1" && dyn[1].survey?.questionId === "q-nps-1" && dyn[1].conditions.length === 0,
+    dyn[1]);
+  const bc = entry.steps[1]?.branchConditions ?? [];
+  check("F-487: branch conditions — one per outPort condition, port + alias + operator kept; FIELD names the participant custom field, DYNAMIC_QUERY_V2 names the dynamic field by id",
+    bc.length === 2 && bc[0].port === "Open Projects" && bc[0].alias === "A" && bc[0].operator === "IN" && bc[0].leftType === "FIELD" && bc[0].label === "Stage" && bc[0].objectName === "ao_participant_custom_fields" && bc[0].fieldName === "cf-stage-1" && bc[0].fieldId === null &&
+      bc[1].alias === "B" && bc[1].operator === "NOT_IN" && bc[1].leftType === "DYNAMIC_QUERY_V2" && bc[1].fieldId === "dyn-project-status" && bc[1].objectName === null && bc[1].label === "Project Status",
+    bc);
+  check("F-487: a default port with no conditions contributes nothing; START node carries an empty list", entry.steps[0]?.branchConditions.length === 0, entry.steps[0]);
+  const dKeys = Object.keys(dyn[0]).sort();
+  check("F-487: dynamic-field entry field list", JSON.stringify(dKeys) === JSON.stringify(["conditions", "criterionType", "fieldId", "fieldLabel", "fieldName", "label", "objectLabel", "objectName", "survey"]), dKeys);
+  const bKeys = Object.keys(bc[0]).sort();
+  check("F-487: branch-condition entry field list", JSON.stringify(bKeys) === JSON.stringify(["alias", "fieldId", "fieldName", "label", "leftType", "objectName", "operator", "port"]), bKeys);
 }
 
 rmSync(ROOT, { recursive: true, force: true });
