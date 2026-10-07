@@ -1570,3 +1570,59 @@ either serve the page's folder on localhost or open the file in a desktop browse
   the summary line with the status default, the first tab's table; the controls show as disabled.
 - Z10 (column choices are remembered). Hide two columns on the program table, reload: still hidden; open the
   leaders' page: its own columns, untouched; a private window: the panel's own columns.
+
+## F-487 — Power List sources on a real tenant: the refresh capture and both deps surfaces (banked 2026-10-06, builder, feat/f487-power-list-sources; verdict at the branch's handoff token)
+
+Owed by: the F-487 verdict round, in the consumer workspace with the plugin loaded from the branch (the token the
+branch's handoff mints; written with a placeholder here and keyed to that token at the handoff).
+Why it is banked: the readers were built against seven live rule payloads and six program payloads captured on
+2026-10-06 and then against fixtures derived from them, and Bradley checked those programs against the UI the same
+day — but the whole path through the workspace (refresh step 3b registering and documenting the rules into the
+rules folder, both reports resolving through the KB docs, the connection named from the connectors lane) has not
+run on a real KB. Every call below is read-only; the only tenant calls are refresh step 3b's `re r describe`s.
+Tenant data stays in the workspace: no object, list or program name, no connection name and no count beyond an
+order of magnitude is copied into this file or the bus.
+
+THIS LIST IS COMPLETE. It is everything this round judges for F-487; a check that is not here is not owed, and a
+thing the round thinks should be here is a finding (an instance of the same mechanism REOPENS F-487; a new
+mechanism is a new number).
+
+- P0 — provenance: the dev-canary token matches the Under test line (the branch's handoff token); `report` shows
+  the journey domain at depth full for the programs the round will name (a shallow KB has no Power List sources to
+  find — say so and stop, it is not a failure of the fix).
+- P1 — refresh step 3b, first run: `/gs-superadmin:refresh` (the user types it). Pass bar: the step's
+  `power-list-gaps.mjs` summary names the recorded rules folder and `ruleId`; `missing` equals the number of
+  distinct Power List rules the documented programs reference minus any already documented; the partial upsert
+  reports `added` equal to `missing` with no recording flag and no under-pagination warning; the describe loop ends
+  with `moreRemaining: false` and the rules folder holds one new raw doc per registered rule whose fence carries
+  `ruleType: ADVANCED_OUTREACH_QUERY_BUILDER`; the report carries the "Power Lists:" line with "still missing" 0 (or
+  names the stop rule / auth abort that left some). Record the order of magnitude of calls and the elapsed time.
+- P2 — refresh step 3b, second run, same workspace: `missing: 0`, nothing registered, no describe spawned. The
+  "pleasant surprise" is a one-time cost.
+- P3 — deps-report, tenant-wide: `/gs-superadmin:deps-report --object <the SFDC object most lists read>
+  --connection <the SFDC connection name>` (the tester invokes it). Pass bar: the Journey programs section lists
+  the Power List programs with usage "Power List source object" / "Power List output field", the detail naming the
+  list and the task, the connection column carrying the connection's NAME and type (resolved from the connectors
+  lane, not the bare GUID), and `connection` matches on the name; the Rules Engine section lists no Power List as
+  a rule and the caveat "N doc(s) under <rules folder>/ are Power List rules … read through the journey programs"
+  is present; the summary's journeyPowerListRulesMissing is 0 after P1 and the "have no readable KB doc" caveat is
+  absent; the caveat "a match means the list reads the object, never how it filters it" is present; no row and
+  no caveat says "no CLI surface". The four programs Bradley checked on 2026-10-06 are among the matches with the
+  objects the UI showed.
+- P4 — email-report deps mode: `/gs-superadmin:email-report` deps with `--object <that object>` and `--kb <slug>`
+  (the tester invokes it). Pass bar: the same programs match; the provenance table's cell reads "Power List
+  **<name>** (rule `<id>`) — reads <objects> via <connection|Gainsight>; filters not returned by the CLI — see
+  detail below"; a "### Power List detail" block lists each task with its object, where it reads it and its output
+  fields, derived tasks naming their upstream task, and "filters: not returned by the CLI"; deps-sources.csv (when
+  `--csv` is passed) carries the `rule_id` column; the standing caveat carries the Power List sentence.
+- P5 — a dynamic program: both reports over `--object <the object a dynamic program's dynamic field reads>`
+  (one of the two dynamic programs checked on 2026-10-06). Pass bar: the program matches through a "dynamic
+  field" and/or "branch condition" row; its provenance cell reads "Dynamic query `<id>` — dynamic program — its
+  participant query is not returned by any CLI command"; the standing caveat carries the dynamic-program sentence.
+- P6 — a lookup-path field: `--field <an SFDC field a list reads through a relationship, e.g. the related
+  Account's 18-digit id field>` matches exactly on the field's own API name (the relationship prefix stripped),
+  on the related object.
+- P7 — the honesty arm: delete (or rename) ONE Power List rule doc from the rules folder, re-run P3. Pass bar: that
+  program's rows through the list disappear, and ONE aggregate caveat names the rule id, the program count, the
+  resolved ratio and `/gs-superadmin:refresh` as the remedy; restore the doc (or re-run refresh, which re-registers
+  it — P2's "nothing registered" no longer holds for that one, say so).

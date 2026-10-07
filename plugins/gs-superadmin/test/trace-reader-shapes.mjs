@@ -67,6 +67,7 @@ import {
   extractRuleUsages, extractReportUsages, extractJobUsages, extractDesignerUsages,
   extractDatasetUsages, extractConnection, extractExternalAction,
 } from "../scripts/tenant-deps.mjs";
+import { extractPowerList } from "../scripts/jo-report-deps.mjs";
 import { parseJourneyDoc } from "../scripts/jo-report.mjs";
 import {
   renderTemplateDoc, collectScorecardMeasures, parseLiveDepsAreas, depsCaptureReadiness,
@@ -170,14 +171,24 @@ const ENG_RP_RUN = Object.entries(ENG_UNITS).map(([family, d]) => engAnswer(rpRu
 const ENTRIES = [
   {
     command: "re r describe",
-    readers: ["tenant-deps.mjs extractRuleUsages (→ conditionsOf, condRow, normalizeCondition, parseSummaryObject)", "relationships-build.mjs findRuleDetails (spawn-traced)"],
-    modules: ["scripts/tenant-deps.mjs", "scripts/relationships-build.mjs"],
-    calls: [{ reader: "extractRuleUsages", mode: "object", fn: extractRuleUsages }],
-    fixtures: [FX.RULE_EXT, FX.RULE_SC_LEVEL, FX.RULE_ALIAS, FX.RULE_INACTIVE, FX.RULE_CALLOUT, FX.RULE_MIXED, FX.RULE_DOLLAR],
+    readers: [
+      "tenant-deps.mjs extractRuleUsages (→ conditionsOf, condRow, normalizeCondition, parseSummaryObject)",
+      "relationships-build.mjs findRuleDetails (spawn-traced)",
+      "jo-report-deps.mjs extractPowerList (F-487: a Power List's ADVANCED_OUTREACH_QUERY_BUILDER rule — the top-level data.taskDetails[], not ruleDetails'; isPowerListPayload discriminates; both deps surfaces read it through makePowerListResolver)",
+    ],
+    modules: ["scripts/tenant-deps.mjs", "scripts/relationships-build.mjs", "scripts/jo-report-deps.mjs"],
+    calls: [
+      { reader: "extractRuleUsages", mode: "object", fn: extractRuleUsages },
+      { reader: "extractPowerList", mode: "object", fn: extractPowerList },
+    ],
+    fixtures: [FX.RULE_EXT, FX.RULE_SC_LEVEL, FX.RULE_ALIAS, FX.RULE_INACTIVE, FX.RULE_CALLOUT, FX.RULE_MIXED, FX.RULE_DOLLAR, FX.RULE_POWER_LIST],
     floor: [
       "data.ruleDetails.ruleId", "data.ruleDetails.taskDetails[].object", "data.ruleDetails.taskDetails[].connectionType",
       "data.ruleDetails._flatMappings[].tgtField", "data.criteriaDetails[].filters.conditions[].leftOperand.fieldName",
       "data.gsRuleMetaActionDetails[].actionInfo.params.configId",
+      // F-487 (Power List rules): the type discriminator and the raw task keys
+      "data.ruleDetails.ruleType", "data.taskDetails[].schemaObject", "data.taskDetails[].connectionId",
+      "data.taskDetails[].outputFields[].meta.originalObjectName", "data.taskDetails[].outputFields[].meta.originalFieldName",
     ],
   },
   {
@@ -269,10 +280,15 @@ readers: ["jo-report.mjs parseJourneyDoc (→ embedded, classicStep / nodeStep, 
       FX.JOURNEY_PAYLOAD,
       journeyPayload(FX.makeAo({ id: "prog-1", name: "Test Program", status: "PROCESSING", tplId: "tpl-aaa", tplName: "Welcome & Hello", variantId: "tpl-bbb" })),
       journeyPayload(FX.JOURNEY_NODES_AO),
+      journeyPayload(FX.JOURNEY_QB_AO), // F-487: a Power List source (ruleId), dynamic fields, branch conditions
     ],
     floor: [
       "data.advancedOutreach.advancedOutreachId", "data.advancedOutreach.stepJson",
       "data.advancedOutreach.participantSourceConfigurations[].config{}.filters.conditions[].leftOperand.fieldName",
+      // F-487: the three surfaces the deps tools were blind to
+      "data.advancedOutreach.participantSourceConfigurations[].ruleId",
+      "data.advancedOutreach.aoConfiguration{}.dynamicFields[].fieldInfo.objectName",
+      "data.advancedOutreach.stepJson{}.nodes[].outPorts[].conditions[].left.fieldConfig.objectName",
     ],
   },
   {

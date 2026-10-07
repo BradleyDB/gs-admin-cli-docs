@@ -328,10 +328,16 @@ type are matched honestly as `type-level`, never passed off as exact. For each
 all areas) and renders it reconciled against the KB view. Every deps report also
 resolves **participant-source provenance** — where each matched program's source data
 comes from, to the resolvable ceiling: a Data Designer source resolves to its KB doc, a
-CSV source shows its uploaded filename, and a Power List renders as honestly not
-resolvable (no CLI surface exists). Everything is KB-cached and the report says so —
+CSV source shows its uploaded filename, and a **Power List** resolves to the objects,
+connection and output fields its rule's tasks read (the rule is hidden from `re r list`
+but described by its id; refresh and setup document it — so `--object Contact` or
+`--connection <SFDC connection>` matches the journeys that read through a Power List).
+What the CLI does not return is said: a Power List's filter criteria, and a dynamic
+program's own participant query. The program's dynamic fields and branch conditions
+are scanned too. Everything is KB-cached and the report says so —
 the JO-scoped sibling is `email-report deps`; this is the tenant-wide superset.
-Read-only.
+Read-only. **Installed before 0.48.0?** Run `/gs-superadmin:refresh` once so your
+workspace captures the Power List rules your programs reference.
 
 ## Report a CLI bug upstream
 
