@@ -76,15 +76,18 @@
       },
       "readers": [
         "tenant-deps.mjs extractRuleUsages (→ conditionsOf, condRow, normalizeCondition, parseSummaryObject)",
-        "relationships-build.mjs findRuleDetails (spawn-traced)"
+        "relationships-build.mjs findRuleDetails (spawn-traced)",
+        "jo-report-deps.mjs extractPowerList (F-487: a Power List's ADVANCED_OUTREACH_QUERY_BUILDER rule — the top-level data.taskDetails[], not ruleDetails'; isPowerListPayload discriminates; both deps surfaces read it through makePowerListResolver)"
       ],
       "modules": [
+        "scripts/jo-report-deps.mjs",
         "scripts/relationships-build.mjs",
         "scripts/tenant-deps.mjs"
       ],
       "keys": [
         "*",
         "_flatMappings",
+        "criteriaDetails",
         "data",
         "data.*",
         "data._flatMappings",
@@ -159,6 +162,8 @@
         "data.ruleDetails.active",
         "data.ruleDetails.ruleId",
         "data.ruleDetails.ruleName",
+        "data.ruleDetails.ruleType",
+        "data.ruleDetails.sourceType",
         "data.ruleDetails.taskDetails",
         "data.ruleDetails.taskDetails[].*",
         "data.ruleDetails.taskDetails[]._connType",
@@ -171,7 +176,25 @@
         "data.ruleDetails.taskDetails[].taskId",
         "data.ruleDetails.taskDetails[].taskName",
         "data.ruleDetails.taskDetails[].taskType",
-        "data.ruleDetails.taskDetails[].type"
+        "data.ruleDetails.taskDetails[].type",
+        "data.taskDetails",
+        "data.taskDetails[].connectionId",
+        "data.taskDetails[].datasetName",
+        "data.taskDetails[].name",
+        "data.taskDetails[].outputFields",
+        "data.taskDetails[].outputFields[].field",
+        "data.taskDetails[].outputFields[].fieldName",
+        "data.taskDetails[].outputFields[].label",
+        "data.taskDetails[].outputFields[].meta",
+        "data.taskDetails[].outputFields[].meta.originalFieldName",
+        "data.taskDetails[].outputFields[].meta.originalObjectLabel",
+        "data.taskDetails[].outputFields[].meta.originalObjectName",
+        "data.taskDetails[].outputFields[].meta.originalSchemaType",
+        "data.taskDetails[].outputFields[].outputFieldName",
+        "data.taskDetails[].schemaObject",
+        "data.taskDetails[].taskId",
+        "ruleDetails",
+        "taskDetails"
       ],
       "walks": [
         "*",
@@ -220,7 +243,10 @@
       "alternates": {
         "data": [
           "*",
-          "_flatMappings"
+          "_flatMappings",
+          "criteriaDetails",
+          "ruleDetails",
+          "taskDetails"
         ],
         "data.criteriaDetails[].criteriaName": [
           "data.criteriaDetails[].criteriaId"
@@ -312,6 +338,9 @@
           "data.ruleDetails.taskDetails[].taskName",
           "data.ruleDetails.taskDetails[].taskType"
         ],
+        "data.ruleDetails.ruleType": [
+          "data.ruleDetails.sourceType"
+        ],
         "data.ruleDetails.taskDetails": [
           "data.ruleDetails._configTasks"
         ],
@@ -321,10 +350,26 @@
         "data.ruleDetails.taskDetails[].taskName": [
           "data.ruleDetails.taskDetails[]._taskName",
           "data.ruleDetails.taskDetails[].taskId"
+        ],
+        "data.taskDetails[].datasetName": [
+          "data.taskDetails[].name"
+        ],
+        "data.taskDetails[].outputFields[].fieldName": [
+          "data.taskDetails[].outputFields[].field"
+        ],
+        "data.taskDetails[].outputFields[].label": [
+          "data.taskDetails[].outputFields[].outputFieldName"
+        ],
+        "data.taskDetails[].outputFields[].meta": [
+          "data.taskDetails[].outputFields[].fieldName"
+        ],
+        "data.taskDetails[].outputFields[].meta.originalFieldName": [
+          "data.taskDetails[].outputFields[].fieldName"
         ]
       },
       "alternatesUnmeasured": [
         "_flatMappings",
+        "criteriaDetails",
         "data._flatMappings",
         "data.criteriaDetails[]._flatMappings",
         "data.criteriaDetails[].conditions",
@@ -353,13 +398,15 @@
         "data.gsRuleMetaActionDetails[]._flatMappings",
         "data.gsRuleMetaActionDetails[].params",
         "data.gsRuleMetaActionDetails[].source",
-        "data.ruleDetails._configTasks",
         "data.ruleDetails._flatMappings[].srcField{}.data",
         "data.ruleDetails.taskDetails[]._connType",
         "data.ruleDetails.taskDetails[]._flatMappings",
         "data.ruleDetails.taskDetails[]._object",
         "data.ruleDetails.taskDetails[]._taskName",
-        "data.ruleDetails.taskDetails[].type"
+        "data.ruleDetails.taskDetails[].type",
+        "data.taskDetails[].outputFields[].field",
+        "ruleDetails",
+        "taskDetails"
       ],
       "recognized": [],
       "embedded": [
@@ -372,13 +419,18 @@
         "data.gsRuleMetaActionDetails[].actionInfo.params.configId",
         "data.ruleDetails._flatMappings[].tgtField",
         "data.ruleDetails.ruleId",
+        "data.ruleDetails.ruleType",
         "data.ruleDetails.taskDetails[].connectionType",
-        "data.ruleDetails.taskDetails[].object"
+        "data.ruleDetails.taskDetails[].object",
+        "data.taskDetails[].connectionId",
+        "data.taskDetails[].outputFields[].meta.originalFieldName",
+        "data.taskDetails[].outputFields[].meta.originalObjectName",
+        "data.taskDetails[].schemaObject"
       ],
       "floorMissing": [],
       "probes": {
-        "fixtures": 7,
-        "runs": 464,
+        "fixtures": 8,
+        "runs": 680,
         "unprobed": 0
       }
     },
@@ -1224,6 +1276,148 @@
       }
     },
     {
+      "command": "dm o describe",
+      "catalog": {
+        "id": "data-management:objects:describe",
+        "actionKey": "describe-object",
+        "mcpTool": "data_management_describe_object",
+        "endpoints": [
+          {
+            "name": "fetch",
+            "method": "GET",
+            "path": "/v1/meta/v10/gdm/objects/{{objectName}}"
+          }
+        ]
+      },
+      "readers": [
+        "jo-report-deps.mjs extractObjectIdentity (F-487 reopen: the Gainsight object registry — GSID ↔ system name ↔ label — both deps surfaces canonicalize Power List object identities through makeObjectResolver; the doc's bullets are read first, this payload read when no bullet names the object)"
+      ],
+      "modules": [
+        "scripts/jo-report-deps.mjs"
+      ],
+      "keys": [
+        "data",
+        "data.dbName",
+        "data.gsid",
+        "data.label",
+        "data.name",
+        "data.objectId",
+        "data.objectLabel",
+        "data.objectName",
+        "gsid",
+        "name",
+        "objectId",
+        "objectName"
+      ],
+      "walks": [],
+      "enumerated": {},
+      "alternates": {
+        "data": [
+          "gsid",
+          "name",
+          "objectId",
+          "objectName"
+        ],
+        "data.label": [
+          "data.objectLabel"
+        ],
+        "data.name": [
+          "data.objectName"
+        ],
+        "data.objectId": [
+          "data.gsid"
+        ]
+      },
+      "alternatesUnmeasured": [
+        "data.gsid",
+        "data.objectLabel",
+        "data.objectName",
+        "gsid",
+        "name",
+        "objectId",
+        "objectName"
+      ],
+      "recognized": [],
+      "embedded": [],
+      "pluginAuthored": [],
+      "pluginKeys": [],
+      "floor": [
+        "data.dbName",
+        "data.label",
+        "data.name",
+        "data.objectId"
+      ],
+      "floorMissing": [],
+      "probes": {
+        "fixtures": 2,
+        "runs": 24,
+        "unprobed": 0
+      }
+    },
+    {
+      "command": "dm o list",
+      "catalog": {
+        "id": "data-management:objects:list",
+        "actionKey": "list-objects",
+        "mcpTool": "data_management_list_objects",
+        "endpoints": [
+          {
+            "name": "all",
+            "method": "POST",
+            "path": "/v1/meta/objectViews/executeFilter"
+          }
+        ]
+      },
+      "readers": [
+        "jo-report-deps.mjs extractObjectIdentity over a shallow-crawl stub's list row (no objectId on the row — such an entry resolves by name and label only)"
+      ],
+      "modules": [
+        "scripts/jo-report-deps.mjs"
+      ],
+      "keys": [
+        "data",
+        "dbName",
+        "gsid",
+        "label",
+        "name",
+        "objectId",
+        "objectLabel",
+        "objectName"
+      ],
+      "walks": [],
+      "enumerated": {},
+      "alternates": {
+        "label": [
+          "objectLabel"
+        ],
+        "name": [
+          "objectName"
+        ]
+      },
+      "alternatesUnmeasured": [
+        "data",
+        "dbName",
+        "gsid",
+        "objectId",
+        "objectLabel",
+        "objectName"
+      ],
+      "recognized": [],
+      "embedded": [],
+      "pluginAuthored": [],
+      "pluginKeys": [],
+      "floor": [
+        "label",
+        "name"
+      ],
+      "floorMissing": [],
+      "probes": {
+        "fixtures": 1,
+        "runs": 6,
+        "unprobed": 0
+      }
+    },
+    {
       "command": "jo dd list",
       "catalog": {
         "id": "journey:data-designer:list",
@@ -1316,6 +1510,31 @@
         "data.advancedOutreach.advancedOutreachStartDate",
         "data.advancedOutreach.advancedOutreachStatus",
         "data.advancedOutreach.aoConfiguration",
+        "data.advancedOutreach.aoConfiguration{}.dynamicFields",
+        "data.advancedOutreach.aoConfiguration{}.dynamicFields[].criterionType",
+        "data.advancedOutreach.aoConfiguration{}.dynamicFields[].fieldId",
+        "data.advancedOutreach.aoConfiguration{}.dynamicFields[].fieldInfo",
+        "data.advancedOutreach.aoConfiguration{}.dynamicFields[].fieldInfo.entity",
+        "data.advancedOutreach.aoConfiguration{}.dynamicFields[].fieldInfo.fieldName",
+        "data.advancedOutreach.aoConfiguration{}.dynamicFields[].fieldInfo.label",
+        "data.advancedOutreach.aoConfiguration{}.dynamicFields[].fieldInfo.objectLabel",
+        "data.advancedOutreach.aoConfiguration{}.dynamicFields[].fieldInfo.objectName",
+        "data.advancedOutreach.aoConfiguration{}.dynamicFields[].fieldInfo.questionId",
+        "data.advancedOutreach.aoConfiguration{}.dynamicFields[].fieldInfo.surveyId",
+        "data.advancedOutreach.aoConfiguration{}.dynamicFields[].filters",
+        "data.advancedOutreach.aoConfiguration{}.dynamicFields[].filters.conditions",
+        "data.advancedOutreach.aoConfiguration{}.dynamicFields[].filters.conditions[].alias",
+        "data.advancedOutreach.aoConfiguration{}.dynamicFields[].filters.conditions[].comparisonOperator",
+        "data.advancedOutreach.aoConfiguration{}.dynamicFields[].filters.conditions[].fieldLabel",
+        "data.advancedOutreach.aoConfiguration{}.dynamicFields[].filters.conditions[].fieldName",
+        "data.advancedOutreach.aoConfiguration{}.dynamicFields[].filters.conditions[].filterAlias",
+        "data.advancedOutreach.aoConfiguration{}.dynamicFields[].filters.conditions[].leftOperand",
+        "data.advancedOutreach.aoConfiguration{}.dynamicFields[].filters.conditions[].leftOperand.fieldLabel",
+        "data.advancedOutreach.aoConfiguration{}.dynamicFields[].filters.conditions[].leftOperand.fieldName",
+        "data.advancedOutreach.aoConfiguration{}.dynamicFields[].filters.conditions[].leftOperand.label",
+        "data.advancedOutreach.aoConfiguration{}.dynamicFields[].filters.conditions[].leftOperand.objectName",
+        "data.advancedOutreach.aoConfiguration{}.dynamicFields[].filters.conditions[].objectName",
+        "data.advancedOutreach.aoConfiguration{}.dynamicFields[].label",
         "data.advancedOutreach.aoConfiguration{}.scheduleInfo",
         "data.advancedOutreach.aoConfiguration{}.scheduleInfo.schedules",
         "data.advancedOutreach.aoConfiguration{}.scheduleInfo.schedules[].cronExpression",
@@ -1369,6 +1588,7 @@
         "data.advancedOutreach.participantSourceConfigurations[].participantSourceConfigurationId",
         "data.advancedOutreach.participantSourceConfigurations[].participantSourceName",
         "data.advancedOutreach.participantSourceConfigurations[].participantSourceType",
+        "data.advancedOutreach.participantSourceConfigurations[].ruleId",
         "data.advancedOutreach.participantSourceConfigurations[].scheduleInfo",
         "data.advancedOutreach.participantSourceConfigurations[].scheduleInfo{}.*",
         "data.advancedOutreach.participantSourceConfigurations[].scheduleInfo{}.advancedOutreach",
@@ -1398,6 +1618,16 @@
         "data.advancedOutreach.scheduleInfo",
         "data.advancedOutreach.stepJson",
         "data.advancedOutreach.stepJson{}.*",
+        "data.advancedOutreach.stepJson{}.advancedOutreach",
+        "data.advancedOutreach.stepJson{}.advancedOutreachId",
+        "data.advancedOutreach.stepJson{}.advancedOutreachModel",
+        "data.advancedOutreach.stepJson{}.advancedOutreachModelName",
+        "data.advancedOutreach.stepJson{}.advancedOutreachName",
+        "data.advancedOutreach.stepJson{}.advancedOutreachStartDate",
+        "data.advancedOutreach.stepJson{}.advancedOutreachStatus",
+        "data.advancedOutreach.stepJson{}.aoConfiguration",
+        "data.advancedOutreach.stepJson{}.data",
+        "data.advancedOutreach.stepJson{}.id",
         "data.advancedOutreach.stepJson{}.nodes",
         "data.advancedOutreach.stepJson{}.nodes[].*",
         "data.advancedOutreach.stepJson{}.nodes[].*.*",
@@ -1440,8 +1670,34 @@
         "data.advancedOutreach.stepJson{}.nodes[].name",
         "data.advancedOutreach.stepJson{}.nodes[].nodeType",
         "data.advancedOutreach.stepJson{}.nodes[].order",
+        "data.advancedOutreach.stepJson{}.nodes[].outPorts",
+        "data.advancedOutreach.stepJson{}.nodes[].outPorts[].*",
+        "data.advancedOutreach.stepJson{}.nodes[].outPorts[].conditions",
+        "data.advancedOutreach.stepJson{}.nodes[].outPorts[].conditions[].*",
+        "data.advancedOutreach.stepJson{}.nodes[].outPorts[].conditions[].*.*",
+        "data.advancedOutreach.stepJson{}.nodes[].outPorts[].conditions[].*.*.*",
+        "data.advancedOutreach.stepJson{}.nodes[].outPorts[].conditions[].alias",
+        "data.advancedOutreach.stepJson{}.nodes[].outPorts[].conditions[].left",
+        "data.advancedOutreach.stepJson{}.nodes[].outPorts[].conditions[].left.*",
+        "data.advancedOutreach.stepJson{}.nodes[].outPorts[].conditions[].left.fieldConfig",
+        "data.advancedOutreach.stepJson{}.nodes[].outPorts[].conditions[].left.fieldConfig.*",
+        "data.advancedOutreach.stepJson{}.nodes[].outPorts[].conditions[].left.fieldConfig.field",
+        "data.advancedOutreach.stepJson{}.nodes[].outPorts[].conditions[].left.fieldConfig.fieldId",
+        "data.advancedOutreach.stepJson{}.nodes[].outPorts[].conditions[].left.fieldConfig.objectName",
+        "data.advancedOutreach.stepJson{}.nodes[].outPorts[].conditions[].left.label",
+        "data.advancedOutreach.stepJson{}.nodes[].outPorts[].conditions[].left.properties",
+        "data.advancedOutreach.stepJson{}.nodes[].outPorts[].conditions[].left.properties.*",
+        "data.advancedOutreach.stepJson{}.nodes[].outPorts[].conditions[].left.properties.*.*",
+        "data.advancedOutreach.stepJson{}.nodes[].outPorts[].conditions[].left.properties.comparisonOperator",
+        "data.advancedOutreach.stepJson{}.nodes[].outPorts[].conditions[].left.type",
+        "data.advancedOutreach.stepJson{}.nodes[].outPorts[].conditions[].operator",
+        "data.advancedOutreach.stepJson{}.nodes[].outPorts[].name",
         "data.advancedOutreach.stepJson{}.nodes[].surveyIdFromEmailActionV2",
         "data.advancedOutreach.stepJson{}.nodes[].type",
+        "data.advancedOutreach.stepJson{}.participantSourceConfigurations",
+        "data.advancedOutreach.stepJson{}.programId",
+        "data.advancedOutreach.stepJson{}.scheduleInfo",
+        "data.advancedOutreach.stepJson{}.stepJson",
         "data.advancedOutreach.stepJson{}[].*",
         "data.advancedOutreach.stepJson{}[].actionType",
         "data.advancedOutreach.stepJson{}[].emailActionJson",
@@ -1527,6 +1783,14 @@
         "data.advancedOutreach.stepJson{}.*",
         "data.advancedOutreach.stepJson{}.nodes[].*",
         "data.advancedOutreach.stepJson{}.nodes[].*.*",
+        "data.advancedOutreach.stepJson{}.nodes[].outPorts[].*",
+        "data.advancedOutreach.stepJson{}.nodes[].outPorts[].conditions[].*",
+        "data.advancedOutreach.stepJson{}.nodes[].outPorts[].conditions[].*.*",
+        "data.advancedOutreach.stepJson{}.nodes[].outPorts[].conditions[].*.*.*",
+        "data.advancedOutreach.stepJson{}.nodes[].outPorts[].conditions[].left.*",
+        "data.advancedOutreach.stepJson{}.nodes[].outPorts[].conditions[].left.fieldConfig.*",
+        "data.advancedOutreach.stepJson{}.nodes[].outPorts[].conditions[].left.properties.*",
+        "data.advancedOutreach.stepJson{}.nodes[].outPorts[].conditions[].left.properties.*.*",
         "data.advancedOutreach.stepJson{}[].*",
         "data.advancedOutreach.stepJson{}[].emailActionJson{}.*",
         "data.advancedOutreach.stepJson{}[].emailActionJson{}.variantMappings[].*",
@@ -1541,10 +1805,15 @@
         "*": [
           "result"
         ],
+        "data.advancedOutreach.participantSourceConfigurations[].*": [
+          "honorPowerListRefreshConfig"
+        ],
         "data.advancedOutreach.participantSourceConfigurations[].customMappings{}.*": [
+          "cf-stage-1",
           "f5ewvo27"
         ],
         "data.advancedOutreach.participantSourceConfigurations[].customMappings{}.*.*": [
+          "disallowNulls",
           "fieldName"
         ],
         "data.advancedOutreach.stepJson{}.*": [
@@ -1556,6 +1825,34 @@
         "data.advancedOutreach.stepJson{}.nodes[].*.*": [
           "x",
           "y"
+        ],
+        "data.advancedOutreach.stepJson{}.nodes[].outPorts[].*": [
+          "defaultPath",
+          "expression",
+          "outComeEvent",
+          "portId"
+        ],
+        "data.advancedOutreach.stepJson{}.nodes[].outPorts[].conditions[].*": [
+          "fieldType",
+          "right"
+        ],
+        "data.advancedOutreach.stepJson{}.nodes[].outPorts[].conditions[].*.*": [
+          "dataType",
+          "fieldConfig",
+          "type"
+        ],
+        "data.advancedOutreach.stepJson{}.nodes[].outPorts[].conditions[].*.*.*": [
+          "value"
+        ],
+        "data.advancedOutreach.stepJson{}.nodes[].outPorts[].conditions[].left.*": [
+          "dataType"
+        ],
+        "data.advancedOutreach.stepJson{}.nodes[].outPorts[].conditions[].left.properties.*": [
+          "filterValue",
+          "rightOperandType"
+        ],
+        "data.advancedOutreach.stepJson{}.nodes[].outPorts[].conditions[].left.properties.*.*": [
+          "value"
         ],
         "data.advancedOutreach.stepJson{}[].*": [
           "enable"
@@ -1612,6 +1909,9 @@
           "data.advancedOutreach.name",
           "data.advancedOutreach.programName"
         ],
+        "data.advancedOutreach.aoConfiguration{}.dynamicFields[].filters.conditions[].filterAlias": [
+          "data.advancedOutreach.aoConfiguration{}.dynamicFields[].filters.conditions[].alias"
+        ],
         "data.advancedOutreach.participantSourceConfigurations[].config{}.filters.conditions[].filterAlias": [
           "data.advancedOutreach.participantSourceConfigurations[].config{}.filters.conditions[].alias"
         ],
@@ -1642,6 +1942,10 @@
         "data.advancedOutreach.stepJson{}.nodes[].actionConfig{}.variantMappings[].variantTokenMapping[].tokenMapping.value.fieldConfig.objectName": [
           "data.advancedOutreach.stepJson{}.nodes[].actionConfig{}.variantMappings[].variantTokenMapping[].tokenMapping.value.object",
           "data.advancedOutreach.stepJson{}.nodes[].actionConfig{}.variantMappings[].variantTokenMapping[].tokenMapping.value.objectName"
+        ],
+        "data.advancedOutreach.stepJson{}.nodes[].outPorts[].conditions[].operator": [
+          "data.advancedOutreach.stepJson{}.nodes[].outPorts[].conditions[].left.properties",
+          "data.advancedOutreach.stepJson{}.nodes[].outPorts[].conditions[].left.properties.comparisonOperator"
         ],
         "data.advancedOutreach.stepJson{}.nodes[].surveyIdFromEmailActionV2": [
           "data.advancedOutreach.stepJson{}.nodes[].actionConfig{}.surveyIdFromEmailActionV2"
@@ -1683,6 +1987,11 @@
         "advancedOutreachStartDate",
         "advancedOutreachStatus",
         "aoConfiguration",
+        "data.advancedOutreach.aoConfiguration{}.dynamicFields[].filters.conditions[].alias",
+        "data.advancedOutreach.aoConfiguration{}.dynamicFields[].filters.conditions[].fieldLabel",
+        "data.advancedOutreach.aoConfiguration{}.dynamicFields[].filters.conditions[].fieldName",
+        "data.advancedOutreach.aoConfiguration{}.dynamicFields[].filters.conditions[].leftOperand.fieldLabel",
+        "data.advancedOutreach.aoConfiguration{}.dynamicFields[].filters.conditions[].objectName",
         "data.advancedOutreach.aoConfiguration{}.scheduleInfo.schedules[].scheduleType",
         "data.advancedOutreach.id",
         "data.advancedOutreach.name",
@@ -1726,6 +2035,16 @@
         "data.advancedOutreach.programId",
         "data.advancedOutreach.programName",
         "data.advancedOutreach.scheduleInfo",
+        "data.advancedOutreach.stepJson{}.advancedOutreach",
+        "data.advancedOutreach.stepJson{}.advancedOutreachId",
+        "data.advancedOutreach.stepJson{}.advancedOutreachModel",
+        "data.advancedOutreach.stepJson{}.advancedOutreachModelName",
+        "data.advancedOutreach.stepJson{}.advancedOutreachName",
+        "data.advancedOutreach.stepJson{}.advancedOutreachStartDate",
+        "data.advancedOutreach.stepJson{}.advancedOutreachStatus",
+        "data.advancedOutreach.stepJson{}.aoConfiguration",
+        "data.advancedOutreach.stepJson{}.data",
+        "data.advancedOutreach.stepJson{}.id",
         "data.advancedOutreach.stepJson{}.nodes[].actionConfig{}.surveyIdFromEmailActionV2",
         "data.advancedOutreach.stepJson{}.nodes[].actionConfig{}.variantMappings[].variantTokenMapping[].name",
         "data.advancedOutreach.stepJson{}.nodes[].actionConfig{}.variantMappings[].variantTokenMapping[].surveyToken.surveyId",
@@ -1740,6 +2059,10 @@
         "data.advancedOutreach.stepJson{}.nodes[].actionType",
         "data.advancedOutreach.stepJson{}.nodes[].exitTimer",
         "data.advancedOutreach.stepJson{}.nodes[].order",
+        "data.advancedOutreach.stepJson{}.participantSourceConfigurations",
+        "data.advancedOutreach.stepJson{}.programId",
+        "data.advancedOutreach.stepJson{}.scheduleInfo",
+        "data.advancedOutreach.stepJson{}.stepJson",
         "data.advancedOutreach.stepJson{}[].emailActionJson{}.globalConfigInfo",
         "data.advancedOutreach.stepJson{}[].emailActionJson{}.surveyIdFromEmailActionV2",
         "data.advancedOutreach.stepJson{}[].emailActionJson{}.variantMappings[].templateId",
@@ -1791,13 +2114,16 @@
       "pluginKeys": [],
       "floor": [
         "data.advancedOutreach.advancedOutreachId",
+        "data.advancedOutreach.aoConfiguration{}.dynamicFields[].fieldInfo.objectName",
         "data.advancedOutreach.participantSourceConfigurations[].config{}.filters.conditions[].leftOperand.fieldName",
-        "data.advancedOutreach.stepJson"
+        "data.advancedOutreach.participantSourceConfigurations[].ruleId",
+        "data.advancedOutreach.stepJson",
+        "data.advancedOutreach.stepJson{}.nodes[].outPorts[].conditions[].left.fieldConfig.objectName"
       ],
       "floorMissing": [],
       "probes": {
-        "fixtures": 3,
-        "runs": 906,
+        "fixtures": 4,
+        "runs": 1224,
         "unprobed": 0
       }
     },

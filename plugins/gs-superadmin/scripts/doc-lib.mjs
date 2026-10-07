@@ -1698,6 +1698,9 @@ export const RECORDED_LANES = Object.freeze({
   journey: { path: "journey programs list", folder: "journey" },
   templates: { path: "journey email templates", folder: "journey-email-templates" },
   datasets: { path: "journey data-designer list", folder: "journey-data-designer" },
+  // F-487 reopen: the Gainsight object registry (GSID ↔ system name ↔ label)
+  // the deps readers canonicalize Power List object identities through.
+  objects: { path: "data-management objects list", folder: "data-management" },
   reports: { path: "report list", folder: "report" },
   jobs: { path: "connectors jobs", folder: "connectors-jobs" },
   connections: { path: "connectors list", folder: "connectors" },

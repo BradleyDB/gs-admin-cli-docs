@@ -115,6 +115,19 @@ Chunk sizing for this domain: the generic **~10–15** per invocation applies �
 the written doc is compact, but each describe still FETCHES ~287 KB, so
 template-scale chunks (~50) blow the shell timeout.
 
+**Power List rules ride this domain (F-487).** A program's `QUERY_BUILDER`
+source carries a `ruleId`: the hidden rule (ruleType
+`ADVANCED_OUTREACH_QUERY_BUILDER`) the list is built on, which `re r list`
+never returns and `re r describe --id` does. After the journey domain's last
+batch of a run, the Power List step (refresh step 3b is the canon; Phase 5
+names it) reads the program docs, registers the rules the workspace lacks into
+the rules domain as a declared subset, and documents them with the rules
+domain's own describe recipe into the rules folder — raw doc-mode, one doc per
+rule, ~70–130 KB fetched each, so the rules chunk size applies. The deps
+reports attribute each list's objects, connection and output fields to the
+programs that use it; the list's filter criteria are not in the payload
+(upstream KI-027) and every report says so.
+
 ## Data designers (`data-designer`) — three describe levels per template, resumable
 
 `dd t describe --template-id` alone returns each task as a SUMMARY row (source

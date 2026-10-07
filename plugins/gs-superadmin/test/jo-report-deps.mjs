@@ -62,6 +62,10 @@ import {
 } from "../scripts/jo-report-deps.mjs";
 import { parseJourneyDoc } from "../scripts/jo-report.mjs";
 import { docBaseName, docNameClaimer } from "../scripts/doc-lib.mjs";
+// F-487: the Power List reader and resolver (same module as above; a second
+// import keeps the long list readable)
+import { extractPowerList, powerListRows, makePowerListResolver, isPowerListPayload, powerListObjectsSummary, locateKbDoc, makeObjectResolver, canonicalObject, docObjectIdentity } from "../scripts/jo-report-deps.mjs";
+import { RULE_POWER_LIST, JOURNEY_QB_AO, DM_OBJECT_COMPANY, DM_OBJECT_PROJECT_FACT, DM_LIST_ROW } from "./fixtures/reader-payloads.mjs";
 
 const JO_REPORT = join(dirname(fileURLToPath(import.meta.url)), "..", "scripts", "jo-report.mjs");
 const ROOT = join(tmpdir(), `gs-superadmin-jo-report-deps-${process.pid}`);
@@ -883,8 +887,9 @@ const runCli = (...args) => {
     { caveatCount: summary?.caveatCount }
   );
   check(
-    "cli: --object caveat states filter-conditions-only matching and how to read an empty result (S5-V wording)",
-    md.includes("FILTER-CONDITIONS-ONLY") && md.includes('"no FILTER usage found"'),
+    "cli: --object caveat names the surfaces it reads and how to read an empty result (S5-V wording, F-487 surfaces)",
+    md.includes("--object matching reads FILTER CONDITIONS, Power List task objects and output fields, dynamic fields and branch conditions") &&
+      md.includes('"no usage found in the surfaces listed"'),
     null
   );
   const csv = readFileSync(join(cDir, "deps-usages.csv"), "utf8");
@@ -1428,7 +1433,7 @@ const dependent = (id, name, cols) => ({
   const mdInitSame = readFileSync(initSame.summary.reportPath, "utf8");
   check(
     "cli: incomplete capture for the term does NOT soften the strong caveat",
-    mdInitSame.includes("capture incomplete") && mdInitSame.includes("FILTER-CONDITIONS-ONLY") && !mdInitSame.includes("read them together"),
+    mdInitSame.includes("capture incomplete") && mdInitSame.includes("--object matching reads FILTER CONDITIONS") && !mdInitSame.includes("read them together"),
     initSame.summary?.warnings
   );
 
@@ -1577,11 +1582,11 @@ const dependent = (id, name, cols) => ({
     null
   );
   check(
-    "ER-20 classifySource: DATA_DESIGNER / CSV / QUERY_BUILDER / everything else",
+    "ER-20 classifySource: DATA_DESIGNER / CSV / QUERY_BUILDER / QUERY (F-487) / everything else",
     classifySource({ participantSourceType: "DATA_DESIGNER" }) === "data-designer" &&
       classifySource({ participantSourceType: "CSV" }) === "csv" &&
       classifySource({ participantSourceType: "QUERY_BUILDER" }) === "power-list" &&
-      classifySource({ participantSourceType: "QUERY" }) === "other" &&
+      classifySource({ participantSourceType: "QUERY" }) === "query" &&
       classifySource({}) === "other",
     null
   );
@@ -1667,7 +1672,9 @@ const dependent = (id, name, cols) => ({
     p1.res.status === 0 && mdP.includes("## Participant-source provenance") &&
       mdP.includes("Data Designer **Mirror Query** (`mirror_query`)") &&
       mdP.includes("CSV upload: ACME-360 upload_pt1.csv") &&
-      mdP.includes("Power List `0f0e0d0c-1111-2222-3333-444455556666` — not resolvable via CLI") &&
+      // F-487: a Power List whose rule doc is not in the KB names the remedy,
+      // never "not resolvable" — the rule IS describable
+      mdP.includes("Power List `0f0e0d0c-1111-2222-3333-444455556666` — KB doc missing — run /gs-superadmin:refresh") &&
       mdP.includes("Data Designer `ghost_query` — KB doc missing"),
     { status: p1.res.status, stderr: p1.res.stderr?.slice(0, 300) }
   );
@@ -1690,8 +1697,19 @@ const dependent = (id, name, cols) => ({
   check(
     "ER-20 cli: standing where-resolution-stops caveat renders (connection hop unreachable, never guessed)",
     mdP.includes("Where provenance resolution STOPS") && mdP.includes("UNREACHABLE") &&
-      mdP.includes("never inferred from payload text") && mdP.includes("no CLI surface"),
+      mdP.includes("never inferred from payload text") &&
+      // F-487: the Power List sentence states what resolves (objects, connection,
+      // output fields) and the one real limit (filters, KI-027) — the old
+      // "no CLI surface at all" claim is gone
+      mdP.includes("its FILTER criteria are not returned by the CLI") && !mdP.includes("no CLI surface"),
     null
+  );
+  check(
+    "ER-20 cli (F-487): an unresolved Power List gets its own caveat naming the rule id, the program, the refresh remedy and the one-off fetch",
+    mdP.includes("Power List rule `0f0e0d0c-1111-2222-3333-444455556666` (source 'PL Query', referenced by 1 in-scope program(s): Power List Program (prog-pl)) has no readable KB doc under rules-engine/") &&
+      mdP.includes("Run `/gs-superadmin:refresh`") &&
+      mdP.includes("gs-admin --json re r describe --id '0f0e0d0c-1111-2222-3333-444455556666'"),
+    mdP.split("\n").filter((l) => l.includes("Power List rule"))
   );
   check(
     "ER-20 cli: summary counts (4 sources: 1 DD resolved, 1 DD with 2 missing docs, 1 CSV, 1 power list)",
@@ -1704,11 +1722,219 @@ const dependent = (id, name, cols) => ({
   const srcCsv = readFileSync(join(ROOT, "cp1", "deps-sources.csv"), "utf8");
   check(
     "ER-20 cli: deps-sources.csv mirrors the provenance section (pointers, provenance, ties)",
-    srcCsv.startsWith("\uFEFF" + "program_id,program_name,status,source,source_type,operation_type,collection_id,provenance,dd_label,dd_description,dd_kb_docs,column_ties\r\n") &&
+    srcCsv.startsWith("\uFEFF" + "program_id,program_name,status,source,source_type,operation_type,collection_id,rule_id,provenance,dd_label,dd_description,dd_kb_docs,column_ties\r\n") &&
       srcCsv.includes("mirror_query") && srcCsv.includes("Created for ACME-1") &&
       srcCsv.includes("Renewal ID <-> RenewalId") && srcCsv.includes("ADD_ALL_PARTICIPANT_IN_POWER_LIST"),
     srcCsv.slice(0, 500)
   );
+
+  // ── F-487: Power List sources resolve to their rule doc in the rules lane;
+  //    dynamic fields and branch conditions are usage rows ────────────────────
+  {
+    // unit: the reader over the measured payload shape
+    const pl = extractPowerList(RULE_POWER_LIST);
+    check("F-487 extractPowerList: identity + the filters-not-in-payload fact as data",
+      pl.id === "pl-rule-1" && pl.name === "Acme Renewal Contacts" && pl.active === true && pl.ruleType === "ADVANCED_OUTREACH_QUERY_BUILDER" && pl.filtersReadable === false, pl);
+    const [t1, t2, t3] = pl.tasks;
+    check("F-487 extractPowerList: an SFDC task — object, connection GUID (type unknown here), fields on their ORIGINAL object with the lookup path's relationship prefix stripped",
+      t1.objectName === "Contact" && t1.derived === false && t1.connection?.id === "conn-sfdc-1" && t1.connection?.type === null &&
+        t1.fields.length === 2 && t1.fields[0].objectName === "Contact" && t1.fields[0].fieldName === "Email" && t1.fields[0].fieldLabel === "Email" &&
+        t1.fields[1].objectName === "Account" && t1.fields[1].fieldName === "CaseSafeID__c" && t1.fields[1].schemaType === "SFDC", t1);
+    check("F-487 extractPowerList: a Gainsight task — GSID object with its label, GAINSIGHT_API as an internal connection TYPE",
+      t2.objectName === "gsid-company-0001" && t2.objectLabel === "Company" && t2.connection?.id === "GAINSIGHT_API" && t2.connection?.type === "GAINSIGHT_API" && t2.fields[0]?.fieldName === "Arr__gc" && t2.fields[0]?.objectLabel === "Company", t2);
+    check("F-487 extractPowerList: a derived (merge) task names its upstream task, no object, and its re-exported fields dedupe against the upstream task's",
+      t3.derived === true && t3.objectName === null && t3.upstreamTaskId === "t1" && t3.connection === null && t3.fields.length === 0, t3);
+    check("F-487 isPowerListPayload: the rule type discriminates; a Rules Engine rule is not one",
+      isPowerListPayload(RULE_POWER_LIST) === true && isPowerListPayload({ data: { ruleDetails: { ruleType: "BIONIC" } } }) === false && isPowerListPayload(null) === false, null);
+    check("F-487 powerListObjectsSummary: objects with where they are read from, derived tasks omitted",
+      powerListObjectsSummary(pl) === "Contact via connection conn-sfdc-1, Company (gsid-company-0001) via Gainsight", powerListObjectsSummary(pl));
+    const rows = powerListRows(pl);
+    check("F-487 powerListRows: one object row per source task + one field row per original object/field, each carrying the task's connection",
+      rows.filter((r) => r.kind === "power-list-object").length === 2 && rows.filter((r) => r.kind === "power-list-field").length === 5 &&
+        rows.every((r) => r.detail.includes('Power List "Acme Renewal Contacts"')) && rows.find((r) => r.fieldName === "CaseSafeID__c")?.objectName === "Account" &&
+        rows.find((r) => r.objectName === "Contact" && r.kind === "power-list-object")?.connection?.id === "conn-sfdc-1", rows.map((r) => [r.kind, r.objectName, r.fieldName]));
+    // F-487 reopen, instances 1b and 2 — without a registry, the payload's truth and nothing more
+    const lookupRow = rows.find((r) => r.fieldName === "Score__gc");
+    check("F-487 reopen 1b: a Gainsight lookup field's row carries the lookup TARGET's GSID and NO label (the payload's label is the base object's, never applied to the target)",
+      lookupRow?.objectName === "gsid-project-fact-0002" && lookupRow?.objectLabel === null, lookupRow);
+    const hopRow = rows.find((r) => r.objectName === "User");
+    check("F-487 reopen 2: a multi-hop path keeps the field's own API name (the last segment) on its original object, the full path in the detail",
+      hopRow?.fieldName === "Email" && /path Owner\.Manager\.Email/.test(hopRow?.detail ?? ""), hopRow);
+
+    // KB: the rule doc under the rules lane (raw describe doc shape), a
+    // Rules Engine rule beside it, and a program on the list
+    const rulesDir = join(KB, "rules-engine");
+    mkdirSync(rulesDir, { recursive: true });
+    const rawDoc = (key, id, name, payload) => [`# ${name}`, "", "> Full describe doc — generated by describe-batch.mjs, captured 2026-10-06T00:00:00.000Z.", "", `- key: ${key}`, `- id: ${id}`, `- name: ${name}`, "", "```json", JSON.stringify(payload, null, 2), "```", ""].join("\n");
+    writeFileSync(join(rulesDir, "pl-rule-1.md"), rawDoc("rules-engine/pl-rule-1", "pl-rule-1", "Acme Renewal Contacts", RULE_POWER_LIST));
+    writeFileSync(join(rulesDir, "rule-bionic-9.md"), rawDoc("rules-engine/rule-bionic-9", "rule-bionic-9", "Acme Bionic Rule", { result: true, data: { ruleDetails: { ruleId: "rule-bionic-9", ruleName: "Acme Bionic Rule", ruleType: "BIONIC", taskDetails: [] }, criteriaDetails: [] } }));
+    const resolver = makePowerListResolver({ kbDir: KB });
+    check("F-487 makePowerListResolver: resolves by rule id from the rules lane (default folder), cached, with the doc path",
+      resolver("pl-rule-1")?.name === "Acme Renewal Contacts" && resolver("pl-rule-1") === resolver("pl-rule-1") && /rules-engine.*pl-rule-1\.md/.test(String(resolver("pl-rule-1")?.docPath)) && resolver.folder === "rules-engine", resolver("pl-rule-1"));
+    check("F-487 makePowerListResolver: a missing doc, a Rules Engine rule at the id, and a null id are problems with reasons — never a throw, never a confident empty",
+      resolver("pl-nope")?.problem?.reason === "missing" && resolver("rule-bionic-9")?.problem?.reason === "not-a-power-list" && resolver(null) === null &&
+        resolver.problems.map((p) => p.reason).sort().join(",") === "missing,not-a-power-list", resolver.problems);
+    check("F-487 makePowerListResolver: no KB dir → every id is a no-kb problem", makePowerListResolver({ kbDir: null })("pl-rule-1")?.problem?.reason === "no-kb", null);
+    check("F-487 locateKbDoc: the shared locator finds the doc (exact), a missing id, and reports the folder-relative spelling",
+      locateKbDoc(KB, "rules-engine", "pl-rule-1").rel === "rules-engine/pl-rule-1.md" && locateKbDoc(KB, "rules-engine", "zz-none").reason === "missing" && locateKbDoc(KB, "no-such-folder", "x").reason === "missing", null);
+
+    // the program through parseJourneyDoc (payload → index → rows)
+    const qbDoc = ["# Acme Renewal Outreach", "", "- key: journey/prog-qb", "- id: prog-qb", "- name: Acme Renewal Outreach", "", "```json", JSON.stringify({ result: true, data: { advancedOutreach: JOURNEY_QB_AO } }), "```", ""].join("\n");
+    const pQb = parseJourneyDoc(qbDoc, "fixture-tenant/journey/prog-qb.md").entry;
+
+    // ── F-487 reopen (second round, Redesign): the object registry keyed on
+    //    the KB's OWN identity — the doc's `- id:` bullet (the manifest key) ──
+    // the data-management lane's docs in their REAL shape (579 of 594 docs on
+    // a production KB, the sandbox KB alike): the first `- name:` bullet is
+    // the manifest's DISPLAY name (setup registers the lane by label), the
+    // system name is `- id:`, and the payload's own scalars follow as bullets
+    // (objectId / name / dbName / label / …); a shallow-crawl stub carries the
+    // list row's label and no objectId.
+    const dmDir = join(KB, "data-management");
+    mkdirSync(dmDir, { recursive: true });
+    const dmDocOf = (payload) => [`# ${payload.data.label}`, "", "> Full describe doc — generated by describe-batch.mjs, captured 2026-10-06T00:00:00.000Z.", "", `- key: data-management/${payload.data.name}`, `- id: ${payload.data.name}`, `- name: ${payload.data.label}`, ...Object.entries(payload.data).filter(([, v]) => v == null || typeof v !== "object").map(([k, v]) => `- ${k}: ${v}`), "", "```json", JSON.stringify(payload, null, 2), "```", ""].join("\n");
+    writeFileSync(join(dmDir, "company.md"), dmDocOf(DM_OBJECT_COMPANY));
+    writeFileSync(join(dmDir, "project_health_fact__gc.md"), dmDocOf(DM_OBJECT_PROJECT_FACT));
+    writeFileSync(join(dmDir, "survey_participant.md"), ["# Survey Participant", "", "> **Metadata-only stub** (shallow crawl, captured 2026-10-06T00:00:00.000Z) — full ingest: `gs-admin --json dm o describe --name survey_participant`", "", "- key: data-management/survey_participant", "- id: survey_participant", "- name: Survey Participant", "- label: Survey Participant", "- group: SYSTEM", "", "```json", JSON.stringify(DM_LIST_ROW), "```", ""].join("\n"));
+    const realDoc = readFileSync(join(dmDir, "company.md"), "utf8");
+    check("F-487 Redesign docObjectIdentity: the system name is the `- id:` bullet, NEVER the first `- name:` (the display name on real KBs); GSID/label/dbName from the payload's scalar bullets",
+      /^- name: Company$/m.test(realDoc) && JSON.stringify(docObjectIdentity(realDoc)) === JSON.stringify({ gsid: "gsid-company-0001", name: "company", label: "Company", dbName: "company_acme" }), docObjectIdentity(realDoc));
+    check("F-487 Redesign docObjectIdentity: a doc with no `- id:` bullet falls back to the fence's data{name}; one naming no object is null",
+      docObjectIdentity("# X\n\n```json\n" + JSON.stringify(DM_OBJECT_PROJECT_FACT) + "\n```\n")?.name === "project_health_fact__gc" && docObjectIdentity("# X\n\n- label: Y\n") === null, null);
+    const objects = makeObjectResolver({ kbDir: KB });
+    check("F-487 reopen registry: every doc with a `- id:` bullet is an entry (the DD fixture's dm doc included, keyed on its id); folder stats honest",
+      objects.size === 4 && objects.stats.folderPresent === true && objects.stats.docs === 4 && objects.stats.parsed === 4 && objects.folder === "data-management", objects.stats);
+    check("F-487 reopen registry: one object resolves by GSID, by system name, by label and by dbName (case-insensitive) to the SAME entry",
+      objects("gsid-company-0001")?.name === "company" && objects("company")?.gsid === "gsid-company-0001" && objects("COMPANY")?.name === "company" && objects("company_acme")?.name === "company" && objects("gsid-company-0001") === objects("Company"), objects("Company"));
+    check("F-487 reopen registry: a stub's list row resolves by id and label (no GSID on the row); an unknown reference is null",
+      objects("Survey Participant")?.name === "survey_participant" && objects("survey_participant")?.gsid === null && objects("Contact") === null && objects(null) === null, objects("Survey Participant"));
+    check("F-487 reopen canonicalObject: a known reference becomes the system name with the label and the GSID/dbName as aliases; an SFDC name passes through",
+      JSON.stringify(canonicalObject("gsid-company-0001", objects, "Company")) === JSON.stringify({ objectName: "company", objectLabel: "Company", objectAliases: ["gsid-company-0001", "company_acme"] }) &&
+        JSON.stringify(canonicalObject("Contact", objects)) === JSON.stringify({ objectName: "Contact", objectLabel: null, objectAliases: [] }), canonicalObject("gsid-company-0001", objects, "Company"));
+    const canonAll = usageCandidates(pQb, { powerLists: resolver, objects });
+    const canon = canonAll.filter((r) => r.kind.startsWith("power-list"));
+    check("F-487 Redesign (invariant A, Power List rows): the Gainsight task carries the system name + label + GSID alias; the lookup target carries ITS OWN label (never the base object's); the SFDC object passes through",
+      canon.find((r) => r.kind === "power-list-object" && r.objectName === "company")?.objectLabel === "Company" && canon.find((r) => r.objectName === "company")?.objectAliases.includes("gsid-company-0001") &&
+        canon.find((r) => r.fieldName === "Score__gc")?.objectName === "project_health_fact__gc" && canon.find((r) => r.fieldName === "Score__gc")?.objectLabel === "Project Health Fact" &&
+        canon.find((r) => r.kind === "power-list-object" && r.objectName === "Contact")?.objectAliases.length === 0, canon.map((r) => [r.objectName, r.objectLabel, r.fieldName]));
+    check("F-487 Redesign (invariant A, every row kind): the dynamic-field row on a Gainsight object carries the GSID alias too — one canonicalization point, not per kind",
+      canonAll.find((r) => r.kind === "dynamic-field" && r.objectName === "company")?.objectAliases.includes("gsid-company-0001") && canonAll.find((r) => r.kind === "dynamic-field" && r.objectName === "company")?.objectLabel === "Company", canonAll.filter((r) => r.kind === "dynamic-field").map((r) => [r.objectName, r.objectAliases]));
+    check("F-487 reopen matchObjectTerm: a row matches on its name, its label, or any alias (the GSID)",
+      ["company", "Company", "gsid-company-0001", "company_acme"].every((t) => matchObjectTerm(canon.find((r) => r.objectName === "company"), [{ term: t, lowered: t.toLowerCase() }]) === t), null);
+    check("F-487 reopen powerListObjectsSummary with the registry reads canonical names", powerListObjectsSummary(pl, objects) === "Contact via connection conn-sfdc-1, Company (company) via Gainsight", powerListObjectsSummary(pl, objects));
+
+    const cands = usageCandidates(pQb, { powerLists: resolver });
+    const kinds = (k) => cands.filter((r) => r.kind === k);
+    check("F-487 usageCandidates: Power List rows ride the source (name + sourceRef) — objects with connection, fields on their original object",
+      kinds("power-list-object").length === 2 && kinds("power-list-field").length === 5 && kinds("power-list-object").every((r) => r.source === "Acme Renewal Contacts" && r.sourceRef === pQb.sources[0]), kinds("power-list-object"));
+    check("F-487 usageCandidates: dynamic-field rows — the DYNAMIC_QUERY_V2 field as a row, its filter conditions as 'dynamic-field filter' condition rows, the SURVEY_QUERY field with its survey in the detail; no sourceRef",
+      kinds("dynamic-field").length === 3 && kinds("dynamic-field")[0].objectName === "Project__c" && kinds("dynamic-field")[0].fieldName === "Status__c" && kinds("dynamic-field")[0].fieldLabel === "Status" && kinds("dynamic-field")[0].sourceRef === null &&
+        cands.some((r) => r.usage === "dynamic-field filter" && r.objectName === "Account" && r.fieldName === "Id") &&
+        kinds("dynamic-field")[1].objectName === "Survey User Answer" && /survey svy-renewal-1, question q-nps-1/.test(kinds("dynamic-field")[1].detail), kinds("dynamic-field"));
+    check("F-487 usageCandidates: branch-condition rows — a participant custom field directly, a dynamic field resolved by id to its object/field, port + operator in the detail",
+      kinds("branch-condition").length === 2 &&
+        kinds("branch-condition")[0].objectName === "ao_participant_custom_fields" && kinds("branch-condition")[0].fieldName === "cf-stage-1" && kinds("branch-condition")[0].fieldLabel === "Stage" && /port "Open Projects", alias A, operator IN/.test(kinds("branch-condition")[0].detail) &&
+        kinds("branch-condition")[1].objectName === "Project__c" && kinds("branch-condition")[1].fieldName === "Status__c" && kinds("branch-condition")[1].fieldLabel === "Project Status" && /operator NOT_IN \(dynamic field dyn-project-status\)/.test(kinds("branch-condition")[1].detail), kinds("branch-condition"));
+    check("F-487 usageCandidates: without a resolver the Power List contributes no rows (never a guess) while the program-level rows still do",
+      !usageCandidates(pQb).some((r) => r.kind.startsWith("power-list")) && usageCandidates(pQb).some((r) => r.kind === "dynamic-field"), null);
+
+    const IX487 = { ...IX20, programs: { ...IX20.programs, "prog-qb": pQb } };
+    const s1 = scanDeps(IX487, { objectTerms: ["Contact"], powerLists: resolver });
+    check("F-487 scanDeps --object Contact: the Power List program matches through its task object (object-only run → main rows)",
+      s1.fieldRows.some((r) => r.program.id === "prog-qb" && r.kind === "power-list-object" && r.matchedTerm === "Contact") && s1.objectsTouched.includes("Contact"), s1.fieldRows.map((r) => [r.program.id, r.kind, r.objectName]));
+    const s2 = scanDeps(IX487, { objectTerms: ["Company"], powerLists: resolver });
+    check("F-487 scanDeps --object Company without a registry: a Gainsight object still matches by the payload's label (the row carries the GSID)",
+      s2.fieldRows.some((r) => r.program.id === "prog-qb" && r.objectName === "gsid-company-0001" && r.objectLabel === "Company"), s2.fieldRows.map((r) => [r.program.id, r.objectName]));
+    // the class's falsifiable test (i): with the registry, GSID, system name and label return the SAME set
+    const setFor = (term) => [...new Set(scanDeps(IX487, { objectTerms: [term], powerLists: resolver, objects }).fieldRows.map((r) => r.program.id))].sort().join(",");
+    check("F-487 reopen scanDeps (class test i): --object by GSID, by system name and by label return the same programs; the rows carry the system name",
+      setFor("gsid-company-0001") === "prog-qb" && setFor("company") === "prog-qb" && setFor("Company") === "prog-qb" && setFor("company_acme") === "prog-qb" &&
+        scanDeps(IX487, { objectTerms: ["company"], powerLists: resolver, objects }).fieldRows.every((r) => r.objectName === "company"), { gsid: setFor("gsid-company-0001"), name: setFor("company"), label: setFor("Company") });
+    const kindsFor = (term) => [...new Set(scanDeps(IX487, { objectTerms: [term], powerLists: resolver, objects }).fieldRows.map((r) => r.kind))].sort().join(",");
+    check("F-487 Redesign (class test i, every row kind): the GSID term reaches the program through the dynamic-field row AND the Power List rows — the same kinds the system-name term reaches",
+      kindsFor("gsid-company-0001") === kindsFor("company") && kindsFor("company").includes("dynamic-field") && kindsFor("company").includes("power-list-object"), { gsid: kindsFor("gsid-company-0001"), name: kindsFor("company") });
+    check("F-487 reopen scanDeps: the lookup target is reachable by ITS identity (name, label, GSID), and the base object's label does not claim it",
+      setFor("project_health_fact__gc") === "prog-qb" && setFor("Project Health Fact") === "prog-qb" && setFor("gsid-project-fact-0002") === "prog-qb" &&
+        scanDeps(IX487, { objectTerms: ["Company"], powerLists: resolver, objects }).fieldRows.every((r) => r.fieldName !== "Score__gc"), null);
+    const hop = scanDeps(IX487, { fieldTerms: ["Email"], powerLists: resolver, objects });
+    check("F-487 reopen scanDeps (class test ii): --field by the field's own API name matches a multi-hop path's field on its original object",
+      hop.fieldRows.some((r) => r.program.id === "prog-qb" && r.kind === "power-list-field" && r.objectName === "User" && r.fieldName === "Email"), hop.fieldRows.map((r) => [r.objectName, r.fieldName]));
+    const s3 = scanDeps(IX487, { objectTerms: ["Account"], powerLists: resolver });
+    check("F-487 scanDeps --object Account: matched through BOTH a Power List output field (lookup path) and a dynamic field's filter condition",
+      s3.fieldRows.some((r) => r.program.id === "prog-qb" && r.kind === "power-list-field" && r.fieldName === "CaseSafeID__c") && s3.fieldRows.some((r) => r.program.id === "prog-qb" && r.usage === "dynamic-field filter"), s3.fieldRows.map((r) => [r.kind, r.usage, r.objectName, r.fieldName]));
+    const s4 = scanDeps(IX487, { fieldTerms: ["CaseSafeID__c"], powerLists: resolver });
+    check("F-487 scanDeps --field CaseSafeID__c: the stripped field name matches exactly (a --field term is never substring)",
+      s4.fieldRows.some((r) => r.program.id === "prog-qb" && r.matchedOn === "field" && r.kind === "power-list-field"), s4.fieldRows.length);
+    const s5 = scanDeps(IX487, { fieldTerms: ["Project Status"], powerLists: resolver });
+    check("F-487 scanDeps --field 'Project Status': the branch condition's label matches (the dynamic field's own label does too)",
+      s5.fieldRows.some((r) => r.program.id === "prog-qb" && r.kind === "branch-condition"), s5.fieldRows.map((r) => r.kind));
+
+    // the CLI: provenance cell + detail + the unresolved-list caveat + counts
+    const IX487_PATH = join(ROOT, "er-index-f487.json");
+    writeFileSync(IX487_PATH, JSON.stringify(IX487));
+    const p487 = runCli("deps", "--index", IX487_PATH, "--object", "Contact", "--object", "Account", "--kb", KB, "--report", join(ROOT, "rp487"), "--csv-dir", join(ROOT, "cp487"));
+    const md487 = readFileSync(p487.summary.reportPath, "utf8");
+    check("F-487 cli: the Power List provenance cell names the list, the rule id, what it reads (canonical names) and where, and that filters are not returned",
+      p487.res.status === 0 && md487.includes("Power List **Acme Renewal Contacts** (rule `pl-rule-1`) — reads Contact via connection conn-sfdc-1, Company (company) via Gainsight; filters not returned by the CLI — see detail below"),
+      { status: p487.res.status, stderr: p487.res.stderr?.slice(0, 300), lines: md487.split("\n").filter((l) => l.includes("Power List")) });
+    check("F-487 cli: the Power List detail block lists each task with its object, where it reads it, its output fields, and the derived task's upstream; and states the filter limit once",
+      md487.includes("### Power List detail") && md487.includes("- **Acme Renewal Contacts** (rule `pl-rule-1`) — used by Acme Renewal Outreach (prog-qb)") &&
+        md487.includes('task "contacts": `Contact` via connection conn-sfdc-1 — 2 output field(s): Email, Account.CaseSafeID__c') &&
+        md487.includes('task "Fetch from Company": Company (`company`) via Gainsight — 3 output field(s): Arr__gc, project_health_fact__gc.Score__gc, User.Email') &&
+        md487.includes('task "Merge": derived from task t1 — 0 output field(s)') &&
+        md487.includes("filters: not returned by the CLI"), md487.split("\n").filter((l) => l.includes("task \"") || l.includes("filters:")));
+    check("F-487 cli: the usage table carries the new row kinds with the list named in the detail",
+      md487.includes("Power List source object") && md487.includes('Power List "Acme Renewal Contacts" task "contacts" via connection conn-sfdc-1') && md487.includes("dynamic-field filter"), null);
+    check("F-487 cli: the standing caveat says what a Power List match means and names the filter limit; the dynamic-program sentence only when a QUERY source is in scope",
+      md487.includes("a match means the list reads the object, never how it filters it") && !md487.includes("dynamic program's own participant query"), null);
+    // provenance covers MATCHED sources only (ER-20): the ER-20 fixture's
+    // unresolved Power List program matches neither term here, so its missing
+    // rule is not this run's to report (p1 above reported it)
+    // the ER-20 fixture's unresolved Power List program is IN SCOPE and matches
+    // neither term — since the second reopen (Redesign, invariant B) its
+    // unreadable rule is still counted and stated, from the scan
+    check("F-487 cli: summary counts — one Power List resolved, ONE unreadable rule in scope (stated whatever matched), Power List rows (2 objects + Account field) and the dynamic-field filter row counted, no branch row (none names these objects)",
+      p487.summary?.counts?.powerListsResolved === 1 && p487.summary?.counts?.powerListRulesMissing === 1 && p487.summary?.counts?.powerListRows === 3 && p487.summary?.counts?.dynamicFieldRows === 1 && p487.summary?.counts?.branchConditionRows === 0 && p487.summary?.counts?.querySources === 0, p487.summary?.counts);
+    check("F-487 Redesign cli (class test ii, invariant B): a run whose terms match NOTHING still names the unreadable rule, its referencing program and the remedy — absence is never evidence",
+      md487.includes("Power List rule `0f0e0d0c-1111-2222-3333-444455556666` (source 'PL Query', referenced by 1 in-scope program(s): Power List Program (prog-pl)) has no readable KB doc under rules-engine/") && md487.includes("their absence from the tables above is not evidence") && md487.includes("Run `/gs-superadmin:refresh`"),
+      md487.split("\n").filter((l) => l.includes("Power List rule")));
+    const pNone = runCli("deps", "--index", IX487_PATH, "--object", "No_Such_Object__zz", "--kb", KB, "--report", join(ROOT, "rp487n"));
+    const mdNone = readFileSync(pNone.summary.reportPath, "utf8");
+    check("F-487 Redesign cli (class test ii): with a term that matches no row at all, the unreadable rule is still named (count 1) — on the JO surface, like the tenant-wide one",
+      pNone.res.status === 0 && pNone.summary?.counts?.powerListRulesMissing === 1 && mdNone.includes("Power List rule `0f0e0d0c-1111-2222-3333-444455556666` (source 'PL Query', referenced by 1 in-scope program(s)") && pNone.summary?.counts?.fieldUsageRows === 0,
+      { status: pNone.res.status, counts: pNone.summary?.counts });
+    const p487b = runCli("deps", "--index", IX487_PATH, "--object", "Project__c", "--kb", KB, "--report", join(ROOT, "rp487b"));
+    check("F-487 cli: --object Project__c reaches the program through its dynamic field AND its branch condition (both counted)",
+      p487b.summary?.counts?.dynamicFieldRows === 1 && p487b.summary?.counts?.branchConditionRows === 1 && p487b.summary?.counts?.programsScanned === 5, p487b.summary?.counts);
+    const srcCsv487 = readFileSync(join(ROOT, "cp487", "deps-sources.csv"), "utf8");
+    check("F-487 cli: deps-sources.csv carries the rule id column and the plain provenance cell",
+      srcCsv487.includes(",pl-coll-old-1,pl-rule-1,") && srcCsv487.includes('"Power List ""Acme Renewal Contacts"" (rule pl-rule-1) — reads Contact via connection conn-sfdc-1, Company (company) via Gainsight'), srcCsv487.split("\n").find((l) => l.includes("prog-qb")));
+    // a QUERY (dynamic) source in scope → its own honest cell and sentence
+    const pQuery = entryOf("prog-dyn", "Dynamic Program", [srcPayload("cfg-q", "QUERY", "Dynamic Query", "coll-q-1", "ADD_ALL_PARTICIPANT_IN_POWER_LIST", { ye9: { fieldName: "Renewal ID" } })]);
+    const IXQ = { ...IX20, programs: { "prog-dyn": pQuery } };
+    const IXQ_PATH = join(ROOT, "er-index-f487q.json");
+    writeFileSync(IXQ_PATH, JSON.stringify(IXQ));
+    const pq = runCli("deps", "--index", IXQ_PATH, "--field", "Renewal ID", "--kb", KB, "--report", join(ROOT, "rpq"));
+    const mdq = readFileSync(pq.summary.reportPath, "utf8");
+    check("F-487 cli: a dynamic program's QUERY source renders its honest cell and the standing sentence; counted as querySources",
+      mdq.includes("Dynamic query `coll-q-1` — dynamic program — its participant query is not returned by any CLI command") && mdq.includes("returned by no CLI command") && pq.summary?.counts?.querySources === 1, mdq.split("\n").filter((l) => l.includes("Dynamic")));
+    // F-487 reopen, instance 3 (P5): a dynamic program matched ONLY through a
+    // program-level row (its dynamic field) — the way such a program can match
+    // on --object — still carries its provenance entry, cell and sentence
+    const dynAo = { ...JOURNEY_QB_AO, advancedOutreachId: "prog-dyn2", advancedOutreachName: "Acme Dynamic Program",
+      participantSourceConfigurations: [{ participantSourceConfigurationId: "cfg-dyn2", participantSourceType: "QUERY", participantSourceName: "Acme Dynamic Query", participantSourceCollectionId: "coll-q-2", participantOperationType: "ADD_ALL_PARTICIPANT_IN_POWER_LIST", config: JSON.stringify({ filters: { conditions: [], expression: "" } }) }] };
+    const pDyn2 = parseJourneyDoc(["# Acme Dynamic Program", "", "- key: journey/prog-dyn2", "- id: prog-dyn2", "- name: Acme Dynamic Program", "", "```json", JSON.stringify({ result: true, data: { advancedOutreach: dynAo } }), "```", ""].join("\n"), "fixture-tenant/journey/prog-dyn2.md").entry;
+    const collectedDyn = collectProvenanceSources(scanDeps({ ...IX20, programs: { "prog-dyn2": pDyn2 } }, { objectTerms: ["Project__c"] }));
+    check("F-487 reopen collectProvenanceSources (class test iv): a program matched only through program-level rows gets an entry for each of its sources, with no matched columns",
+      collectedDyn.length === 1 && collectedDyn[0].program.id === "prog-dyn2" && collectedDyn[0].source.participantSourceType === "QUERY" && collectedDyn[0].matchedColumns.length === 0, collectedDyn);
+    const IXD_PATH = join(ROOT, "er-index-f487d.json");
+    writeFileSync(IXD_PATH, JSON.stringify({ ...IX20, programs: { "prog-dyn2": pDyn2 } }));
+    const pd = runCli("deps", "--index", IXD_PATH, "--object", "Project__c", "--kb", KB, "--report", join(ROOT, "rpd"));
+    const mdd = readFileSync(pd.summary.reportPath, "utf8");
+    check("F-487 reopen cli (P5): on an --object match through a dynamic field, the dynamic program's QUERY cell and the standing sentence render; querySources 1",
+      pd.res.status === 0 && mdd.includes("Dynamic query `coll-q-2` — dynamic program — its participant query is not returned by any CLI command") && mdd.includes("returned by no CLI command") && pd.summary?.counts?.querySources === 1 && pd.summary?.counts?.dynamicFieldRows === 1,
+      { status: pd.res.status, counts: pd.summary?.counts, lines: mdd.split("\n").filter((l) => l.includes("Dynamic")) });
+  }
 
   // KB dir derived from index.slug relative to the CWD (kbDocDisplayPath's
   // own assumption) when --kb is absent
