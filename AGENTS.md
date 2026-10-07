@@ -239,6 +239,7 @@ node plugins/gs-superadmin/test/jo-report.mjs   # + test/jo-report-<mode>.mjs si
 node plugins/gs-superadmin/test/tenant-deps.mjs
 node plugins/gs-superadmin/test/er-count.mjs # email-report page-entry counter (GP-B5 DS-29 — shipped from the skill's inline transcription)
 node plugins/gs-superadmin/test/er-gaps.mjs  # email-report gap work-list builder (same DS-29 pair)
+node plugins/gs-superadmin/test/power-list-gaps.mjs # the Power List rule work-list builder (F-487): rule ids from the program docs on disk by the source's ruleId (collection id only as the legacy fallback), classified against the rules domain's inventory, the work list keyed by its recorded idField; failure honesty
 node plugins/gs-superadmin/test/capture.mjs # the shipped capture helper: clean-write + normalize encodings, failure honesty, and the shared read-only gate in its capture parameterization (DS-17)
 node plugins/gs-superadmin/test/doc-lib-fixtures.mjs # DIRECT suite for the portability layer + shared helpers (kills the F-113 mutant class at the definition site)
 node plugins/gs-superadmin/test/contract-conformance.mjs # executes T-1/T-2/T-3/T-4 against produced artifacts (manifest verbs + catalog key sets + stub-marker pins + journal entry grammar through both real writers)

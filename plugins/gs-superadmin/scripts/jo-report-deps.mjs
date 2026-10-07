@@ -68,8 +68,27 @@
 //       field dictionary. A missing doc is a caveat naming the fetch, never
 //       an empty column.
 //     CSV → the collectionId IS the uploaded filename — displayed as-is.
-//     QUERY_BUILDER → a Power List (collectionId == ruleId); power lists
-//       have NO CLI surface, rendered as honestly not resolvable.
+//     QUERY_BUILDER → a Power List: the source's `ruleId` names a hidden rule
+//       (ruleType ADVANCED_OUTREACH_QUERY_BUILDER — `re r list` never returns
+//       it, `re r describe --id` does) whose raw `data.taskDetails[]` carry
+//       the objects, connection and output fields the list reads. Resolved
+//       to the rule's KB doc in the rules lane (refresh/setup register and
+//       document them from the program docs — F-487); the list's FILTERS are
+//       not returned by the CLI (criteriaDetails null, every derived view
+//       empty, --task-id a no-op — measured 2026-10-06, upstream KI-027), so
+//       a match means the list READS the object, never how it filters it.
+//       The pre-F-487 text ("no CLI surface", "collectionId == ruleId") was
+//       false on both counts.
+//     QUERY → a dynamic program's participant query: no CLI command returns
+//       it (config.filters is empty, the collection id describes as neither a
+//       rule nor a template) — only the program's dynamic fields and branch
+//       conditions name objects, and the report says so.
+//   Beyond the sources, two program-level surfaces name objects and fields
+//   on EVERY source type and are scanned as usage rows (F-487):
+//   aoConfiguration.dynamicFields[] (DYNAMIC_QUERY_V2: object + field + its
+//   own filter conditions; SURVEY_QUERY: a survey question) and the flow
+//   canvas's branch conditions (nodes[].outPorts[].conditions[]: a participant
+//   custom field, or a dynamic field joined by id).
 //   The KB path comes from --kb <slugDir> when given; otherwise it is derived
 //   from the index (docPaths are recorded slug-relative, so index.slug
 //   resolved against the CWD is the KB dir when it exists — the same
@@ -120,7 +139,7 @@ import {
 // over one filename (F-125/F-156) — so the computed name CAN disagree with
 // how a doc was stored, and the resolver verifies each doc's `- key:` bullet
 // (topBullets) before trusting it (F-198).
-import { normalizeText, parseDocJson, docH1, NO_NAME, docBaseName, topBullets } from "./doc-lib.mjs";
+import { normalizeText, parseDocJson, docH1, NO_NAME, docBaseName, topBullets, RECORDED_LANES } from "./doc-lib.mjs";
 // Portability primitives (doc-lib): NFC fold on every compare (F-127), the
 // one term compare/dedup key (F-197), BOM strip for captured payloads
 // (F-118), the one sq/caveat copy (F-123), pinned comparators (F-128).
@@ -584,16 +603,31 @@ const customStrings = (entry) =>
 
 // ── usage extraction (exported for tests) ────────────────────────────────────
 
+// The pointer a QUERY_BUILDER source resolves by: its rule id, and only as a
+// fallback the collection id (equal on most sources, NOT all — F-487).
+export const powerListRuleId = (src) =>
+  src?.ruleId != null ? String(src.ruleId) : src?.participantSourceCollectionId != null ? String(src.participantSourceCollectionId) : null;
+
 // One in-scope program → its candidate usage rows (before term matching).
 // Condition rows carry the object name; mapping rows never do (C1 fact).
-// Every row keeps a reference to its source entry (sourceRef) so the ER-20
-// provenance pass can resolve the matched rows' sources without re-deriving
-// which source a row came from (labels are not unique).
-export function usageCandidates(program) {
+// Every source-derived row keeps a reference to its source entry (sourceRef)
+// so the ER-20 provenance pass can resolve the matched rows' sources without
+// re-deriving which source a row came from (labels are not unique).
+// `powerLists` (F-487) is a resolver `(ruleId) => PowerList | null` over the
+// rules lane's KB docs (makePowerListResolver): a QUERY_BUILDER source whose
+// rule doc is on disk contributes the objects, connection and output fields
+// its tasks read; an unresolved one contributes nothing here and is named in
+// the provenance caveats, never silently. Program-level rows (dynamic
+// fields, branch conditions) carry no sourceRef — they are not a source.
+export function usageCandidates(program, { powerLists = null } = {}) {
   const rows = [];
   for (const src of Array.isArray(program.sources) ? program.sources : []) {
     if (!src || typeof src !== "object") continue;
     const srcLabel = src.name ?? src.configId ?? "(unnamed source)";
+    if (classifySource(src) === "power-list" && typeof powerLists === "function") {
+      const pl = powerLists(powerListRuleId(src));
+      if (pl && !pl.problem) for (const r of powerListRows(pl)) rows.push({ ...r, source: srcLabel, sourceRef: src });
+    }
     for (const c of Array.isArray(src.conditions) ? src.conditions : [])
       rows.push({
         kind: "condition",
@@ -631,7 +665,290 @@ export function usageCandidates(program) {
         detail: `custom mapping${entry?.id ? ` ${entry.id}` : ""}`,
       });
   }
+  // Program-level surfaces (F-487) — read on every source type.
+  const dynamics = Array.isArray(program.dynamicFields) ? program.dynamicFields.filter((d) => d && typeof d === "object") : [];
+  const dynById = new Map(dynamics.filter((d) => d.fieldId != null).map((d) => [String(d.fieldId), d]));
+  for (const d of dynamics) {
+    const label = d.label ?? d.fieldLabel ?? d.fieldId ?? "(unlabeled)";
+    rows.push({
+      kind: "dynamic-field",
+      usage: "dynamic field",
+      source: "(program) dynamic field",
+      sourceRef: null,
+      objectName: d.objectName ?? null,
+      objectLabel: d.objectLabel ?? null,
+      fieldName: d.fieldName ?? null,
+      fieldLabel: d.fieldLabel ?? d.label ?? null,
+      detail: d.survey
+        ? `dynamic field "${label}" (${d.criterionType ?? "SURVEY_QUERY"}) — survey ${d.survey.surveyId ?? "?"}, question ${d.survey.questionId ?? "?"}`
+        : `dynamic field "${label}" (${d.criterionType ?? "unknown type"})`,
+    });
+    for (const c of Array.isArray(d.conditions) ? d.conditions : [])
+      rows.push({
+        kind: "condition",
+        usage: "dynamic-field filter",
+        source: "(program) dynamic field",
+        sourceRef: null,
+        objectName: c.objectName ?? null,
+        fieldName: c.fieldName ?? null,
+        fieldLabel: c.fieldLabel ?? null,
+        detail: `dynamic field "${label}": operator ${c.comparisonOperator ?? "unknown"}${c.filterAlias ? `, alias ${c.filterAlias}` : ""}`,
+      });
+  }
+  for (const step of Array.isArray(program.steps) ? program.steps : [])
+    for (const b of Array.isArray(step?.branchConditions) ? step.branchConditions : []) {
+      if (!b || typeof b !== "object") continue;
+      // a dynamic-field operand names its object/field through the program's
+      // dynamicFields; a participant custom field names them directly
+      const dyn = b.fieldId != null ? dynById.get(String(b.fieldId)) ?? null : null;
+      rows.push({
+        kind: "branch-condition",
+        usage: "branch condition",
+        source: `(program) step "${step.stepName ?? step.stepId ?? "?"}"`,
+        sourceRef: null,
+        objectName: dyn ? dyn.objectName ?? null : b.objectName ?? null,
+        objectLabel: dyn ? dyn.objectLabel ?? null : null,
+        fieldName: dyn ? dyn.fieldName ?? null : b.fieldName ?? null,
+        fieldLabel: b.label ?? (dyn ? dyn.label ?? null : null),
+        detail:
+          `port "${b.port ?? "?"}"${b.alias ? `, alias ${b.alias}` : ""}, operator ${b.operator ?? "unknown"}` +
+          (b.leftType === "DYNAMIC_QUERY_V2" ? (dyn ? ` (dynamic field ${b.fieldId})` : ` (dynamic field ${b.fieldId ?? "?"} — not declared on the program)`) : ""),
+      });
+    }
   return rows;
+}
+
+// ── F-487: Power List (QUERY_BUILDER) rule docs ──────────────────────────────
+
+export const POWER_LIST_RULE_TYPE = "ADVANCED_OUTREACH_QUERY_BUILDER";
+// Connection ids that name the Gainsight platform itself, not an external
+// system — kept as the row's connection TYPE so a --connection term still
+// matches them (tenant-deps' INTERNAL_CONNECTIONS warns on them).
+const INTERNAL_CONNECTION_IDS = new Set(["GAINSIGHT_API", "MDA"]);
+
+// Is this `re r describe` payload a Power List's rule? The rules lane holds
+// both kinds side by side once refresh/setup document Power Lists (one
+// describe command, one folder): the type is the one discriminator.
+export function isPowerListPayload(payload) {
+  const data = payload?.data && typeof payload.data === "object" ? payload.data : payload;
+  const rd = data?.ruleDetails && typeof data.ruleDetails === "object" ? data.ruleDetails : null;
+  return rd != null && (rd.ruleType === POWER_LIST_RULE_TYPE || rd.sourceType === POWER_LIST_RULE_TYPE);
+}
+
+// `re r describe` payload of a Power List rule → what the list reads.
+// Shape (measured 2026-10-06, CLI 1.0.10, seven rules on a production
+// tenant; F-487): data.taskDetails[] — NOT under ruleDetails, where the
+// Rules Engine reader looks — each {taskId, datasetName, schemaObject,
+// connectionId, outputFields[], childrenTaskIds[]}. schemaObject is an SFDC
+// API name, a Gainsight object GSID, or a PRIOR task's id (merge/filter
+// tasks read upstream datasets, not objects). connectionId is a connector
+// GUID (resolved to a name through the connectors lane by the caller),
+// GAINSIGHT_API for a Gainsight object, null on derived tasks. Every output
+// field's meta names the ORIGINAL object and field it came from
+// (originalObjectName / originalFieldName — a lookup path lands on the
+// related object, e.g. Account via Contact), with originalObjectLabel on
+// Gainsight objects. criteriaDetails is null and every `_…` derived view
+// is empty: the list's filters are not in the payload (KI-027).
+/**
+ * One `data.taskDetails[]` row of a Power List rule's `re r describe` payload
+ * (CLI 1.0.10, measured 2026-10-06). Declared so the tsc gate rejects a read
+ * of an undeclared key (the F-343 M5 lock, the reader-shape recipe): an
+ * upstream rename fails HERE, in CI, before it reaches a tenant. Re-derive at
+ * every CLI adoption from a captured Power List describe.
+ * @typedef {object} PowerListTask
+ * @property {string} [taskId]          "t1", "t5", …
+ * @property {string|null} [datasetName]
+ * @property {string|null} [name]
+ * @property {string|null} [schemaObject]  an SFDC API name, a Gainsight object GSID, or a prior taskId
+ * @property {string|null} [connectionId]  a connector GUID, "GAINSIGHT_API", or null on a derived task
+ * @property {PowerListOutputField[]} [outputFields]
+ */
+/**
+ * @typedef {object} PowerListOutputField
+ * @property {string} [fieldName]
+ * @property {string} [field]
+ * @property {string} [label]
+ * @property {string} [outputFieldName]
+ * @property {{originalObjectName?: string, originalFieldName?: string, originalObjectLabel?: string, originalSchemaType?: string, originalPathMetaData?: {path?: {relationshipName?: string}}}} [meta]
+ */
+export function extractPowerList(payload) {
+  const data = payload?.data && typeof payload.data === "object" ? payload.data : payload ?? {};
+  const rd = data?.ruleDetails && typeof data.ruleDetails === "object" ? data.ruleDetails : {};
+  /** @type {PowerListTask[]} */
+  const rawTasks = Array.isArray(data?.taskDetails) ? data.taskDetails.filter((t) => t && typeof t === "object") : [];
+  const taskIds = new Set(rawTasks.map((t) => (t.taskId != null ? String(t.taskId) : null)).filter(Boolean));
+  const tasks = [];
+  const seenFields = new Set();
+  for (const t of rawTasks) {
+    const schemaObject = t.schemaObject != null ? String(t.schemaObject) : null;
+    const derived = schemaObject != null && taskIds.has(schemaObject);
+    const connId = t.connectionId != null ? String(t.connectionId) : null;
+    /** @type {PowerListOutputField[]} */
+    const outputs = Array.isArray(t.outputFields) ? t.outputFields.filter((f) => f && typeof f === "object") : [];
+    let objectLabel = null;
+    const fields = [];
+    for (const f of outputs) {
+      const meta = f.meta && typeof f.meta === "object" ? f.meta : {};
+      const objectName = meta.originalObjectName != null ? String(meta.originalObjectName) : derived ? null : schemaObject;
+      if (objectName == null) continue; // a derived task's own alias — the upstream task owns the field
+      let fieldName = meta.originalFieldName ?? f.fieldName ?? f.field ?? null;
+      // A lookup-path field is spelled as the SOQL path from the task's
+      // object (`Account.CaseSafeID__c` read through Contact → Account) while
+      // originalObjectName already names the RELATED object the field lives
+      // on — strip the relationship prefix so the row carries the field's own
+      // API name on its own object (a --field term is exact, never substring).
+      const rel = meta.originalPathMetaData?.path?.relationshipName;
+      if (typeof fieldName === "string" && typeof rel === "string" && rel && fieldName.startsWith(`${rel}.`)) fieldName = fieldName.slice(rel.length + 1);
+      const label = meta.originalObjectLabel ?? null;
+      if (objectLabel == null && !derived && label != null && objectName === schemaObject) objectLabel = String(label);
+      const key = `${objectName}\u0000${fieldName ?? ""}`;
+      if (seenFields.has(key)) continue;
+      seenFields.add(key);
+      fields.push({
+        objectName,
+        objectLabel: label != null ? String(label) : null,
+        fieldName: fieldName != null ? String(fieldName) : null,
+        fieldLabel: f.label ?? f.outputFieldName ?? null,
+        schemaType: meta.originalSchemaType ?? null,
+      });
+    }
+    tasks.push({
+      taskId: t.taskId != null ? String(t.taskId) : null,
+      datasetName: t.datasetName ?? t.name ?? null,
+      objectName: derived ? null : schemaObject,
+      objectLabel,
+      derived,
+      upstreamTaskId: derived ? schemaObject : null,
+      connection: connId == null ? null : INTERNAL_CONNECTION_IDS.has(connId) ? { id: connId, name: null, type: connId } : { id: connId, name: null, type: null },
+      fields,
+    });
+  }
+  return {
+    id: rd.ruleId != null ? String(rd.ruleId) : null,
+    name: rd.ruleName ?? null,
+    active: typeof rd.active === "boolean" ? rd.active : null,
+    ruleType: rd.ruleType ?? rd.sourceType ?? null,
+    tasks,
+    // stated as data so every renderer says the same thing (KI-027)
+    filtersReadable: Array.isArray(data?.criteriaDetails) && data.criteriaDetails.length > 0,
+  };
+}
+
+// A Power List's usage rows — the objects its tasks read (with the
+// connection), then the fields its output carries, each tied to the
+// original object. `source`/`sourceRef` are stamped by the caller.
+export function powerListRows(pl) {
+  const rows = [];
+  const plName = pl.name ?? pl.id ?? "(unnamed Power List)";
+  for (const t of Array.isArray(pl.tasks) ? pl.tasks : []) {
+    if (t.objectName != null)
+      rows.push({
+        kind: "power-list-object",
+        usage: "Power List source object",
+        objectName: t.objectName,
+        objectLabel: t.objectLabel ?? null,
+        fieldName: null,
+        fieldLabel: null,
+        connection: t.connection ?? null,
+        detail: `Power List "${plName}" task "${t.datasetName ?? t.taskId ?? "?"}"${t.connection ? ` via connection ${t.connection.type ?? t.connection.id}` : ""}`,
+      });
+    for (const f of t.fields)
+      rows.push({
+        kind: "power-list-field",
+        usage: "Power List output field",
+        objectName: f.objectName,
+        objectLabel: f.objectLabel ?? null,
+        fieldName: f.fieldName,
+        fieldLabel: f.fieldLabel,
+        connection: t.connection ?? null,
+        detail: `Power List "${plName}" task "${t.datasetName ?? t.taskId ?? "?"}"${f.schemaType ? ` (${f.schemaType})` : ""}`,
+      });
+  }
+  return rows;
+}
+
+// KB doc (rules lane) → PowerList, or null when the doc is not a Power List
+// rule (a Rules Engine rule under the same folder) or unparseable.
+export function parsePowerListDoc(md) {
+  const text = normalizeText(String(md ?? ""));
+  const json = parseDocJson(text);
+  if (json == null || !isPowerListPayload(json)) return null;
+  return extractPowerList(json);
+}
+
+// Locate a KB doc by asset id under one folder, the way the DD provenance
+// lookup does (F-129 case-insensitive fallback, F-198 wrong-id detection):
+// { path, rel } or { reason: "missing" | "fs-error" | "wrong-id", … }. The
+// F-198 check runs on the TEXT the caller read, so a doc is read once.
+export function locateKbDoc(kbDir, folder, id) {
+  const base = docBaseName(id);
+  const file = `${base}.md`;
+  let rel = `${folder}/${file}`;
+  let path = join(kbDir, folder, file);
+  if (!existsSync(path)) {
+    let found = null;
+    try {
+      found = readdirSync(join(kbDir, folder)).find((f) => f.toLowerCase() === file.toLowerCase()) ?? null;
+    } catch (e) {
+      if (e?.code !== "ENOENT") return { reason: "fs-error", rel, detail: `${e.code ?? "error"}: ${e.message}` };
+    }
+    if (found == null) return { reason: "missing", rel };
+    rel = `${folder}/${found}`;
+    path = join(kbDir, folder, found);
+  }
+  return { path, rel, base };
+}
+// The F-198 half: does the doc at this name belong to the requested id?
+// Returns the other id on a real collision, null when the doc is trusted.
+export function kbDocCollidesWith(text, id, { kbDir, folder, base }) {
+  const keyId = docKeyId(normalizeText(text));
+  if (keyId == null || keyId === id) return null;
+  let collided = keyId.toLowerCase() !== id.toLowerCase();
+  if (!collided) {
+    const dupRe = new RegExp(`^${escapeRe(base)}(?:-dup)+\\.md$`, "i");
+    try {
+      collided = readdirSync(join(kbDir, folder)).some((f) => dupRe.test(f));
+    } catch { /* a doc was just read from this folder — fail open to the F-129 behavior */ }
+  }
+  return collided ? keyId : null;
+}
+
+// Resolver over the rules lane: ruleId → PowerList | { problem } (cached;
+// `problems` collects every unresolved id once for the caveats). `folder`
+// is the workspace's RECORDED rules folder (the index carries it; the
+// RECORDED_LANES default when nothing is recorded).
+export function makePowerListResolver({ kbDir, folder = RECORDED_LANES.rules.folder }) {
+  const cache = new Map();
+  const problems = []; // { ruleId, reason, rel, detail?, otherId? }
+  const resolve = (ruleId) => {
+    if (ruleId == null || ruleId === "") return null;
+    if (cache.has(ruleId)) return cache.get(ruleId);
+    let out;
+    if (kbDir == null) out = { problem: { ruleId, reason: "no-kb", rel: null } };
+    else {
+      const loc = locateKbDoc(kbDir, folder, ruleId);
+      if (loc.reason) out = { problem: { ruleId, ...loc } };
+      else {
+        let text = null;
+        try { text = readFileSync(loc.path, "utf8"); } catch { text = null; }
+        const otherId = text == null ? null : kbDocCollidesWith(text, ruleId, { kbDir, folder, base: loc.base });
+        if (text == null) out = { problem: { ruleId, reason: "unparseable", rel: loc.rel } };
+        else if (otherId != null) out = { problem: { ruleId, reason: "wrong-id", rel: loc.rel, otherId } };
+        else {
+          const pl = parsePowerListDoc(text);
+          out = pl == null
+            ? { problem: { ruleId, reason: "not-a-power-list", rel: loc.rel } }
+            : { ...pl, docPath: kbDocDisplayPath(loc.path) };
+        }
+      }
+    }
+    if (out.problem) problems.push(out.problem);
+    cache.set(ruleId, out);
+    return out;
+  };
+  resolve.problems = problems;
+  resolve.folder = folder;
+  return resolve;
 }
 
 // Which field term (if any) a candidate row matches. Prepared terms
@@ -649,9 +966,14 @@ export function matchFieldTerm(row, fieldTerms, aliasPrefix = null) {
   return null;
 }
 
+// Any row naming an object matches it — filter conditions, and since F-487
+// Power List task objects / output fields, dynamic fields and branch
+// conditions; mapping rows carry none (C1 fact) and never match. A Gainsight
+// object in a Power List is carried as its GSID with the label beside it, so
+// the label is a candidate too (the way tenant-deps' matchRow reads it).
 export function matchObjectTerm(row, objectTerms) {
-  if (row.kind !== "condition") return null; // only conditions carry objects
-  for (const { term, lowered } of objectTerms) if (eqTerm(row.objectName, lowered)) return term;
+  for (const { term, lowered } of objectTerms)
+    if (eqTerm(row.objectName, lowered) || eqTerm(row.objectLabel, lowered)) return term;
   return null;
 }
 
@@ -822,7 +1144,7 @@ export function scanTokens(index, programs, fieldTerms, aliasPrefix = null) {
 // near-miss candidates (alias mode only). Pure — no I/O, no process state.
 export function scanDeps(
   index,
-  { objectTerms = [], fieldTerms = [], all = false, includePaused = false, tokens = false, aliasPrefix = null } = {}
+  { objectTerms = [], fieldTerms = [], all = false, includePaused = false, tokens = false, aliasPrefix = null, powerLists = null } = {}
 ) {
   // termKey, not raw trim/lower (F-197): eqTerm happens to re-fold its term
   // side, but every `lowered` producer routes through the one key rule so no
@@ -840,7 +1162,7 @@ export function scanDeps(
   // names that contain the term's words — listed in a caveat, never counted
   const nearMissByTerm = new Map();
   for (const p of programs) {
-    for (const row of usageCandidates(p)) {
+    for (const row of usageCandidates(p, { powerLists })) {
       const fMatch = fTerms.length ? matchFieldTerm(row, fTerms, aliasPrefix) : null;
       const oTerm = oTerms.length ? matchObjectTerm(row, oTerms) : null;
       if (fMatch)
@@ -1059,16 +1381,20 @@ export function parseDmObjectDoc(md) {
   return { label: data.label ?? docH1(text), description: data.description ?? null, dataStore: data.dataStore ?? null, columns };
 }
 
-// Source → provenance kind. Observed type domain (P-2 census, in the plan —
-// no live counts here): QUERY_BUILDER is the dominant type (Power Lists —
-// participantOperationType ADD_ALL_PARTICIPANT_IN_POWER_LIST, collectionId ==
-// ruleId), CSV is common (collectionId IS the uploaded filename),
-// DATA_DESIGNER and QUERY are rare. Anything else renders pointers verbatim.
+// Source → provenance kind. Observed type domain (live census 2026-10-06,
+// 1,686 source rows of one production tenant — F-487): QUERY_BUILDER is the
+// dominant type (Power Lists — participantOperationType
+// ADD_ALL_PARTICIPANT_IN_POWER_LIST[_AND_ANY_IN_FUTURE]; every row carries a
+// `ruleId`, 23% of them differing from the collectionId), CSV is common
+// (collectionId IS the uploaded filename), QUERY (a dynamic program's own
+// participant query) and DATA_DESIGNER are rare. Anything else renders
+// pointers verbatim.
 export function classifySource(src) {
   const t = src?.participantSourceType ?? src?.type ?? null;
   if (t === "DATA_DESIGNER") return "data-designer";
   if (t === "CSV") return "csv";
   if (t === "QUERY_BUILDER") return "power-list";
+  if (t === "QUERY") return "query";
   return "other";
 }
 
@@ -1159,9 +1485,13 @@ function docKeyId(text) {
 // doc that exists but cannot be parsed must caveat exactly like a missing
 // one, never sit silently behind a cell that promises a caveat. Returns
 // entries plus the aggregate facts the caveats section reports.
-export function resolveProvenance(entries, { kbDir = null, aliasPrefix = null } = {}) {
+export function resolveProvenance(entries, { kbDir = null, aliasPrefix = null, powerLists = null } = {}) {
   const out = [];
   let kbNeeded = false;
+  // Power Lists resolve through the rules-lane resolver (F-487); a caller
+  // that passes none gets one over the default folder, so a direct call
+  // (the suite) resolves the same way the CLI entry does.
+  const resolvePl = typeof powerLists === "function" ? powerLists : makePowerListResolver({ kbDir });
   // collectionId → { designer, dm, docs[], problems[{folder, path, fetch,
   // reason:"missing"|"unparseable"}], sourceName, programName }
   const ddCache = new Map();
@@ -1177,47 +1507,23 @@ export function resolveProvenance(entries, { kbDir = null, aliasPrefix = null } 
       programName: program.name ?? program.id,
     };
     for (const { folder, fetch } of DD_DOC_LOOKUPS) {
-      // the WRITER's first-choice filename rule (docBaseName: identity for
-      // clean slugs, sanitize+hash otherwise) — also what makes path escape
-      // impossible. Writers claim through docNameClaimer, so on a case
-      // collision the doc at this name can be a DIFFERENT id's (F-198 — the
-      // key-bullet check below is what catches that).
-      const base = docBaseName(collectionId);
-      const file = `${base}.md`;
-      let rel = `${folder}/${file}`; // reported spelling — updated if the fallback reads another (F-198)
-      let path = join(kbDir, folder, file);
-      if (!existsSync(path)) {
-        // Case-insensitive fallback before "missing" (F-129): Windows/macOS
-        // resolve any casing at the filesystem, so a KB written there can hold
-        // a doc whose on-disk casing differs from this collectionId — on Linux
-        // the exact-case miss would emit a false re-fetch hint for a doc that
-        // exists. Read-side tolerance mirroring the write-side dedup (F-125).
-        let found = null;
-        let dirErr = null;
-        try {
-          found = readdirSync(join(kbDir, folder)).find((f) => f.toLowerCase() === file.toLowerCase()) ?? null;
-        } catch (e) {
-          // ENOENT (folder absent) IS the genuinely-missing case; anything
-          // else (ENOTDIR, EACCES, …) is a real filesystem problem and must
-          // surface as one — reporting it as "missing" plus a re-fetch hint
-          // would send operators fetching docs that may be there all along
-          // (F-198).
-          if (e?.code !== "ENOENT") dirErr = e;
-        }
-        if (dirErr != null) {
-          hit.problems.push({
-            folder, path: rel, fetch: fetch(collectionId),
-            reason: "fs-error", detail: `${dirErr.code ?? "error"}: ${dirErr.message}`,
-          });
-          continue;
-        }
-        if (found == null) {
-          hit.problems.push({ folder, path: rel, fetch: fetch(collectionId), reason: "missing" });
-          continue;
-        }
-        rel = `${folder}/${found}`; // the spelling actually read — problems must name it, not the computed case (F-198)
-        path = join(kbDir, folder, found);
+      // Locating is the shared locateKbDoc (F-487 lifted it out so the Power
+      // List lookup reads the rules lane by the same rules): the WRITER's
+      // first-choice filename rule (docBaseName), the case-insensitive
+      // fallback before "missing" (F-129 — Windows/macOS fold case at the
+      // filesystem, Linux would emit a false re-fetch hint), and ENOENT as
+      // the only "missing" — any other listing error is a real filesystem
+      // problem reported as one (F-198). `rel` is the spelling actually read.
+      const loc = locateKbDoc(kbDir, folder, collectionId);
+      if (loc.reason === "fs-error") {
+        hit.problems.push({ folder, path: loc.rel, fetch: fetch(collectionId), reason: "fs-error", detail: loc.detail });
+        continue;
       }
+      if (loc.reason === "missing") {
+        hit.problems.push({ folder, path: loc.rel, fetch: fetch(collectionId), reason: "missing" });
+        continue;
+      }
+      const { path, rel, base } = loc;
       let parsed = null;
       let text = null;
       try {
@@ -1244,20 +1550,11 @@ export function resolveProvenance(entries, { kbDir = null, aliasPrefix = null } 
       // absent → the F-129 benign case (one asset, differently-cased
       // spelling) resolves as before. Honest residual: a collision whose
       // loser doc was never written is indistinguishable from the benign
-      // case and still mis-attributes.
-      const keyId = docKeyId(normalizeText(text));
-      if (keyId != null && keyId !== collectionId) {
-        let collided = keyId.toLowerCase() !== collectionId.toLowerCase();
-        if (!collided) {
-          const dupRe = new RegExp(`^${escapeRe(base)}(?:-dup)+\\.md$`, "i");
-          try {
-            collided = readdirSync(join(kbDir, folder)).some((f) => dupRe.test(f));
-          } catch { /* a doc was just read from this folder — a listing failure here is exotic; fail open to the F-129 behavior */ }
-        }
-        if (collided) {
-          hit.problems.push({ folder, path: rel, fetch: fetch(collectionId), reason: "wrong-id", otherId: keyId });
-          continue;
-        }
+      // case and still mis-attributes. (kbDocCollidesWith is the one copy.)
+      const otherId = kbDocCollidesWith(text, collectionId, { kbDir, folder, base });
+      if (otherId != null) {
+        hit.problems.push({ folder, path: rel, fetch: fetch(collectionId), reason: "wrong-id", otherId });
+        continue;
       }
       hit.docs.push(kbDocDisplayPath(path));
       if (folder === "journey-data-designer") hit.designer = parsed;
@@ -1284,7 +1581,35 @@ export function resolveProvenance(entries, { kbDir = null, aliasPrefix = null } 
       fields: [],
       ties: [],
       note: null,
+      // F-487: the Power List's rule id and what its doc says it reads
+      ruleId: kind === "power-list" ? powerListRuleId(src) : null,
+      powerList: null,
     };
+    if (kind === "power-list") {
+      if (entry.ruleId == null) entry.note = "no ruleId or collectionId recorded in the payload";
+      else if (kbDir == null) {
+        kbNeeded = true;
+        entry.note = "KB directory unavailable — pass --kb (see caveats)";
+      } else {
+        const pl = resolvePl(entry.ruleId);
+        if (pl && !pl.problem) {
+          entry.resolved = true;
+          entry.label = pl.name ?? src.name ?? null;
+          entry.powerList = pl;
+          if (pl.docPath) entry.docs = [pl.docPath];
+        } else {
+          const reason = pl?.problem?.reason ?? "missing";
+          entry.note =
+            reason === "wrong-id" ? "doc on disk belongs to a different id (case collision)"
+              : reason === "fs-error" ? "KB folder unreadable (error named in caveats)"
+                : reason === "not-a-power-list" ? "KB doc at this id is not a Power List rule (see caveats)"
+                  : reason === "unparseable" ? "KB doc unparseable (see caveats)"
+                    : "KB doc missing — run /gs-superadmin:refresh (see caveats)";
+        }
+      }
+    } else if (kind === "query") {
+      entry.note = "dynamic program — its participant query is not returned by any CLI command";
+    }
     if (kind === "data-designer") {
       if (collectionId == null) entry.note = "no collectionId recorded in the payload";
       else if (kbDir == null) {
@@ -1324,7 +1649,17 @@ export function resolveProvenance(entries, { kbDir = null, aliasPrefix = null } 
       resolved: Boolean(hit.designer || hit.dm),
     }))
   );
-  return { entries: out, missingDocs, kbNeeded };
+  // one record per unresolved Power List rule id (F-487), with the FIRST
+  // program/source that named it — the resolver dedupes by id
+  const seenPl = new Set();
+  const powerListProblems = [];
+  for (const e of out) {
+    if (e.kind !== "power-list" || e.resolved || e.ruleId == null || seenPl.has(e.ruleId)) continue;
+    seenPl.add(e.ruleId);
+    const problem = resolvePl.problems.find((p) => p.ruleId === e.ruleId) ?? { ruleId: e.ruleId, reason: kbDir == null ? "no-kb" : "missing", rel: null };
+    powerListProblems.push({ ...problem, sourceName: e.source.name ?? e.source.configId ?? "(unnamed source)", programName: e.program.name ?? e.program.id });
+  }
+  return { entries: out, missingDocs, powerListProblems, kbNeeded, powerListFolder: resolvePl.folder };
 }
 
 // ── report assembly ──────────────────────────────────────────────────────────
@@ -1400,9 +1735,37 @@ export function provenanceCell(e, { md = true } = {}) {
         : `Data Designer "${e.label ?? "(unlabeled)"}" (${id})`
       : `Data Designer ${id} — ${e.note}`;
   if (e.kind === "csv") return e.collectionId != null ? `CSV upload: ${e.collectionId}` : `CSV upload — ${e.note ?? "filename not recorded"}`;
-  if (e.kind === "power-list") return `Power List ${id} — not resolvable via CLI`;
+  if (e.kind === "power-list") {
+    const rid = e.ruleId != null ? (md ? `\`${e.ruleId}\`` : e.ruleId) : "—";
+    if (!e.resolved) return `Power List ${rid} — ${e.note ?? "unresolved"}`;
+    const objects = powerListObjectsSummary(e.powerList);
+    return md
+      ? `Power List **${e.label ?? "(unnamed)"}** (rule ${rid}) — reads ${objects}; filters not returned by the CLI — see detail below`
+      : `Power List "${e.label ?? "(unnamed)"}" (rule ${e.ruleId}) — reads ${objects}; filters not returned by the CLI`;
+  }
+  if (e.kind === "query") return `Dynamic query ${id} — ${e.note}`;
   const t = e.source.participantSourceType ?? e.source.type ?? "unknown";
   return md ? `source type \`${t}\` — no resolution rule; collectionId ${id}` : `source type ${t} — no resolution rule; collectionId ${id}`;
+}
+
+// "Contact (SFDC connection 74b…), Company (Gainsight)" — the objects a Power
+// List's tasks read, each with where it reads them from (F-487). Derived
+// tasks (merge/filter) read upstream datasets and are not objects.
+export function powerListObjectsSummary(pl) {
+  const parts = [];
+  const seen = new Set();
+  for (const t of Array.isArray(pl?.tasks) ? pl.tasks : []) {
+    if (t.objectName == null) continue;
+    const obj = t.objectLabel && t.objectLabel !== t.objectName ? `${t.objectLabel} (${t.objectName})` : t.objectName;
+    const via = t.connection
+      ? t.connection.type && INTERNAL_CONNECTION_IDS.has(t.connection.type) ? "Gainsight" : `connection ${t.connection.name ?? t.connection.id}`
+      : "no connection recorded";
+    const key = `${obj}\u0000${via}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    parts.push(`${obj} via ${via}`);
+  }
+  return parts.length ? parts.join(", ") : "no source object (tasks carry none)";
 }
 
 function provenanceSection(provenance) {
@@ -1469,6 +1832,43 @@ function provenanceSection(provenance) {
         lines.push(`  - report column ↔ field dictionary: no dictionary field matched the report column(s) — field dictionary has ${d.fields.length} field(s)`);
     }
   }
+  // Power List detail (F-487), deduped by rule id (program versions share
+  // lists): each task's object, connection and output-field count, and the
+  // standing fact that the filters are not in the payload.
+  const byPl = new Map();
+  for (const e of provenance.entries) {
+    if (e.kind !== "power-list" || !e.resolved) continue;
+    let d = byPl.get(e.ruleId);
+    if (!d) {
+      d = { ...e, programs: new Set() };
+      byPl.set(e.ruleId, d);
+    }
+    d.programs.add(programCell(e.program));
+  }
+  if (byPl.size) {
+    lines.push("", "### Power List detail");
+    for (const d of byPl.values()) {
+      const pl = d.powerList;
+      lines.push(
+        "",
+        `- **${d.label ?? "(unnamed)"}** (rule \`${d.ruleId}\`${pl.active === false ? ", inactive" : ""}) — used by ${[...d.programs].join("; ")}`,
+        `  - KB doc: ${d.docs.join(", ") || "—"}`
+      );
+      for (const t of pl.tasks) {
+        const where = t.connection
+          ? t.connection.type && INTERNAL_CONNECTION_IDS.has(t.connection.type) ? "Gainsight" : `connection ${t.connection.name ?? t.connection.id}`
+          : null;
+        lines.push(
+          t.derived
+            ? `  - task "${t.datasetName ?? t.taskId ?? "?"}": derived from task ${t.upstreamTaskId} — ${t.fields.length} output field(s)`
+            : `  - task "${t.datasetName ?? t.taskId ?? "?"}": ${t.objectLabel && t.objectLabel !== t.objectName ? `${t.objectLabel} (\`${t.objectName}\`)` : `\`${t.objectName ?? "?"}\``}` +
+              `${where ? ` via ${where}` : ""} — ${t.fields.length} output field(s)` +
+              (t.fields.length ? `: ${t.fields.slice(0, 12).map((f) => `${f.objectName !== t.objectName ? `${f.objectName}.` : ""}${f.fieldName ?? f.fieldLabel}`).join(", ")}${t.fields.length > 12 ? ", …" : ""}` : "")
+        );
+      }
+      lines.push(`  - filters: not returned by the CLI (\`re r describe\` carries no criteria for this rule type) — the list may filter these objects in ways this report cannot see`);
+    }
+  }
   return lines.join("\n");
 }
 
@@ -1506,20 +1906,22 @@ function buildCaveats(index, opts, result, provenance) {
     const uncovered = opts.objectTerms.filter((t) => !covered.has(termKey(t)));
     if (uncovered.length)
       caveats.push(
-        `--object matching is FILTER-CONDITIONS-ONLY: C1 mappings carry no object names (only filter conditions do), ` +
-          `so query-SELECT/mapping usage of an object is INVISIBLE here — and in practice that can be the dominant usage ` +
-          `kind (S5-V live validation found every JO dependent of the acceptance object was mapping-side: \`dm deps check\` ` +
-          `named them all while this view showed none, because few programs use query filters). Treat an empty --object ` +
-          `result as "no FILTER usage found", never "no usage". Objects without live coverage in this run: ` +
-          `${uncovered.map((o) => `\`${o}\``).join(", ")} — capture each with the corroboration command below and pass it ` +
-          `back via \`--live-deps <file>\` to render the object-level truth in this report. A rendered live section ` +
-          `whose payload objectName differs from the term does NOT count as its coverage (the term may be the object's ` +
-          `label — re-capture with the exact system name), and neither does an incomplete capture.`
+        `--object matching reads FILTER CONDITIONS, Power List task objects and output fields, dynamic fields and ` +
+          `branch conditions (F-487) — C1 mappings carry no object names, so a program whose only use of an object is a ` +
+          `CSV/Data Designer source's mapping (query-SELECT side) is INVISIBLE here, and in practice that can be the ` +
+          `dominant usage kind on those source types (S5-V live validation found every JO dependent of the acceptance ` +
+          `object was mapping-side: \`dm deps check\` named them all while this view showed none). Treat an empty ` +
+          `--object result as "no usage found in the surfaces listed", never "no usage". Objects without live coverage ` +
+          `in this run: ${uncovered.map((o) => `\`${o}\``).join(", ")} — capture each with the corroboration command ` +
+          `below and pass it back via \`--live-deps <file>\` to render the object-level truth in this report. A rendered ` +
+          `live section whose payload objectName differs from the term does NOT count as its coverage (the term may be ` +
+          `the object's label — re-capture with the exact system name), and neither does an incomplete capture.`
       );
     else
       caveats.push(
-        `The participant-source table above is FILTER-CONDITIONS-ONLY (C1 mappings carry no object names); the ` +
-          `"Live dependents" section(s) supply the mapping/SELECT-side usage from \`dm deps check\` — read them together.`
+        `The participant-source table above reads filter conditions, Power List objects/fields, dynamic fields and ` +
+          `branch conditions (C1 mappings carry no object names); the "Live dependents" section(s) supply the ` +
+          `mapping/SELECT-side usage from \`dm deps check\` — read them together.`
       );
   }
   // ER-21/ER-23 honesty pair — shared wording (aliasFieldCaveats) so the two
@@ -1617,6 +2019,27 @@ function buildCaveats(index, opts, result, provenance) {
       );
     }
   }
+  // Unresolved Power Lists (F-487): one caveat per rule id naming the
+  // program that references it and the remedy — refresh registers and
+  // documents every Power List rule the KB's programs reference.
+  if (provenance?.result?.powerListProblems?.length) {
+    const folder = provenance.result.powerListFolder ?? RECORDED_LANES.rules.folder;
+    for (const p of provenance.result.powerListProblems) {
+      const what =
+        p.reason === "no-kb" ? `could not be looked up — the KB directory was not located (re-run with \`--kb <slugDir>\`)`
+          : p.reason === "wrong-id" ? `\`${p.rel}\` belongs to a different id (\`${p.otherId}\`, case collision)`
+            : p.reason === "fs-error" ? `\`${p.rel}\` could not be checked (${p.detail}); fix the filesystem problem and re-run`
+              : p.reason === "not-a-power-list" ? `\`${p.rel}\` exists but is not a Power List rule doc (ruleType is not ${POWER_LIST_RULE_TYPE})`
+                : p.reason === "unparseable" ? `\`${p.rel}\` exists but could not be parsed`
+                  : `has no KB doc under ${folder}/`;
+      caveats.push(
+        `Power List rule \`${p.ruleId}\` (source '${p.sourceName}' of ${p.programName}) ${what} — its objects, connection and ` +
+          `output fields are NOT in this report, so an --object or connection search cannot match that program through this source. ` +
+          `Run \`/gs-superadmin:refresh\` (it registers and documents every Power List rule your documented programs reference; ` +
+          `the one-off fetch is \`gs-admin --json re r describe --id ${sq(p.ruleId)}\`, documented via describe-batch into the rules domain), then re-run.`
+      );
+    }
+  }
   if (provenance?.result?.entries?.length) {
     // standing where-resolution-stops caveat (ruled) — the per-kind sentences
     // only claim limits about source kinds this report actually contains
@@ -1632,7 +2055,18 @@ function buildCaveats(index, opts, result, provenance) {
           `name/label/description says it, and is never inferred from payload text (payloads mention connector names ` +
           `in unrelated UI metadata).`
       );
-    if (kinds.has("power-list")) parts.push(`Power Lists (QUERY_BUILDER sources, collectionId == ruleId) have no CLI surface at all.`);
+    if (kinds.has("power-list"))
+      parts.push(
+        `A Power List (QUERY_BUILDER source) resolves to the objects, connection and output fields its rule's tasks READ ` +
+          `(the rule is hidden from \`re r list\` and described by its \`ruleId\`); its FILTER criteria are not returned by the ` +
+          `CLI (\`re r describe\` carries no criteria for this rule type — upstream KI-027), so a match means the list reads the ` +
+          `object, never how it filters it, and a filter on an object the list does not read is invisible.`
+      );
+    if (kinds.has("query"))
+      parts.push(
+        `A dynamic program's own participant query (QUERY source) is returned by no CLI command — only the program's ` +
+          `dynamic fields and branch conditions name objects, and they are scanned as usage rows; the query itself is unseen.`
+      );
     caveats.push(parts.join(" "));
   }
   // A COMPLETED capture is the corroboration this caveat asks for, so its
@@ -1754,6 +2188,12 @@ export async function run(argv) {
   if (aliasPrefix && !fieldTerms.length)
     warnings.push("--alias-prefix has no effect without --field terms (aliasing applies to field matching only)");
 
+  // F-487: Power List rule docs live in the rules lane; the folder is the
+  // one the index build resolved from the workspace's recordings (the report
+  // modes read the index, never the KB folders), the lane default otherwise.
+  // One resolver serves the scan (usage rows) and the provenance pass.
+  const powerLists = makePowerListResolver({ kbDir, folder: index.domains?.dirs?.rules ?? RECORDED_LANES.rules.folder });
+  opts.powerLists = powerLists;
   const result = scanDeps(index, opts);
 
   // ER-20: resolve provenance for every source the report names. Pre-C1v2
@@ -1764,7 +2204,7 @@ export async function run(argv) {
     .filter((s) => s && typeof s === "object");
   const provPreV2 = scannedSources.length > 0 && !scannedSources.some((s) => Object.hasOwn(s, "participantSourceCollectionId"));
   const provSources = provPreV2 ? [] : collectProvenanceSources(result);
-  const provResult = provSources.length ? resolveProvenance(provSources, { kbDir, aliasPrefix }) : null;
+  const provResult = provSources.length ? resolveProvenance(provSources, { kbDir, aliasPrefix, powerLists }) : null;
   const provenance = { preV2: provPreV2, result: provResult };
 
   // --live-deps: captured dm-deps-check payloads → reconciled live sections.
@@ -1932,7 +2372,7 @@ export async function run(argv) {
       writeFileSync(
         join(csvDir, "deps-sources.csv"),
         toCsv(
-          ["program_id", "program_name", "status", "source", "source_type", "operation_type", "collection_id", "provenance", "dd_label", "dd_description", "dd_kb_docs", "column_ties"],
+          ["program_id", "program_name", "status", "source", "source_type", "operation_type", "collection_id", "rule_id", "provenance", "dd_label", "dd_description", "dd_kb_docs", "column_ties"],
           provResult.entries.map((e) => [
             e.program.id,
             e.program.name,
@@ -1941,6 +2381,7 @@ export async function run(argv) {
             e.source.participantSourceType ?? e.source.type,
             e.operationType,
             e.collectionId,
+            e.ruleId,
             provenanceCell(e, { md: false }),
             e.label,
             e.description,
@@ -1972,6 +2413,15 @@ export async function run(argv) {
       ddDocsMissing: provResult?.missingDocs.length ?? 0,
       csvSources: provResult?.entries.filter((e) => e.kind === "csv").length ?? 0,
       powerListSources: provResult?.entries.filter((e) => e.kind === "power-list").length ?? 0,
+      // F-487: Power Lists resolved to their rule doc vs. unresolved rule ids
+      // (one per id — the remedy caveat names each), plus the usage rows the
+      // new surfaces contributed, so a run can see whether they fired at all
+      powerListsResolved: provResult?.entries.filter((e) => e.kind === "power-list" && e.resolved).length ?? 0,
+      powerListRulesMissing: provResult?.powerListProblems.length ?? 0,
+      powerListRows: result.fieldRows.filter((r) => r.kind === "power-list-object" || r.kind === "power-list-field").length,
+      dynamicFieldRows: result.fieldRows.filter((r) => r.kind === "dynamic-field" || r.usage === "dynamic-field filter").length,
+      branchConditionRows: result.fieldRows.filter((r) => r.kind === "branch-condition").length,
+      querySources: provResult?.entries.filter((e) => e.kind === "query").length ?? 0,
       liveDependents: liveDeps.reduce((n, l) => n + l.rows.length, 0),
       liveOnlyDependents: liveDeps.reduce((n, l) => n + l.liveOnly, 0),
     },
