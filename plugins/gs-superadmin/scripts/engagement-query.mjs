@@ -82,8 +82,10 @@ export const SOURCES = deepFreeze({
     },
     clicks: { countField: "LinkClickedCount", detailField: "LinkClickedJson" },
     // Why a bounce happened, as the mail service worded it. The text holds
-    // addresses and ids, so it is never stored unmasked (MASK_RULES).
-    bounce: { typeField: "BounceType", reasonField: "BouncedReason" },
+    // addresses and ids, so it is never stored unmasked (MASK_RULES), and it is
+    // COUNTED server-side by category (one CONTAINS filter per category, which
+    // this STRING field takes: measured S3b) rather than read as text.
+    bounce: { typeField: "BounceType", reasonField: "BouncedReason", reasonFilterable: true },
     lookups: {
       company: { through: "GsCompanyId", to: "company", leaf: "Gsid" },
       person: { through: "GsPersonId", to: "person", leaf: "Gsid" },
@@ -128,8 +130,11 @@ export const SOURCES = deepFreeze({
     what: "one row per participant a program could not process, with the reason",
     standing: [],
     programField: "AdvancedOutreachId",
-    // A JSON-typed field: the server cannot group or count it, so plain rows are read and grouped after the read.
+    // A JSON-path field: its schema declares it neither filterable nor groupable (measured S3b: CONTAINS,
+    // DOES_NOT_CONTAINS and STARTS_WITH are all refused), so failures are COUNTED per program (COUNT of rows,
+    // SUM of occurrences) with no breakdown by reason, and a capped plain-row sample is read for discovery.
     reasonField: "FailureReasons",
+    reasonFilterable: false,
     occurrencesField: "OccurrenceCount",
   },
   participants: {
@@ -171,6 +176,77 @@ export function maskMessage(raw) {
   if (!text) return null;
   const points = Array.from(text);
   return points.length > MASK_MAX_LENGTH ? `${points.slice(0, MASK_MAX_LENGTH).join("")}...` : text;
+}
+
+// ── Failure categories (HLT-1, S3b; ruled 2026-10-04 and 2026-10-05) ────────
+// A bounce or failure reason often carries a VALUE (the address, the field),
+// which makes every row unique though the reason is one. A category names the
+// product wording up to the value: the server counts the rows whose text
+// CONTAINS the pattern, and the snapshot keeps the category's LABEL in place
+// of the text, the tail CUT (never masked and kept: an address is exactly what
+// the mask can miss). "Other" is the total less every category, counted, with
+// a capped masked sample kept for discovery (terminal only, never on a page).
+// Patterns must be DISJOINT: a server-side count cannot do first-match-wins,
+// so two patterns that match one message count it twice and "Other" reads
+// below zero; the adapter flags that as a list defect and never clamps it.
+// The SHIPPED list is empty: the real wordings are Gainsight product text,
+// captured from a tenant's own messages at V2 (never written from memory),
+// and the only reason they may ship is that they carry no tenant value. A
+// tenant adds its own on top (the adapter's --failure-categories file), and
+// names expected failures (--expected-reason), which become categories flagged
+// `expected`, so a page can leave them out of headline counts without hiding them.
+// Each entry: {id, label, pattern, definition, expected?}.
+/** @type {Readonly<{bounceReasons: ReadonlyArray<FailureCategory>, participantFailures: ReadonlyArray<FailureCategory>}>} */
+export const FAILURE_CATEGORIES = deepFreeze({ bounceReasons: [], participantFailures: [] });
+/** @typedef {{id: string, label: string, pattern: string, definition: string, expected?: boolean}} FailureCategory */
+export const OTHER_CATEGORY = "other";
+export const FAILURE_PARTS = Object.freeze(["bounceReasons", "participantFailures"]);
+/**
+ * What is wrong with a category list, in words; empty when it may be used.
+ * Ids and patterns are unique, every field is text, and no pattern is inside
+ * another (the one overlap that can be seen without the messages).
+ * @param {unknown} list
+ * @returns {string[]}
+ */
+export function validateCategories(list) {
+  const problems = [];
+  if (!Array.isArray(list)) return ["the category list must be an array"];
+  const ids = new Set();
+  const patterns = [];
+  list.forEach((c, i) => {
+    const at = `category ${i + 1}`;
+    if (!c || typeof c !== "object" || Array.isArray(c)) return problems.push(`${at} is not an object`);
+    for (const k of ["id", "label", "pattern", "definition"]) if (typeof c[k] !== "string" || !c[k].trim()) problems.push(`${at}: ${k} must be non-empty text`);
+    if (typeof c.id === "string" && c.id.trim() === OTHER_CATEGORY) problems.push(`${at}: the id "${OTHER_CATEGORY}" is reserved for the uncategorised remainder`);
+    if ("expected" in c && typeof c.expected !== "boolean") problems.push(`${at}: expected must be true or false`);
+    const extra = Object.keys(c).filter((k) => !["id", "label", "pattern", "definition", "expected"].includes(k));
+    if (extra.length) problems.push(`${at}: unknown key(s) ${extra.join(", ")}`);
+    if (typeof c.id === "string") {
+      if (ids.has(c.id)) problems.push(`${at}: id "${c.id}" is used twice`);
+      ids.add(c.id);
+    }
+    if (typeof c.pattern === "string" && c.pattern.trim()) patterns.push({ at, pattern: c.pattern.trim().toLowerCase() });
+  });
+  for (const a of patterns) for (const b of patterns) {
+    if (a === b) continue;
+    if (a.pattern === b.pattern) { if (a.at < b.at) problems.push(`${a.at} and ${b.at} have the same pattern`); }
+    else if (b.pattern.includes(a.pattern)) problems.push(`${a.at}'s pattern is inside ${b.at}'s: patterns must be disjoint (a server-side count cannot do first-match-wins)`);
+  }
+  return problems;
+}
+/**
+ * The category table a pull counts with: the shipped list for the part, then
+ * the tenant's own entries, each normalized to {id, label, pattern, definition, expected}.
+ * @param {"bounceReasons"|"participantFailures"} part
+ * @param {ReadonlyArray<FailureCategory>} [extra]
+ * @returns {FailureCategory[]}
+ */
+export function categoryTable(part, extra = []) {
+  if (!FAILURE_PARTS.includes(part)) throw new Error(`engagement query: no failure categories for "${part}"`);
+  const list = [...FAILURE_CATEGORIES[part], ...extra].map((c) => ({ id: c.id.trim(), label: c.label.trim(), pattern: c.pattern.trim(), definition: c.definition.trim(), expected: c.expected === true }));
+  const problems = validateCategories(list);
+  if (problems.length) throw new Error(`engagement query: the ${part} category list is not usable: ${problems.join("; ")}`);
+  return list;
 }
 
 // R18: click figures count content links. The rules are data; a link no rule
@@ -408,6 +484,9 @@ export const REASONS = deepFreeze({
   "call-failed": "The call that reads this did not return, so there is no figure. Nothing else in the pull is affected.",
   "no-schema": "This tenant does not have the object this is read from.",
   "no-kb": "Schedules are read from the knowledge base, and this pull ran without one.",
+  "too-large": "This has more rows than the pull can read within its budget, so it was not read. Narrow the programs or the window, or pull again when the budget allows.",
+  "all-time": "This figure is all time: the object it is read from carries no date on every row, so the date filter does not apply to it.",
+  "not-filterable": "This tenant's object does not allow a filter on the reason field, so participant failures are counted per program with no breakdown by reason.",
   // What a dashboard PAGE does not carry, though the pull may hold it (DSH-2).
   "accounts-not-on-page": "Account detail is not part of this page.",
   "tab-off": "This tab is turned off for this page, so what it shows is not part of the page.",
@@ -712,38 +791,257 @@ export function runQuery(snapshot, filters, query) {
   return { table, unavailable: null, rows, total: rowOf(all, true), scope };
 }
 
-// ── Health: silent programs (HLT-1) ──────────────────────────────────────────
+// ── Cron: the days a schedule fires (HLT-1, S3b) ─────────────────────────────
+// A small, day-grain reader of the Quartz-style expressions a schedule carries
+// (sec min hour day-of-month month day-of-week [year]). It answers ONE
+// question: on which calendar days does this schedule fire? From that come the
+// day the program was last due and how far apart its runs are. The hour is
+// ignored: a run due on a day sends on that day, and a run due today is not
+// judged until tomorrow. Built-ins only (Date.UTC), no time zone arithmetic:
+// the zone can move a fire by hours, never by the day a send is bucketed in
+// beyond the one-day grace the rule already gives.
+// Supported: `*`, `?`, lists, ranges, steps (`a/n`, `*/n`, `a-b/n`), month
+// and weekday names, `L` as the last day of the month, `X#n` (the nth X of the
+// month), `XL` (the last X of the month). Anything else reads as unreadable,
+// and the rule then falls back to the flat threshold and says so.
+const MONTH_NAMES = { JAN: 1, FEB: 2, MAR: 3, APR: 4, MAY: 5, JUN: 6, JUL: 7, AUG: 8, SEP: 9, OCT: 10, NOV: 11, DEC: 12 };
+const DOW_NAMES = { SUN: 1, MON: 2, TUE: 3, WED: 4, THU: 5, FRI: 6, SAT: 7 };
+const dayNumber = (day) => Date.UTC(Number(day.slice(0, 4)), Number(day.slice(5, 7)) - 1, Number(day.slice(8, 10))) / 86400000;
+const dayText = (n) => new Date(n * 86400000).toISOString().slice(0, 10);
+const daysInMonth = (y, m) => new Date(Date.UTC(y, m, 0)).getUTCDate();
+/** One cron field → a Set of its values, null for "any", or undefined when it cannot be read. */
+function cronField(spec, min, max, names = null) {
+  if (spec === "*" || spec === "?") return null;
+  const out = new Set();
+  const num = (t) => (names && names[t.toUpperCase()] != null ? names[t.toUpperCase()] : /^\d+$/.test(t) ? Number(t) : undefined);
+  for (const part of spec.split(",")) {
+    const m = /^(\*|[A-Za-z0-9]+)(?:-([A-Za-z0-9]+))?(?:\/(\d+))?$/.exec(part);
+    if (!m) return undefined;
+    const from = m[1] === "*" ? min : num(m[1]);
+    const to = m[2] != null ? num(m[2]) : m[3] != null || m[1] === "*" ? max : from;
+    const step = m[3] != null ? Number(m[3]) : 1;
+    if (from == null || to == null || from < min || to > max || from > to || step < 1) return undefined;
+    for (let v = from; v <= to; v += step) out.add(v);
+  }
+  return out.size ? out : undefined;
+}
+/**
+ * Read a cron expression into a day matcher.
+ * @param {unknown} expr
+ * @returns {{readable: boolean, matches: ?((day: string) => boolean)}}
+ */
+export function readCron(expr) {
+  const none = { readable: false, matches: null };
+  if (typeof expr !== "string" || !expr.trim()) return none;
+  const f = expr.trim().split(/\s+/);
+  if (f.length < 6 || f.length > 7) return none;
+  const [, , , domSpec, monthSpec, dowSpec, yearSpec = "*"] = f;
+  const months = cronField(monthSpec, 1, 12, MONTH_NAMES);
+  const years = cronField(yearSpec, 1970, 2199);
+  if (months === undefined || years === undefined) return none;
+  // Day of month: a set, "any", or L (the last day).
+  let dom = null;
+  let lastDay = false;
+  if (domSpec === "L") lastDay = true;
+  else if ((dom = cronField(domSpec, 1, 31)) === undefined) return none;
+  // Day of week: a set, "any", nth-of-month, or last-of-month.
+  let dow = null;
+  let nth = null;
+  let lastDow = null;
+  const nthMatch = /^([A-Za-z0-9]+)#([1-5])$/.exec(dowSpec);
+  const lastMatch = /^([A-Za-z0-9]+)L$/.exec(dowSpec);
+  if (nthMatch) {
+    const d = cronField(nthMatch[1], 1, 7, DOW_NAMES);
+    if (!d || d.size !== 1) return none;
+    nth = { dow: [...d][0], n: Number(nthMatch[2]) };
+  } else if (lastMatch) {
+    const d = cronField(lastMatch[1], 1, 7, DOW_NAMES);
+    if (!d || d.size !== 1) return none;
+    lastDow = [...d][0];
+  } else if ((dow = cronField(dowSpec, 1, 7, DOW_NAMES)) === undefined) return none;
+  const domAny = domSpec === "*" || domSpec === "?";
+  const dowAny = dowSpec === "*" || dowSpec === "?";
+  const matches = (day) => {
+    const y = Number(day.slice(0, 4));
+    const m = Number(day.slice(5, 7));
+    const d = Number(day.slice(8, 10));
+    if (months && !months.has(m)) return false;
+    if (years && !years.has(y)) return false;
+    const weekday = new Date(Date.UTC(y, m - 1, d)).getUTCDay() + 1; // 1 = Sunday, as Quartz counts
+    const domOk = lastDay ? d === daysInMonth(y, m) : domAny || dom.has(d);
+    const dowOk = nth ? weekday === nth.dow && Math.ceil(d / 7) === nth.n : lastDow != null ? weekday === lastDow && d + 7 > daysInMonth(y, m) : dowAny || dow.has(weekday);
+    // Quartz: one of the two is `?`; with both given, either matching fires.
+    if (!domAny && !dowAny && !lastDay && !nth && lastDow == null) return domOk || dowOk;
+    return domOk && dowOk;
+  };
+  return { readable: true, matches };
+}
+// How far back the calculator looks for a fire: enough for an annual schedule and the one before it.
+const CRON_LOOKBACK_DAYS = 800;
+/**
+ * When a schedule was last due before a day, and how far apart its runs are.
+ * A run due ON `asOf` is not counted: it may not have fired yet that day.
+ * @param {unknown} expr
+ * @param {string} asOf YYYY-MM-DD
+ * @returns {{readable: boolean, lastDue: ?string, previousDue: ?string, periodDays: ?number}}
+ *   periodDays: the days between the last two fires; null when the one before is more than CRON_LOOKBACK_DAYS back
+ */
+export function cronLastDue(expr, asOf) {
+  const { readable, matches } = readCron(expr);
+  if (!readable) return { readable: false, lastDue: null, previousDue: null, periodDays: null };
+  const end = dayNumber(asOf);
+  let lastDue = null;
+  let previousDue = null;
+  for (let n = end - 1; n >= end - CRON_LOOKBACK_DAYS; n--) {
+    if (!matches(dayText(n))) continue;
+    if (lastDue == null) lastDue = n;
+    else { previousDue = n; break; }
+  }
+  return { readable: true, lastDue: lastDue == null ? null : dayText(lastDue), previousDue: previousDue == null ? null : dayText(previousDue), periodDays: lastDue != null && previousDue != null ? lastDue - previousDue : null };
+}
+
+// ── Health: silent programs (HLT-1, S3b) ─────────────────────────────────────
 // There is no "last send" figure to ask the server for, so the snapshot holds
 // each program's last send DAY inside a recent day window (meta.health.dayWindow)
-// and the rule is applied here, where the threshold is a reader's choice.
+// and the rules are applied here, where the threshold is a reader's choice.
+// The rules, ruled 2026-10-04 (HLT-1 ruling 3), one per kind of program:
+//   recurring, readable cron   from the cron, when the program was last due
+//                              and whether a send is logged since: none →
+//                              "Possible silent failure" (a run can fire with
+//                              nobody qualifying, or something is wrong; we
+//                              cannot tell in advance). A period longer than
+//                              the day window cannot be judged and says so.
+//                              With the schedule's last-run result read live
+//                              at the pull: failed → "Schedule run failed";
+//                              succeeded → stays possible, "last run succeeded"
+//                              beside it; not read → the KB's result and date.
+//   recurring, unreadable cron the flat threshold, and it says so
+//   one-time                   its own list, never a silent one: last send,
+//                              the months it sent in, how many templates
+//   no schedule, unknown, no doc  judged against its own history (a STARTING
+//                              rule, read by Bradley at V2's Y6): a program
+//                              that sends in fewer than half the closed months
+//                              is late only past its longest gap between send
+//                              months; one that sends most months, or with
+//                              fewer than three months of history, is late at
+//                              the flat threshold. Label: "No recent sends".
+//   Active with no send in the window at all  listed apart from the alarms
+//                              (it may be newly activated; there is no
+//                              activation date)
 export const SILENT_DAYS_DEFAULT = 30;
 const ACTIVE_STATUS = "PROCESSING";
-const dayNumber = (day) => Date.UTC(Number(day.slice(0, 4)), Number(day.slice(5, 7)) - 1, Number(day.slice(8, 10))) / 86400000;
+// Months of history before a program's own cadence can be read from it.
+const HISTORY_MIN_MONTHS = 3;
+export const SILENT_LISTS = deepFreeze({
+  "possible-silent-failure": "Possible silent failure",
+  "schedule-run-failed": "Schedule run failed",
+  "no-recent-sends": "No recent sends",
+  "one-time": "One-time and ad-hoc programs",
+  "no-sends-in-window": "Active, no sends in this window",
+  "cannot-judge": "Cannot judge: period longer than the window",
+  ok: "Sending as expected",
+});
+const ALARM_LISTS = Object.freeze(["possible-silent-failure", "schedule-run-failed", "no-recent-sends"]);
+const monthEnd = (ym) => `${ym}-${String(daysInMonth(Number(ym.slice(0, 4)), Number(ym.slice(5, 7)))).padStart(2, "0")}`;
+const monthsApart = (a, b) => (Number(b.slice(0, 4)) - Number(a.slice(0, 4))) * 12 + Number(b.slice(5, 7)) - Number(a.slice(5, 7));
 /**
- * The Active programs with no send in the last `days` days, counted back from
- * the day the snapshot measured silence from (meta.health.asOf).
- * daysSilent is null when the program's last send is before the day window:
- * it has been silent for longer than the window, and lastSendMonth names the
- * month of its last send when that month is inside the pull's window.
+ * The rules over plain inputs, so the adapter (which decides which flagged
+ * programs to read live) and every reader of a snapshot apply ONE rule.
+ * @param {{asOf: string, dayWindow: {start: string, endExclusive: string}, days: number, incompleteMonth: string, months: string[],
+ *   programs: Array<{programId: string, name: ?string, statuses: string[], selected: boolean, lastSendDay: ?string, lastSendMonth: ?string,
+ *     schedule: ?{classification: string, cronExpression: ?string}, lastRun: ?{lastRunSuccess: ?boolean, asOf: ?string, source: string}, sentMonths: string[], templates: number}>}} input
+ * @returns {Array<{programId: string, name: ?string, statuses: string[], selected: boolean, lastSendDay: ?string, lastSendMonth: ?string, daysSilent: ?number, list: string, label: string, rule: string, detail: Object<string, *>}>}
+ */
+export function judgeSilence({ asOf, dayWindow, days, incompleteMonth, months, programs }) {
+  const asOfN = dayNumber(asOf);
+  const windowDays = dayNumber(dayWindow.endExclusive) - dayNumber(dayWindow.start);
+  const closedMonths = months.filter((m) => m < incompleteMonth);
+  const out = [];
+  for (const p of programs) {
+    if (!p.statuses.includes(ACTIVE_STATUS)) continue;
+    const daysSilent = p.lastSendDay ? asOfN - dayNumber(p.lastSendDay) : null;
+    // Days since the last send: exact inside the day window, else at least the days since that month ended.
+    const daysSince = daysSilent ?? (p.lastSendMonth ? Math.max(windowDays, asOfN - dayNumber(monthEnd(p.lastSendMonth))) : null);
+    const base = { programId: p.programId, name: p.name, statuses: p.statuses, selected: p.selected, lastSendDay: p.lastSendDay, lastSendMonth: p.lastSendMonth, daysSilent };
+    const row = (list, rule, detail) => out.push({ ...base, list, label: SILENT_LISTS[list], rule, detail });
+    const sentMonths = [...new Set(p.sentMonths ?? [])].sort();
+    if (!p.selected) { row("no-sends-in-window", "no-sends", { windowMonths: months.length }); continue; }
+    const cls = p.schedule?.classification ?? null;
+    if (cls === "one-time") { row("one-time", "one-time", { monthsSent: sentMonths.length, templates: p.templates ?? 0, daysSince }); continue; }
+    const flat = (list, rule, extra = {}) => {
+      const silent = daysSince == null || daysSince >= days;
+      row(silent ? list : "ok", rule, { threshold: days, daysSince, ...extra });
+    };
+    if (cls === "recurring") {
+      const due = cronLastDue(p.schedule?.cronExpression, asOf);
+      if (!due.readable || due.lastDue == null) { flat("possible-silent-failure", "flat", { cronUnreadable: true }); continue; }
+      if (due.periodDays == null || due.periodDays > windowDays || due.lastDue < dayWindow.start) {
+        row("cannot-judge", "cadence", { lastDue: due.lastDue, periodDays: due.periodDays, windowDays });
+        continue;
+      }
+      const sentSince = p.lastSendDay != null && p.lastSendDay >= due.lastDue;
+      const detail = { lastDue: due.lastDue, periodDays: due.periodDays, daysOverdue: asOfN - dayNumber(due.lastDue), sentSince };
+      if (sentSince) { row("ok", "cadence", detail); continue; }
+      const lr = p.lastRun ?? null;
+      const lastRun = lr ? { lastRunSuccess: lr.lastRunSuccess, asOf: lr.asOf, source: lr.source } : null;
+      if (lastRun?.source === "live" && lastRun.lastRunSuccess === false) row("schedule-run-failed", "cadence", { ...detail, lastRun });
+      else row("possible-silent-failure", "cadence", { ...detail, lastRun, note: lastRun?.source === "live" && lastRun.lastRunSuccess === true ? "last run succeeded" : lastRun ? "last run result from the knowledge base" : "last run result not read" });
+      continue;
+    }
+    // Event-driven, hand-fed or unknown: its own history.
+    const sentClosed = sentMonths.filter((m) => closedMonths.includes(m));
+    const rare = sentClosed.length >= HISTORY_MIN_MONTHS && sentClosed.length * 2 < closedMonths.length;
+    if (!rare) { flat("no-recent-sends", sentClosed.length < HISTORY_MIN_MONTHS ? "flat" : "history", { monthsWithSends: sentClosed.length, closedMonths: closedMonths.length, usual: "most months" }); continue; }
+    const gaps = sentClosed.slice(1).map((m, i) => monthsApart(sentClosed[i], m));
+    const longestGapMonths = Math.max(...gaps);
+    const allowedDays = longestGapMonths * 31;
+    row(daysSince == null || daysSince > allowedDays ? "no-recent-sends" : "ok", "history", { monthsWithSends: sentClosed.length, closedMonths: closedMonths.length, longestGapMonths, allowedDays, daysSince });
+  }
+  return out;
+}
+/**
+ * The silent-program lists over a snapshot (the reader's rule; the threshold
+ * `days` is the flat one). `rows` is the alarm list: every Active program
+ * judged silent under its rule, longest silent first. `lists` holds every
+ * judged program by list id, the alarms included.
  * @param {T10Snapshot} snapshot
  * @param {{days?: number}} [opts]
- * @returns {{unavailable: ?{reason: string}, asOf: ?string, days: number, windowDays: ?number, rows: Array<{programId: string, name: ?string, statuses: string[], selected: boolean, lastSendDay: ?string, lastSendMonth: ?string, daysSilent: ?number}>}}
+ * @returns {{unavailable: ?{reason: string}, asOf: ?string, days: number, windowDays: ?number, rows: Array<*>, lists: Object<string, Array<*>>}}
  */
 export function silentPrograms(snapshot, { days = SILENT_DAYS_DEFAULT } = {}) {
   const h = healthAvailability(snapshot);
   const part = h.parts.lastSends;
-  if (!h.pulled || !part?.pulled || !h.asOf || !h.dayWindow) return { unavailable: { reason: (!h.pulled ? h.reason : part?.reason) ?? "not-pulled" }, asOf: h.asOf, days, windowDays: null, rows: [] };
-  const asOf = dayNumber(h.asOf);
+  const lists = () => Object.fromEntries(Object.keys(SILENT_LISTS).map((k) => [k, []]));
+  if (!h.pulled || !part?.pulled || !h.asOf || !h.dayWindow) return { unavailable: { reason: (!h.pulled ? h.reason : part?.reason) ?? "not-pulled" }, asOf: h.asOf, days, windowDays: null, rows: [], lists: lists() };
   const windowDays = dayNumber(h.dayWindow.endExclusive) - dayNumber(h.dayWindow.start);
   if (!Number.isInteger(days) || days < 1 || days > windowDays)
     throw new Error(`engagement query: silent-program days must be a whole number from 1 to ${windowDays}, the days of sends this snapshot holds by day (got ${days})`);
-  const rows = /** @type {any[]} */ (snapshot.facts.health?.lastSends ?? [])
-    .filter((r) => r.statuses.includes(ACTIVE_STATUS))
-    .map((r) => ({ ...r, daysSilent: r.lastSendDay ? asOf - dayNumber(r.lastSendDay) : null }))
-    .filter((r) => r.daysSilent == null || r.daysSilent >= days)
-    // Longest silent first: a last send before the day window, then by days.
-    .sort((a, b) => (a.daysSilent == null ? (b.daysSilent == null ? 0 : -1) : b.daysSilent == null ? 1 : b.daysSilent - a.daysSilent) || cmp(a.programId, b.programId));
-  return { unavailable: null, asOf: h.asOf, days, windowDays, rows };
+  const schedule = new Map(snapshot.dimensions.programs.map((p) => [p.id, p.schedule ?? null]));
+  // The last-run result: a live read at this pull first, else the KB's.
+  const lastRun = new Map();
+  for (const r of /** @type {any[]} */ (snapshot.facts.health?.schedules ?? [])) {
+    const source = r.source ?? "kb";
+    const have = lastRun.get(r.programId);
+    if (!have || (source === "live" && have.source !== "live")) lastRun.set(r.programId, { lastRunSuccess: r.lastRunSuccess, asOf: r.asOf, source });
+  }
+  const sentMonths = new Map();
+  for (const r of snapshot.facts.byTemplate) {
+    if (!sentMonths.has(r.programId)) sentMonths.set(r.programId, new Set());
+    if (r.sent > 0) sentMonths.get(r.programId).add(r.month);
+  }
+  const templates = new Map();
+  for (const t of snapshot.dimensions.templates) for (const u of t.uses) templates.set(u.programId, (templates.get(u.programId) ?? 0) + 1);
+  const judged = judgeSilence({
+    asOf: h.asOf, dayWindow: h.dayWindow, days, incompleteMonth: String(snapshot.meta.incompleteFrom).slice(0, 7), months: snapshot.dimensions.months,
+    programs: /** @type {any[]} */ (snapshot.facts.health?.lastSends ?? []).map((r) => ({ ...r, schedule: schedule.get(r.programId) ?? null, lastRun: lastRun.get(r.programId) ?? null, sentMonths: [...(sentMonths.get(r.programId) ?? [])], templates: templates.get(r.programId) ?? 0 })),
+  });
+  const order = (a, b) => (a.daysSilent == null ? (b.daysSilent == null ? 0 : -1) : b.daysSilent == null ? 1 : b.daysSilent - a.daysSilent) || cmp(a.programId, b.programId);
+  const byList = lists();
+  for (const r of judged) byList[r.list].push(r);
+  for (const k of Object.keys(byList)) byList[k].sort(order);
+  // Longest silent first: a last send before the day window, then by days.
+  const rows = judged.filter((r) => ALARM_LISTS.includes(r.list)).sort(order);
+  return { unavailable: null, asOf: h.asOf, days, windowDays, rows, lists: byList };
 }
 
 // ── How a cell is shown ──────────────────────────────────────────────────────
@@ -891,7 +1189,14 @@ export const CAVEATS = Object.freeze({
   "reconciliation-mismatch": (d) => `RECONCILIATION FAILED in closed months (${list(d.checks ?? [])}): tables that must add up to the same totals do not. Treat the numbers as unreliable and pull again before using them.`,
   "incomplete-period-drift": (d) => `The tables differ slightly in the incomplete period, from ${d.from} (${list((d.checks ?? []).map((c) => `${c.id}: ${c.drift}`))}). This is not a failure: that period was still being written while the calls ran one after another. Closed months are compared separately.`,
   "health-incomplete": (d) => `Some health data could not be read (${list((d.parts ?? []).map((p) => `${p.part}: ${reasonText(p.reason)}`))}). What is missing is shown as missing, never as "no failures".`,
-  "schedules-from-kb": (d) => `Schedule results come from the knowledge base, not from a live read: each is as of the date its program was last documented${d.oldest ? ` (the oldest is ${d.oldest})` : ""}. Refresh the knowledge base to bring them up to date.`,
+  "schedules-from-kb": (d) =>
+    `Schedule configuration and last-run results come from the knowledge base, as of the date each program was last documented${d.oldest ? ` (the oldest is ${d.oldest})` : ""}. The knowledge base is refreshed when a program's configuration changes, so a run that began failing after that date is not shown here unless the program was documented again. ` +
+    (d.liveRead ? `${d.liveRead} program(s) flagged as possibly silent had their last-run result read live at this pull${d.cap != null ? ` (at most ${d.cap} are)` : ""}${d.flagged > d.liveRead ? `; ${d.flagged - d.liveRead} more flagged program(s) were not, and show the knowledge base's result` : ""}.` : "No program's last-run result was read live at this pull."),
+  "health-all-time": (d) => `${list(d.parts ?? [])} are all time: the objects they are read from carry no date on every row, so the date filter does not apply to them.`,
+  "participant-failures-no-breakdown": (d) => `Participant failures are counted per program with no breakdown by reason. ${reasonText(d.reason)}${d.expectedReasons ? ` The ${d.expectedReasons} expected reason(s) named for this pull could not be counted apart for the same reason.` : ""}`,
+  "failure-categories-overlap": (d) => `The failure category list overlaps: ${d.rows} "Other" row(s) in ${list(d.parts ?? [])} count below zero. Two patterns match the same message, so a message is counted twice; fix the list. Nothing was clamped.`,
+  "step-names-as-of": (d) => `Step names come from the knowledge base, as of the date each program was last documented${d.oldest ? ` (the oldest is ${d.oldest})` : ""}. A step renamed since then shows its earlier name.`,
+  "test-accounts-not-on-steps": (d) => `${d.accounts} test account(s) are counted as internal recipients in the template and account tables, not in the step table: the step log carries no company link, so its internal figures are by email domain alone.`,
   // From the honesty counts.
   "cc-copies-excluded": (d) => `${d.count} CC copies are left out: only "To" recipients are counted.`,
   "other-sources-excluded": (d) => `${d.count} email(s) sent by other Gainsight features are left out: only Journey Orchestrator sends are counted.`,
@@ -909,7 +1214,7 @@ export const CAVEATS = Object.freeze({
 export const caveatText = (id, detail = {}) => (CAVEATS[id] ? CAVEATS[id](detail) : `${id}: ${JSON.stringify(detail)}`);
 // The snapshot's own caveats that are about its health tables: an output that
 // shows none of them does not carry these.
-const HEALTH_CAVEATS = Object.freeze(["health-incomplete", "schedules-from-kb"]);
+const HEALTH_CAVEATS = Object.freeze(["health-incomplete", "schedules-from-kb", "health-all-time", "participant-failures-no-breakdown", "failure-categories-overlap"]);
 /**
  * The caveats block of any output over this snapshot: the snapshot's own
  * (failures first), what the pull left out, the incomplete period, and the

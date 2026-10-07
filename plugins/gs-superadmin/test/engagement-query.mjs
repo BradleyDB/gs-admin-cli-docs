@@ -463,7 +463,7 @@ try {
     check("health: a snapshot made before failures were counted has NO failure figure — null with the reason, shown as a dash, never 0 — while Sent beside it still reads; and its health marker reads as not pulled",
       oq.rows.length > 2 && oq.rows.every((r) => r.cells.failed.value === null && r.cells.failed.why === "measure-not-in-snapshot" && r.cells.errorRate.value === null && r.cells.errorRate.why === "measure-not-in-snapshot" && r.cells.sent.value > 0) &&
         formatCell("errorRate", oq.rows[0].cells.errorRate) === NO_VALUE && oq.total.cells.failed.value === null && isDeepStrictEqual(healthAvailability(old), { pulled: false, reason: "predates-health", asOf: null, dayWindow: null, parts: {} }) &&
-        silentPrograms(old).unavailable.reason === "predates-health" && ["measure-not-in-snapshot", "predates-health", "call-failed", "no-schema", "no-kb"].every((r) => REASONS[r]));
+        silentPrograms(old).unavailable.reason === "predates-health" && ["measure-not-in-snapshot", "predates-health", "call-failed", "no-schema", "no-kb", "too-large", "all-time", "not-filterable"].every((r) => REASONS[r]));
     const g = Object.fromEntries(glossary(["failed", "errorRate"], GOLD).map((e) => [e.id, e]));
     check("health glossary: send failures state both flags joined by OR, on the delivery log and per step; the error rate names its numerator and denominator",
       g.failed.fields === "IsBounced = YES or IsRejected = YES" && /Bounce = true or Rejected = true/.test(g.failed.perStep) && g.errorRate.calculation === "Send failures ÷ Sent" && /never 0%/.test(g.errorRate.zeroDenominator) && g.sent && g.failed.object === "email_log_v2");
@@ -471,10 +471,33 @@ try {
       !caveatsFor(GOLD, ["sent", "openRate"]).some((c) => c.id === "schedules-from-kb" || c.id === "health-incomplete") && caveatsFor(GOLD, ["errorRate"], { health: true }).some((c) => c.id === "schedules-from-kb") &&
         caveatsFor(GOLD, ["errorRate"]).some((c) => c.id === "failures-are-send-failures") && /participantStates: The call that reads this did not return/.test(caveatText("health-incomplete", { parts: [{ part: "participantStates", reason: "call-failed" }] })));
     const silent = silentPrograms(GOLD);
-    check("health: the silent-program rule reads the snapshot's last sends — Active, and no send in the last 30 days counted back from the day the snapshot measured from",
-      silent.unavailable === null && silent.asOf === "2026-09-15" && silent.windowDays === 90 && isDeepStrictEqual(silent.rows.map((r) => r.programId), ["p-nps"]) && silent.rows[0].daysSilent >= 30 &&
-        silent.rows[0].lastSendDay === GOLD.facts.health.lastSends.find((r) => r.programId === "p-nps").lastSendDay);
+    check("health: the silent-program rules read the snapshot's last sends, each program's schedule from the program dimension and the live or documented last-run result — the monthly survey program, due on the 1st with no send since, is the one alarm, under the cadence rule",
+      silent.unavailable === null && silent.asOf === "2026-09-15" && silent.windowDays === 90 && isDeepStrictEqual(silent.rows.map((r) => [r.programId, r.list, r.rule]), [["p-nps", "possible-silent-failure", "cadence"]]) && silent.rows[0].daysSilent >= 30 &&
+        silent.rows[0].lastSendDay === GOLD.facts.health.lastSends.find((r) => r.programId === "p-nps").lastSendDay && Object.keys(silent.lists).join() === Object.keys(Q.SILENT_LISTS).join() && silent.lists.ok.length >= 2);
     check("health: the masking rules are exported as data and a masked text is stable under masking", MASK_RULES.length === 5 && maskMessage("to bo@c02.example.com ref 1234567") === "to <email> ref <number>" && maskMessage(maskMessage("to bo@c02.example.com ref 1234567")) === "to <email> ref <number>");
+    // The failure categories (S3b): shipped empty, validated as data, "other" reserved.
+    check("health: the shipped category table is empty for both parts (the wordings are captured at V2), the table is frozen data, and a tenant's own list is validated — unique ids, text in every field, disjoint patterns, no reserved id",
+      isDeepStrictEqual(Q.FAILURE_CATEGORIES, { bounceReasons: [], participantFailures: [] }) && Object.isFrozen(Q.FAILURE_CATEGORIES) && Q.OTHER_CATEGORY === "other" && Q.validateCategories([]).length === 0 &&
+        Q.validateCategories([{ id: "a", label: "A", pattern: "x y", definition: "d" }, { id: "b", label: "B", pattern: "y", definition: "d" }]).some((p) => /disjoint/.test(p)) && Q.categoryTable("bounceReasons", [{ id: "a", label: " A ", pattern: " p ", definition: "d" }])[0].label === "A" &&
+        throws(() => Q.categoryTable(/** @type {any} */ ("steps")), /no failure categories/) && throws(() => Q.categoryTable("bounceReasons", [{ id: "other", label: "A", pattern: "p", definition: "d" }]), /reserved/));
+  }
+
+  // ── The cron calculator (HLT-1 S3b): on which days a schedule fires ──────
+  {
+    const { readCron, cronLastDue } = Q;
+    const fires = (expr, from, to) => { const m = readCron(expr).matches; const out = []; for (let n = Date.parse(from); n <= Date.parse(to); n += 86400000) { const d = new Date(n).toISOString().slice(0, 10); if (m(d)) out.push(d); } return out; };
+    check("cron: a weekly schedule fires on its weekday — every Monday of September 2026 — and the day it was last due before a Tuesday is the day before, with a seven-day period",
+      isDeepStrictEqual(fires("0 0 8 ? * MON *", "2026-09-01", "2026-09-30"), ["2026-09-07", "2026-09-14", "2026-09-21", "2026-09-28"]) && isDeepStrictEqual(cronLastDue("0 0 8 ? * MON *", "2026-09-15"), { readable: true, lastDue: "2026-09-14", previousDue: "2026-09-07", periodDays: 7 }));
+    check("cron: a run due ON the day is not counted (it may not have fired yet): on a Monday the last due Monday is the one before",
+      cronLastDue("0 0 8 ? * MON *", "2026-09-14").lastDue === "2026-09-07");
+    check("cron: monthly on a day, every N months from a month, the last day of the month, the nth weekday, the last weekday, weekday lists and ranges, names and numbers",
+      isDeepStrictEqual(fires("0 0 9 1 * ? *", "2026-08-01", "2026-09-30"), ["2026-08-01", "2026-09-01"]) && isDeepStrictEqual(fires("0 0 9 1 1/3 ? *", "2026-01-01", "2026-12-31"), ["2026-01-01", "2026-04-01", "2026-07-01", "2026-10-01"]) &&
+        isDeepStrictEqual(fires("0 0 9 L * ? *", "2026-02-01", "2026-03-31"), ["2026-02-28", "2026-03-31"]) && isDeepStrictEqual(fires("0 0 9 ? * TUE#2 *", "2026-09-01", "2026-09-30"), ["2026-09-08"]) && isDeepStrictEqual(fires("0 0 9 ? * FRIL *", "2026-09-01", "2026-09-30"), ["2026-09-25"]) &&
+        isDeepStrictEqual(fires("0 0 9 ? * MON,WED-FRI *", "2026-09-14", "2026-09-20"), ["2026-09-14", "2026-09-16", "2026-09-17", "2026-09-18"]) && isDeepStrictEqual(fires("0 0 9 ? * 2 *", "2026-09-14", "2026-09-20"), ["2026-09-14"]) && isDeepStrictEqual(fires("0 30 6 15 SEP ? 2026", "2026-09-01", "2026-09-30"), ["2026-09-15"]) &&
+        isDeepStrictEqual(fires("0 0 9 1/10 * ? *", "2026-09-01", "2026-09-30"), ["2026-09-01", "2026-09-11", "2026-09-21"]) && isDeepStrictEqual(fires("0 0 9 * * ? *", "2026-09-29", "2026-10-01"), ["2026-09-29", "2026-09-30", "2026-10-01"]) && isDeepStrictEqual(cronLastDue("0 0 9 1 1/3 ? *", "2026-09-15"), { readable: true, lastDue: "2026-07-01", previousDue: "2026-04-01", periodDays: 91 }));
+    check("cron: what it cannot read says so (never a guess): a sixth weekday of the month, a bad range, a day 32, five fields, empty, not text, a weekday name it does not know — and a schedule that fires only once in two years has no period",
+      ["0 0 9 ? * MON#6 *", "0 0 9 ? * FRI-MON *", "0 0 9 32 * ? *", "0 9 * * *", "", null, "0 0 9 ? * FUNDAY *", "0 0 9 1 * ? * *"].every((e) => readCron(e).readable === false && cronLastDue(e, "2026-09-15").readable === false) &&
+        isDeepStrictEqual(cronLastDue("0 0 9 15 SEP ? 2026", "2026-09-16"), { readable: true, lastDue: "2026-09-15", previousDue: null, periodDays: null }) && cronLastDue("0 0 9 15 SEP ? 2031", "2026-09-16").lastDue === null);
   }
 
   // ── Caveats and "data pulled" ─────────────────────────────────────────────

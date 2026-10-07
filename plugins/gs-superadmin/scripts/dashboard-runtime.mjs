@@ -81,7 +81,7 @@ export const NOT_LACKS = Object.freeze({
 });
 // Reasons of the health facts. Nothing a page draws reads them yet: they get
 // their rows with the Health tab's views (DSH-4).
-export const LACKS_LATER = Object.freeze(["predates-health", "health-off", "not-in-previous", "call-failed", "no-schema", "no-kb"]);
+export const LACKS_LATER = Object.freeze(["predates-health", "health-off", "not-in-previous", "call-failed", "no-schema", "no-kb", "too-large", "all-time", "not-filterable"]);
 
 export const NEEDS = Object.freeze({
   pull: "It needs a new pull: the next refresh reads every table again.",

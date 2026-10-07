@@ -332,6 +332,8 @@ The share of the program's survey participants with any response, all time.
 
 - 1 program(s) have no full doc in the knowledge base, so their emails are listed by template name, without step names.
 
+- Step names come from the knowledge base, as of the date each program was last documented (the oldest is 2026-08-20T00:00:00.000Z). A step renamed since then shows its earlier name.
+
 - Sends on or after 2026-09-01 are provisional: opens keep arriving, so the recent period reads low.
 
 - Opens are image-pixel loads. Apple Mail Privacy Protection and security scanners inflate them, and blocked images hide real ones. Compare programs with each other, not with an outside benchmark.

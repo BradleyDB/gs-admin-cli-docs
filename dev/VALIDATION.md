@@ -1451,6 +1451,94 @@ in this order, stopping at the first that holds:
 - (p3) Else participant failures stay all time, with the page saying so wherever the figure shows.
 Participant states (`ao_participants`) are expected to stay all time whichever holds.
 
+### Re-banked for V2 after the S3b health batch (builder, 2026-10-07, feat/jo-dash-s3b-health-batch; keyed to the token the branch's handoff mints)
+
+Y0 was RULED at S4a's kickoff and Y3 CLEARED at the spot check; both stand. Y4, Y5, Y7, Y8, Y9, Y10, Y11 and Y12
+stay owed as written above. Y1, Y2 and Y6 are REPLACED by the versions below (the S3b batch changed what they
+measure: failure reasons are counted by category, the silent rules are cadence-aware, the schedule rides the program
+dimension). Y13 to Y16 are new. The two reads the batch was gated on were made in the build session on 2026-10-07
+with Bradley's live token (reads only, through the spike's catalog-checked runner); their results are stated where
+the check depends on them, and V2 re-measures nothing it does not need to.
+
+- Y1 (health facts on a real tenant, count first). `engagement.mjs plan <common> --health --kb <slug> --run v2-health`,
+  then `run` with the same flags and `--out <slug>/reports-adhoc/v2-health.json`. The shipped category list is
+  empty, so pass none; the read that gates categories was made at S3b: a CONTAINS, DOES_NOT_CONTAINS or
+  STARTS_WITH filter on `ao_failed_participants.FailureReasons` is refused by the server ("Unrecognized data type
+  found in Filter or Ranking fields"), and `rp schema` declares the field (every JSON-path field of that object)
+  `filterable: false, groupable: false`; CONTAINS on `email_log_v2.BouncedReason` returned in a plain count and in the
+  grouped shape the batch uses, with DOES_NOT_CONTAINS its complement (one month, no null reason among its
+  bounces). FIRST clause, before the pull: the plan's own count-first reads replace the spike-runner count of the
+  spot check — record `estimate.health.failedParticipantRows` (an order of magnitude) and `estimate.rowBudget`.
+  Pass bar: exit 0 with `ok: true`; `health.pulled` true; every part of `health.parts` is either pulled or
+  carries a reason (`too-large`, `call-failed`, `no-schema`, `no-kb`, `not-in-previous`), with its `basis`;
+  `participantFailures` IS read (one row per program, category other, participants and occurrences; its
+  `meta.health.categories` entry reads `counted: false, reason: not-filterable`); `bounceReasons` rows are all
+  category `other` with no message (no list was passed) and sum to the send tables' bounced (the check is ok in
+  closed months); `failureSamples` holds at most five masked texts per program and part. The pull's health calls
+  are within 2x of `estimate.health.addsCalls` (read both from the summary and the fetch log's `health-` and
+  `schedule-describe` records); record the health calls made, their seconds, how many split, which parts were not
+  read, and the whole run's calls against `estimate.thisRun` (the click families are now priced from a count).
+  A health part refused as `too-large` is recorded with the rows the estimate saw; it is a pass only if the rows
+  really exceed `rowBudget.rows`.
+- Y2 (masking holds on real messages; the category capture). Over Y1's snapshot and run directory, by script:
+  search every `facts.health` message and sample, and every payload file of a `health-bounce-sample` or
+  `health-reasons-sample` call, for an `@`, a run of five or more digits, an IPv4 address, a word with an `@` and
+  NO dot after it (the gap the email rule has: `bob@localhost`, a bare login), and the value after "Invalid value".
+  Pass bar: zero hits of the first three in the snapshot's rows and the payload files; hits of the last two are
+  recorded as counts (they are what the categories exist to cut) and are a finding only if they reach a row that
+  is not a sample. Then Bradley reads `facts.health.failureSamples` (the terminal, never a page): the bounce
+  samples and the participant-failure samples per program. THE CAPTURE: for every sample that carries a value
+  (an address, a field name, a number), Bradley marks it, and its EXACT wording up to the value is captured into
+  the consumer workspace as a `--failure-categories` file ({id, label, pattern, definition}; tenant data until it
+  is judged product text); for every sample that is expected by design, its wording goes to `--expected-reason`.
+  Pass bar: the file exists with no wording cut off; a second pull with it passed (Y1's flags plus
+  `--failure-categories <file>`) is a full refresh that says the categories changed, its category rows carry the
+  labels, the "Other" share per program is recorded as a percentage, and no "Other" row counts below zero (a
+  negative one is the overlap caveat and a list defect). What of the captured list is product text with no
+  tenant value is Bradley's call; only that may ship.
+- Y6 (the silent lists). `silentPrograms` over Y1's snapshot at 30 days (a node one-liner over the snapshot file),
+  printing `lists` by id. Pass bar: Bradley reads each list and every one must read true to him: "Possible silent
+  failure" (a recurring schedule was due and nothing was sent since; a quarterly program is not on it at 30 days;
+  each row names its last due day and the live last-run result, "last run succeeded" where it was); "Schedule run
+  failed" (the live read said so); "No recent sends" (event-driven, hand-fed and unknown programs against their
+  own history — THE STARTING RULE, which this read is the judge of: a program that sends fewer than half the
+  closed months is late only past its longest gap between send months, one that sends most months or has under
+  three months of history is late at the flat threshold); "One-time and ad-hoc programs" (never on a silent list,
+  each with its last send, the months it sent in and its templates); "Cannot judge: period longer than the
+  window"; and "Active, no sends in this window", apart from the alarms. For two programs on an alarm list a direct
+  program x day read of the last 90 days shows no later send. `honesty.health.schedules` records how many were
+  flagged and read live (the cap is 25); the `schedules-from-kb` caveat names the same figures. Two reads besides:
+  whether a schedule's start and end dates are in the `jo p describe` payload (an ended schedule must not read
+  as broken; record the field names and shapes only), and whether any tenant-wide reportable object holds
+  schedule or query run results (record its API name and field types, or that none was found).
+- Y13 (the lookback, derived). `estimate.health.lookback` from Y1's plan: `longestPeriodDays` among the selected
+  programs' schedules, `programsBeyondWindow` and `unreadableCrons`. Pass bar: the longest period reads as the
+  program Bradley knows to run least often (quarterly on this tenant); with the default 90 days that program is
+  on the "cannot judge" list; a second plan with `--health-lookback-days` above its period plans the same calls
+  plus the longer day read and, after its pull, judges that program by its cadence. `unreadableCrons` is 0, or
+  each unreadable expression is recorded (shape only) as a finding for the calculator.
+- Y14 (the schedule rides every pull with a KB). A pull WITHOUT `--health` but with `--kb` (the open-rate report's
+  own pull): every `dimensions.programs[].schedule` is filled for a program with a full KB doc (classification,
+  cron, zone, as of the doc's date), "no schedule captured" for a documented program with none, and null for a
+  program the KB has no doc for; `dashboard-groups.mjs resolve` over that snapshot with a `recurring` rule assigns
+  the same programs as over Y1's snapshot (Y9's rule). `dimensions.templates[].uses[].asOf` is the doc's date and
+  the `step-names-as-of` caveat names the oldest. Pass bar: the counts of programs per schedule classification
+  equal those of Y1's snapshot, and the program with no doc reads null, never "no schedule".
+- Y15 (test accounts, server-side). Bradley names one or two test COMPANY records by id (tenant data: the
+  workspace picks file). Y1's flags plus `--test-account <id>` each, a full refresh (the snapshot says the test
+  accounts changed). Pass bar: the test accounts' sends are in the internal class (the program's internal rows
+  grew by `honesty.testAccounts.sent`, the external rows shrank by the same, the totals unchanged), a test contact
+  on an internal domain is counted once (the overlap call is in the fetch log), external unique recipients fell
+  by the people of those accounts and no further, the no-company-link rows are unchanged (NOT_IN keeps them: the
+  read made at S3b over the whole window, IN plus NOT_IN equal to the plain count with order 10^4 null rows), and
+  `meta.params.testAccounts` echoes the ids sorted.
+- Y16 (the run clock). Y1's plan and run were one `--run`: the snapshot's `meta.pulledAt` is at or after the plan's
+  end and at or before the first fact call's record in the fetch log (the day buckets and templates, not the
+  cheap calls), and `run.json` holds the same stamp; the report's "Data pulled" line reads it. If the round
+  crosses midnight between plan and run (or resumes after a login past midnight), the run continues with no
+  `--today` and the snapshot's day is the plan's. Pass bar: one stamp everywhere, inside the fact calls' span; a
+  resume across midnight needs no flag.
+
 ## DSH-2 — the dashboard page built over a real snapshot: filtered in a browser, its size measured, a CSV export opened in a spreadsheet (banked 2026-10-04, builder, Session S4a; verdict at V2)
 
 Owed by: V2, the batched verdict session after S4c, in the consumer workspace with the plugin loaded from `dev`

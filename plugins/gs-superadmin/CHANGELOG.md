@@ -38,6 +38,56 @@ before.
   large and what would make the page smaller, and does not write a leaders' page above
   15 MB.
 
+Health data, re-shaped after its first run on a real tenant (the S3b batch; F-476, F-482,
+F-483 and F-484):
+
+- **Failure reasons are counted, never read as text.** Bounce reasons are counted on the
+  server by category: one filtered count per category, grouped by program, email, month
+  and bounce type, with the total beside them and an "Other" row for the rest. A
+  categorised row keeps the category's label in place of the text, so an address the
+  masking misses is cut, not stored. A small masked sample of the uncategorised text is
+  kept in the snapshot for extending the list (shown by the terminal, never on a page).
+  The shipped category list is empty until the product wordings are captured from a real
+  tenant; `--failure-categories <file.json>` adds your own, and `--expected-reason <text>`
+  names failures that are expected by design, kept apart from the rest and never hidden.
+  Participant failures are a per-program total with no breakdown: on this CLI the reason
+  field accepts no filter at all (its schema says so), and the snapshot says so wherever
+  the breakdown would be. The million-row read the first live pull made is gone.
+- **Health is sized before it is read.** The plan now makes one server-side count for
+  every family that reads rows (clicked sends, bounced attempts, failed participants) and
+  prices those families from it, so the estimate covers the splits a large tenant forces.
+  A part that would exceed the row budget (`--max-pages`, 40 pages by default) is not read
+  and says why (`too-large`); a click detail over it is refused at the plan, naming what
+  to narrow.
+- **The pull time is when the facts were read.** `meta.pulledAt` is stamped when the fact
+  calls start, not when the run directory is made, and a run resumed after midnight keeps
+  the day it was planned on (`--today` still overrides). The "different parameters"
+  refusal names the parameter that moved.
+- **Silent programs, judged by their own cadence.** A program with a readable recurring
+  schedule is judged from its cron: when it was last due and whether a send is logged
+  since ("Possible silent failure"; a quarterly program is not flagged at 30 days). For
+  each program flagged, its schedule's last-run result is read live (one describe each, at
+  most 25 a pull): a failed run reads "Schedule run failed". One-time and ad-hoc programs
+  get their own list with their last send, months and emails; event-driven and hand-fed
+  programs are judged against their own history ("No recent sends"); an Active program
+  with no send in the window is listed apart. A cron the small built-in calculator cannot
+  read falls back to the flat threshold and says so. A program whose period is longer than
+  the lookback window reads "cannot judge", and `plan` reports the longest period among
+  the programs so a longer `--health-lookback-days` (up to a year) can be chosen.
+- **Every program's schedule rides every pull made with a knowledge base**, whether or not
+  health is pulled (`dimensions.programs[].schedule`), so a grouping rule on "recurring"
+  resolves on any dashboard. Step names carry the date they are as of, and a caveat names
+  the oldest. The schedule caveat now says what is true: the knowledge base is refreshed on
+  configuration changes, so a run that began failing later shows only through the live read.
+- **Test accounts are excluded on the server** (`--test-account <company id>`, repeatable):
+  one call per family for the accounts and one for their overlap with each internal
+  domain, and they join the internal class, so the one recipients toggle covers both.
+  Distinct external counts leave them out with NOT_IN, which keeps the sends that have no
+  company at all (measured). The step table is by domain alone, and a caveat says so.
+- **Every all-time health figure carries a reason a page can render** (`all-time`), and a
+  field a query filters or groups on is checked against the schema's own filterable and
+  groupable flags before the call is made.
+
 ## 0.46.0 — 2026-10-04
 
 Groundwork for the engagement dashboard. No skill changes: `/gs-superadmin:email-engagement

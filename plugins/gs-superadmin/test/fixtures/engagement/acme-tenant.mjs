@@ -32,16 +32,26 @@
 //     normalizeGroupByDedup, then assertShowFieldsNonEmpty)
 //   - a field typed JSONSTRING cannot be grouped by or distinct-counted: the
 //     call fails with the "network outage" text; plain rows of it are returned
+//   - a WHERE condition on a field whose schema says filterable: false fails
+//     with "Unrecognized data type found in Filter or Ranking fields" (measured
+//     2026-10-07 on ao_failed_participants.FailureReasons with CONTAINS,
+//     DOES_NOT_CONTAINS and STARTS_WITH; the field is a JSON-path extraction
+//     and its schema declares it neither filterable nor groupable — S3b)
+//   - CONTAINS on a filterable STRING field works in a plain count and in a
+//     grouped call alike, and DOES_NOT_CONTAINS is its complement (measured
+//     on email_log_v2.BouncedReason, S3b); IN and NOT_IN on the company LOOKUP
+//     work, and NOT_IN KEEPS rows whose company is null (measured S3b: IN plus
+//     NOT_IN equals the plain count on a window holding order 10^4 null rows)
+//   - SUM is an aggregation: `sum_of_<obj>_<Field>`, a numeric cell (measured S3b)
 //   - day buckets are summarize_day_of_<obj>_<Field> with k = YYYY-MM-DD
 //   - a bounce reason comes back in `fv`, and in `v` too on only some rows
-// Every behaviour above was measured on a real tenant. One is still ASSUMED,
-// measured only where it has nothing to act on: DOES_NOT_CONTAINS keeps a row
-// whose field is null (the measured tenant has no in-scope send with a null
-// address). One SHAPE is assumed as well, because the spike recorded it only
-// in words: a failed participant's FailureReasons is "a short product message"
-// in plain rows. The fixture writes it as plain text, and one row as a JSON
-// array of texts; the adapter's reader takes either, and the live check banked
-// beside HLT-1 reads the real one.
+// Every behaviour above was measured on a real tenant. Two are still ASSUMED,
+// measured only where they have nothing to act on: DOES_NOT_CONTAINS keeps a
+// row whose field is null (the measured tenant has no in-scope send with a null
+// address, and the month measured for bounce reasons had no bounce with a null
+// reason). The failed participant's FailureReasons shape was measured at the
+// spot check (Y3): plain text in {v, fv}, one product sentence per cell; the
+// fixture also writes one row as a JSON array of texts, which the reader takes.
 // Values are fictional throughout (acme.com is the tenant's own domain, the
 // customers live under example.com); the SHAPES are the tenant's.
 //
@@ -145,6 +155,40 @@ const QUIET = {
   months: ["2026-02"], accounts: [0, 1], perAccount: 1, steps: [{ stepId: "st-qt-1", stepName: "Quiet note", order: 1, templateId: "tpl-quiet", variants: ["var-quiet"] }],
 };
 const NEVER = { id: "p-never", name: "Acme Never Sent", model: "DRIPV2", modelName: "Email Chain", statuses: ["PROCESSING"], type: "CUSTOMER", folderId: "606", months: [], steps: [] };
+// Only with the cadence variant (HLT-1 S3b, the cadence-aware silent rule).
+// Each is Active and documented in the KB (kbFiles takes the variant):
+//   p-quarter   a quarterly schedule the audit's humanizer does not read (the
+//               scheduleType says RECURRING; the cron steps months): last sent
+//               in July, next due in October, so it is NOT a silent failure in
+//               September though the flat 30-day rule would flag it
+//   p-sporadic  no schedule (hand-fed), sends about every third month: judged
+//               against its own history, its 60-odd quiet days are its habit
+//   p-once      a ONE-TIME schedule that sent in one month: never on a silent list
+//   p-lapsed    no schedule, sent every month until June and nothing since:
+//               "No recent sends" under its own history
+const QUARTER = {
+  id: "p-quarter", name: "Acme Quarterly Review", model: "DRIPV2", modelName: "Email Chain", statuses: ["PROCESSING"], type: "CUSTOMER", folderId: "707",
+  months: ["2025-10", "2026-01", "2026-04", "2026-07"], accounts: [0, 1, 2], perAccount: 1,
+  schedules: [{ type: "RECURRING", cronExpression: "0 0 9 1 1/3 ? *", lastRunSuccess: true, lastSuccessTime: 1751360400000, nextRunTime: 1759309200000, runningNow: false, timeZoneName: "America/Los_Angeles", jobType: "PARTICIPANT_SYNC" }],
+  steps: [{ stepId: "st-qr-1", stepName: "Quarterly note", order: 1, templateId: "tpl-quarter", variants: ["var-quarter"] }],
+};
+const SPORADIC = {
+  id: "p-sporadic", name: "Acme Sporadic Outreach", model: "DRIPV2", modelName: "Email Chain", statuses: ["PROCESSING"], type: "CUSTOMER", folderId: "707",
+  months: ["2025-10", "2026-01", "2026-04", "2026-07"], accounts: [3, 4], perAccount: 1,
+  steps: [{ stepId: "st-sp-1", stepName: "Sporadic note", order: 1, templateId: "tpl-sporadic", variants: ["var-sporadic"] }],
+};
+const ONCE = {
+  id: "p-once", name: "Acme One-time Announcement", model: "SIMPLE_PROGRAM", modelName: "Simple Program", statuses: ["PROCESSING"], type: "CUSTOMER", folderId: "707",
+  months: ["2026-03"], accounts: [5, 6, 7], perAccount: 1,
+  schedules: [{ type: "ONE-TIME", cronExpression: null, lastRunSuccess: true, lastSuccessTime: 1741000000000, nextRunTime: 0, runningNow: false, timeZoneName: "America/Los_Angeles", jobType: "PARTICIPANT_SYNC" }],
+  steps: [{ stepId: "st-on-1", stepName: "Announcement", order: 1, templateId: "tpl-once", variants: ["var-once"] }],
+};
+const LAPSED = {
+  id: "p-lapsed", name: "Acme Lapsed Digest", model: "DRIPV2", modelName: "Email Chain", statuses: ["PROCESSING"], type: "CUSTOMER", folderId: "707",
+  months: monthsBetween("2025-09", "2026-06"), accounts: [8, 9], perAccount: 1,
+  steps: [{ stepId: "st-lp-1", stepName: "Digest", order: 1, templateId: "tpl-lapsed", variants: ["var-lapsed"] }],
+};
+const CADENCE = [QUARTER, SPORADIC, ONCE, LAPSED];
 const BLAST_ACCOUNTS = Array.from({ length: 60 }, (_, i) => ({ Gsid: `co-b${pad(i + 1)}`, Name: `Acme Blast Customer ${pad(i + 1)}` }));
 const BLAST_NAMES = ["ann", "bo", "cy", "dee", "eli", "fay", "gus", "hal", "ivy", "jo", "kit", "lou", "max", "ned", "oz", "pru", "quin", "roy", "sy", "tu"];
 export const OWN_SITE_UNSUBSCRIBE = "https://www.acme.com/mail-settings";
@@ -153,6 +197,7 @@ const TEMPLATE_NAMES = {
   "tpl-welcome": "Acme Welcome", "tpl-day7": "Acme Day 7", "tpl-nps": "Acme NPS Request", "tpl-renew": "Acme Renewal",
   "tpl-renew-b": "Acme Renewal Thanks", "tpl-promo": "Acme Promo", "tpl-unlisted": "Acme Unlisted", "tpl-gone": "Acme Gone",
   "tpl-prefs": "Acme Prefs", "tpl-prefs-mix": "Acme Prefs Follow-up", "tpl-blast": "Acme Announcement", "tpl-quiet": "Acme Quiet",
+  "tpl-quarter": "Acme Quarterly", "tpl-sporadic": "Acme Sporadic", "tpl-once": "Acme One-time", "tpl-lapsed": "Acme Digest",
 };
 // Click behaviour per template (the five R19 fixtures ride on these):
 //   content — content-link clicks are recorded
@@ -177,13 +222,28 @@ const INTERNAL_PEOPLE = [
 // What a mail service writes for a bounce: free text that NAMES the recipient
 // and carries ids. Every address and id here is fictional. `kind` is the
 // oracle's key: which message a row is, written by the generator that chose it.
+// "unknown-user-local" carries an address the email mask cannot see (no dot
+// after the @, no digit in it): the category CUTS it where the mask would keep it.
 export const BOUNCE_REASONS = [
   { kind: "unknown-user", text: (email, n) => `550 5.1.1 <${email}>: Recipient address rejected: User unknown in virtual mailbox table (ref ${8842100000 + n})` },
   { kind: "policy", text: (email, n) => `smtp;554 5.7.1 Message for ${email} blocked by policy at 203.0.113.${n % 250}, id=4f9a2c1e-0000-4000-8000-${String(100000000000 + n)}` },
   { kind: "mailbox-full", text: () => "452 4.2.2 Mailbox full" },
   { kind: "none", text: () => null },
+  { kind: "unknown-user-local", text: (email) => `550 5.1.1 <${email.split("@")[0]}@localhost>: Recipient address rejected: User unknown in virtual mailbox table` },
 ];
 const bounceReason = (n) => BOUNCE_REASONS[n % BOUNCE_REASONS.length];
+// FICTIONAL failure categories, in the shape the adapter's table takes (S3b):
+// a pattern the server counts with CONTAINS, the label a row keeps instead of
+// its text, and the one-sentence definition a page shows. The shipped list in
+// engagement-query.mjs is EMPTY until V2 captures the product wordings; this
+// list proves the mechanism over the fictional tenant. "Mailbox full" and a
+// bounce with no reason are in no category: they are the "Other" rows.
+export const FIXTURE_BOUNCE_CATEGORIES = [
+  { id: "user-unknown", label: "Recipient address rejected: user unknown", pattern: "User unknown in virtual mailbox table", definition: "The receiving mail server says the address does not exist." },
+  { id: "blocked-by-policy", label: "Message blocked by policy", pattern: "blocked by policy", definition: "The receiving mail server refused the message under a policy of its own." },
+];
+// Which category each bounce kind lands in, written by hand: the oracle's half.
+export const FIXTURE_BOUNCE_KIND_CATEGORY = { "unknown-user": "user-unknown", "unknown-user-local": "user-unknown", policy: "blocked-by-policy", "mailbox-full": null, none: null };
 // What the product writes for a participant it could not process.
 export const FAILURE_REASONS = [
   { kind: "invalid-email", text: (i) => `Email address first.last${i}@c0${(i % 9) + 1}.example.com is invalid` },
@@ -224,6 +284,10 @@ const CONTENT_KINDS = new Set(["content", "lookalike"]);
  *   bothFlags       true — some attempts that bounced at send are ALSO flagged rejected (one failure, two flags)
  *   silent          true — two more Active programs: one whose last send is months back, one with no send at all
  *   noHealthObjects true — ao_failed_participants and ao_participants have no schema
+ *   cadence         true — four more Active, documented programs for the cadence-aware silent rules (see CADENCE)
+ *   manyFailures    number — that many more failed participants on p-onboard, each with a distinct value in its reason
+ *   liveSchedule    {programId: {lastRunSuccess}} — what `jo p describe` says about the program's schedule NOW,
+ *                   where the KB doc (written earlier) says something else
  */
 export function buildTenant(variant = {}) {
   const log = [];
@@ -306,9 +370,9 @@ export function buildTenant(variant = {}) {
     }
   };
 
-  const listed = [...PROGRAMS, ...(variant.ownSiteUnsub ? [OWN_SITE] : []), ...(variant.massDay ? [BLAST] : []), ...(variant.silent ? [QUIET, NEVER] : [])];
+  const listed = [...PROGRAMS, ...(variant.ownSiteUnsub ? [OWN_SITE] : []), ...(variant.massDay ? [BLAST] : []), ...(variant.silent ? [QUIET, NEVER] : []), ...(variant.cadence ? CADENCE : [])];
   // A variant's program goes last, so every other send keeps its number.
-  for (const program of [...PROGRAMS, UNLISTED, DELETED, ...(variant.ownSiteUnsub ? [OWN_SITE] : []), ...(variant.silent ? [QUIET] : [])]) {
+  for (const program of [...PROGRAMS, UNLISTED, DELETED, ...(variant.ownSiteUnsub ? [OWN_SITE] : []), ...(variant.silent ? [QUIET] : []), ...(variant.cadence ? CADENCE : [])]) {
     for (const month of program.months) {
       for (const step of program.steps) {
         if (program.internalOnly) {
@@ -365,10 +429,19 @@ export function buildTenant(variant = {}) {
       failedParticipants.push({ Gsid: `fp-${programId}-${i}`, AdvancedOutreachId: programId, FailureReasons: reason.text(i), OccurrenceCount: 1 + (i % 3), _failureKind: reason.kind });
     }
   }
+  // The large variant: most failures share one wording with a distinct value in each (F-484's class).
+  for (let i = 0; i < (variant.manyFailures ?? 0); i++) {
+    failedParticipants.push({ Gsid: `fp-many-${i}`, AdvancedOutreachId: "p-onboard", FailureReasons: FAILURE_REASONS[0].text(1000 + i), OccurrenceCount: 1, _failureKind: FAILURE_REASONS[0].kind });
+  }
 
   if (variant.extraJoRow) joLog.push({ ...joLog.find((r) => r.AdvancedOutreachId === "p-onboard" && r.CreatedAt.startsWith("2026-08")), Gsid: "jo-extra", EmailLogId: null });
 
-  const fields = (names, types = {}) => names.map((fieldName) => ({ fieldName, dataType: types[fieldName] ?? "STRING", meta: { filterable: true, groupable: true, aggregatable: true } }));
+  // A JSON-path field (JSONSTRING) is declared neither filterable nor groupable, as the real schema declares it (S3b).
+  const fields = (names, types = {}) => names.map((fieldName) => {
+    const dataType = types[fieldName] ?? "STRING";
+    const json = dataType === "JSONSTRING";
+    return { fieldName, dataType, meta: { filterable: !json, groupable: !json, aggregatable: true } };
+  });
   const schemas = {
     email_log_v2: fields(
       ["Gsid", "Source", "SourceId", "SourceName", "AddressType", "EmailTemplateId", "EmailTemplateName", "ExecutedDate", "SentDate", "IsSent", "IsOpened", "IsBounced", "IsRejected", "IsUnsubscribed", "IsSpam", "BounceType", "BouncedReason", "LowerCaseEmailId", "GsCompanyId", "GsPersonId", "LinkClickedCount", "LinkClickedJson"],
@@ -396,11 +469,16 @@ export function buildTenant(variant = {}) {
   const tables = { email_log_v2: log, ao_emails: joLog, survey_participant: surveyRows, company: variant.massDay ? [...ACCOUNTS, ...BLAST_ACCOUNTS] : ACCOUNTS, ao_participants: [...participants.values()], ao_failed_participants: failedParticipants };
   const byGsid = Object.fromEntries(Object.entries(tables).map(([name, rows]) => [name, new Map(rows.map((r) => /** @type {[string, *]} */ ([r.Gsid, r])))]));
   const token = variant.token ?? { state: "valid", seconds: 3200 };
+  // What describe says NOW about a schedule, where the variant says it differs from the KB doc.
+  const live = (p) => {
+    const over = variant.liveSchedule?.[p.id];
+    return over && p.schedules ? { ...p, schedules: p.schedules.map((s) => ({ ...s, ...over })) } : p;
+  };
   return {
     variant, tables, schemas, byGsid, token,
     baseUrl: "https://acme.gainsightcloud.com",
     listed,
-    describable: new Map([...listed, UNLISTED].map((p) => [p.id, p])),
+    describable: new Map([...listed, UNLISTED].map((p) => [p.id, live(p)])),
     serverMax: variant.serverMax ?? 5000,
     listMax: variant.listMax ?? 1000,
   };
@@ -433,11 +511,11 @@ export const listedPrograms = () => PROGRAMS;
 // doc per listed program that has a design — except p-promo, which the KB has
 // no doc for (its template gets no step name), and p-unlisted, which the list
 // never showed setup.
-export function kbFiles(slug = "acme-prod") {
+export function kbFiles(slug = "acme-prod", variant = {}) {
   const files = {
   };
   const inventory = {};
-  for (const p of PROGRAMS) {
+  for (const p of [...PROGRAMS, ...(variant.cadence ? CADENCE : [])]) {
     if (!p.steps.length || p.id === "p-promo") continue;
     files[`${slug}/journey/${p.id}.md`] = [
       `# ${p.name}`, "",
@@ -456,6 +534,7 @@ export function kbFiles(slug = "acme-prod") {
 const REQUEST_ID = "Request ID: 00000000-0000-4000-8000-000000000000";
 export const FAULT_TEXT = {
   timeout: `Error: The query has timed out. Reduce data by applying filters.\n${REQUEST_ID}`,
+  unfilterable: `Error: Unrecognized data type found in Filter or Ranking fields. Modify the data type to run the report.\n${REQUEST_ID}`,
   "not-found": `Error: Advanced Outreach not found\n${REQUEST_ID}`,
   auth: "Error: Access token has expired. Run `gs-admin login` to re-authenticate.",
   outage: `Error: The communication with the external API could not be established due to a network outage. Try again later. If the issue persists, contact Gainsight Support for further assistance.\n${REQUEST_ID}`,
@@ -511,6 +590,7 @@ function evalCond(row, c, types) {
     case "EQ": return x === val;
     case "NE": return x !== val; // keeps nulls
     case "IN": return Array.isArray(val) && val.includes(x);
+    case "NOT_IN": return !(Array.isArray(val) && val.includes(x)); // keeps nulls (measured on the company lookup)
     case "GT": return typeof x === "number" && x > val;
     case "GTE": return x == null ? true : day(x) >= val; // a null date acts as later than any date
     case "LT": return x == null ? false : day(x) < val;
@@ -553,6 +633,9 @@ function rpRun(argv, tenant) {
   // A JSON-typed field can be shown, never grouped by or distinct-counted: the
   // server fails with a text that reads like an outage.
   if ([...group, ...show.filter((e) => e.aggregation === "COUNT_DISTINCT")].some((e) => !e.fieldPath && types.get(e.name) === "JSONSTRING")) return fail(FAULT_TEXT.outage);
+  // A condition on a field the schema declares not filterable fails whatever the operator (measured S3b).
+  const filterable = new Map(schema.map((f) => [f.fieldName, f.meta?.filterable !== false]));
+  if ((where.conditions ?? []).some((c) => filterable.has(c?.leftOperand?.fieldName) && !filterable.get(c.leftOperand.fieldName))) return fail(FAULT_TEXT.unfilterable);
   let rows;
   try {
     rows = tenant.tables[object].filter((r) => (where.conditions ?? []).every((c) => evalCond(r, c, types)));
@@ -580,6 +663,7 @@ function rpRun(argv, tenant) {
   };
   const aggregate = (s, members) => {
     if (s.aggregation === "COUNT") return [`count_of_${object}_${s.name}`, numCell(members.length)];
+    if (s.aggregation === "SUM") return [`sum_of_${object}_${s.name}`, numCell(members.reduce((x, r) => x + (typeof r[s.name] === "number" ? r[s.name] : 0), 0))];
     if (s.aggregation === "COUNT_DISTINCT") {
       if (s.fieldPath) {
         const hop = s.fieldPath.hops[0];

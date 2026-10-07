@@ -2613,7 +2613,7 @@
         ]
       },
       "readers": [
-        "engagement.mjs ROW_READERS — one reader per call family of the jo-engagement adapter (send-log rows by template, account and step; distinct counts; clicked sends and their LinkClickedJson; survey responses; company names; and the health reads: bounced attempts with their reason, a program's send days, failed participants with their reasons, participants by state). reduceEngagement and the fetch-time click stripper read rows through these and nothing else."
+        "engagement.mjs ROW_READERS — one reader per call family of the jo-engagement adapter (send-log rows by template, account and step; distinct counts; clicked sends and their LinkClickedJson; survey responses; company names; the count-first reads of clicked and bounced attempts; and the health reads: bounced attempts counted in total and per category, a masked sample of their text, a program's send days, failed participants as per-program totals and a masked sample of their reasons, participants by state). reduceEngagement and the fetch-time click stripper read rows through these and nothing else."
       ],
       "modules": [
         "scripts/engagement.mjs"
@@ -2646,9 +2646,6 @@
         "[].ao_failed_participants_FailureReasons",
         "[].ao_failed_participants_FailureReasons.fv",
         "[].ao_failed_participants_FailureReasons.v",
-        "[].ao_failed_participants_OccurrenceCount",
-        "[].ao_failed_participants_OccurrenceCount.k",
-        "[].ao_failed_participants_OccurrenceCount.v",
         "[].ao_participants_AOParticipantId__gr_AdvancedOutreachId",
         "[].ao_participants_AOParticipantId__gr_AdvancedOutreachId.v",
         "[].ao_participants_AdvancedOutreachId",
@@ -2673,6 +2670,9 @@
         "[].count_of_ao_emails_Gsid",
         "[].count_of_ao_emails_Gsid.k",
         "[].count_of_ao_emails_Gsid.v",
+        "[].count_of_ao_failed_participants_Gsid",
+        "[].count_of_ao_failed_participants_Gsid.k",
+        "[].count_of_ao_failed_participants_Gsid.v",
         "[].count_of_ao_participants_Gsid",
         "[].count_of_ao_participants_Gsid.k",
         "[].count_of_ao_participants_Gsid.v",
@@ -2715,6 +2715,9 @@
         "[].email_log_v2_Source.v",
         "[].email_log_v2_SourceId",
         "[].email_log_v2_SourceId.v",
+        "[].sum_of_ao_failed_participants_OccurrenceCount",
+        "[].sum_of_ao_failed_participants_OccurrenceCount.k",
+        "[].sum_of_ao_failed_participants_OccurrenceCount.v",
         "[].summarize_day_of_email_log_v2_ExecutedDate",
         "[].summarize_day_of_email_log_v2_ExecutedDate.k",
         "[].summarize_month_of_ao_emails_CreatedAt",
@@ -2733,9 +2736,6 @@
         "[].ao_failed_participants_FailureReasons.v": [
           "[].ao_failed_participants_FailureReasons.fv"
         ],
-        "[].ao_failed_participants_OccurrenceCount.v": [
-          "[].ao_failed_participants_OccurrenceCount.k"
-        ],
         "[].count_distinct_of_ao_participants_Gsid.v": [
           "[].count_distinct_of_ao_participants_Gsid.k"
         ],
@@ -2748,6 +2748,9 @@
         "[].count_of_ao_emails_Gsid.v": [
           "[].count_of_ao_emails_Gsid.k"
         ],
+        "[].count_of_ao_failed_participants_Gsid.v": [
+          "[].count_of_ao_failed_participants_Gsid.k"
+        ],
         "[].count_of_ao_participants_Gsid.v": [
           "[].count_of_ao_participants_Gsid.k"
         ],
@@ -2756,6 +2759,9 @@
         ],
         "[].count_of_survey_participant_Gsid.v": [
           "[].count_of_survey_participant_Gsid.k"
+        ],
+        "[].sum_of_ao_failed_participants_OccurrenceCount.v": [
+          "[].sum_of_ao_failed_participants_OccurrenceCount.k"
         ]
       },
       "alternatesUnmeasured": [
@@ -2785,8 +2791,8 @@
       "floorMissing": [],
       "note": "The output is a bare array of rows whose keys are the CLI's column aliases: <object>_<Field> for a group or plain column, summarize_month_of_<object>_<Field> for a month bucket (read by its sortable k), count_of_<object>_Gsid, <target>_<lookup>__gr_<leaf> for a fieldPath group and count_distinct_of_<target>_<leaf> for a fieldPath distinct count. A null group value has no v key, which is why every cell is read with an `in` test. Every reader runs over every family's rows, so a column one family lacks is recorded as named-while-absent rather than missed.",
       "probes": {
-        "fixtures": 25,
-        "runs": 3269,
+        "fixtures": 30,
+        "runs": 4865,
         "unprobed": 0
       }
     },

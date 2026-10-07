@@ -62,7 +62,7 @@ import { parseJourneyDoc } from "../scripts/jo-report.mjs";
 import { STUB_MARKER } from "../scripts/doc-lib.mjs";
 import { isDeepStrictEqual } from "node:util";
 import { openSnapshot, accountAvailability, healthAvailability, T10_SCHEMA_VERSION } from "../scripts/engagement-query.mjs";
-import { kbFiles } from "./fixtures/engagement/acme-tenant.mjs";
+import { kbFiles, FIXTURE_BOUNCE_CATEGORIES } from "./fixtures/engagement/acme-tenant.mjs";
 import { openSpec, T11_SCHEMA_VERSION } from "../scripts/dashboard-spec.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -581,6 +581,8 @@ try {
     });
     writeFiles(join(t10, "kb"), kbFiles("acme-prod"));
     const ACCOUNTS_ON = ["--accounts", "--accounts-busiest", "3", "--accounts-low", "2", "--accounts-bounce", "2", "--accounts-low-min-delivered", "4"];
+    const categories = join(t10, "categories.json");
+    writeFiles(t10, { "categories.json": JSON.stringify({ bounceReasons: FIXTURE_BOUNCE_CATEGORIES }) });
     const produce = (run, extra) => {
       const out = join(t10, `${run}.json`);
       const r = runNode(ENGINE, [
@@ -591,8 +593,8 @@ try {
       check(`T-10: the producer runs over the fixture tenant (${run})`, r.status === 0, r.stderr.slice(-400));
       return r.status === 0 ? JSON.parse(readFileSync(out, "utf8")) : null;
     };
-    const withSteps = produce("t10-steps", ["--step-detail", "--health", ...ACCOUNTS_ON]);
-    const plain = produce("t10-plain", ["--health", ...ACCOUNTS_ON]);
+    const withSteps = produce("t10-steps", ["--step-detail", "--health", "--failure-categories", categories, ...ACCOUNTS_ON]);
+    const plain = produce("t10-plain", ["--health", "--failure-categories", categories, ...ACCOUNTS_ON]);
     // The adapter's default: neither the account grain nor the health facts are pulled unless asked for.
     const noAccounts = produce("t10-noacc", []);
     const fixture = JSON.parse(readFileSync(join(HERE, "fixtures", "engagement", "snapshot-acme.json"), "utf8"));
@@ -631,10 +633,11 @@ try {
 
       const d = s.dimensions;
       check(at(`dimensions are exactly {programs, templates, accounts, months${steps ? ", steps" : ""}} — steps only with step detail`), keys(d) === (steps ? list("programs", "templates", "accounts", "months", "steps") : list("programs", "templates", "accounts", "months")), keys(d));
-      check(at("program rows: id, name, a statuses LIST, model, modelName, audienceType, supergroup, group, folderId"),
-        d.programs.length > 0 && d.programs.every((p) => keys(p) === list("id", "name", "statuses", "model", "modelName", "audienceType", "supergroup", "group", "folderId") && Array.isArray(p.statuses)), d.programs[0]);
-      check(at("template rows: id, name, uses[{programId, stepName, stepOrder, stepCount}]"),
-        d.templates.length > 0 && d.templates.every((t) => keys(t) === "id,name,uses" && t.uses.length > 0 && t.uses.every((u) => keys(u) === list("programId", "stepName", "stepOrder", "stepCount") && count(u.stepCount) && (u.stepCount === 1 || (u.stepName === null && u.stepOrder === null)))), d.templates[0]);
+      check(at("program rows: id, name, a statuses LIST, model, modelName, audienceType, supergroup, group, folderId, and (S3b) schedule {classification, cronExpression, timeZoneName, asOf} or null"),
+        d.programs.length > 0 && d.programs.every((p) => keys(p) === list("id", "name", "statuses", "model", "modelName", "audienceType", "supergroup", "group", "folderId", "schedule") && Array.isArray(p.statuses) && (p.schedule === null || (keys(p.schedule) === list("classification", "cronExpression", "timeZoneName", "asOf") && typeof p.schedule.classification === "string"))) &&
+          d.programs.some((p) => p.schedule?.classification === "recurring") && d.programs.some((p) => p.schedule === null), d.programs[0]);
+      check(at("template rows: id, name, uses[{programId, stepName, stepOrder, stepCount, asOf}] — asOf (S3b) the doc's date the step name is as of, null with no design"),
+        d.templates.length > 0 && d.templates.every((t) => keys(t) === "id,name,uses" && t.uses.length > 0 && t.uses.every((u) => keys(u) === list("programId", "stepName", "stepOrder", "stepCount", "asOf") && count(u.stepCount) && (u.stepCount === 1 || (u.stepName === null && u.stepOrder === null)) && (u.stepCount > 0 ? typeof u.asOf === "string" : u.asOf === null))), d.templates[0]);
       check(at("account rows: an opaque key and a name; months are YYYY-MM"), (d.accounts.length > 0 || !accounts) && d.accounts.every((a) => keys(a) === "key,name" && typeof a.key === "string") && d.months.every((m) => MONTH.test(m)), d.accounts[0]);
       if (steps) check(at("step rows: programId, stepId, name, order, templateId, variantId, variantName"), d.steps.length > 0 && d.steps.every((x) => keys(x) === list("programId", "stepId", "name", "order", "templateId", "variantId", "variantName")), d.steps[0]);
 
@@ -657,45 +660,48 @@ try {
         rows(s, "responses", list("programId", "month", "submitted", "partiallySubmitted", "provenance", "pulledAt")) && s.facts.responseParticipants.length > 0, s.facts.responses[0]);
       check(at("responseParticipants rows: programId, participants, submitted, partiallySubmitted — the response rate's all-time basis, the two counts within the denominator"),
         s.facts.responseParticipants.every((r) => keys(r) === list("programId", "participants", "submitted", "partiallySubmitted") && count(r.participants) && count(r.submitted) && count(r.partiallySubmitted) && r.submitted + r.partiallySubmitted <= r.participants), s.facts.responseParticipants[0]);
-      check(at("meta.params echoes the run's inputs: window, selector, internalDomains, unsubscribeLinks, stepDetail, accounts, repullMonths, pageSize, health"),
-        keys(s.meta.params) === list("window", "selector", "internalDomains", "unsubscribeLinks", "stepDetail", "accounts", "repullMonths", "pageSize", "health") && keys(s.meta.params.health) === "lookbackDays,pull" && s.meta.params.health.pull === accounts && Array.isArray(s.meta.params.unsubscribeLinks) && s.meta.params.unsubscribeLinks.every((l) => typeof l === "string"), keys(s.meta.params));
+      check(at("meta.params echoes the run's inputs: window, selector, internalDomains, unsubscribeLinks, testAccounts, stepDetail, accounts, repullMonths, pageSize, health (with its categories and expected reasons)"),
+        keys(s.meta.params) === list("window", "selector", "internalDomains", "unsubscribeLinks", "testAccounts", "stepDetail", "accounts", "repullMonths", "pageSize", "health") && keys(s.meta.params.health) === "categories,expectedReasons,lookbackDays,pull" && keys(s.meta.params.health.categories) === "bounceReasons,participantFailures" && Array.isArray(s.meta.params.testAccounts) && s.meta.params.health.pull === accounts && Array.isArray(s.meta.params.unsubscribeLinks) && s.meta.params.unsubscribeLinks.every((l) => typeof l === "string"), keys(s.meta.params));
       check(at("uniques rows: programId, scope window|month, month (null on window), people, accounts, participantRecords, external{…}, provenance, pulledAt"),
         rows(s, "uniques", list("programId", "scope", "month", "people", "accounts", "participantRecords", "external", "provenance", "pulledAt")) &&
           s.facts.uniques.every((r) => keys(r.external) === "accounts,participantRecords,people" && ["window", "month"].includes(r.scope) && (r.scope === "window") === (r.month === null) && (steps ? count(r.participantRecords) : r.participantRecords === null && r.external.participantRecords === null)), s.facts.uniques[0]);
 
       // HLT-1, additive: the health facts and their part-by-part marker.
-      const PARTS = ["bounceReasons", "participantFailures", "participantStates", "lastSends", "schedules"];
+      const PARTS = ["bounceReasons", "participantFailures", "participantStates", "lastSends", "schedules", "failureSamples"];
       const DAY = /^\d{4}-\d\d-\d\d$/;
       const h = s.facts.health;
       const hm = s.meta.health;
       const text = (v) => v === null || (typeof v === "string" && v.length > 0);
-      check(at("meta.health is always {pulled, reason, asOf, dayWindow, parts}; with health not pulled it is the reason a reader shows (health-off), no day window and no parts, and every health table is an empty array, never absent"),
-        keys(hm) === list("pulled", "reason", "asOf", "dayWindow", "parts") && keys(h) === list(...PARTS) && PARTS.every((p) => Array.isArray(h[p])) && hm.pulled === accounts &&
+      check(at("meta.health is {pulled, reason, asOf, dayWindow, parts} plus categories when pulled (S3b); with health not pulled it is the reason a reader shows (health-off), no day window and no parts, and every health table (the six) is an empty array, never absent"),
+        keys(hm) === (hm.pulled ? list("pulled", "reason", "asOf", "dayWindow", "parts", "categories") : list("pulled", "reason", "asOf", "dayWindow", "parts")) && keys(h) === list(...PARTS) && PARTS.every((p) => Array.isArray(h[p])) && hm.pulled === accounts &&
           (hm.pulled || (hm.reason === "health-off" && hm.asOf === null && hm.dayWindow === null && keys(hm.parts) === "" && PARTS.every((p) => h[p].length === 0) && !s.caveats.some((c) => c.id === "health-incomplete"))), hm);
       check(at("healthAvailability reads the marker, and reads a snapshot made before health facts existed (no marker) as not pulled, with the reason"),
         isDeepStrictEqual(healthAvailability(s), hm) && isDeepStrictEqual(healthAvailability({ ...s, meta: { ...s.meta, health: undefined } }), { pulled: false, reason: "predates-health", asOf: null, dayWindow: null, parts: {} }));
       // The runs with accounts on are the runs with health on.
       if (accounts) {
-      check(at("meta.health, pulled: the day silence is counted from, the days held by day {start, endExclusive}, and each of the five parts as {pulled, reason}"),
+      check(at("meta.health, pulled: the day silence is counted from, the days held by day {start, endExclusive}, each of the six parts as {pulled, reason, basis} (basis one of window, lookback, all-time, as-documented, sample), and categories per reason part as {counted, reason, ids, configured}"),
         hm.pulled === true && hm.reason === null && DAY.test(hm.asOf) && keys(hm.dayWindow) === "endExclusive,start" && DAY.test(hm.dayWindow.start) && hm.dayWindow.start <= hm.asOf && hm.asOf < hm.dayWindow.endExclusive &&
-          keys(hm.parts) === list(...PARTS) && PARTS.every((p) => keys(hm.parts[p]) === "pulled,reason" && typeof hm.parts[p].pulled === "boolean" && (hm.parts[p].pulled ? hm.parts[p].reason === null : typeof hm.parts[p].reason === "string")), hm);
-      check(at("facts.health is exactly the five tables, each an array, and a part that was not read is an empty one"),
+          keys(hm.parts) === list(...PARTS) && PARTS.every((p) => keys(hm.parts[p]) === "basis,pulled,reason" && typeof hm.parts[p].pulled === "boolean" && ["window", "lookback", "all-time", "as-documented", "sample"].includes(hm.parts[p].basis) && (hm.parts[p].pulled ? hm.parts[p].reason === null : typeof hm.parts[p].reason === "string")) &&
+          keys(hm.categories) === "bounceReasons,participantFailures" && Object.values(hm.categories).every((c) => keys(c) === list("counted", "reason", "ids", "configured") && typeof c.counted === "boolean" && (c.counted ? c.reason === null : typeof c.reason === "string") && Array.isArray(c.ids) && Array.isArray(c.configured)), hm);
+      check(at("facts.health is exactly the six tables, each an array, and a part that was not read is an empty one"),
         keys(h) === list(...PARTS) && PARTS.every((p) => Array.isArray(h[p]) && (hm.parts[p].pulled || h[p].length === 0)), keys(h));
-      check(at("bounceReasons rows: programId, templateId, month, recipientClass, bounceType, message, count, provenance, pulledAt — a count of at least 1, a message that is text or null"),
-        h.bounceReasons.length > 0 && h.bounceReasons.every((r) => keys(r) === list("programId", "templateId", "month", "recipientClass", "bounceType", "message", "count", "provenance", "pulledAt") && count(r.count) && r.count > 0 && MONTH.test(r.month) &&
-          ["internal", "external"].includes(r.recipientClass) && ["pulled", "carried"].includes(r.provenance) && text(r.message) && text(r.bounceType)), h.bounceReasons[0]);
-      check(at("participantFailures rows: programId, message, participants, occurrences; participantStates rows: programId, state, participants"),
-        h.participantFailures.length > 0 && h.participantFailures.every((r) => keys(r) === list("programId", "message", "participants", "occurrences") && count(r.participants) && r.participants > 0 && count(r.occurrences) && text(r.message)) &&
-          h.participantStates.length > 0 && h.participantStates.every((r) => keys(r) === list("programId", "state", "participants") && count(r.participants) && text(r.state)), [h.participantFailures[0], h.participantStates[0]]);
+      check(at("bounceReasons rows: programId, templateId, month, recipientClass, bounceType, message, category, count, provenance, pulledAt — a category id with the category's label as the message, or other with no message; a whole count, below zero only on an other row of an overlapping list (none here)"),
+        h.bounceReasons.length > 0 && h.bounceReasons.every((r) => keys(r) === list("programId", "templateId", "month", "recipientClass", "bounceType", "message", "category", "count", "provenance", "pulledAt") && Number.isInteger(r.count) && r.count !== 0 && (r.count > 0 || r.category === "other") && MONTH.test(r.month) &&
+          ["internal", "external"].includes(r.recipientClass) && ["pulled", "carried"].includes(r.provenance) && typeof r.category === "string" && (r.category === "other" ? r.message === null : typeof r.message === "string" && r.message.length > 0) && text(r.bounceType)) &&
+          h.bounceReasons.every((r) => r.count > 0), h.bounceReasons[0]);
+      check(at("participantFailures rows: programId, message, category, expected, participants, occurrences; participantStates rows: programId, state, participants; failureSamples rows: programId, part, message (text, never null)"),
+        h.participantFailures.length > 0 && h.participantFailures.every((r) => keys(r) === list("programId", "message", "category", "expected", "participants", "occurrences") && count(r.participants) && r.participants > 0 && count(r.occurrences) && typeof r.category === "string" && typeof r.expected === "boolean" && (r.category === "other" ? r.message === null : text(r.message))) &&
+          h.participantStates.length > 0 && h.participantStates.every((r) => keys(r) === list("programId", "state", "participants") && count(r.participants) && text(r.state)) &&
+          h.failureSamples.length > 0 && h.failureSamples.every((r) => keys(r) === list("programId", "part", "message") && ["bounceReasons", "participantFailures"].includes(r.part) && typeof r.message === "string" && r.message.length > 0), [h.participantFailures[0], h.participantStates[0], h.failureSamples[0]]);
       check(at("lastSends rows: programId, name, a statuses LIST, selected, lastSendDay (a day inside the day window, or null), lastSendMonth (YYYY-MM or null) — one per program in the pull"),
         h.lastSends.length >= d.programs.length && d.programs.every((p) => h.lastSends.some((r) => r.programId === p.id && r.selected === true)) &&
           h.lastSends.every((r) => keys(r) === list("programId", "name", "statuses", "selected", "lastSendDay", "lastSendMonth") && Array.isArray(r.statuses) && typeof r.selected === "boolean" &&
             (r.lastSendDay === null || (DAY.test(r.lastSendDay) && r.lastSendDay >= hm.dayWindow.start && r.lastSendDay < hm.dayWindow.endExclusive)) && (r.lastSendMonth === null || MONTH.test(r.lastSendMonth))), h.lastSends[0]);
-      check(at("schedules rows: programId, asOf, scheduleType, classification, cronExpression, timeZoneName, lastRunSuccess (boolean or null), lastSuccessTime, nextRunTime, runningNow"),
-        h.schedules.length > 0 && h.schedules.every((r) => keys(r) === list("programId", "asOf", "scheduleType", "classification", "cronExpression", "timeZoneName", "lastRunSuccess", "lastSuccessTime", "nextRunTime", "runningNow") &&
-          [true, false, null].includes(r.lastRunSuccess) && typeof r.classification === "string") && h.schedules.some((r) => r.lastRunSuccess === false), h.schedules[0]);
-      check(at("every stored message is MASKED: no address, no run of five or more digits, in any health table"),
-        [...h.bounceReasons, ...h.participantFailures].every((r) => r.message === null || (!r.message.includes("@") && !/\d{5,}/.test(r.message))) && [...h.bounceReasons, ...h.participantFailures].some((r) => /<email>|<id>|<number>/.test(r.message ?? "")));
+      check(at("schedules rows: programId, asOf, source (kb or live), scheduleType, classification, cronExpression, timeZoneName, lastRunSuccess (boolean or null), lastSuccessTime, nextRunTime, runningNow — a live row is as of the pull"),
+        h.schedules.length > 0 && h.schedules.every((r) => keys(r) === list("programId", "asOf", "source", "scheduleType", "classification", "cronExpression", "timeZoneName", "lastRunSuccess", "lastSuccessTime", "nextRunTime", "runningNow") &&
+          [true, false, null].includes(r.lastRunSuccess) && typeof r.classification === "string" && ["kb", "live"].includes(r.source) && (r.source !== "live" || r.asOf === s.meta.pulledAt)) && h.schedules.some((r) => r.lastRunSuccess === false) && h.schedules.some((r) => r.source === "live"), h.schedules[0]);
+      check(at("every stored message is MASKED or a category label: no address, no run of five or more digits, in any health table, the samples included"),
+        [...h.bounceReasons, ...h.participantFailures, ...h.failureSamples].every((r) => r.message === null || (!r.message.includes("@") && !/\d{5,}/.test(r.message))) && h.failureSamples.some((r) => /<email>|<id>|<number>/.test(r.message)) && h.bounceReasons.some((r) => r.category !== "other"));
       }
 
       const av = s.meta.metricAvailability;
@@ -727,7 +733,7 @@ try {
     const engSrc = readFileSync(ENGINE, "utf8");
     const header = engSrc.slice(engSrc.indexOf("// ── T-10 ·"), engSrc.indexOf("// ── The source-adapter interface"));
     const named = (k) => new RegExp(`@property \\{[^\\n]*\\} \\[?${k}\\]?( |$)`, "m").test(header);
-    const PINNED = ["schemaVersion", "kind", "meta", "dimensions", "facts", "honesty", "reconciliation", "caveats", "byTemplate", "byStep", "byAccount", "responses", "responseParticipants", "uniques", "metricAvailability", "participantRecords", "accounts", "incompleteFrom", "pulledAt", "health", "bounceReasons", "participantFailures", "participantStates", "lastSends", "schedules", ...MEASURES];
+    const PINNED = ["schemaVersion", "kind", "meta", "dimensions", "facts", "honesty", "reconciliation", "caveats", "byTemplate", "byStep", "byAccount", "responses", "responseParticipants", "uniques", "metricAvailability", "participantRecords", "accounts", "incompleteFrom", "pulledAt", "health", "bounceReasons", "participantFailures", "participantStates", "lastSends", "schedules", "failureSamples", ...MEASURES];
     check("T-10: the producer's header is marked FROZEN and names every pinned top-level key, table and measure", /FROZEN \(ENG-1, 2026-10-03\)/.test(header) && PINNED.every(named), PINNED.filter((k) => !named(k)));
     check("T-10: the header also states the adapter interface (plan / fetch / reduce) and the transport seam", /@typedef \{object\} EngagementSourceAdapter/.test(engSrc) && /@typedef \{object\} EngagementTransport/.test(engSrc));
   } finally {
