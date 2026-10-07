@@ -619,14 +619,14 @@ export const powerListRuleId = (src) =>
 // its tasks read; an unresolved one contributes nothing here and is named in
 // the provenance caveats, never silently. Program-level rows (dynamic
 // fields, branch conditions) carry no sourceRef — they are not a source.
-export function usageCandidates(program, { powerLists = null } = {}) {
+export function usageCandidates(program, { powerLists = null, objects = null } = {}) {
   const rows = [];
   for (const src of Array.isArray(program.sources) ? program.sources : []) {
     if (!src || typeof src !== "object") continue;
     const srcLabel = src.name ?? src.configId ?? "(unnamed source)";
     if (classifySource(src) === "power-list" && typeof powerLists === "function") {
       const pl = powerLists(powerListRuleId(src));
-      if (pl && !pl.problem) for (const r of powerListRows(pl)) rows.push({ ...r, source: srcLabel, sourceRef: src });
+      if (pl && !pl.problem) for (const r of powerListRows(pl, { objects })) rows.push({ ...r, source: srcLabel, sourceRef: src });
     }
     for (const c of Array.isArray(src.conditions) ? src.conditions : [])
       rows.push({
@@ -791,14 +791,20 @@ export function extractPowerList(payload) {
       const meta = f.meta && typeof f.meta === "object" ? f.meta : {};
       const objectName = meta.originalObjectName != null ? String(meta.originalObjectName) : derived ? null : schemaObject;
       if (objectName == null) continue; // a derived task's own alias — the upstream task owns the field
-      let fieldName = meta.originalFieldName ?? f.fieldName ?? f.field ?? null;
+      const rawField = meta.originalFieldName ?? f.fieldName ?? f.field ?? null;
       // A lookup-path field is spelled as the SOQL path from the task's
-      // object (`Account.CaseSafeID__c` read through Contact → Account) while
-      // originalObjectName already names the RELATED object the field lives
-      // on — strip the relationship prefix so the row carries the field's own
-      // API name on its own object (a --field term is exact, never substring).
-      const rel = meta.originalPathMetaData?.path?.relationshipName;
-      if (typeof fieldName === "string" && typeof rel === "string" && rel && fieldName.startsWith(`${rel}.`)) fieldName = fieldName.slice(rel.length + 1);
+      // object (`Account.CaseSafeID__c` read through Contact → Account, or
+      // `A.B.Field` through two hops) while originalObjectName already names
+      // the RELATED object the field lives on — the row carries the field's
+      // own API name (the LAST segment: an API name never contains a dot) on
+      // its own object, the full path kept beside it. A --field term is
+      // exact, never substring (F-487 reopen, instance 2: one stripped hop
+      // left `B.Field` behind).
+      const fieldName = typeof rawField === "string" && rawField.includes(".") ? rawField.slice(rawField.lastIndexOf(".") + 1) : rawField;
+      // originalObjectLabel is the task's BASE object's label even on a
+      // lookup field (F-487 reopen, instance 1b) — it is only the base
+      // object's label, never the related object's, and the registry is
+      // what labels a Gainsight object (powerListRows canonicalizes).
       const label = meta.originalObjectLabel ?? null;
       if (objectLabel == null && !derived && label != null && objectName === schemaObject) objectLabel = String(label);
       const key = `${objectName}\u0000${fieldName ?? ""}`;
@@ -806,8 +812,9 @@ export function extractPowerList(payload) {
       seenFields.add(key);
       fields.push({
         objectName,
-        objectLabel: label != null ? String(label) : null,
+        objectLabel: label != null && objectName === schemaObject ? String(label) : null,
         fieldName: fieldName != null ? String(fieldName) : null,
+        fieldPath: typeof rawField === "string" && rawField !== fieldName ? rawField : null,
         fieldLabel: f.label ?? f.outputFieldName ?? null,
         schemaType: meta.originalSchemaType ?? null,
       });
@@ -834,35 +841,131 @@ export function extractPowerList(payload) {
   };
 }
 
+// ── F-487 reopen: the Gainsight object registry ──────────────────────────────
+// A Power List names a Gainsight object by its GSID (schemaObject, and
+// meta.originalObjectName on a field); the KB's data-management lane records
+// every object's GSID, system name and label. Identities are canonical, not
+// payload-shaped: every object a list reads is reachable by every spelling
+// the KB records for it, and the row carries the system name with the label
+// and GSID beside it — never the task's base-object label on a lookup target.
+//
+// One data-management doc → { gsid, name, label, dbName } or null. Full
+// describe docs carry the four as `- objectId:` / `- name:` / `- label:` /
+// `- dbName:` bullets (scalarBullets of data{…}; the payload's shape is the
+// CLI's `dm o describe` detail root `$.data`, measured on a live KB
+// 2026-10-06: objectId, name, dbName, label, …); a shallow-crawl stub carries
+// the `dm o list` row (`$.data.liteObjects[]`: name, label, …) whose scalars
+// are its bullets. Bullets first — no JSON.parse per doc on a 600-object lane
+// — the fence only when no bullet names the object.
+/**
+ * The identity keys of a `dm o describe` detail root (`$.data`) or a `dm o
+ * list` row (`$.data.liteObjects[]`) — declared so the tsc gate rejects a read
+ * of an undeclared key (the F-343 M5 lock, the reader-shape recipe).
+ * @typedef {object} DmObjectIdentity
+ * @property {string} [objectId]   the GSID (describe only; a list row carries none)
+ * @property {string} [gsid]
+ * @property {string} [name]       the system name
+ * @property {string} [objectName]
+ * @property {string} [label]
+ * @property {string} [objectLabel]
+ * @property {string} [dbName]
+ */
+export function extractObjectIdentity(payload) {
+  /** @type {DmObjectIdentity|null} */
+  const d = payload?.data && typeof payload.data === "object" && !Array.isArray(payload.data) ? payload.data : payload;
+  if (!d || typeof d !== "object") return null;
+  const name = d.name ?? d.objectName ?? null;
+  const gsid = d.objectId ?? d.gsid ?? null;
+  if (name == null && gsid == null) return null;
+  return {
+    gsid: gsid != null ? String(gsid) : null,
+    name: name != null ? String(name) : null,
+    label: d.label != null ? String(d.label) : d.objectLabel != null ? String(d.objectLabel) : null,
+    dbName: d.dbName != null ? String(d.dbName) : null,
+  };
+}
+const bulletIdentity = (md) => {
+  const b = topBullets(normalizeText(String(md ?? "")));
+  const strip = (v) => (typeof v === "string" ? v.replace(/^`|`$/g, "").trim() : v);
+  const name = strip(b.name);
+  const gsid = strip(b.objectId ?? b.gsid);
+  if ((name == null || name === "" || name === NO_NAME) && (gsid == null || gsid === "")) return null;
+  return { gsid: gsid || null, name: name && name !== NO_NAME ? name : null, label: strip(b.label) || null, dbName: strip(b.dbName) || null };
+};
+// The registry over one folder: `resolve(ref)` → entry for a GSID, a system
+// name, a label or a dbName (case-insensitive, NFC), null when the KB does
+// not know the object (an SFDC object, or a Gainsight object the lane never
+// listed). `stats` says what was read, for the caveats.
+export function makeObjectResolver({ kbDir, folder = RECORDED_LANES.objects.folder }) {
+  const byKey = new Map();
+  const stats = { docs: 0, parsed: 0, folderPresent: false };
+  const add = (e) => {
+    if (!e) return;
+    stats.parsed++;
+    for (const k of [e.gsid, e.name, e.label, e.dbName]) if (k) { const kk = termKey(k); if (!byKey.has(kk)) byKey.set(kk, e); }
+  };
+  if (kbDir != null) {
+    let files = null;
+    try { files = readdirSync(join(kbDir, folder)).filter((f) => f.endsWith(".md")); } catch { files = null; }
+    if (files) {
+      stats.folderPresent = true;
+      for (const f of files) {
+        stats.docs++;
+        let text;
+        try { text = readFileSync(join(kbDir, folder, f), "utf8"); } catch { continue; }
+        add(bulletIdentity(text) ?? extractObjectIdentity(parseDocJson(normalizeText(text))));
+      }
+    }
+  }
+  const resolve = (ref) => (ref == null || ref === "" ? null : byKey.get(termKey(String(ref))) ?? null);
+  resolve.stats = stats;
+  resolve.folder = folder;
+  resolve.size = stats.parsed; // objects, not spellings
+  return resolve;
+}
+// One object reference (a GSID, a name, an SFDC API name) → the canonical
+// identity the row carries: the system name, the label and every other
+// spelling as aliases; an unknown reference passes through unchanged.
+export function canonicalObject(ref, objects, fallbackLabel = null) {
+  const e = typeof objects === "function" && ref != null ? objects(ref) : null;
+  if (!e) return { objectName: ref ?? null, objectLabel: fallbackLabel ?? null, objectAliases: [] };
+  const aliases = [e.gsid, e.dbName, ref].filter((a) => a && a !== e.name && a !== e.label);
+  return { objectName: e.name ?? ref, objectLabel: e.label ?? fallbackLabel ?? null, objectAliases: [...new Set(aliases)] };
+}
+
 // A Power List's usage rows — the objects its tasks read (with the
 // connection), then the fields its output carries, each tied to the
-// original object. `source`/`sourceRef` are stamped by the caller.
-export function powerListRows(pl) {
+// original object. `source`/`sourceRef` are stamped by the caller. Gainsight
+// objects are canonicalized through `objects` (the registry) — a system name,
+// a label or a GSID term all match, and a lookup target carries ITS OWN label.
+export function powerListRows(pl, { objects = null } = {}) {
   const rows = [];
   const plName = pl.name ?? pl.id ?? "(unnamed Power List)";
   for (const t of Array.isArray(pl.tasks) ? pl.tasks : []) {
-    if (t.objectName != null)
+    if (t.objectName != null) {
+      const o = canonicalObject(t.objectName, objects, t.objectLabel);
       rows.push({
         kind: "power-list-object",
         usage: "Power List source object",
-        objectName: t.objectName,
-        objectLabel: t.objectLabel ?? null,
+        ...o,
         fieldName: null,
         fieldLabel: null,
         connection: t.connection ?? null,
         detail: `Power List "${plName}" task "${t.datasetName ?? t.taskId ?? "?"}"${t.connection ? ` via connection ${t.connection.type ?? t.connection.id}` : ""}`,
       });
-    for (const f of t.fields)
+    }
+    for (const f of t.fields) {
+      const o = canonicalObject(f.objectName, objects, f.objectLabel);
       rows.push({
         kind: "power-list-field",
         usage: "Power List output field",
-        objectName: f.objectName,
-        objectLabel: f.objectLabel ?? null,
+        ...o,
         fieldName: f.fieldName,
         fieldLabel: f.fieldLabel,
         connection: t.connection ?? null,
-        detail: `Power List "${plName}" task "${t.datasetName ?? t.taskId ?? "?"}"${f.schemaType ? ` (${f.schemaType})` : ""}`,
+        detail: `Power List "${plName}" task "${t.datasetName ?? t.taskId ?? "?"}"${f.schemaType ? ` (${f.schemaType})` : ""}${f.fieldPath ? `, path ${f.fieldPath}` : ""}`,
       });
+    }
   }
   return rows;
 }
@@ -973,7 +1076,7 @@ export function matchFieldTerm(row, fieldTerms, aliasPrefix = null) {
 // the label is a candidate too (the way tenant-deps' matchRow reads it).
 export function matchObjectTerm(row, objectTerms) {
   for (const { term, lowered } of objectTerms)
-    if (eqTerm(row.objectName, lowered) || eqTerm(row.objectLabel, lowered)) return term;
+    if (eqTerm(row.objectName, lowered) || eqTerm(row.objectLabel, lowered) || (Array.isArray(row.objectAliases) && row.objectAliases.some((a) => eqTerm(a, lowered)))) return term;
   return null;
 }
 
@@ -1144,7 +1247,7 @@ export function scanTokens(index, programs, fieldTerms, aliasPrefix = null) {
 // near-miss candidates (alias mode only). Pure — no I/O, no process state.
 export function scanDeps(
   index,
-  { objectTerms = [], fieldTerms = [], all = false, includePaused = false, tokens = false, aliasPrefix = null, powerLists = null } = {}
+  { objectTerms = [], fieldTerms = [], all = false, includePaused = false, tokens = false, aliasPrefix = null, powerLists = null, objects = null } = {}
 ) {
   // termKey, not raw trim/lower (F-197): eqTerm happens to re-fold its term
   // side, but every `lowered` producer routes through the one key rule so no
@@ -1162,7 +1265,7 @@ export function scanDeps(
   // names that contain the term's words — listed in a caveat, never counted
   const nearMissByTerm = new Map();
   for (const p of programs) {
-    for (const row of usageCandidates(p, { powerLists })) {
+    for (const row of usageCandidates(p, { powerLists, objects })) {
       const fMatch = fTerms.length ? matchFieldTerm(row, fTerms, aliasPrefix) : null;
       const oTerm = oTerms.length ? matchObjectTerm(row, oTerms) : null;
       if (fMatch)
@@ -1333,8 +1436,15 @@ export function reconcileLiveDeps(live, index, result) {
 // sq (doc-lib) is the one quoting rule (F-123 — this file's ":the escape rule
 // lives in exactly one place" claim is finally true).
 export const DD_DOC_LOOKUPS = [
-  { folder: "journey-data-designer", fetch: (id) => `gs-admin --json jo dd get --name ${sq(id)}` },
-  { folder: "data-management", fetch: (id) => `gs-admin --json dm o describe --name ${sq(id)}` },
+  { folder: RECORDED_LANES.datasets.folder, fetch: (id) => `gs-admin --json jo dd get --name ${sq(id)}` },
+  { folder: RECORDED_LANES.objects.folder, fetch: (id) => `gs-admin --json dm o describe --name ${sq(id)}` },
+];
+// The same two lookups over the folders a workspace RECORDED for those lanes
+// (F-429: the folder name is per-workspace data; the index carries the
+// resolution) — the literals above are the no-recording defaults.
+export const ddDocLookups = ({ datasets = null, objects = null } = {}) => [
+  { ...DD_DOC_LOOKUPS[0], folder: datasets ?? DD_DOC_LOOKUPS[0].folder, kind: "designer" },
+  { ...DD_DOC_LOOKUPS[1], folder: objects ?? DD_DOC_LOOKUPS[1].folder, kind: "dm" },
 ];
 
 // Fence → parsed payload body (null on absence/malformation), with the
@@ -1423,6 +1533,17 @@ export function collectProvenanceSources(result) {
   };
   for (const r of result.fieldRows) add(r.program, r);
   for (const e of result.objectLevel) for (const row of e.rows) add(e.program, row);
+  // Every program a report matches carries a provenance entry for its
+  // source(s) (F-487 reopen, instance 3): a program matched only through a
+  // program-level row (a dynamic field, a branch condition — sourceRef null)
+  // has no source row to hang on, so its sources are added here with no
+  // matched columns — that is how a dynamic program's QUERY cell is reached.
+  const programLevel = new Map();
+  for (const r of result.fieldRows) if (!r.sourceRef) programLevel.set(r.program.id, r.program);
+  for (const e of result.objectLevel) if (e.rows.some((row) => !row.sourceRef)) programLevel.set(e.program.id, e.program);
+  for (const program of programLevel.values())
+    for (const src of Array.isArray(program.sources) ? program.sources : [])
+      if (src && typeof src === "object" && !map.has(src)) map.set(src, { program, source: src, matchedColumns: new Map() });
   return [...map.values()].map((e) => ({
     ...e,
     matchedColumns: [...e.matchedColumns.entries()]
@@ -1485,13 +1606,14 @@ function docKeyId(text) {
 // doc that exists but cannot be parsed must caveat exactly like a missing
 // one, never sit silently behind a cell that promises a caveat. Returns
 // entries plus the aggregate facts the caveats section reports.
-export function resolveProvenance(entries, { kbDir = null, aliasPrefix = null, powerLists = null } = {}) {
+export function resolveProvenance(entries, { kbDir = null, aliasPrefix = null, powerLists = null, ddFolders = null, objects = null } = {}) {
   const out = [];
   let kbNeeded = false;
   // Power Lists resolve through the rules-lane resolver (F-487); a caller
   // that passes none gets one over the default folder, so a direct call
   // (the suite) resolves the same way the CLI entry does.
   const resolvePl = typeof powerLists === "function" ? powerLists : makePowerListResolver({ kbDir });
+  const ddLookups = ddDocLookups(ddFolders ?? {});
   // collectionId → { designer, dm, docs[], problems[{folder, path, fetch,
   // reason:"missing"|"unparseable"}], sourceName, programName }
   const ddCache = new Map();
@@ -1506,7 +1628,7 @@ export function resolveProvenance(entries, { kbDir = null, aliasPrefix = null, p
       sourceName: src.name ?? src.configId ?? "(unnamed source)",
       programName: program.name ?? program.id,
     };
-    for (const { folder, fetch } of DD_DOC_LOOKUPS) {
+    for (const { folder, fetch, kind: lookupKind } of ddLookups) {
       // Locating is the shared locateKbDoc (F-487 lifted it out so the Power
       // List lookup reads the rules lane by the same rules): the WRITER's
       // first-choice filename rule (docBaseName), the case-insensitive
@@ -1528,7 +1650,7 @@ export function resolveProvenance(entries, { kbDir = null, aliasPrefix = null, p
       let text = null;
       try {
         text = readFileSync(path, "utf8");
-        parsed = folder === "journey-data-designer" ? parseDesignerFieldsDoc(text) : parseDmObjectDoc(text);
+        parsed = lookupKind === "designer" ? parseDesignerFieldsDoc(text) : parseDmObjectDoc(text);
       } catch {
         parsed = null;
       }
@@ -1557,7 +1679,7 @@ export function resolveProvenance(entries, { kbDir = null, aliasPrefix = null, p
         continue;
       }
       hit.docs.push(kbDocDisplayPath(path));
-      if (folder === "journey-data-designer") hit.designer = parsed;
+      if (lookupKind === "designer") hit.designer = parsed;
       else hit.dm = parsed;
     }
     ddCache.set(collectionId, hit);
@@ -1581,9 +1703,12 @@ export function resolveProvenance(entries, { kbDir = null, aliasPrefix = null, p
       fields: [],
       ties: [],
       note: null,
-      // F-487: the Power List's rule id and what its doc says it reads
+      // F-487: the Power List's rule id and what its doc says it reads; the
+      // object registry rides the entry so the cell and detail render
+      // canonical names (F-487 reopen)
       ruleId: kind === "power-list" ? powerListRuleId(src) : null,
       powerList: null,
+      objects: typeof objects === "function" ? objects : null,
     };
     if (kind === "power-list") {
       if (entry.ruleId == null) entry.note = "no ruleId or collectionId recorded in the payload";
@@ -1738,7 +1863,7 @@ export function provenanceCell(e, { md = true } = {}) {
   if (e.kind === "power-list") {
     const rid = e.ruleId != null ? (md ? `\`${e.ruleId}\`` : e.ruleId) : "—";
     if (!e.resolved) return `Power List ${rid} — ${e.note ?? "unresolved"}`;
-    const objects = powerListObjectsSummary(e.powerList);
+    const objects = powerListObjectsSummary(e.powerList, e.objects ?? null);
     return md
       ? `Power List **${e.label ?? "(unnamed)"}** (rule ${rid}) — reads ${objects}; filters not returned by the CLI — see detail below`
       : `Power List "${e.label ?? "(unnamed)"}" (rule ${e.ruleId}) — reads ${objects}; filters not returned by the CLI`;
@@ -1751,12 +1876,13 @@ export function provenanceCell(e, { md = true } = {}) {
 // "Contact (SFDC connection 74b…), Company (Gainsight)" — the objects a Power
 // List's tasks read, each with where it reads them from (F-487). Derived
 // tasks (merge/filter) read upstream datasets and are not objects.
-export function powerListObjectsSummary(pl) {
+export function powerListObjectsSummary(pl, objects = null) {
   const parts = [];
   const seen = new Set();
   for (const t of Array.isArray(pl?.tasks) ? pl.tasks : []) {
     if (t.objectName == null) continue;
-    const obj = t.objectLabel && t.objectLabel !== t.objectName ? `${t.objectLabel} (${t.objectName})` : t.objectName;
+    const o = canonicalObject(t.objectName, objects, t.objectLabel);
+    const obj = o.objectLabel && o.objectLabel !== o.objectName ? `${o.objectLabel} (${o.objectName})` : o.objectName;
     const via = t.connection
       ? t.connection.type && INTERNAL_CONNECTION_IDS.has(t.connection.type) ? "Gainsight" : `connection ${t.connection.name ?? t.connection.id}`
       : "no connection recorded";
@@ -1858,12 +1984,18 @@ function provenanceSection(provenance) {
         const where = t.connection
           ? t.connection.type && INTERNAL_CONNECTION_IDS.has(t.connection.type) ? "Gainsight" : `connection ${t.connection.name ?? t.connection.id}`
           : null;
+        const to = canonicalObject(t.objectName, d.objects, t.objectLabel);
         lines.push(
           t.derived
             ? `  - task "${t.datasetName ?? t.taskId ?? "?"}": derived from task ${t.upstreamTaskId} — ${t.fields.length} output field(s)`
-            : `  - task "${t.datasetName ?? t.taskId ?? "?"}": ${t.objectLabel && t.objectLabel !== t.objectName ? `${t.objectLabel} (\`${t.objectName}\`)` : `\`${t.objectName ?? "?"}\``}` +
+            : `  - task "${t.datasetName ?? t.taskId ?? "?"}": ${to.objectLabel && to.objectLabel !== to.objectName ? `${to.objectLabel} (\`${to.objectName}\`)` : `\`${to.objectName ?? "?"}\``}` +
               `${where ? ` via ${where}` : ""} — ${t.fields.length} output field(s)` +
-              (t.fields.length ? `: ${t.fields.slice(0, 12).map((f) => `${f.objectName !== t.objectName ? `${f.objectName}.` : ""}${f.fieldName ?? f.fieldLabel}`).join(", ")}${t.fields.length > 12 ? ", …" : ""}` : "")
+              (t.fields.length
+                ? `: ${t.fields.slice(0, 12).map((f) => {
+                    const fo = canonicalObject(f.objectName, d.objects, f.objectLabel);
+                    return `${fo.objectName !== to.objectName ? `${fo.objectName}.` : ""}${f.fieldName ?? f.fieldLabel}`;
+                  }).join(", ")}${t.fields.length > 12 ? ", …" : ""}`
+                : "")
         );
       }
       lines.push(`  - filters: not returned by the CLI (\`re r describe\` carries no criteria for this rule type) — the list may filter these objects in ways this report cannot see`);
@@ -2055,6 +2187,12 @@ function buildCaveats(index, opts, result, provenance) {
           `name/label/description says it, and is never inferred from payload text (payloads mention connector names ` +
           `in unrelated UI metadata).`
       );
+    if (kinds.has("power-list") && provenance.objects && provenance.objects.size === 0)
+      caveats.push(
+        `Gainsight objects named by Power Lists could NOT be canonicalized: the KB holds no readable data-management doc ` +
+          `(folder ${provenance.objects.folder}/: ${provenance.objects.stats.folderPresent ? `${provenance.objects.stats.docs} doc(s), ${provenance.objects.stats.parsed} with an object identity` : "absent"}) — ` +
+          `those rows carry the GSID the payload names and only a GSID or payload-label term matches them; index the data-management domain (setup) and re-run for system-name matching.`
+      );
     if (kinds.has("power-list"))
       parts.push(
         `A Power List (QUERY_BUILDER source) resolves to the objects, connection and output fields its rule's tasks READ ` +
@@ -2194,6 +2332,12 @@ export async function run(argv) {
   // One resolver serves the scan (usage rows) and the provenance pass.
   const powerLists = makePowerListResolver({ kbDir, folder: index.domains?.dirs?.rules ?? RECORDED_LANES.rules.folder });
   opts.powerLists = powerLists;
+  // The Gainsight object registry (F-487 reopen): identities a Power List
+  // names by GSID are canonicalized through the data-management lane, so a
+  // system name, a label or a GSID term all reach the same programs.
+  const objects = makeObjectResolver({ kbDir, folder: index.domains?.dirs?.objects ?? RECORDED_LANES.objects.folder });
+  opts.objects = objects;
+  const ddFolders = { datasets: index.domains?.dirs?.datasets ?? null, objects: index.domains?.dirs?.objects ?? null };
   const result = scanDeps(index, opts);
 
   // ER-20: resolve provenance for every source the report names. Pre-C1v2
@@ -2204,8 +2348,8 @@ export async function run(argv) {
     .filter((s) => s && typeof s === "object");
   const provPreV2 = scannedSources.length > 0 && !scannedSources.some((s) => Object.hasOwn(s, "participantSourceCollectionId"));
   const provSources = provPreV2 ? [] : collectProvenanceSources(result);
-  const provResult = provSources.length ? resolveProvenance(provSources, { kbDir, aliasPrefix, powerLists }) : null;
-  const provenance = { preV2: provPreV2, result: provResult };
+  const provResult = provSources.length ? resolveProvenance(provSources, { kbDir, aliasPrefix, powerLists, ddFolders, objects }) : null;
+  const provenance = { preV2: provPreV2, result: provResult, objects };
 
   // --live-deps: captured dm-deps-check payloads → reconciled live sections.
   // The intake loop (warn-and-skip contract) is the shared
@@ -2418,6 +2562,9 @@ export async function run(argv) {
       // new surfaces contributed, so a run can see whether they fired at all
       powerListsResolved: provResult?.entries.filter((e) => e.kind === "power-list" && e.resolved).length ?? 0,
       powerListRulesMissing: provResult?.powerListProblems.length ?? 0,
+      // F-487 reopen: the registry the Power List object identities were canonicalized through
+      objectRegistryDocs: objects.stats.docs,
+      objectRegistrySize: objects.size,
       powerListRows: result.fieldRows.filter((r) => r.kind === "power-list-object" || r.kind === "power-list-field").length,
       dynamicFieldRows: result.fieldRows.filter((r) => r.kind === "dynamic-field" || r.usage === "dynamic-field filter").length,
       branchConditionRows: result.fieldRows.filter((r) => r.kind === "branch-condition").length,

@@ -189,9 +189,6 @@
         "data.taskDetails[].outputFields[].meta.originalFieldName",
         "data.taskDetails[].outputFields[].meta.originalObjectLabel",
         "data.taskDetails[].outputFields[].meta.originalObjectName",
-        "data.taskDetails[].outputFields[].meta.originalPathMetaData",
-        "data.taskDetails[].outputFields[].meta.originalPathMetaData.path",
-        "data.taskDetails[].outputFields[].meta.originalPathMetaData.path.relationshipName",
         "data.taskDetails[].outputFields[].meta.originalSchemaType",
         "data.taskDetails[].outputFields[].outputFieldName",
         "data.taskDetails[].schemaObject",
@@ -433,7 +430,7 @@
       "floorMissing": [],
       "probes": {
         "fixtures": 8,
-        "runs": 716,
+        "runs": 680,
         "unprobed": 0
       }
     },
@@ -1275,6 +1272,148 @@
       "probes": {
         "fixtures": 4,
         "runs": 35,
+        "unprobed": 0
+      }
+    },
+    {
+      "command": "dm o describe",
+      "catalog": {
+        "id": "data-management:objects:describe",
+        "actionKey": "describe-object",
+        "mcpTool": "data_management_describe_object",
+        "endpoints": [
+          {
+            "name": "fetch",
+            "method": "GET",
+            "path": "/v1/meta/v10/gdm/objects/{{objectName}}"
+          }
+        ]
+      },
+      "readers": [
+        "jo-report-deps.mjs extractObjectIdentity (F-487 reopen: the Gainsight object registry — GSID ↔ system name ↔ label — both deps surfaces canonicalize Power List object identities through makeObjectResolver; the doc's bullets are read first, this payload read when no bullet names the object)"
+      ],
+      "modules": [
+        "scripts/jo-report-deps.mjs"
+      ],
+      "keys": [
+        "data",
+        "data.dbName",
+        "data.gsid",
+        "data.label",
+        "data.name",
+        "data.objectId",
+        "data.objectLabel",
+        "data.objectName",
+        "gsid",
+        "name",
+        "objectId",
+        "objectName"
+      ],
+      "walks": [],
+      "enumerated": {},
+      "alternates": {
+        "data": [
+          "gsid",
+          "name",
+          "objectId",
+          "objectName"
+        ],
+        "data.label": [
+          "data.objectLabel"
+        ],
+        "data.name": [
+          "data.objectName"
+        ],
+        "data.objectId": [
+          "data.gsid"
+        ]
+      },
+      "alternatesUnmeasured": [
+        "data.gsid",
+        "data.objectLabel",
+        "data.objectName",
+        "gsid",
+        "name",
+        "objectId",
+        "objectName"
+      ],
+      "recognized": [],
+      "embedded": [],
+      "pluginAuthored": [],
+      "pluginKeys": [],
+      "floor": [
+        "data.dbName",
+        "data.label",
+        "data.name",
+        "data.objectId"
+      ],
+      "floorMissing": [],
+      "probes": {
+        "fixtures": 2,
+        "runs": 24,
+        "unprobed": 0
+      }
+    },
+    {
+      "command": "dm o list",
+      "catalog": {
+        "id": "data-management:objects:list",
+        "actionKey": "list-objects",
+        "mcpTool": "data_management_list_objects",
+        "endpoints": [
+          {
+            "name": "all",
+            "method": "POST",
+            "path": "/v1/meta/objectViews/executeFilter"
+          }
+        ]
+      },
+      "readers": [
+        "jo-report-deps.mjs extractObjectIdentity over a shallow-crawl stub's list row (no objectId on the row — such an entry resolves by name and label only)"
+      ],
+      "modules": [
+        "scripts/jo-report-deps.mjs"
+      ],
+      "keys": [
+        "data",
+        "dbName",
+        "gsid",
+        "label",
+        "name",
+        "objectId",
+        "objectLabel",
+        "objectName"
+      ],
+      "walks": [],
+      "enumerated": {},
+      "alternates": {
+        "label": [
+          "objectLabel"
+        ],
+        "name": [
+          "objectName"
+        ]
+      },
+      "alternatesUnmeasured": [
+        "data",
+        "dbName",
+        "gsid",
+        "objectId",
+        "objectLabel",
+        "objectName"
+      ],
+      "recognized": [],
+      "embedded": [],
+      "pluginAuthored": [],
+      "pluginKeys": [],
+      "floor": [
+        "label",
+        "name"
+      ],
+      "floorMissing": [],
+      "probes": {
+        "fixtures": 1,
+        "runs": 6,
         "unprobed": 0
       }
     },

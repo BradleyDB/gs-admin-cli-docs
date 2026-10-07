@@ -118,6 +118,7 @@ import {
   // the rules lane — the resolver, the payload discriminator and the source
   // classifier are the JO deps mode's, so the two surfaces read one shape.
   makePowerListResolver,
+  makeObjectResolver,
   isPowerListPayload,
   powerListRuleId,
   classifySource,
@@ -140,6 +141,7 @@ const { lanes: LANE_LIST_PATHS, defaults: DOMAINS } = laneTable({
   jobs: "jobs",
   designers: "designers",
   datasets: "datasets",
+  objects: "objects", // the Gainsight object registry (F-487 reopen) — read, never scanned as a dependent domain
   connections: "connections",
   scorecards: "scorecards",
   extActions: "extActions",
@@ -204,6 +206,9 @@ export const AREA_DOMAIN = {
  * @property {?string}  fieldName
  * @property {?string}  fieldLabel
  * @property {string[]} altFields    aliases / custom-mapping strings
+ * @property {string[]} [altObjects] other spellings of the object (a Gainsight
+ *                                   object's GSID and dbName beside its system
+ *                                   name — F-487 reopen: identities are canonical)
  * @property {?{id: ?string, name: ?string, type: ?string}} connection
  * @property {?{id: ?string, name: ?string}} extAction
  * @property {string}   detail
@@ -1023,11 +1028,12 @@ export function extractDatasetUsages(payload) {
 // program's dynamic fields and its branch conditions — so a journey row can
 // carry a connection (a Power List task's) and an object label (a Gainsight
 // object's) like a rule row does.
-export function journeyUsageRows(entry, { powerLists = null } = {}) {
-  return usageCandidates(entry, { powerLists }).map((c) =>
+export function journeyUsageRows(entry, { powerLists = null, objects = null } = {}) {
+  return usageCandidates(entry, { powerLists, objects }).map((c) =>
     row(c.usage, {
       objectName: c.objectName ?? null,
       objectLabel: c.objectLabel ?? null,
+      altObjects: Array.isArray(c.objectAliases) ? c.objectAliases : [],
       fieldName: c.fieldName ?? null,
       fieldLabel: c.fieldLabel ?? null,
       altFields: Array.isArray(c.strings) ? c.strings : [],
@@ -1212,7 +1218,7 @@ export function matchRow(r, { objectTerms = [], fieldTerms = [], connTerms = [],
   /** @type {MatchHit[]} */
   const matches = [];
   for (const t of objectTerms)
-    if (eqTerm(r.objectName, t.lowered) || eqTerm(r.objectLabel, t.lowered)) {
+    if (eqTerm(r.objectName, t.lowered) || eqTerm(r.objectLabel, t.lowered) || (Array.isArray(r.altObjects) && r.altObjects.some((a) => eqTerm(a, t.lowered)))) {
       matches.push({ kind: "object", term: t.term });
       break;
     }
@@ -1424,7 +1430,12 @@ export async function run(argv) {
   // them from the program docs); one resolver serves every journey doc, and
   // its `problems` list is the caveat's input.
   const powerLists = makePowerListResolver({ kbDir, folder: laneDirs.rules });
+  // The Gainsight object registry (F-487 reopen): GSID ↔ system name ↔ label
+  // from the data-management lane, so a Power List's objects match on every
+  // spelling the KB records and carry their own label.
+  const objects = makeObjectResolver({ kbDir, folder: laneDirs.objects });
   const plStats = { sources: 0, resolved: 0, querySources: 0, programsWithPowerLists: 0 };
+  const missingRefPrograms = new Map(); // ruleId → Set of program ids that reference an unresolved rule
 
   // Alias pattern in force (ER-22/ER-23; DS-27): explicit --alias-prefix wins
   // — an invalid EXPLICIT regex fails loudly, never degrades silently —
@@ -1502,13 +1513,18 @@ export async function run(argv) {
           if (kind !== "power-list") continue;
           plHere++;
           plStats.sources++;
-          const pl = powerLists(powerListRuleId(s));
+          const rid = powerListRuleId(s);
+          const pl = powerLists(rid);
           if (pl && !pl.problem) plStats.resolved++;
+          else if (rid != null) {
+            if (!missingRefPrograms.has(rid)) missingRefPrograms.set(rid, new Set());
+            missingRefPrograms.get(rid).add(entry.id ?? path);
+          }
         }
         if (plHere) plStats.programsWithPowerLists++;
         out = {
           asset: { id: entry.id, name: entry.name, status: entry.status ? `${entry.status} (kb)` : null },
-          rows: journeyUsageRows(entry, { powerLists }),
+          rows: journeyUsageRows(entry, { powerLists, objects }),
         };
         // A Power List task's connection is a bare GUID — name and type it
         // from the connectors lane (matching never depends on this; an
@@ -1931,14 +1947,24 @@ export async function run(argv) {
   if (plStats.sources > 0) {
     const problems = powerLists.problems;
     if (problems.length) {
-      const sample = problems.slice(0, 8).map((p) => `\`${p.ruleId}\`${p.reason === "missing" ? "" : ` (${p.reason})`}`).join(", ");
+      // the programs that reference the UNRESOLVED rules, never every Power
+      // List program in the KB (F-487 reopen, instance 4)
+      const affected = new Set();
+      for (const s of missingRefPrograms.values()) for (const id of s) affected.add(id);
+      const sample = problems.slice(0, 8).map((p) => `\`${p.ruleId}\`${p.reason === "missing" ? "" : ` (${p.reason})`} (${missingRefPrograms.get(p.ruleId)?.size ?? 0} program(s))`).join(", ");
       caveats.push(
-        `${problems.length} Power List rule(s) referenced by ${plStats.programsWithPowerLists} journey program(s) have no readable KB doc under ${laneDirs.rules}/ ` +
+        `${problems.length} Power List rule(s) referenced by ${affected.size} journey program(s) have no readable KB doc under ${laneDirs.rules}/ ` +
           `(${plStats.resolved} of ${plStats.sources} Power List sources resolved): ${sample}${problems.length > 8 ? `, … (${problems.length - 8} more)` : ""} — ` +
           `those programs' Power List objects, connections and output fields are NOT in this report, so an --object or --connection search cannot reach them through that source. ` +
-          `Run \`/gs-superadmin:refresh\` — it registers and documents every Power List rule the KB's documented programs reference — then re-run.`
+          `Run \`/gs-superadmin:refresh\` — its Power List step re-documents every referenced rule whose doc is not readable on disk, whatever the manifest says — then re-run.`
       );
     }
+    if (objects.size === 0)
+      caveats.push(
+        `Gainsight objects named by Power Lists could NOT be canonicalized: the KB holds no readable data-management doc ` +
+          `(folder ${laneDirs.objects}/: ${objects.stats.folderPresent ? `${objects.stats.docs} doc(s), ${objects.stats.parsed} with an object identity` : "absent"}) — ` +
+          `those rows carry the GSID the payload names and only a GSID or payload-label term matches them; index the data-management domain (setup) and re-run for system-name matching.`
+      );
     caveats.push(
       `Power List sources (${plStats.sources}, ${plStats.resolved} resolved) contribute the objects, connection and output fields their rule's tasks READ ` +
         `(the rule is hidden from \`re r list\`; its ${POWER_LIST_RULE_TYPE} doc is captured by refresh/setup from the program's \`ruleId\`); the list's FILTER criteria are not ` +
@@ -2183,6 +2209,8 @@ export async function run(argv) {
       ["journeyPowerListSources", plStats.sources],
       ["journeyPowerListsResolved", plStats.resolved],
       ["journeyPowerListRulesMissing", powerLists.problems.length],
+      ["objectRegistryDocs", objects.stats.docs],
+      ["objectRegistrySize", objects.size],
       ["journeyQuerySources", plStats.querySources],
       ["rulesPowerListDocs", results.rules.stats.powerListDocs],
       ["externalActionsRegistry", extRegistry.length],

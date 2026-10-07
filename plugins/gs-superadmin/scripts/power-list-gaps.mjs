@@ -17,12 +17,21 @@
 //          { <rules idField>: ruleId, ruleName: <the source's name> }, the
 //          `manifest.mjs upsert-batch --file` shape, keyed by the rules
 //          domain's RECORDED idField (a wrong key would be refused as a rekey)
-//        → .gs-superadmin/tmp/pl-gap-keys.json   — the same rules as full
-//          manifest keys ("<rules-domain>/<ruleId>"), the `describe-batch.mjs
-//          --keys-file` shape, so the batch documents THESE entries and no
-//          other pending/stale rule the domain holds (a plain refresh is
-//          detect-only for everything it did not register itself)
+//        → .gs-superadmin/tmp/pl-gap-keys.json   — every referenced rule whose
+//          doc is NOT readable on disk, as full manifest keys
+//          ("<rules-domain>/<ruleId>"): the missing ones above, the ones the
+//          manifest already holds but has not documented (pending / stale /
+//          failed), and the ones it calls documented whose doc is gone or
+//          unparseable — the `describe-batch.mjs --keys-file` shape, so the
+//          batch documents THESE entries and no other pending/stale rule the
+//          domain holds (a plain refresh is detect-only for everything it did
+//          not register itself)
+//        → .gs-superadmin/tmp/pl-gap-redoc.json  — the documented-but-unreadable
+//          subset as keys, for `manifest.mjs mark --keys-file … --status stale`
+//          (describe-batch selects pending/stale/failed; a documented entry
+//          must be marked before the keys file can reach it)
 //   2. manifest.mjs upsert-batch --partial --domain <rules-domain> --file … --id-field <idField> --name-field ruleName
+//      (+ manifest.mjs mark --keys-file pl-gap-redoc.json --status stale when redoc > 0)
 //   3. describe-batch.mjs --domain <rules-domain> --keys-file … (the recorded `re r describe --id {id}`), until moreRemaining is false
 //
 // The rules lane holds Power List docs beside the Rules Engine rules (one
@@ -46,7 +55,7 @@ import { join, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { makeCliHelpers, readJsonFile, resolveRecordedDomains, laneTable, listMdFiles } from "./doc-lib.mjs";
 import { parseJourneyDoc } from "./jo-report.mjs";
-import { classifySource, powerListRuleId } from "./jo-report-deps.mjs";
+import { classifySource, powerListRuleId, locateKbDoc, parsePowerListDoc } from "./jo-report-deps.mjs";
 const here = dirname(fileURLToPath(import.meta.url));
 
 const argv = process.argv.slice(2);
@@ -55,6 +64,7 @@ if (argv.length !== 1) fail("usage: node power-list-gaps.mjs <slug>/_manifest.js
 const TMP = ".gs-superadmin/tmp";
 const OUT = `${TMP}/pl-gap-rules.json`;
 const OUT_KEYS = `${TMP}/pl-gap-keys.json`;
+const OUT_REDOC = `${TMP}/pl-gap-redoc.json`;
 let mf;
 try {
   mf = readJsonFile(argv[0]);
@@ -110,22 +120,57 @@ for (const file of files ?? []) {
     r.programs.add(entry.id ?? file);
   }
 }
+// A referenced rule counts as documented only when its doc is READABLE on
+// disk as a Power List rule (F-487 reopen, instance 4: the manifest said
+// documented while the doc was gone, so refresh skipped it and the report's
+// remedy remedied nothing). Four states, each with its own output:
+//   documented — manifest documented at depth full AND the doc parses as a
+//                Power List rule: nothing to do
+//   missing    — no manifest entry: registered by the partial upsert
+//                (pl-gap-rules.json) and described (keys file)
+//   queued     — a manifest entry that is not documented-full (pending /
+//                stale / failed): already selectable — described (keys file)
+//   redoc      — documented-full in the manifest but the doc is missing,
+//                unparseable or not a Power List: marked stale by the skill
+//                (pl-gap-redoc.json, `manifest.mjs mark --keys-file`), then
+//                described (keys file)
+const byKey = (id) => `${LANES.rules}/${id}`;
+const docReadable = (id) => {
+  const loc = locateKbDoc(slugDir, LANES.rules, id);
+  if (loc.reason) return false;
+  try {
+    return parsePowerListDoc(readFileSync(loc.path, "utf8")) != null;
+  } catch {
+    return false;
+  }
+};
 let documented = 0;
-let queued = 0;
 const missing = [];
+const queued = [];
+const redoc = [];
 for (const [id, r] of rules) {
-  const e = inventory[`${LANES.rules}/${id}`];
-  if (e && typeof e === "object") {
-    if (e.status === "documented" && e.depth === "full") documented++;
-    else queued++; // pending / stale / failed / metadata — already selectable by describe-batch
+  const e = inventory[byKey(id)];
+  const readable = docReadable(id);
+  if (!e || typeof e !== "object") {
+    missing.push({ [idField]: id, ruleName: r.name });
     continue;
   }
-  missing.push({ [idField]: id, ruleName: r.name });
+  if (e.status === "documented" && e.depth === "full") {
+    if (readable) documented++;
+    else redoc.push(byKey(id));
+    continue;
+  }
+  queued.push(byKey(id)); // selectable already — the keys file makes this run describe it
 }
-missing.sort((a, b) => String(a[idField]).localeCompare(String(b[idField]), "en"));
+const byId = (a, b) => String(a).localeCompare(String(b), "en");
+missing.sort((a, b) => byId(a[idField], b[idField]));
+queued.sort(byId);
+redoc.sort(byId);
+const keys = [...missing.map((m) => byKey(m[idField])), ...queued, ...redoc].sort(byId);
 mkdirSync(TMP, { recursive: true });
 writeFileSync(OUT, JSON.stringify(missing));
-writeFileSync(OUT_KEYS, JSON.stringify(missing.map((m) => `${LANES.rules}/${m[idField]}`)));
+writeFileSync(OUT_KEYS, JSON.stringify(keys));
+writeFileSync(OUT_REDOC, JSON.stringify(redoc));
 console.log(JSON.stringify({
   domains: LANES,
   domainBasis: RESOLVED.basis,
@@ -137,9 +182,12 @@ console.log(JSON.stringify({
   powerListSources: sources,
   distinctRules: rules.size,
   documented,
-  queued,
+  queued: queued.length,
+  redoc: redoc.length,
   missing: missing.length,
+  unreadable: keys.length, // every referenced rule this run must still describe (missing + queued + redoc)
   written: missing.length,
   workList: OUT,
   keysFile: OUT_KEYS,
+  redocFile: OUT_REDOC,
 }));

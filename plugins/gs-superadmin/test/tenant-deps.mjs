@@ -46,7 +46,7 @@ import {
 import { parseLiveDepsAreas, parseLiveDeps, prepFieldTerm, compileAliasPrefix, addNearMisses } from "../scripts/jo-report-deps.mjs";
 import { parseJourneyDoc } from "../scripts/jo-report.mjs";
 import { renderProgramDoc } from "../scripts/doc-lib.mjs";
-import { RULE_POWER_LIST, JOURNEY_QB_AO } from "./fixtures/reader-payloads.mjs"; // F-487
+import { RULE_POWER_LIST, JOURNEY_QB_AO, DM_OBJECT_COMPANY } from "./fixtures/reader-payloads.mjs"; // F-487
 
 const SCRIPT = join(dirname(fileURLToPath(import.meta.url)), "..", "scripts", "tenant-deps.mjs");
 const ROOT = join(tmpdir(), `gs-superadmin-tenant-deps-${process.pid}`);
@@ -1826,9 +1826,9 @@ check("e2e: blank term → exit 1", emptyTerm.status === 1, emptyTerm.stderr?.sl
 // says so; the missing list is one aggregate caveat with the refresh remedy.
 {
   const KB4 = join(ROOT, "kb-f487");
-  const doc4 = (domain, base, name, payload) => {
+  const doc4 = (domain, base, name, payload, extraBullets = []) => {
     mkdirSync(join(KB4, domain), { recursive: true });
-    writeFileSync(join(KB4, domain, `${base}.md`), [`# ${name}`, "", `- key: ${domain}/${base}`, `- id: ${base}`, `- name: ${name}`, "", "```json", JSON.stringify(payload, null, 1), "```", ""].join("\n"), "utf8");
+    writeFileSync(join(KB4, domain, `${base}.md`), [`# ${name}`, "", `- key: ${domain}/${base}`, `- id: ${base}`, `- name: ${name}`, ...extraBullets, "", "```json", JSON.stringify(payload, null, 1), "```", ""].join("\n"), "utf8");
   };
   doc4("connectors", "conn-sfdc-1", "Acme Prod SFDC", CONN_1);
   doc4("rules-engine", "pl-rule-1", "Acme Renewal Contacts", RULE_POWER_LIST);
@@ -1864,13 +1864,21 @@ check("e2e: blank term → exit 1", emptyTerm.status === 1, emptyTerm.stderr?.sl
     { counts: a.s?.counts, caveats: a.md.split("\n").filter((l) => /Rules Engine:/.test(l)) });
   check("e2e F-487: Power List accounting on the JSON surface (2 sources, 1 resolved, 1 rule missing, 0 QUERY sources)",
     a.s?.counts?.journeyPowerListSources === 2 && a.s?.counts?.journeyPowerListsResolved === 1 && a.s?.counts?.journeyPowerListRulesMissing === 1 && a.s?.counts?.journeyQuerySources === 0, a.s?.counts);
-  check("e2e F-487: ONE aggregate caveat names the missing rule id, the program count, the resolved ratio and the refresh remedy; and the standing filter-limit caveat",
-    a.md.includes("1 Power List rule(s) referenced by 2 journey program(s) have no readable KB doc under rules-engine/ (1 of 2 Power List sources resolved): `pl-missing-9`") &&
-      a.md.includes("Run `/gs-superadmin:refresh`") && a.md.includes("Power List sources (2, 1 resolved) contribute the objects, connection and output fields their rule's tasks READ") && a.md.includes("a match means the list reads the object, never how it filters it"),
+  check("e2e F-487: ONE aggregate caveat names the missing rule id, the programs that REFERENCE it (not every Power List program), the resolved ratio and the refresh remedy; and the standing filter-limit caveat",
+    a.md.includes("1 Power List rule(s) referenced by 1 journey program(s) have no readable KB doc under rules-engine/ (1 of 2 Power List sources resolved): `pl-missing-9` (1 program(s))") &&
+      a.md.includes("Run `/gs-superadmin:refresh`") && a.md.includes("re-documents every referenced rule whose doc is not readable on disk, whatever the manifest says") &&
+      a.md.includes("Power List sources (2, 1 resolved) contribute the objects, connection and output fields their rule's tasks READ") && a.md.includes("a match means the list reads the object, never how it filters it"),
     a.md.split("\n").filter((l) => l.includes("Power List")));
+  // F-487 reopen: the object registry on the tenant-wide surface
+  doc4("data-management", "company", "company", DM_OBJECT_COMPANY, ["- objectId: gsid-company-0001", "- label: Company", "- dbName: company_acme"]);
+  const d1 = run4("--object", "company");
+  check("e2e F-487 reopen (class test i): --object by the SYSTEM NAME matches the Power List program; the row carries the system name with the label beside it; registry counts on the JSON surface",
+    d1.s?.counts?.journeysMatched === 1 && d1.md.includes('company ("Company")') && d1.s?.counts?.objectRegistryDocs === 1 && d1.s?.counts?.objectRegistrySize === 1, { counts: d1.s?.counts, rows: d1.md.split("\n").filter((l) => l.includes("company")).slice(0, 3) });
+  const d2 = run4("--object", "gsid-company-0001");
+  check("e2e F-487 reopen (class test i): --object by the GSID matches the same program through the alias", d2.s?.counts?.journeysMatched === 1 && !d2.md.includes("could NOT be canonicalized"), d2.s?.counts);
   const b = run4("--object", "Company");
-  check("e2e F-487: --object Company matches the Gainsight object by its LABEL on a Power List row (the row carries the GSID with the label beside it)",
-    b.s?.counts?.journeysMatched === 1 && b.md.includes('gsid-company-0001 ("Company")'), { counts: b.s?.counts, rows: b.md.split("\n").filter((l) => l.includes("gsid-company")) });
+  check("e2e F-487: --object Company matches the Gainsight object by its LABEL on a Power List row (with the registry the row carries the system name, the label beside it)",
+    b.s?.counts?.journeysMatched === 1 && b.md.includes('company ("Company")'), { counts: b.s?.counts, rows: b.md.split("\n").filter((l) => l.includes("Company")).slice(0, 3) });
   const c = run4("--field", "Project Status");
   check("e2e F-487: --field matches the branch condition's label and the dynamic field (program-level rows, no connection)",
     c.s?.counts?.journeysMatched === 1 && c.md.includes("branch condition") && c.md.includes("dynamic field"), { counts: c.s?.counts });
