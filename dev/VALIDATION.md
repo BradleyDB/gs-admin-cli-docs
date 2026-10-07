@@ -1625,6 +1625,7 @@ mechanism is a new number).
   field" and/or "branch condition" row; its provenance cell reads "Dynamic query `<id>` — dynamic program — its
   participant query is not returned by any CLI command"; the standing caveat carries the dynamic-program sentence.
   FAILED (F-487 acceptance round @ hb-20261006-01, tester, 2026-10-06; production, reads only). The dynamic program matches on both surfaces through "dynamic field" and "branch condition" rows, and the tenant-wide report carries the dynamic-program caveat. Email-report renders no provenance cell for it and its standing caveat has no dynamic-program sentence (summary querySources 0): program-level rows carry no sourceRef and provenance is built from sourceRef rows only, so the cell is unreachable on an --object match. Measured on one of the two dynamic programs Bradley checked (the other is post-crawl).
+  CLEARED (F-487 second verdict round @ hb-20261006-02, tester, 2026-10-06; production, reads only). Both dynamic programs (one of them Bradley's UI-checked one) match on both surfaces through "dynamic field" and "branch condition" rows; email-report renders each one's cell "Dynamic query <id> — dynamic program — its participant query is not returned by any CLI command" (summary querySources 2) and its standing caveat carries the dynamic-program sentence; the tenant-wide report carries its caveat.
 - P6 — a lookup-path field: `--field <an SFDC field a list reads through a relationship, e.g. the related
   Account's 18-digit id field>` matches exactly on the field's own API name (the relationship prefix stripped),
   on the related object.
@@ -1634,6 +1635,7 @@ mechanism is a new number).
   resolved ratio and `/gs-superadmin:refresh` as the remedy; restore the doc (or re-run refresh, which re-registers
   it — P2's "nothing registered" no longer holds for that one, say so).
   FAILED (F-487 acceptance round @ hb-20261006-01, tester, 2026-10-06; production, reads only). With one rule doc moved out (and restored after): that program's Power List rows disappear and ONE aggregate caveat names the rule id, the resolved ratio and /gs-superadmin:refresh — but its program count is every Power List program in the KB, not the one that references the rule; and refresh's 3b-1 on that state prints missing 0 (the manifest says documented), so the named remedy re-registers nothing. Refresh was not re-run against the tenant; its deterministic first step was.
+  CLEARED (F-487 second verdict round @ hb-20261006-02, tester, 2026-10-06; production, reads only), on a scratch copy of the KB: with one Power List rule doc removed, that program's Power List rows disappear and ONE aggregate caveat names the rule id, "1 program(s)" (the programs that reference it), the resolved ratio and /gs-superadmin:refresh, worded as what refresh's step now does; refresh's 3b re-documents the rule from that state (P10).
 Section FAILED (F-487 acceptance round @ hb-20261006-01, tester, 2026-10-06; production, reads only): P5 and P7 failed, F-487 reopened; P0 to P4 and P6 cleared. The section stays the live arm of F-487's next round.
 
 ### Re-banked for the F-487 second round (builder, 2026-10-06, feat/f487-power-list-sources; the branch's next handoff token)
@@ -1649,10 +1651,12 @@ on the production KB after one `/gs-superadmin:refresh`:
   set of journey programs; every row carries the system name with the label beside it; the summary's
   objectRegistrySize is the lane's object count. Pass bar: three identical sets per object, zero rows
   carrying a bare GSID as the object name.
+  FAILED (F-487 second verdict round @ hb-20261006-02, tester, 2026-10-06; production, reads only). Over every Gainsight object any Power List reads (order 10^1, all present in the lane): GSID and label agree, system name does not — --object <system name> returns 0 journey programs for nearly every object whose system name differs from its label, because the registry reads the doc's first "- name:" bullet (on real docs the display name; the system name is "- id:"); 579 of 594 production docs carry that shape. A standard object read through dynamic fields: GSID misses the programs that read it only that way (dynamic-field rows bypass the registry). Zero Power List rows carry a bare GSID; objectRegistrySize 594 = the docs on disk (the lane holds three newer pending entries with no doc).
 - P9 (class test ii) — a standard SFDC field that programs read only through multi-hop paths (the verdict's
   instance 2): `--field <its API name>` returns every program whose list reads it, on both surfaces, the row's
   detail carrying the full path. Pass bar: the set equals an independent count over the raw rule docs (every
   originalFieldName whose last segment is the name).
+  CLEARED (F-487 second verdict round @ hb-20261006-02, tester, 2026-10-06; production, reads only). --field <the standard SFDC field read only through multi-hop paths in round 1> returns order 10^1 programs on both surfaces, the same set on each and equal to an independent count over the raw rule docs (every originalFieldName whose last segment is the name), including every program round 1 missed; the row detail carries the full path.
 - P10 (class test iii) — on a scratch copy of the KB, for each manifest state of ONE referenced rule whose doc
   is removed — documented, pending, failed — `power-list-gaps.mjs` classifies it (redoc / queued / queued),
   lists it in pl-gap-keys.json (and pl-gap-redoc.json for the documented case), and refresh step 3b documents
@@ -1660,7 +1664,10 @@ on the production KB after one `/gs-superadmin:refresh`:
   reference it (count 1 here) and `/gs-superadmin:refresh` as the remedy. Pass bar: three states, three
   re-documentations; the caveat's program count equals the referencing programs, never the KB's Power List
   program count.
+  FAILED (F-487 second verdict round @ hb-20261006-02, tester, 2026-10-06; production, reads only) on its caveat half. Scratch copy, one referenced rule's doc removed, three manifest states: documented → redoc 1 (keys and redoc files list it; 3b-2 marks it stale; the batch re-documents it), pending → queued 1, failed → queued 1 (the batch re-documents each) — three states, three re-documentations, three live describes. Tenant-wide caveat: correct (1 referencing program, refresh). Email-report deps: no caveat at all — the program whose only match runs through the unreadable list drops out of the report silently (powerListRulesMissing 0). The live refresh on the real workspace described nothing (unreadable 0), as owed; a truncated doc is classified redoc.
 - P11 (class test iv) — over `--object <the object a dynamic program's dynamic field reads>` in email-report
   deps mode, every program in the usage table has a provenance row; the dynamic program's cell reads
   "Dynamic query `<id>` — dynamic program — its participant query is not returned by any CLI command" and the
   standing caveat carries the dynamic-program sentence (P5's bar, restated as the class test).
+  CLEARED (F-487 second verdict round @ hb-20261006-02, tester, 2026-10-06; production, reads only). Email-report deps over the two objects the dynamic programs' fields read: every program in the usage table (order 10^2) has a provenance row; the dynamic program's cell and the standing sentence render as P5 states.
+Section FAILED (F-487 second verdict round @ hb-20261006-02, tester, 2026-10-06; production, reads only): P8 and P10 failed, F-487 reopened a second time; P5, P7, P9 and P11 cleared (P0 to P4 and P6 cleared at hb-20261006-01).
