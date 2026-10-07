@@ -684,10 +684,11 @@ run, `--deep <journey-domain>` included; F-487).** A program on a Power List
 the `ruleId` the program's source carries — so Phase 4's crawl never registers it and
 the deps reports are blind to that program until its rule doc exists. Derive the work
 list from the program docs on disk, register it as a declared subset of the rules
-domain, and document exactly those entries (the three commands and their rules are
+domain, and document exactly those entries (the commands and their rules are
 `/gs-superadmin:refresh` step 3b, the canon — same `power-list-gaps.mjs` →
-`upsert-batch --partial` → `describe-batch.mjs --keys-file` sequence, same stop rule and
-`aborted` handling as above; it consumes the shared budget like any describe). Under a
+`upsert-batch --partial` (+ `mark --status stale` for a documented entry whose doc is
+unreadable) → `describe-batch.mjs --keys-file` sequence, same stop rule and `aborted`
+handling as above; it consumes the shared budget like any describe). Under a
 shallow crawl the journey domain is stubs and the work list is empty until
 `--deep <journey-domain>` runs — say so, never "no Power Lists". The docs land beside
 the Rules Engine rules in the rules domain's folder; readers tell them apart by rule

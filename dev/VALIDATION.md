@@ -1635,3 +1635,32 @@ mechanism is a new number).
   it — P2's "nothing registered" no longer holds for that one, say so).
   FAILED (F-487 acceptance round @ hb-20261006-01, tester, 2026-10-06; production, reads only). With one rule doc moved out (and restored after): that program's Power List rows disappear and ONE aggregate caveat names the rule id, the resolved ratio and /gs-superadmin:refresh — but its program count is every Power List program in the KB, not the one that references the rule; and refresh's 3b-1 on that state prints missing 0 (the manifest says documented), so the named remedy re-registers nothing. Refresh was not re-run against the tenant; its deterministic first step was.
 Section FAILED (F-487 acceptance round @ hb-20261006-01, tester, 2026-10-06; production, reads only): P5 and P7 failed, F-487 reopened; P0 to P4 and P6 cleared. The section stays the live arm of F-487's next round.
+
+### Re-banked for the F-487 second round (builder, 2026-10-06, feat/f487-power-list-sources; the branch's next handoff token)
+
+P5 and P7 stay owed as written above; their fixes are the program-level provenance entry (P5) and the
+doc-readability classification plus the per-rule program count (P7). The class the verdict named — identities
+canonical, not payload-shaped — adds four checks, the verdict's own falsifiable tests (i) to (iv), each run
+on the production KB after one `/gs-superadmin:refresh`:
+
+- P8 (class test i) — for every object in the `data-management` lane that any Power List reads (take the three
+  the verdict measured: a custom `__gc` object, a scorecard fact object, a standard object read through lookups),
+  `/gs-superadmin:deps-report --object <GSID>`, `--object <system name>` and `--object <label>` return the SAME
+  set of journey programs; every row carries the system name with the label beside it; the summary's
+  objectRegistrySize is the lane's object count. Pass bar: three identical sets per object, zero rows
+  carrying a bare GSID as the object name.
+- P9 (class test ii) — a standard SFDC field that programs read only through multi-hop paths (the verdict's
+  instance 2): `--field <its API name>` returns every program whose list reads it, on both surfaces, the row's
+  detail carrying the full path. Pass bar: the set equals an independent count over the raw rule docs (every
+  originalFieldName whose last segment is the name).
+- P10 (class test iii) — on a scratch copy of the KB, for each manifest state of ONE referenced rule whose doc
+  is removed — documented, pending, failed — `power-list-gaps.mjs` classifies it (redoc / queued / queued),
+  lists it in pl-gap-keys.json (and pl-gap-redoc.json for the documented case), and refresh step 3b documents
+  it (the mark, then the keys-file batch); meanwhile both deps reports' caveat names exactly the programs that
+  reference it (count 1 here) and `/gs-superadmin:refresh` as the remedy. Pass bar: three states, three
+  re-documentations; the caveat's program count equals the referencing programs, never the KB's Power List
+  program count.
+- P11 (class test iv) — over `--object <the object a dynamic program's dynamic field reads>` in email-report
+  deps mode, every program in the usage table has a provenance row; the dynamic program's cell reads
+  "Dynamic query `<id>` — dynamic program — its participant query is not returned by any CLI command" and the
+  standing caveat carries the dynamic-program sentence (P5's bar, restated as the class test).

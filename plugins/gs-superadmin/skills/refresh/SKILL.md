@@ -265,29 +265,42 @@ run after plugin 0.48.0 documents every Power List the documented programs refer
 step 1 does and size the chunks); later runs pick up only lists that newly documented
 or re-documented programs reference. Nothing here touches the tenant until step 3b-3.
 
-1. Build the work list (reads the journey docs on disk, writes two files beside the
-   other tmp work lists, prints one summary line — read only the summary):
+1. Build the work list (reads the journey docs AND the rules docs on disk, writes three
+   files beside the other tmp work lists, prints one summary line — read only the summary):
 ```
 node .gs-superadmin/plugin/scripts/power-list-gaps.mjs <slug>/_manifest.json
 ```
    `journeyDirMissing: true` means no program is documented yet — say so in the report
-   and continue to step 4. `missing: 0` → the report line is "Power Lists: all
-   `<distinctRules>` referenced rules documented" and the rest of this step is skipped.
-   `idField` is the rules domain's recorded id field (`ruleId` under the naming rule);
-   `domains.rules` is the folder the workspace recorded for `re r list` — use both
-   below exactly as printed, never re-derived.
+   and continue to step 4. The script judges a rule DOCUMENTED only when its doc is
+   readable on disk as a Power List rule — never from the manifest's status alone — and
+   sorts the rest into `missing` (no manifest entry), `queued` (an entry not yet
+   documented) and `redoc` (an entry the manifest calls documented whose doc is gone or
+   unparseable); `unreadable` is their sum, the rules this run must still describe.
+   `unreadable: 0` → the report line is "Power Lists: all `<distinctRules>` referenced
+   rules documented" and the rest of this step is skipped. `idField` is the rules
+   domain's recorded id field (`ruleId` under the naming rule); `domains.rules` is the
+   folder the workspace recorded for `re r list` — use both below exactly as printed,
+   never re-derived.
 2. Register the missing rules into the rules domain as a declared subset — `--partial`
    is mandatory: a gap-fill is smaller than the domain by construction and must leave the
-   domain's list stamp alone (never pass a recording flag here):
+   domain's list stamp alone (never pass a recording flag here). Skip this command when
+   `missing` is 0:
 ```
 node .gs-superadmin/plugin/scripts/manifest.mjs upsert-batch --manifest <slug>/_manifest.json --domain <rules-domain> --file .gs-superadmin/tmp/pl-gap-rules.json --id-field <idField> --name-field ruleName --partial
 ```
+   When `redoc` is above 0, the manifest calls those entries documented while their doc is
+   unreadable; mark them stale so the batch below can select them (the batch selects
+   pending / stale / failed — a documented entry is invisible to it):
+```
+node .gs-superadmin/plugin/scripts/manifest.mjs mark --manifest <slug>/_manifest.json --keys-file .gs-superadmin/tmp/pl-gap-redoc.json --status stale
+```
 3. Document exactly those entries through the batch script — `--keys-file` restricts the
-   batch to the rules this step registered, so a refresh without `--document` stays
-   detect-only for every other pending or stale rule; the domain's recorded
-   `re r describe --id {id}` is the default command; `--limit` ~10–15 per invocation;
-   re-invoke until `moreRemaining` is false (under `--keys-file` that means "named keys
-   still untried"); the stop rule and the `aborted` handling are setup Phase 5's:
+   batch to the rules this step owns (missing, queued and redoc together), so a refresh
+   without `--document` stays detect-only for every other pending or stale rule; the
+   domain's recorded `re r describe --id {id}` is the default command; `--limit` ~10–15
+   per invocation; re-invoke until `moreRemaining` is false (under `--keys-file` that
+   means "named keys still untried"); the stop rule and the `aborted` handling are setup
+   Phase 5's:
 ```
 node .gs-superadmin/plugin/scripts/describe-batch.mjs --manifest <slug>/_manifest.json --domain <rules-domain> --out-dir <slug>/<rules-domain> --keys-file .gs-superadmin/tmp/pl-gap-keys.json --limit <chunk>
 ```
@@ -299,10 +312,15 @@ node .gs-superadmin/plugin/scripts/describe-batch.mjs --manifest <slug>/_manifes
    never listed) — it is re-captured when its program is re-documented and names a new
    rule id, or by a deliberate `stale` mark on its manifest entry.
 
+   The deps reports read Gainsight object identities (GSID, system name, label) from the
+   `data-management` domain's docs, so a Power List's objects match on every spelling;
+   a workspace that never indexed that domain gets a caveat saying so — setup indexes it.
+
 Report line for step 4: "Power Lists: `<distinctRules>` referenced by `<programsScanned>`
-programs — `<documented this run>` documented this run, `<missing after>` still missing"
-(a non-zero "still missing" after the loop ended is the stop rule firing or an auth
-abort — name which, per the batch summary).
+programs — `<documented this run>` documented this run, `<unreadable after>` still
+unreadable" (a non-zero "still unreadable" after the loop ended is the stop rule firing
+or an auth abort — name which, per the batch summary; the deps reports name any such
+rule in their caveats with the programs that reference it).
 
 ### 4 — Report
 
@@ -341,7 +359,7 @@ not is wrong, whatever step 3 printed.
   Changed:   X assets marked stale
   New:       Y assets added as pending
   Unchanged: Z assets
-  Power Lists: <R> referenced by <P> programs — <D> documented this run, <M> still missing
+  Power Lists: <R> referenced by <P> programs — <D> documented this run, <M> still unreadable
   Not checked for change this run:
     <domain> — no date field recorded; <t> entries outside change detection
     <domain> — no date field when this run started (legacy stamp); recorded this run as <field>; detection starts next refresh
