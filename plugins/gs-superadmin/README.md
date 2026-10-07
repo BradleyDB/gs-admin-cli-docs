@@ -336,7 +336,7 @@ What the CLI does not return is said: a Power List's filter criteria, and a dyna
 program's own participant query. The program's dynamic fields and branch conditions
 are scanned too. Everything is KB-cached and the report says so —
 the JO-scoped sibling is `email-report deps`; this is the tenant-wide superset.
-Read-only. **Installed before 0.48.0?** Run `/gs-superadmin:refresh` once so your
+Read-only. **Installed before 0.43.4?** Run `/gs-superadmin:refresh` once so your
 workspace captures the Power List rules your programs reference.
 
 ## Report a CLI bug upstream
