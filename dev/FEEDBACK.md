@@ -162,7 +162,7 @@ Walk (hb-20261004-01): 2026-10-04 (tester) — S1b verdict round, a RE-VERIFICAT
      Branch: feat/f487-power-list-sources at 6e460db (c32da73 first batch, 95d2c8a handoff -01, 6bc64df the tester verdict, 28ab1e3 second batch, 6e460db handoff -02).
        PR: #41 to dev, open, unmerged, awaiting the F-487 second verdict round. Handoff: hb-20261006-02 on the branch (its Under test, Blind spots and canary live there).
      Status transitions on the branch: F-487 OPEN -> FIXED (first batch) -> REOPENED by the tester @ hb-20261006-01 (first reopen; rule 5 counts it)
-       -> FIXED (second batch: an object registry from the data-management lane — a new RECORDED_LANES lane, ; last-segment field names;
+       -> FIXED (second batch: an object registry from the data-management lane — a new RECORDED_LANES lane, objects; last-segment field names;
        program-level provenance; doc-readability in power-list-gaps + a stale-mark sub-step in refresh 3b). Numbers consumed: none.
        Live checks: dev/VALIDATION.md section F-487 — P0 to P4 and P6 CLEARED, P5 and P7 still owed, P8 to P11 re-banked (the verdict's class tests i to iv).
      Polish carried, untouched by this round (scheduled elsewhere): F-482, F-483, F-486 (S3b/S4b); normal F-476, F-484 (S3b).
