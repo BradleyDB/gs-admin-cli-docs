@@ -5,7 +5,7 @@ marketplace doesn't pin versions — users get main — so entries describe what
 user who updates, not internal refactors. Entries before 0.8.0 were reconstructed from git
 history when this file was introduced.
 
-## 0.48.0 — 2026-10-06
+## 0.43.4 — 2026-10-06
 
 Dependency answers now see Power List programs (F-487). On a typical tenant most
 journey programs draw participants from a **Power List**, and until now neither
@@ -13,7 +13,7 @@ journey programs draw participants from a **Power List**, and until now neither
 reads: "what depends on Salesforce Contact" returned no journeys at all, and the
 reports said Power Lists "have no CLI surface". That was false.
 
-**If you installed before 0.48.0: run `/gs-superadmin:refresh` once.** A Power List is a
+**If you installed before 0.43.4: run `/gs-superadmin:refresh` once.** A Power List is a
 hidden rule the CLI can describe but never lists, so your workspace holds none of them
 yet. Refresh now registers every Power List rule your documented programs reference and
 documents it (one `re r describe` per list — a few hundred calls at most, inside one

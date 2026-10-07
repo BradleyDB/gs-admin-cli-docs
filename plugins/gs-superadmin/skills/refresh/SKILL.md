@@ -260,7 +260,7 @@ page, described only by the `ruleId` the program's source carries. Step 3's list
 can never see these rules, so this step derives them from the program docs on disk and
 documents the ones the workspace lacks — on EVERY refresh, `--document` or not, because
 the deps reports are blind to a Power List program until its rule doc exists. The first
-run after plugin 0.48.0 documents every Power List the documented programs reference
+run after plugin 0.43.4 documents every Power List the documented programs reference
 (one `re r describe` per list — a few hundred calls at most; check the token the way
 step 1 does and size the chunks); later runs pick up only lists that newly documented
 or re-documented programs reference. Nothing here touches the tenant until step 3b-3.
