@@ -158,15 +158,15 @@ Walk (hb-20261003-03): 2026-10-03 (tester) — S1-V second re-run, the first ful
 Walk (hb-20261003-02): 2026-10-03 (tester) — S1-V re-run, the verdict round for ENG-1 and ENG-2 (feature items, no bus section carries them) and F-470's re-verification, against dev/VALIDATION.md section ENG-2 on the production tenant, reads only: V0 confirmed by Bradley; run 1 (plan) ok; run 2 (full) ended partial, exit 4, so no snapshot was built; V8 FAILED, F-471 and F-472 logged; runs 3-5 not run, on Bradley's call; F-470 stays FIXED, V9 not measurable. Detail in the tester comment below and in VALIDATION section ENG-2.
 Walk (hb-20261004-01): 2026-10-04 (tester) — S1b verdict round, a RE-VERIFICATION of F-478 (W0, offline: its repro through the real process and the stand-in CLI) and of dev/VALIDATION.md section ENG-2 / LTR-9 / F-478, W1 to W5 (feature items ENG-2 and LTR-9, no bus section carries them), on the production tenant, reads only: W0 passed on all three arms, F-478 VERIFIED; all six live plans and both runs completed (exit 0); every owed check passed; the accounts-off pull took 5.2 minutes against the plan's 327 s; nothing logged; VALIDATION section CLEARED; PR #37 ready to merge (the merge is Bradley's). No SKILL.md changed, so no walk was owed. Detail in the tester comment below and in that VALIDATION section.
 
-<!-- builder 2026-10-06 (F-487 — POINTER re-stamped after the acceptance round: REOPENED @ hb-20261006-01 (P5, P7; the class: identities payload-shaped), FIXED again on the branch, second handoff minted; next free F-488):
-     Branch: feat/f487-power-list-sources at 6e460db (c32da73 first batch, 95d2c8a handoff -01, 6bc64df the tester verdict, 28ab1e3 second batch, 6e460db handoff -02).
-       PR: #41 to dev, open, unmerged, awaiting the F-487 second verdict round. Handoff: hb-20261006-02 on the branch (its Under test, Blind spots and canary live there).
-     Status transitions on the branch: F-487 OPEN -> FIXED (first batch) -> REOPENED by the tester @ hb-20261006-01 (first reopen; rule 5 counts it)
-       -> FIXED (second batch: an object registry from the data-management lane — a new RECORDED_LANES lane, objects; last-segment field names;
-       program-level provenance; doc-readability in power-list-gaps + a stale-mark sub-step in refresh 3b). Numbers consumed: none.
-       Live checks: dev/VALIDATION.md section F-487 — P0 to P4 and P6 CLEARED, P5 and P7 still owed, P8 to P11 re-banked (the verdict's class tests i to iv).
-     Polish carried, untouched by this round (scheduled elsewhere): F-482, F-483, F-486 (S3b/S4b); normal F-476, F-484 (S3b).
-     CI: the PR suite runs on 6e460db (not a [skip ci] tip); per-job conclusions to be quoted here after they finish (F-340), re-stamped with the merge sha when #41 merges.
+<!-- builder 2026-10-06 (F-487 — POINTER re-stamped after the second verdict: REOPENED again @ hb-20261006-02 (P8, P10; the class sharpened), rule 5 spent on ONE Redesign (the model replaced is named on the entry), FIXED again on the branch, third handoff minted; next free F-488):
+     Branch: feat/f487-power-list-sources at 23ebe4e (c32da73 first batch, 95d2c8a handoff -01, 6bc64df verdict 1, 28ab1e3 second batch, 6e460db handoff -02,
+       df589b8 verdict 2, 663c035 third batch under the Redesign, 23ebe4e handoff -03). PR: #41 to dev, open, unmerged, awaiting the F-487 third verdict round.
+       Handoff: hb-20261006-03 on the branch (its Under test, Blind spots and canary live there).
+     Status transitions on the branch: OPEN -> FIXED -> REOPENED @ -01 -> FIXED -> REOPENED @ -02 (second reopen) -> Redesign: + FIXED (third batch).
+       Per the loop a THIRD reopen of this mechanism is DEFERRED (past 0.48.0), reopen trigger next change to the Power List identity/caveat readers — Bradley decides then.
+       Numbers consumed: none. Live checks: dev/VALIDATION.md section F-487 — P0 to P4, P6 CLEARED @ -01; P5, P7, P9, P11 CLEARED @ -02; P12, P13 re-banked under the Redesign.
+     Polish carried, untouched (scheduled elsewhere): F-482, F-483, F-486 (S3b/S4b); normal F-476, F-484 (S3b).
+     CI: the PR suite runs on 23ebe4e (not a [skip ci] tip); per-job conclusions to be quoted here after they finish (F-340), re-stamped with the merge sha when #41 merges.
      Dashboards work not touched: engagement*.mjs, dashboard-*.mjs, the email-engagement skill. -->
 <!-- builder 2026-10-05 (JO-dashboards S4a CLOSED OUT — PR #40 merged (1eb993c) after R1; F-485 FIXED (verdict at V2); F-476, F-483, F-484 ride S3b with F-482, F-486 rides S4b; next free F-487):
      R1, the design review as something people use, ran today with Bradley in the session (no code, no PR, no tenant).
