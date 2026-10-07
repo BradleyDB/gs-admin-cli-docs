@@ -717,7 +717,7 @@ check("isActive: PROCESSING only by default, PAUSE via includePaused", isActive(
   check("F-487: a source without the key reads ruleId null (every other type)", parseJourneyDoc(journeyDoc(payload1, { id: "prog-1", name: "Test Program" }), "x.md").entry.sources[0]?.ruleId === null, null);
   const dyn = entry.dynamicFields;
   check("F-487: dynamicFields — DYNAMIC_QUERY_V2 names its object + field and carries its own filter conditions (leftOperand unwrapped)",
-    dyn.length === 2 && dyn[0].fieldId === "dyn-project-status" && dyn[0].criterionType === "DYNAMIC_QUERY_V2" && dyn[0].label === "Project Status" &&
+    dyn.length === 3 && dyn[0].fieldId === "dyn-project-status" && dyn[0].criterionType === "DYNAMIC_QUERY_V2" && dyn[0].label === "Project Status" &&
       dyn[0].objectName === "Project__c" && dyn[0].objectLabel === "Project" && dyn[0].fieldName === "Status__c" && dyn[0].fieldLabel === "Status" && dyn[0].survey === null &&
       dyn[0].conditions.length === 1 && dyn[0].conditions[0].objectName === "Account" && dyn[0].conditions[0].fieldName === "Id" && dyn[0].conditions[0].comparisonOperator === "EQ" && dyn[0].conditions[0].filterAlias === "A",
     dyn[0]);

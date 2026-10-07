@@ -626,7 +626,7 @@ export function usageCandidates(program, { powerLists = null, objects = null } =
     const srcLabel = src.name ?? src.configId ?? "(unnamed source)";
     if (classifySource(src) === "power-list" && typeof powerLists === "function") {
       const pl = powerLists(powerListRuleId(src));
-      if (pl && !pl.problem) for (const r of powerListRows(pl, { objects })) rows.push({ ...r, source: srcLabel, sourceRef: src });
+      if (pl && !pl.problem) for (const r of powerListRows(pl)) rows.push({ ...r, source: srcLabel, sourceRef: src });
     }
     for (const c of Array.isArray(src.conditions) ? src.conditions : [])
       rows.push({
@@ -714,6 +714,19 @@ export function usageCandidates(program, { powerLists = null, objects = null } =
           `port "${b.port ?? "?"}"${b.alias ? `, alias ${b.alias}` : ""}, operator ${b.operator ?? "unknown"}` +
           (b.leftType === "DYNAMIC_QUERY_V2" ? (dyn ? ` (dynamic field ${b.fieldId})` : ` (dynamic field ${b.fieldId ?? "?"} — not declared on the program)`) : ""),
       });
+    }
+  // ONE canonicalization point over EVERY row kind that names an object
+  // (F-487 second reopen, Redesign, invariant A): a Power List task or output
+  // field, a dynamic field, a branch condition, a filter condition — each
+  // row's object reference goes through the one registry, so a system name,
+  // a label or a GSID term reaches the same programs whatever the row kind.
+  if (typeof objects === "function")
+    for (const r of rows) {
+      if (r.objectName == null) continue;
+      const o = canonicalObject(r.objectName, objects, r.objectLabel);
+      r.objectName = o.objectName;
+      r.objectLabel = o.objectLabel;
+      r.objectAliases = o.objectAliases;
     }
   return rows;
 }
@@ -884,14 +897,28 @@ export function extractObjectIdentity(payload) {
     dbName: d.dbName != null ? String(d.dbName) : null,
   };
 }
-const bulletIdentity = (md) => {
-  const b = topBullets(normalizeText(String(md ?? "")));
+// One data-management doc → the object's identity AS THE KB KEYS IT (F-487
+// second reopen, Redesign): the system name is the doc's `- id:` bullet — the
+// manifest key `data-management/<id>`, the lane's recorded idField `name` —
+// never a `- name:` bullet (the renderer writes the manifest's DISPLAY name
+// as the first `- name:`, and on real KBs that is the label: 579 of 594 docs
+// on one production KB, the sandbox KB alike — a value the fixture's shape
+// check could not see). The GSID, label and dbName are the payload's own
+// scalars (`- objectId:` / `- label:` / `- dbName:` bullets, scalarBullets of
+// data{…}; a shallow stub carries the list row's label and no GSID). The
+// fence is read only when the doc carries no `- id:` bullet (a hand-built doc).
+export function docObjectIdentity(md) {
+  const text = normalizeText(String(md ?? ""));
+  const b = topBullets(text);
   const strip = (v) => (typeof v === "string" ? v.replace(/^`|`$/g, "").trim() : v);
-  const name = strip(b.name);
+  const id = strip(b.id);
+  if (id == null || id === "" || id === NO_NAME) {
+    const fromFence = extractObjectIdentity(parseDocJson(text));
+    return fromFence && fromFence.name ? fromFence : null;
+  }
   const gsid = strip(b.objectId ?? b.gsid);
-  if ((name == null || name === "" || name === NO_NAME) && (gsid == null || gsid === "")) return null;
-  return { gsid: gsid || null, name: name && name !== NO_NAME ? name : null, label: strip(b.label) || null, dbName: strip(b.dbName) || null };
-};
+  return { gsid: gsid || null, name: id, label: strip(b.label) || null, dbName: strip(b.dbName) || null };
+}
 // The registry over one folder: `resolve(ref)` → entry for a GSID, a system
 // name, a label or a dbName (case-insensitive, NFC), null when the KB does
 // not know the object (an SFDC object, or a Gainsight object the lane never
@@ -913,7 +940,7 @@ export function makeObjectResolver({ kbDir, folder = RECORDED_LANES.objects.fold
         stats.docs++;
         let text;
         try { text = readFileSync(join(kbDir, folder, f), "utf8"); } catch { continue; }
-        add(bulletIdentity(text) ?? extractObjectIdentity(parseDocJson(normalizeText(text))));
+        add(docObjectIdentity(text));
       }
     }
   }
@@ -935,19 +962,20 @@ export function canonicalObject(ref, objects, fallbackLabel = null) {
 
 // A Power List's usage rows — the objects its tasks read (with the
 // connection), then the fields its output carries, each tied to the
-// original object. `source`/`sourceRef` are stamped by the caller. Gainsight
-// objects are canonicalized through `objects` (the registry) — a system name,
-// a label or a GSID term all match, and a lookup target carries ITS OWN label.
-export function powerListRows(pl, { objects = null } = {}) {
+// original object, AS THE PAYLOAD NAMES THEM. `source`/`sourceRef` are stamped
+// by the caller, and canonicalization is the caller's one post-pass over
+// every row kind (usageCandidates) — never here, never per kind (F-487
+// second reopen, Redesign).
+export function powerListRows(pl) {
   const rows = [];
   const plName = pl.name ?? pl.id ?? "(unnamed Power List)";
   for (const t of Array.isArray(pl.tasks) ? pl.tasks : []) {
     if (t.objectName != null) {
-      const o = canonicalObject(t.objectName, objects, t.objectLabel);
       rows.push({
         kind: "power-list-object",
         usage: "Power List source object",
-        ...o,
+        objectName: t.objectName,
+        objectLabel: t.objectLabel ?? null,
         fieldName: null,
         fieldLabel: null,
         connection: t.connection ?? null,
@@ -955,11 +983,11 @@ export function powerListRows(pl, { objects = null } = {}) {
       });
     }
     for (const f of t.fields) {
-      const o = canonicalObject(f.objectName, objects, f.objectLabel);
       rows.push({
         kind: "power-list-field",
         usage: "Power List output field",
-        ...o,
+        objectName: f.objectName,
+        objectLabel: f.objectLabel ?? null,
         fieldName: f.fieldName,
         fieldLabel: f.fieldLabel,
         connection: t.connection ?? null,
@@ -1314,9 +1342,36 @@ export function scanDeps(
     ),
   ].sort();
 
+  // Every unreadable Power List rule any IN-SCOPE program references, from
+  // the scan itself — never from the provenance of the programs that matched
+  // (F-487 second reopen, Redesign, invariant B): a program whose only match
+  // runs through an unreadable list matches nothing, and its absence must be
+  // said whatever the terms were. One record per rule id, the referencing
+  // programs with it.
+  const powerListProblems = [];
+  if (typeof powerLists === "function") {
+    const byRule = new Map();
+    for (const p of programs)
+      for (const src of Array.isArray(p.sources) ? p.sources : []) {
+        if (!src || typeof src !== "object" || classifySource(src) !== "power-list") continue;
+        const ruleId = powerListRuleId(src);
+        if (ruleId == null) continue;
+        const pl = powerLists(ruleId);
+        if (pl && !pl.problem) continue;
+        let rec = byRule.get(ruleId);
+        if (!rec) {
+          rec = { ...(pl?.problem ?? { ruleId, reason: "missing", rel: null }), sourceName: src.name ?? src.configId ?? "(unnamed source)", programs: [] };
+          byRule.set(ruleId, rec);
+        }
+        if (!rec.programs.some((q) => q.id === p.id)) rec.programs.push({ id: p.id, name: p.name ?? null });
+      }
+    powerListProblems.push(...[...byRule.values()].sort((a, b) => cmpKey(a.ruleId, b.ruleId)));
+  }
+
   return {
     programs,
     fieldRows,
+    powerListProblems,
     tokenRows: tokenResult.rows,
     missingTemplates: tokenResult.missingTemplates,
     metadataOnlyTemplates: tokenResult.metadataOnlyTemplates,
@@ -2151,23 +2206,26 @@ function buildCaveats(index, opts, result, provenance) {
       );
     }
   }
-  // Unresolved Power Lists (F-487): one caveat per rule id naming the
-  // program that references it and the remedy — refresh registers and
-  // documents every Power List rule the KB's programs reference.
-  if (provenance?.result?.powerListProblems?.length) {
-    const folder = provenance.result.powerListFolder ?? RECORDED_LANES.rules.folder;
-    for (const p of provenance.result.powerListProblems) {
+  // Unresolved Power Lists (F-487; from the SCAN since the second reopen —
+  // every in-scope program, whatever matched): one caveat per rule id naming
+  // the programs that reference it and the remedy — refresh re-documents
+  // every referenced rule whose doc is not readable on disk.
+  if (result.powerListProblems?.length) {
+    const folder = opts.powerLists?.folder ?? RECORDED_LANES.rules.folder;
+    for (const p of result.powerListProblems) {
       const what =
         p.reason === "no-kb" ? `could not be looked up — the KB directory was not located (re-run with \`--kb <slugDir>\`)`
           : p.reason === "wrong-id" ? `\`${p.rel}\` belongs to a different id (\`${p.otherId}\`, case collision)`
             : p.reason === "fs-error" ? `\`${p.rel}\` could not be checked (${p.detail}); fix the filesystem problem and re-run`
               : p.reason === "not-a-power-list" ? `\`${p.rel}\` exists but is not a Power List rule doc (ruleType is not ${POWER_LIST_RULE_TYPE})`
                 : p.reason === "unparseable" ? `\`${p.rel}\` exists but could not be parsed`
-                  : `has no KB doc under ${folder}/`;
+                  : `has no readable KB doc under ${folder}/`;
+      const who = p.programs.map((q) => `${q.name ?? "(unnamed)"} (${q.id})`).join("; ");
       caveats.push(
-        `Power List rule \`${p.ruleId}\` (source '${p.sourceName}' of ${p.programName}) ${what} — its objects, connection and ` +
-          `output fields are NOT in this report, so an --object or connection search cannot match that program through this source. ` +
-          `Run \`/gs-superadmin:refresh\` (it registers and documents every Power List rule your documented programs reference; ` +
+        `Power List rule \`${p.ruleId}\` (source '${p.sourceName}', referenced by ${p.programs.length} in-scope program(s): ${who}) ${what} — ` +
+          `those programs' Power List objects, connection and output fields are NOT in this report, so an --object or --field search cannot match them through that source ` +
+          `and their absence from the tables above is not evidence. ` +
+          `Run \`/gs-superadmin:refresh\` (its Power List step re-documents every referenced rule whose doc is not readable on disk, whatever the manifest says; ` +
           `the one-off fetch is \`gs-admin --json re r describe --id ${sq(p.ruleId)}\`, documented via describe-batch into the rules domain), then re-run.`
       );
     }
@@ -2561,7 +2619,7 @@ export async function run(argv) {
       // (one per id — the remedy caveat names each), plus the usage rows the
       // new surfaces contributed, so a run can see whether they fired at all
       powerListsResolved: provResult?.entries.filter((e) => e.kind === "power-list" && e.resolved).length ?? 0,
-      powerListRulesMissing: provResult?.powerListProblems.length ?? 0,
+      powerListRulesMissing: result.powerListProblems.length, // from the scan of every in-scope program (second reopen)
       // F-487 reopen: the registry the Power List object identities were canonicalized through
       objectRegistryDocs: objects.stats.docs,
       objectRegistrySize: objects.size,

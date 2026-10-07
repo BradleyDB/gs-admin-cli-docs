@@ -1870,7 +1870,8 @@ check("e2e: blank term → exit 1", emptyTerm.status === 1, emptyTerm.stderr?.sl
       a.md.includes("Power List sources (2, 1 resolved) contribute the objects, connection and output fields their rule's tasks READ") && a.md.includes("a match means the list reads the object, never how it filters it"),
     a.md.split("\n").filter((l) => l.includes("Power List")));
   // F-487 reopen: the object registry on the tenant-wide surface
-  doc4("data-management", "company", "company", DM_OBJECT_COMPANY, ["- objectId: gsid-company-0001", "- label: Company", "- dbName: company_acme"]);
+  // the REAL doc shape (F-487 second reopen): the first `- name:` is the manifest's display name (the label); the system name is `- id:`
+  doc4("data-management", "company", "Company", DM_OBJECT_COMPANY, ["- objectId: gsid-company-0001", "- name: company", "- label: Company", "- dbName: company_acme"]);
   const d1 = run4("--object", "company");
   check("e2e F-487 reopen (class test i): --object by the SYSTEM NAME matches the Power List program; the row carries the system name with the label beside it; registry counts on the JSON surface",
     d1.s?.counts?.journeysMatched === 1 && d1.md.includes('company ("Company")') && d1.s?.counts?.objectRegistryDocs === 1 && d1.s?.counts?.objectRegistrySize === 1, { counts: d1.s?.counts, rows: d1.md.split("\n").filter((l) => l.includes("company")).slice(0, 3) });
