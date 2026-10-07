@@ -1590,6 +1590,7 @@ mechanism is a new number).
 - P0 — provenance: the dev-canary token matches the Under test line (the branch's handoff token); `report` shows
   the journey domain at depth full for the programs the round will name (a shallow KB has no Power List sources to
   find — say so and stop, it is not a failure of the fix).
+  CLEARED (F-487 acceptance round @ hb-20261006-01, tester, 2026-10-06; production, reads only). The dev-canary token read hb-20261006-01 in session, equal to the Under test line; report: journey documented at depth full from the deep crawl, order 10^2 Power List programs among them.
 - P1 — refresh step 3b, first run: `/gs-superadmin:refresh` (the user types it). Pass bar: the step's
   `power-list-gaps.mjs` summary names the recorded rules folder and `ruleId`; `missing` equals the number of
   distinct Power List rules the documented programs reference minus any already documented; the partial upsert
@@ -1597,8 +1598,10 @@ mechanism is a new number).
   with `moreRemaining: false` and the rules folder holds one new raw doc per registered rule whose fence carries
   `ruleType: ADVANCED_OUTREACH_QUERY_BUILDER`; the report carries the "Power Lists:" line with "still missing" 0 (or
   names the stop rule / auth abort that left some). Record the order of magnitude of calls and the elapsed time.
+  CLEARED (F-487 acceptance round @ hb-20261006-01, tester, 2026-10-06; production, reads only). Bradley typed the refresh; step 3 ran as written first (on his ruling). Summary: rules folder and ruleId from the manifest recording; distinctRules order 10^2, documented 0, missing equal to it, the list equal id-for-id to an independent count from the program docs. Partial upsert: added = missing, no recording flag, no warning, the domain's list stamp untouched. Describe loop: 26 invocations of at most 15, moreRemaining false, 0 failed, no aborted; one new raw doc per registered rule, every fence ADVANCED_OUTREACH_QUERY_BUILDER (checked independently over every doc). Report line: still missing 0. Cost: order 10^2 calls (one describe per rule), about 21 minutes, plus step 3's order 10^1 list calls. Note (the bus verdict's instance 4): "still missing" read from a re-run of 3b-1 is 0 by construction once 3b-2 has registered, so it cannot report a describe that never landed.
 - P2 — refresh step 3b, second run, same workspace: `missing: 0`, nothing registered, no describe spawned. The
   "pleasant surprise" is a one-time cost.
+  CLEARED (F-487 acceptance round @ hb-20261006-01, tester, 2026-10-06; production, reads only). Second refresh, same workspace: missing 0, an empty work list, no upsert, no describe; the rules folder unchanged. Step 3's rules re-list raised only the recency-filtered shortfall warning it raised before the Power List entries existed.
 - P3 — deps-report, tenant-wide: `/gs-superadmin:deps-report --object <the SFDC object most lists read>
   --connection <the SFDC connection name>` (the tester invokes it). Pass bar: the Journey programs section lists
   the Power List programs with usage "Power List source object" / "Power List output field", the detail naming the
@@ -1609,20 +1612,26 @@ mechanism is a new number).
   absent; the caveat "a match means the list reads the object, never how it filters it" is present; no row and
   no caveat says "no CLI surface". The four programs Bradley checked on 2026-10-06 are among the matches with the
   objects the UI showed.
+  CLEARED (F-487 acceptance round @ hb-20261006-01, tester, 2026-10-06; production, reads only) for its terms (the SFDC object most lists read, the SFDC connection's name): usages "Power List source object" / "Power List output field"; detail names the list and the task; the connection column carries the connection's name and type from the connectors lane; connection matched on the name; no Power List listed as a rule, the "N doc(s) under rules-engine/ are Power List rules" caveat present; journeyPowerListRulesMissing 0, no missing-doc caveat; the filter sentence present; no "no CLI surface" text. Differential against the raw rule docs: order 10^2 programs expected, the same set reported, 0 missing, 0 extra. The UI programs: the three in the KB match with the UI's objects; two are post-crawl and unmeasured. Gainsight-object terms, which this check's terms do not reach, fail: the bus verdict's instance 1.
 - P4 — email-report deps mode: `/gs-superadmin:email-report` deps with `--object <that object>` and `--kb <slug>`
   (the tester invokes it). Pass bar: the same programs match; the provenance table's cell reads "Power List
   **<name>** (rule `<id>`) — reads <objects> via <connection|Gainsight>; filters not returned by the CLI — see
   detail below"; a "### Power List detail" block lists each task with its object, where it reads it and its output
   fields, derived tasks naming their upstream task, and "filters: not returned by the CLI"; deps-sources.csv (when
   `--csv` is passed) carries the `rule_id` column; the standing caveat carries the Power List sentence.
+  CLEARED (F-487 acceptance round @ hb-20261006-01, tester, 2026-10-06; production, reads only). Same programs as P3's object half; provenance cell "Power List **<name>** (rule <id>) — reads <objects> via connection <GUID> | via Gainsight; filters not returned by the CLI — see detail below" (the connection is a GUID on this surface, which the Fix note scopes naming away from); the Power List detail block lists each task with its object, where it reads it and its output fields, derived tasks naming their upstream task id, and "filters: not returned by the CLI"; deps-sources.csv carries rule_id; the standing caveat carries the Power List sentence.
 - P5 — a dynamic program: both reports over `--object <the object a dynamic program's dynamic field reads>`
   (one of the two dynamic programs checked on 2026-10-06). Pass bar: the program matches through a "dynamic
   field" and/or "branch condition" row; its provenance cell reads "Dynamic query `<id>` — dynamic program — its
   participant query is not returned by any CLI command"; the standing caveat carries the dynamic-program sentence.
+  FAILED (F-487 acceptance round @ hb-20261006-01, tester, 2026-10-06; production, reads only). The dynamic program matches on both surfaces through "dynamic field" and "branch condition" rows, and the tenant-wide report carries the dynamic-program caveat. Email-report renders no provenance cell for it and its standing caveat has no dynamic-program sentence (summary querySources 0): program-level rows carry no sourceRef and provenance is built from sourceRef rows only, so the cell is unreachable on an --object match. Measured on one of the two dynamic programs Bradley checked (the other is post-crawl).
 - P6 — a lookup-path field: `--field <an SFDC field a list reads through a relationship, e.g. the related
   Account's 18-digit id field>` matches exactly on the field's own API name (the relationship prefix stripped),
   on the related object.
+  CLEARED (F-487 acceptance round @ hb-20261006-01, tester, 2026-10-06; production, reads only) for the one-hop path named here: --field <the related object's 18-digit id field> matches on that field's own API name, on the related object, on both surfaces; differential against the raw docs: order 10^2 programs expected, the same set reported. A multi-hop path keeps a prefix and misses: the bus verdict's instance 2.
 - P7 — the honesty arm: delete (or rename) ONE Power List rule doc from the rules folder, re-run P3. Pass bar: that
   program's rows through the list disappear, and ONE aggregate caveat names the rule id, the program count, the
   resolved ratio and `/gs-superadmin:refresh` as the remedy; restore the doc (or re-run refresh, which re-registers
   it — P2's "nothing registered" no longer holds for that one, say so).
+  FAILED (F-487 acceptance round @ hb-20261006-01, tester, 2026-10-06; production, reads only). With one rule doc moved out (and restored after): that program's Power List rows disappear and ONE aggregate caveat names the rule id, the resolved ratio and /gs-superadmin:refresh — but its program count is every Power List program in the KB, not the one that references the rule; and refresh's 3b-1 on that state prints missing 0 (the manifest says documented), so the named remedy re-registers nothing. Refresh was not re-run against the tenant; its deterministic first step was.
+Section FAILED (F-487 acceptance round @ hb-20261006-01, tester, 2026-10-06; production, reads only): P5 and P7 failed, F-487 reopened; P0 to P4 and P6 cleared. The section stays the live arm of F-487's next round.
