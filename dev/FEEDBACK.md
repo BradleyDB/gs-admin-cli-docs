@@ -158,6 +158,16 @@ Walk (hb-20261003-03): 2026-10-03 (tester) — S1-V second re-run, the first ful
 Walk (hb-20261003-02): 2026-10-03 (tester) — S1-V re-run, the verdict round for ENG-1 and ENG-2 (feature items, no bus section carries them) and F-470's re-verification, against dev/VALIDATION.md section ENG-2 on the production tenant, reads only: V0 confirmed by Bradley; run 1 (plan) ok; run 2 (full) ended partial, exit 4, so no snapshot was built; V8 FAILED, F-471 and F-472 logged; runs 3-5 not run, on Bradley's call; F-470 stays FIXED, V9 not measurable. Detail in the tester comment below and in VALIDATION section ENG-2.
 Walk (hb-20261004-01): 2026-10-04 (tester) — S1b verdict round, a RE-VERIFICATION of F-478 (W0, offline: its repro through the real process and the stand-in CLI) and of dev/VALIDATION.md section ENG-2 / LTR-9 / F-478, W1 to W5 (feature items ENG-2 and LTR-9, no bus section carries them), on the production tenant, reads only: W0 passed on all three arms, F-478 VERIFIED; all six live plans and both runs completed (exit 0); every owed check passed; the accounts-off pull took 5.2 minutes against the plan's 327 s; nothing logged; VALIDATION section CLEARED; PR #37 ready to merge (the merge is Bradley's). No SKILL.md changed, so no walk was owed. Detail in the tester comment below and in that VALIDATION section.
 
+<!-- builder 2026-10-06 (F-487 — POINTER: the fix rides an UNMERGED branch; F-487 flipped FIXED on it; next free F-488):
+     Branch: feat/f487-power-list-sources at 95d2c8a (the F-487 batch c32da73 + the handoff commit). PR: #41 to dev, open, unmerged,
+       awaiting the F-487 verdict round. Handoff: hb-20261006-01 minted on the branch (Under test + Blind spots lines and the canary
+       live there; dev's own Under test line still names the S4a round, which is correct for dev).
+     Status transitions on the branch: F-487 OPEN -> FIXED (Class: reader-shape; Fix/Judge/Sibling sweep/Pass bar in the entry).
+       Numbers consumed: none (no new finding logged). Live checks banked: dev/VALIDATION.md section F-487 (P0 to P7).
+     Polish carried, untouched by this round (scheduled elsewhere): F-482, F-483, F-486 (S3b/S4b); normal F-476, F-484 (S3b).
+     CI on the PR head 95d2c8a: the PR suite runs on it (not a [skip ci] tip) — per-job conclusions to be quoted here
+       after they finish (F-340), re-stamped with the merge sha when #41 merges.
+     Dashboards work not touched: engagement*.mjs, dashboard-*.mjs, the email-engagement skill. -->
 <!-- builder 2026-10-05 (JO-dashboards S4a CLOSED OUT — PR #40 merged (1eb993c) after R1; F-485 FIXED (verdict at V2); F-476, F-483, F-484 ride S3b with F-482, F-486 rides S4b; next free F-487):
      R1, the design review as something people use, ran today with Bradley in the session (no code, no PR, no tenant).
        Every finding was ruled; none asked for a change to PR #40's code, and none removes or re-types a T-10 or T-11
