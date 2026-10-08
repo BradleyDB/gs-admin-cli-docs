@@ -50,9 +50,33 @@ F-483 and F-484):
   The shipped category list is empty until the product wordings are captured from a real
   tenant; `--failure-categories <file.json>` adds your own, and `--expected-reason <text>`
   names failures that are expected by design, kept apart from the rest and never hidden.
-  Participant failures are a per-program total with no breakdown: on this CLI the reason
-  field accepts no filter at all (its schema says so), and the snapshot says so wherever
-  the breakdown would be. The million-row read the first live pull made is gone.
+  Participants refused at entry are an exact per-program total and an exact count per
+  month: on this CLI the reason field accepts no filter at all (its schema says so), so the
+  split by reason is a SAMPLE, read one small page per program (the most recent refusals,
+  newest first) and labelled as one wherever it is shown. The shipped list of expected
+  refusals is the product's own wordings (already in the participant list, unique criteria,
+  met the advanced criteria, unsubscribed, opted out, on the bounce list); a missing email
+  address is not expected. The million-row read the first live pull made is gone.
+- **A sample is read per program, never as the first page of a tenant-wide read.** One
+  program outside the selection used to fill the page. Now each selected program with
+  failures gets its own page, most failures first, at most `--sample-programs` (25) a pull;
+  a program whose failure counts did not move since the previous pull keeps that pull's
+  sample at no call; the programs the cap left out are named, and `plan` prices reading
+  them so raising the cap is an informed choice.
+- **Program health is read from signals, each from its own data, and never inferred from
+  the schedule.** Measured on a real tenant: the schedule's own run-state fields are unset
+  even on programs that run daily, so no run result is read from them. The one heartbeat an
+  ingest leaves is the participant source's last sync time, read tenant-wide in one call;
+  beside it the pull reads participants admitted per day, refusals per month, and
+  participants who got in and fell off at a step, counted on the server by category (a
+  step whose action failed, a platform error, a bounce drop, a record delete). Sends are
+  judged against the program's own history for every program: an ingest cron says nothing
+  about when a program sends. The lists an admin reads are: Schedule ended, Participant
+  sync disabled, Participant sync overdue, Only refused participants arriving, Admitting
+  nobody (no admission over the last `--quiet-due-days` due days, 5 by default), Step
+  errors this period, No recent sends, Finished campaign (a one-off with no participant
+  still moving), Active with no sends in this window, Cannot judge, and Working as
+  expected. The capped live `jo p describe` read of flagged programs is gone.
 - **Health is sized before it is read.** The plan now makes one server-side count for
   every family that reads rows (clicked sends, bounced attempts, failed participants) and
   prices those families from it, so the estimate covers the splits a large tenant forces.
@@ -63,22 +87,22 @@ F-483 and F-484):
   calls start, not when the run directory is made, and a run resumed after midnight keeps
   the day it was planned on (`--today` still overrides). The "different parameters"
   refusal names the parameter that moved.
-- **Silent programs, judged by their own cadence.** A program with a readable recurring
-  schedule is judged from its cron: when it was last due and whether a send is logged
-  since ("Possible silent failure"; a quarterly program is not flagged at 30 days). For
-  each program flagged, its schedule's last-run result is read live (one describe each, at
-  most 25 a pull): a failed run reads "Schedule run failed". One-time and ad-hoc programs
-  get their own list with their last send, months and emails; event-driven and hand-fed
-  programs are judged against their own history ("No recent sends"); an Active program
-  with no send in the window is listed apart. A cron the small built-in calculator cannot
-  read falls back to the flat threshold and says so. A program whose period is longer than
-  the lookback window reads "cannot judge", and `plan` reports the longest period among
-  the programs so a longer `--health-lookback-days` (up to a year) can be chosen.
+- **The cron calculator** (6 or 7 Quartz fields, lists, ranges, steps, names, L, X#n, XL)
+  decides when an ingest was last due. A cron it cannot read says so and never alarms on
+  its own; a schedule whose period is longer than the lookback window reads "cannot
+  judge", and `plan` reports the longest period among the programs so a longer
+  `--health-lookback-days` (up to a year) can be chosen.
 - **Every program's schedule rides every pull made with a knowledge base**, whether or not
-  health is pulled (`dimensions.programs[].schedule`), so a grouping rule on "recurring"
-  resolves on any dashboard. Step names carry the date they are as of, and a caveat names
-  the oldest. The schedule caveat now says what is true: the knowledge base is refreshed on
-  configuration changes, so a run that began failing later shows only through the live read.
+  health is pulled (`dimensions.programs[].schedule`, with its start and end dates), so a
+  grouping rule on "recurring" resolves on any dashboard, and a schedule whose kind the doc
+  does not settle leaves that trait unknown rather than "not recurring". Step names carry
+  the date they are as of, and a caveat names the oldest.
+- **Error messages are masked harder**: a recipient's mail host becomes `<host>`, and a
+  gateway's message id with dots, hyphens, underscores, plus, slash or equals signs becomes
+  `<id>`.
+- **Every output says what is still provisional**: opens keep arriving on sends from the
+  first of the current month, and bounces and unsubscribes can still change on the months a
+  refresh reads again (the last `--repull-months`, 2 by default).
 - **Test accounts are excluded on the server** (`--test-account <company id>`, repeatable):
   one call per family for the accounts and one for their overlap with each internal
   domain, and they join the internal class, so the one recipients toggle covers both.

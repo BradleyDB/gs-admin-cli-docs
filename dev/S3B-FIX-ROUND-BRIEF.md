@@ -95,7 +95,15 @@ class (F-492). `provisionalSpan/provisionalText` (F-493) used by dataPulledLine,
 incomplete-period caveat, engagement-report leadCaveats, dashboard-runtime footnote.
 programTraits.recurring null for pass-through labels (F-494).
 
-## Build checklist (state at the time of writing)
+## Build checklist (every item done 2026-10-07; the round is handed off — see the bus header's Under test line for the token)
+
+State after the round (2026-10-07, build session, post-compaction): every item below is DONE and committed on
+feat/jo-dash-s3b-health-batch (PR #43). The mutation sweep ran with predictions written first: 8 mutants, 7 killed,
+M8 (the provisional flags-from clamp) survived AS PREDICTED — no committed check has the re-pull horizon later than
+the incomplete-from day; a vacuity for V2 to read on a 1-month re-pull, not a defect. The bus carries the Fix notes,
+the two copy-outs (F-484, F-491) and the handoff block; dev's pointer comment is re-stamped after the mint. What is
+left is the TESTER's: V2 on this token (Y2, Y6, Y17, Y18), then the merge of PR #43 on Bradley's go-ahead. The plan's
+DSH-3 carries the two interview questions (quiet due days, sample cap) for S5.
 
 - [x] engagement-query.mjs: SOURCES, MASK_RULES, FAILURE_CATEGORIES defaults,
       STEP_FAILURE_CATEGORIES, CAVEATS (incomplete-period, schedules-from-kb,
@@ -108,8 +116,8 @@ programTraits.recurring null for pass-through labels (F-494).
       matchCategory, reduce (new tables, samples, caveats, meta.health.samples), loadRun, CLI.
 - [x] jo-report.mjs normSchedule startTime/endTime; dashboard-groups.mjs recurring (F-494);
       engagement-report.mjs + dashboard-runtime.mjs provisional text.
-- [ ] engagement-report.mjs: add `provisionalText` to its engagement-query import.
-- [ ] Fixture acme-tenant.mjs: `ao_participant_source_configuration` table + schema
+- [x] engagement-report.mjs: add `provisionalText` to its engagement-query import.
+- [x] Fixture acme-tenant.mjs: `ao_participant_source_configuration` table + schema
       (ActiveVersion, Deleted, LastSyncedOn, ParticipantSourceType, ParticipantOperationType,
       AdvancedOutreachId); participants gain CreatedAt/ModifiedAt/FailureReasons (step
       failures for DROP/KNOCKED_OFF/SYSTEM_ERROR rows with the product wordings above);
@@ -118,7 +126,7 @@ programTraits.recurring null for pass-through labels (F-494).
       program; an "outsider" draft program holding more refusals than a page — F-484's class
       test); rpRun honors `--order-by`; the FAILURE_REASONS texts should include the shipped
       expected wordings so the sample split has expected rows.
-- [ ] Tests: test/engagement.mjs (replace the silent/live-read checks with signal checks;
+- [x] Tests: test/engagement.mjs (replace the silent/live-read checks with signal checks;
       F-484 class test: every selected program with failures gets a sample or is named;
       samples per program, order-by, cap + carry; step categories oracle; sources/admissions
       oracles; mask F-492 cases; `MASK_RULES.length` 6), test/engagement-query.mjs
@@ -132,23 +140,23 @@ programTraits.recurring null for pass-through labels (F-494).
       test/engagement-report.mjs freshness line, test/tenant-deps.mjs (F-488 caveat names
       programs). Regenerate goldens: `node test/engagement.mjs --write-golden`,
       `node test/engagement-query.mjs --write-golden` (+ report golden if the suite has one).
-- [ ] F-488 tenant-deps.mjs: the aggregate caveat names each unresolved rule's referencing
+- [x] F-488 tenant-deps.mjs: the aggregate caveat names each unresolved rule's referencing
       programs (name + id, capped at 10 per rule, cap stated) and the "not evidence" clause.
-- [ ] F-489 refresh SKILL.md step 3b-3 fallback sentence (`--command "gs-admin --json re r
+- [x] F-489 refresh SKILL.md step 3b-3 fallback sentence (`--command "gs-admin --json re r
       describe --id {id}"` when the domain has no recorded describe) + setup SKILL.md pointer.
-- [ ] F-490 dev/RELEASE-CHECKLIST.md: drop the "project-memory chronicle tail" clause.
-- [ ] CHANGELOG 0.47.0 health bullets rewritten (signals, samples per program, flags).
-- [ ] Plan: HLT-1 "Rulings (Bradley, 2026-10-07)" block + As-shipped (S3b fix round);
+- [x] F-490 dev/RELEASE-CHECKLIST.md: drop the "project-memory chronicle tail" clause.
+- [x] CHANGELOG 0.47.0 health bullets rewritten (signals, samples per program, flags).
+- [x] Plan: HLT-1 "Rulings (Bradley, 2026-10-07)" block + As-shipped (S3b fix round);
       DSH-3: the quiet-due-days interview question; session ledger line.
-- [ ] dev/VALIDATION.md § HLT-1 re-bank for V2: Y2 participant half → per-program samples;
+- [x] dev/VALIDATION.md § HLT-1 re-bank for V2: Y2 participant half → per-program samples;
       Y6 replaced by the signals (each list read true by Bradley; the admitting-nobody
       threshold; a finished campaign reads finished); new Y17 sources heartbeat vs UI; Y18
       step categories; CONTAINS case-insensitivity banked as measured.
-- [ ] Bus: F-484 Fix (second fix after one reopen; Judge; Sibling sweep; mutation copy-out),
+- [x] Bus: F-484 Fix (second fix after one reopen; Judge; Sibling sweep; mutation copy-out),
       F-491 Fix + Redesign: line (first fix, but the mechanism is being replaced — name the
       model replaced), F-492/F-493/F-494/F-488/F-489/F-490 Fix notes; F-486 carried to S4b.
       Then `dev-utils handoff --blind-spots "..."` on the branch; pointer comment on dev.
-- [ ] Run: `node plugins/gs-superadmin/test/engagement.mjs`, engagement-query, dashboard-groups,
+- [x] Run: `node plugins/gs-superadmin/test/engagement.mjs`, engagement-query, dashboard-groups,
       dashboard-page, engagement-report, contract-conformance, tenant-deps,
       trace-reader-shapes; `npm run build:reader-shapes`; `npm run typecheck`;
       `node build/check-stale-facts.mjs`; mutation sweep with predictions written first.

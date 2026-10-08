@@ -1619,6 +1619,41 @@ the check depends on them, and V2 re-measures nothing it does not need to.
   `--today` set to the day before, then run with no `--today` — exit 0, the plan's day kept, its day-derived fields
   the plan's; the same with `--today` set to today refused before any call ("today moved"). F-482, F-483 VERIFIED.
 
+### Re-banked for V2 after the S3b fix round (builder, 2026-10-07, feat/jo-dash-s3b-health-batch; the branch's next handoff token)
+
+Y2's participant half and Y6 are REPLACED by the versions below (F-484's second fix reads the samples per program;
+F-491's redesign replaced the cadence rules with signals). Y17 and Y18 are new. The build session measured the
+shapes on 2026-10-07 (brief: `dev/S3B-FIX-ROUND-BRIEF.md`); V2 re-measures nothing it does not need to.
+
+- Y2 (participant half, re-banked). Y1's flags: `failureSamples` holds participant-failure rows for EVERY selected
+  program with refusals in the window (`entryFailures`), each read by its own call (`--order-by` ModifiedAt DESC,
+  one program in the IN filter, the day window), never a tenant-wide page; `entrySamples` splits each program's
+  sample by the shipped expected categories; `meta.health.samples.participantFailures` names what the cap left out
+  (none at 25 on this tenant, or the exact programs with reason cap) and the plan printed `withFailures`,
+  `planned`, `beyondCap` and `secondsBeyondCap`. Bradley reads the samples and the split per program: the
+  expected ones read as business rules working, the null-address ones as data problems. Pass bar: no selected
+  program with refusals lacks a sample unless named; the "Other" (uncategorised) share per program is small and
+  its texts are product wordings not yet in the list (capture them into `--failure-categories`).
+- Y6 (the lists, re-banked). `programHealth(snapshot).lists` over Y1's snapshot. Pass bar: Bradley reads each list
+  and every one must read true to him — Schedule ended (a schedule past its end date; none expected on this tenant
+  unless one exists), Participant sync disabled (the list's flag), Participant sync overdue (a daily ingest whose
+  source last synced before its last due day — read the two programs with sync ages over 120 days measured at the
+  build), Admitting nobody (zero admissions over the last 5 due days with an ingest that runs), Only refused
+  participants arriving, Step errors this period (the programs whose participants carry the CTA-step wording or a
+  SYSTEM_ERROR this month or last), No recent sends (own history), Finished campaign (one-offs with nothing in
+  flight: the DRIPV2 programs synced once at creation), Working as expected. Record the counts per list and the
+  signals of two programs per alarm list; for one program on each alarm list, Bradley's read of the Gainsight UI.
+  The threshold: a second read of the lists with `--quiet-due-days 2` moves the admitting-nobody line as expected.
+- Y17 (the heartbeat is the ingest). For five Active programs with a daily cron: `facts.health.sources[].lastSyncedOn`
+  against the program's last run in the UI (date and time). Pass bar: equal to the day for every one; a program
+  whose sync is older than its cron's last due day shows no newer run in the UI.
+- Y18 (step failures by category). `facts.health.stepFailures` for the current and previous month, against a direct
+  `rp run` COUNT of `ao_participants` with `FailureReasons IS_NOT_NULL` grouped by program and month (total), one
+  CONTAINS per shipped pattern and the SYSTEM_ERROR state. Pass bar: identical per program and month; "other" is
+  the remainder and never below zero; the platform-error months match the incident dates Bradley knows.
+- Banked as measured, not owed: the server's CONTAINS is case-insensitive (four casings of one wording returned
+  one count, 2026-10-07).
+
 ## DSH-2 — the dashboard page built over a real snapshot: filtered in a browser, its size measured, a CSV export opened in a spreadsheet (banked 2026-10-04, builder, Session S4a; verdict at V2)
 
 Owed by: V2, the batched verdict session after S4c, in the consumer workspace with the plugin loaded from `dev`

@@ -130,8 +130,9 @@ lines, never fenced blocks (F-328).
 - [ ] Bus close-out comment = the filled-in Release note below.
 - [ ] Next free F-number stated (max across BOTH files' `## F-` headers + header
       claims).
-- [ ] Ledgers that track this program: handoff plan session ledger line (if a program
-      is in flight) and the project-memory chronicle tail.
+- [ ] Ledgers that track this program: the handoff plan's session ledger line (if a
+      program is in flight). (No project-memory chronicle exists; the clause that named
+      one was removed, F-490.)
 - [ ] Consumer refresh reminder — BOTH commands, in order:
           claude plugin marketplace update <marketplace>
           claude plugin update gs-superadmin@<marketplace>

@@ -300,7 +300,10 @@ node .gs-superadmin/plugin/scripts/manifest.mjs mark --manifest <slug>/_manifest
    domain's recorded `re r describe --id {id}` is the default command; `--limit` ~10–15
    per invocation; re-invoke until `moreRemaining` is false (under `--keys-file` that
    means "named keys still untried"); the stop rule and the `aborted` handling are setup
-   Phase 5's:
+   Phase 5's. When the rules domain carries NO recorded describe command (a legacy
+   manifest, or one indexed for the journey domain alone), describe-batch refuses naming
+   `--command`: re-run the same invocation with `--command "gs-admin --json re r describe
+   --id {id}"` (F-489):
 ```
 node .gs-superadmin/plugin/scripts/describe-batch.mjs --manifest <slug>/_manifest.json --domain <rules-domain> --out-dir <slug>/<rules-domain> --keys-file .gs-superadmin/tmp/pl-gap-keys.json --limit <chunk>
 ```

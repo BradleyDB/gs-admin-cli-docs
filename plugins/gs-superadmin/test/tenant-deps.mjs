@@ -1864,9 +1864,9 @@ check("e2e: blank term → exit 1", emptyTerm.status === 1, emptyTerm.stderr?.sl
     { counts: a.s?.counts, caveats: a.md.split("\n").filter((l) => /Rules Engine:/.test(l)) });
   check("e2e F-487: Power List accounting on the JSON surface (2 sources, 1 resolved, 1 rule missing, 0 QUERY sources)",
     a.s?.counts?.journeyPowerListSources === 2 && a.s?.counts?.journeyPowerListsResolved === 1 && a.s?.counts?.journeyPowerListRulesMissing === 1 && a.s?.counts?.journeyQuerySources === 0, a.s?.counts);
-  check("e2e F-487: ONE aggregate caveat names the missing rule id, the programs that REFERENCE it (not every Power List program), the resolved ratio and the refresh remedy; and the standing filter-limit caveat",
-    a.md.includes("1 Power List rule(s) referenced by 1 journey program(s) have no readable KB doc under rules-engine/ (1 of 2 Power List sources resolved): `pl-missing-9` (1 program(s))") &&
-      a.md.includes("Run `/gs-superadmin:refresh`") && a.md.includes("re-documents every referenced rule whose doc is not readable on disk, whatever the manifest says") &&
+  check("e2e F-487: ONE aggregate caveat names the missing rule id, the programs that REFERENCE it by name and id (F-488: capped, the same facts the JO surface states; not every Power List program), the not-evidence clause, the resolved ratio and the refresh remedy; and the standing filter-limit caveat",
+    a.md.includes("1 Power List rule(s) referenced by 1 journey program(s) have no readable KB doc under rules-engine/ (1 of 2 Power List sources resolved): `pl-missing-9` (1 program(s): Acme Orphan List Program (prog-orphan))") &&
+      a.md.includes("their absence from the tables above is not evidence") && a.md.includes("Run `/gs-superadmin:refresh`") && a.md.includes("re-documents every referenced rule whose doc is not readable on disk, whatever the manifest says") &&
       a.md.includes("Power List sources (2, 1 resolved) contribute the objects, connection and output fields their rule's tasks READ") && a.md.includes("a match means the list reads the object, never how it filters it"),
     a.md.split("\n").filter((l) => l.includes("Power List")));
   // F-487 reopen: the object registry on the tenant-wide surface
