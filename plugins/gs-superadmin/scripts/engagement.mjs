@@ -1818,11 +1818,31 @@ function otherBounceCountsFrom(units, selected, inWindow) {
 function previousFailureCounts(previous, part, inWindow) {
   if (!previous?.facts?.health) return null;
   const counts = new Map();
-  if (part === "participantFailures") for (const r of previous.facts.health.entryFailures ?? []) if (inWindow.has(r.month)) counts.set(r.programId, (counts.get(r.programId) ?? 0) + r.participants);
-  else for (const r of previous.facts.health.bounceReasons ?? []) if (inWindow.has(r.month) && r.category === OTHER_CATEGORY) counts.set(r.programId, (counts.get(r.programId) ?? 0) + r.count);
+  if (part === "participantFailures") {
+    for (const r of previous.facts.health.entryFailures ?? []) if (inWindow.has(r.month)) counts.set(r.programId, (counts.get(r.programId) ?? 0) + r.participants);
+  } else {
+    for (const r of previous.facts.health.bounceReasons ?? []) if (inWindow.has(r.month) && r.category === OTHER_CATEGORY) counts.set(r.programId, (counts.get(r.programId) ?? 0) + r.count);
+  }
   return counts;
 }
-const previousSampledPrograms = (previous, part) => new Set((previous?.facts?.health?.failureSamples ?? []).filter((r) => r.part === part).map((r) => r.programId));
+/** Two program → count maps added together. */
+function addCounts(a, b) {
+  const out = new Map(a);
+  for (const [k, v] of b ?? []) out.set(k, (out.get(k) ?? 0) + v);
+  return out;
+}
+/**
+ * Uncategorised bounces per selected program over the WHOLE window, for the carry test: this pull's rows over
+ * the months it read, plus the previous snapshot's rows over the months a selective refresh carries (those
+ * rows ARE the previous snapshot's, so the sum is what the new snapshot will hold).
+ */
+function otherBounceCountsOverWindow(units, selected, refresh, previous) {
+  const pulled = otherBounceCountsFrom(units, selected, new Set(refresh.pulledMonths));
+  return refresh.mode === "selective" ? addCounts(pulled, previousFailureCounts(previous, "bounceReasons", new Set(refresh.carriedMonths))) : pulled;
+}
+// The programs the previous snapshot holds a sample for: the ones its meta names (sampled or carried; a sample
+// whose page held only null reasons stored no text and still counts), else the ones with stored text.
+const previousSampledPrograms = (previous, part) => new Set(previous?.meta?.health?.samples?.[part]?.programs ?? (previous?.facts?.health?.failureSamples ?? []).filter((r) => r.part === part).map((r) => r.programId));
 
 // Seconds per call, by family: medians measured on CLI 1.0.10, rounded up. An
 // estimate, printed as one; the token check before each call is what decides.
@@ -2243,14 +2263,20 @@ export function fetchEngagement(ctx) {
   // reading it all would cost, so raising --sample-programs is an informed choice. A program whose counts did
   // not move since the previous snapshot keeps its sample and costs no call, so this is an upper bound.
   const inWindowMonths = new Set(monthsBetween(params.window.from, params.window.to));
+  // A sample is carried only by a SELECTIVE refresh: a full one reads everything again, samples included. Both
+  // parts' counts are compared over the whole window (bounces: this pull's months plus the carried months' rows).
+  const carryFrom = refresh.mode === "selective" ? previous : null;
   const selectedSet = new Set(selectedIds);
   const sampleCounts = {
     participantFailures: entryCountsFrom(okUnits("health-entry-month"), selectedSet, inWindowMonths),
-    bounceReasons: new Map([...base.values()].filter((b) => selectedSet.has(b.programId) && inWindowMonths.has(b.month) && (b.bounced ?? 0) > 0).map((b) => [b.programId, 0]).map(([id]) => [id, [...base.values()].filter((b) => b.programId === id && inWindowMonths.has(b.month)).reduce((s, b) => s + (b.bounced ?? 0), 0)])),
+    // At plan time the categories are not counted yet: every bounce in the window is priced as uncategorised (an upper bound).
+    bounceReasons: new Map([...new Set([...base.values()].filter((b) => selectedSet.has(b.programId) && inWindowMonths.has(b.month) && (b.bounced ?? 0) > 0).map((b) => b.programId))].map((id) => [id, [...base.values()].filter((b) => b.programId === id && inWindowMonths.has(b.month)).reduce((s, b) => s + (b.bounced ?? 0), 0)])),
   };
   const samplePlan = (part) => {
-    const t = sampleTargets({ counts: sampleCounts[part], previousCounts: previousFailureCounts(previous, part, inWindowMonths), previousSampled: previousSampledPrograms(previous, part), cap: params.health.samplePrograms });
     const family = part === "participantFailures" ? "health-reasons-sample" : "health-bounce-sample";
+    // With health off the refusals per month were not read, so how many programs would be sampled is unknown (null), not 0.
+    if (part === "participantFailures" && !params.health.pull) return { withFailures: null, planned: 0, carried: 0, beyondCap: 0, secondsEach: CALL_SECONDS[family], secondsBeyondCap: 0, family, note: "counted once health is on" };
+    const t = sampleTargets({ counts: sampleCounts[part], previousCounts: carryFrom ? previousFailureCounts(carryFrom, part, inWindowMonths) : null, previousSampled: previousSampledPrograms(carryFrom, part), cap: params.health.samplePrograms });
     return { withFailures: sampleCounts[part].size, planned: t.sample.length, carried: t.carried.length, beyondCap: t.notSampled.length, secondsEach: CALL_SECONDS[family], secondsBeyondCap: t.notSampled.length * CALL_SECONDS[family], family };
   };
   const samples = { cap: params.health.samplePrograms, participantFailures: samplePlan("participantFailures"), bounceReasons: samplePlan("bounceReasons") };
@@ -2347,7 +2373,7 @@ export function fetchEngagement(ctx) {
   // from the same counts (sampleTargets is pure), so nothing about the choice is stored.
   if (health && !stop && !refusedParts.has("failureSamples")) {
     const sampleWindow = { start: health.dayWindow.start, end: health.dayWindow.end };
-    const picks = (part) => sampleTargets({ counts: part === "participantFailures" ? entryCountsFrom(okUnits("health-entry-month"), selectedSet, inWindowMonths) : otherBounceCountsFrom([...okUnits("health-bounce-total"), ...okUnits("health-bounce-cat")], selectedSet, inWindowMonths), previousCounts: previousFailureCounts(previous, part, inWindowMonths), previousSampled: previousSampledPrograms(previous, part), cap: params.health.samplePrograms });
+    const picks = (part) => sampleTargets({ counts: part === "participantFailures" ? entryCountsFrom(okUnits("health-entry-month"), selectedSet, inWindowMonths) : otherBounceCountsOverWindow([...okUnits("health-bounce-total"), ...okUnits("health-bounce-cat")], selectedSet, refresh, previous), previousCounts: carryFrom ? previousFailureCounts(carryFrom, part, inWindowMonths) : null, previousSampled: previousSampledPrograms(carryFrom, part), cap: params.health.samplePrograms });
     if (health.objects.participantFailures) {
       for (const id of picks("participantFailures").sample) {
         forHealth("failureSamples", () => runUnit({ family: "health-reasons-sample", cls: "all", programs: [id], window: sampleWindow }));
@@ -3092,8 +3118,10 @@ export function reduceEngagement(input) {
       const previousRows = (part) => (previous?.facts?.health?.failureSamples ?? []).filter((r) => r.part === part);
       const previousSplit = (programId) => (previous?.facts?.health?.entrySamples ?? []).filter((r) => r.programId === programId);
       for (const [partName, family, categories] of /** @type {Array<[string, string, ReadonlyArray<*>]>} */ ([["participantFailures", "health-reasons-sample", cats.participantFailures], ["bounceReasons", "health-bounce-sample", []]])) {
-        const counts = partName === "participantFailures" ? entryCountsFrom(of("health-entry-month"), selected, inWindow) : otherBounceCountsFrom([...of("health-bounce-total"), ...of("health-bounce-cat")], selected, inWindow);
-        const targets = sampleTargets({ counts, previousCounts: previousFailureCounts(previous, partName, inWindow), previousSampled: previousSampledPrograms(previous, partName), cap: params.health.samplePrograms });
+        // A sample is carried only by a SELECTIVE refresh, over the whole window's counts (fetch decides the same way).
+        const carryFrom = refresh.mode === "selective" ? previous : null;
+        const counts = partName === "participantFailures" ? entryCountsFrom(of("health-entry-month"), selected, inWindow) : otherBounceCountsOverWindow([...of("health-bounce-total"), ...of("health-bounce-cat")], selected, refresh, previous);
+        const targets = sampleTargets({ counts, previousCounts: carryFrom ? previousFailureCounts(carryFrom, partName, inWindow) : null, previousSampled: previousSampledPrograms(carryFrom, partName), cap: params.health.samplePrograms });
         const read = new Set();
         for (const u of sampleUnitsOf(family)) {
           const programId = u.programs[0];
@@ -3129,7 +3157,7 @@ export function reduceEngagement(input) {
           healthFacts.failureSamples.push(...previousRows(partName).filter((r) => r.programId === programId));
           if (partName === "participantFailures") healthFacts.entrySamples.push(...previousSplit(programId));
         }
-        samplesMeta[partName] = { cap: params.health.samplePrograms, sampled: read.size, carried: targets.carried.length, notSampled: [...targets.notSampled, ...unreadPicks].sort(byKeys("programId")) };
+        samplesMeta[partName] = { cap: params.health.samplePrograms, sampled: read.size, carried: targets.carried.length, notSampled: [...targets.notSampled, ...unreadPicks].sort(byKeys("programId")), programs: [...read, ...targets.carried].sort(cmpKey) };
       }
       healthFacts.failureSamples.sort(byKeys("programId", "part", "message"));
       healthFacts.entrySamples.sort(byKeys("programId", "category"));

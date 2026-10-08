@@ -52,9 +52,68 @@
        "expected": false
       }
      ],
-     "participantFailures": []
+     "participantFailures": [
+      {
+       "id": "already-in-list",
+       "label": "Already in the participant list",
+       "pattern": "Participant already exists in participant list",
+       "definition": "The participant is already in the program, so the source did not add them again.",
+       "expected": true
+      },
+      {
+       "id": "unique-criteria",
+       "label": "Unique criteria already met",
+       "pattern": "Participant with unique criteria already exists",
+       "definition": "A participant with the same unique criteria is already in the program.",
+       "expected": true
+      },
+      {
+       "id": "advanced-criteria",
+       "label": "Met the advanced criteria",
+       "pattern": "Participant has met the advanced criteria",
+       "definition": "The program's advanced criteria excluded the participant, as configured.",
+       "expected": true
+      },
+      {
+       "id": "unsubscribed",
+       "label": "Unsubscribed from a category",
+       "pattern": "Participant has unsubscribed from one or more categories",
+       "definition": "The recipient has unsubscribed from an email category the program sends.",
+       "expected": true
+      },
+      {
+       "id": "global-opt-out",
+       "label": "On the global opt-out",
+       "pattern": "Participant part of Global Opt Out",
+       "definition": "The recipient is on the tenant's global opt-out list.",
+       "expected": true
+      },
+      {
+       "id": "bounce-list",
+       "label": "On the bounce list",
+       "pattern": "Participant part of Bounce list",
+       "definition": "The recipient's address is on the tenant's bounce list.",
+       "expected": true
+      },
+      {
+       "id": "opt-out-at-send",
+       "label": "Opted out at the send step",
+       "pattern": "GlobalOptOut recipient(to) email",
+       "definition": "The recipient was on the global opt-out when the Send Email step ran.",
+       "expected": true
+      },
+      {
+       "id": "no-email",
+       "label": "No email address",
+       "pattern": "Recipient Email Address field contains Invalid value",
+       "definition": "The participant record carries no email address: a data problem at the source.",
+       "expected": false
+      }
+     ]
     },
-    "expectedReasons": []
+    "expectedReasons": [],
+    "samplePrograms": 25,
+    "quietDueDays": 5
    }
   },
   "pulledAt": "2026-09-15T09:00:00-07:00",
@@ -125,6 +184,31 @@
      "pulled": true,
      "reason": null,
      "basis": "sample"
+    },
+    "entrySamples": {
+     "pulled": true,
+     "reason": null,
+     "basis": "sample"
+    },
+    "sources": {
+     "pulled": true,
+     "reason": null,
+     "basis": "at-pull"
+    },
+    "admissions": {
+     "pulled": true,
+     "reason": null,
+     "basis": "lookback"
+    },
+    "entryFailures": {
+     "pulled": true,
+     "reason": null,
+     "basis": "window"
+    },
+    "stepFailures": {
+     "pulled": true,
+     "reason": null,
+     "basis": "window"
     }
    },
    "categories": {
@@ -144,7 +228,40 @@
      "counted": false,
      "reason": "not-filterable",
      "ids": [],
-     "configured": []
+     "configured": [
+      "already-in-list",
+      "unique-criteria",
+      "advanced-criteria",
+      "unsubscribed",
+      "global-opt-out",
+      "bounce-list",
+      "opt-out-at-send",
+      "no-email"
+     ]
+    }
+   },
+   "samples": {
+    "participantFailures": {
+     "cap": 25,
+     "sampled": 2,
+     "carried": 0,
+     "notSampled": [],
+     "programs": [
+      "p-onboard",
+      "p-renew"
+     ]
+    },
+    "bounceReasons": {
+     "cap": 25,
+     "sampled": 4,
+     "carried": 0,
+     "notSampled": [],
+     "programs": [
+      "p-nps",
+      "p-onboard",
+      "p-pilot",
+      "p-renew"
+     ]
     }
    }
   },
@@ -332,10 +449,13 @@
     "supergroup": null,
     "group": null,
     "folderId": "101",
+    "syncScheduleDisabled": false,
     "schedule": {
      "classification": "recurring",
      "cronExpression": "0 0 9 1 * ? *",
      "timeZoneName": "America/Los_Angeles",
+     "startTime": 1767225600000,
+     "endTime": 1830297600000,
      "asOf": "2026-08-20T00:00:00.000Z"
     }
    },
@@ -351,10 +471,13 @@
     "supergroup": null,
     "group": null,
     "folderId": "101",
+    "syncScheduleDisabled": false,
     "schedule": {
      "classification": "recurring",
      "cronExpression": "0 0 8 ? * MON *",
      "timeZoneName": "America/Los_Angeles",
+     "startTime": 1767225600000,
+     "endTime": 1830297600000,
      "asOf": "2026-09-01T00:00:00.000Z"
     }
    },
@@ -370,10 +493,13 @@
     "supergroup": null,
     "group": null,
     "folderId": "303",
+    "syncScheduleDisabled": false,
     "schedule": {
      "classification": "no schedule captured",
      "cronExpression": null,
      "timeZoneName": null,
+     "startTime": null,
+     "endTime": null,
      "asOf": "2026-08-20T00:00:00.000Z"
     }
    },
@@ -390,10 +516,13 @@
     "supergroup": null,
     "group": null,
     "folderId": "202",
+    "syncScheduleDisabled": false,
     "schedule": {
      "classification": "no schedule captured",
      "cronExpression": null,
      "timeZoneName": null,
+     "startTime": null,
+     "endTime": null,
      "asOf": "2026-08-20T00:00:00.000Z"
     }
    },
@@ -409,6 +538,7 @@
     "supergroup": null,
     "group": null,
     "folderId": "303",
+    "syncScheduleDisabled": null,
     "schedule": null
    }
   ],
@@ -3810,12 +3940,14 @@
    "schedules": [
     {
      "programId": "p-nps",
-     "asOf": "2026-09-15T09:00:00-07:00",
-     "source": "live",
+     "asOf": "2026-08-20T00:00:00.000Z",
+     "source": "kb",
      "scheduleType": "CRON",
      "classification": "recurring",
      "cronExpression": "0 0 9 1 * ? *",
      "timeZoneName": "America/Los_Angeles",
+     "startTime": 1767225600000,
+     "endTime": 1830297600000,
      "lastRunSuccess": true,
      "lastSuccessTime": 1756717200000,
      "nextRunTime": 1759309200000,
@@ -3829,6 +3961,8 @@
      "classification": "recurring",
      "cronExpression": "0 0 8 ? * MON *",
      "timeZoneName": "America/Los_Angeles",
+     "startTime": 1767225600000,
+     "endTime": 1830297600000,
      "lastRunSuccess": false,
      "lastSuccessTime": 1756712400000,
      "nextRunTime": 1757926800000,
@@ -3842,6 +3976,8 @@
      "classification": "no schedule captured",
      "cronExpression": null,
      "timeZoneName": null,
+     "startTime": null,
+     "endTime": null,
      "lastRunSuccess": null,
      "lastSuccessTime": null,
      "nextRunTime": null,
@@ -3855,6 +3991,8 @@
      "classification": "no schedule captured",
      "cronExpression": null,
      "timeZoneName": null,
+     "startTime": null,
+     "endTime": null,
      "lastRunSuccess": null,
      "lastSuccessTime": null,
      "nextRunTime": null,
@@ -3865,57 +4003,402 @@
     {
      "programId": "p-nps",
      "part": "bounceReasons",
-     "message": "452 4.2.2 Mailbox full"
+     "message": "452 4.2.2 Mailbox full",
+     "category": null,
+     "expected": false,
+     "count": 1,
+     "pulledAt": "2026-09-15T09:00:00-07:00"
     },
     {
      "programId": "p-onboard",
      "part": "bounceReasons",
-     "message": "452 4.2.2 Mailbox full"
+     "message": "452 4.2.2 Mailbox full",
+     "category": null,
+     "expected": false,
+     "count": 2,
+     "pulledAt": "2026-09-15T09:00:00-07:00"
     },
     {
      "programId": "p-onboard",
      "part": "participantFailures",
-     "message": "Duplicate participant"
+     "message": "Duplicate participant",
+     "category": null,
+     "expected": false,
+     "count": 1,
+     "pulledAt": "2026-09-15T09:00:00-07:00"
     },
     {
      "programId": "p-onboard",
      "part": "participantFailures",
-     "message": "Email address <email> is invalid"
+     "message": "Email address <email> is invalid",
+     "category": null,
+     "expected": false,
+     "count": 2,
+     "pulledAt": "2026-09-15T09:00:00-07:00"
     },
     {
      "programId": "p-onboard",
      "part": "participantFailures",
-     "message": "Missing required field: Email"
+     "message": "Missing required field: Email",
+     "category": null,
+     "expected": false,
+     "count": 1,
+     "pulledAt": "2026-09-15T09:00:00-07:00"
     },
     {
      "programId": "p-onboard",
      "part": "participantFailures",
-     "message": "Participant <id> has no company"
+     "message": "Participant <id> has no company",
+     "category": null,
+     "expected": false,
+     "count": 1,
+     "pulledAt": "2026-09-15T09:00:00-07:00"
+    },
+    {
+     "programId": "p-onboard",
+     "part": "participantFailures",
+     "message": "Participant already exists in participant list",
+     "category": "already-in-list",
+     "expected": true,
+     "count": 2,
+     "pulledAt": "2026-09-15T09:00:00-07:00"
     },
     {
      "programId": "p-renew",
      "part": "bounceReasons",
-     "message": "452 4.2.2 Mailbox full"
+     "message": "452 4.2.2 Mailbox full",
+     "category": null,
+     "expected": false,
+     "count": 2,
+     "pulledAt": "2026-09-15T09:00:00-07:00"
     },
     {
      "programId": "p-renew",
      "part": "participantFailures",
-     "message": "Duplicate participant"
+     "message": "Duplicate participant",
+     "category": null,
+     "expected": false,
+     "count": 1,
+     "pulledAt": "2026-09-15T09:00:00-07:00"
     },
     {
      "programId": "p-renew",
      "part": "participantFailures",
-     "message": "Email address <email> is invalid"
+     "message": "Email address <email> is invalid",
+     "category": null,
+     "expected": false,
+     "count": 1,
+     "pulledAt": "2026-09-15T09:00:00-07:00"
     },
     {
      "programId": "p-renew",
      "part": "participantFailures",
-     "message": "Missing required field: Email"
+     "message": "Missing required field: Email",
+     "category": null,
+     "expected": false,
+     "count": 1,
+     "pulledAt": "2026-09-15T09:00:00-07:00"
     },
     {
      "programId": "p-renew",
      "part": "participantFailures",
-     "message": "Participant <id> has no company"
+     "message": "Participant <id> has no company",
+     "category": null,
+     "expected": false,
+     "count": 1,
+     "pulledAt": "2026-09-15T09:00:00-07:00"
+    },
+    {
+     "programId": "p-renew",
+     "part": "participantFailures",
+     "message": "Participant with unique criteria already exists",
+     "category": "unique-criteria",
+     "expected": true,
+     "count": 1,
+     "pulledAt": "2026-09-15T09:00:00-07:00"
+    }
+   ],
+   "entrySamples": [
+    {
+     "programId": "p-onboard",
+     "category": "already-in-list",
+     "expected": true,
+     "participants": 2,
+     "sampleRows": 8,
+     "pulledAt": "2026-09-15T09:00:00-07:00"
+    },
+    {
+     "programId": "p-onboard",
+     "category": "other",
+     "expected": false,
+     "participants": 5,
+     "sampleRows": 8,
+     "pulledAt": "2026-09-15T09:00:00-07:00"
+    },
+    {
+     "programId": "p-onboard",
+     "category": "unique-criteria",
+     "expected": true,
+     "participants": 1,
+     "sampleRows": 8,
+     "pulledAt": "2026-09-15T09:00:00-07:00"
+    },
+    {
+     "programId": "p-renew",
+     "category": "other",
+     "expected": false,
+     "participants": 4,
+     "sampleRows": 5,
+     "pulledAt": "2026-09-15T09:00:00-07:00"
+    },
+    {
+     "programId": "p-renew",
+     "category": "unique-criteria",
+     "expected": true,
+     "participants": 1,
+     "sampleRows": 5,
+     "pulledAt": "2026-09-15T09:00:00-07:00"
+    }
+   ],
+   "sources": [
+    {
+     "programId": "p-nps",
+     "sourceType": "QUERY_BUILDER",
+     "lastSyncedOn": "2026-09-01 09:03:40",
+     "operation": "ADD_ALL_PARTICIPANT_IN_POWER_LIST"
+    },
+    {
+     "programId": "p-onboard",
+     "sourceType": "QUERY_BUILDER",
+     "lastSyncedOn": "2026-09-14 08:02:11",
+     "operation": "ADD_ALL_PARTICIPANT_IN_POWER_LIST"
+    },
+    {
+     "programId": "p-pilot",
+     "sourceType": "CSV",
+     "lastSyncedOn": null,
+     "operation": "ADD_ALL_PARTICIPANT_IN_POWER_LIST"
+    },
+    {
+     "programId": "p-renew",
+     "sourceType": "CSV",
+     "lastSyncedOn": "2026-03-02 10:00:00",
+     "operation": "ADD_ALL_PARTICIPANT_IN_POWER_LIST"
+    }
+   ],
+   "admissions": [
+    {
+     "programId": "p-nps",
+     "day": "2026-07-15",
+     "participants": 3
+    },
+    {
+     "programId": "p-onboard",
+     "day": "2026-08-01",
+     "participants": 1
+    },
+    {
+     "programId": "p-onboard",
+     "day": "2026-08-02",
+     "participants": 1
+    },
+    {
+     "programId": "p-onboard",
+     "day": "2026-08-03",
+     "participants": 1
+    },
+    {
+     "programId": "p-onboard",
+     "day": "2026-08-04",
+     "participants": 1
+    },
+    {
+     "programId": "p-onboard",
+     "day": "2026-08-05",
+     "participants": 1
+    },
+    {
+     "programId": "p-onboard",
+     "day": "2026-08-06",
+     "participants": 1
+    },
+    {
+     "programId": "p-onboard",
+     "day": "2026-08-07",
+     "participants": 1
+    },
+    {
+     "programId": "p-onboard",
+     "day": "2026-08-08",
+     "participants": 1
+    },
+    {
+     "programId": "p-onboard",
+     "day": "2026-08-14",
+     "participants": 1
+    },
+    {
+     "programId": "p-onboard",
+     "day": "2026-08-15",
+     "participants": 1
+    },
+    {
+     "programId": "p-onboard",
+     "day": "2026-08-16",
+     "participants": 1
+    },
+    {
+     "programId": "p-onboard",
+     "day": "2026-08-17",
+     "participants": 1
+    },
+    {
+     "programId": "p-onboard",
+     "day": "2026-08-18",
+     "participants": 1
+    },
+    {
+     "programId": "p-onboard",
+     "day": "2026-08-19",
+     "participants": 1
+    },
+    {
+     "programId": "p-onboard",
+     "day": "2026-08-20",
+     "participants": 1
+    },
+    {
+     "programId": "p-onboard",
+     "day": "2026-08-21",
+     "participants": 1
+    },
+    {
+     "programId": "p-onboard",
+     "day": "2026-08-22",
+     "participants": 1
+    },
+    {
+     "programId": "p-onboard",
+     "day": "2026-08-23",
+     "participants": 1
+    },
+    {
+     "programId": "p-onboard",
+     "day": "2026-08-24",
+     "participants": 1
+    },
+    {
+     "programId": "p-onboard",
+     "day": "2026-08-25",
+     "participants": 1
+    },
+    {
+     "programId": "p-onboard",
+     "day": "2026-08-26",
+     "participants": 1
+    },
+    {
+     "programId": "p-onboard",
+     "day": "2026-08-27",
+     "participants": 1
+    },
+    {
+     "programId": "p-unlisted",
+     "day": "2026-08-01",
+     "participants": 1
+    },
+    {
+     "programId": "p-unlisted",
+     "day": "2026-08-02",
+     "participants": 1
+    },
+    {
+     "programId": "p-unlisted",
+     "day": "2026-08-03",
+     "participants": 1
+    },
+    {
+     "programId": "p-unlisted",
+     "day": "2026-08-04",
+     "participants": 1
+    },
+    {
+     "programId": "p-unlisted",
+     "day": "2026-08-05",
+     "participants": 1
+    },
+    {
+     "programId": "p-unlisted",
+     "day": "2026-08-27",
+     "participants": 1
+    }
+   ],
+   "entryFailures": [
+    {
+     "programId": "p-onboard",
+     "month": "2026-07",
+     "participants": 3,
+     "occurrences": 3
+    },
+    {
+     "programId": "p-onboard",
+     "month": "2026-08",
+     "participants": 2,
+     "occurrences": 4
+    },
+    {
+     "programId": "p-onboard",
+     "month": "2026-09",
+     "participants": 2,
+     "occurrences": 6
+    },
+    {
+     "programId": "p-renew",
+     "month": "2026-07",
+     "participants": 2,
+     "occurrences": 2
+    },
+    {
+     "programId": "p-renew",
+     "month": "2026-08",
+     "participants": 1,
+     "occurrences": 2
+    },
+    {
+     "programId": "p-renew",
+     "month": "2026-09",
+     "participants": 1,
+     "occurrences": 3
+    }
+   ],
+   "stepFailures": [
+    {
+     "programId": "p-onboard",
+     "month": "2026-08",
+     "category": "bounce-drop",
+     "expected": true,
+     "participants": 2
+    },
+    {
+     "programId": "p-onboard",
+     "month": "2026-08",
+     "category": "record-delete",
+     "expected": true,
+     "participants": 3
+    },
+    {
+     "programId": "p-unlisted",
+     "month": "2026-08",
+     "category": "bounce-drop",
+     "expected": true,
+     "participants": 1
+    },
+    {
+     "programId": "p-unlisted",
+     "month": "2026-08",
+     "category": "record-delete",
+     "expected": true,
+     "participants": 1
     }
    ]
   }
@@ -3939,7 +4422,7 @@
    "unreadable": 0
   },
   "calls": {
-   "answered": 66,
+   "answered": 78,
    "split": 0,
    "retried": 0
   },
@@ -3977,14 +4460,11 @@
    "unreadableRows": 0,
    "schedules": {
     "programsWithDoc": 4,
-    "programsWithout": 1,
-    "flagged": 1,
-    "liveRead": 1,
-    "liveFailed": 0
+    "programsWithout": 1
    },
    "samples": {
     "bounceReasons": 3,
-    "participantFailures": 8
+    "participantFailures": 10
    },
    "categories": {
     "overlapRows": 0
@@ -4072,10 +4552,7 @@
   {
    "id": "schedules-from-kb",
    "detail": {
-    "oldest": "2026-08-20T00:00:00.000Z",
-    "liveRead": 1,
-    "flagged": 1,
-    "cap": 25
+    "oldest": "2026-08-20T00:00:00.000Z"
    }
   },
   {
@@ -4093,6 +4570,12 @@
    "detail": {
     "reason": "not-filterable",
     "expectedReasons": 0
+   }
+  },
+  {
+   "id": "failure-samples-sampled",
+   "detail": {
+    "programs": 2
    }
   }
  ]

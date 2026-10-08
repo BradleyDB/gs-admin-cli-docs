@@ -44,7 +44,7 @@ import { join, resolve } from "node:path";
 import { makeCliHelpers, readJsonFile, readKbIdentity, isMainModule, shq, termKey } from "./doc-lib.mjs";
 import { renderReport, reportPath, mdTable, toCsv, nowIso, ACTIVE_STATUSES } from "./jo-report.mjs";
 import {
-  openSnapshot, accountAvailability, runQuery, formatCell, glossary, glossaryNotes, caveatsFor, dataPulledLine, reasonText, statusLabel, metric, NO_VALUE, STATUS_LABELS,
+  openSnapshot, accountAvailability, runQuery, formatCell, glossary, glossaryNotes, caveatsFor, dataPulledLine, provisionalText, reasonText, statusLabel, metric, NO_VALUE, STATUS_LABELS,
 } from "./engagement-query.mjs";
 
 /** @typedef {import("./engagement.mjs").T10Snapshot} T10Snapshot */

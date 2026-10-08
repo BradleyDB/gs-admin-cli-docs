@@ -90,7 +90,7 @@ const PROGRAMS = [
     id: "p-onboard", name: "Acme Onboarding Chain", model: "DRIPV2", modelName: "Email Chain", statuses: ["PROCESSING"], type: "CUSTOMER", folderId: "101",
     months: monthsBetween(FIRST_MONTH, LAST_MONTH), accounts: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9], perAccount: 2, internalOn: 0,
     // Its last scheduled run FAILED (the health facts read this from the KB doc).
-    schedules: [{ type: "CRON", cronExpression: "0 0 8 ? * MON *", lastRunSuccess: false, lastSuccessTime: 1756712400000, nextRunTime: 1757926800000, runningNow: false, timeZoneName: "America/Los_Angeles", jobType: "PARTICIPANT_SYNC" }],
+    schedules: [{ type: "CRON", cronExpression: "0 0 8 ? * MON *", lastRunSuccess: false, lastSuccessTime: 1756712400000, nextRunTime: 1757926800000, runningNow: false, timeZoneName: "America/Los_Angeles", jobType: "PARTICIPANT_SYNC", startTime: 1767225600000, endTime: 1830297600000 }],
     steps: [
       { stepId: "st-ob-1", stepName: "Welcome", order: 1, templateId: "tpl-welcome", variants: ["var-welcome-a", "var-welcome-b"] },
       { stepId: "st-ob-2", stepName: "Day 7 check-in", order: 2, templateId: "tpl-day7", variants: ["var-day7"] },
@@ -99,7 +99,7 @@ const PROGRAMS = [
   {
     id: "p-nps", name: "Acme NPS Survey", model: "CSAT_SURVEY_V2", modelName: "CSAT Survey", statuses: ["PROCESSING"], type: "CUSTOMER", folderId: "101",
     months: ["2025-10", "2026-01", "2026-04", "2026-07"], accounts: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11], perAccount: 1, survey: true,
-    schedules: [{ type: "CRON", cronExpression: "0 0 9 1 * ? *", lastRunSuccess: true, lastSuccessTime: 1756717200000, nextRunTime: 1759309200000, runningNow: false, timeZoneName: "America/Los_Angeles", jobType: "PARTICIPANT_SYNC" }],
+    schedules: [{ type: "CRON", cronExpression: "0 0 9 1 * ? *", lastRunSuccess: true, lastSuccessTime: 1756717200000, nextRunTime: 1759309200000, runningNow: false, timeZoneName: "America/Los_Angeles", jobType: "PARTICIPANT_SYNC", startTime: 1767225600000, endTime: 1830297600000 }],
     steps: [{ stepId: "st-nps-1", stepName: "Survey email", order: 1, templateId: "tpl-nps", variants: ["var-nps"] }],
   },
   {
@@ -189,6 +189,34 @@ const LAPSED = {
   steps: [{ stepId: "st-lp-1", stepName: "Digest", order: 1, templateId: "tpl-lapsed", variants: ["var-lapsed"] }],
 };
 const CADENCE = [QUARTER, SPORADIC, ONCE, LAPSED];
+// Only with the signals variant (HLT-1 F-491, the health signals). Each is Active and documented in the KB.
+// `lastSync` is the participant source's LastSyncedOn (the ingest heartbeat); `endTime` ends a schedule.
+//   p-ended     weekly schedule that ENDED on 2026-08-01, synced last in July: "Schedule ended"
+//   p-overdue   daily cron, last synced 2026-08-20 though due daily: "Participant sync overdue"
+//   p-nobody    daily cron, synced yesterday, but no participant created since July: "Admitting nobody"
+//   p-refused   like p-nobody, and its recent refusals carry the UNEXPECTED null-email wording: "Only refused participants arriving"
+//   p-steperr   daily cron, synced, admitting; its dropped participants carry the CTA step failure and a
+//               platform error this month: "Step errors this period"
+//   p-disabled  the list says its participant sync is disabled: "Participant sync disabled"
+const DAILY = "0 0 8 * * ? *";
+const sched = (cron, extra = {}) => ({ type: "CRON", cronExpression: cron, lastRunSuccess: false, lastSuccessTime: 0, lastFailureTime: 0, failingSince: 0, nextRunTime: 0, runningNow: false, timeZoneName: "America/Los_Angeles", jobType: "PARTICIPANT_SYNC", startTime: 1767225600000, endTime: 1830297600000, ...extra });
+const ENDED = { id: "p-ended", name: "Acme Ended Chain", model: "DRIPV2", modelName: "Email Chain", statuses: ["PROCESSING"], type: "CUSTOMER", folderId: "808", months: monthsBetween("2026-03", "2026-07"), accounts: [0, 1], perAccount: 1, lastSync: "2026-07-27 08:01:00", schedules: [sched("0 0 8 ? * MON *", { endTime: 1785542400000 })], steps: [{ stepId: "st-en-1", stepName: "Ended note", order: 1, templateId: "tpl-ended", variants: ["var-ended"] }] };
+const OVERDUE = { id: "p-overdue", name: "Acme Overdue Chain", model: "DRIPV2", modelName: "Email Chain", statuses: ["PROCESSING"], type: "CUSTOMER", folderId: "808", months: monthsBetween("2026-06", LAST_MONTH), accounts: [2, 3], perAccount: 1, lastSync: "2026-08-20 08:01:00", schedules: [sched(DAILY)], steps: [{ stepId: "st-ov-1", stepName: "Overdue note", order: 1, templateId: "tpl-overdue", variants: ["var-overdue"] }] };
+const NOBODY = { id: "p-nobody", name: "Acme Nobody Chain", model: "DRIPV2", modelName: "Email Chain", statuses: ["PROCESSING"], type: "CUSTOMER", folderId: "808", months: monthsBetween("2026-05", "2026-07"), accounts: [4, 5], perAccount: 1, lastSync: "2026-09-14 08:01:00", schedules: [sched(DAILY)], steps: [{ stepId: "st-nb-1", stepName: "Nobody note", order: 1, templateId: "tpl-nobody", variants: ["var-nobody"] }] };
+const REFUSED = { id: "p-refused", name: "Acme Refused Chain", model: "DRIPV2", modelName: "Email Chain", statuses: ["PROCESSING"], type: "CUSTOMER", folderId: "808", months: monthsBetween("2026-05", "2026-07"), accounts: [6, 7], perAccount: 1, lastSync: "2026-09-14 08:01:00", schedules: [sched(DAILY)], steps: [{ stepId: "st-rf-1", stepName: "Refused note", order: 1, templateId: "tpl-refused", variants: ["var-refused"] }] };
+const STEPERR = { id: "p-steperr", name: "Acme Step Error Chain", model: "DRIPV2", modelName: "Email Chain", statuses: ["PROCESSING"], type: "CUSTOMER", folderId: "808", months: monthsBetween("2026-06", LAST_MONTH), accounts: [8, 9], perAccount: 2, fixedDay: "14", lastSync: "2026-09-14 08:01:00", schedules: [sched(DAILY)], stepErrors: true, steps: [{ stepId: "st-se-1", stepName: "Step error note", order: 1, templateId: "tpl-steperr", variants: ["var-steperr"] }] };
+const DISABLED = { id: "p-disabled", name: "Acme Disabled Chain", model: "DRIPV2", modelName: "Email Chain", statuses: ["PROCESSING"], type: "CUSTOMER", folderId: "808", months: monthsBetween("2026-06", LAST_MONTH), accounts: [10, 11], perAccount: 1, lastSync: "2026-09-14 08:01:00", syncDisabled: true, schedules: [sched(DAILY)], steps: [{ stepId: "st-di-1", stepName: "Disabled note", order: 1, templateId: "tpl-disabled", variants: ["var-disabled"] }] };
+const SIGNALS = [ENDED, OVERDUE, NOBODY, REFUSED, STEPERR, DISABLED];
+// What the product writes on a participant who got in and fell off at a STEP (ao_participants.FailureReasons;
+// measured 2026-10-07), by the participant's state. `kind` is the oracle's key.
+export const STEP_REASONS = {
+  DROP: [
+    { kind: "bounce-drop", text: (step) => `Email is Bounce, participant is dropped from process at step '${step}'` },
+    { kind: "cta-failed", text: () => "CTA creation failed at step 'Create CTA', Reason: 'Found invalid IDs in fields : OwnerId'" },
+  ],
+  KNOCKED_OFF: [{ kind: "record-delete", text: () => "Participant was dropped from the journey as part of Record Delete operation. The base object record that got deleted was of type: Company_Person" }],
+  SYSTEM_ERROR: [{ kind: "platform-error", text: () => "Failed to evaluate condition, Reason: null" }],
+};
 const BLAST_ACCOUNTS = Array.from({ length: 60 }, (_, i) => ({ Gsid: `co-b${pad(i + 1)}`, Name: `Acme Blast Customer ${pad(i + 1)}` }));
 const BLAST_NAMES = ["ann", "bo", "cy", "dee", "eli", "fay", "gus", "hal", "ivy", "jo", "kit", "lou", "max", "ned", "oz", "pru", "quin", "roy", "sy", "tu"];
 export const OWN_SITE_UNSUBSCRIBE = "https://www.acme.com/mail-settings";
@@ -198,6 +226,7 @@ const TEMPLATE_NAMES = {
   "tpl-renew-b": "Acme Renewal Thanks", "tpl-promo": "Acme Promo", "tpl-unlisted": "Acme Unlisted", "tpl-gone": "Acme Gone",
   "tpl-prefs": "Acme Prefs", "tpl-prefs-mix": "Acme Prefs Follow-up", "tpl-blast": "Acme Announcement", "tpl-quiet": "Acme Quiet",
   "tpl-quarter": "Acme Quarterly", "tpl-sporadic": "Acme Sporadic", "tpl-once": "Acme One-time", "tpl-lapsed": "Acme Digest",
+  "tpl-ended": "Acme Ended", "tpl-overdue": "Acme Overdue", "tpl-nobody": "Acme Nobody", "tpl-refused": "Acme Refused", "tpl-steperr": "Acme Step Error", "tpl-disabled": "Acme Disabled",
 };
 // Click behaviour per template (the five R19 fixtures ride on these):
 //   content — content-link clicks are recorded
@@ -244,14 +273,21 @@ export const FIXTURE_BOUNCE_CATEGORIES = [
 ];
 // Which category each bounce kind lands in, written by hand: the oracle's half.
 export const FIXTURE_BOUNCE_KIND_CATEGORY = { "unknown-user": "user-unknown", "unknown-user-local": "user-unknown", policy: "blocked-by-policy", "mailbox-full": null, none: null };
-// What the product writes for a participant it could not process.
+// What the product writes for a participant it refused at entry. The first two are the shipped EXPECTED
+// wordings (measured 2026-10-07); the others carry a value the mask must take out.
 export const FAILURE_REASONS = [
+  { kind: "already-in-list", text: () => "Participant already exists in participant list" },
   { kind: "invalid-email", text: (i) => `Email address first.last${i}@c0${(i % 9) + 1}.example.com is invalid` },
+  { kind: "unique-criteria", text: () => "Participant with unique criteria already exists" },
   { kind: "no-company", text: (i) => `Participant 1P02ACMEX${String(1000000 + i)}ZQ has no company` },
   // One row carries its reasons as a JSON array of texts.
   { kind: "array", text: () => JSON.stringify(["Missing required field: Email", "Duplicate participant"]) },
 ];
+// The UNEXPECTED refusal (a data problem), as the product writes it.
+export const NULL_EMAIL_REASON = "Recipient Email Address field contains Invalid value {null} for EMAIL data type";
 const PARTICIPANT_STATES = ["ACTIVE", "COMPLETED", "ACTIVE", "COMPLETED", "DROP", "ACTIVE", "SYSTEM_ERROR", "COMPLETED", "KNOCKED_OFF"];
+// When the platform's own errors happened on this tenant: one incident, long before any window the suites pull.
+const PLATFORM_INCIDENT = "2025-06-20T03:00:00.000Z";
 
 const wrapClicks = (entries) => `{type=json, value=${JSON.stringify(entries)}, null=true}`;
 const LINKS = {
@@ -286,8 +322,9 @@ const CONTENT_KINDS = new Set(["content", "lookalike"]);
  *   noHealthObjects true — ao_failed_participants and ao_participants have no schema
  *   cadence         true — four more Active, documented programs for the cadence-aware silent rules (see CADENCE)
  *   manyFailures    number — that many more failed participants on p-onboard, each with a distinct value in its reason
- *   liveSchedule    {programId: {lastRunSuccess}} — what `jo p describe` says about the program's schedule NOW,
- *                   where the KB doc (written earlier) says something else
+ *   outsiderFailures number — that many refused participants on the DRAFT program (never selected: no sends), all
+ *                   refused this month — more than a sample page holds (F-484's class: a tenant-wide page is theirs)
+ *   signals         true — six more Active, documented programs, one per health signal (see SIGNALS)
  */
 export function buildTenant(variant = {}) {
   const log = [];
@@ -299,7 +336,7 @@ export function buildTenant(variant = {}) {
 
   const send = (program, step, month, { account, person, email, source = JO_SOURCE, addressType = "To", onDay = null }) => {
     n++;
-    const day = onDay ?? pad((n % 27) + 1);
+    const day = onDay ?? program.fixedDay ?? pad((n % 27) + 1);
     const executed = `${month}-${day}T10:00:00.000Z`;
     if (executed.slice(0, 10) >= cutoff) return;
     const tpl = step.templateId;
@@ -344,9 +381,21 @@ export function buildTenant(variant = {}) {
     // The JO send log mirrors each To-row of a JO program, with the step and
     // variant the delivery log lacks. A person re-enters p-onboard every six
     // months, so participant records outnumber people.
-    const entry = program.id === "p-onboard" ? Math.floor(program.months.indexOf(month) / 6) : 0;
+    // The step-error program admits its people afresh every month (so its admissions are recent).
+    const entry = program.id === "p-onboard" ? Math.floor(program.months.indexOf(month) / 6) : program.stepErrors ? program.months.indexOf(month) : 0;
     const parId = `par-${program.id}-${person}-${entry}`;
-    if (!participants.has(parId)) participants.set(parId, { Gsid: parId, AdvancedOutreachId: program.id, ParticipantState: PARTICIPANT_STATES[participants.size % PARTICIPANT_STATES.length] });
+    if (!participants.has(parId)) {
+      // The state cycles; a one-off program's participants have all finished (p-once: a finished campaign).
+      // The lapsed digest keeps people in flight (so it is late, not finished).
+      const state = program.id === "p-once" ? "COMPLETED" : program.id === "p-lapsed" ? "ACTIVE" : PARTICIPANT_STATES[participants.size % PARTICIPANT_STATES.length];
+      // Admitted (CreatedAt) at the first send; a participant who fell off at a step carries the product's
+      // wording and was last touched when it fell (the platform's errors at the one incident; the step-error
+      // program's this month). The underscore key is the oracle's.
+      const reasons = STEP_REASONS[state] ?? null;
+      const reason = reasons ? reasons[program.stepErrors ? 1 % reasons.length : 0] : null;
+      const modified = state === "SYSTEM_ERROR" ? (program.stepErrors ? "2026-09-12T03:00:00.000Z" : PLATFORM_INCIDENT) : executed;
+      participants.set(parId, { Gsid: parId, AdvancedOutreachId: program.id, ParticipantState: state, ParticipantSourceType: "QUERY_BUILDER", CreatedAt: executed, ModifiedAt: modified, FailureReasons: reason ? reason.text(step.stepName ?? "Step") : null, _stepKind: reason?.kind ?? null });
+    }
     const variantId = step.variants[n % step.variants.length];
     joLog.push({
       Gsid: `jo-${String(n).padStart(5, "0")}`, AdvancedOutreachId: program.id, StepId: step.stepId,
@@ -370,9 +419,9 @@ export function buildTenant(variant = {}) {
     }
   };
 
-  const listed = [...PROGRAMS, ...(variant.ownSiteUnsub ? [OWN_SITE] : []), ...(variant.massDay ? [BLAST] : []), ...(variant.silent ? [QUIET, NEVER] : []), ...(variant.cadence ? CADENCE : [])];
+  const listed = [...PROGRAMS, ...(variant.ownSiteUnsub ? [OWN_SITE] : []), ...(variant.massDay ? [BLAST] : []), ...(variant.silent ? [QUIET, NEVER] : []), ...(variant.cadence ? CADENCE : []), ...(variant.signals ? SIGNALS : [])];
   // A variant's program goes last, so every other send keeps its number.
-  for (const program of [...PROGRAMS, UNLISTED, DELETED, ...(variant.ownSiteUnsub ? [OWN_SITE] : []), ...(variant.silent ? [QUIET] : []), ...(variant.cadence ? CADENCE : [])]) {
+  for (const program of [...PROGRAMS, UNLISTED, DELETED, ...(variant.ownSiteUnsub ? [OWN_SITE] : []), ...(variant.silent ? [QUIET] : []), ...(variant.cadence ? CADENCE : []), ...(variant.signals ? SIGNALS : [])]) {
     for (const month of program.months) {
       for (const step of program.steps) {
         if (program.internalOnly) {
@@ -407,7 +456,7 @@ export function buildTenant(variant = {}) {
   // counts are larger than any window's, as on a program older than the window.
   for (const [i, status] of ["Submitted", "Submitted", "Partially Submitted", null].entries()) {
     const parId = `par-p-nps-early-${i}`;
-    participants.set(parId, { Gsid: parId, AdvancedOutreachId: "p-nps", ParticipantState: "COMPLETED" });
+    participants.set(parId, { Gsid: parId, AdvancedOutreachId: "p-nps", ParticipantState: "COMPLETED", ParticipantSourceType: "QUERY_BUILDER", CreatedAt: `2025-03-0${i + 1}T09:00:00.000Z`, ModifiedAt: `2025-03-1${i}T12:00:00.000Z`, FailureReasons: null, _stepKind: null });
     surveyRows.push({ Gsid: `sp-early-${i}`, AOParticipantId: parId, Responded: status != null, RespondedDate: status ? `2025-03-1${i}T12:00:00.000Z` : null, ResponseStatus: status ?? "Not Responded", SurveyOpened: true });
   }
 
@@ -415,24 +464,48 @@ export function buildTenant(variant = {}) {
   // one of them a submitted response inside the window.
   for (const [i, status] of ["Submitted", null, null].entries()) {
     const parId = `par-p-nps-test-${i}`;
-    participants.set(parId, { Gsid: parId, AdvancedOutreachId: "p-nps", ParticipantState: "COMPLETED" });
+    participants.set(parId, { Gsid: parId, AdvancedOutreachId: "p-nps", ParticipantState: "COMPLETED", ParticipantSourceType: "QUERY_BUILDER", CreatedAt: "2026-07-15T09:00:00.000Z", ModifiedAt: "2026-07-20T12:00:00.000Z", FailureReasons: null, _stepKind: null });
     surveyRows.push({ Gsid: `sp-test-${i}`, AOParticipantId: parId, Responded: status != null, RespondedDate: status ? "2026-07-20T12:00:00.000Z" : null, ResponseStatus: status ?? "Not Responded", SurveyOpened: true, TestParticipant: true });
   }
   for (const r of surveyRows) if (!("TestParticipant" in r)) r.TestParticipant = false;
 
-  // Participants the programs could not process: one row each, with the reason
-  // as the product wrote it. p-gone's are a deleted program's and must be left out.
+  // Participants the programs refused at entry: one row each, with the reason as the product wrote it and
+  // the day the same participant was LAST refused (ModifiedAt moves when the key is refused again; measured).
+  // p-gone's are a deleted program's and must be left out. The refusals of the window's months are spread
+  // over July to September 2026 so the per-month table and the samples' recency have something to read.
   const failedParticipants = [];
+  const refusedOn = (i) => `2026-0${7 + (i % 3)}-${pad(1 + (i % 27))}T06:00:00.000Z`;
   for (const [programId, count] of /** @type {Array<[string, number]>} */ ([["p-onboard", 7], ["p-renew", 4], ["p-gone", 2]])) {
     for (let i = 0; i < count; i++) {
       const reason = FAILURE_REASONS[(i + (programId === "p-renew" ? 1 : 0)) % FAILURE_REASONS.length];
-      failedParticipants.push({ Gsid: `fp-${programId}-${i}`, AdvancedOutreachId: programId, FailureReasons: reason.text(i), OccurrenceCount: 1 + (i % 3), _failureKind: reason.kind });
+      failedParticipants.push({ Gsid: `fp-${programId}-${i}`, AdvancedOutreachId: programId, FailureReasons: reason.text(i), OccurrenceCount: 1 + (i % 3), ModifiedAt: refusedOn(i), _failureKind: reason.kind });
     }
   }
   // The large variant: most failures share one wording with a distinct value in each (F-484's class).
   for (let i = 0; i < (variant.manyFailures ?? 0); i++) {
-    failedParticipants.push({ Gsid: `fp-many-${i}`, AdvancedOutreachId: "p-onboard", FailureReasons: FAILURE_REASONS[0].text(1000 + i), OccurrenceCount: 1, _failureKind: FAILURE_REASONS[0].kind });
+    failedParticipants.push({ Gsid: `fp-many-${i}`, AdvancedOutreachId: "p-onboard", FailureReasons: FAILURE_REASONS[1].text(1000 + i), OccurrenceCount: 1, ModifiedAt: refusedOn(i), _failureKind: FAILURE_REASONS[1].kind });
   }
+  // The outsider (F-484 reopened): the draft program, never selected, refused more participants this month
+  // than a sample page holds — a tenant-wide first page would be all theirs.
+  for (let i = 0; i < (variant.outsiderFailures ?? 0); i++) {
+    failedParticipants.push({ Gsid: `fp-outsider-${i}`, AdvancedOutreachId: "p-draft", FailureReasons: FAILURE_REASONS[0].text(i), OccurrenceCount: 1, ModifiedAt: `2026-09-14T0${i % 10}:00:00.000Z`, _failureKind: FAILURE_REASONS[0].kind });
+  }
+  // The signals variant's refusals: p-refused's recent ones carry the UNEXPECTED null-email wording beside
+  // expected ones; p-nobody's are all expected (and older).
+  if (variant.signals) {
+    for (let i = 0; i < 12; i++) failedParticipants.push({ Gsid: `fp-refused-${i}`, AdvancedOutreachId: "p-refused", FailureReasons: i % 3 === 0 ? FAILURE_REASONS[0].text(i) : NULL_EMAIL_REASON, OccurrenceCount: 1 + i, ModifiedAt: `2026-09-${pad(2 + i)}T06:00:00.000Z`, _failureKind: i % 3 === 0 ? "already-in-list" : "null-email" });
+    for (let i = 0; i < 6; i++) failedParticipants.push({ Gsid: `fp-nobody-${i}`, AdvancedOutreachId: "p-nobody", FailureReasons: FAILURE_REASONS[i % 2 === 0 ? 0 : 2].text(i), OccurrenceCount: 1 + i, ModifiedAt: `2026-09-${pad(2 + i)}T06:00:00.000Z`, _failureKind: FAILURE_REASONS[i % 2 === 0 ? 0 : 2].kind });
+  }
+  // Each program's participant sources with the time they last synced (the ingest heartbeat; F-491): one
+  // active row per documented program, plus one superseded version of p-onboard's that the standing filter
+  // must leave out. A program with no `lastSync` has never synced.
+  const sourceRows = [];
+  const syncOf = (p) => p.lastSync ?? (p.id === "p-onboard" ? "2026-09-14 08:02:11" : p.id === "p-nps" ? "2026-09-01 09:03:40" : p.id === "p-quarter" ? "2026-07-01 09:00:12" : p.id === "p-once" ? "2026-03-01 09:00:00" : p.id === "p-renew" ? "2026-03-02 10:00:00" : null);
+  for (const p of listed) {
+    if (!p.steps.length) continue;
+    sourceRows.push({ Gsid: `psc-${p.id}`, AdvancedOutreachId: p.id, ParticipantSourceType: p.schedules ? "QUERY_BUILDER" : "CSV", LastSyncedOn: syncOf(p), ActiveVersion: true, Deleted: false, ParticipantOperationType: "ADD_ALL_PARTICIPANT_IN_POWER_LIST" });
+  }
+  sourceRows.push({ Gsid: "psc-p-onboard-v1", AdvancedOutreachId: "p-onboard", ParticipantSourceType: "QUERY_BUILDER", LastSyncedOn: "2025-12-01 08:00:00", ActiveVersion: false, Deleted: false, ParticipantOperationType: "ADD_ALL_PARTICIPANT_IN_POWER_LIST" });
 
   if (variant.extraJoRow) joLog.push({ ...joLog.find((r) => r.AdvancedOutreachId === "p-onboard" && r.CreatedAt.startsWith("2026-08")), Gsid: "jo-extra", EmailLogId: null });
 
@@ -456,29 +529,26 @@ export function buildTenant(variant = {}) {
       { Gsid: "GSID", AOParticipantId: "LOOKUP", Responded: "BOOLEAN", RespondedDate: "DATETIME", SurveyOpened: "BOOLEAN", TestParticipant: "BOOLEAN" }
     ),
     company: fields(["Gsid", "Name"], { Gsid: "GSID" }),
-    ao_failed_participants: fields(["Gsid", "AdvancedOutreachId", "FailureReasons", "OccurrenceCount"], { Gsid: "GSID", FailureReasons: "JSONSTRING", OccurrenceCount: "NUMBER" }),
-    ao_participants: fields(["Gsid", "AdvancedOutreachId", "ParticipantState"], { Gsid: "GSID" }),
+    ao_failed_participants: fields(["Gsid", "AdvancedOutreachId", "FailureReasons", "OccurrenceCount", "ModifiedAt"], { Gsid: "GSID", FailureReasons: "JSONSTRING", OccurrenceCount: "NUMBER", ModifiedAt: "DATETIME" }),
+    // FailureReasons is a plain STRING here (filterable: CONTAINS works), unlike the refusal object's JSON-path field (measured 2026-10-07).
+    ao_participants: fields(["Gsid", "AdvancedOutreachId", "ParticipantState", "ParticipantSourceType", "CreatedAt", "ModifiedAt", "FailureReasons"], { Gsid: "GSID", CreatedAt: "DATETIME", ModifiedAt: "DATETIME" }),
+    ao_participant_source_configuration: fields(["Gsid", "AdvancedOutreachId", "ParticipantSourceType", "LastSyncedOn", "ActiveVersion", "Deleted", "ParticipantOperationType"], { Gsid: "GSID", LastSyncedOn: "DATETIME", ActiveVersion: "BOOLEAN", Deleted: "BOOLEAN" }),
   };
-  if (variant.noHealthObjects) { delete schemas.ao_failed_participants; delete schemas.ao_participants; }
+  if (variant.noHealthObjects) { delete schemas.ao_failed_participants; delete schemas.ao_participants; delete schemas.ao_participant_source_configuration; }
   if (variant.dropSchemaField) {
     const { object, field } = variant.dropSchemaField;
     schemas[object] = schemas[object].filter((f) => f.fieldName !== field);
   }
   if (variant.noSurveyObject) delete schemas.survey_participant;
 
-  const tables = { email_log_v2: log, ao_emails: joLog, survey_participant: surveyRows, company: variant.massDay ? [...ACCOUNTS, ...BLAST_ACCOUNTS] : ACCOUNTS, ao_participants: [...participants.values()], ao_failed_participants: failedParticipants };
+  const tables = { email_log_v2: log, ao_emails: joLog, survey_participant: surveyRows, company: variant.massDay ? [...ACCOUNTS, ...BLAST_ACCOUNTS] : ACCOUNTS, ao_participants: [...participants.values()], ao_failed_participants: failedParticipants, ao_participant_source_configuration: sourceRows };
   const byGsid = Object.fromEntries(Object.entries(tables).map(([name, rows]) => [name, new Map(rows.map((r) => /** @type {[string, *]} */ ([r.Gsid, r])))]));
   const token = variant.token ?? { state: "valid", seconds: 3200 };
-  // What describe says NOW about a schedule, where the variant says it differs from the KB doc.
-  const live = (p) => {
-    const over = variant.liveSchedule?.[p.id];
-    return over && p.schedules ? { ...p, schedules: p.schedules.map((s) => ({ ...s, ...over })) } : p;
-  };
   return {
     variant, tables, schemas, byGsid, token,
     baseUrl: "https://acme.gainsightcloud.com",
     listed,
-    describable: new Map([...listed, UNLISTED].map((p) => [p.id, live(p)])),
+    describable: new Map([...listed, UNLISTED].map((p) => [p.id, p])),
     serverMax: variant.serverMax ?? 5000,
     listMax: variant.listMax ?? 1000,
   };
@@ -498,8 +568,8 @@ export function programPayload(p) {
       advancedOutreach: {
         advancedOutreachId: p.id, advancedOutreachName: p.name, advancedOutreachModel: p.model, advancedOutreachModelName: p.modelName,
         advancedOutreachType: p.type, advancedOutreachStatus: p.statuses[0], folderId: p.folderId, stepJson: JSON.stringify(stepJson),
-        // A schedule sits on the participant source, as embedded JSON.
-        ...(p.schedules ? { participantSourceConfigurations: [{ participantSourceConfigurationId: `psc-${p.id}`, participantSourceType: "QUERY", scheduleInfo: JSON.stringify({ schedules: p.schedules }) }] } : {}),
+        // A schedule sits on the participant source, as embedded JSON; the source carries its last sync too.
+        ...(p.schedules ? { participantSourceConfigurations: [{ participantSourceConfigurationId: `psc-${p.id}`, participantSourceType: "QUERY", lastSyncedOn: p.lastSync ? Date.parse(p.lastSync.replace(" ", "T") + "Z") : null, scheduleInfo: JSON.stringify({ schedules: p.schedules }) }] } : {}),
       },
       versions: [],
     },
@@ -515,7 +585,7 @@ export function kbFiles(slug = "acme-prod", variant = {}) {
   const files = {
   };
   const inventory = {};
-  for (const p of [...PROGRAMS, ...(variant.cadence ? CADENCE : [])]) {
+  for (const p of [...PROGRAMS, ...(variant.cadence ? CADENCE : []), ...(variant.signals ? SIGNALS : [])]) {
     if (!p.steps.length || p.id === "p-promo") continue;
     files[`${slug}/journey/${p.id}.md`] = [
       `# ${p.name}`, "",
@@ -702,6 +772,18 @@ function rpRun(argv, tenant) {
     if (cell && typeof cell.v === "string" && cell.v.length % 2 === 1) delete cell.v;
   }
   out.reverse(); // rows are not returned in any useful order
+  // --order-by sorts by a SHOWN field (measured 2026-10-07 on a DATETIME, DESC); an entry that is not shown fails.
+  const orderBy = flagValue(argv, "--order-by");
+  if (orderBy !== undefined) {
+    let entries;
+    try { entries = JSON.parse(orderBy); } catch { return fail("Error: orderBy must be an array"); }
+    for (const e of entries) {
+      if (![...show, ...group].some((s) => s.name === e.name)) return fail(`Error: orderBy entry ${e.name} must exist in showFields or groupBy (spec §10.14).\n${REQUEST_ID}`);
+      const key = `${object}_${e.name}`;
+      const val = (r) => r[key]?.k ?? r[key]?.v ?? "";
+      out.sort((a, b) => (val(a) < val(b) ? -1 : val(a) > val(b) ? 1 : 0) * (e.order === "DESC" ? -1 : 1));
+    }
+  }
   const ps = flagValue(argv, "--page-size");
   const size = ps === undefined ? 50 : Number(ps) === -1 ? tenant.serverMax : Math.min(Number(ps), tenant.serverMax);
   return ok(out.slice(0, size), dedupWarning);
@@ -734,6 +816,8 @@ export function answer(argv, tenant) {
     const rows = all.slice((page - 1) * limit, page * limit).map((p) => ({
       advancedOutreachId: p.id, advancedOutreachName: p.name, modified_date: 0, advancedOutreachModelName: p.modelName, folderId: p.folderId,
       advancedOutreachStatus: p.statuses, advancedOutreachType: p.type, advancedOutreachModel: p.model, gsid: `gs-${p.id}`, testrun: false,
+      // What the list says of the participant sync (measured 2026-10-07: a boolean on every row).
+      participantSyncScheduleDisabled: p.syncDisabled === true,
     }));
     if (tenant.variant.listNoEnvelope) return ok({ result: true, requestId: "r", data: { advancedOutreaches: all.slice(0, limit).map((p) => ({ advancedOutreachId: p.id, advancedOutreachName: p.name, advancedOutreachStatus: p.statuses })) } });
     const totalPages = Math.ceil(all.length / limit);
