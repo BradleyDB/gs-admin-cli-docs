@@ -1480,6 +1480,17 @@ the check depends on them, and V2 re-measures nothing it does not need to.
   read, and the whole run's calls against `estimate.thisRun` (the click families are now priced from a count).
   A health part refused as `too-large` is recorded with the rows the estimate saw; it is a pass only if the rows
   really exceed `rowBudget.rows`.
+  CLEARED (S3b verdict round @ hb-20261007-02, tester, 2026-10-07; production, reads only; pass bar as written above).
+  First clause: `estimate.health.failedParticipantRows` order 10^6; `estimate.rowBudget` 40 pages of 5000, nothing
+  over it. Plan 14 calls; run exit 0, `ok: true`, reconciled (all four checks, 0 mismatches), 71 calls made and 13
+  reused, 0 split, 556 s. `health.pulled` true; all six parts pulled with their basis (window, all-time, all-time,
+  lookback, as-documented, sample); none refused. `participantFailures` read: one row per selected program with
+  failures (order 10^2), every row category other with participants and occurrences and no message; the categories
+  entry reads `counted: false, reason: not-filterable`. `bounceReasons` order 10^2 rows, all category other, no message;
+  `bounce-reasons-sum-to-bounced` ok. `failureSamples` at most 5 per program and part (bounce part only: see Y2).
+  Health calls 36 (35 in the run plus the count-first `health-reasons-total` made at the plan) against
+  `estimate.health.addsCalls` 40 (0.90x); about 153 s against 219; nothing split; no part unread. Whole run 71 / 556 s
+  against `estimate.thisRun` 75 / 546 s; the click families 7 against 7. F-476 VERIFIED.
 - Y2 (masking holds on real messages; the category capture). Over Y1's snapshot and run directory, by script:
   search every `facts.health` message and sample, and every payload file of a `health-bounce-sample` or
   `health-reasons-sample` call, for an `@`, a run of five or more digits, an IPv4 address, a word with an `@` and
@@ -1496,6 +1507,21 @@ the check depends on them, and V2 re-measures nothing it does not need to.
   labels, the "Other" share per program is recorded as a percentage, and no "Other" row counts below zero (a
   negative one is the overlap caveat and a list defect). What of the captured list is product text with no
   tenant value is Bradley's call; only that may ship.
+  FAILED on the participant half (S3b verdict round @ hb-20261007-02, tester, 2026-10-07; production, reads only).
+  Search, over Y1's snapshot and run directory and again over the second pull's: zero addresses, five-digit runs and
+  IPv4 addresses in the snapshot rows and in both sample payload files; the local-address pattern 0; "Invalid value"
+  once, in the participant sample PAYLOAD only (its program never reached the snapshot). The bounce samples: order
+  10^2 rows over a quarter to a third of the programs with bounces (first and second pull), read in the terminal by Bradley; 98 distinct texts. THE
+  CAPTURE: a 30-category file drawn verbatim from those texts (each pattern the wording up to the first value; none
+  holds a value or a placeholder; the plugin's validator clean; 82 of the 98 matched by exactly one pattern, checked
+  case-sensitively and case-insensitively), accepted by Bradley as his marking; in the workspace, tenant data until
+  judged. Second pull with it: a full refresh saying the categories changed; every category row's message is its
+  label; no Other row below zero and no overlap caveat; 29 of 30 categories counted; the Other share per program
+  median 30%, quartiles 18% and 50%, range 0 to 100% (overall about 44%); the sum check ok. The participant half
+  FAILED: `failureSamples` held no participant-failure sample for any selected program (the sample is one tenant-wide
+  page, and all of it was one program outside the selection), so there was nothing to read, no participant wording to
+  capture and no `--expected-reason` to name; F-484 REOPENED. Which of the captured list is product text that may
+  ship is not yet ruled (Bradley's call; the file stays in the workspace).
 - Y6 (the silent lists). `silentPrograms` over Y1's snapshot at 30 days (a node one-liner over the snapshot file),
   printing `lists` by id. Pass bar: Bradley reads each list and every one must read true to him: "Possible silent
   failure" (a recurring schedule was due and nothing was sent since; a quarterly program is not on it at 30 days;
@@ -1511,12 +1537,37 @@ the check depends on them, and V2 re-measures nothing it does not need to.
   whether a schedule's start and end dates are in the `jo p describe` payload (an ended schedule must not read
   as broken; record the field names and shapes only), and whether any tenant-wide reportable object holds
   schedule or query run results (record its API name and field types, or that none was found).
+  FAILED (S3b verdict round @ hb-20261007-02, tester, 2026-10-07; production, reads only): the lists do not read
+  true. At 30 days: possible-silent-failure 6, schedule-run-failed 25, no-recent-sends 3, ok 30, one-time 0,
+  no-sends-in-window 0, cannot-judge 0; `honesty.health.schedules` flagged 31, read live 25 (the cap), 0 failed, and
+  the `schedules-from-kb` caveat names the same. "Schedule run failed" holds every program read live, and on every
+  live-read schedule the run-state is unset (`lastRunSuccess` false with `lastSuccessTime`, `lastFailureTime` and
+  `failingSince` 0); Bradley checked two in the UI — each runs daily as expected, its recent participants failed only
+  as already in the program. Two schedules ended weeks ago and read failed. "No recent sends": Bradley reads all three
+  as finished one-off campaigns left Active. "Possible silent failure" includes a program the settled picks record
+  as sending monthly on the 1st, six days after its send (daily ingest crons read as send cadence). Two programs on
+  the run-failed list, read direct (program x day, last 90 days): the last send day equals the snapshot's, no later
+  send. Describe payload: the schedule objects sit in `data.advancedOutreach.participantSourceConfigurations[]
+  .scheduleInfo`, a JSON STRING holding `schedules[]`, each with `startTime` and `endTime` (epoch-ms numbers) beside
+  `lastRunSuccess` (boolean), `lastSuccessTime`, `lastFailureTime`, `failingSince` and `nextRunTime` (numbers); not
+  every describe carries it. Tenant-wide run results: `ao_participant_source_configuration` holds `LastSyncedOn`
+  (DATETIME) per participant source, with `AdvancedOutreachId` (STRING), `GsAdvancedOutreachId` (LOOKUP),
+  `ParticipantSourceType` (STRING), `RefreshPowerlistFlag` and `ActiveVersion` (BOOLEAN) — a last-sync time, no
+  success or failure field; `participant_criteria_step_execution` holds branch evaluations, not runs. F-491 logged.
 - Y13 (the lookback, derived). `estimate.health.lookback` from Y1's plan: `longestPeriodDays` among the selected
   programs' schedules, `programsBeyondWindow` and `unreadableCrons`. Pass bar: the longest period reads as the
   program Bradley knows to run least often (quarterly on this tenant); with the default 90 days that program is
   on the "cannot judge" list; a second plan with `--health-lookback-days` above its period plans the same calls
   plus the longer day read and, after its pull, judges that program by its cadence. `unreadableCrons` is 0, or
   each unreadable expression is recorded (shape only) as a finding for the calculator.
+  CLEARED for the arms this tenant has (S3b verdict round @ hb-20261007-02, tester, 2026-10-07): `lookback` = days 90,
+  `longestPeriodDays` 30, `programsBeyondWindow` 0, `unreadableCrons` 0. Every cron in the KB is daily, weekday,
+  weekly or monthly; the program named as quarterly carries a monthly cron, and Bradley confirmed it runs monthly by
+  design and takes participants quarterly, and that monthly is the least frequent schedule he knows. The pull judged
+  that program by its monthly cadence (rule cadence, period 30). NOT measurable here: a program beyond the 90-day
+  window on the cannot-judge list, and the second plan above its period (no period exceeds the default window);
+  owed to a tenant that schedules something less often than the window. (That a monthly ingest cron is judged as a
+  monthly send cadence is F-491's, not this check's.)
 - Y14 (the schedule rides every pull with a KB). A pull WITHOUT `--health` but with `--kb` (the open-rate report's
   own pull): every `dimensions.programs[].schedule` is filled for a program with a full KB doc (classification,
   cron, zone, as of the doc's date), "no schedule captured" for a documented program with none, and null for a
@@ -1524,6 +1575,15 @@ the check depends on them, and V2 re-measures nothing it does not need to.
   the same programs as over Y1's snapshot (Y9's rule). `dimensions.templates[].uses[].asOf` is the doc's date and
   the `step-names-as-of` caveat names the oldest. Pass bar: the counts of programs per schedule classification
   equal those of Y1's snapshot, and the program with no doc reads null, never "no schedule".
+  CLEARED (S3b verdict round @ hb-20261007-02, tester, 2026-10-07; production, reads only). The pull with `--kb` and no
+  `--health`: exit 0, reconciled, 45 calls / 493 s against its plan's 35 / 327 s (exactly `addsCalls` 40 below Y1's
+  75). Classification counts identical to Y1's (recurring, "no schedule captured" and null: order 10^2, 10^1 and
+  10^1), and every program's `schedule` object identical between the two snapshots; the null count equals
+  `honesty.health.schedules.programsWithout`, the other two sum to `programsWithDoc`. `dashboard-groups.mjs resolve`
+  with a recurring-true and a recurring-false supergroup rule (a scratch spec in the workspace): identical supergroup
+  counts over both snapshots, the no-doc programs Ungrouped. `uses[].asOf`: every use on a program with a full doc
+  equals that doc's `last_verified` (order 10^2 uses), every other use null; the `step-names-as-of` caveat names the
+  oldest `last_verified` of the selected full docs and their count.
 - Y15 (test accounts, server-side). Bradley names one or two test COMPANY records by id (tenant data: the
   workspace picks file). Y1's flags plus `--test-account <id>` each, a full refresh (the snapshot says the test
   accounts changed). Pass bar: the test accounts' sends are in the internal class (the program's internal rows
@@ -1532,12 +1592,32 @@ the check depends on them, and V2 re-measures nothing it does not need to.
   by the people of those accounts and no further, the no-company-link rows are unchanged (NOT_IN keeps them: the
   read made at S3b over the whole window, IN plus NOT_IN equal to the plain count with order 10^4 null rows), and
   `meta.params.testAccounts` echoes the ids sorted.
+  CLEARED (S3b verdict round @ hb-20261007-02, tester, 2026-10-07; production, reads only; two company ids named by
+  Bradley, kept in the workspace picks file). Y1's flags plus both `--test-account`s and `--previous` Y1's snapshot:
+  the plan says mode full, "the test accounts changed"; exit 0, reconciled, 92 calls against 84. `meta.params.
+  testAccounts` echoes both ids, sorted. Sends moved between classes exactly: internal grew and external shrank by the
+  same order-10^3 count, total sent unchanged, and per program x template x month (order 10^3 keys) internal growth
+  equals external shrink on every key with no total changed. The overlap calls (`test-internal`, one per internal
+  domain, for the send and click families and the bounce total) are in the fetch log, and a test contact on an
+  internal domain is counted once: `honesty.testAccounts.sent` counts ALL the accounts' sends, and the internal rows
+  grew by that less the overlap calls' sum (order 10^2) — the bar's "grew by `honesty.testAccounts.sent`" holds once
+  its own counted-once clause is applied. External distinct counts: accounts fell by at most 1 per program, every program's all-recipients people count unchanged, external people fell by a
+  figure within 1% of the sends moved, which bounds out any loss of the order-10^4 no-company rows NOT_IN keeps.
+  Totals beside sends: the previous, closed month moved by a handful of bounces and one unsubscribe between the two
+  pulls (late flags, tenant data; F-493).
 - Y16 (the run clock). Y1's plan and run were one `--run`: the snapshot's `meta.pulledAt` is at or after the plan's
   end and at or before the first fact call's record in the fetch log (the day buckets and templates, not the
   cheap calls), and `run.json` holds the same stamp; the report's "Data pulled" line reads it. If the round
   crosses midnight between plan and run (or resumes after a login past midnight), the run continues with no
   `--today` and the snapshot's day is the plan's. Pass bar: one stamp everywhere, inside the fact calls' span; a
   resume across midnight needs no flag.
+  CLEARED (S3b verdict round @ hb-20261007-02, tester, 2026-10-07; production, reads only). After Y1's plan `run.json`
+  read `pulledAt: null`; after the run one stamp sits in `meta.pulledAt`, `run.json`, all order-10^3 fact rows, the
+  live schedule rows' `asOf` and the report's "Data pulled" line, 12 s after the plan ended and before the first
+  fact call began (the fetch log has no times: a call's start is its call file's mtime less its logged duration).
+  The round did not cross midnight; the crossing's code path was driven instead: a one-program run planned with
+  `--today` set to the day before, then run with no `--today` — exit 0, the plan's day kept, its day-derived fields
+  the plan's; the same with `--today` set to today refused before any call ("today moved"). F-482, F-483 VERIFIED.
 
 ## DSH-2 — the dashboard page built over a real snapshot: filtered in a browser, its size measured, a CSV export opened in a spreadsheet (banked 2026-10-04, builder, Session S4a; verdict at V2)
 
