@@ -368,7 +368,7 @@ const idx = loadIndex(OUT1);
   const tokKeys = Object.keys(p1?.steps?.[1]?.tokens?.[0] ?? {}).sort();
   check("C1 v2: step token entry field list", JSON.stringify(tokKeys) === JSON.stringify(["fieldId", "fieldName", "kind", "label", "objectName", "survey", "tokenKey"]), tokKeys);
   const schedKeys = Object.keys(p1?.schedules?.[0] ?? {}).sort();
-  check("C1: schedule entry field list", JSON.stringify(schedKeys) === JSON.stringify(["cronExpression", "jobType", "lastRunSuccess", "lastSuccessTime", "nextRunTime", "runningNow", "scheduleType", "timeZoneName"]), schedKeys);
+  check("C1: schedule entry field list (startTime and endTime added by F-491: the schedule's bounds)", JSON.stringify(schedKeys) === JSON.stringify(["cronExpression", "endTime", "jobType", "lastRunSuccess", "lastSuccessTime", "nextRunTime", "runningNow", "scheduleType", "startTime", "timeZoneName"]), schedKeys);
   const srcKeys = Object.keys(p1?.sources?.[0] ?? {}).sort();
   check("C1 v2: source entry field list (+3 provenance fields, +ruleId F-487)", JSON.stringify(srcKeys) === JSON.stringify(["conditions", "configId", "mappings", "name", "participantOperationType", "participantSourceCollectionId", "participantSourceType", "ruleId", "type"]), srcKeys);
   const condKeys = Object.keys(p1?.sources?.[0]?.conditions?.[0] ?? {}).sort();

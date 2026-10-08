@@ -334,7 +334,7 @@ The share of the program's survey participants with any response, all time.
 
 - Step names come from the knowledge base, as of the date each program was last documented (the oldest is 2026-08-20T00:00:00.000Z). A step renamed since then shows its earlier name.
 
-- Sends on or after 2026-09-01 are provisional: opens keep arriving, so the recent period reads low.
+- Sends on or after 2026-09-01 are provisional: opens keep arriving, so the recent period reads low. Bounces and unsubscribes on sends since 2026-08-01 can still change too: a refresh reads those months again.
 
 - Opens are image-pixel loads. Apple Mail Privacy Protection and security scanners inflate them, and blocked images hide real ones. Compare programs with each other, not with an outside benchmark.
 

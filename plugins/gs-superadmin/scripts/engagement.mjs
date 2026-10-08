@@ -1051,6 +1051,7 @@ export function healthDayWindow(params) {
   return { asOf, start, end: addDays(asOf, 1) };
 }
 
+/** @returns {{object: string, show: Array<*>, group: Array<*>, where: Array<*>, orderBy?: Array<*>}} */
 export function buildQuery(d) {
   const fam = FAMILIES[d.family];
   if (!fam) throw new Error(`engagement: unknown call family "${d.family}"`);
@@ -1060,7 +1061,7 @@ export function buildQuery(d) {
 /**
  * The ONE builder of `rp run` argv: --page-size is always passed, because
  * without it the CLI returns 50 rows and says nothing.
- * @param {{object: string, show: Array<*>, group: Array<*>, where: Array<*>}} q
+ * @param {{object: string, show: Array<*>, group: Array<*>, where: Array<*>, orderBy?: Array<*>}} q
  * @param {number} pageSize
  * @returns {string[]}
  */
@@ -1088,7 +1089,7 @@ const fieldKey = (object, e) => (e.fieldPath ? `${e.fieldPath.hops[e.fieldPath.h
  * the groups), and nothing may be shown that is also grouped by (the CLI
  * drops that show field, whatever its aggregation, and refuses the call when
  * none is left).
- * @param {{object: string, show: Array<*>, group: Array<*>, where: Array<*>}} q
+ * @param {{object: string, show: Array<*>, group: Array<*>, where: Array<*>, orderBy?: Array<*>}} q
  * @param {Map<string, string>} types fieldName → dataType, from `rp schema`
  * @param {?Map<string, {filterable: boolean, groupable: boolean}>} [flags] fieldName → what the schema allows (schemaFlags); null = not checked
  * @returns {string[]} problems; empty when the query is safe to run
@@ -2902,7 +2903,7 @@ export function reduceEngagement(input) {
   // Every table is an array; a part that was not read is empty and says why.
   // Messages were masked at fetch time and are masked again here, so nothing
   // unmasked reaches a snapshot whatever a payload file holds.
-  const emptyHealth = () => Object.fromEntries(HEALTH_PARTS.map((name) => [name, []]));
+  const emptyHealth = () => /** @type {T10Health & Object<string, Array<*>>} */ (/** @type {any} */ (Object.fromEntries(HEALTH_PARTS.map((name) => [name, []]))));
   const healthFacts = emptyHealth();
   /** @type {{pulled: boolean, reason: ?string, asOf: ?string, dayWindow: ?{start: string, endExclusive: string}, parts: Object<string, {pulled: boolean, reason: ?string, basis?: string}>, categories?: Object<string, {counted: boolean, reason: ?string, ids: string[], configured: string[]}>, samples?: Object<string, *>}} */
   let healthMeta = { pulled: false, reason: "health-off", asOf: null, dayWindow: null, parts: {} };
@@ -3117,7 +3118,7 @@ export function reduceEngagement(input) {
       const sampleUnitsOf = (family) => of(family).filter((u) => u.programs?.length === 1);
       const previousRows = (part) => (previous?.facts?.health?.failureSamples ?? []).filter((r) => r.part === part);
       const previousSplit = (programId) => (previous?.facts?.health?.entrySamples ?? []).filter((r) => r.programId === programId);
-      for (const [partName, family, categories] of /** @type {Array<[string, string, ReadonlyArray<*>]>} */ ([["participantFailures", "health-reasons-sample", cats.participantFailures], ["bounceReasons", "health-bounce-sample", []]])) {
+      for (const [partName, family, categories] of /** @type {Array<["bounceReasons"|"participantFailures", string, ReadonlyArray<*>]>} */ ([["participantFailures", "health-reasons-sample", cats.participantFailures], ["bounceReasons", "health-bounce-sample", []]])) {
         // A sample is carried only by a SELECTIVE refresh, over the whole window's counts (fetch decides the same way).
         const carryFrom = refresh.mode === "selective" ? previous : null;
         const counts = partName === "participantFailures" ? entryCountsFrom(of("health-entry-month"), selected, inWindow) : otherBounceCountsOverWindow([...of("health-bounce-total"), ...of("health-bounce-cat")], selected, refresh, previous);

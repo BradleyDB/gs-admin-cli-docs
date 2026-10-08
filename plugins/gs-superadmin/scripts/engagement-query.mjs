@@ -486,7 +486,7 @@ export const accountAvailability = (snapshot) => snapshot.meta.accounts ?? { pul
  * A reader shows the reason wherever a health figure would be; it never shows
  * a missing part as "no failures".
  * @param {T10Snapshot} snapshot
- * @returns {{pulled: boolean, reason: ?string, asOf: ?string, dayWindow: ?{start: string, endExclusive: string}, parts: Object<string, {pulled: boolean, reason: ?string}>}}
+ * @returns {{pulled: boolean, reason: ?string, asOf: ?string, dayWindow: ?{start: string, endExclusive: string}, parts: Object<string, {pulled: boolean, reason: ?string, basis?: string}>, categories?: Object<string, *>, samples?: Object<string, {cap: number, sampled: number, carried: number, notSampled: Array<{programId: string, reason: string}>, programs?: string[]}>}}
  */
 export const healthAvailability = (snapshot) => snapshot.meta.health ?? { pulled: false, reason: "predates-health", asOf: null, dayWindow: null, parts: {} };
 /** @returns {{state: TrackingState, templates: {tracked: number, notTracked: number, unknown: number}}} */

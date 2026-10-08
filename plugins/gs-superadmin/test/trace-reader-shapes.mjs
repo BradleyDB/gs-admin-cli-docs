@@ -143,11 +143,18 @@ const ENG_UNITS = {
   "count-bounces": { cls: "all", window: ENG_SPAN },
   "health-bounce-total": { cls: "all", window: ENG_SPAN },
   "health-bounce-cat": { cls: "all", window: ENG_SPAN, category: { id: "user-unknown", pattern: "User unknown in virtual mailbox table" } },
-  "health-bounce-sample": { cls: "all", window: ENG_SPAN, excludePatterns: ["User unknown in virtual mailbox table"] },
+  "health-bounce-sample": { cls: "all", window: ENG_SPAN, programs: ENG_PROGRAMS.slice(0, 1), excludePatterns: ["User unknown in virtual mailbox table"] },
   "health-days": { cls: "all", window: ENG_SPAN },
   "health-reasons-total": { cls: "all" },
-  "health-reasons-sample": { cls: "all" },
+  "health-reasons-sample": { cls: "all", window: ENG_SPAN, programs: ENG_PROGRAMS.slice(0, 1) },
   "health-states": { cls: "all", programs: ENG_PROGRAMS },
+  // The health signals' reads (F-491).
+  "health-sources": { cls: "all" },
+  "health-admissions": { cls: "all", window: ENG_SPAN },
+  "health-entry-month": { cls: "all", window: ENG_SPAN },
+  "health-step-total": { cls: "all", window: ENG_SPAN },
+  "health-step-cat": { cls: "all", window: ENG_SPAN, category: { id: "step-action-failed", pattern: "creation failed at step" } },
+  "health-step-state": { cls: "all", window: ENG_SPAN, category: { id: "platform-error", state: "SYSTEM_ERROR" } },
 };
 const engAnswer = (argv) => JSON.parse(answer(argv, ENG_TENANT).stdout);
 const ENG_RP_RUN = Object.entries(ENG_UNITS).map(([family, d]) => engAnswer(rpRunArgv(buildQuery({ family, ...d }), 5000)).slice(0, 6));
