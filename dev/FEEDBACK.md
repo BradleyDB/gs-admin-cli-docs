@@ -171,6 +171,16 @@ Banked: dev/VALIDATION.md § HLT-1 / DSH-1 / DSH-5, re-banked for V2 (Y1, Y2, Y6
 Blind spots: no tenant pull was made with the new families (the two reads were counts and schema reads); the category wordings are unmeasured until Y2; DOES_NOT_CONTAINS on a null bounce reason is unmeasured (nothing depends on it); the describe payload's schedule start/end dates are V2's read. Next free F-491.
 -->
 
+<!-- builder 2026-10-07 (S3b — POINTER RE-STAMPED after the FIX ROUND: F-484 (second fix after one reopen), F-491 (REDESIGN — the cadence rules replaced by health signals from the program's own data, Bradley's four conditions ruled in session), F-492, F-493, F-494 FIXED on the branch; the polish batch F-488, F-489, F-490 FIXED there too; F-486 carried to S4b; PR #43 stays unmerged; next free F-495):
+     Branch: feat/jo-dash-s3b-health-batch at f49571d → PR #43 to dev (open, unmerged; merges after V2 on Bradley's go-ahead; the tip is a
+       content commit, so the PR suite runs on the head). The branch's bus carries every Fix:, Judge: and Sibling sweep line, the F-491
+       Redesign: line, the two mutation copy-outs (8 of 8 as predicted, predictions written first) and the fix round's handoff block.
+     Token: NOT YET MINTED — dev-utils handoff refused the same-day mint (the 0.43.4 housekeeping block names the hand-minted
+       hb-20261007-01; a stale draft to the loop); recorded on the branch's bus, not bypassed. The branch's Under test line and
+       canary still read hb-20261007-02. The mint is owed next day, then this pointer is re-stamped with the token; V2 waits for it.
+     Rulings of record: the plan (handoffs/jo-dashboards/JO-DASHBOARDS-HANDOFF-PLAN.md) under HLT-1, "Rulings (Bradley, 2026-10-07)";
+       the measurements as shapes in dev/S3B-FIX-ROUND-BRIEF.md (on the branch). VALIDATION § HLT-1 re-banked for V2 there (Y2, Y6, Y17, Y18). -->
+
 <!-- tester 2026-10-07 (S3b — POINTER RE-STAMPED after the verdict round @ hb-20261007-02: F-476, F-482, F-483 VERIFIED; F-484 REOPENED; F-491, F-492, F-493, F-494 claimed and OPEN on the branch; PR #43 stays unmerged; next free F-495):
      Branch: feat/jo-dash-s3b-health-batch at 1d9bf6c (c4ec39d the verdict commit; 1d9bf6c dev merged in, the bus
        conflict resolved keeping both sides). PR: #43 to dev, open, unmerged, MERGEABLE CLEAN.
