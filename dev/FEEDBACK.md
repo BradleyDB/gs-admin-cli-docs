@@ -172,12 +172,12 @@ Blind spots: no tenant pull was made with the new families (the two reads were c
 -->
 
 <!-- builder 2026-10-07 (S3b — POINTER RE-STAMPED after the FIX ROUND: F-484 (second fix after one reopen), F-491 (REDESIGN — the cadence rules replaced by health signals from the program's own data, Bradley's four conditions ruled in session), F-492, F-493, F-494 FIXED on the branch; the polish batch F-488, F-489, F-490 FIXED there too; F-486 carried to S4b; PR #43 stays unmerged; next free F-495):
-     Branch: feat/jo-dash-s3b-health-batch at f49571d → PR #43 to dev (open, unmerged; merges after V2 on Bradley's go-ahead; the tip is a
+     Branch: feat/jo-dash-s3b-health-batch at 244b0dc → PR #43 to dev (open, unmerged; merges after V2 on Bradley's go-ahead; the tip is a
        content commit, so the PR suite runs on the head). The branch's bus carries every Fix:, Judge: and Sibling sweep line, the F-491
        Redesign: line, the two mutation copy-outs (8 of 8 as predicted, predictions written first) and the fix round's handoff block.
-     Token: NOT YET MINTED — dev-utils handoff refused the same-day mint (the 0.43.4 housekeeping block names the hand-minted
-       hb-20261007-01; a stale draft to the loop); recorded on the branch's bus, not bypassed. The branch's Under test line and
-       canary still read hb-20261007-02. The mint is owed next day, then this pointer is re-stamped with the token; V2 waits for it.
+     Token: hb-20261007-03, minted BY HAND on Bradley's ruling (2026-10-07) after dev-utils refused the same-day mint (the 0.43.4
+       block names the hand-minted hb-20261007-01); written in one commit with the loop's subject, 244b0dc on the branch. The branch's
+       Under test line, Blind spots line and canary read hb-20261007-03. V2 runs on it.
      Rulings of record: the plan (handoffs/jo-dashboards/JO-DASHBOARDS-HANDOFF-PLAN.md) under HLT-1, "Rulings (Bradley, 2026-10-07)";
        the measurements as shapes in dev/S3B-FIX-ROUND-BRIEF.md (on the branch). VALIDATION § HLT-1 re-banked for V2 there (Y2, Y6, Y17, Y18). -->
 
