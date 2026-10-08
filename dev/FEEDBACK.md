@@ -171,6 +171,23 @@ Banked: dev/VALIDATION.md § HLT-1 / DSH-1 / DSH-5, re-banked for V2 (Y1, Y2, Y6
 Blind spots: no tenant pull was made with the new families (the two reads were counts and schema reads); the category wordings are unmeasured until Y2; DOES_NOT_CONTAINS on a null bounce reason is unmeasured (nothing depends on it); the describe payload's schedule start/end dates are V2's read. Next free F-491.
 -->
 
+<!-- tester 2026-10-07 (S3b — POINTER RE-STAMPED after the verdict round @ hb-20261007-02: F-476, F-482, F-483 VERIFIED; F-484 REOPENED; F-491, F-492, F-493, F-494 claimed and OPEN on the branch; PR #43 stays unmerged; next free F-495):
+     Branch: feat/jo-dash-s3b-health-batch at 1d9bf6c (c4ec39d the verdict commit; 1d9bf6c dev merged in, the bus
+       conflict resolved keeping both sides). PR: #43 to dev, open, unmerged, MERGEABLE CLEAN.
+     Status transitions riding the branch (re-stamps the builder pointer above, which says all four FIXED):
+       F-476 FIXED -> VERIFIED; F-482 FIXED -> VERIFIED; F-483 FIXED -> VERIFIED; F-484 FIXED -> OPEN (REOPENED,
+       first reopen: the participant-failure sample is the first page of a tenant-wide read and held no selected
+       program). New, claimed here at logging time: F-491 OPEN (normal: the cadence-aware silent lists read false),
+       F-492 OPEN (polish), F-493 OPEN (polish), F-494 OPEN (polish). Next free F-495.
+     VALIDATION section HLT-1 / DSH-1 / DSH-5 (on the branch): Y1, Y13 (the arms this tenant has), Y14, Y15, Y16
+       CLEARED; Y2 FAILED on its participant half; Y6 FAILED; Y4, Y5, Y7, Y8 and Y9 to Y12 still owed at V2.
+     CI on the final head 1d9bf6c, QUOTED per job after completion:
+         validate-plugin 37707903994: changes success / manifests success / validate (ubuntu-latest) success
+         docs-drift 37707903993: drift (full) success
+         GitGuardian Security Checks: pass
+     Open PRs to dev: #43 only. An OPEN normal finding (F-484, F-491) gates the release, not this merge; the merge
+       is Bradley's. Detail: the tester comment and the Walk (hb-20261007-02) line on the branch's bus. -->
+
 <!-- builder 2026-10-07 ([v]0.43.4 RELEASED — post-release housekeeping; a HOTFIX cut from main, not a release of dev):
      Payload: dependency answers now see Power List programs (F-487) — both deps surfaces resolve a QUERY_BUILDER source to the objects, connection and output fields its rule's tasks read; existing workspaces run /gs-superadmin:refresh once. Staged versions folded in: none (0.44.0–0.47.0, the dashboards work, stay staged on dev).
      Gate 1 (bus): scoped to the PAYLOAD — F-487 VERIFIED @ hb-20261006-03 (Bradley's ruling on P13); F-488 and F-489 OPEN polish on it by decision, riding the dashboards round. Step 0 ran on the payload only: nothing DEFERRED to re-open; the OPEN dashboards sections (F-476, F-484 normal; F-482, F-483, F-486 polish) are not in this release and were NOT auto-deferred (that would spend their one free pass on a release they are not in). Open PRs to dev: none (#41 merged, a5d8a0b).
