@@ -83,7 +83,21 @@
 //     masked sample of the uncategorised text for discovery. The failed
 //     participant's reason field takes no filter at all on CLI 1.0.10 (its
 //     schema says so, and every operator tried was refused), so that part is
-//     a per-program total with no breakdown, and says so.
+//     a per-program total with no breakdown, and says so; the breakdown by
+//     reason is a per-program SAMPLE of the most recent refusals.
+//   - A sample is read PER PROGRAM, never as the first page of a tenant-wide
+//     read (F-484, reopened: one program outside the selection filled it):
+//     one small page per selected program with failures, most failures
+//     first, at most --sample-programs a pull (the plan prices the rest), and
+//     a program whose failure counts did not move since the previous snapshot
+//     keeps that snapshot's sample. What was not sampled is named.
+//   - A program's health is read from signals, each from its own data (F-491):
+//     the participant sources' last sync time (the one heartbeat an ingest
+//     leaves; the schedule's run-state fields are unset even on healthy daily
+//     programs), participants admitted per day, refusals per month with the
+//     sampled split, step failures per month counted by category, and sends
+//     against the program's own history. The lists are derived by the reader
+//     (programHealth); the pull stores facts, never a judgment.
 //   - A field a query filters or groups on must be declared filterable or
 //     groupable by `rp schema`: a filter on a field that is not is refused by
 //     the server with an "unrecognized data type" text, so validateQuery
@@ -97,11 +111,11 @@
 //     when the run directory is made (F-482), and a resumed run keeps the day
 //     it was planned on (F-483): a plan before midnight and its run after it
 //     are one run.
-//   - With a KB, every program's schedule (classification, cron, zone, as-of)
-//     rides the program dimension whether or not health is pulled; the
-//     cadence-aware silent rules and the grouping resolver read it there. For
-//     programs those rules flag as possibly silent, a capped `jo p describe`
-//     reads the schedule's last-run result live (through the shared parser).
+//   - With a KB, every program's schedule (classification, cron, zone, start
+//     and end, as-of) rides the program dimension whether or not health is
+//     pulled; the health signals and the grouping resolver read it there. No
+//     live describe is made for it: the run state comes from the sync
+//     heartbeat above.
 //   - Test accounts (--test-account, company ids) are excluded server-side
 //     like internal domains: one IN call per month unit, one for the overlap
 //     with each domain, and they join the internal class; external distinct
@@ -210,11 +224,11 @@
  *   are left out, as the UI's program analytics leaves them out. The monthly
  *   `responses` rows are for trends and the date filter, never for the rate.
  * @property {T10UniquesRow[]} uniques
- * @property {T10Health} [health]                 health facts (HLT-1); five empty tables when they were not pulled (meta.health); absent on a snapshot made before they existed
+ * @property {T10Health} [health]                 health facts (HLT-1); every table empty when they were not pulled (meta.health); absent on a snapshot made before they existed
  *
  * @typedef {object} T10Health
  *   Every table is an array, empty when its part was not read (meta.health.parts
- *   says why). Every message is MASKED (no address, id or long number) or is a
+ *   says why). Every message is MASKED (no address, id, host or long number) or is a
  *   category LABEL (the product wording up to the value, the tail cut; S3b).
  *   `category` on a reason row (additive, S3b): the category's id when the row
  *   was counted server-side under a category and `message` is its label;
@@ -228,12 +242,13 @@
  *   category "other" = not in any category, or no reason recorded);
  *   additive, and per program × month they sum to the send tables' bounced
  * @property {Array<{programId: string, message: ?string, category?: ?string, expected?: boolean, participants: number, occurrences: number}>} participantFailures
- *   participants a program could not process, by reason, all time. A
+ *   participants a program could not admit (refused at entry), all time. A
  *   participant with two reasons is counted under each. `expected` (additive,
  *   S3b) marks a category the pull was told is expected by design (a page
  *   leaves it out of headline counts, never hides it). On CLI 1.0.10 the
  *   reason field takes no filter, so each program has ONE row, category
- *   "other", and meta.health.categories.participantFailures says why.
+ *   "other", and meta.health.categories.participantFailures says why; the
+ *   split by reason is `entrySamples`, a sample.
  * @property {Array<{programId: string, state: ?string, participants: number}>} participantStates
  *   the program's participants by state (ACTIVE, COMPLETED, DROP, KNOCKED_OFF,
  *   PAUSED, REVIEW, SYSTEM_ERROR), all time
@@ -241,31 +256,64 @@
  *   each program's last send: the day, when it falls inside meta.health.dayWindow;
  *   else the month, when it falls inside the pull's window; else neither.
  *   selected false = a listed Active program the pull holds no sends for.
- *   Which programs are SILENT is a reader's rule (silentPrograms), not stored.
- * @property {Array<{programId: string, asOf: ?string, source?: "kb"|"live", scheduleType: ?string, classification: string, cronExpression: ?string, timeZoneName: ?string, lastRunSuccess: ?boolean, lastSuccessTime: ?number, nextRunTime: ?number, runningNow: ?boolean}>} schedules
- *   each schedule's last-run result, read from the tenant KB's program docs
- *   as of the date the doc was last verified (source "kb", or absent on a
- *   snapshot made before the live read existed), or, for a program the
- *   silent rules flagged at this pull, read live by a capped `jo p describe`
- *   (source "live", asOf = the pull time; additive, S3b). A documented
- *   program with no schedule has ONE row, classification "no schedule
- *   captured"; a program the KB has no full doc for has none.
- * @property {Array<{programId: string, part: "bounceReasons"|"participantFailures", message: string}>} [failureSamples]
- *   a capped sample of the masked text behind the "Other" rows, per program
- *   and part, for extending the category list (S3b). SNAPSHOT ONLY: shown by
- *   the terminal, never embedded in a page. Absent on a snapshot made before it existed.
+ *   Which programs are on which health list is a reader's rule
+ *   (programHealth), not stored.
+ * @property {Array<{programId: string, asOf: ?string, source?: "kb"|"live", scheduleType: ?string, classification: string, cronExpression: ?string, timeZoneName: ?string, startTime?: ?number, endTime?: ?number, lastRunSuccess: ?boolean, lastSuccessTime: ?number, nextRunTime: ?number, runningNow: ?boolean}>} schedules
+ *   each schedule as the tenant KB's program doc records it, as of the date
+ *   the doc was last verified (source "kb"; "live" only on a snapshot made
+ *   while the capped live read existed, 0.47.0 unreleased). startTime and
+ *   endTime (additive, F-491; epoch milliseconds) bound the schedule: a
+ *   schedule past its end has ended. The run-state fields are stored as
+ *   documented and are NEVER read as a run result (unset on the measured
+ *   tenant even where runs succeed daily). A documented program with no
+ *   schedule has ONE row, classification "no schedule captured"; a program
+ *   the KB has no full doc for has none.
+ * @property {Array<{programId: string, part: "bounceReasons"|"participantFailures", message: string, category?: ?string, expected?: boolean, count?: number, pulledAt?: string}>} [failureSamples]
+ *   a capped sample of the masked text per program and part, for extending the
+ *   category list (S3b), read one small page per program, most recent first
+ *   (F-484). `category` and `expected` (additive, F-491) are the category the
+ *   text matched client-side (null = none); `count` is how many rows of the
+ *   page carried the text; `pulledAt` the pull that read it (a program whose
+ *   failure counts did not move keeps the earlier pull's sample). SNAPSHOT
+ *   ONLY: shown by the terminal, never embedded in a page. Absent on a
+ *   snapshot made before it existed.
+ * @property {Array<{programId: string, category: string, expected: boolean, participants: number, sampleRows: number, pulledAt: string}>} [entrySamples]
+ *   the refusals of each program's sample by category (additive, F-491): a
+ *   SAMPLE of the most recent refusals, never a count — `sampleRows` is the
+ *   page it was taken from; the exact totals are `participantFailures` and
+ *   `entryFailures`. A page may show it, labelled as a sample.
+ * @property {Array<{programId: string, sourceType: ?string, lastSyncedOn: ?string, operation: ?string}>} [sources]
+ *   each selected program's active participant sources and when each last
+ *   synced (additive, F-491): the ingest heartbeat, read tenant-wide at the
+ *   pull. null lastSyncedOn = never synced.
+ * @property {Array<{programId: string, day: string, participants: number}>} [admissions]
+ *   participants admitted (created) per program and day inside
+ *   meta.health.dayWindow (additive, F-491). A day with none has no row.
+ * @property {Array<{programId: string, month: string, participants: number, occurrences: number}>} [entryFailures]
+ *   refusals per program and month over the pull's window, exact (additive,
+ *   F-491): rows of the failed-participants object by the month they were last
+ *   refused in, and the SUM of their occurrences.
+ * @property {Array<{programId: string, month: string, category: string, expected: boolean, participants: number}>} [stepFailures]
+ *   participants who got in and fell off at a step, per program and month,
+ *   counted server-side by category (STEP_FAILURE_CATEGORIES; additive, F-491):
+ *   a text category by CONTAINS on the participant's failure reason, the
+ *   platform error by its state, "other" = the total with a reason less every
+ *   category (below zero only when categories overlap; flagged, never clamped).
  *
  * @typedef {object} T10Dimensions
- * @property {Array<{id: string, name: ?string, statuses: string[], model: ?string, modelName: ?string, audienceType: ?string, supergroup: ?string, group: ?string, folderId: ?string, schedule?: ?{classification: string, cronExpression: ?string, timeZoneName: ?string, asOf: ?string}}>} programs
+ * @property {Array<{id: string, name: ?string, statuses: string[], model: ?string, modelName: ?string, audienceType: ?string, supergroup: ?string, group: ?string, folderId: ?string, schedule?: ?{classification: string, cronExpression: ?string, timeZoneName: ?string, startTime?: ?number, endTime?: ?number, asOf: ?string}, syncScheduleDisabled?: ?boolean}>} programs
  *   statuses is a LIST (a Dynamic Program edited while live carries two);
  *   supergroup and group are null until the grouping resolver fills them (DSH-5).
  *   schedule (additive, S3b) rides every pull made with a KB, whether or not
  *   health was pulled: the program's schedule from its KB doc (the recurring
  *   one with the shortest period when it has several), classification as the
- *   schedule audit classifies it, as of the doc's last verified date; "no
- *   schedule captured" for a documented program with none; null for a program
- *   the KB has no full doc for, and on every program of a pull made without a
- *   KB. The grouping resolver's `recurring` and the silent rules read it here.
+ *   schedule audit classifies it, with its start and end (additive, F-491;
+ *   epoch milliseconds), as of the doc's last verified date; "no schedule
+ *   captured" for a documented program with none; null for a program the KB
+ *   has no full doc for, and on every program of a pull made without a KB.
+ *   The grouping resolver's `recurring` and the health signals read it here.
+ *   syncScheduleDisabled (additive, F-491): what `jo p list` says of the
+ *   program's participant sync; null when the list did not say.
  * @property {Array<{id: string, name: ?string, uses: Array<{programId: string, stepName: ?string, stepOrder: ?number, stepCount: number, asOf?: ?string}>}>} templates
  *   stepName and stepOrder are set only when the template sits on exactly ONE
  *   step of that program's design (stepCount 1); 0 = no design in the KB.
@@ -308,18 +356,22 @@
  *   reached per program (facts.uniques) is pulled either way. ABSENT on a
  *   snapshot made before the switch existed, which always pulled the grain:
  *   read it through accountAvailability, never directly.
- * @property {{pulled: boolean, reason: ?string, asOf: ?string, dayWindow: ?{start: string, endExclusive: string}, parts: Object<string, {pulled: boolean, reason: ?string, basis?: string}>, categories?: Object<string, {counted: boolean, reason: ?string, ids: string[]}>}} [health]
+ * @property {{pulled: boolean, reason: ?string, asOf: ?string, dayWindow: ?{start: string, endExclusive: string}, parts: Object<string, {pulled: boolean, reason: ?string, basis?: string}>, categories?: Object<string, {counted: boolean, reason: ?string, ids: string[]}>, samples?: Object<string, {cap: number, sampled: number, carried: number, notSampled: Array<{programId: string, reason: string}>}>}} [health]
  *   whether facts.health was read (the run's choice: reason "health-off" when
  *   it was not), and then part by part (bounceReasons, participantFailures,
- *   participantStates, lastSends, schedules, failureSamples). asOf is the
+ *   participantStates, lastSends, schedules, failureSamples, entrySamples,
+ *   sources, admissions, entryFailures, stepFailures). asOf is the
  *   day silence is counted back from, and dayWindow the days a last send is
  *   known to the day. A part's `basis` (additive, S3b) says what its figures
  *   are over: "window", "lookback", "all-time" (the REASONS id a page renders
- *   as the tooltip of an all-time figure) or "as-documented". `categories`
- *   (additive, S3b), per reason part: whether its rows were counted by
- *   category, the reason when they could not be (REASONS "not-filterable"),
- *   and the category ids counted. ABSENT on a snapshot made before health
- *   facts existed: read it through healthAvailability, never directly.
+ *   as the tooltip of an all-time figure), "as-documented", "sample" or
+ *   "at-pull". `categories` (additive, S3b), per reason part: whether its rows
+ *   were counted by category, the reason when they could not be (REASONS
+ *   "not-filterable"), and the category ids counted. `samples` (additive,
+ *   F-491), per sampled part: the cap, how many programs were sampled at this
+ *   pull, how many keep an earlier pull's sample, and which were not sampled
+ *   and why. ABSENT on a snapshot made before health facts existed: read it
+ *   through healthAvailability, never directly.
  * @property {{pulled: boolean, reason: ?"step-detail-off"}} participantRecords
  *   why T10UniqueCounts.participantRecords is null when it is (a reader shows
  *   the reason; it never shows a 0)
@@ -376,23 +428,24 @@ import {
   readKbIdentity,
 } from "./doc-lib.mjs";
 import { printable } from "./journal-lib.mjs";
-import { buildIndex, parseJourneyDoc } from "./jo-report.mjs";
+import { buildIndex } from "./jo-report.mjs";
 import { classifySchedule } from "./jo-report-audit-active.mjs";
 import {
   SOURCES, NON_CONTENT_LINK_RULES, SEND_MEASURES, T10_SCHEMA_VERSION, measuresCounted, rollUpTracking, openSnapshot, accountAvailability, healthAvailability, maskMessage,
-  categoryTable, validateCategories, OTHER_CATEGORY, cronLastDue, judgeSilence, SILENT_DAYS_DEFAULT,
+  categoryTable, validateCategories, OTHER_CATEGORY, FAILURE_CATEGORIES, STEP_FAILURE_CATEGORIES, cronLastDue, QUIET_DUE_DAYS_DEFAULT,
 } from "./engagement-query.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 
-// The three objects read, and what every count on them carries: one statement, in SOURCES.
-const { log: LOG_SRC, steps: JO_SRC, survey: SURVEY_SRC, failedParticipants: FAILED_SRC, participants: PARTICIPANT_SRC } = SOURCES;
+// The objects read, and what every count on them carries: one statement, in SOURCES.
+const { log: LOG_SRC, steps: JO_SRC, survey: SURVEY_SRC, failedParticipants: FAILED_SRC, participants: PARTICIPANT_SRC, sources: PSC_SRC } = SOURCES;
 const LOG = LOG_SRC.object;
 const JO_LOG = JO_SRC.object;
 const SURVEY = SURVEY_SRC.object;
 const COMPANY = LOG_SRC.lookups.company.to;
 const FAILED = FAILED_SRC.object;
 const PARTICIPANTS = PARTICIPANT_SRC.object;
+const PSC = PSC_SRC.object;
 const standingValue = (src, field) => src.standing.find((c) => c.field === field)?.value;
 const SERVER_PAGE_MAX = 5000;
 // An IN list this long was measured to work; nothing longer was tried.
@@ -660,6 +713,11 @@ const cellDay = (cell) => {
 // A free-text cell: a bounce reason comes back in `fv`, and in `v` too on only
 // some rows. A null group has neither (`fv` is then the empty string).
 const cellRaw = (cell) => (cell && typeof cell === "object" ? cell.v ?? (cell.fv === "" ? null : cell.fv) ?? null : null);
+// A DATETIME cell: `k` is the sortable "YYYY-MM-DD HH:MM:SS"; `v` and `fv` are display forms. Null when unset.
+const cellTime = (cell) => {
+  const k = cell && typeof cell === "object" ? cell.k ?? cell.v : null;
+  return typeof k === "string" && /^\d{4}-\d{2}-\d{2}/.test(k) ? k : null;
+};
 const str = (v) => (v == null ? null : String(v));
 // A row's flags, as SOURCES names them: set when the field holds the value that
 // counts (email_log_v2 flags are YES/NO strings; ao_emails flags are booleans),
@@ -721,6 +779,14 @@ export const ROW_READERS = Object.freeze({
   "health-reasons-sample": (row) => ({ programId: str(cellValue(row[col.field(FAILED, FAILED_SRC.programField)])), messages: readFailureReasons(cellRaw(row[col.field(FAILED, FAILED_SRC.reasonField)])) }),
   "health-states": (row) => ({ programId: str(cellValue(row[col.field(PARTICIPANTS, PARTICIPANT_SRC.programField)])), state: str(cellValue(row[col.field(PARTICIPANTS, PARTICIPANT_SRC.stateField)])), n: cellNumber(row[col.count(PARTICIPANTS)]) }),
   "health-days": (row) => ({ programId: str(cellValue(row[col.field(LOG, LOG_SRC.programField)])), day: cellDay(row[col.day(LOG, LOG_SRC.dateField)]), n: cellNumber(row[col.count(LOG)]) }),
+  // The health signals' own reads (F-491): the sync heartbeat per source, admissions per day, refusals per
+  // month, and step failures per month (the total, each text category and the error state share one reader).
+  "health-sources": (row) => ({ programId: str(cellValue(row[col.field(PSC, PSC_SRC.programField)])), sourceType: str(cellValue(row[col.field(PSC, PSC_SRC.typeField)])), lastSyncedOn: cellTime(row[col.field(PSC, PSC_SRC.syncedField)]), operation: str(cellValue(row[col.field(PSC, PSC_SRC.operationField)])) }),
+  "health-admissions": (row) => ({ programId: str(cellValue(row[col.field(PARTICIPANTS, PARTICIPANT_SRC.programField)])), day: cellDay(row[col.day(PARTICIPANTS, PARTICIPANT_SRC.createdField)]), n: cellNumber(row[col.count(PARTICIPANTS)]) }),
+  "health-entry-month": (row) => ({ programId: str(cellValue(row[col.field(FAILED, FAILED_SRC.programField)])), month: cellMonth(row[col.month(FAILED, FAILED_SRC.dateField)]), n: cellNumber(row[col.count(FAILED)]), occurrences: cellNumber(row[col.sum(FAILED, FAILED_SRC.occurrencesField)]) }),
+  "health-step-total": (row) => ({ programId: str(cellValue(row[col.field(PARTICIPANTS, PARTICIPANT_SRC.programField)])), month: cellMonth(row[col.month(PARTICIPANTS, PARTICIPANT_SRC.dateField)]), n: cellNumber(row[col.count(PARTICIPANTS)]) }),
+  "health-step-cat": (row) => ({ programId: str(cellValue(row[col.field(PARTICIPANTS, PARTICIPANT_SRC.programField)])), month: cellMonth(row[col.month(PARTICIPANTS, PARTICIPANT_SRC.dateField)]), n: cellNumber(row[col.count(PARTICIPANTS)]) }),
+  "health-step-state": (row) => ({ programId: str(cellValue(row[col.field(PARTICIPANTS, PARTICIPANT_SRC.programField)])), month: cellMonth(row[col.month(PARTICIPANTS, PARTICIPANT_SRC.dateField)]), n: cellNumber(row[col.count(PARTICIPANTS)]) }),
 });
 
 // ── Queries, as data ─────────────────────────────────────────────────────────
@@ -883,50 +949,93 @@ const FAMILIES = {
     object: LOG, split: ["programs", "day"], health: "bounceReasons",
     query: (d) => ({ group: [logProgram, logTemplate, logMonth, { name: LOG_SRC.bounce.typeField }], show: [countOf], where: [...logWhere(d), bouncedOnly(), cond(LOG_SRC.bounce.reasonField, "CONTAINS", d.category.pattern)] }),
   },
-  // A capped SAMPLE of the bounce text no category names, masked at fetch: plain rows, one page, never split.
+  // A SAMPLE of the bounce text no category names, masked at fetch: plain rows, one small page PER PROGRAM
+  // (d.programs names the one), newest first, never split (F-484: a tenant-wide page is one program's).
   "health-bounce-sample": {
     object: LOG, split: [], sample: true, sanitize: "messages", health: "failureSamples",
-    query: (d) => ({ group: [], show: [logProgram, { name: LOG_SRC.bounce.reasonField }], where: [...logWhere(d), bouncedOnly(), ...(d.excludePatterns ?? []).map((p) => cond(LOG_SRC.bounce.reasonField, "DOES_NOT_CONTAINS", p))] }),
+    query: (d) => ({ group: [], show: [logProgram, { name: LOG_SRC.bounce.reasonField }, { name: LOG_SRC.dateField }], where: [...logWhere(d), bouncedOnly(), ...(d.excludePatterns ?? []).map((p) => cond(LOG_SRC.bounce.reasonField, "DOES_NOT_CONTAINS", p))], orderBy: [{ name: LOG_SRC.dateField, order: "DESC" }] }),
   },
   // Program × day over a recent window: a program's last send day. The server has no latest-date aggregate.
   "health-days": { object: LOG, split: ["programs", "day"], health: "lastSends", query: (d) => ({ group: [logProgram, { name: LOG_SRC.dateField, summarize: "Day" }], show: [countOf], where: logWhere(d) }) },
   // Failed participants: the per-program total (rows and occurrences), tenant-wide in one grouped call. The
   // reason field takes no filter on this CLI (its schema says so), so there is no breakdown and no row read
-  // beyond the capped sample below (S3b; the row read F-484 measured at order 10^6 is retired).
+  // beyond the per-program samples below (S3b; the row read F-484 measured at order 10^6 is retired).
   "health-reasons-total": {
     object: FAILED, split: ["programs"], health: "participantFailures",
-    query: () => ({ group: [{ name: FAILED_SRC.programField }], show: [countOf, { name: FAILED_SRC.occurrencesField, aggregation: "SUM" }], where: [] }),
+    query: (d) => ({ group: [{ name: FAILED_SRC.programField }], show: [countOf, { name: FAILED_SRC.occurrencesField, aggregation: "SUM" }], where: programsIn(FAILED_SRC, d) }),
   },
+  // One program's most recent refusals (d.programs names the one; d.window is the day window): a small page,
+  // newest first, never split.
   "health-reasons-sample": {
     object: FAILED, split: [], sample: true, sanitize: "messages", health: "failureSamples",
-    query: () => ({ group: [], show: [{ name: FAILED_SRC.programField }, { name: FAILED_SRC.reasonField }], where: [] }),
+    query: (d) => ({ group: [], show: [{ name: FAILED_SRC.programField }, { name: FAILED_SRC.reasonField }, { name: FAILED_SRC.dateField }], where: [...datedWhere(FAILED_SRC, d), ...programsIn(FAILED_SRC, d)], orderBy: [{ name: FAILED_SRC.dateField, order: "DESC" }] }),
   },
   // Cut by program only when a page comes back full, never on a timeout: this
   // object's group-bys time out unpredictably, and halving a batch down to
   // single programs after each pair of timeouts could cost more than the rest
   // of the pull. A batch that times out twice is recorded as not read.
   "health-states": { object: PARTICIPANTS, split: ["programs"], timeoutSplit: false, health: "participantStates", query: (d) => ({ group: [{ name: PARTICIPANT_SRC.programField }, { name: PARTICIPANT_SRC.stateField }], show: [countOf], where: [cond(PARTICIPANT_SRC.programField, "IN", d.programs)] }) },
+  // The health signals' reads (F-491), each tenant-wide first (d.scope names the selected programs, so a
+  // full page or a double timeout is cut by program): the active participant sources with their last sync,
+  // admissions per program × day over the day window, refusals per program × month over the window, and
+  // step failures per program × month over the window — the total with a reason, one CONTAINS call per text
+  // category, and the platform's error state.
+  "health-sources": {
+    object: PSC, split: ["programs"], health: "sources",
+    query: (d) => ({ group: [], show: [{ name: PSC_SRC.programField }, { name: PSC_SRC.typeField }, { name: PSC_SRC.syncedField }, { name: PSC_SRC.operationField }], where: [...standing(PSC_SRC), ...programsIn(PSC_SRC, d)] }),
+  },
+  "health-admissions": {
+    object: PARTICIPANTS, split: ["programs", "day"], health: "admissions",
+    query: (d) => ({ group: [{ name: PARTICIPANT_SRC.programField }, { name: PARTICIPANT_SRC.createdField, summarize: "Day" }], show: [countOf], where: [...datedWhere({ dateField: PARTICIPANT_SRC.createdField }, d), ...programsIn(PARTICIPANT_SRC, d)] }),
+  },
+  "health-entry-month": {
+    object: FAILED, split: ["programs"], health: "entryFailures",
+    query: (d) => ({ group: [{ name: FAILED_SRC.programField }, byMonth(FAILED_SRC.dateField)], show: [countOf, { name: FAILED_SRC.occurrencesField, aggregation: "SUM" }], where: [...datedWhere(FAILED_SRC, d), ...programsIn(FAILED_SRC, d)] }),
+  },
+  "health-step-total": {
+    object: PARTICIPANTS, split: ["programs"], health: "stepFailures",
+    query: (d) => ({ group: [{ name: PARTICIPANT_SRC.programField }, byMonth(PARTICIPANT_SRC.dateField)], show: [countOf], where: [cond(PARTICIPANT_SRC.reasonField, "IS_NOT_NULL"), ...datedWhere(PARTICIPANT_SRC, d), ...programsIn(PARTICIPANT_SRC, d)] }),
+  },
+  "health-step-cat": {
+    object: PARTICIPANTS, split: ["programs"], health: "stepFailures",
+    query: (d) => ({ group: [{ name: PARTICIPANT_SRC.programField }, byMonth(PARTICIPANT_SRC.dateField)], show: [countOf], where: [cond(PARTICIPANT_SRC.reasonField, "CONTAINS", d.category.pattern), ...datedWhere(PARTICIPANT_SRC, d), ...programsIn(PARTICIPANT_SRC, d)] }),
+  },
+  "health-step-state": {
+    object: PARTICIPANTS, split: ["programs"], health: "stepFailures",
+    query: (d) => ({ group: [{ name: PARTICIPANT_SRC.programField }, byMonth(PARTICIPANT_SRC.dateField)], show: [countOf], where: [cond(PARTICIPANT_SRC.stateField, "EQ", d.category.state), ...datedWhere(PARTICIPANT_SRC, d), ...programsIn(PARTICIPANT_SRC, d)] }),
+  },
 };
 const isHealth = (d) => !!FAMILIES[d.family]?.health;
 const bouncedOnly = () => cond(LOG_SRC.flags.bounced.field, "EQ", LOG_SRC.flags.bounced.value);
-// The two objects only health reads. Either may be missing on a tenant.
-const HEALTH_OBJECTS = { participantFailures: FAILED, participantStates: PARTICIPANTS };
+// The program filter of a unit cut by program, on the object's own program field; none on a tenant-wide unit.
+const programsIn = (src, d) => (d.programs ? [cond(src.programField, "IN", d.programs)] : []);
+// A two-sided window on the object's date field.
+const datedWhere = (src, d) => {
+  if (!d.window?.start || !d.window?.end) throw new Error(`engagement: ${d.family} has no two-sided window`);
+  return [cond(src.dateField, "GTE", d.window.start), cond(src.dateField, "LT", d.window.end)];
+};
+// The objects only health reads. Any may be missing on a tenant; a part read from a missing one says no-schema.
+const HEALTH_OBJECTS = { participantFailures: FAILED, participantStates: PARTICIPANTS, sources: PSC };
+// Which of those objects each health part is read from (the parts read from the delivery log name none).
+const PART_OBJECT = Object.freeze({ participantFailures: "participantFailures", entryFailures: "participantFailures", participantStates: "participantStates", admissions: "participantStates", stepFailures: "participantStates", sources: "sources" });
 // The classification of the one row a documented program with no schedule keeps (the schedule audit's wording).
 export const NO_SCHEDULE = "no schedule captured";
-export const HEALTH_PARTS = Object.freeze(["bounceReasons", "participantFailures", "participantStates", "lastSends", "schedules", "failureSamples"]);
+export const HEALTH_PARTS = Object.freeze(["bounceReasons", "participantFailures", "participantStates", "lastSends", "schedules", "failureSamples", "entrySamples", "sources", "admissions", "entryFailures", "stepFailures"]);
 // What each part's figures are over (meta.health.parts[].basis; "all-time" is the REASONS id a page renders).
-const PART_BASIS = Object.freeze({ bounceReasons: "window", participantFailures: "all-time", participantStates: "all-time", lastSends: "lookback", schedules: "as-documented", failureSamples: "sample" });
-// A sample read is one page of at most this many rows, and is never split (it is a sample).
-export const SAMPLE_PAGE = 2000;
-// How many masked samples the snapshot keeps per program and part.
+const PART_BASIS = Object.freeze({ bounceReasons: "window", participantFailures: "all-time", participantStates: "all-time", lastSends: "lookback", schedules: "as-documented", failureSamples: "sample", entrySamples: "sample", sources: "at-pull", admissions: "lookback", entryFailures: "window", stepFailures: "window" });
+// A sample read is one page of at most this many rows per program, newest first, and is never split (it is a sample).
+export const SAMPLE_PAGE = 100;
+// How many masked texts the snapshot keeps per program and part (the most frequent in the page).
 export const SAMPLES_PER_PROGRAM = 5;
-// The most flagged programs whose schedule is read live at one pull (one describe each).
-export const HEALTH_DESCRIBE_CAP = 25;
+// How many programs a pull samples per part, most failures first (--sample-programs raises it; the plan
+// prices the rest). A program whose failure counts did not move since the previous snapshot keeps its sample.
+export const SAMPLE_PROGRAM_CAP = 25;
 // The row budget: a family whose count-first read says it holds more rows than
 // this many pages is not read (a health part: reason too-large; the click
 // detail: the plan refuses and says what to narrow).
 export const MAX_PAGES = 40;
-// The live family of `jo p describe` reads for flagged programs (the health part "schedules").
+// The retired live family of `jo p describe` reads (S3b; F-491 retired it): a run made under 0.47.0
+// unreleased may still log it, and loadRun ignores it.
 const SCHEDULE_DESCRIBE = "schedule-describe";
 /**
  * The days a program's last send is read to the day: the lookback, counted
@@ -959,6 +1068,8 @@ export function rpRunArgv(q, pageSize) {
   const argv = ["--json", "rp", "run", "--object", q.object, "--show-fields", JSON.stringify(q.show)];
   if (q.group.length) argv.push("--group-by", JSON.stringify(q.group));
   if (q.where.length) argv.push("--where-filters", JSON.stringify({ conditions: q.where }));
+  // A sample reads newest first (measured 2026-10-07: --order-by on a shown DATETIME field, DESC).
+  if (q.orderBy?.length) argv.push("--order-by", JSON.stringify(q.orderBy));
   argv.push("--page-size", String(pageSize));
   return argv;
 }
@@ -1008,6 +1119,11 @@ export function validateQuery(q, types, flags = null) {
     if (grouped.has(fieldKey(q.object, e)))
       problems.push(`${fieldKey(q.object, e).replace("::", ".")} is shown and grouped by — the CLI drops a show field that a group-by field names, whatever its aggregation; show a field the query does not group by`);
   }
+  // An order-by entry must be a shown or grouped field (the CLI's spec, §10.14).
+  const named = new Set([...q.show, ...q.group].map((e) => fieldKey(q.object, e)));
+  for (const e of q.orderBy ?? []) {
+    if (!named.has(fieldKey(q.object, e))) problems.push(`${q.object}.${e.name} is ordered by but neither shown nor grouped by — the CLI refuses an order-by entry that is not in showFields or groupBy`);
+  }
   return problems;
 }
 
@@ -1030,7 +1146,7 @@ function unitArgv(d, pageSize) {
   if (d.family === "whoami") return ["whoami"];
   if (d.family === "programs") return ["--json", "jo", "p", "list", "--limit", "1000", "--page", String(d.page)];
   if (d.family === "schema") return ["--json", "rp", "schema", "--object", d.object];
-  if (d.family === "describe" || d.family === SCHEDULE_DESCRIBE) return ["--json", "jo", "p", "describe", "--id", d.programId];
+  if (d.family === "describe") return ["--json", "jo", "p", "describe", "--id", d.programId];
   return rpRunArgv(buildQuery(d), unitPageSize(d, pageSize));
 }
 const unitId = (d, argv) => `${d.family}-${createHash("sha1").update(JSON.stringify(argv)).digest("hex").slice(0, 12)}`;
@@ -1047,6 +1163,12 @@ export function splitUnit(d) {
     if (how === "programs" && d.programs && d.programs.length > 1) {
       const mid = Math.ceil(d.programs.length / 2);
       return [{ ...d, programs: d.programs.slice(0, mid) }, { ...d, programs: d.programs.slice(mid) }];
+    }
+    // A tenant-wide unit that names its scope (the selected programs) is first cut into two program halves.
+    if (how === "programs" && !d.programs && d.scope && d.scope.length > 1) {
+      const mid = Math.ceil(d.scope.length / 2);
+      const { scope: _s, ...rest } = d;
+      return [{ ...rest, programs: d.scope.slice(0, mid) }, { ...rest, programs: d.scope.slice(mid) }];
     }
     if (how === "keys" && d.keys && d.keys.length > 1) {
       const mid = Math.ceil(d.keys.length / 2);
@@ -1186,7 +1308,9 @@ export function resolveParams(raw) {
   // and the expected reasons (--expected-reason) as participant categories flagged expected. Validated here
   // (every field text, ids unique, patterns disjoint as far as text can tell), so a bad list is refused before any call.
   const given = raw.health?.categories ?? {};
-  const expectedReasons = [...new Set((raw.health?.expectedReasons ?? []).map((s) => String(s).trim()).filter(Boolean))].sort();
+  // An expected reason the shipped list already names (its pattern, case folded) is already expected: not a second category.
+  const shippedPatterns = new Set(FAILURE_CATEGORIES.participantFailures.map((c) => c.pattern.toLowerCase()));
+  const expectedReasons = [...new Set((raw.health?.expectedReasons ?? []).map((s) => String(s).trim()).filter(Boolean))].sort().filter((s) => !shippedPatterns.has(s.toLowerCase()));
   const table = (part, extra) => {
     const problems = validateCategories(extra);
     if (problems.length) throw new Error(`--failure-categories (${part}): ${problems.join("; ")}`);
@@ -1236,6 +1360,18 @@ export function resolveParams(raw) {
       })(),
       categories,
       expectedReasons,
+      // How many programs a pull samples per part, most failures first (F-484): the rest are named, not read.
+      samplePrograms: (() => {
+        const n = raw.health?.samplePrograms ?? SAMPLE_PROGRAM_CAP;
+        if (!Number.isInteger(n) || n < 0) throw new Error(`--sample-programs must be a whole number >= 0 (got ${raw.health?.samplePrograms})`);
+        return n;
+      })(),
+      // Due days with no admission before an ingest that runs reads "admitting nobody" (F-491; a setup question).
+      quietDueDays: (() => {
+        const n = raw.health?.quietDueDays ?? QUIET_DUE_DAYS_DEFAULT;
+        if (!Number.isInteger(n) || n < 1) throw new Error(`--quiet-due-days must be a whole number >= 1 (got ${raw.health?.quietDueDays})`);
+        return n;
+      })(),
     },
     incompleteFrom,
     repullMonths,
@@ -1272,6 +1408,8 @@ export function listedPrograms(pages) {
         statuses: (Array.isArray(st) ? st : [st]).filter((s) => typeof s === "string" && s),
         model: str(p.advancedOutreachModel), modelName: str(p.advancedOutreachModelName),
         audienceType: str(p.advancedOutreachType), supergroup: null, group: null, folderId: str(p.folderId),
+        // What the list says of the program's participant sync (F-491); null when it does not say.
+        syncScheduleDisabled: typeof p.participantSyncScheduleDisabled === "boolean" ? p.participantSyncScheduleDisabled : null,
       });
     }
   }
@@ -1287,6 +1425,7 @@ export function describedProgram(payload) {
     statuses: (Array.isArray(st) ? st : [st]).filter((s) => typeof s === "string" && s),
     model: str(ao.advancedOutreachModel), modelName: str(ao.advancedOutreachModelName),
     audienceType: str(ao.advancedOutreachType), supergroup: null, group: null, folderId: str(ao.folderId),
+    syncScheduleDisabled: null,
   };
 }
 
@@ -1614,20 +1753,80 @@ export function planUnits({ params, base, selectedIds, refresh, surveyAvailable,
       bounce({ cls: "test", testAccounts: tests, window: smallSpan });
       for (const domain of domains) bounce({ cls: "test-internal", domain, testAccounts: tests, window: smallSpan });
     }
-    units.push({ family: "health-bounce-sample", cls: "all", window: smallSpan, excludePatterns: cats.map((c) => c.pattern) });
-    units.push({ family: "health-days", cls: "all", window: { start: health.dayWindow.start, end: health.dayWindow.end } });
+    const dayWindow = { start: health.dayWindow.start, end: health.dayWindow.end };
+    units.push({ family: "health-days", cls: "all", window: dayWindow });
+    // The signals' reads (F-491): tenant-wide, each naming the selected programs as its scope for the cut.
+    if (health.objects.sources) units.push({ family: "health-sources", cls: "all", scope: selectedIds });
     if (health.objects.participantFailures) {
-      units.push({ family: "health-reasons-total", cls: "all" });
-      units.push({ family: "health-reasons-sample", cls: "all" });
+      units.push({ family: "health-reasons-total", cls: "all", scope: selectedIds });
+      units.push({ family: "health-entry-month", cls: "all", window: whole, scope: selectedIds });
     }
-    if (health.objects.participantStates) for (const b of batches(selectedIds)) units.push({ family: "health-states", cls: "all", programs: b });
+    if (health.objects.participantStates) {
+      for (const b of batches(selectedIds)) units.push({ family: "health-states", cls: "all", programs: b });
+      units.push({ family: "health-admissions", cls: "all", window: dayWindow, scope: selectedIds });
+      units.push({ family: "health-step-total", cls: "all", window: whole, scope: selectedIds });
+      for (const category of STEP_FAILURE_CATEGORIES) units.push({ family: category.state ? "health-step-state" : "health-step-cat", cls: "all", window: whole, scope: selectedIds, category });
+    }
+    // The per-program samples are not planned here: fetch picks the programs from what the reads above
+    // return (sampleTargets), after them.
   }
   return units;
 }
 
+/**
+ * Which programs a pull samples for a part, most failures first, and which it
+ * does not (F-484): every selected program whose failures in the window are
+ * above zero, less those whose counts equal the previous snapshot's (its
+ * sample is kept), capped. Pure, so fetch and reduce pick the same programs.
+ * @param {{counts: Map<string, number>, previousCounts: ?Map<string, number>, previousSampled: Set<string>, cap: number}} args
+ *   counts: program → failures in the window (this pull); previousCounts: the same from the previous
+ *   snapshot, or null; previousSampled: the programs the previous snapshot holds a sample for
+ * @returns {{sample: string[], carried: string[], notSampled: Array<{programId: string, reason: string}>}}
+ */
+export function sampleTargets({ counts, previousCounts, previousSampled, cap }) {
+  const withFailures = [...counts].filter(([, n]) => n > 0).sort((a, b) => b[1] - a[1] || cmpKey(a[0], b[0])).map(([id]) => id);
+  const carried = withFailures.filter((id) => previousCounts?.get(id) === counts.get(id) && previousSampled.has(id));
+  const fresh = withFailures.filter((id) => !carried.includes(id));
+  return { sample: fresh.slice(0, cap), carried, notSampled: fresh.slice(cap).map((programId) => ({ programId, reason: "cap" })) };
+}
+/** Refusals per selected program over the window months, from the entry-month units (fetch and reduce share it). */
+function entryCountsFrom(units, selected, inWindow) {
+  const counts = new Map();
+  for (const u of units) {
+    for (const row of u.rows) {
+      const r = ROW_READERS["health-entry-month"](row);
+      if (r.programId == null || r.month == null || r.n == null || !selected.has(r.programId) || !inWindow.has(r.month)) continue;
+      counts.set(r.programId, (counts.get(r.programId) ?? 0) + r.n);
+    }
+  }
+  return counts;
+}
+/** Uncategorised ("Other") bounces per selected program over the window, from the bounce total and category units. */
+function otherBounceCountsFrom(units, selected, inWindow) {
+  const counts = new Map();
+  for (const u of units) {
+    if (u.cls !== "all") continue;
+    for (const row of u.rows) {
+      const r = ROW_READERS[u.family](row);
+      if (r.programId == null || r.month == null || r.n == null || !selected.has(r.programId) || !inWindow.has(r.month)) continue;
+      counts.set(r.programId, (counts.get(r.programId) ?? 0) + (u.family === "health-bounce-total" ? r.n : -r.n));
+    }
+  }
+  return counts;
+}
+/** The same two counts from a previous snapshot's own rows (the snapshot holds them per month). */
+function previousFailureCounts(previous, part, inWindow) {
+  if (!previous?.facts?.health) return null;
+  const counts = new Map();
+  if (part === "participantFailures") for (const r of previous.facts.health.entryFailures ?? []) if (inWindow.has(r.month)) counts.set(r.programId, (counts.get(r.programId) ?? 0) + r.participants);
+  else for (const r of previous.facts.health.bounceReasons ?? []) if (inWindow.has(r.month) && r.category === OTHER_CATEGORY) counts.set(r.programId, (counts.get(r.programId) ?? 0) + r.count);
+  return counts;
+}
+const previousSampledPrograms = (previous, part) => new Set((previous?.facts?.health?.failureSamples ?? []).filter((r) => r.part === part).map((r) => r.programId));
+
 // Seconds per call, by family: medians measured on CLI 1.0.10, rounded up. An
 // estimate, printed as one; the token check before each call is what decides.
-const CALL_SECONDS = { whoami: 1, programs: 2, schema: 2, describe: 3, [SCHEDULE_DESCRIBE]: 3, "uniques-month": 13, "uniques-window": 23, "account-names": 4, "health-states": 16, "health-reasons-total": 9, "health-reasons-sample": 8 };
+const CALL_SECONDS = { whoami: 1, programs: 2, schema: 2, describe: 3, "uniques-month": 13, "uniques-window": 23, "account-names": 4, "health-states": 16, "health-reasons-total": 9, "health-reasons-sample": 8, "health-bounce-sample": 8, "health-admissions": 16, "health-step-total": 10, "health-step-cat": 10, "health-step-state": 10 };
 // Rows per program-month a bounce-count unit is expected to hold (templates × bounce types), never more than the bounces.
 const BOUNCE_ROWS_PER_MONTH = 6;
 const monthsOf = (u) => (u.window ? monthsBetween(u.window.start.slice(0, 7), addDays(u.window.end, -1).slice(0, 7)) : []);
@@ -1991,13 +2190,19 @@ export function fetchEngagement(ctx) {
   const health = params.health.pull ? { dayWindow: healthDayWindow(params), objects: healthObjects } : null;
   const units = planUnits({ params, base, selectedIds, refresh, surveyAvailable, health });
   // The failed-participant totals are read NOW, as the count-first read of that object (S3b): the plan prints
-  // the rows behind the capped sample, and the fact calls reuse the answer. A failure costs that part only.
-  if (health?.objects.participantFailures && !stop) forHealth("participantFailures", () => runUnit({ family: "health-reasons-total", cls: "all" }));
+  // the rows behind the samples, and the fact calls reuse the answer. A failure costs that part only. The
+  // refusals per month (F-491) are read beside it: the plan prices the per-program samples from them.
+  const unitOf = (family) => units.find((u) => u.family === family);
+  if (health?.objects.participantFailures && !stop) {
+    forHealth("participantFailures", () => runUnit(unitOf("health-reasons-total")));
+    if (!stop) forHealth("entryFailures", () => runUnit(unitOf("health-entry-month")));
+  }
+  const okUnits = (family) => rowsOf([...records.values()].filter((r) => r.family === family && r.status === "ok" && !r.truncated));
   const failedRows = (() => {
-    const rec = [...records.values()].find((r) => r.family === "health-reasons-total" && r.status === "ok" && !r.truncated);
-    if (!rec) return null;
+    const recs = okUnits("health-reasons-total");
+    if (!recs.length) return null;
     let rows = 0;
-    for (const row of load(rec)) rows += ROW_READERS["health-reasons-total"](row).n ?? 0;
+    for (const u of recs) for (const row of u.rows) rows += ROW_READERS["health-reasons-total"](row).n ?? 0;
     return rows;
   })();
   // The step names and schedules from the KB, read once and kept with the run (reduce reads the file).
@@ -2032,14 +2237,29 @@ export function fetchEngagement(ctx) {
   // Calls and seconds include the splits a program-month too large for a page will force.
   const calls = (list) => estimateCalls(list, base, params.pageSize);
   const seconds = (list) => estimateSeconds(list, base, params.pageSize);
-  // The live schedule reads (one describe per flagged program, capped) are planned as an upper bound: the
-  // programs the silent rules can flag are the selected Active ones with a recurring schedule in the KB.
+  // The per-program samples (F-484), priced from the count-first reads: how many selected programs have
+  // refusals in the window (read above) and how many have uncategorised bounces (from the bounce count-first
+  // read: every bounce, until the categories are counted), against the cap; what the cap leaves out, and what
+  // reading it all would cost, so raising --sample-programs is an informed choice. A program whose counts did
+  // not move since the previous snapshot keeps its sample and costs no call, so this is an upper bound.
+  const inWindowMonths = new Set(monthsBetween(params.window.from, params.window.to));
+  const selectedSet = new Set(selectedIds);
+  const sampleCounts = {
+    participantFailures: entryCountsFrom(okUnits("health-entry-month"), selectedSet, inWindowMonths),
+    bounceReasons: new Map([...base.values()].filter((b) => selectedSet.has(b.programId) && inWindowMonths.has(b.month) && (b.bounced ?? 0) > 0).map((b) => [b.programId, 0]).map(([id]) => [id, [...base.values()].filter((b) => b.programId === id && inWindowMonths.has(b.month)).reduce((s, b) => s + (b.bounced ?? 0), 0)])),
+  };
+  const samplePlan = (part) => {
+    const t = sampleTargets({ counts: sampleCounts[part], previousCounts: previousFailureCounts(previous, part, inWindowMonths), previousSampled: previousSampledPrograms(previous, part), cap: params.health.samplePrograms });
+    const family = part === "participantFailures" ? "health-reasons-sample" : "health-bounce-sample";
+    return { withFailures: sampleCounts[part].size, planned: t.sample.length, carried: t.carried.length, beyondCap: t.notSampled.length, secondsEach: CALL_SECONDS[family], secondsBeyondCap: t.notSampled.length * CALL_SECONDS[family], family };
+  };
+  const samples = { cap: params.health.samplePrograms, participantFailures: samplePlan("participantFailures"), bounceReasons: samplePlan("bounceReasons") };
+  const sampleReads = params.health.pull ? samples.participantFailures.planned + samples.bounceReasons.planned : 0;
+  const sampleSeconds = (n) => n * CALL_SECONDS["health-reasons-sample"];
   const schedules = kbSteps?.schedules ?? {};
   const scheduleOf = (id) => pickSchedule(schedules[id], params.today);
-  const recurringActive = selectedIds.filter((id) => decision.selected.get(id)?.statuses.includes("PROCESSING") && scheduleOf(id)?.classification === "recurring");
-  const liveReads = { cap: HEALTH_DESCRIBE_CAP, planned: kbDir ? Math.min(HEALTH_DESCRIBE_CAP, recurringActive.length) : 0 };
-  const ownReads = params.health.pull ? liveReads.planned : 0;
-  const describeSeconds = (n) => n * CALL_SECONDS[SCHEDULE_DESCRIBE];
+  const ownReads = sampleReads;
+  const describeSeconds = sampleSeconds;
   // The lookback the health facts read by day, against the longest schedule period among the programs (ENG-2, S3b):
   // a program whose period is longer than the window cannot be judged by its cadence, and the runner derives the flag from this.
   const periods = selectedIds.map((id) => scheduleOf(id)).filter((s) => s?.classification === "recurring").map((s) => cronLastDue(s.cronExpression, params.today).periodDays).filter((p) => p != null);
@@ -2049,18 +2269,20 @@ export function fetchEngagement(ctx) {
     programsBeyondWindow: periods.filter((p) => p > params.health.lookbackDays).length,
     unreadableCrons: selectedIds.map((id) => scheduleOf(id)).filter((s) => s?.classification === "recurring" && !cronLastDue(s.cronExpression, params.today).readable).length,
   };
+  const plannedSamples = samples.participantFailures.planned + samples.bounceReasons.planned;
+  const sampleFamilies = { ...(samples.participantFailures.planned ? { "health-reasons-sample": samples.participantFailures.planned } : {}), ...(samples.bounceReasons.planned ? { "health-bounce-sample": samples.bounceReasons.planned } : {}) };
   const estimate = {
     mode: refresh.mode, why: refresh.why,
-    thisRun: { calls: calls(units) + ownReads, seconds: seconds(units) + describeSeconds(ownReads), units: units.length, byFamily: { ...familyCounts(units, base, params.pageSize), ...(ownReads ? { [SCHEDULE_DESCRIBE]: ownReads } : {}) } },
+    thisRun: { calls: calls(units) + ownReads, seconds: seconds(units) + describeSeconds(ownReads), units: units.length, byFamily: { ...familyCounts(units, base, params.pageSize), ...(ownReads ? sampleFamilies : {}) } },
     full: { calls: calls(fullUnits) + ownReads, seconds: seconds(fullUnits) + describeSeconds(ownReads) },
     stepDetail: { on: params.stepDetail, addsCalls: calls(withStep) - calls(without), addsSeconds: seconds(withStep) - seconds(without) },
     // What the account grain costs, printed whether it is on or off (its name lookups are not counted: how many depends on the selection).
     accounts: { on: params.accounts.pull, addsCalls: calls(accountsOn) - calls(accountsOff), addsSeconds: seconds(accountsOn) - seconds(accountsOff) },
-    // What the health facts cost, printed whether they are on or off; the live schedule reads at their cap, the
-    // lookback against the schedules, and the failed-participant rows the count-first read found.
+    // What the health facts cost, printed whether they are on or off; the per-program samples against their cap,
+    // the lookback against the schedules, and the failed-participant rows the count-first read found.
     health: {
-      on: params.health.pull, addsCalls: calls(healthOn) - calls(healthOff) + liveReads.planned, addsSeconds: seconds(healthOn) - seconds(healthOff) + describeSeconds(liveReads.planned),
-      describes: liveReads, lookback, failedParticipantRows: failedRows,
+      on: params.health.pull, addsCalls: calls(healthOn) - calls(healthOff) + plannedSamples, addsSeconds: seconds(healthOn) - seconds(healthOff) + sampleSeconds(plannedSamples),
+      samples, lookback, failedParticipantRows: failedRows,
       categories: { bounceReasons: (params.health.categories?.bounceReasons ?? []).length, participantFailures: (params.health.categories?.participantFailures ?? []).length },
     },
     // The row budget and what exceeds it (a health part over it is not read; the click detail refused above).
@@ -2118,15 +2340,23 @@ export function fetchEngagement(ctx) {
     }
     forHealth(part, () => runUnit(d));
   }
-  // The live schedule read (S3b): for the programs the cadence rule flags as possibly silent, one `jo p describe`
-  // each, most overdue first, at most HEALTH_DESCRIBE_CAP. The same rule the reader applies (judgeSilence), over
-  // what was just read; a describe that fails costs nothing but its own result (the KB's row stands).
-  if (health && kbSteps && !stop && !refusedParts.has("lastSends")) {
-    const dayUnits = rowsOf([...records.values()].filter((r) => r.family === "health-days" && r.status === "ok" && !r.truncated));
-    const lastSends = lastSendsFrom({ dayUnits, base, listed, selected: decision.selected, params, inWindow: new Set(monthsBetween(params.window.from, params.window.to)) });
-    const flagged = flaggedPrograms({ lastSends, base, schedules, params, dayWindow: health.dayWindow });
-    for (const id of flagged.slice(0, HEALTH_DESCRIBE_CAP)) {
-      forHealth("schedules", () => runUnit({ family: SCHEDULE_DESCRIBE, programId: id }));
+  // The per-program samples (F-484), after the counts they are picked from: one small page of the most recent
+  // refusals per program with refusals in the window, and one of the uncategorised bounce text per program
+  // with uncategorised bounces — most first, at most the cap each, skipping a program whose counts did not
+  // move since the previous snapshot (reduce keeps that snapshot's sample). reduce re-derives the same picks
+  // from the same counts (sampleTargets is pure), so nothing about the choice is stored.
+  if (health && !stop && !refusedParts.has("failureSamples")) {
+    const sampleWindow = { start: health.dayWindow.start, end: health.dayWindow.end };
+    const picks = (part) => sampleTargets({ counts: part === "participantFailures" ? entryCountsFrom(okUnits("health-entry-month"), selectedSet, inWindowMonths) : otherBounceCountsFrom([...okUnits("health-bounce-total"), ...okUnits("health-bounce-cat")], selectedSet, inWindowMonths), previousCounts: previousFailureCounts(previous, part, inWindowMonths), previousSampled: previousSampledPrograms(previous, part), cap: params.health.samplePrograms });
+    if (health.objects.participantFailures) {
+      for (const id of picks("participantFailures").sample) {
+        forHealth("failureSamples", () => runUnit({ family: "health-reasons-sample", cls: "all", programs: [id], window: sampleWindow }));
+        if (stop) break;
+      }
+    }
+    const cats = params.health.categories?.bounceReasons ?? [];
+    for (const id of stop ? [] : picks("bounceReasons").sample) {
+      forHealth("failureSamples", () => runUnit({ family: "health-bounce-sample", cls: "all", programs: [id], window: sampleWindow, excludePatterns: cats.map((c) => c.pattern) }));
       if (stop) break;
     }
   }
@@ -2158,25 +2388,20 @@ function readKbSteps(kbDir, today = null) {
  * is, else the first's. A documented program with none says so.
  * @param {?{asOf: ?string, schedules: Array<*>}} doc
  * @param {string} today
- * @returns {?{classification: string, cronExpression: ?string, timeZoneName: ?string, asOf: ?string}}
+ * @returns {?{classification: string, cronExpression: ?string, timeZoneName: ?string, startTime: ?number, endTime: ?number, asOf: ?string}}
  */
 export function pickSchedule(doc, today) {
   if (!doc) return null;
   const list = doc.schedules ?? [];
-  if (!list.length) return { classification: NO_SCHEDULE, cronExpression: null, timeZoneName: null, asOf: doc.asOf ?? null };
+  if (!list.length) return { classification: NO_SCHEDULE, cronExpression: null, timeZoneName: null, startTime: null, endTime: null, asOf: doc.asOf ?? null };
   const recurring = list.filter((s) => s.classification === "recurring");
   let chosen = list[0];
   if (recurring.length) chosen = recurring.map((s) => ({ s, period: cronLastDue(s.cronExpression, today).periodDays ?? Infinity })).sort((a, b) => a.period - b.period)[0].s;
   const classification = recurring.length ? "recurring" : list.some((s) => s.classification === "one-time") ? "one-time" : String(chosen.classification ?? "unknown");
-  return { classification, cronExpression: chosen.cronExpression ?? null, timeZoneName: chosen.timeZoneName ?? null, asOf: doc.asOf ?? null };
+  const time = (t) => (typeof t === "number" && t > 0 ? t : null);
+  return { classification, cronExpression: chosen.cronExpression ?? null, timeZoneName: chosen.timeZoneName ?? null, startTime: time(chosen.startTime), endTime: time(chosen.endTime), asOf: doc.asOf ?? null };
 }
-// A live `jo p describe` payload → its schedules, through the KB doc's own parser (jo-report): the payload is
-// wrapped as the one-fence doc the parser reads, so no second parser of a program exists here.
-function liveSchedulesOf(payload) {
-  const { entry } = parseJourneyDoc(`# live\n\n\`\`\`json\n${JSON.stringify(payload)}\n\`\`\`\n`);
-  return entry.schedules.map((sc) => ({ ...sc, classification: classifySchedule(sc) }));
-}
-/** Each program's last send from the day buckets and the base call: the lastSends table, shared by fetch (for the live read) and reduce. */
+/** Each program's last send from the day buckets and the base call: the lastSends table. */
 function lastSendsFrom({ dayUnits, base, listed, selected, params, inWindow }) {
   const later = (map, id, v) => { if (!(map.get(id) >= v)) map.set(id, v); };
   const lastDay = new Map();
@@ -2200,15 +2425,16 @@ function lastSendsFrom({ dayUnits, base, listed, selected, params, inWindow }) {
     .sort((a, b) => cmpKey(a.programId, b.programId));
   return { rows, unreadable };
 }
-/** The programs the cadence rule flags as possibly silent, most overdue first: the ones whose schedule is read live. */
-function flaggedPrograms({ lastSends, base, schedules, params, dayWindow }) {
-  const sentMonths = new Map();
-  for (const b of base.values()) if (b.sent > 0) sentMonths.set(b.programId, [...(sentMonths.get(b.programId) ?? []), b.month]);
-  const judged = judgeSilence({
-    asOf: dayWindow.asOf, dayWindow: { start: dayWindow.start, endExclusive: dayWindow.end }, days: SILENT_DAYS_DEFAULT, incompleteMonth: params.incompleteFrom.slice(0, 7), months: monthsBetween(params.window.from, params.window.to),
-    programs: lastSends.rows.map((r) => ({ ...r, schedule: pickSchedule(schedules[r.programId], params.today), lastRun: null, sentMonths: sentMonths.get(r.programId) ?? [], templates: 0 })),
-  });
-  return judged.filter((r) => r.list === "possible-silent-failure" && r.rule === "cadence").sort((a, b) => b.detail.daysOverdue - a.detail.daysOverdue || cmpKey(a.programId, b.programId)).map((r) => r.programId);
+/**
+ * A masked sample text → the category it matches, by CONTAINS folded to lower
+ * case (the server's CONTAINS is case-insensitive: measured 2026-10-07, four
+ * casings of one wording returned one count). Null when none matches.
+ * @param {string} message
+ * @param {ReadonlyArray<{id: string, pattern: string, expected?: boolean}>} categories
+ */
+export function matchCategory(message, categories) {
+  const text = String(message).toLowerCase();
+  return categories.find((c) => text.includes(c.pattern.toLowerCase())) ?? null;
 }
 
 // ── Reduce ───────────────────────────────────────────────────────────────────
@@ -2295,13 +2521,12 @@ export function decideClickState({ everClicked, reading }) {
 
 /**
  * Fetched payloads → the T-10 snapshot. Pure: no clock, no file, no call.
- * @param {{params: *, whoami: *, programPages: Array<*>, describes: Map<string, *>, units: Array<*>, kbSteps?: *, previous?: ?T10Snapshot, linkSettings?: *, surveyAvailable: boolean, healthState?: ?{unread: Object<string, Array<*>>, objects: Object<string, boolean>}, liveSchedules?: Map<string, *>, calls?: *, cliVersion?: ?string, pluginVersion?: ?string}} input
- *   healthState: which health parts were not read whole, and whether the two objects only health reads exist on the tenant
- *   liveSchedules: the live describe payloads of the programs the silent rules flagged, by program id (S3b)
+ * @param {{params: *, whoami: *, programPages: Array<*>, describes: Map<string, *>, units: Array<*>, kbSteps?: *, previous?: ?T10Snapshot, linkSettings?: *, surveyAvailable: boolean, healthState?: ?{unread: Object<string, Array<*>>, objects: Object<string, boolean>}, calls?: *, cliVersion?: ?string, pluginVersion?: ?string}} input
+ *   healthState: which health parts were not read whole, and whether the objects only health reads exist on the tenant
  * @returns {T10Snapshot}
  */
 export function reduceEngagement(input) {
-  const { params, whoami, programPages, describes, units, kbSteps = null, previous: given = null, linkSettings = null, surveyAvailable, healthState = null, liveSchedules = new Map(), calls = {}, cliVersion = null, pluginVersion = null } = input;
+  const { params, whoami, programPages, describes, units, kbSteps = null, previous: given = null, linkSettings = null, surveyAvailable, healthState = null, calls = {}, cliVersion = null, pluginVersion = null } = input;
   const pulledAt = params.pulledAt;
   if (typeof pulledAt !== "string") throw new Error("engagement reduce: the run carries no pull time — its fact calls never started");
   const windowMonths = monthsBetween(params.window.from, params.window.to);
@@ -2651,24 +2876,25 @@ export function reduceEngagement(input) {
   // Every table is an array; a part that was not read is empty and says why.
   // Messages were masked at fetch time and are masked again here, so nothing
   // unmasked reaches a snapshot whatever a payload file holds.
-  const emptyHealth = () => ({ bounceReasons: [], participantFailures: [], participantStates: [], lastSends: [], schedules: [], failureSamples: [] });
+  const emptyHealth = () => Object.fromEntries(HEALTH_PARTS.map((name) => [name, []]));
   const healthFacts = emptyHealth();
-  /** @type {{pulled: boolean, reason: ?string, asOf: ?string, dayWindow: ?{start: string, endExclusive: string}, parts: Object<string, {pulled: boolean, reason: ?string, basis?: string}>, categories?: Object<string, {counted: boolean, reason: ?string, ids: string[], configured: string[]}>}} */
+  /** @type {{pulled: boolean, reason: ?string, asOf: ?string, dayWindow: ?{start: string, endExclusive: string}, parts: Object<string, {pulled: boolean, reason: ?string, basis?: string}>, categories?: Object<string, {counted: boolean, reason: ?string, ids: string[], configured: string[]}>, samples?: Object<string, *>}} */
   let healthMeta = { pulled: false, reason: "health-off", asOf: null, dayWindow: null, parts: {} };
-  const healthStats = { otherPrograms: 0, unreadableRows: 0, schedules: { programsWithDoc: 0, programsWithout: 0, flagged: 0, liveRead: 0, liveFailed: 0 }, samples: { bounceReasons: 0, participantFailures: 0 }, categories: { overlapRows: 0 } };
+  const healthStats = { otherPrograms: 0, unreadableRows: 0, schedules: { programsWithDoc: 0, programsWithout: 0 }, samples: { bounceReasons: 0, participantFailures: 0 }, categories: { overlapRows: 0 } };
   const cats = params.health?.categories ?? { bounceReasons: [], participantFailures: [] };
   if (params.health?.pull) {
     const day = healthDayWindow(params);
     const unread = healthState?.unread ?? {};
     const objectState = healthState?.objects ?? {};
     const part = (name) => {
-      // The live schedule reads are the one family whose failure costs its own result only: the KB's row stands.
-      const failures = (unread[name] ?? []).filter((f) => f.family !== SCHEDULE_DESCRIBE);
-      const reason = failures.some((f) => f.kind === "too-large") ? "too-large" : failures.length ? "call-failed" : name in HEALTH_OBJECTS && !objectState[name] ? "no-schema" : null;
+      // A sample unit that failed costs that program's sample only, never the part (the others stand).
+      const failures = (unread[name] ?? []).filter((f) => name !== "failureSamples" || !FAMILIES[f.family]?.sample);
+      const reason = failures.some((f) => f.kind === "too-large") ? "too-large" : failures.length ? "call-failed" : name in PART_OBJECT && !objectState[PART_OBJECT[name]] ? "no-schema" : null;
       return { pulled: reason == null, reason, basis: PART_BASIS[name] };
     };
     const parts = Object.fromEntries(HEALTH_PARTS.map((name) => [name, part(name)]));
-    healthStats.schedules.liveFailed = (unread.schedules ?? []).filter((f) => f.family === SCHEDULE_DESCRIBE).length;
+    // The sampled split rides the same reads as the samples.
+    parts.entrySamples = { ...parts.failureSamples, basis: PART_BASIS.entrySamples };
     const prevHealth = previous ? healthAvailability(previous) : null;
     // Carried months take their bounce reasons from the previous snapshot: one that read none has none to give.
     if (parts.bounceReasons.pulled && refresh.mode === "selective" && !prevHealth?.parts.bounceReasons?.pulled) parts.bounceReasons = { pulled: false, reason: "not-in-previous", basis: PART_BASIS.bounceReasons };
@@ -2771,43 +2997,145 @@ export function reduceEngagement(input) {
         const doc = kbSteps.schedules[p];
         if (!doc) { healthStats.schedules.programsWithout++; continue; }
         healthStats.schedules.programsWithDoc++;
-        // A live describe for a flagged program replaces the KB's rows for it, as of the pull; the KB's rows stand otherwise.
-        const live = liveSchedules.get(p) ?? null;
-        const list = live ? liveSchedulesOf(live) : doc.schedules ?? [];
-        if (live) healthStats.schedules.liveRead++;
+        const list = doc.schedules ?? [];
         // A documented program with no schedule keeps ONE row that says so (as the schedule audit does): "documented, none" is not "not documented".
         for (const sc of list.length ? list : [null]) {
           healthFacts.schedules.push({
-            programId: p, asOf: live ? pulledAt : doc.asOf ?? null, source: live ? "live" : "kb", scheduleType: sc?.scheduleType ?? null, classification: sc ? String(sc.classification ?? "unknown") : NO_SCHEDULE, cronExpression: sc?.cronExpression ?? null, timeZoneName: sc?.timeZoneName ?? null,
+            programId: p, asOf: doc.asOf ?? null, source: "kb", scheduleType: sc?.scheduleType ?? null, classification: sc ? String(sc.classification ?? "unknown") : NO_SCHEDULE, cronExpression: sc?.cronExpression ?? null, timeZoneName: sc?.timeZoneName ?? null,
+            startTime: typeof sc?.startTime === "number" && sc.startTime > 0 ? sc.startTime : null, endTime: typeof sc?.endTime === "number" && sc.endTime > 0 ? sc.endTime : null,
             lastRunSuccess: typeof sc?.lastRunSuccess === "boolean" ? sc.lastRunSuccess : null, lastSuccessTime: sc?.lastSuccessTime ?? null, nextRunTime: sc?.nextRunTime ?? null, runningNow: typeof sc?.runningNow === "boolean" ? sc.runningNow : null,
           });
         }
       }
-      if (parts.lastSends.pulled) {
-        healthStats.schedules.flagged = flaggedPrograms({ lastSends: { rows: healthFacts.lastSends }, base, schedules: kbSteps.schedules, params, dayWindow: day }).length;
-      }
     }
+    // The signals' own tables (F-491): selected programs only, each from its family's rows.
+    if (parts.sources.pulled) {
+      for (const u of of("health-sources")) {
+        for (const row of u.rows) {
+          const r = ROW_READERS["health-sources"](row);
+          if (r.programId == null) { healthStats.unreadableRows++; continue; }
+          if (!selected.has(r.programId)) continue;
+          healthFacts.sources.push({ programId: r.programId, sourceType: r.sourceType, lastSyncedOn: r.lastSyncedOn, operation: r.operation });
+        }
+      }
+      healthFacts.sources.sort(byKeys("programId", "sourceType", "lastSyncedOn"));
+    }
+    if (parts.admissions.pulled) {
+      const table = new Map();
+      for (const u of of("health-admissions")) {
+        for (const row of u.rows) {
+          const r = ROW_READERS["health-admissions"](row);
+          if (r.programId == null || r.day == null || r.n == null) { healthStats.unreadableRows++; continue; }
+          if (!selected.has(r.programId) || r.day < day.start || r.day >= day.end) continue;
+          const k = JSON.stringify([r.programId, r.day]);
+          table.set(k, { programId: r.programId, day: r.day, participants: (table.get(k)?.participants ?? 0) + r.n });
+        }
+      }
+      healthFacts.admissions = [...table.values()].sort(byKeys("programId", "day"));
+    }
+    if (parts.entryFailures.pulled) {
+      const table = new Map();
+      for (const u of of("health-entry-month")) {
+        for (const row of u.rows) {
+          const r = ROW_READERS["health-entry-month"](row);
+          if (r.programId == null || r.month == null || r.n == null) { healthStats.unreadableRows++; continue; }
+          if (!selected.has(r.programId) || !inWindow.has(r.month)) continue;
+          const k = JSON.stringify([r.programId, r.month]);
+          const have = table.get(k) ?? { programId: r.programId, month: r.month, participants: 0, occurrences: 0 };
+          have.participants += r.n;
+          have.occurrences += r.occurrences ?? 0;
+          table.set(k, have);
+        }
+      }
+      healthFacts.entryFailures = [...table.values()].sort(byKeys("programId", "month"));
+    }
+    if (parts.stepFailures.pulled) {
+      // Per program × month: the total with a reason, each category, and "other" = the remainder (flagged below zero, never clamped).
+      const totals = new Map();
+      const byCat = new Map();
+      for (const family of ["health-step-total", "health-step-cat", "health-step-state"]) {
+        for (const u of of(family)) {
+          for (const row of u.rows) {
+            const r = ROW_READERS[family](row);
+            if (r.programId == null || r.month == null || r.n == null) { healthStats.unreadableRows++; continue; }
+            if (!selected.has(r.programId) || !inWindow.has(r.month)) continue;
+            const k = JSON.stringify([r.programId, r.month]);
+            if (family === "health-step-total") totals.set(k, (totals.get(k) ?? 0) + r.n);
+            else {
+              if (!byCat.has(k)) byCat.set(k, new Map());
+              byCat.get(k).set(u.category.id, (byCat.get(k).get(u.category.id) ?? 0) + r.n);
+            }
+          }
+        }
+      }
+      const expectedOf = new Map(STEP_FAILURE_CATEGORIES.map((c) => [c.id, c.expected]));
+      for (const k of new Set([...totals.keys(), ...byCat.keys()])) {
+        const [programId, month] = JSON.parse(k);
+        let counted = 0;
+        for (const [category, n] of byCat.get(k) ?? []) {
+          counted += n;
+          if (n) healthFacts.stepFailures.push({ programId, month, category, expected: expectedOf.get(category) === true, participants: n });
+        }
+        const other = (totals.get(k) ?? 0) - counted;
+        if (other) healthFacts.stepFailures.push({ programId, month, category: OTHER_CATEGORY, expected: false, participants: other });
+        if (other < 0) healthStats.categories.overlapRows++;
+      }
+      healthFacts.stepFailures.sort(byKeys("programId", "month", "category"));
+    }
+    // The samples (F-484): one small page per program, picked by sampleTargets from the same counts fetch used, so the
+    // picks are the same; a program the previous snapshot sampled whose counts did not move keeps that sample; the rest
+    // are named. Each page is read whole for the split by category (entrySamples); the snapshot keeps the
+    // SAMPLES_PER_PROGRAM most frequent texts per program and part.
+    const samplesMeta = {};
     if (parts.failureSamples.pulled) {
-      // At most SAMPLES_PER_PROGRAM distinct masked texts per program and part, selected programs only.
-      const kept = new Map();
-      const take = (partName, programId, raw) => {
-        const message = maskMessage(raw);
-        if (programId == null || message == null || !selected.has(programId)) return;
-        const k = JSON.stringify([programId, partName]);
-        if (!kept.has(k)) kept.set(k, new Set());
-        if (kept.get(k).size < SAMPLES_PER_PROGRAM) kept.get(k).add(message);
-      };
-      for (const u of of("health-bounce-sample")) for (const r of u.rows) take("bounceReasons", r?.programId, r?.message);
-      for (const u of of("health-reasons-sample")) for (const r of u.rows) for (const m of Array.isArray(r?.messages) ? r.messages : []) take("participantFailures", r?.programId, m);
-      for (const [k, set] of kept) {
-        const [programId, partName] = JSON.parse(k);
-        healthStats.samples[partName] += set.size;
-        for (const message of [...set].sort(cmpKey)) healthFacts.failureSamples.push({ programId, part: partName, message });
+      const sampleUnitsOf = (family) => of(family).filter((u) => u.programs?.length === 1);
+      const previousRows = (part) => (previous?.facts?.health?.failureSamples ?? []).filter((r) => r.part === part);
+      const previousSplit = (programId) => (previous?.facts?.health?.entrySamples ?? []).filter((r) => r.programId === programId);
+      for (const [partName, family, categories] of /** @type {Array<[string, string, ReadonlyArray<*>]>} */ ([["participantFailures", "health-reasons-sample", cats.participantFailures], ["bounceReasons", "health-bounce-sample", []]])) {
+        const counts = partName === "participantFailures" ? entryCountsFrom(of("health-entry-month"), selected, inWindow) : otherBounceCountsFrom([...of("health-bounce-total"), ...of("health-bounce-cat")], selected, inWindow);
+        const targets = sampleTargets({ counts, previousCounts: previousFailureCounts(previous, partName, inWindow), previousSampled: previousSampledPrograms(previous, partName), cap: params.health.samplePrograms });
+        const read = new Set();
+        for (const u of sampleUnitsOf(family)) {
+          const programId = u.programs[0];
+          if (!selected.has(programId)) continue;
+          read.add(programId);
+          const texts = new Map();
+          const split = new Map();
+          let rows = 0;
+          const take = (raw) => {
+            const message = maskMessage(raw);
+            if (message == null) return;
+            rows++;
+            texts.set(message, (texts.get(message) ?? 0) + 1);
+            const c = matchCategory(message, categories);
+            const key = c?.id ?? OTHER_CATEGORY;
+            split.set(key, { category: key, expected: c?.expected === true, participants: (split.get(key)?.participants ?? 0) + 1 });
+          };
+          for (const r of u.rows) {
+            if (family === "health-bounce-sample") take(r?.message);
+            else for (const m of Array.isArray(r?.messages) ? r.messages : []) take(m);
+          }
+          const top = [...texts].sort((a, b) => b[1] - a[1] || cmpKey(a[0], b[0])).slice(0, SAMPLES_PER_PROGRAM);
+          healthStats.samples[partName] += top.length;
+          for (const [message, count] of top) {
+            const c = matchCategory(message, categories);
+            healthFacts.failureSamples.push({ programId, part: partName, message, category: c?.id ?? null, expected: c?.expected === true, count, pulledAt });
+          }
+          if (partName === "participantFailures") for (const s of split.values()) healthFacts.entrySamples.push({ programId, ...s, sampleRows: rows, pulledAt });
+        }
+        // A pick that was not read (the token ran out, or the call failed) is named, never silently absent.
+        const unreadPicks = targets.sample.filter((id) => !read.has(id)).map((programId) => ({ programId, reason: "not-read" }));
+        for (const programId of targets.carried) {
+          healthFacts.failureSamples.push(...previousRows(partName).filter((r) => r.programId === programId));
+          if (partName === "participantFailures") healthFacts.entrySamples.push(...previousSplit(programId));
+        }
+        samplesMeta[partName] = { cap: params.health.samplePrograms, sampled: read.size, carried: targets.carried.length, notSampled: [...targets.notSampled, ...unreadPicks].sort(byKeys("programId")) };
       }
       healthFacts.failureSamples.sort(byKeys("programId", "part", "message"));
+      healthFacts.entrySamples.sort(byKeys("programId", "category"));
     }
     for (const name of HEALTH_PARTS) if (!parts[name].pulled) healthFacts[name] = [];
-    healthMeta = { pulled: true, reason: null, asOf: day.asOf, dayWindow: { start: day.start, endExclusive: day.end }, parts, categories };
+    healthMeta = { pulled: true, reason: null, asOf: day.asOf, dayWindow: { start: day.start, endExclusive: day.end }, parts, categories, samples: samplesMeta };
     // Every bounced attempt is in exactly one category or in "Other", so the two must agree.
     if (parts.bounceReasons.pulled) {
       const byPm = new Map();
@@ -2897,11 +3225,13 @@ export function reduceEngagement(input) {
   if (!reconciliation.ok) caveats.push({ id: "reconciliation-mismatch", detail: { checks: checks.filter((c) => !c.ok).map((c) => c.id) } });
   const healthMissing = Object.entries(healthMeta.parts).filter(([, p]) => !p.pulled).map(([name, p]) => ({ part: name, reason: p.reason }));
   if (healthMissing.length) caveats.push({ id: "health-incomplete", detail: { parts: healthMissing } });
-  if (healthFacts.schedules.length) caveats.push({ id: "schedules-from-kb", detail: { oldest: healthFacts.schedules.filter((r) => r.source !== "live").map((r) => r.asOf).filter(Boolean).sort()[0] ?? null, liveRead: healthStats.schedules.liveRead, flagged: healthStats.schedules.flagged, cap: HEALTH_DESCRIBE_CAP } });
+  if (healthFacts.schedules.length) caveats.push({ id: "schedules-from-kb", detail: { oldest: healthFacts.schedules.map((r) => r.asOf).filter(Boolean).sort()[0] ?? null } });
   const allTime = HEALTH_PARTS.filter((name) => healthMeta.parts[name]?.pulled && PART_BASIS[name] === "all-time");
   if (allTime.length) caveats.push({ id: "health-all-time", detail: { parts: allTime, reason: "all-time" } });
   if (healthMeta.parts.participantFailures?.pulled && healthMeta.categories?.participantFailures.counted === false) caveats.push({ id: "participant-failures-no-breakdown", detail: { reason: healthMeta.categories.participantFailures.reason, expectedReasons: (params.health?.expectedReasons ?? []).length } });
-  if (healthStats.categories.overlapRows) caveats.push({ id: "failure-categories-overlap", detail: { rows: healthStats.categories.overlapRows, parts: ["bounceReasons"] } });
+  if (healthStats.categories.overlapRows) caveats.push({ id: "failure-categories-overlap", detail: { rows: healthStats.categories.overlapRows, parts: [...(healthFacts.bounceReasons.some((r) => r.category === OTHER_CATEGORY && r.count < 0) ? ["bounceReasons"] : []), ...(healthFacts.stepFailures.some((r) => r.category === OTHER_CATEGORY && r.participants < 0) ? ["stepFailures"] : [])] } });
+  for (const [part, s] of Object.entries(healthMeta.samples ?? {})) if (s.notSampled.length) caveats.push({ id: "failure-samples-capped", detail: { part, notSampled: s.notSampled.length, cap: s.cap, secondsEach: CALL_SECONDS[part === "participantFailures" ? "health-reasons-sample" : "health-bounce-sample"] } });
+  if (healthFacts.entrySamples.length) caveats.push({ id: "failure-samples-sampled", detail: { programs: new Set(healthFacts.entrySamples.map((r) => r.programId)).size } });
   if (checks.some((c) => c.drift)) caveats.push({ id: "incomplete-period-drift", detail: { from: params.incompleteFrom, checks: checks.filter((c) => c.drift).map((c) => ({ id: c.id, drift: c.drift })) } });
 
   const facts = { byTemplate, ...(byStep ? { byStep } : {}), byAccount, responses, responseParticipants, uniques, health: healthFacts };
@@ -2953,18 +3283,19 @@ export function loadRun(runDir, opts = {}) {
   const { params } = readJsonFile(join(runDir, "run.json"));
   // A run started before the account switch existed pulled the account grain.
   if (params.accounts && params.accounts.pull === undefined) params.accounts.pull = true;
-  // A run started before health facts existed pulled none; one from before categories and test accounts had none.
+  // A run started before health facts existed pulled none; one from before categories and test accounts had none;
+  // one from before the per-program samples and the quiet-days setting takes their defaults.
   if (!params.health) params.health = { pull: false, lookbackDays: 90 };
   params.health.categories ??= { bounceReasons: [], participantFailures: [] };
   params.health.expectedReasons ??= [];
+  params.health.samplePrograms ??= SAMPLE_PROGRAM_CAP;
+  params.health.quietDueDays ??= QUIET_DUE_DAYS_DEFAULT;
   params.testAccounts ??= [];
   const { records } = readFetchLog(runDir);
   const ok = [...records.values()].filter((r) => r.status === "ok" && !r.truncated);
   const read = (r) => (r.file.endsWith(".txt") ? readFileSync(join(runDir, r.file), "utf8") : readJsonFile(join(runDir, r.file)));
   const one = (family) => ok.filter((r) => r.family === family);
   const describes = new Map(one("describe").map((r) => [r.programId, r.notFound ? null : describedProgram(read(r))]));
-  // The live schedule reads of flagged programs (S3b), by program: a not-found reads as no live result.
-  const liveSchedules = new Map(one(SCHEDULE_DESCRIBE).filter((r) => !r.notFound).map((r) => [r.programId, read(r)]));
   const kbPath = join(runDir, "kb-steps.json");
   const survey = one("schema").find((r) => r.object === SURVEY);
   return {
@@ -2972,9 +3303,9 @@ export function loadRun(runDir, opts = {}) {
     whoami: parseWhoami(read(one("whoami")[0])),
     programPages: one("programs").sort((a, b) => a.page - b.page).map(read),
     describes,
-    units: ok.filter((r) => r.family in FAMILIES).map((r) => ({ ...r, rows: read(r) })),
+    // The retired live describe family (SCHEDULE_DESCRIBE) is not a FAMILIES member, so a run that logged it reduces without it.
+    units: ok.filter((r) => r.family in FAMILIES && r.family !== SCHEDULE_DESCRIBE).map((r) => ({ ...r, rows: read(r) })),
     kbSteps: existsSync(kbPath) ? readJsonFile(kbPath) : null,
-    liveSchedules,
     previous: opts.previous ?? null,
     linkSettings: opts.linkSettings ?? null,
     surveyAvailable: !!(survey && schemaTypes(read(survey))),
@@ -3010,7 +3341,7 @@ export const joEngagementAdapter = {
 const USAGE =
   "usage: engagement.mjs <plan|fetch|run> [--workspace <dir>] [--run <id>] [--kb <slugDir>] [--from YYYY-MM --to YYYY-MM] " +
   "[--name <program-name-or-id>]... [--ids-file <file>] [--sent-since <date|Nd|Nm>] [--internal-domain <domain>]... [--unsubscribe-link <link|host>]... [--test-account <company id>]... [--step-detail] [--accounts] " +
-  "[--health [--health-lookback-days <N>] [--failure-categories <file.json>] [--expected-reason <text>]...] " +
+  "[--health [--health-lookback-days <N>] [--failure-categories <file.json>] [--expected-reason <text>]... [--sample-programs <N>] [--quiet-due-days <N>]] " +
   "[--page-size <N>] [--max-pages <N>] [--previous <snapshot.json>] [--full] [--out <snapshot.json>]  |  engagement.mjs reduce --run-dir <dir> --out <snapshot.json> [--previous <file>] [--link-settings <file>]";
 const EXIT = { ok: 0, failed: 1, "token-expired": 3, partial: 4 };
 
@@ -3061,7 +3392,7 @@ async function main() {
   // A flag that shapes the account grain says nothing while the grain is off: refuse it rather than drop it.
   const accountFlags = ["--accounts-busiest", "--accounts-low", "--accounts-bounce", "--accounts-low-min-delivered", "--pin-accounts-file", "--no-account-names"].filter((f) => argv.includes(f));
   if (accountFlags.length && !argv.includes("--accounts")) fail(`${accountFlags.join(", ")} only applies with --accounts (the account grain is off unless asked for; plan prints what it adds)`);
-  const healthFlags = ["--health-lookback-days", "--failure-categories", "--expected-reason"].filter((f) => argv.includes(f));
+  const healthFlags = ["--health-lookback-days", "--failure-categories", "--expected-reason", "--sample-programs", "--quiet-due-days"].filter((f) => argv.includes(f));
   if (healthFlags.length && !argv.includes("--health")) fail(`${healthFlags.join(", ")} only applies with --health (health facts are off unless asked for; plan prints what they add)`);
   const categoriesFile = opt("--failure-categories");
   let categories = {};
@@ -3085,7 +3416,7 @@ async function main() {
     },
     incompleteFrom: opt("--incomplete-from"), repullMonths: int("--repull-months"), forceFull: argv.includes("--full"),
     pageSize: int("--page-size"), maxPages: int("--max-pages"), timeoutMs: int("--timeout-ms"), pulledAt: opt("--pulled-at"), timeZone: opt("--time-zone"),
-    health: { pull: argv.includes("--health"), lookbackDays: int("--health-lookback-days"), categories, expectedReasons: all("--expected-reason") },
+    health: { pull: argv.includes("--health"), lookbackDays: int("--health-lookback-days"), categories, expectedReasons: all("--expected-reason"), samplePrograms: int("--sample-programs"), quietDueDays: int("--quiet-due-days") },
   });
   let params;
   try {

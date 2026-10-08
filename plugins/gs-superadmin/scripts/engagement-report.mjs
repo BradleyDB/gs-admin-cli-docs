@@ -299,7 +299,7 @@ export function buildReport(snapshot, opts = {}) {
     carriedMonths ? `${carriedMonths} month(s) carried forward from an earlier pull, not read again` : null,
     own("recipient-class-not-configured") ? "no internal domain was named, so internal recipients are not separated" : null,
     own("deleted-programs-excluded") ? `${own("deleted-programs-excluded").programs} deleted program(s) left out` : null,
-    `sends on or after ${meta.incompleteFrom} are provisional`,
+    provisionalText(meta),
   ].filter(Boolean).slice(0, 2);
   return {
     sections,

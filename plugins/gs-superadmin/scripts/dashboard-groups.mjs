@@ -74,6 +74,9 @@ import { openSnapshot, runQuery, statusLabel } from "./engagement-query.mjs";
 
 export const UNGROUPED = "Ungrouped";
 export const GROUP_LEVELS = Object.freeze(["supergroup", "group"]);
+// The classification the adapter gives a documented program with no schedule (engagement.mjs NO_SCHEDULE; spelled
+// here because this module imports only the import-free query module).
+const NO_SCHEDULE_LABEL = "no schedule captured";
 // Programs of these models send a survey by design (a Dynamic Program may too:
 // that is read from its survey participants).
 export const SURVEY_MODELS = Object.freeze(["CSAT_SURVEY_V2", "GENERIC_SURVEY_V2"]);
@@ -246,7 +249,9 @@ export function programTraits(snapshot) {
         id: p.id, name: p.name, statuses: p.statuses, model: p.model, modelName: p.modelName, audienceType: p.audienceType, folderId: p.folderId,
         // A survey model sends one by design; otherwise its own survey participants say so, and unreadable survey data says nothing.
         sendsSurveys: SURVEY_MODELS.includes(p.model) || survey === "tracked" ? true : survey === "not-tracked" ? false : null,
-        recurring: schedule ? schedule.classification === "recurring" : null,
+        // A classification the audit could settle decides; a pass-through label (a CRON-type schedule whose cron the KB
+        // did not capture, "unknown") is a kind that could not be read, so the trait is unknown, never false (F-494).
+        recurring: !schedule ? null : schedule.classification === "recurring" ? true : schedule.classification === "one-time" || schedule.classification === NO_SCHEDULE_LABEL ? false : null,
       };
     })
     .sort((a, b) => cmpKey(a.id, b.id));
@@ -339,7 +344,7 @@ export function suggestionInput(snapshot) {
     window: { from: snapshot.meta.window.from, to: snapshot.meta.window.to },
     notes: [
       "Folder NAMES are not available from Gainsight: a folder shows as its id, and a folder group needs a label from the person.",
-      "sendsSurveys and recurring are null where they could not be determined (survey data unreadable; no knowledge-base doc for the program).",
+      "sendsSurveys and recurring are null where they could not be determined (survey data unreadable; no knowledge-base doc for the program; a schedule whose kind the doc does not settle).",
       "A survey's TYPE is known only through the program model (CSAT or generic survey programs). A Dynamic Program that sends a survey does not say which type.",
     ],
     programs: traits.map((p) => ({ id: p.id, name: p.name, status: p.statuses.map(statusLabel).join(" + "), model: p.modelName ?? p.model, audience: p.audienceType, folderId: p.folderId, sendsSurveys: p.sendsSurveys, recurring: p.recurring, sent: sent.get(p.id) ?? 0 })),
