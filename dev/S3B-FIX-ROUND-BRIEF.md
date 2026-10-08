@@ -101,7 +101,10 @@ State after the round (2026-10-07, build session, post-compaction): every item b
 feat/jo-dash-s3b-health-batch (PR #43). The mutation sweep ran with predictions written first: 8 mutants, 7 killed,
 M8 (the provisional flags-from clamp) survived AS PREDICTED — no committed check has the re-pull horizon later than
 the incomplete-from day; a vacuity for V2 to read on a 1-month re-pull, not a defect. The bus carries the Fix notes,
-the two copy-outs (F-484, F-491) and the handoff block; dev's pointer comment is re-stamped after the mint. What is
+the two copy-outs (F-484, F-491) and the handoff block — its token is still a `<token>` PLACEHOLDER: dev-utils refused
+the same-day mint because the 0.43.4 block names the hand-minted hb-20261007-01 (recorded on the bus, not bypassed).
+OWED next day, on the branch: `dev-utils.cmd handoff --blind-spots "<the block's Blind spots text>"`, then push, then
+re-stamp dev's pointer with the token. Dev's pointer comment is already re-stamped for the fix round. What is
 left is the TESTER's: V2 on this token (Y2, Y6, Y17, Y18), then the merge of PR #43 on Bradley's go-ahead. The plan's
 DSH-3 carries the two interview questions (quiet due days, sample cap) for S5.
 
