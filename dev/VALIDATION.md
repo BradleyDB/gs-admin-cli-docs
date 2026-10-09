@@ -1634,6 +1634,15 @@ shapes on 2026-10-07 (brief: `dev/S3B-FIX-ROUND-BRIEF.md`); V2 re-measures nothi
   expected ones read as business rules working, the null-address ones as data problems. Pass bar: no selected
   program with refusals lacks a sample unless named; the "Other" (uncategorised) share per program is small and
   its texts are product wordings not yet in the list (capture them into `--failure-categories`).
+  FAILED (S3b fix-round verdict @ hb-20261007-03, tester, 2026-10-08; production, reads only), on F-484 (reopened a
+  second time). The plan printed withFailures, planned, carried, beyondCap and secondsBeyondCap; every sample call
+  names one program and one day window; `notSampled` names what the cap left out with reason cap; a three-program pull
+  at `--sample-programs 1` named the other two. But the picks are ranked over the month window and read over the day
+  window: 10 of 25 participant picks (17 of 25 bounce picks) came back with 0 rows, were counted as sampled and named
+  nowhere, so programs with refusals in the window lack a sample without being named. Bradley read the 15 real
+  samples' split (one program: the GlobalOptOut wording expected, the Bounced-recipient wording at Send Email misread
+  as unexpected, F-491) and found a null-address wording dominant in the UI that no 100-newest page carried. Detail
+  under F-484.
 - Y6 (the lists, re-banked). `programHealth(snapshot).lists` over Y1's snapshot. Pass bar: Bradley reads each list
   and every one must read true to him — Schedule ended (a schedule past its end date; none expected on this tenant
   unless one exists), Participant sync disabled (the list's flag), Participant sync overdue (a daily ingest whose
@@ -1644,13 +1653,35 @@ shapes on 2026-10-07 (brief: `dev/S3B-FIX-ROUND-BRIEF.md`); V2 re-measures nothi
   flight: the DRIPV2 programs synced once at creation), Working as expected. Record the counts per list and the
   signals of two programs per alarm list; for one program on each alarm list, Bradley's read of the Gainsight UI.
   The threshold: a second read of the lists with `--quiet-due-days 2` moves the admitting-nobody line as expected.
+  FAILED (S3b fix-round verdict @ hb-20261007-03, tester, 2026-10-08; production, reads only), on F-491 (reopened: the
+  model). Counts: schedule-ended 35, admitting-nobody 1, step-errors 6, no-recent-sends 2, finished 10, ok 11, every
+  other list 0, order 10^1 Active programs judged. Read true by Bradley: admitting-nobody, finished, ok, one of two
+  no-recent-sends, and the 20 schedule-ended programs whose every schedule has ended. Read false: 15 schedule-ended
+  (an ended job schedule read over the live participant sync; Bradley's UI read and a live describe agree the sync
+  runs to 2030), all 6 step-errors (bad-address drops at Send Email, which Bradley ruled a kind of their own: business
+  rule, bad-address error, program error), and a quarterly-intake program on no-recent-sends. `--quiet-due-days 2`:
+  admitting-nobody 1 -> 2, the expected direction, onto that same quarterly program (a false read). Bradley's words
+  are recorded verbatim under F-491.
 - Y17 (the heartbeat is the ingest). For five Active programs with a daily cron: `facts.health.sources[].lastSyncedOn`
   against the program's last run in the UI (date and time). Pass bar: equal to the day for every one; a program
   whose sync is older than its cron's last due day shows no newer run in the UI.
+  CLEARED (S3b fix-round verdict @ hb-20261007-03, tester, 2026-10-08; production, reads only). Five Active daily-cron
+  programs: `sources[].lastSyncedOn` equals the Gainsight UI's last run on 5 of 5, to the day and to the time (one
+  also by a live describe the same day); Bradley: "these all look correct and are when execution finished, not
+  started" — the field is the run's finish time. The second arm (a sync older than its last due day shows no newer
+  run) has no instance: ingest-overdue is 0 on this pull; unexercised.
 - Y18 (step failures by category). `facts.health.stepFailures` for the current and previous month, against a direct
   `rp run` COUNT of `ao_participants` with `FailureReasons IS_NOT_NULL` grouped by program and month (total), one
   CONTAINS per shipped pattern and the SYSTEM_ERROR state. Pass bar: identical per program and month; "other" is
   the remainder and never below zero; the platform-error months match the incident dates Bradley knows.
+  CLEARED (S3b fix-round verdict @ hb-20261007-03, tester, 2026-10-08; production, reads only). Direct `rp run` COUNTs
+  of `ao_participants` over the selected programs, grouped by program and month for the current and previous month
+  (FailureReasons IS_NOT_NULL; one CONTAINS per shipped pattern; ParticipantState SYSTEM_ERROR): 95 of 95 cells (19
+  program x month keys x 5 categories) equal `facts.health.stepFailures`; "other" never below zero. The tenant-wide
+  total timed out server-side once; scoped to the selected programs, as the adapter scopes it, every count answered.
+  The only platform-error month in the window matches an outage Bradley knows ("there was a huge outage in nov/dec of
+  last year. programs had a lot of issues and most just were hard shut off"). The categories themselves are F-491's:
+  the counts are right, the expected flag over them is not.
 - Banked as measured, not owed: the server's CONTAINS is case-insensitive (four casings of one wording returned
   one count, 2026-10-07).
 
