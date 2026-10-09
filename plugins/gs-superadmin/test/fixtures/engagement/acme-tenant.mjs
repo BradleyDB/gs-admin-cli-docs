@@ -206,13 +206,37 @@ const NOBODY = { id: "p-nobody", name: "Acme Nobody Chain", model: "DRIPV2", mod
 const REFUSED = { id: "p-refused", name: "Acme Refused Chain", model: "DRIPV2", modelName: "Email Chain", statuses: ["PROCESSING"], type: "CUSTOMER", folderId: "808", months: monthsBetween("2026-05", "2026-07"), accounts: [6, 7], perAccount: 1, lastSync: "2026-09-14 08:01:00", schedules: [sched(DAILY)], steps: [{ stepId: "st-rf-1", stepName: "Refused note", order: 1, templateId: "tpl-refused", variants: ["var-refused"] }] };
 const STEPERR = { id: "p-steperr", name: "Acme Step Error Chain", model: "DRIPV2", modelName: "Email Chain", statuses: ["PROCESSING"], type: "CUSTOMER", folderId: "808", months: monthsBetween("2026-06", LAST_MONTH), accounts: [8, 9], perAccount: 2, fixedDay: "14", lastSync: "2026-09-14 08:01:00", schedules: [sched(DAILY)], stepErrors: true, steps: [{ stepId: "st-se-1", stepName: "Step error note", order: 1, templateId: "tpl-steperr", variants: ["var-steperr"] }] };
 const DISABLED = { id: "p-disabled", name: "Acme Disabled Chain", model: "DRIPV2", modelName: "Email Chain", statuses: ["PROCESSING"], type: "CUSTOMER", folderId: "808", months: monthsBetween("2026-06", LAST_MONTH), accounts: [10, 11], perAccount: 1, lastSync: "2026-09-14 08:01:00", syncDisabled: true, schedules: [sched(DAILY)], steps: [{ stepId: "st-di-1", stepName: "Disabled note", order: 1, templateId: "tpl-disabled", variants: ["var-disabled"] }] };
-const SIGNALS = [ENDED, OVERDUE, NOBODY, REFUSED, STEPERR, DISABLED];
+// The second round of F-491 (2026-10-08), each a false read measured on the tenant:
+//   p-twosched  an ENDED daily job schedule documented BESIDE the live daily participant sync (as the tenant's
+//               programs carry them), synced yesterday, admitting, sending monthly: "Working as expected" —
+//               never "Schedule ended" (15 of 35 such reads were false)
+//   p-staledoc  its one documented schedule ended on 2026-08-01, yet its source synced on 2026-09-14: the KB doc is
+//               behind the tenant — "Cannot judge yet" (doc-stale), never "Schedule ended"
+//   p-newcohort a monthly cron, one cohort admitted on 2026-08-01, all completed, sends in August only: too new to
+//               judge — "Cannot judge yet" (too-new), never "No recent sends" under the flat threshold
+//   p-sendfail  daily cron, synced, admitting; its dropped participants carry the Send Email step's own drops (a
+//               reject, the bounce list, an opt-out): bad addresses and a business rule, so "Working as expected",
+//               never "Step errors this period"
+//   p-oldshort  hand-fed, sent in two months a year ago with people still in flight: a SHORT history that is NOT
+//               new reads "No recent sends" under the flat threshold (the too-new rule does not reach it)
+const TWOSCHED = { id: "p-twosched", name: "Acme Two-schedule Chain", model: "DRIPV2", modelName: "Email Chain", statuses: ["PROCESSING"], type: "CUSTOMER", folderId: "808", months: monthsBetween("2025-10", LAST_MONTH), accounts: [0, 1], perAccount: 1, fixedDay: "14", freshEntry: true, lastSync: "2026-09-14 06:05:00",
+  schedules: [sched(DAILY, { jobType: "ADVANCED_OUTREACH_SCHEDULE", startTime: 1678665600000, endTime: 1710288000000 }), sched("0 0 6 * * ? *", { jobType: "ADVANCED_OUTREACH_BIONIC_QUERY", startTime: 1678665600000, endTime: 1899417600000 })],
+  steps: [{ stepId: "st-ts-1", stepName: "Two-schedule note", order: 1, templateId: "tpl-twosched", variants: ["var-twosched"] }] };
+const STALEDOC = { id: "p-staledoc", name: "Acme Stale Doc Chain", model: "DRIPV2", modelName: "Email Chain", statuses: ["PROCESSING"], type: "CUSTOMER", folderId: "808", months: monthsBetween("2026-03", LAST_MONTH), accounts: [2, 3], perAccount: 1, lastSync: "2026-09-14 08:01:00", schedules: [sched("0 0 8 ? * MON *", { endTime: 1785542400000 })], steps: [{ stepId: "st-sd-1", stepName: "Stale doc note", order: 1, templateId: "tpl-staledoc", variants: ["var-staledoc"] }] };
+const NEWCOHORT = { id: "p-newcohort", name: "Acme New Cohort Chain", model: "DRIPV2", modelName: "Email Chain", statuses: ["PROCESSING"], type: "CUSTOMER", folderId: "808", months: ["2026-08"], accounts: [4, 5, 6], perAccount: 2, fixedDay: "01", fixedState: "COMPLETED", lastSync: "2026-09-01 09:00:12", schedules: [sched("0 0 9 1 * ? *")], steps: [{ stepId: "st-nc-1", stepName: "New cohort note", order: 1, templateId: "tpl-newcohort", variants: ["var-newcohort"] }] };
+const SENDFAIL = { id: "p-sendfail", name: "Acme Send Fail Chain", model: "DRIPV2", modelName: "Email Chain", statuses: ["PROCESSING"], type: "CUSTOMER", folderId: "808", months: monthsBetween("2026-06", LAST_MONTH), accounts: [7, 8, 9], perAccount: 3, fixedDay: "14", freshEntry: true, sendFail: true, fixedState: "DROP", lastSync: "2026-09-14 08:01:00", schedules: [sched(DAILY)], steps: [{ stepId: "st-sf-1", stepName: "Send Email", order: 1, templateId: "tpl-sendfail", variants: ["var-sendfail"] }] };
+const OLDSHORT = { id: "p-oldshort", name: "Acme Old Short Chain", model: "DRIPV2", modelName: "Email Chain", statuses: ["PROCESSING"], type: "CUSTOMER", folderId: "808", months: ["2025-11", "2025-12"], accounts: [10, 11], perAccount: 1, fixedState: "ACTIVE", steps: [{ stepId: "st-os-1", stepName: "Old short note", order: 1, templateId: "tpl-oldshort", variants: ["var-oldshort"] }] };
+const SIGNALS = [ENDED, OVERDUE, NOBODY, REFUSED, STEPERR, DISABLED, TWOSCHED, STALEDOC, NEWCOHORT, SENDFAIL, OLDSHORT];
 // What the product writes on a participant who got in and fell off at a STEP (ao_participants.FailureReasons;
-// measured 2026-10-07), by the participant's state. `kind` is the oracle's key.
+// measured 2026-10-07, the Send Email step's own drops 2026-10-08), by the participant's state. `kind` is the
+// oracle's key. The first two DROP wordings keep their positions (the generator indexes them).
 export const STEP_REASONS = {
   DROP: [
     { kind: "bounce-drop", text: (step) => `Email is Bounce, participant is dropped from process at step '${step}'` },
     { kind: "cta-failed", text: () => "CTA creation failed at step 'Create CTA', Reason: 'Found invalid IDs in fields : OwnerId'" },
+    { kind: "reject-drop", text: (step) => `Email is Reject, participant is dropped from process at step '${step}'` },
+    { kind: "bounce-list-at-send", text: (step) => `Sending email failed with errors Email Failed: Recipient on Gainsight bounce list at step ${step}` },
+    { kind: "opt-out-at-send", text: (step) => `Sending email failed with errors Email Failed: Recipient has opted out at step ${step}` },
   ],
   KNOCKED_OFF: [{ kind: "record-delete", text: () => "Participant was dropped from the journey as part of Record Delete operation. The base object record that got deleted was of type: Company_Person" }],
   SYSTEM_ERROR: [{ kind: "platform-error", text: () => "Failed to evaluate condition, Reason: null" }],
@@ -227,6 +251,7 @@ const TEMPLATE_NAMES = {
   "tpl-prefs": "Acme Prefs", "tpl-prefs-mix": "Acme Prefs Follow-up", "tpl-blast": "Acme Announcement", "tpl-quiet": "Acme Quiet",
   "tpl-quarter": "Acme Quarterly", "tpl-sporadic": "Acme Sporadic", "tpl-once": "Acme One-time", "tpl-lapsed": "Acme Digest",
   "tpl-ended": "Acme Ended", "tpl-overdue": "Acme Overdue", "tpl-nobody": "Acme Nobody", "tpl-refused": "Acme Refused", "tpl-steperr": "Acme Step Error", "tpl-disabled": "Acme Disabled",
+  "tpl-twosched": "Acme Two-schedule", "tpl-staledoc": "Acme Stale Doc", "tpl-newcohort": "Acme New Cohort", "tpl-sendfail": "Acme Send Fail", "tpl-oldshort": "Acme Old Short",
 };
 // Click behaviour per template (the five R19 fixtures ride on these):
 //   content — content-link clicks are recorded
@@ -282,6 +307,9 @@ export const FAILURE_REASONS = [
   { kind: "no-company", text: (i) => `Participant 1P02ACMEX${String(1000000 + i)}ZQ has no company` },
   // One row carries its reasons as a JSON array of texts.
   { kind: "array", text: () => JSON.stringify(["Missing required field: Email", "Duplicate participant"]) },
+  // The Send Email step's bounced-recipient refusal (measured 2026-10-08 on the largest program's newest page): a
+  // shipped BAD-ADDRESS wording, with the address the mask must take out.
+  { kind: "bounced-at-send", text: (i) => `Bounced recipient(to) email first.last${i}@c0${(i % 9) + 1}.example.com' in Step 'Send Email'` },
 ];
 // The UNEXPECTED refusal (a data problem), as the product writes it.
 export const NULL_EMAIL_REASON = "Recipient Email Address field contains Invalid value {null} for EMAIL data type";
@@ -381,18 +409,19 @@ export function buildTenant(variant = {}) {
     // The JO send log mirrors each To-row of a JO program, with the step and
     // variant the delivery log lacks. A person re-enters p-onboard every six
     // months, so participant records outnumber people.
-    // The step-error program admits its people afresh every month (so its admissions are recent).
-    const entry = program.id === "p-onboard" ? Math.floor(program.months.indexOf(month) / 6) : program.stepErrors ? program.months.indexOf(month) : 0;
+    // The step-error program (and any program marked freshEntry) admits its people afresh every month (so its admissions are recent).
+    const entry = program.id === "p-onboard" ? Math.floor(program.months.indexOf(month) / 6) : program.stepErrors || program.freshEntry ? program.months.indexOf(month) : 0;
     const parId = `par-${program.id}-${person}-${entry}`;
     if (!participants.has(parId)) {
       // The state cycles; a one-off program's participants have all finished (p-once: a finished campaign).
-      // The lapsed digest keeps people in flight (so it is late, not finished).
-      const state = program.id === "p-once" ? "COMPLETED" : program.id === "p-lapsed" ? "ACTIVE" : PARTICIPANT_STATES[participants.size % PARTICIPANT_STATES.length];
+      // The lapsed digest keeps people in flight (so it is late, not finished). A fixedState program's are all one state.
+      const state = program.fixedState ?? (program.id === "p-once" ? "COMPLETED" : program.id === "p-lapsed" ? "ACTIVE" : PARTICIPANT_STATES[participants.size % PARTICIPANT_STATES.length]);
       // Admitted (CreatedAt) at the first send; a participant who fell off at a step carries the product's
       // wording and was last touched when it fell (the platform's errors at the one incident; the step-error
-      // program's this month). The underscore key is the oracle's.
+      // program's this month). The underscore key is the oracle's. A sendFail program's drops are the Send Email
+      // step's own (the three wordings after the first two), in turn.
       const reasons = STEP_REASONS[state] ?? null;
-      const reason = reasons ? reasons[program.stepErrors ? 1 % reasons.length : 0] : null;
+      const reason = reasons ? reasons[state === "DROP" && program.sendFail ? 2 + (participants.size % 3) : program.stepErrors ? 1 % reasons.length : 0] : null;
       const modified = state === "SYSTEM_ERROR" ? (program.stepErrors ? "2026-09-12T03:00:00.000Z" : PLATFORM_INCIDENT) : executed;
       participants.set(parId, { Gsid: parId, AdvancedOutreachId: program.id, ParticipantState: state, ParticipantSourceType: "QUERY_BUILDER", CreatedAt: executed, ModifiedAt: modified, FailureReasons: reason ? reason.text(step.stepName ?? "Step") : null, _stepKind: reason?.kind ?? null });
     }
@@ -471,15 +500,28 @@ export function buildTenant(variant = {}) {
 
   // Participants the programs refused at entry: one row each, with the reason as the product wrote it and
   // the day the same participant was LAST refused (ModifiedAt moves when the key is refused again; measured).
-  // p-gone's are a deleted program's and must be left out. The refusals of the window's months are spread
-  // over July to September 2026 so the per-month table and the samples' recency have something to read.
+  // p-gone's are a deleted program's and must be left out. p-onboard's refusals of the window's months are spread
+  // over July to September 2026 so the per-month table and the samples have something to read; p-renew's all
+  // fall in April and May 2026 — inside the pull's window, BEFORE the day window — so a program with refusals the
+  // per-month table shows but none still happening is never picked for a sample (F-484, redesigned 2026-10-08).
   const failedParticipants = [];
   const refusedOn = (i) => `2026-0${7 + (i % 3)}-${pad(1 + (i % 27))}T06:00:00.000Z`;
-  for (const [programId, count] of /** @type {Array<[string, number]>} */ ([["p-onboard", 7], ["p-renew", 4], ["p-gone", 2]])) {
+  const refusedBeforeDayWindow = (i) => `2026-0${4 + (i % 2)}-${pad(1 + i)}T06:00:00.000Z`;
+  // p-nps's two are recent too, so a cap of one program has one to name.
+  for (const [programId, count] of /** @type {Array<[string, number]>} */ ([["p-onboard", 7], ["p-renew", 4], ["p-nps", 2], ["p-gone", 2]])) {
     for (let i = 0; i < count; i++) {
       const reason = FAILURE_REASONS[(i + (programId === "p-renew" ? 1 : 0)) % FAILURE_REASONS.length];
-      failedParticipants.push({ Gsid: `fp-${programId}-${i}`, AdvancedOutreachId: programId, FailureReasons: reason.text(i), OccurrenceCount: 1 + (i % 3), ModifiedAt: refusedOn(i), _failureKind: reason.kind });
+      failedParticipants.push({ Gsid: `fp-${programId}-${i}`, AdvancedOutreachId: programId, FailureReasons: reason.text(i), OccurrenceCount: 1 + (i % 3), ModifiedAt: programId === "p-renew" ? refusedBeforeDayWindow(i) : refusedOn(i), _failureKind: reason.kind });
     }
+  }
+  // The chronic variant (F-484, redesigned): p-onboard's page-and-a-half of Send Email opt-out refusals are the
+  // NEWEST rows, each refused once; its twenty null-address refusals are older in the window and each refused forty
+  // times or more — the wording that dominates the program, which a newest-first page could not see.
+  for (let i = 0; i < (variant.chronicFailures ? 150 : 0); i++) {
+    failedParticipants.push({ Gsid: `fp-chronic-new-${i}`, AdvancedOutreachId: "p-onboard", FailureReasons: `GlobalOptOut recipient(to) email first.last${i}@c0${(i % 9) + 1}.example.com' in Step 'Send Email'`, OccurrenceCount: 1, ModifiedAt: `2026-09-${pad(10 + (i % 5))}T${pad(i % 24)}:${pad(i % 60)}:00.000Z`, _failureKind: "opt-out-at-send" });
+  }
+  for (let i = 0; i < (variant.chronicFailures ? 20 : 0); i++) {
+    failedParticipants.push({ Gsid: `fp-chronic-old-${i}`, AdvancedOutreachId: "p-onboard", FailureReasons: NULL_EMAIL_REASON, OccurrenceCount: 40 + i, ModifiedAt: `2026-09-01T0${i % 10}:00:00.000Z`, _failureKind: "null-email" });
   }
   // The large variant: most failures share one wording with a distinct value in each (F-484's class).
   for (let i = 0; i < (variant.manyFailures ?? 0); i++) {

@@ -1685,6 +1685,46 @@ shapes on 2026-10-07 (brief: `dev/S3B-FIX-ROUND-BRIEF.md`); V2 re-measures nothi
 - Banked as measured, not owed: the server's CONTAINS is case-insensitive (four casings of one wording returned
   one count, 2026-10-07).
 
+### Re-banked for V3 after the S3b fix round 2 (builder, 2026-10-08, feat/jo-dash-s3b-health-batch; the branch's next handoff token)
+
+Y2's participant half and Y6 are REPLACED again by the versions below (F-484 redesigned: one window for the pick and the
+page, the most repeated refusals first; F-491 tuned: the live schedule, a stale doc, three kinds, a too-new program).
+Y19 is new (F-492's class test on the live wordings). The build session measured first on 2026-10-08 (three reads on
+the live token, the rest offline over V2's snapshot; shapes in `dev/S3B-FIX-ROUND-BRIEF.md` § Round 2). Round type:
+RE-VERIFICATION of F-484, F-491 and F-492 by their Judge lines plus these checks; nothing else is owed.
+
+- Y2 (participant half, re-banked for V3). Y1's flags, a full pull. Pass bar, from F-484's Judge line: the plan prints
+  `estimate.health.samples.participantFailures` with `withFailures` equal to the number of selected programs whose
+  refusals have a ModifiedAt in the day window (a direct COUNT grouped by program over that window confirms it: 64 on
+  2026-10-08); EVERY program in `meta.health.samples.participantFailures.programs` has `failureSamples` rows (no empty
+  pick: the sample page and the count share one window object, so the fetch log's sample calls carry the SAME two
+  ModifiedAt bounds as the `health-entry-window` call); `meta.health.samples.participantFailures.window` equals
+  `meta.health.dayWindow` and `.counts` names exactly the programs with such refusals; a program with refusals in the
+  per-month table but none in the day window is in neither `programs` nor `notSampled` and its entry signal reads
+  `none-recent`; each sample call orders by `OccurrenceCount DESC`. Bradley reads the dominant program's split: the
+  null-address wording he saw in the UI is now in its `failureSamples` (the most repeated page carried it on 75 of 100
+  rows at the build) and its `entrySamples` split names it under `no-email` as a bad address.
+- Y6 (the lists, re-banked for V3). `programHealth(snapshot).lists` over Y2's pull. Pass bar, from F-491's Judge line:
+  Schedule ended holds ONLY programs whose every documented schedule has ended AND whose source has not synced since
+  (the 20 Bradley read true at V2), none of the 15 that carry a live participant sync beside an ended job schedule
+  (each now reads by the live one: `dimensions.programs[].schedule.cronExpression` is the sync's cron and `endTime`
+  its 2028–2034 end); a program whose documented schedule ended before its source's last sync is on Cannot judge yet
+  with `signals.why` = doc-stale (none expected on this tenant after the refresh; if one appears, Bradley reads it);
+  Step errors holds only programs with a program-error kind this period (`signals.steps.byCategory` names
+  step-action-failed, platform-error or other, never a Send Email drop) — expected 0 or the platform-error programs
+  of the current and previous month; the six V2 programs read `steps.state` none with `byKind` naming bad-address and
+  business-rule; the quarterly-intake program is on Cannot judge yet with `signals.why` = too-new and
+  `sends.firstSendMonth` 2026-08, NOT on No recent sends, and at `--quiet-due-days 2` it still reads admitting-nobody
+  (the knob's definition: two monthly runs that admitted nobody; recorded, not a defect); every other list reads as
+  at V2 (admitting-nobody 1, finished 10, no-recent-sends 1 — the weekly program Bradley called broken — ok the
+  rest). Record the counts per list and Bradley's read of each list that changed.
+- Y19 (the mask on the live wordings, F-492). The 30 bounce wordings Bradley accepted at hb-20261007-02 (the workspace
+  file, never the repo) run through `maskMessage`: pass bar, every one equals itself (the leading-space entry trims,
+  nothing else changes) — 11 of 30 changed at V2, 12 counting the trim; and the previous round's order-10^3 raw sample
+  texts through the mask searched with the tester's own detectors (addresses, five-digit runs, IPv4): 0 addresses, 0
+  five-digit runs, 0 IPv4; host names and URL paths are EXPECTED to appear (ruling 8). Bradley confirms or overrules
+  hosts unmasked.
+
 ## DSH-2 — the dashboard page built over a real snapshot: filtered in a browser, its size measured, a CSV export opened in a spreadsheet (banked 2026-10-04, builder, Session S4a; verdict at V2)
 
 Owed by: V2, the batched verdict session after S4c, in the consumer workspace with the plugin loaded from `dev`

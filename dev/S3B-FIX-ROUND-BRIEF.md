@@ -163,3 +163,52 @@ DSH-3 carries the two interview questions (quiet due days, sample cap) for S5.
       dashboard-page, engagement-report, contract-conformance, tenant-deps,
       trace-reader-shapes; `npm run build:reader-shapes`; `npm run typecheck`;
       `node build/check-stale-facts.mjs`; mutation sweep with predictions written first.
+
+## Round 2 (2026-10-08, after the V2 verdict @ hb-20261007-03) — F-484 redesign, F-491 tune, F-492 fix
+
+Measured first (production, reads only, three `rp run` calls on the maintainer's token, one at a time; the rest offline
+over V2's snapshot in the consumer workspace, never copied into the repo). Shapes only:
+- 64 of the 195 selected programs have refusals with ModifiedAt in the day window (187 over the 13-month window); the
+  tenant-wide count grouped by program answered in one page, 5 s.
+- `--order-by [{"name":"OccurrenceCount","order":"DESC"}]` works on the refusal object (the field in show-fields).
+- The largest program (order 10^6 refusals in the window): its newest-100 page held two Send Email step wordings only
+  (GlobalOptOut 53, Bounced recipient 47; every row OccurrenceCount 1); its most-repeated-100 page held the null-address
+  wording on 75 rows (one row refused order 10^4 times), already-in-list 15, bounce list 8, Global Opt Out 2.
+- Schedule ended 35: the 15 false reads each carry an ended ADVANCED_OUTREACH_SCHEDULE beside a live
+  ADVANCED_OUTREACH_BIONIC_QUERY (end 2028–2034) and synced that day; the 20 true ones carry one ended schedule and
+  synced before its end. jobType census over the selected programs: SCHEDULE only 56, none 79, BIONIC only 20, both 30,
+  ADVANCED_OUTREACH 10.
+- Step errors 6: byCategory {other: n} on every one. No recent sends 2: one by the history rule (7 months; true), one
+  by the flat rule (ONE closed month of sends, August; 274 admitted on the 1st, all COMPLETED; monthly cron) — the
+  quarterly-intake program.
+- F-492: 12 of the 30 captured patterns change under the shipped mask (one is a leading-space trim), 5 without the host
+  rule (the four Mimecast/Google help-link paths plus the trim).
+
+Rulings applied (Bradley, 2026-10-08, recorded by the tester under F-491/F-492; the plan's HLT-1 rulings 7–10): three
+kinds (business rule, bad address, program error; bounce list = bad address, superseding the 10-07 flag on that one
+wording); hosts unmasked (he may overrule at V3); a schedule that is over with the sync still running is not over; a
+quarterly-intake program on a monthly cron is not silent.
+
+Design:
+- F-484 REDESIGN (model replaced: picks ranked by a count over one window and pages read over another, newest first).
+  `health-entry-window` (COUNT + SUM per program, ModifiedAt in the day window, scope = selected) is the count the picks
+  are ranked by, and each sample page reads that unit's window object; the bounce text reads the pull's whole window its
+  Other counts are over. Pages read the most REPEATED refusals (`OccurrenceCount DESC`). The carry compares counts over
+  the same window: `meta.health.samples[part]` stores `window` and `counts`; a previous snapshot of another day window
+  carries no refusal sample; the bounce carry stays rows-based over this window's months. `entry.recent` and the
+  `none-recent` state from the stored counts.
+- F-491 TUNE (first reopen since the Redesign): `pickSchedule` prefers live recurring schedules (shortest period among
+  them; latest end when all ended); `doc-stale` when a documented end precedes the source's last sync → ingest
+  cannot-judge (why doc-stale); `FAILURE_KINDS` with `kind` on every category and on failureSamples/entrySamples/
+  stepFailures rows, `expected` = business rule everywhere; step categories reject-drop, bounce-list-at-send (bad
+  address), opt-out-at-send (business rule), bounce-drop → bad address; entry category bounced-at-send, bounce-list →
+  bad address; step-errors fires on program-error only; entry "unexpected" = not a business rule; a NEW program (fewer
+  than three closed months of sends, all recent) → sends `no-history` → Cannot judge yet (why too-new); the label
+  "Cannot judge yet" with `CANNOT_JUDGE_REASONS` and `signals.why`.
+- F-492 FIX: the host rule removed (five rules); `MASK_PROTECTED` keeps a URL's scheme, host and path from the id and
+  number rules (query and fragment still masked). A host carrying a digit still reads as `<id>` under the token rule.
+
+Fixture: p-renew's refusals moved to April/May (in the window, before the day window); p-nps gains two recent refusals;
+the `chronicFailures` variant (150 newest once-refused opt-outs, 20 older null-address refusals repeated 40+ times);
+FAILURE_REASONS gains bounced-at-send; signals programs p-twosched, p-staledoc, p-newcohort, p-sendfail (every
+participant a DROP with the Send Email wordings), p-oldshort; STEP_REASONS gains the three Send Email drops.

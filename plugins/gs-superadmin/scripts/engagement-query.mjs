@@ -181,29 +181,45 @@ export const SOURCES = deepFreeze({
 // applied in this order; each replaces what it matches with a placeholder, so
 // two messages that differ only in whom they name become one message and are
 // counted together. A placeholder matches no rule, so masking twice changes
-// nothing.
+// nothing. What is NOT masked, and why (F-492, ruled 2026-10-08): a mail host
+// (an organisation's mail server, a vendor's help site) is product text as often
+// as it is a recipient's — the host rule took 7 of 30 captured bounce wordings
+// (Microsoft's dotted diagnostic codes, vendors' help links) — and the samples
+// it would protect are terminal-only and never leave the workspace; and the
+// scheme, host and path of a URL (MASK_PROTECTED) are left to the token and
+// number rules' exclusion, because a help link's path reads as one long id.
 /** @type {ReadonlyArray<{id: string, what: string, re: RegExp, as: string}>} */
 export const MASK_RULES = Object.freeze([
   { id: "email", what: "an email address, with its angle brackets when it has them", re: /<?[A-Za-z0-9._%+'-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+>?/g, as: "<email>" },
   { id: "uuid", what: "a UUID", re: /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi, as: "<id>" },
   { id: "ipv4", what: "an IPv4 address", re: /\b\d{1,3}(?:\.\d{1,3}){3}\b/g, as: "<ip>" },
-  // A mail host names the recipient's organisation (F-492): two or more dotted labels ending in letters.
-  { id: "host", what: "a host name (dotted labels ending in a top-level domain of letters), which names the recipient's organisation", re: /\b(?:[A-Za-z0-9-]+\.)+[A-Za-z]{2,}\b/g, as: "<host>" },
   // The id character class covers what mail gateways write (F-492): letters, digits, `-`, `_`, `.`, `+`, `/`, `=`.
-  { id: "token", what: "a run of 12 or more letters, digits, hyphens, underscores, dots, plus, slash or equals signs that holds both a letter and a digit (a record id, a message id)", re: /(?<![A-Za-z0-9._+/=-])(?=[A-Za-z0-9._+/=-]*\d)(?=[A-Za-z0-9._+/=-]*[A-Za-z])[A-Za-z0-9._+/=-]{12,}(?![A-Za-z0-9._+/=-])/g, as: "<id>" },
-  { id: "number", what: "a run of 5 or more digits", re: /\d{5,}/g, as: "<number>" },
+  { id: "token", what: "a run of 12 or more letters, digits, hyphens, underscores, dots, plus, slash or equals signs that holds both a letter and a digit (a record id, a message id), outside a URL's scheme, host and path", re: /(?<![A-Za-z0-9._+/=-])(?=[A-Za-z0-9._+/=-]*\d)(?=[A-Za-z0-9._+/=-]*[A-Za-z])[A-Za-z0-9._+/=-]{12,}(?![A-Za-z0-9._+/=-])/g, as: "<id>" },
+  { id: "number", what: "a run of 5 or more digits, outside a URL's scheme, host and path", re: /\d{5,}/g, as: "<number>" },
 ].map((r) => Object.freeze(r)));
+// What the rules do not run inside: a URL up to its query or fragment (the
+// scheme, host and path a vendor's help link is made of). The query and the
+// fragment ARE masked: a tracking id lives there.
+export const MASK_PROTECTED = Object.freeze({ id: "url-path", what: "a URL's scheme, host and path, up to its query or fragment", re: /https?:\/\/[^\s?#<>"'\]\[)(]+/g });
 export const MASK_MAX_LENGTH = 300;
 /**
  * One raw error message → the text that may be stored: every MASK_RULES match
- * replaced, white space collapsed, cut to MASK_MAX_LENGTH. Null for no text.
+ * replaced (outside the protected spans), white space collapsed, cut to
+ * MASK_MAX_LENGTH. Null for no text.
  * @param {unknown} raw
  * @returns {?string}
  */
 export function maskMessage(raw) {
   if (typeof raw !== "string") return null;
-  let text = raw;
-  for (const rule of MASK_RULES) text = text.replace(rule.re, rule.as);
+  const mask = (s) => { for (const rule of MASK_RULES) s = s.replace(rule.re, rule.as); return s; };
+  // The text is cut at each protected span: the pieces between are masked, the spans are kept as they are.
+  let text = "";
+  let at = 0;
+  for (const m of raw.matchAll(MASK_PROTECTED.re)) {
+    text += mask(raw.slice(at, m.index)) + m[0];
+    at = m.index + m[0].length;
+  }
+  text += mask(raw.slice(at));
   text = text.replace(/\s+/g, " ").trim();
   if (!text) return null;
   const points = Array.from(text);
@@ -225,44 +241,62 @@ export function maskMessage(raw) {
 // own messages (never written from memory): the only reason a wording may ship
 // is that it carries no tenant value. Bounce reasons ship EMPTY (the captured
 // list awaits Bradley's ruling on which entries are product text). The entry
-// refusals ship the eight wordings measured on 2026-10-07 (500 of a month's
-// refused participants held exactly these), with the expected flag as ruled
-// that day: a refusal that is a business rule working (already in the list,
-// unique criteria, met the advanced criteria, unsubscribed, opted out, on the
-// bounce list) is expected; a null email address is a data problem and is not.
-// A tenant adds its own on top (the adapter's --failure-categories file), and
-// names expected failures (--expected-reason), which become categories flagged
-// `expected`, so a page can leave them out of headline counts without hiding them.
-// Each entry: {id, label, pattern, definition, expected?}.
+// refusals ship the wordings measured on 2026-10-07 and 2026-10-08 (500 of a
+// month's refused participants held the first eight; the ninth was read from
+// the most repeated refusals of the largest program).
+// Every category has a KIND (FAILURE_KINDS; Bradley, 2026-10-08, F-491): a
+// BUSINESS RULE working as configured (already in the list, unique criteria,
+// met the advanced criteria, unsubscribed, opted out), a BAD ADDRESS (a null or
+// invalid address, a bounce, the bounce list — "if their email is bad we would
+// expect it to bounce ... it's not the same as 'participant with unique criteria
+// exists'"), or a PROGRAM ERROR (a step that cannot run, the platform's own
+// error). `expected` is derived, one meaning everywhere: the kind is a business
+// rule. The lists read the kind: a program errors only on program errors; at
+// entry anything that is not a business rule is "not expected by design" (a
+// null address is a data problem, ruled 2026-10-07).
+// A tenant adds its own on top (the adapter's --failure-categories file, with a
+// `kind`, or `expected: true` for a business rule), and names expected failures
+// (--expected-reason), which become business-rule categories, so a page can
+// leave them out of headline counts without hiding them.
+// Each entry: {id, label, pattern, definition, kind}.
+export const FAILURE_KINDS = Object.freeze(["business-rule", "bad-address", "program-error"]);
 /** @type {Readonly<{bounceReasons: ReadonlyArray<FailureCategory>, participantFailures: ReadonlyArray<FailureCategory>}>} */
 export const FAILURE_CATEGORIES = deepFreeze({
   bounceReasons: [],
   participantFailures: [
-    { id: "already-in-list", label: "Already in the participant list", pattern: "Participant already exists in participant list", definition: "The participant is already in the program, so the source did not add them again.", expected: true },
-    { id: "unique-criteria", label: "Unique criteria already met", pattern: "Participant with unique criteria already exists", definition: "A participant with the same unique criteria is already in the program.", expected: true },
-    { id: "advanced-criteria", label: "Met the advanced criteria", pattern: "Participant has met the advanced criteria", definition: "The program's advanced criteria excluded the participant, as configured.", expected: true },
-    { id: "unsubscribed", label: "Unsubscribed from a category", pattern: "Participant has unsubscribed from one or more categories", definition: "The recipient has unsubscribed from an email category the program sends.", expected: true },
-    { id: "global-opt-out", label: "On the global opt-out", pattern: "Participant part of Global Opt Out", definition: "The recipient is on the tenant's global opt-out list.", expected: true },
-    { id: "bounce-list", label: "On the bounce list", pattern: "Participant part of Bounce list", definition: "The recipient's address is on the tenant's bounce list.", expected: true },
-    { id: "opt-out-at-send", label: "Opted out at the send step", pattern: "GlobalOptOut recipient(to) email", definition: "The recipient was on the global opt-out when the Send Email step ran.", expected: true },
-    { id: "no-email", label: "No email address", pattern: "Recipient Email Address field contains Invalid value", definition: "The participant record carries no email address: a data problem at the source.", expected: false },
+    { id: "already-in-list", label: "Already in the participant list", pattern: "Participant already exists in participant list", definition: "The participant is already in the program, so the source did not add them again.", kind: "business-rule" },
+    { id: "unique-criteria", label: "Unique criteria already met", pattern: "Participant with unique criteria already exists", definition: "A participant with the same unique criteria is already in the program.", kind: "business-rule" },
+    { id: "advanced-criteria", label: "Met the advanced criteria", pattern: "Participant has met the advanced criteria", definition: "The program's advanced criteria excluded the participant, as configured.", kind: "business-rule" },
+    { id: "unsubscribed", label: "Unsubscribed from a category", pattern: "Participant has unsubscribed from one or more categories", definition: "The recipient has unsubscribed from an email category the program sends.", kind: "business-rule" },
+    { id: "global-opt-out", label: "On the global opt-out", pattern: "Participant part of Global Opt Out", definition: "The recipient is on the tenant's global opt-out list.", kind: "business-rule" },
+    { id: "bounce-list", label: "On the bounce list", pattern: "Participant part of Bounce list", definition: "The recipient's address is on the tenant's bounce list: it bounced before.", kind: "bad-address" },
+    { id: "opt-out-at-send", label: "Opted out at the send step", pattern: "GlobalOptOut recipient(to) email", definition: "The recipient was on the global opt-out when the Send Email step ran.", kind: "business-rule" },
+    { id: "bounced-at-send", label: "Bounced at the send step", pattern: "Bounced recipient(to) email", definition: "The recipient's address had bounced when the Send Email step ran.", kind: "bad-address" },
+    { id: "no-email", label: "No email address", pattern: "Recipient Email Address field contains Invalid value", definition: "The participant record carries no email address: a data problem at the source.", kind: "bad-address" },
   ],
 });
-/** @typedef {{id: string, label: string, pattern: string, definition: string, expected?: boolean}} FailureCategory */
+/** @typedef {{id: string, label: string, pattern: string, definition: string, kind?: string, expected?: boolean}} FailureCategory */
 export const OTHER_CATEGORY = "other";
 export const FAILURE_PARTS = Object.freeze(["bounceReasons", "participantFailures"]);
+/** A category's kind: its own, else a business rule when it was flagged expected, else a program error. */
+export const kindOf = (c) => (FAILURE_KINDS.includes(c?.kind) ? c.kind : c?.expected === true ? "business-rule" : "program-error");
+/** The one meaning of `expected`: the kind is a business rule working. */
+export const isExpectedKind = (kind) => kind === "business-rule";
 // Why a participant who got IN fell off at a step (ao_participants.FailureReasons,
 // counted server-side with CONTAINS; F-491, Bradley's fourth condition). Each
 // text category names the product wording the measured tenant writes; the
-// platform error is a participant STATE, not a text. A bounce drop and a record
-// delete are the platform doing what it is told (expected); a step that cannot
-// run and a platform error are not.
-/** @type {ReadonlyArray<{id: string, label: string, pattern?: string, state?: string, definition: string, expected: boolean}>} */
+// platform error is a participant STATE, not a text. The Send Email step's own
+// drops (a reject, the bounce list, an opt-out) were read on 2026-10-08 from the
+// uncategorised text of six programs the list had read as erring.
+/** @type {ReadonlyArray<{id: string, label: string, pattern?: string, state?: string, definition: string, kind: string}>} */
 export const STEP_FAILURE_CATEGORIES = deepFreeze([
-  { id: "step-action-failed", label: "A step's action failed", pattern: "creation failed at step", definition: "A step could not perform its action (a CTA could not be created: invalid or missing field values).", expected: false },
-  { id: "platform-error", label: "Platform error", state: "SYSTEM_ERROR", definition: "The platform could not execute a step for the participant (a condition failed to evaluate; an engine error). Clusters on dates mark an outage or a maintenance window.", expected: false },
-  { id: "bounce-drop", label: "Dropped after a bounce", pattern: "Email is Bounce, participant is dropped", definition: "The participant's email bounced and the program dropped them, as configured.", expected: true },
-  { id: "record-delete", label: "Dropped with the deleted record", pattern: "as part of Record Delete operation", definition: "The base object record was deleted, so the participant was removed.", expected: true },
+  { id: "step-action-failed", label: "A step's action failed", pattern: "creation failed at step", definition: "A step could not perform its action (a CTA could not be created: invalid or missing field values).", kind: "program-error" },
+  { id: "platform-error", label: "Platform error", state: "SYSTEM_ERROR", definition: "The platform could not execute a step for the participant (a condition failed to evaluate; an engine error). Clusters on dates mark an outage or a maintenance window.", kind: "program-error" },
+  { id: "bounce-drop", label: "Dropped after a bounce", pattern: "Email is Bounce, participant is dropped", definition: "The participant's email bounced and the program dropped them, as configured.", kind: "bad-address" },
+  { id: "reject-drop", label: "Dropped after a reject", pattern: "Email is Reject, participant is dropped", definition: "The recipient's mail server rejected the email and the program dropped the participant, as configured.", kind: "bad-address" },
+  { id: "bounce-list-at-send", label: "On the bounce list at the send step", pattern: "Recipient on Gainsight bounce list", definition: "The recipient's address was on the tenant's bounce list when the Send Email step ran.", kind: "bad-address" },
+  { id: "opt-out-at-send", label: "Opted out at the send step", pattern: "Recipient has opted out", definition: "The recipient had opted out when the Send Email step ran.", kind: "business-rule" },
+  { id: "record-delete", label: "Dropped with the deleted record", pattern: "as part of Record Delete operation", definition: "The base object record was deleted, so the participant was removed.", kind: "business-rule" },
 ]);
 /**
  * What is wrong with a category list, in words; empty when it may be used.
@@ -282,7 +316,9 @@ export function validateCategories(list) {
     for (const k of ["id", "label", "pattern", "definition"]) if (typeof c[k] !== "string" || !c[k].trim()) problems.push(`${at}: ${k} must be non-empty text`);
     if (typeof c.id === "string" && c.id.trim() === OTHER_CATEGORY) problems.push(`${at}: the id "${OTHER_CATEGORY}" is reserved for the uncategorised remainder`);
     if ("expected" in c && typeof c.expected !== "boolean") problems.push(`${at}: expected must be true or false`);
-    const extra = Object.keys(c).filter((k) => !["id", "label", "pattern", "definition", "expected"].includes(k));
+    if ("kind" in c && !FAILURE_KINDS.includes(c.kind)) problems.push(`${at}: kind must be one of ${FAILURE_KINDS.join(", ")}`);
+    if (typeof c.kind === "string" && typeof c.expected === "boolean" && c.expected !== isExpectedKind(c.kind)) problems.push(`${at}: expected ${c.expected} contradicts kind "${c.kind}" (expected means a business rule; leave one of the two out)`);
+    const extra = Object.keys(c).filter((k) => !["id", "label", "pattern", "definition", "expected", "kind"].includes(k));
     if (extra.length) problems.push(`${at}: unknown key(s) ${extra.join(", ")}`);
     if (typeof c.id === "string") {
       if (ids.has(c.id)) problems.push(`${at}: id "${c.id}" is used twice`);
@@ -299,15 +335,21 @@ export function validateCategories(list) {
 }
 /**
  * The category table a pull counts with: the shipped list for the part, then
- * the tenant's own entries, each normalized to {id, label, pattern, definition, expected}.
+ * the tenant's own entries, each normalized to {id, label, pattern, definition, kind, expected}
+ * (a bounce category with no kind is a bad address; any other with none is a
+ * business rule when flagged expected, else a program error).
  * @param {"bounceReasons"|"participantFailures"} part
  * @param {ReadonlyArray<FailureCategory>} [extra]
- * @returns {FailureCategory[]}
+ * @returns {Array<{id: string, label: string, pattern: string, definition: string, kind: string, expected: boolean}>}
  */
 export function categoryTable(part, extra = []) {
   if (!FAILURE_PARTS.includes(part)) throw new Error(`engagement query: no failure categories for "${part}"`);
-  const list = [...FAILURE_CATEGORIES[part], ...extra].map((c) => ({ id: c.id.trim(), label: c.label.trim(), pattern: c.pattern.trim(), definition: c.definition.trim(), expected: c.expected === true }));
-  const problems = validateCategories(list);
+  const problems = validateCategories([...FAILURE_CATEGORIES[part], ...extra]);
+  const list = [...FAILURE_CATEGORIES[part], ...extra].map((c) => {
+    const kind = part === "bounceReasons" && c.kind == null && c.expected == null ? "bad-address" : kindOf(c);
+    return { id: c.id.trim(), label: c.label.trim(), pattern: c.pattern.trim(), definition: c.definition.trim(), kind, expected: isExpectedKind(kind) };
+  });
+  problems.push(...validateCategories(list).filter((p) => !problems.includes(p)));
   if (problems.length) throw new Error(`engagement query: the ${part} category list is not usable: ${problems.join("; ")}`);
   return list;
 }
@@ -486,7 +528,7 @@ export const accountAvailability = (snapshot) => snapshot.meta.accounts ?? { pul
  * A reader shows the reason wherever a health figure would be; it never shows
  * a missing part as "no failures".
  * @param {T10Snapshot} snapshot
- * @returns {{pulled: boolean, reason: ?string, asOf: ?string, dayWindow: ?{start: string, endExclusive: string}, parts: Object<string, {pulled: boolean, reason: ?string, basis?: string}>, categories?: Object<string, *>, samples?: Object<string, {cap: number, sampled: number, carried: number, notSampled: Array<{programId: string, reason: string}>, programs?: string[]}>}}
+ * @returns {{pulled: boolean, reason: ?string, asOf: ?string, dayWindow: ?{start: string, endExclusive: string}, parts: Object<string, {pulled: boolean, reason: ?string, basis?: string}>, categories?: Object<string, *>, samples?: Object<string, {cap: number, sampled: number, carried: number, notSampled: Array<{programId: string, reason: string}>, programs?: string[], window?: {start: string, endExclusive: string}, counts?: Object<string, number>}>}}
  */
 export const healthAvailability = (snapshot) => snapshot.meta.health ?? { pulled: false, reason: "predates-health", asOf: null, dayWindow: null, parts: {} };
 /** @returns {{state: TrackingState, templates: {tracked: number, notTracked: number, unknown: number}}} */
@@ -977,9 +1019,12 @@ export function cronLastDue(expr, asOf) {
 //   - admissions are the participants created per day (facts.health.admissions)
 //   - refusals are counted exactly per program and month
 //     (facts.health.entryFailures) and split by reason from a per-program
-//     SAMPLE of the most recent ones (facts.health.failureSamples), because the
-//     reason field takes no filter; the shipped expected list is the product's
-//     own wordings (FAILURE_CATEGORIES.participantFailures)
+//     SAMPLE of the most REPEATED ones still happening in the day window
+//     (facts.health.failureSamples; F-484, redesigned 2026-10-08: the newest
+//     page of the largest program held only its Send Email step's wordings and
+//     hid the null-address wording that dominates it), because the reason
+//     field takes no filter; the shipped expected list is the product's own
+//     wordings (FAILURE_CATEGORIES.participantFailures), each with a KIND
 //   - step failures are counted server-side by category per program and
 //     month (facts.health.stepFailures); the platform's own error is a state
 //   - sends are judged against the program's OWN history for every program: an
@@ -1013,12 +1058,23 @@ export const HEALTH_LISTS = deepFreeze({
   "no-recent-sends": "No recent sends",
   finished: "Finished campaign",
   "no-sends-in-window": "Active, no sends in this window",
-  "cannot-judge": "Cannot judge: period longer than the window",
+  // Why a program cannot be judged is in its signals (CANNOT_JUDGE_REASONS).
+  "cannot-judge": "Cannot judge yet",
   ok: "Working as expected",
 });
+// Why a program lands on "Cannot judge yet" (signals.why): its ingest period is
+// longer than the window (a longer --health-lookback-days reads it); the
+// documented schedule ended before its source last synced, so the KB doc is
+// behind the tenant (a refresh reads it); or it is NEW — fewer than
+// HISTORY_MIN_MONTHS closed months of sends, all of them recent — so its own
+// cadence cannot be read yet (F-491, 2026-10-08: a program two months old with
+// one cohort behind it read "No recent sends" under the flat threshold).
+export const CANNOT_JUDGE_REASONS = deepFreeze({ "period-longer-than-window": "the ingest period is longer than the window", "doc-stale": "the documented schedule ended before the source's last sync", "too-new": "fewer than three months of sends, all recent" });
 /** The lists table under the name S4b's plan reads it by. */
 export const SILENT_LISTS = HEALTH_LISTS;
 const ALARM_LISTS = Object.freeze(["schedule-ended", "sync-disabled", "ingest-overdue", "failing-entries", "admitting-nobody", "step-errors", "no-recent-sends"]);
+// A stored category row's kind: its own (F-491, 2026-10-08), else read off its expected flag (a snapshot made before kinds).
+const rowKind = (r) => (FAILURE_KINDS.includes(r?.kind) ? r.kind : r?.expected === true ? "business-rule" : "program-error");
 const monthEnd = (ym) => `${ym}-${String(daysInMonth(Number(ym.slice(0, 4)), Number(ym.slice(5, 7)))).padStart(2, "0")}`;
 const monthsApart = (a, b) => (Number(b.slice(0, 4)) - Number(a.slice(0, 4))) * 12 + Number(b.slice(5, 7)) - Number(a.slice(5, 7));
 // An epoch-millisecond time (what the describe payload carries) or an ISO text → its day; 0 and null are "none".
@@ -1047,8 +1103,8 @@ export function dueDaysBefore(expr, asOf, n, floor) {
  *   programs: Array<{programId: string, name: ?string, statuses: string[], selected: boolean, lastSendDay: ?string, lastSendMonth: ?string,
  *     schedule: ?{classification: string, cronExpression: ?string, startTime?: ?number, endTime?: ?number}, syncDisabled?: ?boolean,
  *     sources: ?Array<{type: ?string, lastSyncedOn: ?string}>, admissionDays: ?Array<{day: string, participants: number}>,
- *     entryFailures: ?{window: {participants: number, occurrences: number}, sample: ?{rows: number, expected: number, unexpected: number, uncategorised: number}},
- *     stepFailures: ?Array<{month: string, category: string, expected: boolean, participants: number}>, participants: ?number, inFlight: ?number,
+ *     entryFailures: ?{window: {participants: number, occurrences: number}, recent?: ?number, sample: ?{rows: number, expected: number, unexpected: number, uncategorised: number, byKind?: Object<string, number>}},
+ *     stepFailures: ?Array<{month: string, category: string, kind?: string, expected: boolean, participants: number}>, participants: ?number, inFlight: ?number,
  *     sentMonths: string[], templates: number}>}} input
  * @returns {Array<{programId: string, name: ?string, statuses: string[], selected: boolean, lastSendDay: ?string, lastSendMonth: ?string, daysSilent: ?number, list: string, label: string, signals: Object<string, *>}>}
  */
@@ -1071,21 +1127,25 @@ export function judgeHealth({ asOf, dayWindow, days, quietDueDays = QUIET_DUE_DA
     const endDay = dayOfTime(p.schedule?.endTime);
     const startDay = dayOfTime(p.schedule?.startTime);
     const due = cls === "recurring" ? cronLastDue(p.schedule?.cronExpression, asOf) : null;
+    // The ingest heartbeat: the newest sync among the program's active sources (read before the schedule is
+    // judged, because a sync AFTER a documented end says the doc is behind the tenant, not that the schedule ended).
+    const syncs = p.sources == null ? null : p.sources.map((s) => dayOfTime(s.lastSyncedOn)).filter(Boolean).sort();
+    const lastSync = syncs?.length ? syncs[syncs.length - 1] : null;
+    const ended = endDay != null && endDay < asOf;
     const schedule =
       p.syncDisabled === true ? { state: "disabled" }
-        : cls === "recurring" ? (endDay && endDay < asOf ? { state: "ended", endDay } : startDay && startDay > asOf ? { state: "not-started", startDay }
+        : cls === "recurring" ? (ended && lastSync != null && lastSync > endDay ? { state: "doc-stale", endDay, lastSync } : ended ? { state: "ended", endDay } : startDay && startDay > asOf ? { state: "not-started", startDay }
           : { state: "recurring", readable: due.readable, lastDue: due.lastDue, periodDays: due.periodDays, endDay })
           : cls === "one-time" ? { state: "one-time" } : cls == null ? { state: "unknown" } : { state: "none", classification: cls };
 
-    // (1, continued) The ingest heartbeat: the newest sync among the program's active sources, against the cron's last due day.
-    const syncs = p.sources == null ? null : p.sources.map((s) => dayOfTime(s.lastSyncedOn)).filter(Boolean).sort();
-    const lastSync = syncs?.length ? syncs[syncs.length - 1] : null;
+    // (1, continued) The heartbeat against the cron's last due day.
     let ingest;
     if (p.sources == null) ingest = { state: "not-read" };
     else if (schedule.state === "disabled" || schedule.state === "ended" || schedule.state === "not-started") ingest = { state: "stopped", lastSync };
+    else if (schedule.state === "doc-stale") ingest = { state: "cannot-judge", why: "doc-stale", lastSync, endDay };
     else if (schedule.state === "recurring") {
       if (!due.readable || due.lastDue == null) ingest = { state: "cadence-unreadable", lastSync };
-      else if (due.periodDays == null || due.periodDays > windowDays || due.lastDue < dayWindow.start) ingest = { state: "cannot-judge", lastSync, lastDue: due.lastDue, periodDays: due.periodDays, windowDays };
+      else if (due.periodDays == null || due.periodDays > windowDays || due.lastDue < dayWindow.start) ingest = { state: "cannot-judge", why: "period-longer-than-window", lastSync, lastDue: due.lastDue, periodDays: due.periodDays, windowDays };
       else if (lastSync == null) ingest = { state: "never-synced", lastDue: due.lastDue };
       else if (lastSync >= due.lastDue) ingest = { state: "on-schedule", lastSync, lastDue: due.lastDue };
       else ingest = { state: "overdue", lastSync, lastDue: due.lastDue, daysOverdue: asOfN - dayNumber(due.lastDue) };
@@ -1104,30 +1164,41 @@ export function judgeHealth({ asOf, dayWindow, days, quietDueDays = QUIET_DUE_DA
         : { state: n > 0 ? "admitting" : "none", since, dueDays: dueDays.length, quietDueDays, admitted: n, lastAdmissionDay };
     } else admissions = { state: admitted(null) > 0 ? "admitting" : "none-in-window", admitted: admitted(null), lastAdmissionDay };
 
-    // (3) Refusals at entry: the exact count over the window, and the sampled split by reason.
+    // (3) Refusals at entry: the exact count over the window, the count still happening in the day window
+    // (null on a snapshot that did not store it), and the sampled split by kind.
     const ef = p.entryFailures;
     const entry = ef == null ? { state: "not-read" }
       : !(ef.window?.participants > 0) ? { state: "none" }
-        : ef.sample == null ? { state: "unsampled", participants: ef.window.participants, occurrences: ef.window.occurrences }
-          : { state: ef.sample.unexpected > 0 ? "unexpected" : "expected-only", participants: ef.window.participants, occurrences: ef.window.occurrences, sample: ef.sample };
+        : ef.recent === 0 ? { state: "none-recent", participants: ef.window.participants, occurrences: ef.window.occurrences, recent: 0 }
+          : ef.sample == null ? { state: "unsampled", participants: ef.window.participants, occurrences: ef.window.occurrences, recent: ef.recent ?? null }
+            : { state: ef.sample.unexpected > 0 ? "unexpected" : "expected-only", participants: ef.window.participants, occurrences: ef.window.occurrences, recent: ef.recent ?? null, sample: ef.sample };
 
-    // (4) Step failures this period, by category: an unexpected one (or uncategorised text) is an error.
+    // (4) Step failures this period, by KIND: a program error (a step that cannot run, the platform's own error,
+    // or uncategorised text) is an error; a bad address and a business rule are the program doing as told.
     const sf = p.stepFailures;
     let steps;
     if (sf == null) steps = { state: "not-read" };
     else {
-      const bad = sf.filter((r) => recentMonths.includes(r.month) && r.participants > 0 && !r.expected);
+      const recent = sf.filter((r) => recentMonths.includes(r.month) && r.participants > 0);
+      const bad = recent.filter((r) => rowKind(r) === "program-error");
       const byCategory = {};
       for (const r of bad) byCategory[r.category] = (byCategory[r.category] ?? 0) + r.participants;
-      steps = bad.length ? { state: "errors", months: recentMonths, participants: bad.reduce((s, r) => s + r.participants, 0), byCategory } : { state: "none", months: recentMonths };
+      const byKind = {};
+      for (const r of recent) byKind[rowKind(r)] = (byKind[rowKind(r)] ?? 0) + r.participants;
+      steps = bad.length ? { state: "errors", months: recentMonths, participants: bad.reduce((s, r) => s + r.participants, 0), byCategory, byKind } : { state: "none", months: recentMonths, byKind };
     }
 
-    // Sends, against the program's own history (every program).
+    // Sends, against the program's own history (every program). A NEW program — fewer than HISTORY_MIN_MONTHS
+    // closed months of sends, every one of them recent — has no history to judge by yet; a program with as few
+    // months of sends that are NOT recent (sent twice, a year ago) is judged by the flat threshold.
     const sentMonths = [...new Set(p.sentMonths ?? [])].sort();
     const sentClosed = sentMonths.filter((m) => closedMonths.includes(m));
     const rare = sentClosed.length >= HISTORY_MIN_MONTHS && sentClosed.length * 2 < closedMonths.length;
+    const recentMonthsForHistory = [...closedMonths.slice(-HISTORY_MIN_MONTHS), incompleteMonth];
+    const isNew = sentClosed.length < HISTORY_MIN_MONTHS && sentMonths.length > 0 && sentMonths.every((m) => recentMonthsForHistory.includes(m));
     let sends;
     if (!p.selected) sends = { state: "none-in-window", windowMonths: months.length };
+    else if (isNew) sends = { state: "no-history", rule: "none", monthsWithSends: sentClosed.length, firstSendMonth: sentMonths[0], daysSince, historyMinMonths: HISTORY_MIN_MONTHS };
     else if (!rare) sends = { state: daysSince == null || daysSince >= days ? "late" : "ok", rule: sentClosed.length < HISTORY_MIN_MONTHS ? "flat" : "history", threshold: days, daysSince, monthsWithSends: sentClosed.length, closedMonths: closedMonths.length, usual: "most months" };
     else {
       const gaps = sentClosed.slice(1).map((m, i) => monthsApart(sentClosed[i], m));
@@ -1138,7 +1209,9 @@ export function judgeHealth({ asOf, dayWindow, days, quietDueDays = QUIET_DUE_DA
     // A one-off (nothing recurring, not stopped) whose participants have all finished or dropped is a finished campaign.
     const oneOff = ["one-time", "none", "unknown"].includes(schedule.state);
     const finished = oneOff && p.inFlight === 0 && (p.participants ?? 0) > 0;
-    const signals = { schedule, ingest, admissions, entry, steps, sends, finished: p.inFlight == null ? null : finished, templates: p.templates ?? 0, monthsSent: sentMonths.length };
+    // Why the program cannot be judged, when it cannot (CANNOT_JUDGE_REASONS); null otherwise.
+    const why = ingest.state === "cannot-judge" ? ingest.why : sends.state === "no-history" ? "too-new" : null;
+    const signals = { schedule, ingest, admissions, entry, steps, sends, finished: p.inFlight == null ? null : finished, why, templates: p.templates ?? 0, monthsSent: sentMonths.length };
 
     // ONE list per program, the most urgent signal first.
     const list =
@@ -1151,7 +1224,7 @@ export function judgeHealth({ asOf, dayWindow, days, quietDueDays = QUIET_DUE_DA
                   : steps.state === "errors" ? "step-errors"
                     : finished ? "finished"
                       : sends.state === "late" ? "no-recent-sends"
-                        : ingest.state === "cannot-judge" ? "cannot-judge"
+                        : why != null ? "cannot-judge"
                           : "ok";
     out.push({ ...base, list, label: HEALTH_LISTS[list], signals });
   }
@@ -1193,6 +1266,10 @@ export function programHealth(snapshot, { days = SILENT_DAYS_DEFAULT, quietDueDa
   const states = byProgram(read("participantStates"));
   const samples = byProgram(read("failureSamples"));
   const notSampled = new Set((h.samples?.participantFailures?.notSampled ?? []).map((x) => x.programId));
+  // The refusals still happening in the day window, per program (F-484: the count the samples are picked from,
+  // stored with its window); null on a snapshot that stored none or stored another window's.
+  const sampleMeta = h.samples?.participantFailures;
+  const recentCounts = sampleMeta?.counts && sampleMeta.window?.start === h.dayWindow.start && sampleMeta.window?.endExclusive === h.dayWindow.endExclusive ? sampleMeta.counts : null;
   const inWindow = new Set(snapshot.dimensions.months);
   const sentMonths = new Map();
   for (const r of snapshot.facts.byTemplate) {
@@ -1208,14 +1285,21 @@ export function programHealth(snapshot, { days = SILENT_DAYS_DEFAULT, quietDueDa
       const entries = entryRows?.get(r.programId)?.filter((x) => inWindow.has(x.month)) ?? null;
       const window = entries ? entries.reduce((s, x) => ({ participants: s.participants + x.participants, occurrences: s.occurrences + x.occurrences }), { participants: 0, occurrences: 0 }) : null;
       const sampleRows = (samples?.get(r.programId) ?? []).filter((x) => x.part === "participantFailures");
-      const sample = samples == null || !sampleRows.length || notSampled.has(r.programId) ? null : sampleRows.reduce((s, x) => ({ rows: s.rows + (x.count ?? 1), expected: s.expected + (x.expected ? x.count ?? 1 : 0), unexpected: s.unexpected + (!x.expected && x.category != null && x.category !== OTHER_CATEGORY ? x.count ?? 1 : 0), uncategorised: s.uncategorised + (x.category == null || x.category === OTHER_CATEGORY ? x.count ?? 1 : 0) }), { rows: 0, expected: 0, unexpected: 0, uncategorised: 0 });
+      // The split by KIND: a business rule is expected; a bad address or a program error is not; uncategorised text is counted apart (and is not expected either).
+      const sample = samples == null || !sampleRows.length || notSampled.has(r.programId) ? null : sampleRows.reduce((s, x) => {
+        const n = x.count ?? 1;
+        const uncategorised = x.category == null || x.category === OTHER_CATEGORY;
+        const kind = uncategorised ? null : rowKind(x);
+        if (kind) s.byKind[kind] = (s.byKind[kind] ?? 0) + n;
+        return { ...s, rows: s.rows + n, expected: s.expected + (kind === "business-rule" ? n : 0), unexpected: s.unexpected + (kind && kind !== "business-rule" ? n : 0), uncategorised: s.uncategorised + (uncategorised ? n : 0) };
+      }, { rows: 0, expected: 0, unexpected: 0, uncategorised: 0, byKind: {} });
       const st = states?.get(r.programId) ?? null;
       return {
         ...r,
         schedule: p?.schedule ?? null, syncDisabled: p?.syncScheduleDisabled ?? null,
         sources: sources == null ? null : sources.get(r.programId) ?? [],
         admissionDays: admissions == null ? null : admissions.get(r.programId) ?? [],
-        entryFailures: entryRows == null ? null : { window, sample: sample && { ...sample, unexpected: sample.unexpected + sample.uncategorised } },
+        entryFailures: entryRows == null ? null : { window, recent: recentCounts ? recentCounts[r.programId] ?? 0 : null, sample: sample && { ...sample, unexpected: sample.unexpected + sample.uncategorised } },
         stepFailures: stepRows == null ? null : stepRows.get(r.programId) ?? [],
         participants: st == null ? null : st.reduce((s, x) => s + x.participants, 0),
         inFlight: st == null ? null : st.filter((x) => IN_FLIGHT_STATES.includes(x.state)).reduce((s, x) => s + x.participants, 0),
@@ -1405,9 +1489,10 @@ export const CAVEATS = Object.freeze({
   "health-incomplete": (d) => `Some health data could not be read (${list((d.parts ?? []).map((p) => `${p.part}: ${reasonText(p.reason)}`))}). What is missing is shown as missing, never as "no failures".`,
   "schedules-from-kb": (d) =>
     `Schedule configuration (the cron, its start and end dates) comes from the knowledge base, as of the date each program was last documented${d.oldest ? ` (the oldest is ${d.oldest})` : ""}; the knowledge base is refreshed when a program's configuration changes. ` +
-    "Whether a schedule is still running is read from each participant source's last sync time at this pull, never from the schedule's own run-state fields: on the measured tenant those are unset even on programs that run daily.",
+    "Whether a schedule is still running is read from each participant source's last sync time at this pull, never from the schedule's own run-state fields: on the measured tenant those are unset even on programs that run daily. " +
+    "A documented schedule that ended before its source last synced is read as documentation behind the tenant (Cannot judge yet), never as an ended schedule.",
   "failure-samples-capped": (d) => `${d.notSampled} program(s) with ${d.part === "participantFailures" ? "refused participants" : "uncategorised bounce text"} were not sampled this pull: the sample reads at most ${d.cap} programs a pull, most failures first (about ${d.secondsEach} seconds each). Their text is carried from the previous pull where it had one. Raise --sample-programs to read them.`,
-  "failure-samples-sampled": () => "The breakdown of refused participants by reason is a SAMPLE: the most recent refusals of each program, read one page per program, because the reason field takes no filter on this tenant. The totals beside it are exact.",
+  "failure-samples-sampled": () => "The breakdown of refused participants by reason is a SAMPLE: one page per program of the refusals still happening in the day window, the most repeated first, because the reason field takes no filter on this tenant. The totals beside it are exact.",
   "health-all-time": (d) => `${list(d.parts ?? [])} are all time: the objects they are read from carry no date on every row, so the date filter does not apply to them.`,
   "participant-failures-no-breakdown": (d) => `Participant failures are counted per program with no breakdown by reason. ${reasonText(d.reason)}${d.expectedReasons ? ` The ${d.expectedReasons} expected reason(s) named for this pull could not be counted apart for the same reason.` : ""}`,
   "failure-categories-overlap": (d) => `The failure category list overlaps: ${d.rows} "Other" row(s) in ${list(d.parts ?? [])} count below zero. Two patterns match the same message, so a message is counted twice; fix the list. Nothing was clamped.`,

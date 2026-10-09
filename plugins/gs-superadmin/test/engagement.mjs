@@ -40,7 +40,7 @@ import {
 // module (ENG-4); the adapter imports them, and so does this suite.
 import {
   openSnapshot, readClicked, clickAvailability, programClickAvailability, accountAvailability, readResponses,
-  NON_CONTENT_LINK_RULES, SEND_MEASURES, T10_SCHEMA_VERSION, MASK_RULES, MASK_MAX_LENGTH, maskMessage, healthAvailability, programHealth, HEALTH_LISTS, judgeHealth, dueDaysBefore, cronLastDue, validateCategories, FAILURE_CATEGORIES, STEP_FAILURE_CATEGORIES, QUIET_DUE_DAYS_DEFAULT, caveatText,
+  NON_CONTENT_LINK_RULES, SEND_MEASURES, T10_SCHEMA_VERSION, MASK_RULES, MASK_PROTECTED, MASK_MAX_LENGTH, maskMessage, healthAvailability, programHealth, HEALTH_LISTS, judgeHealth, dueDaysBefore, cronLastDue, validateCategories, FAILURE_CATEGORIES, STEP_FAILURE_CATEGORIES, QUIET_DUE_DAYS_DEFAULT, caveatText,
 } from "../scripts/engagement-query.mjs";
 import { buildTenant, answer, applyFaults, kbFiles, FAULT_TEXT, OWN_SITE_UNSUBSCRIBE, BOUNCE_REASONS, FAILURE_REASONS, NULL_EMAIL_REASON, FIXTURE_BOUNCE_CATEGORIES, FIXTURE_BOUNCE_KIND_CATEGORY } from "./fixtures/engagement/acme-tenant.mjs";
 
@@ -369,8 +369,8 @@ try {
     const p = pull({ phase: "plan" });
     let refused = "";
     try { loadRun(p.runDir); } catch (e) { refused = e.message; }
-    check("plan makes only the cheap tenant-wide calls (sends, accounts reached, the count-first reads of clicked sends, bounced attempts, failed participants and refusals per month), writes the estimate, and leaves a run reduce refuses",
-      p.summary.status === "ok" && rpRuns(p.argv).length === 6 && isDeepStrictEqual(rpRuns(p.argv).map((a) => flag(a, "--object")), ["email_log_v2", "email_log_v2", "email_log_v2", "email_log_v2", "ao_failed_participants", "ao_failed_participants"]) && rpRuns(pull({ raw: { health: {} }, phase: "plan" }).argv).length === 4 && existsSync(join(p.runDir, "plan.json")) && /not complete/.test(refused), [rpRuns(p.argv).length, refused]);
+    check("plan makes only the cheap tenant-wide calls (sends, accounts reached, the count-first reads of clicked sends, bounced attempts, failed participants, refusals per month and refusals still happening in the day window), writes the estimate, and leaves a run reduce refuses",
+      p.summary.status === "ok" && rpRuns(p.argv).length === 7 && isDeepStrictEqual(rpRuns(p.argv).map((a) => flag(a, "--object")), ["email_log_v2", "email_log_v2", "email_log_v2", "email_log_v2", "ao_failed_participants", "ao_failed_participants", "ao_failed_participants"]) && rpRuns(pull({ raw: { health: {} }, phase: "plan" }).argv).length === 4 && existsSync(join(p.runDir, "plan.json")) && /not complete/.test(refused), [rpRuns(p.argv).length, refused]);
   }
 
   // ── Step detail (R21) ─────────────────────────────────────────────────────
@@ -869,7 +869,7 @@ try {
     const offPlan = pull({ previous: prevOff, raw: OFF, phase: "plan" }).summary.estimate;
     const onPlan = pull({ previous: prevOff, phase: "plan" }).summary.estimate;
     // The per-program health samples ride this run (a full refresh re-samples what a selective one carries): the account grain's cost is read without them.
-    const sansSamples = (e) => { const n = e.health.samples.participantFailures.planned + e.health.samples.bounceReasons.planned; return { calls: e.thisRun.calls - n, seconds: e.thisRun.seconds - n * 8 }; };
+    const sansSamples = (e) => { const sp = e.health.samples; const n = sp.participantFailures.planned + sp.bounceReasons.planned; return { calls: e.thisRun.calls - n, seconds: e.thisRun.seconds - sp.participantFailures.planned * sp.participantFailures.secondsEach - sp.bounceReasons.planned * sp.bounceReasons.secondsEach }; };
     check("the cost of ADDING accounts is the cost of the refresh that adds them: over a snapshot that holds none, a selective plan with accounts off prints what the full refresh with accounts would add to it, not the account calls of a selective one",
       offPlan.mode === "selective" && onPlan.mode === "full" && offPlan.accounts.addsCalls === sansSamples(onPlan).calls - sansSamples(offPlan).calls && offPlan.accounts.addsSeconds === sansSamples(onPlan).seconds - sansSamples(offPlan).seconds &&
         offPlan.accounts.addsCalls > base.summary.estimate.accounts.addsCalls, [offPlan.accounts, offPlan.thisRun, onPlan.thisRun]);
@@ -1156,9 +1156,9 @@ try {
   // through maskMessage or the category table): the oracle's half.
   const BOUNCE_TEXT = { "mailbox-full": "452 4.2.2 Mailbox full", none: null };
   const BOUNCE_LABEL = { "user-unknown": "Recipient address rejected: user unknown", "blocked-by-policy": "Message blocked by policy" };
-  const FAILURE_TEXT = { "already-in-list": ["Participant already exists in participant list"], "invalid-email": ["Email address <email> is invalid"], "unique-criteria": ["Participant with unique criteria already exists"], "no-company": ["Participant <id> has no company"], array: ["Missing required field: Email", "Duplicate participant"] };
+  const FAILURE_TEXT = { "already-in-list": ["Participant already exists in participant list"], "invalid-email": ["Email address <email> is invalid"], "unique-criteria": ["Participant with unique criteria already exists"], "no-company": ["Participant <id> has no company"], "bounced-at-send": ["Bounced recipient(to) email <email>' in Step 'Send Email'"], array: ["Missing required field: Email", "Duplicate participant"] };
   // Which shipped category each refusal kind lands in, written by hand (the oracle's half of the sampled split).
-  const FAILURE_KIND_CATEGORY = { "already-in-list": "already-in-list", "unique-criteria": "unique-criteria", "invalid-email": null, "no-company": null, array: null };
+  const FAILURE_KIND_CATEGORY = { "already-in-list": "already-in-list", "unique-criteria": "unique-criteria", "invalid-email": null, "no-company": null, array: null, "bounced-at-send": "bounced-at-send" };
   const inScopeBounced = (tenant, snapshot) => {
     const months = new Set(snapshot.dimensions.months);
     const programs = new Set(snapshot.dimensions.programs.map((p) => p.id));
@@ -1185,11 +1185,11 @@ try {
         O.rows.some((r) => /@c\d\d\.example\.com/.test(r.BouncedReason ?? "") && /\d{5,}/.test(r.BouncedReason)) && O.rows.some((r) => r.IsBounced === "YES" && r.BouncedReason === null) &&
         base.tenant.tables.ao_failed_participants.some((r) => r.FailureReasons.includes("@")) && base.tenant.tables.ao_failed_participants.some((r) => /1P02ACMEX\d+ZQ/.test(r.FailureReasons)) &&
         local.length > 3 && local.every((r) => /@localhost>/.test(maskMessage(r.BouncedReason))), local.length);
-    check("HLT-1 fixture: the fictional category list is a usable list (ids, labels, patterns, definitions; disjoint patterns); the SHIPPED bounce list is empty until the captured wordings are ruled product text, and the shipped refusal list is the eight product wordings measured 2026-10-07, every one but the null address expected (ruled that day)",
+    check("HLT-1 fixture: the fictional category list is a usable list (ids, labels, patterns, definitions; disjoint patterns); the SHIPPED bounce list is empty until the captured wordings are ruled product text, and the shipped refusal list is the nine product wordings measured 2026-10-07 and 2026-10-08, each with its kind: six business rules, three bad addresses (the bounce list, a bounce at the send step, a null address), no program error",
       validateCategories(FIXTURE_BOUNCE_CATEGORIES).length === 0 && FIXTURE_BOUNCE_CATEGORIES.length === 2 && isDeepStrictEqual(FAILURE_CATEGORIES.bounceReasons, []) && Object.isFrozen(FAILURE_CATEGORIES.bounceReasons) &&
-        FAILURE_CATEGORIES.participantFailures.length === 8 && validateCategories(FAILURE_CATEGORIES.participantFailures).length === 0 && FAILURE_CATEGORIES.participantFailures.filter((c) => !c.expected).map((c) => c.id).join() === "no-email" &&
+        FAILURE_CATEGORIES.participantFailures.length === 9 && validateCategories(FAILURE_CATEGORIES.participantFailures).length === 0 && FAILURE_CATEGORIES.participantFailures.filter((c) => c.kind !== "business-rule").map((c) => c.id).join() === "bounce-list,bounced-at-send,no-email" && FAILURE_CATEGORIES.participantFailures.filter((c) => c.kind === "business-rule").length === 6 &&
         FAILURE_REASONS.every((r) => matchCategory(maskMessage(r.text(3)), FAILURE_CATEGORIES.participantFailures)?.id === (FAILURE_KIND_CATEGORY[r.kind] ?? undefined) || (FAILURE_KIND_CATEGORY[r.kind] === null && matchCategory(maskMessage(r.text(3)), FAILURE_CATEGORIES.participantFailures) === null)) &&
-        matchCategory(NULL_EMAIL_REASON, FAILURE_CATEGORIES.participantFailures)?.expected === false && matchCategory("participant ALREADY EXISTS in participant list", FAILURE_CATEGORIES.participantFailures)?.id === "already-in-list", FAILURE_CATEGORIES.participantFailures.map((c) => c.id));
+        matchCategory(NULL_EMAIL_REASON, FAILURE_CATEGORIES.participantFailures)?.kind === "bad-address" && matchCategory("participant ALREADY EXISTS in participant list", FAILURE_CATEGORIES.participantFailures)?.id === "already-in-list", FAILURE_CATEGORIES.participantFailures.map((c) => c.id));
     check("HLT-1 send failures: failed counts an attempt that bounced or was rejected, per row of every send table, and with no attempt carrying both flags it is bounced plus rejected",
       [...S.facts.byTemplate, ...S.facts.byAccount].every((r) => r.failed === r.bounced + r.rejected) && S.facts.byTemplate.some((r) => r.failed > 0) && SS.facts.byStep.every((r) => r.failed === r.bounced + r.rejected));
     const both = pull({ kb: true, variant: { bothFlags: true } });
@@ -1271,19 +1271,37 @@ try {
       ["email", "550 <raj@acme.com>: denied", "550 <email>: denied"],
       ["uuid", "trace 0f8fad5b-d9cb-469f-a165-70867728950e lost", "trace <id> lost"],
       ["ipv4", "host 198.51.100.24 refused the connection", "host <ip> refused the connection"],
-      // F-492: a recipient's mail host names their organisation; a gateway id with dots, hyphens and underscores is an id.
-      ["host", "relayed by mx1.recipient-corp.example for delivery", "relayed by <host> for delivery"],
+      // F-492: a gateway id with dots, hyphens and underscores is an id; a help link's path is not (its query is).
       ["token", "participant 1P02ACMEX1000003ZQ skipped", "participant <id> skipped"],
+      ["token", "see https://help.example.com/articles/12345678?t=abcDEF123456xyz", "see https://help.example.com/articles/12345678?<id>"],
       ["token", "queued as [AbC-123_xyz.eu1] by the gateway", "queued as [<id>] by the gateway"],
       ["token", "ticket a1B2c3D4e5F6g7H8+i9/j0k1= closed", "ticket <id> closed"],
       ["number", "ref 8842190731", "ref <number>"],
     ];
-    check("HLT-1 mask rules: the rules are data (id, what, pattern, placeholder), and EVERY rule has a case here that it is the first to change (the rules apply in order): an address with and without angle brackets, a UUID, an IPv4 address, a mail host (F-492), a record id and gateway ids with dots, hyphens, underscores, plus, slash and equals (F-492), a long digit run",
+    check("HLT-1 mask rules: the rules are data (id, what, pattern, placeholder), and EVERY rule has a case here that it is the first to change (the rules apply in order): an address with and without angle brackets, a UUID, an IPv4 address, a record id and gateway ids with dots, hyphens, underscores, plus, slash and equals (F-492), a long digit run; the host rule is GONE (F-492, ruled 2026-10-08)",
       MASK_RULES.every((r) => typeof r.id === "string" && typeof r.what === "string" && r.re instanceof RegExp && r.re.global && /^<[a-z]+>$/.test(r.as)) && isDeepStrictEqual([...new Set(MASKS.map((m) => m[0]))], MASK_RULES.map((r) => r.id)) &&
         MASKS.every(([id, raw, want]) => maskMessage(raw) === want && MASK_RULES.find((r) => raw.replace(r.re, r.as) !== raw).id === id),
       MASKS.map(([id, raw]) => [id, maskMessage(raw), MASK_RULES.filter((r) => raw.replace(r.re, r.as) !== raw).map((r) => r.id)]));
     check("HLT-1 mask rules: what diagnoses the failure is kept — SMTP codes, enhanced status codes and short numbers — and masking twice changes nothing",
       maskMessage("550 5.1.1 Mailbox full (code 4.2.2) on port 2525") === "550 5.1.1 Mailbox full (code 4.2.2) on port 2525" && MASKS.every(([, raw]) => maskMessage(maskMessage(raw)) === maskMessage(raw)));
+    // F-492 (reopened 2026-10-08): the widened mask took product text — Microsoft's dotted diagnostic codes and vendors' help links
+    // were 11 of the 30 bounce wordings a tenant captured. The class test: a product wording is its own mask.
+    const PRODUCT_WORDINGS = [
+      "550 5.1.10 RESOLVER.ADR.RecipientNotFound; Recipient not found by SMTP address lookup",
+      "550 5.7.129 RESOLVER.RST.RestrictedToRecipientsPermission; not authorized to send to recipient",
+      "554 5.2.2 mailbox full; STOREDRV.Deliver.Exception:QuotaExceededException.MapiExceptionStorageShutoffQuotaExceeded",
+      "550 5.7.1 TRANSPORT.RULES.RejectMessage; the message was rejected by organization policy",
+      "550 5.4.1 Recipient address rejected: Access denied. For more information see https://aka.ms/EXOSmtpErrors [",
+      "550 Envelope blocked - User Entry - https://community.mimecast.com/docs/DOC-1369#550 [",
+      "550 5.1.1 The email account that you tried to reach does not exist. For more information, go to https://support.google.com/mail/?p=NoSuchUser",
+      "The user or domain that you are sending to (or from) has a policy that prohibited the mail that you sent. For more information, go to https://support.google.com/a/answer/",
+      "error dialing remote address: dial tcp",
+      "unable to get mx info: failed to get IPs from PTR record: lookup",
+    ];
+    check("F-492 (reopened) class test: every product wording a category list may name is ITS OWN mask — Microsoft's dotted diagnostic codes, vendors' help links with their paths, SMTP phrases — while a recipient's value beside one still goes: the host rule is gone and the id and number rules stop at a URL's query",
+      PRODUCT_WORDINGS.every((w) => maskMessage(w) === w) && maskMessage("550 5.1.10 RESOLVER.ADR.RecipientNotFound; Recipient ann.lee@mail.c01.example.com not found by SMTP address lookup") === "550 5.1.10 RESOLVER.ADR.RecipientNotFound; Recipient <email> not found by SMTP address lookup" &&
+        maskMessage("see https://community.mimecast.com/docs/DOC-1369?ref=9f8e7d6c5b4a3f2e1d0c&id=8842190731") === "see https://community.mimecast.com/docs/DOC-1369?<id>&<id>" && maskMessage("queued as [AbC-123_xyz.eu1] via https://mta.example.com/q/AbC-123_xyz.eu1") === "queued as [<id>] via https://mta.example.com/q/AbC-123_xyz.eu1" &&
+        MASK_PROTECTED.re.global && typeof MASK_PROTECTED.what === "string", PRODUCT_WORDINGS.map((w) => [w, maskMessage(w)]).filter(([w, m]) => w !== m));
     check("HLT-1 mask rules: white space is collapsed, an empty or non-text message is null (never an empty string), and a long message is cut at the limit",
       maskMessage("  mailbox \n\t full ") === "mailbox full" && maskMessage("   ") === null && maskMessage(null) === null && maskMessage(42) === null && Array.from(maskMessage("x ".repeat(400))).length === MASK_MAX_LENGTH + 3);
     check("HLT-1 mask rules, the known gap (ruled 2026-10-05): an address with no dot after its @ passes the email rule — Y2's leak search looks for it, and a category is what cuts it",
@@ -1297,17 +1315,20 @@ try {
     const fpTypes = new Map(t.schemas.ao_failed_participants.map((f) => [f.fieldName, f.dataType]));
     const fpFlags = schemaFlags({ data: { fields: t.schemas.ao_failed_participants } });
     const sampleCalls = reasonCalls.filter((a) => a.includes("--order-by"));
-    const refusedPrograms = [...new Set(base.tenant.tables.ao_failed_participants.filter((r) => S.dimensions.programs.some((p) => p.id === r.AdvancedOutreachId) && r.ModifiedAt >= "2026-06").map((r) => r.AdvancedOutreachId))].sort();
-    check("HLT-1 the reason field takes NO filter (its schema says filterable false, groupable false; measured on the tenant with CONTAINS, DOES_NOT_CONTAINS and STARTS_WITH, all refused with one text): the stand-in refuses a filter on it with that text and a group-by with the outage text; validateQuery refuses a filter on a field the schema declares not filterable BEFORE it is spawned; and the pull's calls on the object are the per-program total (COUNT and SUM, grouped by program, no filter), the refusals per program × month (the window on ModifiedAt) and ONE sample per selected program with refusals in the window — plain rows of that program alone over the day window, newest first (F-484), never a tenant-wide page",
+    const inDayWindow = (r) => r.ModifiedAt >= "2026-06-18" && r.ModifiedAt < "2026-09-16";
+    const refusedPrograms = [...new Set(base.tenant.tables.ao_failed_participants.filter((r) => S.dimensions.programs.some((p) => p.id === r.AdvancedOutreachId) && inDayWindow(r)).map((r) => r.AdvancedOutreachId))].sort();
+    const dayCounts = Object.fromEntries(refusedPrograms.map((id) => [id, base.tenant.tables.ao_failed_participants.filter((r) => r.AdvancedOutreachId === id && inDayWindow(r)).length]));
+    check("HLT-1 the reason field takes NO filter (its schema says filterable false, groupable false; measured on the tenant with CONTAINS, DOES_NOT_CONTAINS and STARTS_WITH, all refused with one text): the stand-in refuses a filter on it with that text and a group-by with the outage text; validateQuery refuses a filter on a field the schema declares not filterable BEFORE it is spawned; and the pull's calls on the object are the per-program total (COUNT and SUM, grouped by program, no filter), the refusals per program × month (the window on ModifiedAt), the refusals per program still happening in the DAY window (the count the samples are picked from) and ONE sample per selected program with such refusals — plain rows of that program alone over that same day window, the most repeated first (F-484, redesigned 2026-10-08), never a tenant-wide page",
       filtered.status === 1 && /Unrecognized data type found in Filter/.test(filtered.stderr) && grouped.status === 1 && /network outage/.test(grouped.stderr) &&
         validateQuery({ object: "ao_failed_participants", show: [{ name: "Gsid", aggregation: "COUNT" }], group: [], where: [{ leftOperand: { fieldName: "FailureReasons" }, operator: "CONTAINS", rightOperand: { value: "x" } }] }, fpTypes, fpFlags).some((p) => /declared not filterable/.test(p)) &&
         validateQuery({ object: "ao_failed_participants", show: [{ name: "Gsid", aggregation: "COUNT" }], group: [{ name: "FailureReasons" }], where: [] }, fpTypes, fpFlags).some((p) => /declared not groupable/.test(p)) &&
         validateQuery({ object: "ao_failed_participants", show: [{ name: "Gsid", aggregation: "COUNT" }], group: [], where: [{ leftOperand: { fieldName: "FailureReasons" }, operator: "CONTAINS", rightOperand: { value: "x" } }] }, fpTypes, null).length === 0 &&
-        reasonCalls.length === 2 + refusedPrograms.length && refusedPrograms.length >= 2 &&
+        reasonCalls.length === 3 + refusedPrograms.length && refusedPrograms.length >= 1 &&
+        reasonCalls.some((a) => flag(a, "--group-by") === '[{"name":"AdvancedOutreachId"}]' && flag(a, "--show-fields") === '[{"name":"Gsid","aggregation":"COUNT"},{"name":"OccurrenceCount","aggregation":"SUM"}]' && parsed(a).where.map((c) => `${c.leftOperand.fieldName} ${c.operator}`).join() === "ModifiedAt GTE,ModifiedAt LT") &&
         reasonCalls.some((a) => flag(a, "--group-by") === '[{"name":"AdvancedOutreachId"}]' && flag(a, "--show-fields") === '[{"name":"Gsid","aggregation":"COUNT"},{"name":"OccurrenceCount","aggregation":"SUM"}]' && !a.includes("--where-filters")) &&
         reasonCalls.some((a) => flag(a, "--group-by") === '[{"name":"AdvancedOutreachId"},{"name":"ModifiedAt","summarize":"Month"}]' && parsed(a).where.map((c) => `${c.leftOperand.fieldName} ${c.operator}`).join() === "ModifiedAt GTE,ModifiedAt LT") &&
         isDeepStrictEqual(sampleCalls.map((a) => parsed(a).where.find((c) => c.operator === "IN").rightOperand.value).flat().sort(), refusedPrograms) &&
-        sampleCalls.every((a) => flag(a, "--show-fields") === '[{"name":"AdvancedOutreachId"},{"name":"FailureReasons"},{"name":"ModifiedAt"}]' && flag(a, "--order-by") === '[{"name":"ModifiedAt","order":"DESC"}]' && flag(a, "--page-size") === String(SAMPLE_PAGE) && !a.includes("--group-by") &&
+        sampleCalls.every((a) => flag(a, "--show-fields") === '[{"name":"AdvancedOutreachId"},{"name":"FailureReasons"},{"name":"ModifiedAt"},{"name":"OccurrenceCount"}]' && flag(a, "--order-by") === '[{"name":"OccurrenceCount","order":"DESC"}]' && flag(a, "--page-size") === String(SAMPLE_PAGE) && !a.includes("--group-by") &&
           parsed(a).where.map((c) => `${c.leftOperand.fieldName} ${c.operator}`).sort().join() === "AdvancedOutreachId IN,ModifiedAt GTE,ModifiedAt LT"), reasonCalls.map((a) => a.join(" ").slice(0, 200)));
     // The order-by itself: the stand-in refuses an entry that is not shown, and validateQuery refuses it first.
     const unordered = answer(["--json", "rp", "run", "--object", "ao_failed_participants", "--show-fields", '[{"name":"AdvancedOutreachId"}]', "--order-by", '[{"name":"ModifiedAt","order":"DESC"}]', "--page-size", "5"], t);
@@ -1340,7 +1361,7 @@ try {
       H.failureSamples.length > 3 && [...perKey.values()].every((n) => n <= SAMPLES_PER_PROGRAM) && new Set(H.failureSamples.map((r) => r.part)).size === 2 && H.failureSamples.every((r) => S.dimensions.programs.some((p) => p.id === r.programId)) &&
         [...sampleTexts].every((m) => Object.values(FAILURE_TEXT).flat().includes(m)) && sampleTexts.size >= 5 && H.failureSamples.filter((r) => r.part === "bounceReasons").every((r) => r.message === BOUNCE_TEXT["mailbox-full"] && r.category === null) &&
         H.failureSamples.every((r) => Number.isInteger(r.count) && r.count >= 1 && r.pulledAt === PULLED_AT && typeof r.expected === "boolean") &&
-        H.failureSamples.some((r) => r.message === "Participant already exists in participant list" && r.category === "already-in-list" && r.expected === true) && H.failureSamples.some((r) => r.message === "Participant <id> has no company" && r.category === null && r.expected === false) &&
+        H.failureSamples.some((r) => r.message === "Participant already exists in participant list" && r.category === "already-in-list" && r.expected === true) && H.failureSamples.some((r) => r.message === "Email address <email> is invalid" && r.category === null && r.kind === null && r.expected === false) && H.failureSamples.some((r) => r.message === "Bounced recipient(to) email <email>' in Step 'Send Email'" && r.category === "bounced-at-send" && r.kind === "bad-address" && r.expected === false) &&
         isDeepStrictEqual(S.meta.health.parts.failureSamples, { pulled: true, reason: null, basis: "sample" }) && isDeepStrictEqual(S.meta.health.parts.entrySamples, { pulled: true, reason: null, basis: "sample" }), [...sampleTexts]);
     // The sampled split (entrySamples), against the oracle: per selected program, the refusals of the window by the category the oracle assigns their kind.
     const splitWant = new Map();
@@ -1350,9 +1371,9 @@ try {
       // The array row holds two texts, each a sample row of its own (neither in a category).
       for (const k of [[r.AdvancedOutreachId, cat ?? "other"].join("|"), ...(r._failureKind === "array" ? [[r.AdvancedOutreachId, "other"].join("|")] : [])]) splitWant.set(k, (splitWant.get(k) ?? 0) + 1);
     }
-    check("HLT-1 entrySamples (F-484, F-491): per program, the sample's rows by shipped category — expected categories flagged, everything else other — equal a straight count of the fixture's refusals in the day window by the category the oracle gives their kind; sampleRows is the page each split came from; a page may show it as a SAMPLE and the caveat says so",
-      sameMap(new Map(H.entrySamples.map((r) => [[r.programId, r.category].join("|"), r.participants])), splitWant) && H.entrySamples.every((r) => r.sampleRows >= r.participants && r.pulledAt === PULLED_AT && (r.category === "other" ? r.expected === false : r.expected === true)) &&
-        S.caveats.some((c) => c.id === "failure-samples-sampled") && isDeepStrictEqual(S.meta.health.samples.participantFailures, { cap: SAMPLE_PROGRAM_CAP, sampled: refusedPrograms.length, carried: 0, notSampled: [], programs: refusedPrograms }), [diffMap(new Map(H.entrySamples.map((r) => [[r.programId, r.category].join("|"), r.participants])), splitWant), S.meta.health.samples]);
+    check("HLT-1 entrySamples (F-484, F-491): per program, the sample's rows by shipped category — each with its kind, expected meaning a business rule, everything uncategorised other — equal a straight count of the fixture's refusals in the day window by the category the oracle gives their kind; sampleRows is the page each split came from; a page may show it as a SAMPLE and the caveat says so",
+      sameMap(new Map(H.entrySamples.map((r) => [[r.programId, r.category].join("|"), r.participants])), splitWant) && H.entrySamples.every((r) => r.sampleRows >= r.participants && r.pulledAt === PULLED_AT && typeof r.kind === "string" && r.expected === (r.kind === "business-rule") && (r.category !== "other" || r.kind === "program-error")) &&
+        S.caveats.some((c) => c.id === "failure-samples-sampled") && isDeepStrictEqual(S.meta.health.samples.participantFailures, { cap: SAMPLE_PROGRAM_CAP, sampled: refusedPrograms.length, carried: 0, notSampled: [], programs: refusedPrograms, window: { start: "2026-06-18", endExclusive: "2026-09-16" }, counts: dayCounts }), [diffMap(new Map(H.entrySamples.map((r) => [[r.programId, r.category].join("|"), r.participants])), splitWant), S.meta.health.samples]);
     // F-484's class, reopened: a sample is per program, so a program OUTSIDE the selection that refused more participants than a page cannot fill it.
     const outsider = pull({ kb: true, variant: { outsiderFailures: SAMPLE_PAGE * 3 } });
     const OH2 = outsider.snapshot.facts.health;
@@ -1368,7 +1389,7 @@ try {
       capped: CM.sampled === 1 && CM.notSampled.length === refusedPrograms.length - 1 && CM.notSampled.every((x) => x.reason === "cap"),
       caveat: capped.snapshot.caveats.some((c) => c.id === "failure-samples-capped" && c.detail.part === "participantFailures" && c.detail.notSampled === CM.notSampled.length && c.detail.cap === 1 && c.detail.secondsEach > 0),
       plan: capped.summary.estimate.health.samples.cap === 1 && capped.summary.estimate.health.samples.participantFailures.planned === 1 && capped.summary.estimate.health.samples.participantFailures.beyondCap === refusedPrograms.length - 1 && capped.summary.estimate.health.samples.participantFailures.secondsBeyondCap > 0,
-      basePlan: isDeepStrictEqual(base.summary.estimate.health.samples.participantFailures, { withFailures: refusedPrograms.length, planned: refusedPrograms.length, carried: 0, beyondCap: 0, secondsEach: 8, secondsBeyondCap: 0, family: "health-reasons-sample" }),
+      basePlan: isDeepStrictEqual(base.summary.estimate.health.samples.participantFailures, { withFailures: refusedPrograms.length, planned: refusedPrograms.length, carried: 0, beyondCap: 0, secondsEach: 12, secondsBeyondCap: 0, family: "health-reasons-sample" }),
       carried: again.snapshot.meta.health.samples.participantFailures.sampled === 0 && again.snapshot.meta.health.samples.participantFailures.carried === refusedPrograms.length && again.snapshot.meta.health.samples.bounceReasons.sampled === 0,
       sameRows: isDeepStrictEqual(again.snapshot.facts.health.failureSamples, H.failureSamples) && isDeepStrictEqual(again.snapshot.facts.health.entrySamples, H.entrySamples),
       noCall: !rpRuns(again.argv).some((a) => a.includes("--order-by")),
@@ -1378,6 +1399,27 @@ try {
     check("sampleTargets is pure data: most failures first, ties by id, a program whose count equals the previous snapshot's and which that snapshot sampled is carried, the cap cuts the rest and names them",
       isDeepStrictEqual(sampleTargets({ counts: new Map([["a", 5], ["b", 9], ["c", 0], ["d", 5]]), previousCounts: new Map([["a", 5], ["b", 8]]), previousSampled: new Set(["a"]), cap: 1 }), { sample: ["b"], carried: ["a"], notSampled: [{ programId: "d", reason: "cap" }] }) &&
         isDeepStrictEqual(sampleTargets({ counts: new Map([["a", 5]]), previousCounts: null, previousSampled: new Set(), cap: 0 }), { sample: [], carried: [], notSampled: [{ programId: "a", reason: "cap" }] }));
+    // F-484, REDESIGNED (2026-10-08, second reopen): one window for the count and the page, the most repeated refusals first.
+    const windowCall = reasonCalls.find((a) => flag(a, "--group-by") === '[{"name":"AdvancedOutreachId"}]' && a.includes("--where-filters"));
+    const bounds = (a) => parsed(a).where.filter((c) => c.leftOperand.fieldName === "ModifiedAt").map((c) => `${c.operator} ${c.rightOperand.value}`).sort().join();
+    const renewRow = Object.values(programHealth(S).lists).flat().find((r) => r.programId === "p-renew");
+    check("F-484 (redesigned) class test: the picks are ranked by a count-first read over the DAY window and every sample page reads that SAME window (identical ModifiedAt bounds on the count call and on each sample call); a program whose refusals the per-month table shows but none still happening (p-renew: April and May) is neither picked, nor counted as sampled, nor named, and its entry signal reads none-recent; the snapshot stores the window and the counts the picks were made from",
+      windowCall != null && sampleCalls.length >= 1 && sampleCalls.every((a) => bounds(a) === bounds(windowCall)) && bounds(windowCall) === "GTE 2026-06-18,LT 2026-09-16" &&
+        H.entryFailures.some((r) => r.programId === "p-renew") && !H.failureSamples.some((r) => r.programId === "p-renew" && r.part === "participantFailures") && !S.meta.health.samples.participantFailures.programs.includes("p-renew") && !S.meta.health.samples.participantFailures.notSampled.some((x) => x.programId === "p-renew") &&
+        (renewRow == null || renewRow.signals.entry.state === "none-recent") && isDeepStrictEqual(S.meta.health.samples.participantFailures.window, S.meta.health.dayWindow) && isDeepStrictEqual(Object.keys(S.meta.health.samples.participantFailures.counts), refusedPrograms) && !("p-renew" in S.meta.health.samples.participantFailures.counts),
+      [bounds(windowCall ?? []), sampleCalls.map(bounds), S.meta.health.samples.participantFailures, renewRow?.signals.entry]);
+    const chronic = pull({ kb: true, variant: { chronicFailures: true } });
+    const CH = chronic.snapshot.facts.health;
+    const chronicSplit = Object.fromEntries(CH.entrySamples.filter((r) => r.programId === "p-onboard").map((r) => [r.category, r.participants]));
+    const chronicRow = Object.values(programHealth(chronic.snapshot).lists).flat().find((r) => r.programId === "p-onboard");
+    check("F-484 (redesigned): the page reads the most REPEATED refusals — with 150 newest once-refused opt-outs and 20 older null-address refusals repeated forty times each on one program, the page holds every null-address row (a newest-first page would hold none), the split names the bad address, the kept text counts it, and the program's entry signal reads unexpected; every sample call orders by OccurrenceCount DESC and shows the field",
+      chronicSplit["no-email"] === 20 && chronicSplit["opt-out-at-send"] >= 70 && CH.failureSamples.some((r) => r.programId === "p-onboard" && r.category === "no-email" && r.kind === "bad-address" && r.expected === false && r.count === 20) &&
+        chronicRow.signals.entry.state === "unexpected" && chronicRow.signals.entry.sample.byKind["bad-address"] >= 20 && chronicRow.signals.entry.sample.byKind["business-rule"] >= 76 &&
+        rpRuns(chronic.argv).filter((a) => flag(a, "--object") === "ao_failed_participants" && a.includes("--order-by")).every((a) => flag(a, "--order-by") === '[{"name":"OccurrenceCount","order":"DESC"}]' && flag(a, "--show-fields").includes('"OccurrenceCount"')), [chronicSplit, chronicRow?.signals.entry]);
+    const later = pull({ kb: true, previous: S, raw: { today: "2026-09-16", pulledAt: "2026-09-16T09:00:00-07:00" } });
+    check("F-484 (redesigned): the carry compares counts over the SAME window — a selective pull a day later, whose day window has moved, carries no refusal sample (the stored counts are another window's) and reads them again where refusals still happen, while the bounce text, compared over the window's months from stored rows, is carried as before",
+      later.snapshot.meta.refresh.mode === "selective" && later.snapshot.meta.health.samples.participantFailures.carried === 0 && later.snapshot.meta.health.samples.participantFailures.sampled === refusedPrograms.length && isDeepStrictEqual(later.snapshot.meta.health.samples.participantFailures.window, later.snapshot.meta.health.dayWindow) &&
+        later.snapshot.meta.health.dayWindow.start === "2026-06-19" && later.snapshot.meta.health.samples.bounceReasons.carried === S.meta.health.samples.bounceReasons.sampled && later.snapshot.meta.health.samples.bounceReasons.sampled === 0, [later.snapshot.meta.refresh.mode, later.snapshot.meta.health.samples]);
 
     const states = new Map();
     for (const p of base.tenant.tables.ao_participants) {
@@ -1408,6 +1450,10 @@ try {
     check("pickSchedule: with several schedules the most frequent recurring one decides; recurring when any is, one-time when any is and none recurs; a documented program with none says so",
       pickSchedule({ asOf: "d", schedules: [{ classification: "recurring", cronExpression: "0 0 9 1 * ? *", timeZoneName: "UTC" }, { classification: "recurring", cronExpression: "0 0 8 ? * MON *", timeZoneName: "UTC" }] }, TODAY).cronExpression === "0 0 8 ? * MON *" &&
         pickSchedule({ asOf: "d", schedules: [{ classification: "unknown", cronExpression: null }, { classification: "one-time", cronExpression: null }] }, TODAY).classification === "one-time" && pickSchedule({ asOf: "d", schedules: [] }, TODAY).classification === NO_SCHEDULE && pickSchedule(null, TODAY) === null);
+    check("pickSchedule (F-491, 2026-10-08): a LIVE recurring schedule decides before an ENDED one whatever its position or period (the tenant documents an ended daily job schedule beside the live participant sync); when every recurring schedule has ended, the latest end decides",
+      pickSchedule({ asOf: "d", schedules: [{ classification: "recurring", cronExpression: "0 0 8 * * ? *", endTime: Date.parse("2024-03-13") }, { classification: "recurring", cronExpression: "0 0 9 ? * MON *", endTime: Date.parse("2030-03-11") }] }, TODAY).cronExpression === "0 0 9 ? * MON *" &&
+        pickSchedule({ asOf: "d", schedules: [{ classification: "recurring", cronExpression: "0 0 8 * * ? *", endTime: Date.parse("2024-03-13") }, { classification: "recurring", cronExpression: "0 0 6 * * ? *", endTime: Date.parse("2025-05-06") }] }, TODAY).endTime === Date.parse("2025-05-06") &&
+        pickSchedule({ asOf: "d", schedules: [{ classification: "recurring", cronExpression: "0 0 8 * * ? *", endTime: null }, { classification: "recurring", cronExpression: "0 0 9 ? * MON *", endTime: Date.parse("2030-03-11") }] }, TODAY).cronExpression === "0 0 8 * * ? *");
     // The health signals (F-491; ruled 2026-10-07): each read from its own data, one list per program.
     const health = programHealth(S);
     const onboard = Object.values(health.lists).flat().find((r) => r.programId === "p-onboard");
@@ -1436,7 +1482,7 @@ try {
           sameMap(new Map(H.admissions.map((r) => [[r.programId, r.day].join("|"), r.participants])), adm) && sameMap(new Map(H.entryFailures.map((r) => [[r.programId, r.month].join("|"), r.participants])), ref) && H.entryFailures.every((r) => r.occurrences >= r.participants) &&
           isDeepStrictEqual([S.meta.health.parts.sources.basis, S.meta.health.parts.admissions.basis, S.meta.health.parts.entryFailures.basis, S.meta.health.parts.stepFailures.basis], ["at-pull", "lookback", "window", "window"]);
       })(), { sources: H.sources.slice(0, 3), admissions: H.admissions.length, entry: H.entryFailures });
-    check("HLT-1 step failures are counted server-side by category (one CONTAINS per text category, the platform error by its STATE, a total with any reason): per program × month they equal a straight count of the fixture's participants by the kind the generator chose, with other = the remainder; the baseline's platform errors sit at the 2025 incident, outside the window; the expected kinds (a bounce drop, a record delete) are flagged expected",
+    check("HLT-1 step failures are counted server-side by category (one CONTAINS per text category, the platform error by its STATE, a total with any reason): per program × month they equal a straight count of the fixture's participants by the kind the generator chose, with other = the remainder; the baseline's platform errors sit at the 2025 incident, outside the window; each row carries its KIND (a bounce drop is a bad address, a record delete a business rule; F-491, 2026-10-08), and expected means a business rule",
       (() => {
         const kinds = { "bounce-drop": "bounce-drop", "cta-failed": "step-action-failed", "record-delete": "record-delete", "platform-error": "platform-error" };
         const want = new Map();
@@ -1446,7 +1492,7 @@ try {
           want.set(k, (want.get(k) ?? 0) + 1);
         }
         const stepCalls = rpRuns(base.argv).filter((a) => flag(a, "--object") === "ao_participants" && flag(a, "--group-by")?.includes('"summarize":"Month"'));
-        return sameMap(new Map(H.stepFailures.map((r) => [[r.programId, r.month, r.category].join("|"), r.participants])), want) && H.stepFailures.some((r) => r.category === "bounce-drop" && r.expected === true) && H.stepFailures.some((r) => r.category === "record-delete" && r.expected === true) &&
+        return sameMap(new Map(H.stepFailures.map((r) => [[r.programId, r.month, r.category].join("|"), r.participants])), want) && H.stepFailures.some((r) => r.category === "bounce-drop" && r.kind === "bad-address" && r.expected === false) && H.stepFailures.some((r) => r.category === "record-delete" && r.kind === "business-rule" && r.expected === true) && H.stepFailures.every((r) => r.expected === (r.kind === "business-rule")) &&
           !H.stepFailures.some((r) => r.category === "platform-error") && !H.stepFailures.some((r) => r.category === "other") && stepCalls.length === 1 + STEP_FAILURE_CATEGORIES.length &&
           STEP_FAILURE_CATEGORIES.filter((c) => c.pattern).every((c) => stepCalls.some((a) => flag(a, "--where-filters").includes(`"operator":"CONTAINS","rightOperand":{"value":${JSON.stringify(c.pattern)}}`))) && stepCalls.some((a) => flag(a, "--where-filters").includes('"ParticipantState"},"operator":"EQ","rightOperand":{"value":"SYSTEM_ERROR"}'));
       })(), H.stepFailures);
@@ -1471,6 +1517,16 @@ try {
         list("p-sporadic") === "ok" && row("p-sporadic").signals.sends.longestGapMonths === 3 && list("p-quarter") === "cannot-judge" && row("p-quarter").signals.ingest.periodDays > 90 && list("p-quiet") === "finished" && row("p-quiet").signals.schedule.state === "unknown" && list("p-never") === "no-sends-in-window" && row("p-never").selected === false &&
         isDeepStrictEqual(new Set(sh.rows.map((r) => r.list)), new Set(["schedule-ended", "sync-disabled", "ingest-overdue", "admitting-nobody", "failing-entries", "step-errors", "no-recent-sends"])) && sh.rows.every((r) => !["ok", "finished", "cannot-judge", "no-sends-in-window"].includes(r.list)),
       Object.fromEntries(Object.entries(sh.lists).map(([k, v]) => [k, v.map((r) => [r.programId, r.signals.sends.state])])));
+    const SEND_DROPS = ["reject-drop", "bounce-list-at-send", "opt-out-at-send"];
+    const sf = sig.snapshot.facts.health.stepFailures.filter((r) => r.programId === "p-sendfail");
+    check("F-491 (reopened 2026-10-08), one program per false read measured on the tenant: an ended job schedule documented beside the live participant sync reads by the live one (Working as expected, never Schedule ended); a documented schedule that ended before its source last synced is documentation behind the tenant (Cannot judge yet, doc-stale), never Schedule ended; a monthly program two months old with one completed cohort is too new to judge (Cannot judge yet, too-new), never No recent sends; the Send Email step's own drops are bad addresses and a business rule (Working as expected, never Step errors), each row with its kind and none in other; and a hand-fed program with a short history that is NOT new reads No recent sends",
+      list("p-twosched") === "ok" && row("p-twosched").signals.schedule.state === "recurring" && row("p-twosched").signals.schedule.endDay === "2030-03-11" && row("p-twosched").signals.ingest.state === "on-schedule" && sig.snapshot.dimensions.programs.find((p) => p.id === "p-twosched").schedule.cronExpression === "0 0 6 * * ? *" &&
+        list("p-staledoc") === "cannot-judge" && row("p-staledoc").signals.schedule.state === "doc-stale" && row("p-staledoc").signals.schedule.endDay === "2026-08-01" && row("p-staledoc").signals.ingest.state === "cannot-judge" && row("p-staledoc").signals.why === "doc-stale" &&
+        list("p-newcohort") === "cannot-judge" && row("p-newcohort").signals.why === "too-new" && row("p-newcohort").signals.sends.state === "no-history" && row("p-newcohort").signals.sends.firstSendMonth === "2026-08" && row("p-newcohort").signals.admissions.state === "too-few-due-days" && row("p-newcohort").signals.finished === false &&
+        list("p-sendfail") === "ok" && row("p-sendfail").signals.steps.state === "none" && (row("p-sendfail").signals.steps.byKind["bad-address"] ?? 0) > 0 && (row("p-sendfail").signals.steps.byKind["business-rule"] ?? 0) > 0 && !("program-error" in row("p-sendfail").signals.steps.byKind) &&
+        SEND_DROPS.every((c) => sf.some((r) => r.category === c)) && !sf.some((r) => r.category === "other") && sf.every((r) => r.expected === (r.kind === "business-rule")) &&
+        list("p-oldshort") === "no-recent-sends" && row("p-oldshort").signals.sends.rule === "flat" && row("p-oldshort").signals.finished === false && sh.rows.some((r) => r.programId === "p-oldshort"),
+      Object.fromEntries(["p-twosched", "p-staledoc", "p-newcohort", "p-sendfail", "p-oldshort"].map((id) => [id, [list(id), row(id)?.signals.why, row(id)?.signals.schedule.state, row(id)?.signals.sends.state, row(id)?.signals.steps.byKind]])));
     const wide = pull({ kb: KB_CADENCE, variant: { silent: true, cadence: true }, raw: { health: { ...HEALTH, lookbackDays: 120 } } });
     const quiet = pull({ kb: KB_CADENCE, variant: { silent: true, cadence: true } });
     const ws = programHealth(wide.snapshot);
@@ -1479,8 +1535,9 @@ try {
         isDeepStrictEqual(quiet.summary.estimate.health.lookback, { days: 90, longestPeriodDays: 91, programsBeyondWindow: 1, unreadableCrons: 0 }) && isDeepStrictEqual(wide.summary.estimate.health.lookback, { days: 120, longestPeriodDays: 91, programsBeyondWindow: 0, unreadableCrons: 0 }) &&
         resolveParams({ today: TODAY, health: { pull: true, lookbackDays: 366 } }).health.lookbackDays === 366, [quiet.summary.estimate.health.lookback, wide.summary.estimate.health.lookback]);
     const judgeOne = (p) => judgeHealth({ asOf: "2026-09-15", dayWindow: { start: "2026-06-18", endExclusive: "2026-09-16" }, days: 30, incompleteMonth: "2026-09", months: monthsBetween("2025-09", "2026-09"), programs: [{ programId: "x", name: "x", statuses: ["PROCESSING"], selected: true, lastSendDay: "2026-08-01", lastSendMonth: "2026-08", sentMonths: ["2026-08"], templates: 1, sources: [], admissionDays: [], entryFailures: null, stepFailures: null, participants: null, inFlight: null, ...p }] })[0];
-    check("HLT-1 judgeHealth over plain inputs: an unreadable cron makes the ingest cadence-unreadable and never alarms on it; a part not read is a signal that says not-read and never alarms; a recurring schedule that never synced is ingest-overdue; a program with no in-flight count has finished null; the last N due days of a cron stop at the window's floor",
-      judgeOne({ schedule: { classification: "recurring", cronExpression: "0 0 9 ? * MON#6 *" } }).signals.ingest.state === "cadence-unreadable" && judgeOne({ schedule: { classification: "recurring", cronExpression: "0 0 9 ? * MON#6 *" } }).list === "no-recent-sends" &&
+    check("HLT-1 judgeHealth over plain inputs: an unreadable cron makes the ingest cadence-unreadable and never alarms on it; a program whose one month of sends is recent is too NEW to judge (Cannot judge yet, too-new) while one whose two months of sends are a year old is late under the flat threshold (F-491, 2026-10-08); a part not read is a signal that says not-read and never alarms; a recurring schedule that never synced is ingest-overdue; a program with no in-flight count has finished null; the last N due days of a cron stop at the window's floor",
+      judgeOne({ schedule: { classification: "recurring", cronExpression: "0 0 9 ? * MON#6 *" } }).signals.ingest.state === "cadence-unreadable" && judgeOne({ schedule: { classification: "recurring", cronExpression: "0 0 9 ? * MON#6 *" } }).list === "cannot-judge" && judgeOne({}).signals.why === "too-new" && judgeOne({}).signals.sends.state === "no-history" &&
+        judgeOne({ sentMonths: ["2025-10", "2025-11"], lastSendDay: null, lastSendMonth: "2025-11" }).list === "no-recent-sends" && judgeOne({ sentMonths: ["2025-10", "2025-11"], lastSendDay: null, lastSendMonth: "2025-11" }).signals.sends.rule === "flat" &&
         judgeOne({ sources: null, admissionDays: null }).signals.ingest.state === "not-read" && judgeOne({ sources: null, admissionDays: null }).signals.admissions.state === "not-read" &&
         judgeOne({ schedule: { classification: "recurring", cronExpression: "0 0 8 * * ? *" } }).list === "ingest-overdue" && judgeOne({ schedule: { classification: "recurring", cronExpression: "0 0 8 * * ? *" } }).signals.ingest.state === "never-synced" &&
         judgeOne({}).signals.finished === null && judgeOne({ participants: 3, inFlight: 0 }).signals.finished === true && judgeOne({ participants: 3, inFlight: 0 }).list === "finished" &&
@@ -1536,7 +1593,7 @@ try {
       /click detail of this pull is about \d+ clicked sends, more than the 20 rows \(1 pages of 20\)/.test(String(clicks.error?.message)) && /--sent-since/.test(String(clicks.error?.message)) && clicks.summary === null && !rpRuns(clicks.argv).some((a) => flag(a, "--show-fields").includes("LinkClickedJson") || flag(a, "--group-by")?.includes("EmailTemplateName")), String(clicks.error?.message));
     const plan50 = pull({ raw: { pageSize: 50 } });
     const madeBy = (run, family) => logOf(run).filter((r) => r.family === family && r.status !== "split" && !(r.status === "ok" && r.attempt > 1)).length;
-    const HEALTH_FAMILIES = ["health-bounce-total", "health-bounce-cat", "health-bounce-sample", "health-days", "health-reasons-total", "health-reasons-sample", "health-states", "health-sources", "health-admissions", "health-entry-month", "health-step-total", "health-step-cat", "health-step-state"];
+    const HEALTH_FAMILIES = ["health-bounce-total", "health-bounce-cat", "health-bounce-sample", "health-days", "health-reasons-total", "health-entry-window", "health-reasons-sample", "health-states", "health-sources", "health-admissions", "health-entry-month", "health-step-total", "health-step-cat", "health-step-state"];
     const healthMade = HEALTH_FAMILIES.reduce((s, f) => s + madeBy(plan50, f), 0);
     const within2 = (est, actual) => est <= actual * 2 && actual <= est * 2;
     check("F-476 (reopened): every health family is priced from a count — at a 50-row page the day buckets and the bounce counts split, and the estimate of the health calls is within 2x of the health calls the pull made, where it was 7.8x on the measured tenant",
@@ -1557,7 +1614,7 @@ try {
       isDeepStrictEqual(off.snapshot.facts.byTemplate, S.facts.byTemplate) && isDeepStrictEqual(off.snapshot.facts.byAccount, S.facts.byAccount) && off.snapshot.facts.byTemplate.some((r) => r.failed > 0));
     check("HLT-1 plan prints what health adds whether it is on or off, the same figure either way but for the refusal samples (priced from a read health itself makes: with health off their count is unknown, null, never 0), and with it off the run plans exactly that many calls fewer",
       off.summary.estimate.health.on === false && off.summary.estimate.health.samples.participantFailures.withFailures === null && off.summary.estimate.health.samples.participantFailures.planned === 0 &&
-        off.summary.estimate.health.addsCalls + base.summary.estimate.health.samples.participantFailures.planned === base.summary.estimate.health.addsCalls && off.summary.estimate.health.addsSeconds + base.summary.estimate.health.samples.participantFailures.planned * 8 === base.summary.estimate.health.addsSeconds &&
+        off.summary.estimate.health.addsCalls + base.summary.estimate.health.samples.participantFailures.planned === base.summary.estimate.health.addsCalls && off.summary.estimate.health.addsSeconds + base.summary.estimate.health.samples.participantFailures.planned * base.summary.estimate.health.samples.participantFailures.secondsEach === base.summary.estimate.health.addsSeconds &&
         base.summary.estimate.thisRun.calls - off.summary.estimate.thisRun.calls === base.summary.estimate.health.addsCalls, [off.summary.estimate.health, base.summary.estimate.health]);
     const earlierOff = pull({ kb: true, variant: { cutoff: "2026-08-01" }, raw: { today: "2026-07-31", pulledAt: "2026-07-31T09:00:00-07:00", health: {} } });
     const turnedOn = pull({ kb: true, previous: earlierOff.snapshot });

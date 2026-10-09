@@ -52,17 +52,24 @@ F-483 and F-484):
   names failures that are expected by design, kept apart from the rest and never hidden.
   Participants refused at entry are an exact per-program total and an exact count per
   month: on this CLI the reason field accepts no filter at all (its schema says so), so the
-  split by reason is a SAMPLE, read one small page per program (the most recent refusals,
-  newest first) and labelled as one wherever it is shown. The shipped list of expected
-  refusals is the product's own wordings (already in the participant list, unique criteria,
-  met the advanced criteria, unsubscribed, opted out, on the bounce list); a missing email
-  address is not expected. The million-row read the first live pull made is gone.
-- **A sample is read per program, never as the first page of a tenant-wide read.** One
-  program outside the selection used to fill the page. Now each selected program with
-  failures gets its own page, most failures first, at most `--sample-programs` (25) a pull;
-  a program whose failure counts did not move since the previous pull keeps that pull's
-  sample at no call; the programs the cap left out are named, and `plan` prices reading
-  them so raising the cap is an informed choice.
+  split by reason is a SAMPLE, read one small page per program (the refusals still
+  happening in the last 90 days, the most repeated first) and labelled as one wherever it
+  is shown. Every shipped wording has a KIND: a business rule working (already in the
+  participant list, unique criteria, met the advanced criteria, unsubscribed, opted out),
+  a bad address (a missing address, a bounce at the send step, the bounce list), or a
+  program error; "expected" means a business rule. The million-row read the first live
+  pull made is gone.
+- **A sample is read per program over the window it was picked from, never as the first
+  page of a tenant-wide read.** One program outside the selection used to fill the page;
+  then programs were picked by their refusals over the whole window and read over the last
+  90 days, so a pick could come back empty and still count as sampled. Now one count-first
+  read says which programs have refusals still happening in the last 90 days, and each
+  sample page reads exactly that window, most refusals first, at most `--sample-programs`
+  (25) a pull. The page holds the most REPEATED refusals: on the largest program measured,
+  the newest page held only its Send Email step's wordings and hid the missing-address
+  wording that dominates it. A program whose counts did not move since the previous pull
+  over the same window keeps that pull's sample at no call; the programs the cap left out
+  are named, and `plan` prices reading them so raising the cap is an informed choice.
 - **Program health is read from signals, each from its own data, and never inferred from
   the schedule.** Measured on a real tenant: the schedule's own run-state fields are unset
   even on programs that run daily, so no run result is read from them. The one heartbeat an
@@ -71,11 +78,20 @@ F-483 and F-484):
   participants who got in and fell off at a step, counted on the server by category (a
   step whose action failed, a platform error, a bounce drop, a record delete). Sends are
   judged against the program's own history for every program: an ingest cron says nothing
-  about when a program sends. The lists an admin reads are: Schedule ended, Participant
-  sync disabled, Participant sync overdue, Only refused participants arriving, Admitting
-  nobody (no admission over the last `--quiet-due-days` due days, 5 by default), Step
-  errors this period, No recent sends, Finished campaign (a one-off with no participant
-  still moving), Active with no sends in this window, Cannot judge, and Working as
+  about when a program sends. Read on a real tenant and corrected: a program's schedule is
+  the LIVE one it documents (an ended job schedule documented beside the live participant
+  sync no longer reads as the program's); a documented schedule that ended before the
+  source last synced is documentation behind the tenant, never an ended schedule; a step
+  failure is a program error only when it is one (a step that cannot run, a platform
+  error), while a bounce, a reject or the bounce list at the send step is a bad address
+  and an opt-out a business rule; and a program with fewer than three months of sends,
+  all of them recent, is too new to judge rather than late. The lists an admin reads are:
+  Schedule ended, Participant sync disabled, Participant sync overdue, Only refused
+  participants arriving, Admitting nobody (no admission over the last `--quiet-due-days`
+  due days, 5 by default), Step errors this period, No recent sends, Finished campaign (a
+  one-off with no participant still moving), Active with no sends in this window, Cannot
+  judge yet (with the reason: the ingest period is longer than the window, the
+  documentation is behind the tenant, or the program is too new), and Working as
   expected. The capped live `jo p describe` read of flagged programs is gone.
 - **Health is sized before it is read.** The plan now makes one server-side count for
   every family that reads rows (clicked sends, bounced attempts, failed participants) and
@@ -97,9 +113,12 @@ F-483 and F-484):
   grouping rule on "recurring" resolves on any dashboard, and a schedule whose kind the doc
   does not settle leaves that trait unknown rather than "not recurring". Step names carry
   the date they are as of, and a caveat names the oldest.
-- **Error messages are masked harder**: a recipient's mail host becomes `<host>`, and a
-  gateway's message id with dots, hyphens, underscores, plus, slash or equals signs becomes
-  `<id>`.
+- **Error messages are masked harder, and no harder than that**: a gateway's message id
+  with dots, hyphens, underscores, plus, slash or equals signs becomes `<id>`, while a
+  URL's scheme, host and path (a vendor's help link) and a mail host are left as they are:
+  masking them took 11 of the 30 bounce wordings a tenant captured for its category list
+  (Microsoft's dotted diagnostic codes, help links), and the samples they appear in are
+  shown by the terminal only and never leave the workspace.
 - **Every output says what is still provisional**: opens keep arriving on sends from the
   first of the current month, and bounces and unsubscribes can still change on the months a
   refresh reads again (the last `--repull-months`, 2 by default).

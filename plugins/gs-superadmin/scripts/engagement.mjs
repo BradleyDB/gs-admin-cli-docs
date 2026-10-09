@@ -84,7 +84,8 @@
 //     participant's reason field takes no filter at all on CLI 1.0.10 (its
 //     schema says so, and every operator tried was refused), so that part is
 //     a per-program total with no breakdown, and says so; the breakdown by
-//     reason is a per-program SAMPLE of the most recent refusals.
+//     reason is a per-program SAMPLE of the most REPEATED refusals still
+//     happening in the day window (F-484, redesigned 2026-10-08).
 //   - A sample is read PER PROGRAM, never as the first page of a tenant-wide
 //     read (F-484, reopened: one program outside the selection filled it):
 //     one small page per selected program with failures, most failures
@@ -268,18 +269,24 @@
  *   tenant even where runs succeed daily). A documented program with no
  *   schedule has ONE row, classification "no schedule captured"; a program
  *   the KB has no full doc for has none.
- * @property {Array<{programId: string, part: "bounceReasons"|"participantFailures", message: string, category?: ?string, expected?: boolean, count?: number, pulledAt?: string}>} [failureSamples]
+ * @property {Array<{programId: string, part: "bounceReasons"|"participantFailures", message: string, category?: ?string, kind?: ?string, expected?: boolean, count?: number, pulledAt?: string}>} [failureSamples]
  *   a capped sample of the masked text per program and part, for extending the
- *   category list (S3b), read one small page per program, most recent first
- *   (F-484). `category` and `expected` (additive, F-491) are the category the
- *   text matched client-side (null = none); `count` is how many rows of the
- *   page carried the text; `pulledAt` the pull that read it (a program whose
- *   failure counts did not move keeps the earlier pull's sample). SNAPSHOT
+ *   category list (S3b), read one small page per program over the window its
+ *   count was made over (F-484, redesigned 2026-10-08): the refusals still
+ *   happening in meta.health.dayWindow, the most repeated first; the
+ *   uncategorised bounce text of the pull's window, newest first. `category`
+ *   and `expected` (additive, F-491) are the category the text matched
+ *   client-side (null = none) and whether it is a business rule; `kind`
+ *   (additive, F-491 2026-10-08) its FAILURE_KINDS kind, null when none
+ *   matched; `count` is how many rows of the page carried the text;
+ *   `pulledAt` the pull that read it (a program whose failure counts over the
+ *   same window did not move keeps the earlier pull's sample). SNAPSHOT
  *   ONLY: shown by the terminal, never embedded in a page. Absent on a
  *   snapshot made before it existed.
- * @property {Array<{programId: string, category: string, expected: boolean, participants: number, sampleRows: number, pulledAt: string}>} [entrySamples]
- *   the refusals of each program's sample by category (additive, F-491): a
- *   SAMPLE of the most recent refusals, never a count — `sampleRows` is the
+ * @property {Array<{programId: string, category: string, kind?: string, expected: boolean, participants: number, sampleRows: number, pulledAt: string}>} [entrySamples]
+ *   the refusals of each program's sample by category, with its kind (additive,
+ *   F-491): a SAMPLE of the most repeated refusals still happening in the day
+ *   window, never a count — `sampleRows` is the
  *   page it was taken from; the exact totals are `participantFailures` and
  *   `entryFailures`. A page may show it, labelled as a sample.
  * @property {Array<{programId: string, sourceType: ?string, lastSyncedOn: ?string, operation: ?string}>} [sources]
@@ -293,7 +300,7 @@
  *   refusals per program and month over the pull's window, exact (additive,
  *   F-491): rows of the failed-participants object by the month they were last
  *   refused in, and the SUM of their occurrences.
- * @property {Array<{programId: string, month: string, category: string, expected: boolean, participants: number}>} [stepFailures]
+ * @property {Array<{programId: string, month: string, category: string, kind?: string, expected: boolean, participants: number}>} [stepFailures]
  *   participants who got in and fell off at a step, per program and month,
  *   counted server-side by category (STEP_FAILURE_CATEGORIES; additive, F-491):
  *   a text category by CONTAINS on the participant's failure reason, the
@@ -356,7 +363,7 @@
  *   reached per program (facts.uniques) is pulled either way. ABSENT on a
  *   snapshot made before the switch existed, which always pulled the grain:
  *   read it through accountAvailability, never directly.
- * @property {{pulled: boolean, reason: ?string, asOf: ?string, dayWindow: ?{start: string, endExclusive: string}, parts: Object<string, {pulled: boolean, reason: ?string, basis?: string}>, categories?: Object<string, {counted: boolean, reason: ?string, ids: string[]}>, samples?: Object<string, {cap: number, sampled: number, carried: number, notSampled: Array<{programId: string, reason: string}>}>}} [health]
+ * @property {{pulled: boolean, reason: ?string, asOf: ?string, dayWindow: ?{start: string, endExclusive: string}, parts: Object<string, {pulled: boolean, reason: ?string, basis?: string}>, categories?: Object<string, {counted: boolean, reason: ?string, ids: string[]}>, samples?: Object<string, {cap: number, sampled: number, carried: number, notSampled: Array<{programId: string, reason: string}>, programs?: string[], window?: {start: string, endExclusive: string}, counts?: Object<string, number>}>}} [health]
  *   whether facts.health was read (the run's choice: reason "health-off" when
  *   it was not), and then part by part (bounceReasons, participantFailures,
  *   participantStates, lastSends, schedules, failureSamples, entrySamples,
@@ -369,8 +376,10 @@
  *   were counted by category, the reason when they could not be (REASONS
  *   "not-filterable"), and the category ids counted. `samples` (additive,
  *   F-491), per sampled part: the cap, how many programs were sampled at this
- *   pull, how many keep an earlier pull's sample, and which were not sampled
- *   and why. ABSENT on a snapshot made before health facts existed: read it
+ *   pull, how many keep an earlier pull's sample, which were not sampled and
+ *   why, and (additive, F-484 2026-10-08) the `window` the samples were read
+ *   over with the `counts` (program → failures in it) they were picked from.
+ *   ABSENT on a snapshot made before health facts existed: read it
  *   through healthAvailability, never directly.
  * @property {{pulled: boolean, reason: ?"step-detail-off"}} participantRecords
  *   why T10UniqueCounts.participantRecords is null when it is (a reader shows
@@ -432,7 +441,7 @@ import { buildIndex } from "./jo-report.mjs";
 import { classifySchedule } from "./jo-report-audit-active.mjs";
 import {
   SOURCES, NON_CONTENT_LINK_RULES, SEND_MEASURES, T10_SCHEMA_VERSION, measuresCounted, rollUpTracking, openSnapshot, accountAvailability, healthAvailability, maskMessage,
-  categoryTable, validateCategories, OTHER_CATEGORY, FAILURE_CATEGORIES, STEP_FAILURE_CATEGORIES, cronLastDue, QUIET_DUE_DAYS_DEFAULT,
+  categoryTable, validateCategories, OTHER_CATEGORY, FAILURE_CATEGORIES, STEP_FAILURE_CATEGORIES, cronLastDue, QUIET_DUE_DAYS_DEFAULT, kindOf, isExpectedKind,
 } from "./engagement-query.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -784,6 +793,7 @@ export const ROW_READERS = Object.freeze({
   "health-sources": (row) => ({ programId: str(cellValue(row[col.field(PSC, PSC_SRC.programField)])), sourceType: str(cellValue(row[col.field(PSC, PSC_SRC.typeField)])), lastSyncedOn: cellTime(row[col.field(PSC, PSC_SRC.syncedField)]), operation: str(cellValue(row[col.field(PSC, PSC_SRC.operationField)])) }),
   "health-admissions": (row) => ({ programId: str(cellValue(row[col.field(PARTICIPANTS, PARTICIPANT_SRC.programField)])), day: cellDay(row[col.day(PARTICIPANTS, PARTICIPANT_SRC.createdField)]), n: cellNumber(row[col.count(PARTICIPANTS)]) }),
   "health-entry-month": (row) => ({ programId: str(cellValue(row[col.field(FAILED, FAILED_SRC.programField)])), month: cellMonth(row[col.month(FAILED, FAILED_SRC.dateField)]), n: cellNumber(row[col.count(FAILED)]), occurrences: cellNumber(row[col.sum(FAILED, FAILED_SRC.occurrencesField)]) }),
+  "health-entry-window": (row) => ({ programId: str(cellValue(row[col.field(FAILED, FAILED_SRC.programField)])), n: cellNumber(row[col.count(FAILED)]), occurrences: cellNumber(row[col.sum(FAILED, FAILED_SRC.occurrencesField)]) }),
   "health-step-total": (row) => ({ programId: str(cellValue(row[col.field(PARTICIPANTS, PARTICIPANT_SRC.programField)])), month: cellMonth(row[col.month(PARTICIPANTS, PARTICIPANT_SRC.dateField)]), n: cellNumber(row[col.count(PARTICIPANTS)]) }),
   "health-step-cat": (row) => ({ programId: str(cellValue(row[col.field(PARTICIPANTS, PARTICIPANT_SRC.programField)])), month: cellMonth(row[col.month(PARTICIPANTS, PARTICIPANT_SRC.dateField)]), n: cellNumber(row[col.count(PARTICIPANTS)]) }),
   "health-step-state": (row) => ({ programId: str(cellValue(row[col.field(PARTICIPANTS, PARTICIPANT_SRC.programField)])), month: cellMonth(row[col.month(PARTICIPANTS, PARTICIPANT_SRC.dateField)]), n: cellNumber(row[col.count(PARTICIPANTS)]) }),
@@ -964,11 +974,13 @@ const FAMILIES = {
     object: FAILED, split: ["programs"], health: "participantFailures",
     query: (d) => ({ group: [{ name: FAILED_SRC.programField }], show: [countOf, { name: FAILED_SRC.occurrencesField, aggregation: "SUM" }], where: programsIn(FAILED_SRC, d) }),
   },
-  // One program's most recent refusals (d.programs names the one; d.window is the day window): a small page,
-  // newest first, never split.
+  // One program's refusals still happening in the day window (d.programs names the one; d.window IS the window
+  // object of the health-entry-window count the program was picked from, F-484): a small page, the most
+  // REPEATED first (measured 2026-10-08 on the largest program: the newest page held only its Send Email step's
+  // wordings, the most repeated page the null-address wording that dominates it), never split.
   "health-reasons-sample": {
     object: FAILED, split: [], sample: true, sanitize: "messages", health: "failureSamples",
-    query: (d) => ({ group: [], show: [{ name: FAILED_SRC.programField }, { name: FAILED_SRC.reasonField }, { name: FAILED_SRC.dateField }], where: [...datedWhere(FAILED_SRC, d), ...programsIn(FAILED_SRC, d)], orderBy: [{ name: FAILED_SRC.dateField, order: "DESC" }] }),
+    query: (d) => ({ group: [], show: [{ name: FAILED_SRC.programField }, { name: FAILED_SRC.reasonField }, { name: FAILED_SRC.dateField }, { name: FAILED_SRC.occurrencesField }], where: [...datedWhere(FAILED_SRC, d), ...programsIn(FAILED_SRC, d)], orderBy: [{ name: FAILED_SRC.occurrencesField, order: "DESC" }] }),
   },
   // Cut by program only when a page comes back full, never on a timeout: this
   // object's group-bys time out unpredictably, and halving a batch down to
@@ -991,6 +1003,14 @@ const FAMILIES = {
   "health-entry-month": {
     object: FAILED, split: ["programs"], health: "entryFailures",
     query: (d) => ({ group: [{ name: FAILED_SRC.programField }, byMonth(FAILED_SRC.dateField)], show: [countOf, { name: FAILED_SRC.occurrencesField, aggregation: "SUM" }], where: [...datedWhere(FAILED_SRC, d), ...programsIn(FAILED_SRC, d)] }),
+  },
+  // The refusals still happening in the DAY window, per program: the count-first read the per-program samples
+  // are picked from, over the very window object each sample page reads (F-484, redesigned 2026-10-08: picks
+  // ranked over the month window and pages read over the day window returned empty pages that counted as
+  // sampled). Measured 2026-10-08: 64 programs, one page, 5 seconds.
+  "health-entry-window": {
+    object: FAILED, split: ["programs"], health: "entryFailures",
+    query: (d) => ({ group: [{ name: FAILED_SRC.programField }], show: [countOf, { name: FAILED_SRC.occurrencesField, aggregation: "SUM" }], where: [...datedWhere(FAILED_SRC, d), ...programsIn(FAILED_SRC, d)] }),
   },
   "health-step-total": {
     object: PARTICIPANTS, split: ["programs"], health: "stepFailures",
@@ -1761,6 +1781,7 @@ export function planUnits({ params, base, selectedIds, refresh, surveyAvailable,
     if (health.objects.participantFailures) {
       units.push({ family: "health-reasons-total", cls: "all", scope: selectedIds });
       units.push({ family: "health-entry-month", cls: "all", window: whole, scope: selectedIds });
+      units.push({ family: "health-entry-window", cls: "all", window: dayWindow, scope: selectedIds });
     }
     if (health.objects.participantStates) {
       for (const b of batches(selectedIds)) units.push({ family: "health-states", cls: "all", programs: b });
@@ -1776,12 +1797,18 @@ export function planUnits({ params, base, selectedIds, refresh, surveyAvailable,
 
 /**
  * Which programs a pull samples for a part, most failures first, and which it
- * does not (F-484): every selected program whose failures in the window are
- * above zero, less those whose counts equal the previous snapshot's (its
- * sample is kept), capped. Pure, so fetch and reduce pick the same programs.
+ * does not (F-484): every selected program whose failures in the SAMPLE'S OWN
+ * window are above zero, less those whose counts equal the previous snapshot's
+ * over the same window (its sample is kept), capped. Pure, so fetch and reduce
+ * pick the same programs. The counts come from the count-first read made over
+ * the very window object each sample page reads (health-entry-window for the
+ * refusals; the bounce total and category rows over the pull's window for the
+ * uncategorised bounce text), so a pick has rows by construction — redesigned
+ * 2026-10-08 after picks ranked over the month window and read over the day
+ * window returned empty pages that counted as sampled.
  * @param {{counts: Map<string, number>, previousCounts: ?Map<string, number>, previousSampled: Set<string>, cap: number}} args
- *   counts: program → failures in the window (this pull); previousCounts: the same from the previous
- *   snapshot, or null; previousSampled: the programs the previous snapshot holds a sample for
+ *   counts: program → failures in the sample's window (this pull); previousCounts: the same from the previous
+ *   snapshot over the SAME window, or null; previousSampled: the programs the previous snapshot holds a sample for
  * @returns {{sample: string[], carried: string[], notSampled: Array<{programId: string, reason: string}>}}
  */
 export function sampleTargets({ counts, previousCounts, previousSampled, cap }) {
@@ -1790,17 +1817,33 @@ export function sampleTargets({ counts, previousCounts, previousSampled, cap }) 
   const fresh = withFailures.filter((id) => !carried.includes(id));
   return { sample: fresh.slice(0, cap), carried, notSampled: fresh.slice(cap).map((programId) => ({ programId, reason: "cap" })) };
 }
-/** Refusals per selected program over the window months, from the entry-month units (fetch and reduce share it). */
-function entryCountsFrom(units, selected, inWindow) {
+/** Refusals per selected program still happening in the day window, from the entry-window units (fetch and reduce share it). */
+function entryCountsFrom(units, selected) {
   const counts = new Map();
   for (const u of units) {
     for (const row of u.rows) {
-      const r = ROW_READERS["health-entry-month"](row);
-      if (r.programId == null || r.month == null || r.n == null || !selected.has(r.programId) || !inWindow.has(r.month)) continue;
+      const r = ROW_READERS["health-entry-window"](row);
+      if (r.programId == null || r.n == null || !selected.has(r.programId)) continue;
       counts.set(r.programId, (counts.get(r.programId) ?? 0) + r.n);
     }
   }
   return counts;
+}
+// The window a part's samples are read over, as the snapshot records it (meta.health.samples[part].window): the
+// day window for the refusals, the pull's whole window for the bounce text. Both ends are days; the end is exclusive.
+const sampleWindowOf = (unitWindow) => ({ start: unitWindow.start, endExclusive: unitWindow.end });
+/**
+ * The previous snapshot's counts for a part, for the carry test, over the window THIS pull samples: the refusals
+ * from the counts that snapshot stored, only when it sampled over the same day window (a sample of another window
+ * is of other refusals, and is not kept; null for a snapshot made before the counts were stored); the bounce text
+ * from that snapshot's own rows over this window's months (it stores them per month, so like is compared with like
+ * whatever the window was).
+ */
+function previousSampleCounts(previous, part, window) {
+  if (part === "bounceReasons") return previous?.facts?.health ? previousOtherBounceCounts(previous, new Set(monthsBetween(window.start.slice(0, 7), addDays(window.endExclusive, -1).slice(0, 7)))) : null;
+  const s = previous?.meta?.health?.samples?.[part];
+  if (!s?.counts || !s.window || s.window.start !== window.start || s.window.endExclusive !== window.endExclusive) return null;
+  return new Map(Object.entries(s.counts));
 }
 /** Uncategorised ("Other") bounces per selected program over the window, from the bounce total and category units. */
 function otherBounceCountsFrom(units, selected, inWindow) {
@@ -1815,15 +1858,10 @@ function otherBounceCountsFrom(units, selected, inWindow) {
   }
   return counts;
 }
-/** The same two counts from a previous snapshot's own rows (the snapshot holds them per month). */
-function previousFailureCounts(previous, part, inWindow) {
-  if (!previous?.facts?.health) return null;
+/** The previous snapshot's uncategorised bounces per program over a set of months, from its own rows (the carried months of a selective refresh). */
+function previousOtherBounceCounts(previous, inWindow) {
   const counts = new Map();
-  if (part === "participantFailures") {
-    for (const r of previous.facts.health.entryFailures ?? []) if (inWindow.has(r.month)) counts.set(r.programId, (counts.get(r.programId) ?? 0) + r.participants);
-  } else {
-    for (const r of previous.facts.health.bounceReasons ?? []) if (inWindow.has(r.month) && r.category === OTHER_CATEGORY) counts.set(r.programId, (counts.get(r.programId) ?? 0) + r.count);
-  }
+  for (const r of previous?.facts?.health?.bounceReasons ?? []) if (inWindow.has(r.month) && r.category === OTHER_CATEGORY) counts.set(r.programId, (counts.get(r.programId) ?? 0) + r.count);
   return counts;
 }
 /** Two program → count maps added together. */
@@ -1839,7 +1877,7 @@ function addCounts(a, b) {
  */
 function otherBounceCountsOverWindow(units, selected, refresh, previous) {
   const pulled = otherBounceCountsFrom(units, selected, new Set(refresh.pulledMonths));
-  return refresh.mode === "selective" ? addCounts(pulled, previousFailureCounts(previous, "bounceReasons", new Set(refresh.carriedMonths))) : pulled;
+  return refresh.mode === "selective" ? addCounts(pulled, previousOtherBounceCounts(previous, new Set(refresh.carriedMonths))) : pulled;
 }
 // The programs the previous snapshot holds a sample for: the ones its meta names (sampled or carried; a sample
 // whose page held only null reasons stored no text and still counts), else the ones with stored text.
@@ -1847,7 +1885,7 @@ const previousSampledPrograms = (previous, part) => new Set(previous?.meta?.heal
 
 // Seconds per call, by family: medians measured on CLI 1.0.10, rounded up. An
 // estimate, printed as one; the token check before each call is what decides.
-const CALL_SECONDS = { whoami: 1, programs: 2, schema: 2, describe: 3, "uniques-month": 13, "uniques-window": 23, "account-names": 4, "health-states": 16, "health-reasons-total": 9, "health-reasons-sample": 8, "health-bounce-sample": 8, "health-admissions": 16, "health-step-total": 10, "health-step-cat": 10, "health-step-state": 10 };
+const CALL_SECONDS = { whoami: 1, programs: 2, schema: 2, describe: 3, "uniques-month": 13, "uniques-window": 23, "account-names": 4, "health-states": 16, "health-reasons-total": 9, "health-entry-window": 6, "health-reasons-sample": 12, "health-bounce-sample": 8, "health-admissions": 16, "health-step-total": 10, "health-step-cat": 10, "health-step-state": 10 };
 // Rows per program-month a bounce-count unit is expected to hold (templates × bounce types), never more than the bounces.
 const BOUNCE_ROWS_PER_MONTH = 6;
 const monthsOf = (u) => (u.window ? monthsBetween(u.window.start.slice(0, 7), addDays(u.window.end, -1).slice(0, 7)) : []);
@@ -2217,6 +2255,7 @@ export function fetchEngagement(ctx) {
   if (health?.objects.participantFailures && !stop) {
     forHealth("participantFailures", () => runUnit(unitOf("health-reasons-total")));
     if (!stop) forHealth("entryFailures", () => runUnit(unitOf("health-entry-month")));
+    if (!stop) forHealth("entryFailures", () => runUnit(unitOf("health-entry-window")));
   }
   const okUnits = (family) => rowsOf([...records.values()].filter((r) => r.family === family && r.status === "ok" && !r.truncated));
   const failedRows = (() => {
@@ -2264,12 +2303,16 @@ export function fetchEngagement(ctx) {
   // reading it all would cost, so raising --sample-programs is an informed choice. A program whose counts did
   // not move since the previous snapshot keeps its sample and costs no call, so this is an upper bound.
   const inWindowMonths = new Set(monthsBetween(params.window.from, params.window.to));
-  // A sample is carried only by a SELECTIVE refresh: a full one reads everything again, samples included. Both
-  // parts' counts are compared over the whole window (bounces: this pull's months plus the carried months' rows).
+  // A sample is carried only by a SELECTIVE refresh: a full one reads everything again, samples included. Each
+  // part's counts are compared with the previous snapshot's over the SAME window (the refusals over the day
+  // window; the bounces over the pull's window: this pull's months plus the carried months' rows).
   const carryFrom = refresh.mode === "selective" ? previous : null;
   const selectedSet = new Set(selectedIds);
+  // The window each part's samples are read over: the refusals' is the health-entry-window unit's own window
+  // object (the page reads what the count counted); the bounce text's is the pull's whole window.
+  const sampleWindows = { participantFailures: health ? unitOf("health-entry-window")?.window ?? { start: health.dayWindow.start, end: health.dayWindow.end } : null, bounceReasons: whole };
   const sampleCounts = {
-    participantFailures: entryCountsFrom(okUnits("health-entry-month"), selectedSet, inWindowMonths),
+    participantFailures: entryCountsFrom(okUnits("health-entry-window"), selectedSet),
     // At plan time the categories are not counted yet: every bounce in the window is priced as uncategorised (an upper bound).
     bounceReasons: new Map([...new Set([...base.values()].filter((b) => selectedSet.has(b.programId) && inWindowMonths.has(b.month) && (b.bounced ?? 0) > 0).map((b) => b.programId))].map((id) => [id, [...base.values()].filter((b) => b.programId === id && inWindowMonths.has(b.month)).reduce((s, b) => s + (b.bounced ?? 0), 0)])),
   };
@@ -2277,8 +2320,8 @@ export function fetchEngagement(ctx) {
     const family = part === "participantFailures" ? "health-reasons-sample" : "health-bounce-sample";
     // With health off the refusals per month were not read, so how many programs would be sampled is unknown (null), not 0.
     if (part === "participantFailures" && !params.health.pull) return { withFailures: null, planned: 0, carried: 0, beyondCap: 0, secondsEach: CALL_SECONDS[family], secondsBeyondCap: 0, family, note: "counted once health is on" };
-    const t = sampleTargets({ counts: sampleCounts[part], previousCounts: carryFrom ? previousFailureCounts(carryFrom, part, inWindowMonths) : null, previousSampled: previousSampledPrograms(carryFrom, part), cap: params.health.samplePrograms });
-    return { withFailures: sampleCounts[part].size, planned: t.sample.length, carried: t.carried.length, beyondCap: t.notSampled.length, secondsEach: CALL_SECONDS[family], secondsBeyondCap: t.notSampled.length * CALL_SECONDS[family], family };
+    const t = sampleTargets({ counts: sampleCounts[part], previousCounts: carryFrom ? previousSampleCounts(carryFrom, part, sampleWindowOf(sampleWindows[part])) : null, previousSampled: previousSampledPrograms(carryFrom, part), cap: params.health.samplePrograms });
+    return { withFailures: [...sampleCounts[part].values()].filter((n) => n > 0).length, planned: t.sample.length, carried: t.carried.length, beyondCap: t.notSampled.length, secondsEach: CALL_SECONDS[family], secondsBeyondCap: t.notSampled.length * CALL_SECONDS[family], family };
   };
   const samples = { cap: params.health.samplePrograms, participantFailures: samplePlan("participantFailures"), bounceReasons: samplePlan("bounceReasons") };
   const sampleReads = params.health.pull ? samples.participantFailures.planned + samples.bounceReasons.planned : 0;
@@ -2367,23 +2410,24 @@ export function fetchEngagement(ctx) {
     }
     forHealth(part, () => runUnit(d));
   }
-  // The per-program samples (F-484), after the counts they are picked from: one small page of the most recent
-  // refusals per program with refusals in the window, and one of the uncategorised bounce text per program
-  // with uncategorised bounces — most first, at most the cap each, skipping a program whose counts did not
-  // move since the previous snapshot (reduce keeps that snapshot's sample). reduce re-derives the same picks
-  // from the same counts (sampleTargets is pure), so nothing about the choice is stored.
+  // The per-program samples (F-484), after the counts they are picked from: one small page of the most repeated
+  // refusals still happening in the day window per program with such refusals, and one of the uncategorised
+  // bounce text per program with uncategorised bounces in the pull's window — most first, at most the cap each,
+  // skipping a program whose counts did not move since the previous snapshot over the same window (reduce
+  // keeps that snapshot's sample). Each page reads the WINDOW OBJECT its count was made over, so a pick has rows
+  // by construction. reduce re-derives the same picks from the same counts (sampleTargets is pure); the counts
+  // and their window are stored with the snapshot (meta.health.samples) for the next pull's carry test.
   if (health && !stop && !refusedParts.has("failureSamples")) {
-    const sampleWindow = { start: health.dayWindow.start, end: health.dayWindow.end };
-    const picks = (part) => sampleTargets({ counts: part === "participantFailures" ? entryCountsFrom(okUnits("health-entry-month"), selectedSet, inWindowMonths) : otherBounceCountsOverWindow([...okUnits("health-bounce-total"), ...okUnits("health-bounce-cat")], selectedSet, refresh, previous), previousCounts: carryFrom ? previousFailureCounts(carryFrom, part, inWindowMonths) : null, previousSampled: previousSampledPrograms(carryFrom, part), cap: params.health.samplePrograms });
+    const picks = (part) => sampleTargets({ counts: part === "participantFailures" ? entryCountsFrom(okUnits("health-entry-window"), selectedSet) : otherBounceCountsOverWindow([...okUnits("health-bounce-total"), ...okUnits("health-bounce-cat")], selectedSet, refresh, previous), previousCounts: carryFrom ? previousSampleCounts(carryFrom, part, sampleWindowOf(sampleWindows[part])) : null, previousSampled: previousSampledPrograms(carryFrom, part), cap: params.health.samplePrograms });
     if (health.objects.participantFailures) {
       for (const id of picks("participantFailures").sample) {
-        forHealth("failureSamples", () => runUnit({ family: "health-reasons-sample", cls: "all", programs: [id], window: sampleWindow }));
+        forHealth("failureSamples", () => runUnit({ family: "health-reasons-sample", cls: "all", programs: [id], window: sampleWindows.participantFailures }));
         if (stop) break;
       }
     }
     const cats = params.health.categories?.bounceReasons ?? [];
     for (const id of stop ? [] : picks("bounceReasons").sample) {
-      forHealth("failureSamples", () => runUnit({ family: "health-bounce-sample", cls: "all", programs: [id], window: sampleWindow, excludePatterns: cats.map((c) => c.pattern) }));
+      forHealth("failureSamples", () => runUnit({ family: "health-bounce-sample", cls: "all", programs: [id], window: sampleWindows.bounceReasons, excludePatterns: cats.map((c) => c.pattern) }));
       if (stop) break;
     }
   }
@@ -2423,7 +2467,17 @@ export function pickSchedule(doc, today) {
   if (!list.length) return { classification: NO_SCHEDULE, cronExpression: null, timeZoneName: null, startTime: null, endTime: null, asOf: doc.asOf ?? null };
   const recurring = list.filter((s) => s.classification === "recurring");
   let chosen = list[0];
-  if (recurring.length) chosen = recurring.map((s) => ({ s, period: cronLastDue(s.cronExpression, today).periodDays ?? Infinity })).sort((a, b) => a.period - b.period)[0].s;
+  if (recurring.length) {
+    // A LIVE schedule (no end, or an end not yet passed) decides before an ended one, whatever its position:
+    // the measured tenant's programs carry an ended job schedule BESIDE their live participant sync, and the
+    // ended one read as the program's (F-491, 2026-10-08: 15 of 35 "Schedule ended" reads). Among live ones the
+    // shortest period decides; among ended ones (none live) the latest end.
+    const endDay = (s) => (typeof s.endTime === "number" && s.endTime > 0 ? new Date(s.endTime).toISOString().slice(0, 10) : null);
+    const live = recurring.filter((s) => endDay(s) == null || endDay(s) >= today);
+    chosen = live.length
+      ? live.map((s) => ({ s, period: cronLastDue(s.cronExpression, today).periodDays ?? Infinity })).sort((a, b) => a.period - b.period)[0].s
+      : recurring.map((s) => ({ s, end: endDay(s) ?? "" })).sort((a, b) => (a.end < b.end ? 1 : a.end > b.end ? -1 : 0))[0].s;
+  }
   const classification = recurring.length ? "recurring" : list.some((s) => s.classification === "one-time") ? "one-time" : String(chosen.classification ?? "unknown");
   const time = (t) => (typeof t === "number" && t > 0 ? t : null);
   return { classification, cronExpression: chosen.cronExpression ?? null, timeZoneName: chosen.timeZoneName ?? null, startTime: time(chosen.startTime), endTime: time(chosen.endTime), asOf: doc.asOf ?? null };
@@ -2457,7 +2511,7 @@ function lastSendsFrom({ dayUnits, base, listed, selected, params, inWindow }) {
  * case (the server's CONTAINS is case-insensitive: measured 2026-10-07, four
  * casings of one wording returned one count). Null when none matches.
  * @param {string} message
- * @param {ReadonlyArray<{id: string, pattern: string, expected?: boolean}>} categories
+ * @param {ReadonlyArray<{id: string, pattern: string, kind?: string, expected?: boolean}>} categories
  */
 export function matchCategory(message, categories) {
   const text = String(message).toLowerCase();
@@ -3095,16 +3149,17 @@ export function reduceEngagement(input) {
           }
         }
       }
-      const expectedOf = new Map(STEP_FAILURE_CATEGORIES.map((c) => [c.id, c.expected]));
+      // Each row carries its category's KIND (F-491, 2026-10-08) and the flag derived from it; "other" is a program error.
+      const kindOfStep = new Map(STEP_FAILURE_CATEGORIES.map((c) => [c.id, kindOf(c)]));
       for (const k of new Set([...totals.keys(), ...byCat.keys()])) {
         const [programId, month] = JSON.parse(k);
         let counted = 0;
         for (const [category, n] of byCat.get(k) ?? []) {
           counted += n;
-          if (n) healthFacts.stepFailures.push({ programId, month, category, expected: expectedOf.get(category) === true, participants: n });
+          if (n) healthFacts.stepFailures.push({ programId, month, category, kind: kindOfStep.get(category) ?? "program-error", expected: isExpectedKind(kindOfStep.get(category)), participants: n });
         }
         const other = (totals.get(k) ?? 0) - counted;
-        if (other) healthFacts.stepFailures.push({ programId, month, category: OTHER_CATEGORY, expected: false, participants: other });
+        if (other) healthFacts.stepFailures.push({ programId, month, category: OTHER_CATEGORY, kind: "program-error", expected: false, participants: other });
         if (other < 0) healthStats.categories.overlapRows++;
       }
       healthFacts.stepFailures.sort(byKeys("programId", "month", "category"));
@@ -3119,10 +3174,12 @@ export function reduceEngagement(input) {
       const previousRows = (part) => (previous?.facts?.health?.failureSamples ?? []).filter((r) => r.part === part);
       const previousSplit = (programId) => (previous?.facts?.health?.entrySamples ?? []).filter((r) => r.programId === programId);
       for (const [partName, family, categories] of /** @type {Array<["bounceReasons"|"participantFailures", string, ReadonlyArray<*>]>} */ ([["participantFailures", "health-reasons-sample", cats.participantFailures], ["bounceReasons", "health-bounce-sample", []]])) {
-        // A sample is carried only by a SELECTIVE refresh, over the whole window's counts (fetch decides the same way).
+        // A sample is carried only by a SELECTIVE refresh, when the previous snapshot's counts over the SAME window
+        // equal this pull's (fetch decides the same way, from the same counts).
         const carryFrom = refresh.mode === "selective" ? previous : null;
-        const counts = partName === "participantFailures" ? entryCountsFrom(of("health-entry-month"), selected, inWindow) : otherBounceCountsOverWindow([...of("health-bounce-total"), ...of("health-bounce-cat")], selected, refresh, previous);
-        const targets = sampleTargets({ counts, previousCounts: carryFrom ? previousFailureCounts(carryFrom, partName, inWindow) : null, previousSampled: previousSampledPrograms(carryFrom, partName), cap: params.health.samplePrograms });
+        const window = partName === "participantFailures" ? { start: day.start, endExclusive: day.end } : sampleWindowOf(monthWindow(params.window.from, params.window.to));
+        const counts = partName === "participantFailures" ? entryCountsFrom(of("health-entry-window"), selected) : otherBounceCountsOverWindow([...of("health-bounce-total"), ...of("health-bounce-cat")], selected, refresh, previous);
+        const targets = sampleTargets({ counts, previousCounts: carryFrom ? previousSampleCounts(carryFrom, partName, window) : null, previousSampled: previousSampledPrograms(carryFrom, partName), cap: params.health.samplePrograms });
         const read = new Set();
         for (const u of sampleUnitsOf(family)) {
           const programId = u.programs[0];
@@ -3138,7 +3195,8 @@ export function reduceEngagement(input) {
             texts.set(message, (texts.get(message) ?? 0) + 1);
             const c = matchCategory(message, categories);
             const key = c?.id ?? OTHER_CATEGORY;
-            split.set(key, { category: key, expected: c?.expected === true, participants: (split.get(key)?.participants ?? 0) + 1 });
+            const kind = c ? kindOf(c) : "program-error";
+            split.set(key, { category: key, kind, expected: isExpectedKind(kind), participants: (split.get(key)?.participants ?? 0) + 1 });
           };
           for (const r of u.rows) {
             if (family === "health-bounce-sample") take(r?.message);
@@ -3148,7 +3206,7 @@ export function reduceEngagement(input) {
           healthStats.samples[partName] += top.length;
           for (const [message, count] of top) {
             const c = matchCategory(message, categories);
-            healthFacts.failureSamples.push({ programId, part: partName, message, category: c?.id ?? null, expected: c?.expected === true, count, pulledAt });
+            healthFacts.failureSamples.push({ programId, part: partName, message, category: c?.id ?? null, kind: c ? kindOf(c) : null, expected: c ? isExpectedKind(kindOf(c)) : false, count, pulledAt });
           }
           if (partName === "participantFailures") for (const s of split.values()) healthFacts.entrySamples.push({ programId, ...s, sampleRows: rows, pulledAt });
         }
@@ -3158,7 +3216,9 @@ export function reduceEngagement(input) {
           healthFacts.failureSamples.push(...previousRows(partName).filter((r) => r.programId === programId));
           if (partName === "participantFailures") healthFacts.entrySamples.push(...previousSplit(programId));
         }
-        samplesMeta[partName] = { cap: params.health.samplePrograms, sampled: read.size, carried: targets.carried.length, notSampled: [...targets.notSampled, ...unreadPicks].sort(byKeys("programId")), programs: [...read, ...targets.carried].sort(cmpKey) };
+        // The window the samples were read over and the counts they were picked from (programs with failures only),
+        // so the next pull's carry test compares like with like (F-484).
+        samplesMeta[partName] = { cap: params.health.samplePrograms, sampled: read.size, carried: targets.carried.length, notSampled: [...targets.notSampled, ...unreadPicks].sort(byKeys("programId")), programs: [...read, ...targets.carried].sort(cmpKey), window, counts: Object.fromEntries([...counts].filter(([, n]) => n > 0).sort(([a], [b]) => cmpKey(a, b))) };
       }
       healthFacts.failureSamples.sort(byKeys("programId", "part", "message"));
       healthFacts.entrySamples.sort(byKeys("programId", "category"));
