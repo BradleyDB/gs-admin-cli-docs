@@ -271,6 +271,24 @@ Banked: dev/VALIDATION.md § HLT-1 / DSH-1 / DSH-5, re-banked for V2 (Y1, Y2, Y6
 Blind spots: no tenant pull was made with the new families (the two reads were counts and schema reads); the category wordings are unmeasured until Y2; DOES_NOT_CONTAINS on a null bounce reason is unmeasured (nothing depends on it); the describe payload's schedule start/end dates are V2's read. Next free F-491.
 -->
 
+<!-- tester 2026-10-08 (S3b — POINTER RE-STAMPED after the fix-round verdict @ hb-20261007-03 (V2): F-488, F-489, F-490, F-493, F-494 VERIFIED; F-484 REOPENED (second), F-491 REOPENED (the model, after its Redesign), F-492 REOPENED; PR #43 stays unmerged; next free F-495):
+     Branch: feat/jo-dash-s3b-health-batch at 4877abf (8214c50 the verdict commit; 4877abf dev merged in, clean). PR: #43 to dev,
+       open, unmerged, MERGEABLE CLEAN.
+     Status transitions riding the branch (re-stamps the builder pointer below, which says all eight FIXED):
+       F-488, F-489, F-490, F-493, F-494 FIXED -> VERIFIED. F-484 FIXED -> OPEN (REOPENED, second reopen: the sample picks are
+       ranked over the month window and read over the day window, so empty picks count as sampled and go unnamed; rule 5 and
+       the born-this-release valve apply). F-491 FIXED -> OPEN (REOPENED, the model after its Redesign: an ended job schedule
+       read over the live participant sync; a two-valued expected flag over the three kinds Bradley ruled in session; a
+       quarterly intake read as silence). F-492 FIXED -> OPEN (REOPENED: the widened mask takes product text, 11 of 30 accepted
+       wordings uncapturable; Bradley open to hosts unmasked). Nothing new logged; next free F-495.
+     VALIDATION section HLT-1 / DSH-1 / DSH-5 (on the branch): Y17, Y18 CLEARED; Y2 (participant half) FAILED; Y6 FAILED.
+     CI on the final head 4877abf, QUOTED per job after completion:
+         validate-plugin 37864127361: changes success / manifests success / validate (ubuntu-latest) success
+         docs-drift 37864127407: drift (full) success
+         GitGuardian Security Checks: pass
+     Open PRs to dev: #43 only. Open normal findings (F-484, F-491) gate the release, not this merge; the merge is Bradley's.
+       Detail: the tester comment and the Walk (hb-20261007-03) line on the branch's bus. -->
+
 <!-- builder 2026-10-07 (S3b — POINTER RE-STAMPED after the FIX ROUND: F-484 (second fix after one reopen), F-491 (REDESIGN — the cadence rules replaced by health signals from the program's own data, Bradley's four conditions ruled in session), F-492, F-493, F-494 FIXED on the branch; the polish batch F-488, F-489, F-490 FIXED there too; F-486 carried to S4b; PR #43 stays unmerged; next free F-495):
      Branch: feat/jo-dash-s3b-health-batch at 244b0dc → PR #43 to dev (open, unmerged; merges after V2 on Bradley's go-ahead; the tip is a
        content commit, so the PR suite runs on the head). The branch's bus carries every Fix:, Judge: and Sibling sweep line, the F-491
