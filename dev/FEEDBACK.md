@@ -171,6 +171,16 @@ Banked: dev/VALIDATION.md § HLT-1 / DSH-1 / DSH-5, re-banked for V2 (Y1, Y2, Y6
 Blind spots: no tenant pull was made with the new families (the two reads were counts and schema reads); the category wordings are unmeasured until Y2; DOES_NOT_CONTAINS on a null bounce reason is unmeasured (nothing depends on it); the describe payload's schedule start/end dates are V2's read. Next free F-491.
 -->
 
+<!-- builder 2026-10-08 (S3b — POINTER RE-STAMPED after the FIX ROUND 2: F-484 REDESIGNED (second reopen; the model replaced named — one window for the pick and the page, the most repeated refusals first), F-491 FIXED (a tune of the redesigned model: the live schedule, a stale doc, three kinds of failure, a too-new program), F-492 FIXED (hosts unmasked on Bradley's lean; a URL's path protected); F-486 (polish) carried to S4b; PR #43 stays unmerged; next free F-495):
+     Branch: feat/jo-dash-s3b-health-batch at b434add → PR #43 to dev (open, unmerged; merges after V3 on Bradley's go-ahead; the tip is a
+       content commit, so the PR suite runs on the head). The branch's bus carries the Redesign:, Fix:, Judge: and Sibling sweep lines, the
+       two mutation copy-outs (8 of 8 as predicted, predictions written first) and the round's handoff block.
+     Token: hb-20261008-01, minted by dev-utils handoff (7604a0e, one commit for the Under test line, its Blind spots line and the canary).
+       V3 runs on it: dev/VALIDATION.md § HLT-1 re-banked (Y2's participant half, Y6 replaced again; Y19 new), on the branch.
+     Measured before building (production, reads only, three calls on Bradley's token; the rest offline over V2's snapshot in the consumer
+       workspace): shapes in dev/S3B-FIX-ROUND-BRIEF.md § Round 2 (on the branch); Bradley's 2026-10-08 rulings recorded under HLT-1 in
+       the plan as rulings 7–10. -->
+
 <!-- tester 2026-10-08 (S3b — POINTER RE-STAMPED after the fix-round verdict @ hb-20261007-03 (V2): F-488, F-489, F-490, F-493, F-494 VERIFIED; F-484 REOPENED (second), F-491 REOPENED (the model, after its Redesign), F-492 REOPENED; PR #43 stays unmerged; next free F-495):
      Branch: feat/jo-dash-s3b-health-batch at 4877abf (8214c50 the verdict commit; 4877abf dev merged in, clean). PR: #43 to dev,
        open, unmerged, MERGEABLE CLEAN.
