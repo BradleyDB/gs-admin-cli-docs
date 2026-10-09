@@ -1773,6 +1773,24 @@ other check of this section stands as last re-banked.
   participants arriving. Bradley reads the dominant program's split and EVERY unclassified wording (none is expected:
   the build's two 2000-row pages matched every other wording; one that appears is reported through report-bug as the
   caveat says, and recorded here with its masked text).
+  CLEARED (S3b fix round 3 verdict @ hb-20261008-02, tester, 2026-10-09; production, reads only). The pull: the
+  email-engagement skill's plan then run (Y1's flags, full, no --previous), exit 0, 196 calls made + 20 reused, none
+  failed. Structural arms: `withFailures` 64 equals a direct COUNT grouped by program over the day window and the
+  selected programs (64 programs; 63 per-program counts equal, one +4: the direct count ran about 40 minutes after the
+  pull, and a narrow count of that program's refusals modified that day returned exactly 4 — accrual in an open window);
+  one window object for the count and all 25 sample calls, one program each, 25 of 25 picks with rows, every page
+  non-increasing in occurrences. The dominant program's `failureSamples` row for `Custom field contains Invalid value
+  {null} for EMAIL data type` reads `invalid-field-value` / `bad-address` with occurrences about 650 times its count
+  (order 10^4 against order 10^1); its `entrySamples` row the same category, kind and counts. The `Recipient Email
+  Address field` spelling (6 programs) and the `Manager Email Address field` spelling (1 program) land in the same
+  category in both tables. No participant-failure row in either table carries category null, kind null or `other`;
+  occurrences >= count on every row; 0 participant-failure rows read unclassified. Bradley read the split: "that seems
+  right". Beyond the expectation ("none is expected"): the `unclassified-wordings` caveat fired on 28 wordings in 25
+  programs, every one from the BOUNCE part's samples (all 124 bounce sample rows read unclassified / unknown, null / null
+  at V3; none matches the tenant's 30 patterns), plus a step remainder of order 10^2 participants, all in months before
+  the period. Bradley read all 28 as bad-address variants and ruled the flag working as intended (ruling 12); they were
+  added to the tenant's category file in the workspace (masked texts there, never here). Words and the residual under
+  F-484's verdict.
 - Y6 (the lists, re-banked for V4). Pass bar, from F-491's Judge line: BEFORE any refresh, `plan` prints
   `estimate.kb` naming every selected program the KB has no doc for (12 at V3: eleven DRIPV2 one-offs and the daily
   program Bradley read in the UI) and every documented program modified after its doc, `refreshSeconds` 3 per program,
@@ -1787,6 +1805,23 @@ other check of this section stands as last re-banked.
   reads by its own cron (recurring; ingest on-schedule or overdue by its heartbeat) and the one-offs read Finished
   again; Bradley reads each list that changed, his words verbatim. With a plain `--quiet-due-days` change nothing
   here moves.
+  CLEARED by Bradley's ruling (S3b fix round 3 verdict @ hb-20261008-02, tester, 2026-10-09; production, reads only).
+  Before: `estimate.kb` 12 undocumented (eleven DRIPV2 one-offs and the daily dynamic program), 8 behind, `unlisted` 0,
+  `refreshSeconds` 60 (3 per program); `kb-gap-keys.json` the 20 manifest keys in `estimate.kb.programs` order,
+  `kb-gap-list.json` the 12 undocumented rows in the list envelope. The run without the refresh: all 12 on Cannot judge
+  yet, `signals.why` no-doc, `schedule.state` undocumented, `ingest.state` cannot-judge, `finished` false; none on
+  Finished, none with ingest one-time; `honesty.kb` (12, 8) and the `kb-behind-tenant` caveat name the same 20; 5 of the
+  8 behind are judged (the other 3 are Paused, which no list judges) and all 5 read `docBehind` true, judged from the doc.
+  Counts per list before (V3 -> now): schedule-ended 19 -> 19, admitting-nobody 5 -> 5, no-recent-sends 2 -> 2,
+  finished 15 -> 4, cannot-judge 3 -> 14, ok 21 -> 21, every other list 0; the move is the eleven one-offs. Bradley: "that
+  seems right". After Y20's refresh (same run, exit 0, 213 calls reused, 1 made): the daily program reads by its own cron
+  (recurring, period 1 day, ingest on-schedule) and stays on Cannot judge yet for too-new, no longer no-doc. The
+  one-offs: 2 of 11 read Finished (no schedule in the doc); 9 read Schedule ended — their docs carry a daily cron windowed
+  to one run (24 h or 0 h), the shape of every program on that list (29) and of 208 of 568 documented programs — and one
+  re-documented behind program moved Finished -> Schedule ended for the same reason. Counts after: schedule-ended 29,
+  finished 5, cannot-judge 3, admitting-nobody 5, no-recent-sends 2, ok 21, every other list 0. Bradley read the nine as
+  one-offs, then ruled the rules correct on the data available (a single-run window cannot be told from a program meant to
+  run on with a limited schedule); an admin acknowledgement is a backlog item, not this round's. Words under F-491.
 - Y20 (the ask and the narrow refresh, new; the walk of the changed SKILL.md). In the tester session, the
   email-engagement skill invoked on the production tenant with Y1's flags: at step 2 the skill tells the user the two
   counts (undocumented, behind) and `estimate.kb.refreshSeconds` and ASKS; the tester records the ask's text
@@ -1798,6 +1833,15 @@ other check of this section stands as last re-banked.
   refresh. Guard-wiring for the round: the describe-batch step is reads only; the KB writes are workspace files. If
   Bradley says no, the walk records the ask and the caveat's text on the report instead, and Y6's "after" half is
   banked, not failed.
+  CLEARED (S3b fix round 3 verdict @ hb-20261008-02, tester, 2026-10-09; production, reads only). The tester session
+  invoked the skill with Y1's flags. At step 2 the skill quoted the two counts (12, 8) and the seconds (60) and asked; the
+  ask's text is verbatim on the bus's Walk (hb-20261008-02) line. It was held unanswered while the run without it was
+  measured (Y6's before half). Bradley: "yes redocument". The three commands, once each, in order, as the skill spells
+  them: upsert-batch --partial exit 0 (12 matched existing manifest entries, 0 added: registered, never documented;
+  warnings 0); mark --status stale exit 0 (20 marked); describe-batch --keys-file exit 0 (20 selected, 20 documented,
+  0 failed, `moreRemaining` false). The re-issued plan on the same run: `estimate.kb` undocumented 0, behind 0,
+  unlisted 0; `kb-steps.json`'s stamp moved. The token expired before the refresh and Bradley logged in again; no call
+  reached the tenant on the expired token. Guard-wiring for the round: see the Walk line.
 
 ## DSH-2 — the dashboard page built over a real snapshot: filtered in a browser, its size measured, a CSV export opened in a spreadsheet (banked 2026-10-04, builder, Session S4a; verdict at V2)
 
