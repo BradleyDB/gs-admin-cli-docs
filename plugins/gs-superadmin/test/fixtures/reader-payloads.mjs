@@ -777,6 +777,18 @@ export const TEMPLATE_MAIN = {
   createdDate: 1681441493742, createdByName: "Jordan",
   createdDateStr: "2023-04-14 03:04:53 UTC",
   modifiedDateStr: "2023-06-12 18:26:31 UTC", modifiedByName: "Leah",
+  // R19 (TPL-1): the per-link tracking flags the reading is decided from. The
+  // content above references none of these (the HTML-only marker body), so
+  // every entry is STALE and the reading is unreadable: the shape is measured
+  // (keys, uniqueId, href, enableClickTracking), the decision is the
+  // engagement fixtures' (acme-tenant.mjs carries present links).
+  builderMetadata: {
+    links: {
+      "link-1": { uniqueId: "u-link-1", href: "https://www.example.com/guide", enableClickTracking: true },
+      "link-2": { uniqueId: "u-link-2", href: "https://www.example.com/unsubscribe", enableClickTracking: false },
+    },
+    surveyLinks: { "svy-1": { uniqueId: "u-svy-1", href: "https://survey.example.com/s/1", enableClickTracking: true } },
+  },
 };
 
 export const TEMPLATE_FALLBACK = {

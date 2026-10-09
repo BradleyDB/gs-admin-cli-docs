@@ -585,6 +585,15 @@ export function parseTemplateDoc(md, docPath = "") {
     tokens: null,
     docPath,
     bodyIncluded: false,
+    // C1 v3 (TPL-1, additive): the template's last-modified date as the doc's
+    // `- modified:` bullet records it (the payload's modifiedDateStr; null when
+    // unknown); the link-tracking reading the renderer wrote at the fetch
+    // (doc-lib readLinkTracking: {reading, entries, present, tracked, system,
+    // stale}; null on a doc written before it existed); and lastVerified, the
+    // manifest's capture date, overlaid by buildIndex as on programs.
+    modified: null,
+    linkTracking: null,
+    lastVerified: null,
   };
 
   // id: the re-fetch hint carries it verbatim (survives ids the filename
@@ -605,6 +614,22 @@ export function parseTemplateDoc(md, docPath = "") {
       const m = /^active: (.*)$/.exec(s);
       if (m) tpl.active = m[1] === "true" ? true : m[1] === "false" ? false : null;
     }
+  }
+  // "- modified: 2023-06-12 18:26:31 UTC by Leah" (the renderer's dateOf; "unknown by unknown" when the payload said nothing)
+  if (bullets.modified != null) {
+    const when = bullets.modified.split(" by ")[0].trim();
+    tpl.modified = when && when !== "unknown" ? when : null;
+  }
+  // "- linkTracking: <reading> · entries: n · present: n · tracked: n · system: n · stale: n" (doc-lib linkTrackingBullet)
+  if (bullets.linkTracking != null) {
+    const [reading, ...rest] = bullets.linkTracking.split("·").map((s) => s.trim());
+    const counts = {};
+    for (const seg of rest) {
+      const m = /^(entries|present|tracked|system|stale): (\d+)$/.exec(seg);
+      if (m) counts[m[1]] = Number(m[2]);
+    }
+    if (["tracked-link-present", "links-none-tracked", "unreadable"].includes(reading)) tpl.linkTracking = { reading, entries: counts.entries ?? null, present: counts.present ?? null, tracked: counts.tracked ?? null, system: counts.system ?? null, stale: counts.stale ?? null };
+    else parseErrors.push(`template doc: linkTracking bullet holds an unknown reading "${reading}"`);
   }
   if (tpl.id == null) parseErrors.push("template doc: no id found (re-fetch hint and key bullet both absent)");
 
@@ -1079,6 +1104,8 @@ export function buildIndex({ kbDir, liveListFiles = [] }) {
     const { tpl, parseErrors: errs } = res;
     if (errs.length) parseErrors.push({ docPath, id: tpl.id, errors: errs });
     if (tpl.id == null) continue;
+    // C1 v3 (TPL-1): when the doc was captured, from the inventory — the date its content is as of.
+    tpl.lastVerified = inventory[`${joDirs.templates}/${tpl.id}`]?.last_verified ?? null;
     if (templates[tpl.id]) warnings.push(`duplicate template id ${tpl.id} (${docPath} overwrote ${templates[tpl.id].docPath})`);
     templates[tpl.id] = tpl;
   }
