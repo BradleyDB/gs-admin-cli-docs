@@ -226,7 +226,15 @@ const STALEDOC = { id: "p-staledoc", name: "Acme Stale Doc Chain", model: "DRIPV
 const NEWCOHORT = { id: "p-newcohort", name: "Acme New Cohort Chain", model: "DRIPV2", modelName: "Email Chain", statuses: ["PROCESSING"], type: "CUSTOMER", folderId: "808", months: ["2026-08"], accounts: [4, 5, 6], perAccount: 2, fixedDay: "01", fixedState: "COMPLETED", lastSync: "2026-09-01 09:00:12", schedules: [sched("0 0 9 1 * ? *")], steps: [{ stepId: "st-nc-1", stepName: "New cohort note", order: 1, templateId: "tpl-newcohort", variants: ["var-newcohort"] }] };
 const SENDFAIL = { id: "p-sendfail", name: "Acme Send Fail Chain", model: "DRIPV2", modelName: "Email Chain", statuses: ["PROCESSING"], type: "CUSTOMER", folderId: "808", months: monthsBetween("2026-06", LAST_MONTH), accounts: [7, 8, 9], perAccount: 3, fixedDay: "14", freshEntry: true, sendFail: true, fixedState: "DROP", lastSync: "2026-09-14 08:01:00", schedules: [sched(DAILY)], steps: [{ stepId: "st-sf-1", stepName: "Send Email", order: 1, templateId: "tpl-sendfail", variants: ["var-sendfail"] }] };
 const OLDSHORT = { id: "p-oldshort", name: "Acme Old Short Chain", model: "DRIPV2", modelName: "Email Chain", statuses: ["PROCESSING"], type: "CUSTOMER", folderId: "808", months: ["2025-11", "2025-12"], accounts: [10, 11], perAccount: 1, fixedState: "ACTIVE", steps: [{ stepId: "st-os-1", stepName: "Old short note", order: 1, templateId: "tpl-oldshort", variants: ["var-oldshort"] }] };
-const SIGNALS = [ENDED, OVERDUE, NOBODY, REFUSED, STEPERR, DISABLED, TWOSCHED, STALEDOC, NEWCOHORT, SENDFAIL, OLDSHORT];
+// The third round of F-491 (2026-10-08, redesigned: the KB is the one source of schedules; what it lacks is named, never guessed):
+//   p-undoc     an Active daily program the KB has NO doc for (created after its last journey capture), synced yesterday,
+//               its participants all completed: "Cannot judge yet" (no-doc) — never "Finished" and never ingest
+//               one-time from the missing doc (the tenant's twelfth undocumented program was a daily cron read as a one-off)
+//   p-behind    documented, but the list says it was modified AFTER its doc was written: judged from the doc (Working as
+//               expected) and flagged behind, named by honesty.kb and the kb-behind-tenant caveat
+const UNDOC = { id: "p-undoc", name: "Acme Undocumented Chain", model: "DRIPV2", modelName: "Email Chain", statuses: ["PROCESSING"], type: "CUSTOMER", folderId: "808", months: monthsBetween("2026-03", LAST_MONTH), accounts: [0, 2], perAccount: 1, fixedDay: "14", freshEntry: true, fixedState: "COMPLETED", noDoc: true, lastSync: "2026-09-14 10:15:00", schedules: [sched("0 15 10 1/1 * ? *")], steps: [{ stepId: "st-ud-1", stepName: "Undocumented note", order: 1, templateId: "tpl-undoc", variants: ["var-undoc"] }] };
+const BEHIND = { id: "p-behind", name: "Acme Behind Doc Chain", model: "DRIPV2", modelName: "Email Chain", statuses: ["PROCESSING"], type: "CUSTOMER", folderId: "808", months: monthsBetween("2026-03", LAST_MONTH), accounts: [1, 3], perAccount: 1, fixedDay: "14", freshEntry: true, modifiedDate: "2026-09-10T15:00:00.000Z", lastSync: "2026-09-14 08:01:00", schedules: [sched(DAILY)], steps: [{ stepId: "st-bh-1", stepName: "Behind doc note", order: 1, templateId: "tpl-behind", variants: ["var-behind"] }] };
+const SIGNALS = [ENDED, OVERDUE, NOBODY, REFUSED, STEPERR, DISABLED, TWOSCHED, STALEDOC, NEWCOHORT, SENDFAIL, OLDSHORT, UNDOC, BEHIND];
 // What the product writes on a participant who got in and fell off at a STEP (ao_participants.FailureReasons;
 // measured 2026-10-07, the Send Email step's own drops 2026-10-08), by the participant's state. `kind` is the
 // oracle's key. The first two DROP wordings keep their positions (the generator indexes them).
@@ -251,7 +259,7 @@ const TEMPLATE_NAMES = {
   "tpl-prefs": "Acme Prefs", "tpl-prefs-mix": "Acme Prefs Follow-up", "tpl-blast": "Acme Announcement", "tpl-quiet": "Acme Quiet",
   "tpl-quarter": "Acme Quarterly", "tpl-sporadic": "Acme Sporadic", "tpl-once": "Acme One-time", "tpl-lapsed": "Acme Digest",
   "tpl-ended": "Acme Ended", "tpl-overdue": "Acme Overdue", "tpl-nobody": "Acme Nobody", "tpl-refused": "Acme Refused", "tpl-steperr": "Acme Step Error", "tpl-disabled": "Acme Disabled",
-  "tpl-twosched": "Acme Two-schedule", "tpl-staledoc": "Acme Stale Doc", "tpl-newcohort": "Acme New Cohort", "tpl-sendfail": "Acme Send Fail", "tpl-oldshort": "Acme Old Short",
+  "tpl-twosched": "Acme Two-schedule", "tpl-staledoc": "Acme Stale Doc", "tpl-newcohort": "Acme New Cohort", "tpl-sendfail": "Acme Send Fail", "tpl-oldshort": "Acme Old Short", "tpl-undoc": "Acme Undocumented", "tpl-behind": "Acme Behind Doc",
 };
 // Click behaviour per template (the five R19 fixtures ride on these):
 //   content — content-link clicks are recorded
@@ -311,8 +319,14 @@ export const FAILURE_REASONS = [
   // shipped BAD-ADDRESS wording, with the address the mask must take out.
   { kind: "bounced-at-send", text: (i) => `Bounced recipient(to) email first.last${i}@c0${(i % 9) + 1}.example.com' in Step 'Send Email'` },
 ];
-// The UNEXPECTED refusal (a data problem), as the product writes it.
+// The UNEXPECTED refusal (a data problem), as the product writes it: a TEMPLATE whose field label the platform fills in
+// per program (three labels measured on one tenant, 2026-10-08) — every spelling is one category (F-484, redesigned).
 export const NULL_EMAIL_REASON = "Recipient Email Address field contains Invalid value {null} for EMAIL data type";
+export const NULL_EMAIL_REASONS = [NULL_EMAIL_REASON, "Custom field contains Invalid value {null} for EMAIL data type", "Manager Email Address field contains Invalid value {null} for EMAIL data type"];
+// A wording NO shipped category knows (fictional product text): unclassified, kind unknown, never a known kind.
+export const UNKNOWN_REASON = "Participant source returned no rows for the mapped object";
+// A step-failure wording no shipped step category knows: the step remainder is unclassified too.
+export const UNKNOWN_STEP_REASON = "Participant could not be processed: unexpected engine state at step 'Step error note'";
 const PARTICIPANT_STATES = ["ACTIVE", "COMPLETED", "ACTIVE", "COMPLETED", "DROP", "ACTIVE", "SYSTEM_ERROR", "COMPLETED", "KNOCKED_OFF"];
 // When the platform's own errors happened on this tenant: one incident, long before any window the suites pull.
 const PLATFORM_INCIDENT = "2025-06-20T03:00:00.000Z";
@@ -521,7 +535,7 @@ export function buildTenant(variant = {}) {
     failedParticipants.push({ Gsid: `fp-chronic-new-${i}`, AdvancedOutreachId: "p-onboard", FailureReasons: `GlobalOptOut recipient(to) email first.last${i}@c0${(i % 9) + 1}.example.com' in Step 'Send Email'`, OccurrenceCount: 1, ModifiedAt: `2026-09-${pad(10 + (i % 5))}T${pad(i % 24)}:${pad(i % 60)}:00.000Z`, _failureKind: "opt-out-at-send" });
   }
   for (let i = 0; i < (variant.chronicFailures ? 20 : 0); i++) {
-    failedParticipants.push({ Gsid: `fp-chronic-old-${i}`, AdvancedOutreachId: "p-onboard", FailureReasons: NULL_EMAIL_REASON, OccurrenceCount: 40 + i, ModifiedAt: `2026-09-01T0${i % 10}:00:00.000Z`, _failureKind: "null-email" });
+    failedParticipants.push({ Gsid: `fp-chronic-old-${i}`, AdvancedOutreachId: "p-onboard", FailureReasons: NULL_EMAIL_REASONS[i % NULL_EMAIL_REASONS.length], OccurrenceCount: 40 + i, ModifiedAt: `2026-09-01T0${i % 10}:00:00.000Z`, _failureKind: "null-email" });
   }
   // The large variant: most failures share one wording with a distinct value in each (F-484's class).
   for (let i = 0; i < (variant.manyFailures ?? 0); i++) {
@@ -535,7 +549,11 @@ export function buildTenant(variant = {}) {
   // The signals variant's refusals: p-refused's recent ones carry the UNEXPECTED null-email wording beside
   // expected ones; p-nobody's are all expected (and older).
   if (variant.signals) {
-    for (let i = 0; i < 12; i++) failedParticipants.push({ Gsid: `fp-refused-${i}`, AdvancedOutreachId: "p-refused", FailureReasons: i % 3 === 0 ? FAILURE_REASONS[0].text(i) : NULL_EMAIL_REASON, OccurrenceCount: 1 + i, ModifiedAt: `2026-09-${pad(2 + i)}T06:00:00.000Z`, _failureKind: i % 3 === 0 ? "already-in-list" : "null-email" });
+    // Four expected refusals, four null addresses (one per field label the platform writes, cycling) and four of a
+    // wording no list knows: the split reads 4 business-rule, 4 bad-address (ONE category), 4 unclassified (F-484).
+    for (let i = 0; i < 12; i++) failedParticipants.push({ Gsid: `fp-refused-${i}`, AdvancedOutreachId: "p-refused", FailureReasons: i % 3 === 0 ? FAILURE_REASONS[0].text(i) : i % 3 === 1 ? NULL_EMAIL_REASONS[Math.floor(i / 3) % NULL_EMAIL_REASONS.length] : UNKNOWN_REASON, OccurrenceCount: 1 + i, ModifiedAt: `2026-09-${pad(2 + i)}T06:00:00.000Z`, _failureKind: i % 3 === 0 ? "already-in-list" : i % 3 === 1 ? "null-email" : "unknown-wording" });
+    // One participant of the step-errors program fell off for a reason the shipped step list does not name.
+    participants.set("par-steperr-unknown", { Gsid: "par-steperr-unknown", AdvancedOutreachId: "p-steperr", ParticipantState: "DROP", ParticipantSourceType: "QUERY_BUILDER", CreatedAt: "2026-09-10T09:00:00.000Z", ModifiedAt: "2026-09-12T09:00:00.000Z", FailureReasons: UNKNOWN_STEP_REASON, _stepKind: "unknown-step" });
     for (let i = 0; i < 6; i++) failedParticipants.push({ Gsid: `fp-nobody-${i}`, AdvancedOutreachId: "p-nobody", FailureReasons: FAILURE_REASONS[i % 2 === 0 ? 0 : 2].text(i), OccurrenceCount: 1 + i, ModifiedAt: `2026-09-${pad(2 + i)}T06:00:00.000Z`, _failureKind: FAILURE_REASONS[i % 2 === 0 ? 0 : 2].kind });
   }
   // Each program's participant sources with the time they last synced (the ingest heartbeat; F-491): one
@@ -628,7 +646,7 @@ export function kbFiles(slug = "acme-prod", variant = {}) {
   };
   const inventory = {};
   for (const p of [...PROGRAMS, ...(variant.cadence ? CADENCE : []), ...(variant.signals ? SIGNALS : [])]) {
-    if (!p.steps.length || p.id === "p-promo") continue;
+    if (!p.steps.length || p.id === "p-promo" || (p.noDoc && !variant.documentAll)) continue;
     files[`${slug}/journey/${p.id}.md`] = [
       `# ${p.name}`, "",
       "> Full describe doc — generated by describe-batch.mjs, captured 2026-01-15T00:00:00.000Z.", "",
@@ -856,7 +874,8 @@ export function answer(argv, tenant) {
     const page = Number(flagValue(argv, "--page") ?? 1);
     const all = tenant.listed;
     const rows = all.slice((page - 1) * limit, page * limit).map((p) => ({
-      advancedOutreachId: p.id, advancedOutreachName: p.name, modified_date: 0, advancedOutreachModelName: p.modelName, folderId: p.folderId,
+      // When the program was last modified (0 = the list did not say; a doc older than it is behind the tenant, F-491).
+      advancedOutreachId: p.id, advancedOutreachName: p.name, modified_date: p.modifiedDate ? Date.parse(p.modifiedDate) : 0, advancedOutreachModelName: p.modelName, folderId: p.folderId,
       advancedOutreachStatus: p.statuses, advancedOutreachType: p.type, advancedOutreachModel: p.model, gsid: `gs-${p.id}`, testrun: false,
       // What the list says of the participant sync (measured 2026-10-07: a boolean on every row).
       participantSyncScheduleDisabled: p.syncDisabled === true,

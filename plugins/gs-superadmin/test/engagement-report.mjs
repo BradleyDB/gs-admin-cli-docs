@@ -382,9 +382,16 @@ try {
     const table = (heading) => [...(skill.split(heading)[1] ?? "").split("\n\n")[1].matchAll(/^\| `(--[a-z-]+)/gm)].map((m) => m[1]);
     const pullFlags = table("Pull flags");
     const repFlags = table("Report flags");
-    check("every flag the skill passes through exists in the script it is passed to, in that script's own spelling: pull flags in the adapter, report flags in the report script",
+    // A fenced line that names another plugin script (the narrow re-documentation of F-491: manifest.mjs, describe-batch.mjs)
+    // is held to THAT script's flags; every other flag in the skill is the adapter's, the report's or the skill's own.
+    const scriptLines = skill.split("\n").filter((l) => /node \.gs-superadmin\/plugin\/scripts\/[a-z-]+\.mjs/.test(l) && !/engagement(-report)?\.mjs/.test(l));
+    const scriptFlagsOf = (l) => flags(readFileSync(join(PLUGIN, "scripts", l.match(/scripts\/([a-z-]+\.mjs)/)[1]), "utf8"));
+    const otherLineFlags = new Set(scriptLines.flatMap((l) => [...flags(l)]));
+    const prose = skill.split("\n").filter((l) => !scriptLines.includes(l)).join("\n");
+    check("every flag the skill passes through exists in the script it is passed to, in that script's own spelling: pull flags in the adapter, report flags in the report script, and a fenced line naming another plugin script carries only that script's flags",
       pullFlags.length >= 9 && pullFlags.every((f) => adapterFlags.has(f)) && repFlags.length === 4 && repFlags.every((f) => reportFlags.has(f)) && ["--internal-domain", "--unsubscribe-link", "--accounts", "--step-detail"].every((f) => pullFlags.includes(f)) &&
-        [...flags(skill)].every((f) => adapterFlags.has(f) || reportFlags.has(f) || skillOnly.has(f)), [pullFlags, repFlags, [...flags(skill)].filter((f) => !adapterFlags.has(f) && !reportFlags.has(f) && !skillOnly.has(f))]);
+        scriptLines.length >= 3 && scriptLines.every((l) => { const own = scriptFlagsOf(l); return [...flags(l)].every((f) => own.has(f)); }) &&
+        [...flags(prose)].every((f) => adapterFlags.has(f) || reportFlags.has(f) || skillOnly.has(f) || otherLineFlags.has(f)), [pullFlags, repFlags, [...flags(prose)].filter((f) => !adapterFlags.has(f) && !reportFlags.has(f) && !skillOnly.has(f) && !otherLineFlags.has(f)), scriptLines.length]);
   }
 
   // ══ One aggregation path (house rule 11) ══════════════════════════════════

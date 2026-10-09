@@ -212,3 +212,61 @@ Fixture: p-renew's refusals moved to April/May (in the window, before the day wi
 the `chronicFailures` variant (150 newest once-refused opt-outs, 20 older null-address refusals repeated 40+ times);
 FAILURE_REASONS gains bounced-at-send; signals programs p-twosched, p-staledoc, p-newcohort, p-sendfail (every
 participant a DROP with the Send Email wordings), p-oldshort; STEP_REASONS gains the three Send Email drops.
+
+## Round 3 (2026-10-08, after the V3 verdict @ hb-20261008-01) — F-484 redesigned a second time, F-491 redesigned
+
+Problem statement first, with Bradley in session (the reopens were part new fact, part communication): F-484's third
+reopen was a new fact (the null-address wording has more than one spelling) plus a framing problem (an unmatched
+wording read `null` in one table and `program-error` in the other, relayed to him as "nonetype"; the 2026-10-07
+ruling on null addresses WAS implemented, the pattern was too literal). F-491's second reopen was a real defect,
+narrowly scoped (a missing doc produced a confident state). Neither was deferred (his ruling).
+
+Measured first (production, reads only, six calls on Bradley's token, one at a time; raw payloads in the session's
+scratchpad, never the repo). Shapes only:
+- `rp schema ao_failed_participants`: 74 fields; the six scalar fields (program, unique criteria, occurrence count,
+  modified-at, gsid, participant type) are filterable, groupable and sortable; `FailureReasons` and every other
+  JSON-path field read false on all three. A server-side census of wordings is impossible on CLI 1.0.10.
+- `rp schema ao_participant_source_configuration`: 21 fields, all scalar; heartbeats and source identity only — no
+  cron, no start, no end. A `jo p list` row carries `participantSyncScheduleDisabled`, `participantSourceType`,
+  `modified_date` and nothing on the cron. So an undocumented program's schedule has two sources, a live describe or
+  none; and a documented program changed since its doc is visible at no call (the list's modified date).
+- Two 2000-row `rp run` pages of refusals over the day window with no program filter, most repeated first and newest
+  first: 8 and 9 distinct masked wordings, 12 and 23 programs. Every wording but one family matched a shipped
+  category. The family: `<field label> field contains Invalid value {null} for EMAIL data type` with THREE labels
+  (`Recipient Email Address field` 122 rows, `Custom field` 2 rows — one refused 49,467 times, the top row of the
+  most-repeated page — and `Manager Email Address field` 2 rows, never seen before). Occurrences dwarf rows:
+  "already in list" 649 rows carry 2.5 million occurrences.
+
+Rulings (Bradley, 2026-10-08, in this session; the plan's HLT-1 rulings 11–13):
+11. A category's pattern names the INVARIANT core of a product wording, never the text the platform fills in per
+    program; a null or invalid address in any mapped field is one category and a type 2 error (bad address).
+12. A wording no category knows is ONE explicit state everywhere — unclassified, kind unknown — treated as the most
+    actionable (it alarms when it is what keeps people out) and flagged as needing investigation, with a path for the
+    shipped list to learn it; the split carries occurrences beside rows and says it is a sample.
+13. The KB is the ONE source of a program's schedule; the pull never writes the KB; what the KB lacks is named and
+    judged as unknown, never guessed; on a dashboard build or refresh the flow detects new or changed programs and
+    ASKS "refresh the KB for these N programs (about S seconds)?", and yes triggers a NARROW refresh of exactly those
+    programs, never tenant-wide.
+
+Design:
+- F-484 REDESIGN (model replaced: literal whole-sentence matching with per-table defaults for a miss). `no-email` →
+  `invalid-field-value`, pattern `contains Invalid value`, kind bad-address. Fourth kind `unknown` + reserved
+  category `unclassified` on failureSamples, entrySamples and the step remainder; refused on a tenant's list.
+  Entry: unknown is unexpected; steps: unknown fires Step errors. `occurrences` on both sample tables. Caveat
+  `unclassified-wordings` with the report-bug remedy. The bounce "Other" stays "other" (a tenant list's counted
+  remainder, an open world) — the typedef states the difference.
+- F-491 REDESIGN (model replaced: KB-only schedule with a missing doc read as a one-off). `schedule.state`
+  `undocumented` / `unknown` → ingest cannot-judge (no-doc / no-kb), never a one-off, Cannot judge yet BEFORE the
+  send history reads late; `docBehind` flagged from the list's modified date (judged from the doc: platform events
+  bump every date at once). `honesty.kb` from the one function `kbGap`; caveat `kb-behind-tenant`; plan
+  `estimate.kb` with the two input files (`kb-gap-keys.json`, `kb-gap-list.json`); the email-engagement skill
+  asks and runs refresh's three commands narrowly; the run-dir KB copy carries the manifest's stamp and is re-read
+  when it moved. Decided as code design and recorded: a doc behind the tenant is flagged, not discarded (mass
+  modified-date bumps); the undocumented one-offs read Cannot judge yet until the offered refresh runs.
+
+Fixture: NULL_EMAIL_REASONS (three labels), UNKNOWN_REASON, UNKNOWN_STEP_REASON; p-refused cycles the labels and
+carries the unknown wording (4/4/4); p-steperr gains one unknown-step participant; the chronic variant cycles the
+labels; new signals programs p-undoc (no KB doc, daily cron, synced, all completed) and p-behind (modified after its
+doc); list rows carry `modified_date`; `kbFiles({documentAll})` for the stamp test. Suites: engagement 323 (+4),
+query 112, contract 284, page 103, groups 39, spec 31, report 52; goldens regenerated; typecheck clean (the
+git-ignored handoffs tool's unused const is the known red).

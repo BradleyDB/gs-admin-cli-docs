@@ -131,6 +131,29 @@ F-483 and F-484):
   field a query filters or groups on is checked against the schema's own filterable and
   groupable flags before the call is made.
 
+Two redesigns after the third verdict round on a real tenant (F-484, F-491; 2026-10-08):
+
+- **A failure wording no category knows is one explicit state everywhere: `unclassified`,
+  kind `unknown`.** It is never read as a known error or a business rule and never left as
+  a blank; a program kept from admitting anyone by such a wording is on the alarm list
+  with the signal saying the cause needs investigation, and a caveat names how many
+  wordings and participants are involved and how to report them so the shipped list can
+  learn them. A category's pattern names the invariant core of a product wording, never
+  the field label the platform fills in per program: the null-address refusal, found with
+  three labels on one tenant, is one category (`invalid-field-value`, a bad address)
+  however the field is named. Sampled texts carry both how many participants bore them
+  and how many refusals those participants had in all.
+- **The knowledge base is the one source of a program's schedule, and what it lacks is
+  named, never guessed.** A program the KB does not document (created after its last
+  journey capture) reads "Cannot judge yet (no doc)": its schedule, ingest and finished
+  signals are undecided rather than read as a one-off. A documented program the list says
+  was modified after its doc was written is judged from the doc and flagged. The snapshot
+  names both sets (`honesty.kb`), a caveat says how to close the gap, and the plan prices
+  the narrow refresh (one describe per program) and writes its inputs beside `plan.json`;
+  the email-engagement skill offers that refresh before the pull. A run re-reads the KB
+  when it moved between the plan and the run. A pull made without a KB judges no program
+  "working as expected" or "finished".
+
 ## 0.46.0 — 2026-10-04
 
 Groundwork for the engagement dashboard. No skill changes: `/gs-superadmin:email-engagement

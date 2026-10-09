@@ -259,7 +259,18 @@ export function maskMessage(raw) {
 // (--expected-reason), which become business-rule categories, so a page can
 // leave them out of headline counts without hiding them.
 // Each entry: {id, label, pattern, definition, kind}.
-export const FAILURE_KINDS = Object.freeze(["business-rule", "bad-address", "program-error"]);
+// A pattern names the INVARIANT core of a product wording, never the text the
+// platform fills in per program (the mapped field's label, the value, the step
+// name): F-484, redesigned a second time 2026-10-08, when the null-address
+// wording was found with three field labels on one tenant ("Recipient Email
+// Address field", "Custom field", "Manager Email Address field").
+// The fourth kind, "unknown", is never a category's: it is the kind of a text
+// NO category matches (category UNCLASSIFIED_CATEGORY), one label in every
+// table and list, flagged as needing investigation and reported so the shipped
+// list can learn the wording. It is never folded into a known kind.
+export const FAILURE_KINDS = Object.freeze(["business-rule", "bad-address", "program-error", "unknown"]);
+/** The kind of a text no category matches; a tenant's list may not use it. */
+export const UNKNOWN_KIND = "unknown";
 /** @type {Readonly<{bounceReasons: ReadonlyArray<FailureCategory>, participantFailures: ReadonlyArray<FailureCategory>}>} */
 export const FAILURE_CATEGORIES = deepFreeze({
   bounceReasons: [],
@@ -272,14 +283,22 @@ export const FAILURE_CATEGORIES = deepFreeze({
     { id: "bounce-list", label: "On the bounce list", pattern: "Participant part of Bounce list", definition: "The recipient's address is on the tenant's bounce list: it bounced before.", kind: "bad-address" },
     { id: "opt-out-at-send", label: "Opted out at the send step", pattern: "GlobalOptOut recipient(to) email", definition: "The recipient was on the global opt-out when the Send Email step ran.", kind: "business-rule" },
     { id: "bounced-at-send", label: "Bounced at the send step", pattern: "Bounced recipient(to) email", definition: "The recipient's address had bounced when the Send Email step ran.", kind: "bad-address" },
-    { id: "no-email", label: "No email address", pattern: "Recipient Email Address field contains Invalid value", definition: "The participant record carries no email address: a data problem at the source.", kind: "bad-address" },
+    // The wording is a template, "<field label> field contains Invalid value {<value>} for <TYPE> data type": the label
+    // names the field the program maps (the recipient's address, a manager's, a custom field) and varies per program,
+    // so the pattern is the invariant core (F-484, 2026-10-08). The masked text keeps the label, so a reader sees which.
+    { id: "invalid-field-value", label: "Invalid or missing value in a mapped field", pattern: "contains Invalid value", definition: "A field the program maps (most often the recipient's email address) holds no value or an invalid one on the participant record: a data problem at the source. The wording names the field.", kind: "bad-address" },
   ],
 });
 /** @typedef {{id: string, label: string, pattern: string, definition: string, kind?: string, expected?: boolean}} FailureCategory */
+// "other" is the counted REMAINDER of a tenant's own list (the bounce reasons: total less the categories, an
+// open world of mail-server text). "unclassified" is a PRODUCT wording the shipped list does not know (an entry
+// refusal, a step failure): kind unknown, the same label in every table and list, named by the pull so the list
+// can learn it (F-484, 2026-10-08). The two are never the same thing.
 export const OTHER_CATEGORY = "other";
+export const UNCLASSIFIED_CATEGORY = "unclassified";
 export const FAILURE_PARTS = Object.freeze(["bounceReasons", "participantFailures"]);
 /** A category's kind: its own, else a business rule when it was flagged expected, else a program error. */
-export const kindOf = (c) => (FAILURE_KINDS.includes(c?.kind) ? c.kind : c?.expected === true ? "business-rule" : "program-error");
+export const kindOf = (c) => (FAILURE_KINDS.includes(c?.kind) && c.kind !== UNKNOWN_KIND ? c.kind : c?.expected === true ? "business-rule" : "program-error");
 /** The one meaning of `expected`: the kind is a business rule working. */
 export const isExpectedKind = (kind) => kind === "business-rule";
 // Why a participant who got IN fell off at a step (ao_participants.FailureReasons,
@@ -315,8 +334,9 @@ export function validateCategories(list) {
     if (!c || typeof c !== "object" || Array.isArray(c)) return problems.push(`${at} is not an object`);
     for (const k of ["id", "label", "pattern", "definition"]) if (typeof c[k] !== "string" || !c[k].trim()) problems.push(`${at}: ${k} must be non-empty text`);
     if (typeof c.id === "string" && c.id.trim() === OTHER_CATEGORY) problems.push(`${at}: the id "${OTHER_CATEGORY}" is reserved for the uncategorised remainder`);
+    if (typeof c.id === "string" && c.id.trim() === UNCLASSIFIED_CATEGORY) problems.push(`${at}: the id "${UNCLASSIFIED_CATEGORY}" is reserved for a wording no category matches`);
     if ("expected" in c && typeof c.expected !== "boolean") problems.push(`${at}: expected must be true or false`);
-    if ("kind" in c && !FAILURE_KINDS.includes(c.kind)) problems.push(`${at}: kind must be one of ${FAILURE_KINDS.join(", ")}`);
+    if ("kind" in c && (!FAILURE_KINDS.includes(c.kind) || c.kind === UNKNOWN_KIND)) problems.push(`${at}: kind must be one of ${FAILURE_KINDS.filter((k) => k !== UNKNOWN_KIND).join(", ")} ("${UNKNOWN_KIND}" is the kind of a text no category matches, never a category's)`);
     if (typeof c.kind === "string" && typeof c.expected === "boolean" && c.expected !== isExpectedKind(c.kind)) problems.push(`${at}: expected ${c.expected} contradicts kind "${c.kind}" (expected means a business rule; leave one of the two out)`);
     const extra = Object.keys(c).filter((k) => !["id", "label", "pattern", "definition", "expected", "kind"].includes(k));
     if (extra.length) problems.push(`${at}: unknown key(s) ${extra.join(", ")}`);
@@ -1069,7 +1089,16 @@ export const HEALTH_LISTS = deepFreeze({
 // HISTORY_MIN_MONTHS closed months of sends, all of them recent — so its own
 // cadence cannot be read yet (F-491, 2026-10-08: a program two months old with
 // one cohort behind it read "No recent sends" under the flat threshold).
-export const CANNOT_JUDGE_REASONS = deepFreeze({ "period-longer-than-window": "the ingest period is longer than the window", "doc-stale": "the documented schedule ended before the source's last sync", "too-new": "fewer than three months of sends, all recent" });
+export const CANNOT_JUDGE_REASONS = deepFreeze({
+  "period-longer-than-window": "the ingest period is longer than the window",
+  "doc-stale": "the documented schedule ended before the source's last sync",
+  "too-new": "fewer than three months of sends, all recent",
+  // F-491, redesigned 2026-10-08: a schedule the pull does not HAVE is never guessed. The KB is the one source of
+  // schedules; a program it does not document (created after its last journey capture) or a pull made without a KB
+  // leaves the schedule, the ingest and the finished signals undecided, and the snapshot names the programs.
+  "no-doc": "the knowledge base has no doc for this program, so its schedule is unknown to this pull (refresh the KB for it)",
+  "no-kb": "this pull ran without a knowledge base, so no program's schedule is known to it",
+});
 /** The lists table under the name S4b's plan reads it by. */
 export const SILENT_LISTS = HEALTH_LISTS;
 const ALARM_LISTS = Object.freeze(["schedule-ended", "sync-disabled", "ingest-overdue", "failing-entries", "admitting-nobody", "step-errors", "no-recent-sends"]);
@@ -1101,7 +1130,8 @@ export function dueDaysBefore(expr, asOf, n, floor) {
  * means "not read": its signal says so and never alarms.
  * @param {{asOf: string, dayWindow: {start: string, endExclusive: string}, days: number, quietDueDays?: number, incompleteMonth: string, months: string[],
  *   programs: Array<{programId: string, name: ?string, statuses: string[], selected: boolean, lastSendDay: ?string, lastSendMonth: ?string,
- *     schedule: ?{classification: string, cronExpression: ?string, startTime?: ?number, endTime?: ?number}, syncDisabled?: ?boolean,
+ *     schedule: ?{classification: string, cronExpression: ?string, startTime?: ?number, endTime?: ?number, asOf?: ?string}, syncDisabled?: ?boolean,
+ *     kbSource?: string, docModifiedAt?: ?string,
  *     sources: ?Array<{type: ?string, lastSyncedOn: ?string}>, admissionDays: ?Array<{day: string, participants: number}>,
  *     entryFailures: ?{window: {participants: number, occurrences: number}, recent?: ?number, sample: ?{rows: number, expected: number, unexpected: number, uncategorised: number, byKind?: Object<string, number>}},
  *     stepFailures: ?Array<{month: string, category: string, kind?: string, expected: boolean, participants: number}>, participants: ?number, inFlight: ?number,
@@ -1122,8 +1152,13 @@ export function judgeHealth({ asOf, dayWindow, days, quietDueDays = QUIET_DUE_DA
     const daysSince = daysSilent ?? (p.lastSendMonth ? Math.max(windowDays, asOfN - dayNumber(monthEnd(p.lastSendMonth))) : null);
     const base = { programId: p.programId, name: p.name, statuses: p.statuses, selected: p.selected, lastSendDay: p.lastSendDay, lastSendMonth: p.lastSendMonth, daysSilent };
 
-    // (1) The schedule, from the KB doc: recurring (with its cron, start and end), ended, not started, one-time, none.
+    // (1) The schedule, from the KB doc: recurring (with its cron, start and end), ended, not started, one-time, none;
+    // "undocumented" when the KB has no doc for the program and "unknown" when the pull had no KB at all — states no
+    // list decision may derive from (F-491, redesigned 2026-10-08: a missing input is never read as a one-off).
     const cls = p.schedule?.classification ?? null;
+    // The doc is BEHIND the tenant when the program was modified after the doc was written: still judged by the doc
+    // (a platform event can bump every program's modified date at once), but said so, and offered a narrow refresh.
+    const docBehind = p.schedule != null && p.docModifiedAt != null && p.schedule.asOf != null && String(p.docModifiedAt) > String(p.schedule.asOf);
     const endDay = dayOfTime(p.schedule?.endTime);
     const startDay = dayOfTime(p.schedule?.startTime);
     const due = cls === "recurring" ? cronLastDue(p.schedule?.cronExpression, asOf) : null;
@@ -1136,11 +1171,14 @@ export function judgeHealth({ asOf, dayWindow, days, quietDueDays = QUIET_DUE_DA
       p.syncDisabled === true ? { state: "disabled" }
         : cls === "recurring" ? (ended && lastSync != null && lastSync > endDay ? { state: "doc-stale", endDay, lastSync } : ended ? { state: "ended", endDay } : startDay && startDay > asOf ? { state: "not-started", startDay }
           : { state: "recurring", readable: due.readable, lastDue: due.lastDue, periodDays: due.periodDays, endDay })
-          : cls === "one-time" ? { state: "one-time" } : cls == null ? { state: "unknown" } : { state: "none", classification: cls };
+          : cls === "one-time" ? { state: "one-time" } : cls == null ? (p.kbSource === "kb" ? { state: "undocumented" } : { state: "unknown" }) : { state: "none", classification: cls };
+    if (docBehind) Object.assign(schedule, { docBehind: true, asOf: p.schedule.asOf, modifiedAt: p.docModifiedAt });
 
-    // (1, continued) The heartbeat against the cron's last due day.
+    // (1, continued) The heartbeat against the cron's last due day. A schedule the pull does not have decides nothing.
     let ingest;
     if (p.sources == null) ingest = { state: "not-read" };
+    else if (schedule.state === "undocumented") ingest = { state: "cannot-judge", why: "no-doc", lastSync };
+    else if (schedule.state === "unknown") ingest = { state: "cannot-judge", why: "no-kb", lastSync };
     else if (schedule.state === "disabled" || schedule.state === "ended" || schedule.state === "not-started") ingest = { state: "stopped", lastSync };
     else if (schedule.state === "doc-stale") ingest = { state: "cannot-judge", why: "doc-stale", lastSync, endDay };
     else if (schedule.state === "recurring") {
@@ -1173,19 +1211,21 @@ export function judgeHealth({ asOf, dayWindow, days, quietDueDays = QUIET_DUE_DA
           : ef.sample == null ? { state: "unsampled", participants: ef.window.participants, occurrences: ef.window.occurrences, recent: ef.recent ?? null }
             : { state: ef.sample.unexpected > 0 ? "unexpected" : "expected-only", participants: ef.window.participants, occurrences: ef.window.occurrences, recent: ef.recent ?? null, sample: ef.sample };
 
-    // (4) Step failures this period, by KIND: a program error (a step that cannot run, the platform's own error,
-    // or uncategorised text) is an error; a bad address and a business rule are the program doing as told.
+    // (4) Step failures this period, by KIND: a program error (a step that cannot run, the platform's own error) is
+    // an error, and so is a wording the shipped list does not know (kind unknown: the most actionable state, never
+    // folded into a known one; F-484 2026-10-08); a bad address and a business rule are the program doing as told.
     const sf = p.stepFailures;
     let steps;
     if (sf == null) steps = { state: "not-read" };
     else {
       const recent = sf.filter((r) => recentMonths.includes(r.month) && r.participants > 0);
-      const bad = recent.filter((r) => rowKind(r) === "program-error");
+      const bad = recent.filter((r) => ["program-error", UNKNOWN_KIND].includes(rowKind(r)));
       const byCategory = {};
       for (const r of bad) byCategory[r.category] = (byCategory[r.category] ?? 0) + r.participants;
       const byKind = {};
       for (const r of recent) byKind[rowKind(r)] = (byKind[rowKind(r)] ?? 0) + r.participants;
-      steps = bad.length ? { state: "errors", months: recentMonths, participants: bad.reduce((s, r) => s + r.participants, 0), byCategory, byKind } : { state: "none", months: recentMonths, byKind };
+      const unclassified = bad.filter((r) => rowKind(r) === UNKNOWN_KIND).reduce((s, r) => s + r.participants, 0);
+      steps = bad.length ? { state: "errors", months: recentMonths, participants: bad.reduce((s, r) => s + r.participants, 0), unclassified, byCategory, byKind } : { state: "none", months: recentMonths, byKind };
     }
 
     // Sends, against the program's own history (every program). A NEW program — fewer than HISTORY_MIN_MONTHS
@@ -1206,14 +1246,19 @@ export function judgeHealth({ asOf, dayWindow, days, quietDueDays = QUIET_DUE_DA
       const allowedDays = longestGapMonths * 31;
       sends = { state: daysSince == null || daysSince > allowedDays ? "late" : "ok", rule: "history", monthsWithSends: sentClosed.length, closedMonths: closedMonths.length, longestGapMonths, allowedDays, daysSince };
     }
-    // A one-off (nothing recurring, not stopped) whose participants have all finished or dropped is a finished campaign.
-    const oneOff = ["one-time", "none", "unknown"].includes(schedule.state);
+    // A DOCUMENTED one-off (nothing recurring, not stopped) whose participants have all finished or dropped is a
+    // finished campaign. A program whose schedule the pull does not have is never a one-off by default (F-491).
+    const oneOff = ["one-time", "none"].includes(schedule.state);
     const finished = oneOff && p.inFlight === 0 && (p.participants ?? 0) > 0;
     // Why the program cannot be judged, when it cannot (CANNOT_JUDGE_REASONS); null otherwise.
     const why = ingest.state === "cannot-judge" ? ingest.why : sends.state === "no-history" ? "too-new" : null;
     const signals = { schedule, ingest, admissions, entry, steps, sends, finished: p.inFlight == null ? null : finished, why, templates: p.templates ?? 0, monthsSent: sentMonths.length };
 
-    // ONE list per program, the most urgent signal first.
+    // ONE list per program, the most urgent signal first. A program whose schedule the pull does not have (no doc,
+    // no KB) is judged on its own data for the alarms above the line (its steps, its sends in the window) and is
+    // otherwise Cannot judge yet BEFORE its send history is read as late: whether a quiet program is a finished
+    // one-off or a stalled recurring one is exactly what the schedule tells apart (F-491, redesigned 2026-10-08).
+    const noSchedule = ["no-doc", "no-kb"].includes(why);
     const list =
       !p.selected ? "no-sends-in-window"
         : schedule.state === "ended" ? "schedule-ended"
@@ -1223,9 +1268,10 @@ export function judgeHealth({ asOf, dayWindow, days, quietDueDays = QUIET_DUE_DA
                 : admissions.state === "none" ? "admitting-nobody"
                   : steps.state === "errors" ? "step-errors"
                     : finished ? "finished"
-                      : sends.state === "late" ? "no-recent-sends"
-                        : why != null ? "cannot-judge"
-                          : "ok";
+                      : noSchedule ? "cannot-judge"
+                        : sends.state === "late" ? "no-recent-sends"
+                          : why != null ? "cannot-judge"
+                            : "ok";
     out.push({ ...base, list, label: HEALTH_LISTS[list], signals });
   }
   return out;
@@ -1259,6 +1305,8 @@ export function programHealth(snapshot, { days = SILENT_DAYS_DEFAULT, quietDueDa
     return m;
   };
   const program = new Map(snapshot.dimensions.programs.map((p) => [p.id, p]));
+  // Whether this pull had a KB at all (honesty.kb, F-491; the step-names source on a snapshot made before it).
+  const kbSource = snapshot.honesty?.kb?.source ?? snapshot.honesty?.stepNames?.source ?? "none";
   const sources = byProgram(read("sources"));
   const admissions = byProgram(read("admissions"));
   const entryRows = byProgram(read("entryFailures"));
@@ -1285,21 +1333,25 @@ export function programHealth(snapshot, { days = SILENT_DAYS_DEFAULT, quietDueDa
       const entries = entryRows?.get(r.programId)?.filter((x) => inWindow.has(x.month)) ?? null;
       const window = entries ? entries.reduce((s, x) => ({ participants: s.participants + x.participants, occurrences: s.occurrences + x.occurrences }), { participants: 0, occurrences: 0 }) : null;
       const sampleRows = (samples?.get(r.programId) ?? []).filter((x) => x.part === "participantFailures");
-      // The split by KIND: a business rule is expected; a bad address or a program error is not; uncategorised text is counted apart (and is not expected either).
+      // The split by KIND: a business rule is expected; a bad address, a program error and an UNCLASSIFIED wording
+      // (kind unknown, F-484 2026-10-08) are not; the unclassified are counted apart as well, so a list row can say
+      // the cause needs investigation. A row stored before kinds (category null) reads unclassified too.
       const sample = samples == null || !sampleRows.length || notSampled.has(r.programId) ? null : sampleRows.reduce((s, x) => {
         const n = x.count ?? 1;
-        const uncategorised = x.category == null || x.category === OTHER_CATEGORY;
-        const kind = uncategorised ? null : rowKind(x);
-        if (kind) s.byKind[kind] = (s.byKind[kind] ?? 0) + n;
-        return { ...s, rows: s.rows + n, expected: s.expected + (kind === "business-rule" ? n : 0), unexpected: s.unexpected + (kind && kind !== "business-rule" ? n : 0), uncategorised: s.uncategorised + (uncategorised ? n : 0) };
-      }, { rows: 0, expected: 0, unexpected: 0, uncategorised: 0, byKind: {} });
+        const kind = x.category == null || x.category === OTHER_CATEGORY || x.category === UNCLASSIFIED_CATEGORY ? UNKNOWN_KIND : rowKind(x);
+        s.byKind[kind] = (s.byKind[kind] ?? 0) + n;
+        return { ...s, rows: s.rows + n, expected: s.expected + (kind === "business-rule" ? n : 0), unexpected: s.unexpected + (kind !== "business-rule" ? n : 0), unclassified: s.unclassified + (kind === UNKNOWN_KIND ? n : 0) };
+      }, { rows: 0, expected: 0, unexpected: 0, unclassified: 0, byKind: {} });
       const st = states?.get(r.programId) ?? null;
       return {
         ...r,
         schedule: p?.schedule ?? null, syncDisabled: p?.syncScheduleDisabled ?? null,
+        // Whether the pull had a KB (an undocumented program is told apart from a pull without one), and when the
+        // list said the program was last modified (a doc older than that is behind the tenant); F-491.
+        kbSource: kbSource, docModifiedAt: p?.modifiedAt ?? null,
         sources: sources == null ? null : sources.get(r.programId) ?? [],
         admissionDays: admissions == null ? null : admissions.get(r.programId) ?? [],
-        entryFailures: entryRows == null ? null : { window, recent: recentCounts ? recentCounts[r.programId] ?? 0 : null, sample: sample && { ...sample, unexpected: sample.unexpected + sample.uncategorised } },
+        entryFailures: entryRows == null ? null : { window, recent: recentCounts ? recentCounts[r.programId] ?? 0 : null, sample },
         stepFailures: stepRows == null ? null : stepRows.get(r.programId) ?? [],
         participants: st == null ? null : st.reduce((s, x) => s + x.participants, 0),
         inFlight: st == null ? null : st.filter((x) => IN_FLIGHT_STATES.includes(x.state)).reduce((s, x) => s + x.participants, 0),
@@ -1492,7 +1544,14 @@ export const CAVEATS = Object.freeze({
     "Whether a schedule is still running is read from each participant source's last sync time at this pull, never from the schedule's own run-state fields: on the measured tenant those are unset even on programs that run daily. " +
     "A documented schedule that ended before its source last synced is read as documentation behind the tenant (Cannot judge yet), never as an ended schedule.",
   "failure-samples-capped": (d) => `${d.notSampled} program(s) with ${d.part === "participantFailures" ? "refused participants" : "uncategorised bounce text"} were not sampled this pull: the sample reads at most ${d.cap} programs a pull, most failures first (about ${d.secondsEach} seconds each). Their text is carried from the previous pull where it had one. Raise --sample-programs to read them.`,
-  "failure-samples-sampled": () => "The breakdown of refused participants by reason is a SAMPLE: one page per program of the refusals still happening in the day window, the most repeated first, because the reason field takes no filter on this tenant. The totals beside it are exact.",
+  "failure-samples-sampled": () => "The breakdown of refused participants by reason is a SAMPLE: one page per program of the refusals still happening in the day window, the most repeated first, because the reason field takes no filter on this tenant. The totals beside it are exact. Each sampled text carries how many participants it refused and how many times in all.",
+  "unclassified-wordings": (d) =>
+    `${d.wordings} failure wording(s) in the samples of ${d.programs} program(s) match no known category and are labelled "unclassified" (kind unknown): ${d.participants} sampled participant(s), ${d.occurrences} refusal(s) in all${d.stepParticipants ? `, plus ${d.stepParticipants} participant(s) who fell off at a step for a reason the shipped list does not name` : ""}. ` +
+    "An unknown wording is treated as a failure needing investigation, never as a business rule or a known error. Read the texts in the snapshot's failureSamples table (terminal only; they never reach a page) and report them with /gs-superadmin:report-bug so the shipped list can learn them, or add them to this tenant's --failure-categories file.",
+  "kb-behind-tenant": (d) =>
+    `The knowledge base is behind the tenant for ${d.undocumented + d.behind} selected program(s): ${d.undocumented} ${d.undocumented === 1 ? "has" : "have"} no doc (created after the KB's last journey capture) and ${d.behind} ${d.behind === 1 ? "was" : "were"} modified after ${d.behind === 1 ? "its" : "their"} doc was written. ` +
+    "An undocumented program's schedule is unknown to this pull, so it reads Cannot judge yet (no doc) and is never read as a one-off; a program with a doc behind the tenant is judged from that doc and flagged. " +
+    `Run /gs-superadmin:refresh for these programs only (the plan wrote their keys to ${d.keysFile ?? "the run directory"}; about ${d.refreshSeconds ?? "?"} seconds) and pull again.`,
   "health-all-time": (d) => `${list(d.parts ?? [])} are all time: the objects they are read from carry no date on every row, so the date filter does not apply to them.`,
   "participant-failures-no-breakdown": (d) => `Participant failures are counted per program with no breakdown by reason. ${reasonText(d.reason)}${d.expectedReasons ? ` The ${d.expectedReasons} expected reason(s) named for this pull could not be counted apart for the same reason.` : ""}`,
   "failure-categories-overlap": (d) => `The failure category list overlaps: ${d.rows} "Other" row(s) in ${list(d.parts ?? [])} count below zero. Two patterns match the same message, so a message is counted twice; fix the list. Nothing was clamped.`,
@@ -1515,7 +1574,7 @@ export const CAVEATS = Object.freeze({
 export const caveatText = (id, detail = {}) => (CAVEATS[id] ? CAVEATS[id](detail) : `${id}: ${JSON.stringify(detail)}`);
 // The snapshot's own caveats that are about its health tables: an output that
 // shows none of them does not carry these.
-const HEALTH_CAVEATS = Object.freeze(["health-incomplete", "schedules-from-kb", "health-all-time", "participant-failures-no-breakdown", "failure-categories-overlap", "failure-samples-capped", "failure-samples-sampled"]);
+const HEALTH_CAVEATS = Object.freeze(["health-incomplete", "schedules-from-kb", "kb-behind-tenant", "health-all-time", "participant-failures-no-breakdown", "failure-categories-overlap", "failure-samples-capped", "failure-samples-sampled", "unclassified-wordings"]);
 /**
  * The caveats block of any output over this snapshot: the snapshot's own
  * (failures first), what the pull left out, the incomplete period, and the

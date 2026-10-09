@@ -2654,6 +2654,9 @@
         "[].ao_failed_participants_FailureReasons",
         "[].ao_failed_participants_FailureReasons.fv",
         "[].ao_failed_participants_FailureReasons.v",
+        "[].ao_failed_participants_OccurrenceCount",
+        "[].ao_failed_participants_OccurrenceCount.k",
+        "[].ao_failed_participants_OccurrenceCount.v",
         "[].ao_participant_source_configuration_AdvancedOutreachId",
         "[].ao_participant_source_configuration_AdvancedOutreachId.v",
         "[].ao_participant_source_configuration_LastSyncedOn",
@@ -2759,6 +2762,9 @@
         "[].ao_failed_participants_FailureReasons.v": [
           "[].ao_failed_participants_FailureReasons.fv"
         ],
+        "[].ao_failed_participants_OccurrenceCount.v": [
+          "[].ao_failed_participants_OccurrenceCount.k"
+        ],
         "[].count_distinct_of_ao_participants_Gsid.v": [
           "[].count_distinct_of_ao_participants_Gsid.k"
         ],
@@ -2815,7 +2821,7 @@
       "note": "The output is a bare array of rows whose keys are the CLI's column aliases: <object>_<Field> for a group or plain column, summarize_month_of_<object>_<Field> for a month bucket (read by its sortable k), count_of_<object>_Gsid, <target>_<lookup>__gr_<leaf> for a fieldPath group and count_distinct_of_<target>_<leaf> for a fieldPath distinct count. A null group value has no v key, which is why every cell is read with an `in` test. Every reader runs over every family's rows, so a column one family lacks is recorded as named-while-absent rather than missed.",
       "probes": {
         "fixtures": 36,
-        "runs": 6330,
+        "runs": 6337,
         "unprobed": 0
       }
     },
@@ -2894,6 +2900,7 @@
         "data.advancedOutreaches[].advancedOutreachStatus",
         "data.advancedOutreaches[].advancedOutreachType",
         "data.advancedOutreaches[].folderId",
+        "data.advancedOutreaches[].modified_date",
         "data.advancedOutreaches[].participantSyncScheduleDisabled",
         "data.lastPage",
         "data.totalPages"
@@ -2921,7 +2928,7 @@
       "note": "The KB indexer reads this command through the *indexed-list row (tenant-recorded keys). This row is the engagement adapter's direct read of the live list: program names and today's statuses for the snapshot's program dimension.",
       "probes": {
         "fixtures": 1,
-        "runs": 20,
+        "runs": 21,
         "unprobed": 0
       }
     }

@@ -120,10 +120,10 @@
        "expected": false
       },
       {
-       "id": "no-email",
-       "label": "No email address",
-       "pattern": "Recipient Email Address field contains Invalid value",
-       "definition": "The participant record carries no email address: a data problem at the source.",
+       "id": "invalid-field-value",
+       "label": "Invalid or missing value in a mapped field",
+       "pattern": "contains Invalid value",
+       "definition": "A field the program maps (most often the recipient's email address) holds no value or an invalid one on the participant record: a data problem at the source. The wording names the field.",
        "kind": "bad-address",
        "expected": false
       }
@@ -255,7 +255,7 @@
       "bounce-list",
       "opt-out-at-send",
       "bounced-at-send",
-      "no-email"
+      "invalid-field-value"
      ]
     }
    },
@@ -487,6 +487,7 @@
     "group": null,
     "folderId": "101",
     "syncScheduleDisabled": false,
+    "modifiedAt": null,
     "schedule": {
      "classification": "recurring",
      "cronExpression": "0 0 9 1 * ? *",
@@ -509,6 +510,7 @@
     "group": null,
     "folderId": "101",
     "syncScheduleDisabled": false,
+    "modifiedAt": null,
     "schedule": {
      "classification": "recurring",
      "cronExpression": "0 0 8 ? * MON *",
@@ -531,6 +533,7 @@
     "group": null,
     "folderId": "303",
     "syncScheduleDisabled": false,
+    "modifiedAt": null,
     "schedule": {
      "classification": "no schedule captured",
      "cronExpression": null,
@@ -554,6 +557,7 @@
     "group": null,
     "folderId": "202",
     "syncScheduleDisabled": false,
+    "modifiedAt": null,
     "schedule": {
      "classification": "no schedule captured",
      "cronExpression": null,
@@ -576,6 +580,7 @@
     "group": null,
     "folderId": "303",
     "syncScheduleDisabled": null,
+    "modifiedAt": null,
     "schedule": null
    }
   ],
@@ -4049,20 +4054,22 @@
      "programId": "p-nps",
      "part": "bounceReasons",
      "message": "452 4.2.2 Mailbox full",
-     "category": null,
-     "kind": null,
+     "category": "unclassified",
+     "kind": "unknown",
      "expected": false,
      "count": 1,
+     "occurrences": 1,
      "pulledAt": "2026-09-15T09:00:00-07:00"
     },
     {
      "programId": "p-nps",
      "part": "participantFailures",
      "message": "Email address <email> is invalid",
-     "category": null,
-     "kind": null,
+     "category": "unclassified",
+     "kind": "unknown",
      "expected": false,
      "count": 1,
+     "occurrences": 2,
      "pulledAt": "2026-09-15T09:00:00-07:00"
     },
     {
@@ -4073,16 +4080,18 @@
      "kind": "business-rule",
      "expected": true,
      "count": 1,
+     "occurrences": 1,
      "pulledAt": "2026-09-15T09:00:00-07:00"
     },
     {
      "programId": "p-onboard",
      "part": "bounceReasons",
      "message": "452 4.2.2 Mailbox full",
-     "category": null,
-     "kind": null,
+     "category": "unclassified",
+     "kind": "unknown",
      "expected": false,
      "count": 3,
+     "occurrences": 3,
      "pulledAt": "2026-09-15T09:00:00-07:00"
     },
     {
@@ -4093,36 +4102,40 @@
      "kind": "bad-address",
      "expected": false,
      "count": 1,
+     "occurrences": 3,
      "pulledAt": "2026-09-15T09:00:00-07:00"
     },
     {
      "programId": "p-onboard",
      "part": "participantFailures",
      "message": "Duplicate participant",
-     "category": null,
-     "kind": null,
+     "category": "unclassified",
+     "kind": "unknown",
      "expected": false,
      "count": 1,
+     "occurrences": 2,
      "pulledAt": "2026-09-15T09:00:00-07:00"
     },
     {
      "programId": "p-onboard",
      "part": "participantFailures",
      "message": "Email address <email> is invalid",
-     "category": null,
-     "kind": null,
+     "category": "unclassified",
+     "kind": "unknown",
      "expected": false,
      "count": 1,
+     "occurrences": 2,
      "pulledAt": "2026-09-15T09:00:00-07:00"
     },
     {
      "programId": "p-onboard",
      "part": "participantFailures",
      "message": "Missing required field: Email",
-     "category": null,
-     "kind": null,
+     "category": "unclassified",
+     "kind": "unknown",
      "expected": false,
      "count": 1,
+     "occurrences": 2,
      "pulledAt": "2026-09-15T09:00:00-07:00"
     },
     {
@@ -4133,16 +4146,18 @@
      "kind": "business-rule",
      "expected": true,
      "count": 2,
+     "occurrences": 2,
      "pulledAt": "2026-09-15T09:00:00-07:00"
     },
     {
      "programId": "p-renew",
      "part": "bounceReasons",
      "message": "452 4.2.2 Mailbox full",
-     "category": null,
-     "kind": null,
+     "category": "unclassified",
+     "kind": "unknown",
      "expected": false,
      "count": 2,
+     "occurrences": 2,
      "pulledAt": "2026-09-15T09:00:00-07:00"
     }
    ],
@@ -4153,15 +4168,17 @@
      "kind": "business-rule",
      "expected": true,
      "participants": 1,
+     "occurrences": 1,
      "sampleRows": 2,
      "pulledAt": "2026-09-15T09:00:00-07:00"
     },
     {
      "programId": "p-nps",
-     "category": "other",
-     "kind": "program-error",
+     "category": "unclassified",
+     "kind": "unknown",
      "expected": false,
      "participants": 1,
+     "occurrences": 2,
      "sampleRows": 2,
      "pulledAt": "2026-09-15T09:00:00-07:00"
     },
@@ -4171,6 +4188,7 @@
      "kind": "business-rule",
      "expected": true,
      "participants": 2,
+     "occurrences": 2,
      "sampleRows": 8,
      "pulledAt": "2026-09-15T09:00:00-07:00"
     },
@@ -4180,15 +4198,17 @@
      "kind": "bad-address",
      "expected": false,
      "participants": 1,
+     "occurrences": 3,
      "sampleRows": 8,
      "pulledAt": "2026-09-15T09:00:00-07:00"
     },
     {
      "programId": "p-onboard",
-     "category": "other",
-     "kind": "program-error",
+     "category": "unclassified",
+     "kind": "unknown",
      "expected": false,
      "participants": 4,
+     "occurrences": 7,
      "sampleRows": 8,
      "pulledAt": "2026-09-15T09:00:00-07:00"
     },
@@ -4198,6 +4218,7 @@
      "kind": "business-rule",
      "expected": true,
      "participants": 1,
+     "occurrences": 3,
      "sampleRows": 8,
      "pulledAt": "2026-09-15T09:00:00-07:00"
     }
@@ -4477,6 +4498,13 @@
    "programsWithDesign": 4,
    "programsWithout": 1
   },
+  "kb": {
+   "source": "kb",
+   "undocumented": [
+    "p-unlisted"
+   ],
+   "behind": []
+  },
   "accountNames": {
    "requested": 8,
    "resolved": 8
@@ -4593,6 +4621,28 @@
    "id": "schedules-from-kb",
    "detail": {
     "oldest": "2026-08-20T00:00:00.000Z"
+   }
+  },
+  {
+   "id": "kb-behind-tenant",
+   "detail": {
+    "undocumented": 1,
+    "behind": 0,
+    "programs": [
+     "p-unlisted"
+    ],
+    "keysFile": "kb-gap-keys.json",
+    "refreshSeconds": 3
+   }
+  },
+  {
+   "id": "unclassified-wordings",
+   "detail": {
+    "wordings": 4,
+    "programs": 3,
+    "participants": 10,
+    "occurrences": 14,
+    "stepParticipants": 0
    }
   },
   {

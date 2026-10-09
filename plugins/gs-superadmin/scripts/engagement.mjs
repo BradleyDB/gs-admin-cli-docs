@@ -269,26 +269,32 @@
  *   tenant even where runs succeed daily). A documented program with no
  *   schedule has ONE row, classification "no schedule captured"; a program
  *   the KB has no full doc for has none.
- * @property {Array<{programId: string, part: "bounceReasons"|"participantFailures", message: string, category?: ?string, kind?: ?string, expected?: boolean, count?: number, pulledAt?: string}>} [failureSamples]
+ * @property {Array<{programId: string, part: "bounceReasons"|"participantFailures", message: string, category?: ?string, kind?: ?string, expected?: boolean, count?: number, occurrences?: number, pulledAt?: string}>} [failureSamples]
  *   a capped sample of the masked text per program and part, for extending the
  *   category list (S3b), read one small page per program over the window its
  *   count was made over (F-484, redesigned 2026-10-08): the refusals still
  *   happening in meta.health.dayWindow, the most repeated first; the
  *   uncategorised bounce text of the pull's window, newest first. `category`
  *   and `expected` (additive, F-491) are the category the text matched
- *   client-side (null = none) and whether it is a business rule; `kind`
- *   (additive, F-491 2026-10-08) its FAILURE_KINDS kind, null when none
- *   matched; `count` is how many rows of the page carried the text;
+ *   client-side and whether it is a business rule; `kind` (additive, F-491
+ *   2026-10-08) its FAILURE_KINDS kind. A text NO category matches is category
+ *   "unclassified", kind "unknown" (F-484, redesigned 2026-10-08) — never null
+ *   (null only on a snapshot made before that); `count` is how many rows of
+ *   the page carried the text (participants) and `occurrences` (additive,
+ *   F-484 2026-10-08) how many times those participants were refused in all;
  *   `pulledAt` the pull that read it (a program whose failure counts over the
  *   same window did not move keeps the earlier pull's sample). SNAPSHOT
  *   ONLY: shown by the terminal, never embedded in a page. Absent on a
  *   snapshot made before it existed.
- * @property {Array<{programId: string, category: string, kind?: string, expected: boolean, participants: number, sampleRows: number, pulledAt: string}>} [entrySamples]
+ * @property {Array<{programId: string, category: string, kind?: string, expected: boolean, participants: number, occurrences?: number, sampleRows: number, pulledAt: string}>} [entrySamples]
  *   the refusals of each program's sample by category, with its kind (additive,
  *   F-491): a SAMPLE of the most repeated refusals still happening in the day
- *   window, never a count — `sampleRows` is the
- *   page it was taken from; the exact totals are `participantFailures` and
- *   `entryFailures`. A page may show it, labelled as a sample.
+ *   window, never a count — `sampleRows` is the page it was taken from, and
+ *   `occurrences` (additive, F-484 2026-10-08) the refusals in all behind the
+ *   `participants` rows; the exact totals are `participantFailures` and
+ *   `entryFailures`. Text no category matches is category "unclassified", kind
+ *   "unknown" (F-484, redesigned 2026-10-08; "other" on an earlier snapshot).
+ *   A page may show it, labelled as a sample.
  * @property {Array<{programId: string, sourceType: ?string, lastSyncedOn: ?string, operation: ?string}>} [sources]
  *   each selected program's active participant sources and when each last
  *   synced (additive, F-491): the ingest heartbeat, read tenant-wide at the
@@ -304,11 +310,14 @@
  *   participants who got in and fell off at a step, per program and month,
  *   counted server-side by category (STEP_FAILURE_CATEGORIES; additive, F-491):
  *   a text category by CONTAINS on the participant's failure reason, the
- *   platform error by its state, "other" = the total with a reason less every
- *   category (below zero only when categories overlap; flagged, never clamped).
+ *   platform error by its state, "unclassified" (kind "unknown"; "other" on a
+ *   snapshot made before F-484's 2026-10-08 redesign) = the total with a reason
+ *   less every category: wordings the shipped list does not name, a failure
+ *   needing investigation (below zero only when categories overlap; flagged,
+ *   never clamped).
  *
  * @typedef {object} T10Dimensions
- * @property {Array<{id: string, name: ?string, statuses: string[], model: ?string, modelName: ?string, audienceType: ?string, supergroup: ?string, group: ?string, folderId: ?string, schedule?: ?{classification: string, cronExpression: ?string, timeZoneName: ?string, startTime?: ?number, endTime?: ?number, asOf: ?string}, syncScheduleDisabled?: ?boolean}>} programs
+ * @property {Array<{id: string, name: ?string, statuses: string[], model: ?string, modelName: ?string, audienceType: ?string, supergroup: ?string, group: ?string, folderId: ?string, schedule?: ?{classification: string, cronExpression: ?string, timeZoneName: ?string, startTime?: ?number, endTime?: ?number, asOf: ?string}, syncScheduleDisabled?: ?boolean, modifiedAt?: ?string}>} programs
  *   statuses is a LIST (a Dynamic Program edited while live carries two);
  *   supergroup and group are null until the grouping resolver fills them (DSH-5).
  *   schedule (additive, S3b) rides every pull made with a KB, whether or not
@@ -321,6 +330,10 @@
  *   The grouping resolver's `recurring` and the health signals read it here.
  *   syncScheduleDisabled (additive, F-491): what `jo p list` says of the
  *   program's participant sync; null when the list did not say.
+ *   modifiedAt (additive, F-491 redesigned 2026-10-08; ISO): when the list said
+ *   the program was last modified; null when it did not say (a program the
+ *   list lacked, described live). A doc written before it is behind the
+ *   tenant: honesty.kb names those programs and the undocumented ones.
  * @property {Array<{id: string, name: ?string, uses: Array<{programId: string, stepName: ?string, stepOrder: ?number, stepCount: number, asOf?: ?string}>}>} templates
  *   stepName and stepOrder are set only when the template sits on exactly ONE
  *   step of that program's design (stepCount 1); 0 = no design in the KB.
@@ -426,7 +439,7 @@
  * @property {(req: {id: string, argv: string[], timeoutMs: number}) => TransportResult} run
  * @typedef {{ok: boolean, status: ?number, stdout: string, stderr: string, timedOut: boolean, ms: number}} TransportResult
  */
-import { readFileSync, appendFileSync, existsSync, mkdirSync } from "node:fs";
+import { readFileSync, appendFileSync, existsSync, mkdirSync, statSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { dirname, join, resolve } from "node:path";
@@ -441,7 +454,7 @@ import { buildIndex } from "./jo-report.mjs";
 import { classifySchedule } from "./jo-report-audit-active.mjs";
 import {
   SOURCES, NON_CONTENT_LINK_RULES, SEND_MEASURES, T10_SCHEMA_VERSION, measuresCounted, rollUpTracking, openSnapshot, accountAvailability, healthAvailability, maskMessage,
-  categoryTable, validateCategories, OTHER_CATEGORY, FAILURE_CATEGORIES, STEP_FAILURE_CATEGORIES, cronLastDue, QUIET_DUE_DAYS_DEFAULT, kindOf, isExpectedKind,
+  categoryTable, validateCategories, OTHER_CATEGORY, UNCLASSIFIED_CATEGORY, UNKNOWN_KIND, FAILURE_CATEGORIES, STEP_FAILURE_CATEGORIES, cronLastDue, QUIET_DUE_DAYS_DEFAULT, kindOf, isExpectedKind,
 } from "./engagement-query.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -785,7 +798,7 @@ export const ROW_READERS = Object.freeze({
   },
   // Failed participants: a per-program total (rows and occurrences), the one read the object allows (S3b).
   "health-reasons-total": (row) => ({ programId: str(cellValue(row[col.field(FAILED, FAILED_SRC.programField)])), n: cellNumber(row[col.count(FAILED)]), occurrences: cellNumber(row[col.sum(FAILED, FAILED_SRC.occurrencesField)]) }),
-  "health-reasons-sample": (row) => ({ programId: str(cellValue(row[col.field(FAILED, FAILED_SRC.programField)])), messages: readFailureReasons(cellRaw(row[col.field(FAILED, FAILED_SRC.reasonField)])) }),
+  "health-reasons-sample": (row) => ({ programId: str(cellValue(row[col.field(FAILED, FAILED_SRC.programField)])), messages: readFailureReasons(cellRaw(row[col.field(FAILED, FAILED_SRC.reasonField)])), occurrences: cellNumber(row[col.field(FAILED, FAILED_SRC.occurrencesField)]) }),
   "health-states": (row) => ({ programId: str(cellValue(row[col.field(PARTICIPANTS, PARTICIPANT_SRC.programField)])), state: str(cellValue(row[col.field(PARTICIPANTS, PARTICIPANT_SRC.stateField)])), n: cellNumber(row[col.count(PARTICIPANTS)]) }),
   "health-days": (row) => ({ programId: str(cellValue(row[col.field(LOG, LOG_SRC.programField)])), day: cellDay(row[col.day(LOG, LOG_SRC.dateField)]), n: cellNumber(row[col.count(LOG)]) }),
   // The health signals' own reads (F-491): the sync heartbeat per source, admissions per day, refusals per
@@ -1431,10 +1444,36 @@ export function listedPrograms(pages) {
         audienceType: str(p.advancedOutreachType), supergroup: null, group: null, folderId: str(p.folderId),
         // What the list says of the program's participant sync (F-491); null when it does not say.
         syncScheduleDisabled: typeof p.participantSyncScheduleDisabled === "boolean" ? p.participantSyncScheduleDisabled : null,
+        // When the list says the program was last modified (epoch ms → ISO; 0 and absent are "not said"): a KB doc
+        // written before it is behind the tenant (F-491, redesigned 2026-10-08).
+        modifiedAt: typeof p.modified_date === "number" && p.modified_date > 0 ? new Date(p.modified_date).toISOString() : null,
       });
     }
   }
   return out;
+}
+/**
+ * Where the KB is behind the tenant for the pull's programs (F-491, redesigned
+ * 2026-10-08): the KB is the ONE source of schedules, so a program it does not
+ * document is named (its schedule is unknown to the pull, never guessed), and a
+ * documented program the list says was modified after its doc was written is
+ * named as behind. Both are what a narrow refresh re-documents; the plan prices
+ * it. With no KB at all every program is undocumented by construction, and that
+ * is said once (source "none"), not per program.
+ * @param {Map<string, {id: string, modifiedAt?: ?string}>} selected
+ * @param {?{schedules?: Object<string, {asOf: ?string}>}} kbSteps
+ * @returns {{source: "kb"|"none", undocumented: string[], behind: Array<{programId: string, asOf: ?string, modifiedAt: string}>}}
+ */
+export function kbGap(selected, kbSteps) {
+  if (!kbSteps?.schedules) return { source: "none", undocumented: [], behind: [] };
+  const undocumented = [];
+  const behind = [];
+  for (const p of [...selected.values()].sort((a, b) => cmpKey(a.id, b.id))) {
+    const doc = kbSteps.schedules[p.id];
+    if (!doc) undocumented.push(p.id);
+    else if (p.modifiedAt != null && doc.asOf != null && String(p.modifiedAt) > String(doc.asOf)) behind.push({ programId: p.id, asOf: doc.asOf, modifiedAt: p.modifiedAt });
+  }
+  return { source: "kb", undocumented, behind };
 }
 /** A jo p describe payload → the same program fields; describe carries the status as a string. */
 export function describedProgram(payload) {
@@ -1446,7 +1485,7 @@ export function describedProgram(payload) {
     statuses: (Array.isArray(st) ? st : [st]).filter((s) => typeof s === "string" && s),
     model: str(ao.advancedOutreachModel), modelName: str(ao.advancedOutreachModelName),
     audienceType: str(ao.advancedOutreachType), supergroup: null, group: null, folderId: str(ao.folderId),
-    syncScheduleDisabled: null,
+    syncScheduleDisabled: null, modifiedAt: null,
   };
 }
 
@@ -2265,9 +2304,13 @@ export function fetchEngagement(ctx) {
     for (const u of recs) for (const row of u.rows) rows += ROW_READERS["health-reasons-total"](row).n ?? 0;
     return rows;
   })();
-  // The step names and schedules from the KB, read once and kept with the run (reduce reads the file).
-  const kbSteps = kbDir ? (existsSync(join(runDir, "kb-steps.json")) ? readJsonFile(join(runDir, "kb-steps.json")) : readKbSteps(kbDir, params.today)) : null;
-  if (kbDir && !existsSync(join(runDir, "kb-steps.json"))) writeFileAtomicSync(join(runDir, "kb-steps.json"), JSON.stringify(kbSteps));
+  // The step names and schedules from the KB, read once and kept with the run (reduce reads the file) — unless the
+  // KB moved since (its manifest's stamp differs: a narrow refresh between a plan and its run, F-491), when it is
+  // read again, so a run never judges from the copy a refresh just superseded.
+  const kbStamp = kbDir ? kbManifestStamp(kbDir) : null;
+  const kbCached = kbDir && existsSync(join(runDir, "kb-steps.json")) ? readJsonFile(join(runDir, "kb-steps.json")) : null;
+  const kbSteps = kbDir ? (kbCached && kbCached.stamp === kbStamp ? kbCached : readKbSteps(kbDir, params.today)) : null;
+  if (kbDir && kbSteps !== kbCached) writeFileAtomicSync(join(runDir, "kb-steps.json"), JSON.stringify(kbSteps));
   // The row budget (S3b): a unit whose count-first read says it exceeds MAX_PAGES pages is not read.
   const rowBudget = params.pageSize * (params.maxPages ?? MAX_PAGES);
   const tooLarge = (u) => (expectedRows(u, base) ?? 0) > rowBudget;
@@ -2341,6 +2384,13 @@ export function fetchEngagement(ctx) {
   };
   const plannedSamples = samples.participantFailures.planned + samples.bounceReasons.planned;
   const sampleFamilies = { ...(samples.participantFailures.planned ? { "health-reasons-sample": samples.participantFailures.planned } : {}), ...(samples.bounceReasons.planned ? { "health-bounce-sample": samples.bounceReasons.planned } : {}) };
+  const gap = kbGap(decision.selected, kbSteps);
+  const refreshable = [...gap.undocumented.filter((id) => listed.has(id)), ...gap.behind.map((b) => b.programId)];
+  const kbPlan = {
+    source: gap.source, undocumented: gap.undocumented.length, behind: gap.behind.length, unlisted: gap.undocumented.filter((id) => !listed.has(id)).length,
+    programs: refreshable, refreshSeconds: refreshable.length * CALL_SECONDS.describe,
+    keysFile: refreshable.length ? join(runDir, KB_GAP_KEYS_FILE) : null, listFile: refreshable.length ? join(runDir, KB_GAP_LIST_FILE) : null,
+  };
   const estimate = {
     mode: refresh.mode, why: refresh.why,
     thisRun: { calls: calls(units) + ownReads, seconds: seconds(units) + describeSeconds(ownReads), units: units.length, byFamily: { ...familyCounts(units, base, params.pageSize), ...(ownReads ? sampleFamilies : {}) } },
@@ -2358,8 +2408,18 @@ export function fetchEngagement(ctx) {
     // The row budget and what exceeds it (a health part over it is not read; the click detail refused above).
     rowBudget: { rows: rowBudget, pages: params.maxPages ?? MAX_PAGES, overBudget },
     token: { expiresInSeconds: whoami.expiresInSeconds, fits: seconds(units) + describeSeconds(ownReads) + params.tokenMarginSeconds <= whoami.expiresInSeconds },
+    // Where the KB is behind the tenant for the selected programs (F-491, redesigned 2026-10-08), priced as the
+    // narrow refresh that closes it (one describe per program), with its inputs written beside this plan: the
+    // manifest keys of every such program, and the list rows of the undocumented ones (what registers them).
+    // A program the list itself lacks (described live) has no row to register and is counted apart.
+    kb: kbPlan,
   };
   const programs = { listed: listed.size, selected: selectedIds.length, deleted: decision.deleted.size, unselected: decision.unselected.size };
+  if (kbPlan.undocumented + kbPlan.behind) {
+    const listRows = pages.flatMap((pg) => (Array.isArray(pg?.data?.advancedOutreaches) ? pg.data.advancedOutreaches : [])).filter((r) => gap.undocumented.includes(str(r?.advancedOutreachId)));
+    writeFileAtomicSync(join(runDir, KB_GAP_KEYS_FILE), JSON.stringify(kbPlan.programs.map((id) => `journey/${id}`), null, 2));
+    writeFileAtomicSync(join(runDir, KB_GAP_LIST_FILE), JSON.stringify({ result: true, data: { advancedOutreaches: listRows } }, null, 2));
+  }
   writeFileAtomicSync(join(runDir, "plan.json"), JSON.stringify({ estimate, programs, refresh: { ...refresh, carriedPrograms: [...refresh.carriedPrograms] } }, null, 2));
   if (phase === "plan") return conclude({ whoami, estimate, programs });
 
@@ -2436,6 +2496,23 @@ export function fetchEngagement(ctx) {
 
 // Step names and order per program, from the KB's program docs through the one
 // parser of that payload (jo-report). Only email steps are kept.
+// What the KB's manifest file looks like on disk (size and mtime): every KB write
+// (a refresh, a describe-batch) rewrites it, so a run directory's kb-steps.json is
+// re-read when this changes (F-491). Null when the file is missing.
+function kbManifestStamp(kbDir) {
+  try {
+    const s = statSync(join(kbDir, "_manifest.json"));
+    return `${s.size}:${Math.floor(s.mtimeMs)}`;
+  } catch {
+    return null;
+  }
+}
+// The manifest keys of the programs the KB is behind on, and the list rows of
+// those it has never documented, written by plan beside plan.json: what a
+// narrow refresh (manifest upsert-batch --partial, mark --status stale,
+// describe-batch --keys-file) takes as its inputs (F-491, redesigned 2026-10-08).
+export const KB_GAP_KEYS_FILE = "kb-gap-keys.json";
+export const KB_GAP_LIST_FILE = "kb-gap-list.json";
 function readKbSteps(kbDir, today = null) {
   const { index, warnings } = buildIndex({ kbDir });
   const programs = {};
@@ -2450,7 +2527,7 @@ function readKbSteps(kbDir, today = null) {
       .filter((s) => s.emailTemplateId != null || s.variantTemplateIds.length)
       .map((s) => ({ stepId: str(s.stepId), stepName: s.stepName ?? null, order: typeof s.order === "number" ? s.order : null, templateIds: [...new Set([s.emailTemplateId, ...s.variantTemplateIds].filter(Boolean))] }));
   }
-  return { source: "kb", programs, schedules, warnings: warnings.length, today };
+  return { source: "kb", programs, schedules, warnings: warnings.length, today, stamp: kbManifestStamp(kbDir) };
 }
 /**
  * A program's ONE schedule for the program dimension (S3b): with several, the
@@ -3149,7 +3226,9 @@ export function reduceEngagement(input) {
           }
         }
       }
-      // Each row carries its category's KIND (F-491, 2026-10-08) and the flag derived from it; "other" is a program error.
+      // Each row carries its category's KIND (F-491, 2026-10-08) and the flag derived from it. The remainder — text
+      // the shipped list does not name — is UNCLASSIFIED, kind unknown (F-484, redesigned 2026-10-08): the same
+      // label an unmatched refusal wording carries, and the lists treat it as a failure needing investigation.
       const kindOfStep = new Map(STEP_FAILURE_CATEGORIES.map((c) => [c.id, kindOf(c)]));
       for (const k of new Set([...totals.keys(), ...byCat.keys()])) {
         const [programId, month] = JSON.parse(k);
@@ -3159,7 +3238,7 @@ export function reduceEngagement(input) {
           if (n) healthFacts.stepFailures.push({ programId, month, category, kind: kindOfStep.get(category) ?? "program-error", expected: isExpectedKind(kindOfStep.get(category)), participants: n });
         }
         const other = (totals.get(k) ?? 0) - counted;
-        if (other) healthFacts.stepFailures.push({ programId, month, category: OTHER_CATEGORY, kind: "program-error", expected: false, participants: other });
+        if (other) healthFacts.stepFailures.push({ programId, month, category: UNCLASSIFIED_CATEGORY, kind: UNKNOWN_KIND, expected: false, participants: other });
         if (other < 0) healthStats.categories.overlapRows++;
       }
       healthFacts.stepFailures.sort(byKeys("programId", "month", "category"));
@@ -3188,25 +3267,31 @@ export function reduceEngagement(input) {
           const texts = new Map();
           const split = new Map();
           let rows = 0;
-          const take = (raw) => {
+          // A text no category matches is UNCLASSIFIED, kind unknown — one label here, in the split and in every
+          // list, never null and never a known kind (F-484, redesigned 2026-10-08). Each text carries the rows
+          // (participants) that bore it and their occurrences (how many times those participants were refused in
+          // all): a reader asking "what keeps people out" wants the second; "how many people" the first.
+          const take = (raw, occurrences) => {
             const message = maskMessage(raw);
             if (message == null) return;
             rows++;
-            texts.set(message, (texts.get(message) ?? 0) + 1);
+            const t = texts.get(message) ?? { count: 0, occurrences: 0 };
+            texts.set(message, { count: t.count + 1, occurrences: t.occurrences + occurrences });
             const c = matchCategory(message, categories);
-            const key = c?.id ?? OTHER_CATEGORY;
-            const kind = c ? kindOf(c) : "program-error";
-            split.set(key, { category: key, kind, expected: isExpectedKind(kind), participants: (split.get(key)?.participants ?? 0) + 1 });
+            const key = c?.id ?? UNCLASSIFIED_CATEGORY;
+            const kind = c ? kindOf(c) : UNKNOWN_KIND;
+            const s = split.get(key);
+            split.set(key, { category: key, kind, expected: isExpectedKind(kind), participants: (s?.participants ?? 0) + 1, occurrences: (s?.occurrences ?? 0) + occurrences });
           };
           for (const r of u.rows) {
-            if (family === "health-bounce-sample") take(r?.message);
-            else for (const m of Array.isArray(r?.messages) ? r.messages : []) take(m);
+            if (family === "health-bounce-sample") take(r?.message, 1);
+            else for (const m of Array.isArray(r?.messages) ? r.messages : []) take(m, Number.isFinite(r?.occurrences) && r.occurrences > 0 ? r.occurrences : 1);
           }
-          const top = [...texts].sort((a, b) => b[1] - a[1] || cmpKey(a[0], b[0])).slice(0, SAMPLES_PER_PROGRAM);
+          const top = [...texts].sort((a, b) => b[1].count - a[1].count || cmpKey(a[0], b[0])).slice(0, SAMPLES_PER_PROGRAM);
           healthStats.samples[partName] += top.length;
-          for (const [message, count] of top) {
+          for (const [message, t] of top) {
             const c = matchCategory(message, categories);
-            healthFacts.failureSamples.push({ programId, part: partName, message, category: c?.id ?? null, kind: c ? kindOf(c) : null, expected: c ? isExpectedKind(kindOf(c)) : false, count, pulledAt });
+            healthFacts.failureSamples.push({ programId, part: partName, message, category: c?.id ?? UNCLASSIFIED_CATEGORY, kind: c ? kindOf(c) : UNKNOWN_KIND, expected: c ? isExpectedKind(kindOf(c)) : false, count: t.count, occurrences: t.occurrences, pulledAt });
           }
           if (partName === "participantFailures") for (const s of split.values()) healthFacts.entrySamples.push({ programId, ...s, sampleRows: rows, pulledAt });
         }
@@ -3286,6 +3371,7 @@ export function reduceEngagement(input) {
     }
   }
   const withDesign = [...selected.keys()].filter((p) => design[p]).length;
+  const gap = kbGap(selected, kbSteps);
   const honesty = {
     excluded,
     rows: rowStats,
@@ -3294,6 +3380,9 @@ export function reduceEngagement(input) {
     // Counted from the account grain: not known when that grain was not pulled.
     noCompanyLink: { sent: !params.accounts.pull ? null : byAccount.filter((r) => r.bucket === "no-company-link" && r.provenance === "pulled").reduce((s, r) => s + r.sent, 0) },
     stepNames: { source: kbSteps ? "kb" : "none", programsWithDesign: withDesign, programsWithout: selected.size - withDesign },
+    // Where the KB is behind the tenant (F-491, redesigned 2026-10-08): the programs it does not document and the
+    // ones modified after their doc. The health signals read it; the caveat names it; a narrow refresh closes it.
+    kb: gap,
     accountNames: { requested: params.accounts.names ? accountKeys.length : 0, resolved: namesResolved },
     clicks,
     responses: { available: surveyAvailable, ...respStats },
@@ -3315,6 +3404,13 @@ export function reduceEngagement(input) {
   const healthMissing = Object.entries(healthMeta.parts).filter(([, p]) => !p.pulled).map(([name, p]) => ({ part: name, reason: p.reason }));
   if (healthMissing.length) caveats.push({ id: "health-incomplete", detail: { parts: healthMissing } });
   if (healthFacts.schedules.length) caveats.push({ id: "schedules-from-kb", detail: { oldest: healthFacts.schedules.map((r) => r.asOf).filter(Boolean).sort()[0] ?? null } });
+  if (gap.source === "kb" && gap.undocumented.length + gap.behind.length) caveats.push({ id: "kb-behind-tenant", detail: { undocumented: gap.undocumented.length, behind: gap.behind.length, programs: [...gap.undocumented, ...gap.behind.map((b) => b.programId)], keysFile: KB_GAP_KEYS_FILE, refreshSeconds: (gap.undocumented.length + gap.behind.length) * CALL_SECONDS.describe } });
+  {
+    // Wordings no category knows (F-484, redesigned 2026-10-08): the unclassified sample texts and the step remainder.
+    const unc = healthFacts.failureSamples.filter((r) => r.category === UNCLASSIFIED_CATEGORY);
+    const stepUnc = healthFacts.stepFailures.filter((r) => r.category === UNCLASSIFIED_CATEGORY && r.participants > 0).reduce((s, r) => s + r.participants, 0);
+    if (unc.length || stepUnc) caveats.push({ id: "unclassified-wordings", detail: { wordings: new Set(unc.map((r) => r.message)).size, programs: new Set(unc.map((r) => r.programId)).size, participants: unc.reduce((s, r) => s + r.count, 0), occurrences: unc.reduce((s, r) => s + (r.occurrences ?? r.count), 0), stepParticipants: stepUnc } });
+  }
   const allTime = HEALTH_PARTS.filter((name) => healthMeta.parts[name]?.pulled && PART_BASIS[name] === "all-time");
   if (allTime.length) caveats.push({ id: "health-all-time", detail: { parts: allTime, reason: "all-time" } });
   if (healthMeta.parts.participantFailures?.pulled && healthMeta.categories?.participantFailures.counted === false) caveats.push({ id: "participant-failures-no-breakdown", detail: { reason: healthMeta.categories.participantFailures.reason, expectedReasons: (params.health?.expectedReasons ?? []).length } });

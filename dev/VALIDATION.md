@@ -1749,6 +1749,56 @@ RE-VERIFICATION of F-484, F-491 and F-492 by their Judge lines plus these checks
   digit in a label still masks whole to `<id>` (accepted in the Fix note). Bradley confirmed hosts unmasked as shipped; F-492
   VERIFIED.
 
+### Re-banked for V4 after the S3b fix round 3 (builder, 2026-10-08, feat/jo-dash-s3b-health-batch; the branch's next handoff token)
+
+Y2's participant half and Y6 are REPLACED again by the versions below (F-484 redesigned a second time: the invariant
+core of a product wording, and "unclassified" as one explicit state; F-491 redesigned: the KB is the one source of
+schedules, what it lacks is named and a narrow refresh is offered). Y20 is new (the ask and the narrow refresh, walked
+in the email-engagement skill — its SKILL.md changed this round and it is model-invocable, so the tester session
+invokes it). The build session measured first on 2026-10-08 (six reads on Bradley's token: two `rp schema`, one
+`jo p list` page, two 2000-row refusal pages over the day window; shapes in `dev/S3B-FIX-ROUND-BRIEF.md` § Round 3).
+Round type: RE-VERIFICATION of F-484 and F-491 by their Judge lines plus these checks; nothing else is owed. Every
+other check of this section stands as last re-banked.
+
+- Y2 (participant half, re-banked for V4). Y1's flags, a full pull, no --previous. Pass bar, from F-484's Judge line:
+  every structural arm of V3 still holds (withFailures equals the direct count, one window object for the count and
+  every page, no empty pick, OccurrenceCount DESC); the dominant program's `failureSamples` row for `Custom field
+  contains Invalid value {null} for EMAIL data type` reads category `invalid-field-value`, kind `bad-address`,
+  with `occurrences` far above `count` (one key was refused order 10^4 times at the build), and its `entrySamples`
+  row carries the same category and kind; the five programs whose refusals carry the `Recipient Email Address field`
+  spelling land in the SAME category; no `failureSamples` or `entrySamples` row carries category null, kind null or
+  `other`; every row that reads `unclassified` reads kind `unknown` in both tables, is counted in the
+  `unclassified-wordings` caveat (wordings, programs, participants, occurrences) and in its program's
+  `signals.entry.sample.unclassified`, and a program kept from admitting anyone by such a wording is on Only refused
+  participants arriving. Bradley reads the dominant program's split and EVERY unclassified wording (none is expected:
+  the build's two 2000-row pages matched every other wording; one that appears is reported through report-bug as the
+  caveat says, and recorded here with its masked text).
+- Y6 (the lists, re-banked for V4). Pass bar, from F-491's Judge line: BEFORE any refresh, `plan` prints
+  `estimate.kb` naming every selected program the KB has no doc for (12 at V3: eleven DRIPV2 one-offs and the daily
+  program Bradley read in the UI) and every documented program modified after its doc, `refreshSeconds` 3 per program,
+  `unlisted` the programs the list itself lacks, and the two files beside plan.json (`kb-gap-keys.json`: the
+  manifest keys; `kb-gap-list.json`: the list rows of the undocumented ones in the list's envelope); a run WITHOUT
+  the refresh reads every undocumented program as Cannot judge yet with `signals.why` no-doc, `schedule.state`
+  undocumented, `ingest.state` cannot-judge and `finished` false — none on Finished, none with ingest one-time —
+  and `honesty.kb` and the `kb-behind-tenant` caveat name them; a documented program the list says was modified
+  after its doc reads with `signals.schedule.docBehind` true and is judged from the doc. The eleven one-offs moving
+  from Finished (true at V3) to Cannot judge yet is EXPECTED before the refresh and is the ask's reason; record the
+  counts per list before and after. AFTER Y20's refresh and the re-plan, the formerly undocumented daily program
+  reads by its own cron (recurring; ingest on-schedule or overdue by its heartbeat) and the one-offs read Finished
+  again; Bradley reads each list that changed, his words verbatim. With a plain `--quiet-due-days` change nothing
+  here moves.
+- Y20 (the ask and the narrow refresh, new; the walk of the changed SKILL.md). In the tester session, the
+  email-engagement skill invoked on the production tenant with Y1's flags: at step 2 the skill tells the user the two
+  counts (undocumented, behind) and `estimate.kb.refreshSeconds` and ASKS; the tester records the ask's text
+  verbatim. Bradley says yes: the three commands run once for real, in order, exactly as the skill spells them
+  (upsert-batch --partial over `kb-gap-list.json`, skipped only if undocumented is 0; mark --status stale over
+  `kb-gap-keys.json`; describe-batch --keys-file over the same, `moreRemaining` false), each exit 0 and its summary
+  recorded; the re-issued plan (same run) reads `estimate.kb.undocumented` 0 and `behind` 0 (or names what it
+  could not register: `unlisted`), and the run's `kb-steps.json` carries a different `stamp` from before the
+  refresh. Guard-wiring for the round: the describe-batch step is reads only; the KB writes are workspace files. If
+  Bradley says no, the walk records the ask and the caveat's text on the report instead, and Y6's "after" half is
+  banked, not failed.
+
 ## DSH-2 — the dashboard page built over a real snapshot: filtered in a browser, its size measured, a CSV export opened in a spreadsheet (banked 2026-10-04, builder, Session S4a; verdict at V2)
 
 Owed by: V2, the batched verdict session after S4c, in the consumer workspace with the plugin loaded from `dev`
