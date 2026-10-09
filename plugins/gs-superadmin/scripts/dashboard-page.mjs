@@ -43,8 +43,8 @@ import { mkdirSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { makeCliHelpers, readJsonFile, writeFileAtomicSync, isMainModule } from "./doc-lib.mjs";
 import * as engine from "./engagement-query.mjs";
-import { openSpec, SPEC_DESCRIPTIONS, TABS } from "./dashboard-spec.mjs";
-import { applyGroups } from "./dashboard-groups.mjs";
+import { openSpec, SPEC_DESCRIPTIONS, TABS, CADENCES, HEALTH_PANEL_TYPES, presetPanels, pageDateDefault, panelKnobs, describeSpec } from "./dashboard-spec.mjs";
+import { applyGroups, resolveGroups, programTraits, describeRule } from "./dashboard-groups.mjs";
 import { createDashboard, LACKS, PAGE_MODEL_VERSION } from "./dashboard-runtime.mjs";
 
 /**
@@ -58,11 +58,6 @@ const MB = 1024 * 1024;
 // Not frozen: the page-size budget. 15 MB sits under the 16 MB limit of a hosted artifact.
 export const PAGE_BUDGET = Object.freeze({ warnBytes: 5 * MB, refuseExecBytes: 15 * MB });
 export const pageFileName = (pageId) => `latest-${pageId}.html`;
-// What a page shows when its spec lists no panel. The presets' own panels are
-// DSH-4's; until then this one plain table is every preset's.
-export const DEFAULT_PANELS = Object.freeze([
-  { id: "programs", tab: "engagement", type: "table", title: "Programs", query: { groupBy: ["program"], metrics: ["sent", "uniqueRecipients", "accountsReached", "delivered", "opened", "openRate"], sort: [{ metric: "sent", dir: "desc" }] } },
-]);
 // Whether a pull holds what a tab shows: it decides if turning the tab on is a
 // rebuild or a new pull. No snapshot carries template content yet (TPL-1).
 const TAB_DATA_HELD = {
@@ -131,9 +126,32 @@ export function pageSnapshot(snapshot, page) {
     meta.health = { pulled: false, reason: "tab-off", asOf: null, dayWindow: null, parts: {} };
     facts.health = Object.fromEntries(Object.keys(facts.health ?? {}).map((k) => [k, []]));
   }
-  // The failure samples (the masked text behind the "Other" rows) are for the terminal: NEVER on a page (ruled 2026-10-05).
-  if (facts.health && "failureSamples" in facts.health) facts.health = { ...facts.health, failureSamples: [] };
+  // Aggregates only on a page (ruled 2026-10-05): the categorised rows and the counted remainders, never a distinct
+  // message and never the failure samples (the masked text behind the "Other" rows is for the terminal).
+  if (facts.health) facts.health = engine.healthForPage(facts.health);
+  // A page whose definitions show no source detail names no internal domain and no unsubscribe link (ruled
+  // 2026-10-05): the values leave the page's copy of the pull's parameters; the recipient class on every row stays.
+  if (!page.sourceDetail && meta.params) meta.params = { ...meta.params, internalDomains: [], unsubscribeLinks: [], redactedOnPage: ["internalDomains", "unsubscribeLinks"] };
   return { ...snapshot, meta, dimensions, facts };
+}
+const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+/**
+ * The spec in words for the About tab, as this page may say it: on a page with
+ * no source detail the recipients sentences keep their meaning and drop the
+ * domain and link VALUES (ruled 2026-10-05).
+ * @param {T11Spec} spec @param {T11Page} page
+ */
+export function aboutSettings(spec, page) {
+  const said = describeSpec(spec);
+  if (page.sourceDetail) return said.map((d) => ({ label: d.label, text: d.text }));
+  const domains = spec.sources.reduce((n, s) => n + s.params.internalDomains.length, 0);
+  const links = spec.sources.reduce((n, s) => n + s.params.unsubscribeLinks.length, 0);
+  // Keyed on the path a description covers, never its label: a relabel cannot un-redact.
+  const withheld = (d) =>
+    d.covers.includes("sources[].params.internalDomains[]") ? [domains ? `Addresses at the company's own ${plural(domains, "email domain")} are internal.` : "No internal domain is named, so every recipient counts as external."]
+      : d.covers.includes("sources[].params.unsubscribeLinks[]") ? [links ? `Clicks on the tenant's own ${plural(links, "unsubscribe link")} are unsubscribe clicks, not content clicks.` : "No unsubscribe link of the tenant's own is named; only the usual unsubscribe wordings are left out of click figures."]
+        : d.text;
+  return said.map((d) => ({ label: d.label, text: withheld(d) }));
 }
 
 /**
@@ -159,17 +177,33 @@ export function pageModel(spec, snapshot, page) {
   const offered = (id) => spec.globalFilters.some((f) => f.id === id && f.enabled);
   const recipients = spec.globalFilters.find((f) => f.id === "recipientClass");
   const kept = pageSnapshot(snapshot, page);
+  // The group rules as they resolved over this snapshot: what each matched, and who is Ungrouped (R26, ruled 2026-10-04).
+  const resolution = resolveGroups({ programs: programTraits(snapshot), groups: spec.groups });
+  const matched = spec.groups.rules.map((_, i) => resolution.assignments.filter((a) => a.by.supergroup === `rule ${i + 1}` || a.by.group === `rule ${i + 1}`).length);
+  const names = new Map(snapshot.dimensions.programs.map((p) => [p.id, p.name]));
   return {
     v: PAGE_MODEL_VERSION,
     slug: spec.slug,
     title: spec.title,
     page: {
-      id: page.id, preset: page.preset, title: page.title, statusDefault: page.statusDefault, tabs,
-      panels: (page.panels.length ? page.panels : DEFAULT_PANELS).filter((p) => on.has(p.tab)),
+      id: page.id, preset: page.preset, title: page.title, statusDefault: page.statusDefault, dateDefault: pageDateDefault(page), tabs,
+      // The panels, each health view with its knobs resolved against the spec (the page cannot read the spec).
+      panels: presetPanels(page).filter((p) => on.has(p.tab)).map((p) => (p.type in HEALTH_PANEL_TYPES ? { ...p, knobs: panelKnobs(spec, p) } : p)),
     },
     filters: { dateRange: offered("dateRange"), programs: offered("programs"), group: offered("group"), status: offered("status"), recipientClass: { enabled: !!recipients?.enabled, default: recipients?.default ?? "all" } },
     testAccounts: spec.sources.reduce((n, s) => n + s.params.testAccounts.length, 0),
     settingLabels,
+    freshness: { maxAgeDays: spec.freshness.maxAgeDays, cadence: spec.refresh.cadence, cadenceText: CADENCES[spec.refresh.cadence] ?? spec.refresh.cadence },
+    health: { silentDays: spec.health.silentDays },
+    // Health caveats and the page-level health banner are decided from the spec: is this page's Health tab on (ruled 2026-10-04).
+    healthTab: on.has("health"),
+    // The actions seam (ruled 2026-10-05, LTR-10): null on every page built here; a local app would set {base, token}.
+    actions: null,
+    about: {
+      sourceDetail: page.sourceDetail,
+      settings: aboutSettings(spec, page),
+      groups: { rules: spec.groups.rules.map((r, i) => ({ text: describeRule(r), matched: matched[i] })), ungrouped: resolution.ungrouped.map((id) => ({ id, name: names.get(id) ?? null })), overrides: Object.keys(spec.groups.overrides).length },
+    },
     snapshot: { ...kept, dimensions: packAll(kept.dimensions), facts: packAll(kept.facts) },
   };
 }
@@ -181,11 +215,23 @@ export function pageModel(spec, snapshot, page) {
 const UNSAFE_IN_SCRIPT = new RegExp(`[<>&${String.fromCharCode(0x2028, 0x2029)}]`, "g");
 const jsonForScript = (value) => JSON.stringify(value).replace(UNSAFE_IN_SCRIPT, (c) => "\\u" + c.charCodeAt(0).toString(16).padStart(4, "0"));
 const bytesOf = (text) => Buffer.byteLength(text, "utf8");
-const STYLE = `
-:root{color-scheme:light dark;--fg:#1c2330;--muted:#5b6575;--bg:#fff;--soft:#f3f5f8;--line:#d5dae2;--accent:#1f5fbf;--note:#eef3fb}
-@media (prefers-color-scheme:dark){:root{--fg:#e6e9ee;--muted:#9aa4b2;--bg:#14181f;--soft:#1c222c;--line:#333c49;--accent:#7fb0ff;--note:#1a2534}}
+// Tokens only (R28): every colour, font and radius a page uses is declared ONCE
+// here, with a dark set beside it, and every rule and every SVG mark references
+// a token. The BRAND-FACING tokens (what UX-1's default theme and UX-2's brand
+// theme replace) sit in the first block of each pair; the STATUS tokens (stale,
+// error, warning, ok, the two tracking states) sit in their own block and are
+// not part of a theme. The suite greps the rest of this sheet and the runtime's
+// SVG emitters for a literal colour or font. The series colours are the
+// validated reference palette's first four categorical slots (light and dark).
+export const TOKENS = `
+:root{color-scheme:light dark;--font:system-ui,-apple-system,"Segoe UI",sans-serif;--mono:ui-monospace,Consolas,monospace;--radius:6px;--fg:#1c2330;--muted:#5b6575;--bg:#fff;--soft:#f3f5f8;--line:#d5dae2;--accent:#1f5fbf;--note:#eef3fb;--shade:#e9edf3;--series-1:#2a78d6;--series-2:#eb6834;--series-3:#1baf7a;--series-4:#eda100}
+:root{--status-stale:#b35c00;--status-error:#d03b3b;--status-warn:#8a6d00;--status-ok:#0a7a0a;--status-not-tracked:#5b6575;--status-unknown:#6e5fb3}
+@media (prefers-color-scheme:dark){:root{--fg:#e6e9ee;--muted:#9aa4b2;--bg:#14181f;--soft:#1c222c;--line:#333c49;--accent:#7fb0ff;--note:#1a2534;--shade:#222a36;--series-1:#3987e5;--series-2:#d95926;--series-3:#199e70;--series-4:#c98500}}
+@media (prefers-color-scheme:dark){:root{--status-stale:#f0a850;--status-error:#f07070;--status-warn:#e0c060;--status-ok:#5fcf5f;--status-not-tracked:#9aa4b2;--status-unknown:#b3a6f0}}
+`;
+const STYLE = TOKENS + `
 *{box-sizing:border-box}
-body{margin:0;padding:16px;background:var(--bg);color:var(--fg);font:14px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif}
+body{margin:0;padding:16px;background:var(--bg);color:var(--fg);font:14px/1.45 var(--font)}
 .gs-root{border:0;margin:0 auto;padding:0;min-width:0;max-width:1200px}
 h1{font-size:20px;margin:0}
 h2{font-size:16px;margin:0 0 8px}
@@ -215,6 +261,7 @@ table{border-collapse:collapse;width:100%}
 th,td{text-align:left;padding:5px 8px;border-bottom:1px solid var(--line);vertical-align:top}
 th{background:var(--soft);white-space:nowrap}
 .gs-num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.gs-nowrap{white-space:nowrap}
 tfoot td{font-weight:600}
 .gs-notice{margin:8px 0;padding:10px 12px;background:var(--note);border:1px solid var(--line);border-left:4px solid var(--accent);border-radius:4px;max-width:720px}
 .gs-notice p{margin:0 0 6px}
@@ -222,9 +269,57 @@ tfoot td{font-weight:600}
 .gs-notice-head{font-weight:600}
 .gs-notice-compact{padding:6px 8px;font-size:13px}
 .gs-notice code{overflow-wrap:anywhere}
-.gs-path{color:var(--muted);font-family:ui-monospace,Consolas,monospace;font-size:12px}
-.gs-defs dt{font-weight:600;margin-top:8px}
-.gs-defs dd{margin:0}
+.gs-path,code{font-family:var(--mono);font-size:12px}
+.gs-path{color:var(--muted)}
+.gs-defs dt,.gs-settings dt,.gs-prov dt{font-weight:600;margin-top:8px}
+.gs-defs dd,.gs-settings dd,.gs-prov dd{margin:0}
+.gs-formula{margin:4px 0 0;padding-left:18px;color:var(--muted);font-size:13px}
+.gs-about{margin:0 0 20px}
+.gs-about h2{margin-top:8px}
+.gs-ungrouped.is-prominent{padding:8px 10px;border:1px solid var(--line);border-left:4px solid var(--status-warn);border-radius:4px}
+.gs-no-match{color:var(--status-warn)}
+.gs-banner{margin:8px 0;padding:8px 12px;background:var(--note);border:1px solid var(--line);border-left:4px solid var(--accent);border-radius:4px}
+.gs-banner-stale{border-left-color:var(--status-stale)}
+.gs-banner-health{border-left-color:var(--status-error)}
+.gs-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:8px}
+.gs-kpi{padding:8px 10px;background:var(--soft);border:1px solid var(--line);border-radius:var(--radius)}
+.gs-kpi p{margin:0}
+.gs-kpi-label{color:var(--muted);font-size:12px}
+.gs-kpi-value{font-size:22px;font-weight:600;font-variant-numeric:tabular-nums}
+.gs-kpi-usual,.gs-kpi-context,.gs-kpi-since{font-size:12px;color:var(--muted)}
+.gs-chart{width:100%;height:auto;display:block;max-width:900px}
+.gs-mini{height:14px;width:auto;display:inline-block;vertical-align:middle}
+.gs-svg-grid{stroke:var(--line);stroke-width:1}
+.gs-svg-axis{stroke:var(--muted);stroke-width:1}
+.gs-svg-provisional{fill:var(--shade)}
+.gs-svg-tick{fill:var(--muted);font-size:11px;font-family:var(--font)}
+.gs-svg-label{fill:var(--fg);font-size:11px;font-family:var(--font)}
+.gs-svg-line{fill:none;stroke-width:2;stroke-linejoin:round}
+.gs-svg-dot{stroke-width:2}
+.gs-svg-carried{fill:var(--bg);stroke-dasharray:2 2}
+.gs-legend{list-style:none;display:flex;flex-wrap:wrap;gap:12px;margin:4px 0 8px;padding:0;font-size:13px;color:var(--muted)}
+.gs-swatch{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;vertical-align:middle}
+.gs-fallback{margin:6px 0}
+.gs-fallback summary{cursor:pointer;color:var(--muted)}
+.gs-chip{border-radius:12px}
+.gs-chip.is-on{border-color:var(--accent);color:var(--accent);font-weight:600}
+.gs-list{margin:8px 0}
+.gs-list summary{cursor:pointer;font-weight:600}
+.gs-sub td{color:var(--muted);font-size:13px}
+.gs-sub td:first-child{padding-left:28px}
+.gs-other td{font-style:italic}
+.gs-not-tracked{color:var(--status-not-tracked);font-style:italic}
+.gs-unknown{color:var(--status-unknown);font-size:12px}
+.gs-mark{font-size:12px;cursor:help}
+.gs-info{color:var(--accent)}
+.gs-badge-stale{color:var(--status-stale);border-color:var(--status-stale)}
+.gs-badge-error{color:var(--status-error);border-color:var(--status-error)}
+.gs-badge-warn{color:var(--status-warn);border-color:var(--status-warn)}
+.gs-caveats{margin:4px 0;padding-left:18px;font-size:13px;color:var(--muted)}
+.gs-foot{margin-top:24px;border-top:1px solid var(--line);padding-top:8px}
+.gs-foot summary{cursor:pointer;color:var(--muted)}
+h3{font-size:14px;margin:12px 0 6px}
+h4{font-size:13px;margin:8px 0 4px}
 [hidden]{display:none!important}
 @media print{.gs-filters,.gs-tabs,.gs-tools{display:none}}
 `;

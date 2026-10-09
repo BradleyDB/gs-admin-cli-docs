@@ -5,6 +5,55 @@ marketplace doesn't pin versions — users get main — so entries describe what
 user who updates, not internal refactors. Entries before 0.8.0 were reconstructed from git
 history when this file was introduced.
 
+## 0.48.0 — 2026-10-09
+
+The engagement dashboard's views (DSH-4): what each page shows, and how. Still no skill
+change, and still nothing builds a page for you (that is the next session's entry
+command); `dashboard-page.mjs` builds the pages below from a spec and a snapshot.
+
+- **Every page has panels by default.** A spec that lists none takes its preset's: an
+  admin page shows headline figures, an open-rate trend and sends by month, tables by
+  program, email, step and survey, and three customer lists ranked across programs (the
+  most engaged, the least engaged and the most bounced, 25 each, over a delivered floor,
+  each account's programs underneath, in the CSV as well); a leaders' page shows the headline figures, the two
+  charts, a table by group and the ten highest and ten lowest open rates. The Health tab
+  shows send health against the usual, program health, why sends and participants fail,
+  schedules, one-time programs and the error rate by program. A spec may still list its
+  own panels; one that leaves an on tab empty is refused.
+- **Five panel types** (a headline figure, a bar chart, a monthly trend, a table, a ranked
+  list) and **four typed health views**, each with its own few settings checked when the
+  spec changes: program health (the no-send threshold adjustable in the page, 14 / 30 / 60
+  / 90 days beside the spec's own), failure reasons (expected failures behind a toggle),
+  schedules (a stale mark past the dashboard's freshness) and one-time programs (months of
+  send history). Charts are drawn by hand, take every colour from the page's token block,
+  shade the provisional month, mark carried-forward months, label a trend that starts after
+  a figure began to be counted, and carry the same rows as a table underneath.
+- **The Health tab leads with change against the usual**: each figure beside the same figure
+  over the window's closed months. Failure categories carry their definitions as tooltips
+  (never a tenant's text); when uncategorised bounces exceed a few percent the page says so
+  and names the terminal line that shows the samples; a health pull that was asked for and
+  did not complete is flagged at the top of the page. A page embeds health aggregates only:
+  rows read as text fold into the counted remainder, and the samples never leave the
+  terminal.
+- **An About tab on every page, generated from the asset**: every metric shown, defined from
+  the registry (on an admin page with its object, fields, filters, date field and
+  calculation, so a figure can be rebuilt in a Gainsight report); how to use the page; this
+  dashboard's settings with each group rule's match count and the Ungrouped bucket; where
+  the data came from; the caveats; how to refresh. A leaders' page keeps the recipients
+  sentences and drops the internal-domain and unsubscribe-link values.
+- **The ruled defaults**: an admin page opens on every program that sent, with status badges
+  and a one-click "Running now" preset; a leaders' page opens on the closed months with the
+  current month one click away (`pages[].dateDefault`, new on the spec). A stale banner
+  shows once the data is past the dashboard's freshness; a caveats footer is on every tab.
+- **The three tracking states look different**: a tracked 0% is a plain 0%, "Not tracked" is
+  a muted label with no number, and an unknown figure carries a marker with its tooltip.
+  Click columns say they count content links only; response columns carry the survey
+  caveat; an all-time figure says so; Sent stands beside every rate.
+- **The line to copy is the entry command's**: `node .gs-superadmin/plugin/scripts/dashboard.mjs
+  change <slug> <path>=<json>` for a setting (the verb lands with the entry command) and
+  `… refresh <slug>` for a figure the snapshot predates. An on Templates tab says, before
+  template content exists, that a later pull adds it, instead of standing empty (F-486).
+
 ## 0.47.0 — 2026-10-04
 
 More groundwork for the engagement dashboard: the page itself. No skill changes, and

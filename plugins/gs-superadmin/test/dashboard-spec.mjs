@@ -18,8 +18,8 @@ import { fileURLToPath } from "node:url";
 import { isDeepStrictEqual } from "node:util";
 import { makeTempDir, removeTempDir, writeFiles, runNode } from "../../../test/rig.mjs";
 import {
-  defaultSpec, validateSpec, describeSpec, openSpec, setPath, kbTenantHost, SPEC_DESCRIPTIONS, SPEC_FILE, DRAFT_FILE, T11_SCHEMA_VERSION,
-  ADAPTERS, FILTERS, TABS, CADENCES, PANEL_TYPES, PRESETS,
+  defaultSpec, validateSpec, describeSpec, describePanel, openSpec, setPath, kbTenantHost, presetPanels, panelKnobs, SPEC_DESCRIPTIONS, SPEC_FILE, DRAFT_FILE, T11_SCHEMA_VERSION,
+  ADAPTERS, FILTERS, TABS, CADENCES, PANEL_TYPES, PRESETS, HEALTH_PANEL_TYPES, DATE_DEFAULTS,
 } from "../scripts/dashboard-spec.mjs";
 import { METRICS } from "../scripts/engagement-query.mjs";
 
@@ -81,6 +81,8 @@ const CHANGES = /** @type {Array<[string, *]>} */ ([
   ["sources.0.params.selector.sentSince", "90d"], ["sources.0.params.internalDomains", ["acme.com"]], ["sources.0.params.unsubscribeLinks", ["https://www.acme.com/mail-settings"]],
   ["sources.0.params.pinnedAccounts", ["co-01"]], ["accounts.pull", true], ["groups.rules", RULES], ["groups.overrides.p-pilot", { group: "Pilots" }],
   ["health.silentDays", 45], ["pages.0.panels", PANELS], ["refresh.ownerNote", "Run on the first Monday."],
+  // The fixture's admin page keeps a status default of its own (Active), so the pages hold one page with a default and one without.
+  ["pages.0.statusDefault", ["PROCESSING"]],
 ]);
 
 try {
@@ -91,10 +93,48 @@ try {
       isDeepStrictEqual(readJson(draftAt(KB, "program-health")).spec, defaultSpec({ slug: "program-health", title: "Program health", owner: "Acme CS Ops", tenantHost: "acme.gainsightcloud.com" })), started.json ?? started.stderr);
   {
     const d = defaultSpec({ slug: "x", tenantHost: "acme.gainsightcloud.com" });
-    check("defaults: 13 months, 2 months read again, R24's account numbers kept but unused, silent after 30 days, stale after 45, Active only on the admin page and every status on the exec page, Health and Templates off on the exec page, About on both",
+    check("defaults: 13 months, 2 months read again, R24's account numbers kept but unused, silent after 30 days, stale after 45, every status on both pages (the admin page opens on every program that sent, ruled 2026-10-05), the admin page on the whole window and the leaders' page on closed months, Health and Templates off on the exec page, About on both, no panel of their own (the presets' draw)",
       d.sources[0].params.windowMonths === 13 && d.sources[0].params.repullMonths === 2 && d.sources[0].params.stepDetail === false && isDeepStrictEqual(d.accounts, { pull: false, busiest: 20, lowEngagement: 15, mostBounces: 15, lowEngagementMinDelivered: 10 }) &&
-        d.health.silentDays === 30 && d.freshness.maxAgeDays === 45 && d.refresh.cadence === "monthly" && isDeepStrictEqual(d.pages.map((p) => [p.preset, p.statusDefault, p.tabs.filter((t) => t.enabled).map((t) => t.id).join()]), [["admin", ["PROCESSING"], "engagement,health,templates,about"], ["exec", null, "engagement,about"]]) &&
+        d.health.silentDays === 30 && d.freshness.maxAgeDays === 45 && d.refresh.cadence === "monthly" && isDeepStrictEqual(d.pages.map((p) => [p.preset, p.statusDefault, p.dateDefault, p.tabs.filter((t) => t.enabled).map((t) => t.id).join(), p.panels.length]), [["admin", null, "window", "engagement,health,templates,about", 0], ["exec", null, "closed-months", "engagement,about", 0]]) &&
         d.pages[1].accountNames === false && d.publish.target === "none" && validateSpec(d).problems.length === 0);
+    // The presets' own panels (DSH-4, choice A of 2026-10-09): valid as specs, every on tab given at least one, the health set shared.
+    const withPreset = (i) => { const s = structuredClone(d); s.pages[i].panels = structuredClone(presetPanels(d.pages[i])); return s; };
+    const adminPanels = presetPanels(d.pages[0]);
+    const execPanels = presetPanels(d.pages[1]);
+    check("presets: the admin preset's panels are the ruled set — headline figures, two charts, Programs, Emails, Steps, Survey responses, the three cross-program customer lists, then the health set (send health, program health, failure reasons, schedules, one-time programs, error rate by program); the leaders' preset's are headline figures, the two charts, By group, the top and lowest ten by open rate, with the health set drawn only when its Health tab is on; both validate as a spec's own panels",
+      isDeepStrictEqual(adminPanels.map((p) => `${p.tab}:${p.type}:${p.id}`), ["engagement:kpi:headline", "engagement:line:open-rate-trend", "engagement:bar:sends-by-month", "engagement:table:programs", "engagement:table:emails", "engagement:table:steps", "engagement:table:survey-responses", "engagement:watchlist:most-engaged", "engagement:watchlist:least-engaged", "engagement:watchlist:most-bounced", "health:kpi:send-health", "health:health-silent:program-health", "health:health-reasons:failure-reasons", "health:health-schedules:schedules", "health:health-one-time:one-time", "health:table:error-rate"]) &&
+        isDeepStrictEqual(execPanels.map((p) => `${p.tab}:${p.type}:${p.id}`), ["engagement:kpi:headline", "engagement:line:open-rate-trend", "engagement:bar:sends-by-month", "engagement:table:by-group", "engagement:table:top-open-rate", "engagement:table:lowest-open-rate"]) &&
+        validateSpec(withPreset(0)).problems.length === 0 && validateSpec(withPreset(1)).problems.length === 0 &&
+        (() => { const s = structuredClone(d); s.pages[1].tabs.find((t) => t.id === "health").enabled = true; return presetPanels(s.pages[1]).filter((p) => p.tab === "health").map((p) => p.id).join() === adminPanels.filter((p) => p.tab === "health").map((p) => p.id).join(); })(),
+      [adminPanels.map((p) => p.id), validateSpec(withPreset(0)).problems, validateSpec(withPreset(1)).problems]);
+    check("every panel type has its meaning as data, the four health types each declare their knobs with a check, a default and a sentence, and the three cross-program customer lists carry a delivered floor and rank 25 (ruled 2026-10-05; labels never say churn)",
+      isDeepStrictEqual(Object.keys(PANEL_TYPES), ["kpi", "bar", "line", "table", "watchlist", "health-silent", "health-reasons", "health-schedules", "health-one-time"]) && isDeepStrictEqual(Object.keys(HEALTH_PANEL_TYPES), ["health-silent", "health-reasons", "health-schedules", "health-one-time"]) &&
+        Object.values(HEALTH_PANEL_TYPES).every((t) => Object.values(t.knobs).every((k) => ["whole", "boolean"].includes(k.kind) && typeof k.default === "function" && typeof k.say(k.default(d)) === "string" && k.say(k.default(d)).length > 10)) &&
+        isDeepStrictEqual(Object.keys(DATE_DEFAULTS), ["window", "closed-months"]) &&
+        adminPanels.filter((p) => p.type === "watchlist").every((p) => p.query.limit === 25 && p.query.groupBy.join() === "account" && p.query.having.length === 1 && !/churn/i.test(p.title)) &&
+        isDeepStrictEqual(panelKnobs(d, { type: "health-silent", knobs: {} }), { days: 30 }) && isDeepStrictEqual(panelKnobs(d, { type: "health-schedules", knobs: {} }), { staleAfterDays: 45 }) && isDeepStrictEqual(panelKnobs(d, { type: "health-one-time", knobs: { months: 3 } }), { months: 3 }) && isDeepStrictEqual(panelKnobs(d, { type: "health-reasons", knobs: {} }), { showExpected: false }) && isDeepStrictEqual(panelKnobs(d, { type: "health-silent" }), { days: 30 }));
+    const bad = (edit) => { const s = structuredClone(d); s.pages[0].panels = structuredClone(adminPanels); edit(s); return validateSpec(s).problems.map((p) => `${p.path}: ${p.problem}`); };
+    check("a health-typed panel with no knobs at all is accepted and takes the defaults, as the typedef marks them optional; knobs set to null is refused as a mistake",
+      bad((s) => { delete s.pages[0].panels[11].knobs; }).length === 0 && bad((s) => { s.pages[0].panels[11].knobs = null; }).some((p) => /panels\[11\]\.knobs: must be an object \(an empty one, or none, takes the defaults: days\)/.test(p)),
+      [bad((s) => { delete s.pages[0].panels[11].knobs; }), bad((s) => { s.pages[0].panels[11].knobs = null; })]);
+    check("a health-typed panel is checked per type at change (ruled 2026-10-05, option B): a knob the type lacks, a value out of range, a query on a health view, knobs on a query panel, a health view off the health tab, a kpi grouped by something, a line not by month, a bar by two dimensions, a watchlist not by account, a chart mixing a rate with a count, and a date default outside the two are each refused by their field",
+      bad((s) => { s.pages[0].panels[11].knobs = { days: 0, weeks: 1 }; }).join("|").includes("pages[0].panels[11].knobs.days: must be a whole number from 1 to 366") && bad((s) => { s.pages[0].panels[11].knobs = { weeks: 1 }; }).some((p) => /knobs\.weeks: is not a knob of a health-silent panel \(days\)/.test(p)) &&
+        bad((s) => { s.pages[0].panels[11].query = { metrics: ["sent"] }; }).some((p) => /panels\[11\]\.query: is not a field of a health-silent panel/.test(p)) && bad((s) => { s.pages[0].panels[3].knobs = {}; }).some((p) => /panels\[3\]\.knobs: is not a field of a table panel/.test(p)) &&
+        bad((s) => { s.pages[0].panels[11].tab = "engagement"; }).some((p) => /panels\[11\]\.tab: must be health/.test(p)) && bad((s) => { s.pages[0].panels[0].query.groupBy = ["program"]; }).some((p) => /panels\[0\]\.query\.groupBy: must be empty on a kpi panel/.test(p)) &&
+        bad((s) => { s.pages[0].panels[1].query.groupBy = ["program"]; }).some((p) => /panels\[1\]\.query\.groupBy: must be \["month"\] on a line panel/.test(p)) && bad((s) => { s.pages[0].panels[2].query.groupBy = ["month", "program"]; }).some((p) => /panels\[2\]\.query\.groupBy: must name exactly one dimension on a bar panel/.test(p)) &&
+        bad((s) => { s.pages[0].panels[7].query.groupBy = ["program"]; }).some((p) => /panels\[7\]\.query\.groupBy: must be \["account"\]/.test(p)) && bad((s) => { s.pages[0].panels[2].query.metrics = ["sent", "openRate"]; }).some((p) => /panels\[2\]\.query\.metrics: must be all rates or all counts on a bar panel/.test(p)) &&
+        bad((s) => { s.pages[0].dateDefault = "all-time"; }).some((p) => /pages\[0\]\.dateDefault: must be one of window, closed-months/.test(p)) && bad((s) => { s.pages[0].panels[13].knobs = { staleAfterDays: true }; }).some((p) => /knobs\.staleAfterDays: must be a whole number/.test(p)) && bad((s) => { s.pages[0].panels[12].knobs = { showExpected: "yes" }; }).some((p) => /knobs\.showExpected: must be true or false/.test(p)),
+      [bad((s) => { s.pages[0].panels[11].knobs = { days: 0, weeks: 1 }; }), bad((s) => { s.pages[0].panels[7].query.groupBy = ["program"]; })]);
+    check("F-486: a list of panels that leaves an on tab with none is refused by name (Templates excepted: it has no panel type yet), an empty list takes the preset's, and a page may still turn a tab off",
+      bad((s) => { s.pages[0].panels = s.pages[0].panels.filter((p) => p.tab !== "health"); }).join("|").includes("pages[0].panels: lists no panel for the health tab, which is on") && bad((s) => { s.pages[0].panels = s.pages[0].panels.filter((p) => p.tab !== "engagement"); }).some((p) => /lists no panel for the engagement tab/.test(p)) &&
+        bad((s) => { s.pages[0].panels = []; }).length === 0 && bad((s) => { s.pages[0].tabs.find((t) => t.id === "health").enabled = false; s.pages[0].panels = s.pages[0].panels.filter((p) => p.tab !== "health"); }).length === 0 && !bad((s) => { s.pages[0].tabs.find((t) => t.id === "templates").enabled = true; }).length);
+    check("describePanel says each panel exactly: a query panel's type, metrics, grouping and top-N, a health view's type and every knob's sentence from the type's own table, so a knob cannot sit in a spec without words for it",
+      describePanel(d, adminPanels[3]) === `"Programs" on the engagement tab: a table of Sent, Unique recipients, Accounts reached, Delivered, Opened, Open rate, Clicked, Click rate, Bounced, Send failures, Error rate by program.` &&
+        describePanel(d, execPanels[4]) === `"Top programs by open rate" on the engagement tab: a table of Sent, Open rate by program, the top 10 by Open rate.` &&
+        describePanel(d, adminPanels[11]) === `"Program health" on the health tab: ${PANEL_TYPES["health-silent"]}; the no-send threshold starts at 30 days (14, 30, 60 and 90 are one click away).` &&
+        describePanel(d, { ...adminPanels[14], knobs: { months: 12 } }).endsWith("each program's sends over the last 12 months.") && describeSpec(d).find((x) => x.label === "Pages").text.length === 2 + adminPanels.length + execPanels.length &&
+        describeSpec(d).find((x) => x.label === "Pages").text[0].includes("Starts on the whole window, with the current month marked provisional.") && describeSpec(d).find((x) => x.label === "Pages").text[1 + adminPanels.length].includes("Starts on the closed months, with the current month one click away."),
+      [describePanel(d, adminPanels[3]), describePanel(d, execPanels[4]), describePanel(d, adminPanels[11])]);
   }
   const first = set("program-health", CHANGES.slice(0, 6), ["--answered", "purpose", "--answered", "programs"]);
   check("set: several fields in one call, each a path and a JSON value, with the answers they settle marked as answered",
@@ -146,7 +186,7 @@ try {
   check("show: the spec in words, one entry per setting — the programs selector, the internal domain, the unsubscribe link, accounts on with its numbers, each group rule in order, the silent threshold, each page's tabs and status default, the cadence",
     shown.code === 0 && /programs that have sent since 90 days before each refresh/.test(line("Programs")) && /acme\.com are internal/.test(line("Internal recipients")) && /www\.acme\.com\/mail-settings are unsubscribe clicks/.test(line("Unsubscribe link")) &&
       /20 busiest accounts, the 15 lowest open rates among accounts with at least 10 delivered, and the 15 with the most bounces/.test(line("Accounts")) && /1\. Supergroup "Surveys": programs that send a survey\./.test(line("Groups")) && /1 program placed by hand/.test(line("Groups")) &&
-      /no send in 45 days/.test(line("Silent programs")) && /Shows Active programs at first/.test(line("Pages")) && /programs of every status at first/.test(line("Pages")) && /2 panels/.test(line("Pages")) && /every month.*first Monday/.test(line("Refresh")), shown.json?.settings ?? shown.stderr);
+      /no send in 45 days/.test(line("Silent programs")) && /Shows Active programs at first/.test(line("Pages")) && /programs of every status at first/.test(line("Pages")) && /2 panels/.test(line("Pages")) && /No panel of its own: the exec preset's 6 panels/.test(line("Pages")) && /every month.*first Monday/.test(line("Refresh")), shown.json?.settings ?? shown.stderr);
   const saved = run("save", ["--slug", "program-health"]);
   const spec = existsSync(specAt(KB, "program-health")) ? readJson(specAt(KB, "program-health")) : null;
   check("save: the draft becomes the saved spec and the draft is gone; the saved file is the spec alone, with no draft wrapper",

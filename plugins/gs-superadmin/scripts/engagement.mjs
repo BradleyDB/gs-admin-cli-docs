@@ -277,8 +277,10 @@
  *   uncategorised bounce text of the pull's window, newest first. `category`
  *   and `expected` (additive, F-491) are the category the text matched
  *   client-side and whether it is a business rule; `kind` (additive, F-491
- *   2026-10-08) its FAILURE_KINDS kind. A text NO category matches is category
- *   "unclassified", kind "unknown" (F-484, redesigned 2026-10-08) — never null
+ *   2026-10-08) its FAILURE_KINDS kind. A refusal text NO category matches is
+ *   category "unclassified", kind "unknown" (F-484, redesigned 2026-10-08); a
+ *   bounce text none matches is category "other", kind "unknown" — the bounce
+ *   table's own remainder label (F-496) — never null
  *   (null only on a snapshot made before that); `count` is how many rows of
  *   the page carried the text (participants) and `occurrences` (additive,
  *   F-484 2026-10-08) how many times those participants were refused in all;
@@ -1053,10 +1055,14 @@ const HEALTH_OBJECTS = { participantFailures: FAILED, participantStates: PARTICI
 const PART_OBJECT = Object.freeze({ participantFailures: "participantFailures", entryFailures: "participantFailures", participantStates: "participantStates", admissions: "participantStates", stepFailures: "participantStates", sources: "sources" });
 // The classification of the one row a documented program with no schedule keeps (the schedule audit's wording).
 export const NO_SCHEDULE = "no schedule captured";
+// The step-failure remainder row's category: the total with a reason less every category, a wording the shipped list
+// does not name (F-484, 2026-10-08). ONE constant, written on the row and read by the overlap caveat (F-497).
+export const STEP_REMAINDER = UNCLASSIFIED_CATEGORY;
 export const HEALTH_PARTS = Object.freeze(["bounceReasons", "participantFailures", "participantStates", "lastSends", "schedules", "failureSamples", "entrySamples", "sources", "admissions", "entryFailures", "stepFailures"]);
 // What each part's figures are over (meta.health.parts[].basis; "all-time" is the REASONS id a page renders).
 const PART_BASIS = Object.freeze({ bounceReasons: "window", participantFailures: "all-time", participantStates: "all-time", lastSends: "lookback", schedules: "as-documented", failureSamples: "sample", entrySamples: "sample", sources: "at-pull", admissions: "lookback", entryFailures: "window", stepFailures: "window" });
-// A sample read is one page of at most this many rows per program, newest first, and is never split (it is a sample).
+// A sample read is one page of at most this many rows per program, in the order its family asks for (the refusal
+// sample the most repeated first, the bounce sample newest first; FAMILIES decides), and is never split (it is a sample).
 export const SAMPLE_PAGE = 100;
 // How many masked texts the snapshot keeps per program and part (the most frequent in the page).
 export const SAMPLES_PER_PROGRAM = 5;
@@ -1102,7 +1108,8 @@ export function rpRunArgv(q, pageSize) {
   const argv = ["--json", "rp", "run", "--object", q.object, "--show-fields", JSON.stringify(q.show)];
   if (q.group.length) argv.push("--group-by", JSON.stringify(q.group));
   if (q.where.length) argv.push("--where-filters", JSON.stringify({ conditions: q.where }));
-  // A sample reads newest first (measured 2026-10-07: --order-by on a shown DATETIME field, DESC).
+  // The order the family asks for: the refusal sample by OccurrenceCount DESC (the most repeated first; F-484 2026-10-08),
+  // the bounce sample by the date field DESC (newest first; measured 2026-10-07: --order-by on a shown field works).
   if (q.orderBy?.length) argv.push("--order-by", JSON.stringify(q.orderBy));
   argv.push("--page-size", String(pageSize));
   return argv;
@@ -2357,7 +2364,12 @@ export function fetchEngagement(ctx) {
   const sampleCounts = {
     participantFailures: entryCountsFrom(okUnits("health-entry-window"), selectedSet),
     // At plan time the categories are not counted yet: every bounce in the window is priced as uncategorised (an upper bound).
-    bounceReasons: new Map([...new Set([...base.values()].filter((b) => selectedSet.has(b.programId) && inWindowMonths.has(b.month) && (b.bounced ?? 0) > 0).map((b) => b.programId))].map((id) => [id, [...base.values()].filter((b) => b.programId === id && inWindowMonths.has(b.month)).reduce((s, b) => s + (b.bounced ?? 0), 0)])),
+    // One pass over base (F-499): the bounces per selected program over the window, programs with none left out.
+    bounceReasons: (() => {
+      const m = new Map();
+      for (const b of base.values()) if (selectedSet.has(b.programId) && inWindowMonths.has(b.month) && (b.bounced ?? 0) > 0) m.set(b.programId, (m.get(b.programId) ?? 0) + b.bounced);
+      return m;
+    })(),
   };
   const samplePlan = (part) => {
     const family = part === "participantFailures" ? "health-reasons-sample" : "health-bounce-sample";
@@ -3238,7 +3250,7 @@ export function reduceEngagement(input) {
           if (n) healthFacts.stepFailures.push({ programId, month, category, kind: kindOfStep.get(category) ?? "program-error", expected: isExpectedKind(kindOfStep.get(category)), participants: n });
         }
         const other = (totals.get(k) ?? 0) - counted;
-        if (other) healthFacts.stepFailures.push({ programId, month, category: UNCLASSIFIED_CATEGORY, kind: UNKNOWN_KIND, expected: false, participants: other });
+        if (other) healthFacts.stepFailures.push({ programId, month, category: STEP_REMAINDER, kind: UNKNOWN_KIND, expected: false, participants: other });
         if (other < 0) healthStats.categories.overlapRows++;
       }
       healthFacts.stepFailures.sort(byKeys("programId", "month", "category"));
@@ -3271,6 +3283,10 @@ export function reduceEngagement(input) {
           // list, never null and never a known kind (F-484, redesigned 2026-10-08). Each text carries the rows
           // (participants) that bore it and their occurrences (how many times those participants were refused in
           // all): a reader asking "what keeps people out" wants the second; "how many people" the first.
+          // A text no category matches: UNCLASSIFIED (a product wording the shipped entry list does not know) for the
+          // refusals; the counted remainder's own label, OTHER, for the bounce text, whose query already left the
+          // tenant's categories out server-side and whose shipped list is empty by design (F-496).
+          const unmatched = partName === "bounceReasons" ? OTHER_CATEGORY : UNCLASSIFIED_CATEGORY;
           const take = (raw, occurrences) => {
             const message = maskMessage(raw);
             if (message == null) return;
@@ -3278,7 +3294,7 @@ export function reduceEngagement(input) {
             const t = texts.get(message) ?? { count: 0, occurrences: 0 };
             texts.set(message, { count: t.count + 1, occurrences: t.occurrences + occurrences });
             const c = matchCategory(message, categories);
-            const key = c?.id ?? UNCLASSIFIED_CATEGORY;
+            const key = c?.id ?? unmatched;
             const kind = c ? kindOf(c) : UNKNOWN_KIND;
             const s = split.get(key);
             split.set(key, { category: key, kind, expected: isExpectedKind(kind), participants: (s?.participants ?? 0) + 1, occurrences: (s?.occurrences ?? 0) + occurrences });
@@ -3291,7 +3307,7 @@ export function reduceEngagement(input) {
           healthStats.samples[partName] += top.length;
           for (const [message, t] of top) {
             const c = matchCategory(message, categories);
-            healthFacts.failureSamples.push({ programId, part: partName, message, category: c?.id ?? UNCLASSIFIED_CATEGORY, kind: c ? kindOf(c) : UNKNOWN_KIND, expected: c ? isExpectedKind(kindOf(c)) : false, count: t.count, occurrences: t.occurrences, pulledAt });
+            healthFacts.failureSamples.push({ programId, part: partName, message, category: c?.id ?? unmatched, kind: c ? kindOf(c) : UNKNOWN_KIND, expected: c ? isExpectedKind(kindOf(c)) : false, count: t.count, occurrences: t.occurrences, pulledAt });
           }
           if (partName === "participantFailures") for (const s of split.values()) healthFacts.entrySamples.push({ programId, ...s, sampleRows: rows, pulledAt });
         }
@@ -3406,15 +3422,18 @@ export function reduceEngagement(input) {
   if (healthFacts.schedules.length) caveats.push({ id: "schedules-from-kb", detail: { oldest: healthFacts.schedules.map((r) => r.asOf).filter(Boolean).sort()[0] ?? null } });
   if (gap.source === "kb" && gap.undocumented.length + gap.behind.length) caveats.push({ id: "kb-behind-tenant", detail: { undocumented: gap.undocumented.length, behind: gap.behind.length, programs: [...gap.undocumented, ...gap.behind.map((b) => b.programId)], keysFile: KB_GAP_KEYS_FILE, refreshSeconds: (gap.undocumented.length + gap.behind.length) * CALL_SECONDS.describe } });
   {
-    // Wordings no category knows (F-484, redesigned 2026-10-08): the unclassified sample texts and the step remainder.
-    const unc = healthFacts.failureSamples.filter((r) => r.category === UNCLASSIFIED_CATEGORY);
-    const stepUnc = healthFacts.stepFailures.filter((r) => r.category === UNCLASSIFIED_CATEGORY && r.participants > 0).reduce((s, r) => s + r.participants, 0);
-    if (unc.length || stepUnc) caveats.push({ id: "unclassified-wordings", detail: { wordings: new Set(unc.map((r) => r.message)).size, programs: new Set(unc.map((r) => r.programId)).size, participants: unc.reduce((s, r) => s + r.count, 0), occurrences: unc.reduce((s, r) => s + (r.occurrences ?? r.count), 0), stepParticipants: stepUnc } });
+    // Wordings no category knows (F-484, redesigned 2026-10-08): the unclassified entry sample texts and the step
+    // remainder (product wordings the shipped list can learn), counted apart from the bounce text the tenant's own
+    // list left as "other" (mail-server text; the tenant's file is the only remedy) — F-496.
+    const unc = healthFacts.failureSamples.filter((r) => r.part === "participantFailures" && r.category === UNCLASSIFIED_CATEGORY);
+    const bounceOther = healthFacts.failureSamples.filter((r) => r.part === "bounceReasons" && r.category === OTHER_CATEGORY);
+    const stepUnc = healthFacts.stepFailures.filter((r) => r.category === STEP_REMAINDER && r.participants > 0).reduce((s, r) => s + r.participants, 0);
+    if (unc.length || stepUnc || bounceOther.length) caveats.push({ id: "unclassified-wordings", detail: { wordings: new Set(unc.map((r) => r.message)).size, programs: new Set(unc.map((r) => r.programId)).size, participants: unc.reduce((s, r) => s + r.count, 0), occurrences: unc.reduce((s, r) => s + (r.occurrences ?? r.count), 0), stepParticipants: stepUnc, bounceWordings: new Set(bounceOther.map((r) => r.message)).size, bouncePrograms: new Set(bounceOther.map((r) => r.programId)).size } });
   }
   const allTime = HEALTH_PARTS.filter((name) => healthMeta.parts[name]?.pulled && PART_BASIS[name] === "all-time");
   if (allTime.length) caveats.push({ id: "health-all-time", detail: { parts: allTime, reason: "all-time" } });
   if (healthMeta.parts.participantFailures?.pulled && healthMeta.categories?.participantFailures.counted === false) caveats.push({ id: "participant-failures-no-breakdown", detail: { reason: healthMeta.categories.participantFailures.reason, expectedReasons: (params.health?.expectedReasons ?? []).length } });
-  if (healthStats.categories.overlapRows) caveats.push({ id: "failure-categories-overlap", detail: { rows: healthStats.categories.overlapRows, parts: [...(healthFacts.bounceReasons.some((r) => r.category === OTHER_CATEGORY && r.count < 0) ? ["bounceReasons"] : []), ...(healthFacts.stepFailures.some((r) => r.category === OTHER_CATEGORY && r.participants < 0) ? ["stepFailures"] : [])] } });
+  if (healthStats.categories.overlapRows) caveats.push({ id: "failure-categories-overlap", detail: { rows: healthStats.categories.overlapRows, parts: [...(healthFacts.bounceReasons.some((r) => r.category === OTHER_CATEGORY && r.count < 0) ? ["bounceReasons"] : []), ...(healthFacts.stepFailures.some((r) => r.category === STEP_REMAINDER && r.participants < 0) ? ["stepFailures"] : [])] } });
   for (const [part, s] of Object.entries(healthMeta.samples ?? {})) if (s.notSampled.length) caveats.push({ id: "failure-samples-capped", detail: { part, notSampled: s.notSampled.length, cap: s.cap, secondsEach: CALL_SECONDS[part === "participantFailures" ? "health-reasons-sample" : "health-bounce-sample"] } });
   if (healthFacts.entrySamples.length) caveats.push({ id: "failure-samples-sampled", detail: { programs: new Set(healthFacts.entrySamples.map((r) => r.programId)).size } });
   if (checks.some((c) => c.drift)) caveats.push({ id: "incomplete-period-drift", detail: { from: params.incompleteFrom, checks: checks.filter((c) => c.drift).map((c) => ({ id: c.id, drift: c.drift })) } });

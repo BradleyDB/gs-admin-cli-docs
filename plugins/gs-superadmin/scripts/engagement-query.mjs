@@ -186,8 +186,11 @@ export const SOURCES = deepFreeze({
 // as it is a recipient's — the host rule took 7 of 30 captured bounce wordings
 // (Microsoft's dotted diagnostic codes, vendors' help links) — and the samples
 // it would protect are terminal-only and never leave the workspace; and the
-// scheme, host and path of a URL (MASK_PROTECTED) are left to the token and
-// number rules' exclusion, because a help link's path reads as one long id.
+// scheme, host and path of a URL (MASK_PROTECTED) SUPPRESS the token and
+// number rules alone, because a help link's path reads as one long id — the
+// email, uuid and ipv4 rules run over the whole text, a URL's path included
+// (F-492, second reopen: the first fix cut the span out before ANY rule ran,
+// so an address inside a URL's path was stored).
 /** @type {ReadonlyArray<{id: string, what: string, re: RegExp, as: string}>} */
 export const MASK_RULES = Object.freeze([
   { id: "email", what: "an email address, with its angle brackets when it has them", re: /<?[A-Za-z0-9._%+'-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+>?/g, as: "<email>" },
@@ -197,29 +200,33 @@ export const MASK_RULES = Object.freeze([
   { id: "token", what: "a run of 12 or more letters, digits, hyphens, underscores, dots, plus, slash or equals signs that holds both a letter and a digit (a record id, a message id), outside a URL's scheme, host and path", re: /(?<![A-Za-z0-9._+/=-])(?=[A-Za-z0-9._+/=-]*\d)(?=[A-Za-z0-9._+/=-]*[A-Za-z])[A-Za-z0-9._+/=-]{12,}(?![A-Za-z0-9._+/=-])/g, as: "<id>" },
   { id: "number", what: "a run of 5 or more digits, outside a URL's scheme, host and path", re: /\d{5,}/g, as: "<number>" },
 ].map((r) => Object.freeze(r)));
-// What the rules do not run inside: a URL up to its query or fragment (the
+// Where the rules it names do not run: a URL up to its query or fragment (the
 // scheme, host and path a vendor's help link is made of). The query and the
-// fragment ARE masked: a tracking id lives there.
-export const MASK_PROTECTED = Object.freeze({ id: "url-path", what: "a URL's scheme, host and path, up to its query or fragment", re: /https?:\/\/[^\s?#<>"'\]\[)(]+/g });
+// fragment ARE masked: a tracking id lives there. Only the rules `suppresses`
+// names stop at the span; every other rule runs over the whole text.
+export const MASK_PROTECTED = Object.freeze({ id: "url-path", what: "a URL's scheme, host and path, up to its query or fragment", re: /https?:\/\/[^\s?#<>"'\]\[)(]+/g, suppresses: Object.freeze(["token", "number"]) });
 export const MASK_MAX_LENGTH = 300;
 /**
  * One raw error message → the text that may be stored: every MASK_RULES match
- * replaced (outside the protected spans), white space collapsed, cut to
- * MASK_MAX_LENGTH. Null for no text.
+ * replaced (the rules the protected span suppresses stop at a URL's scheme,
+ * host and path; the rest run over the whole text), white space collapsed,
+ * cut to MASK_MAX_LENGTH. Null for no text.
  * @param {unknown} raw
  * @returns {?string}
  */
 export function maskMessage(raw) {
   if (typeof raw !== "string") return null;
-  const mask = (s) => { for (const rule of MASK_RULES) s = s.replace(rule.re, rule.as); return s; };
-  // The text is cut at each protected span: the pieces between are masked, the spans are kept as they are.
+  const everywhere = MASK_RULES.filter((r) => !MASK_PROTECTED.suppresses.includes(r.id));
+  const mask = (rules, s) => { for (const rule of rules) s = s.replace(rule.re, rule.as); return s; };
+  // The protected spans are found on the RAW text (a host the ipv4 rule masks must not end its span early): inside a
+  // span only the rules that run everywhere apply; between spans every rule does.
   let text = "";
   let at = 0;
   for (const m of raw.matchAll(MASK_PROTECTED.re)) {
-    text += mask(raw.slice(at, m.index)) + m[0];
+    text += mask(MASK_RULES, raw.slice(at, m.index)) + mask(everywhere, m[0]);
     at = m.index + m[0].length;
   }
-  text += mask(raw.slice(at));
+  text += mask(MASK_RULES, raw.slice(at));
   text = text.replace(/\s+/g, " ").trim();
   if (!text) return null;
   const points = Array.from(text);
@@ -297,8 +304,12 @@ export const FAILURE_CATEGORIES = deepFreeze({
 export const OTHER_CATEGORY = "other";
 export const UNCLASSIFIED_CATEGORY = "unclassified";
 export const FAILURE_PARTS = Object.freeze(["bounceReasons", "participantFailures"]);
-/** A category's kind: its own, else a business rule when it was flagged expected, else a program error. */
-export const kindOf = (c) => (FAILURE_KINDS.includes(c?.kind) && c.kind !== UNKNOWN_KIND ? c.kind : c?.expected === true ? "business-rule" : "program-error");
+/**
+ * A category's kind: its own, else a business rule when it was flagged expected, else a program error. The ONE
+ * fallback rule (F-501): a STORED row (`stored`) may carry the kind "unknown"; a category never does.
+ * @param {*} c @param {{stored?: boolean}} [opts]
+ */
+export const kindOf = (c, { stored = false } = {}) => (FAILURE_KINDS.includes(c?.kind) && (stored || c.kind !== UNKNOWN_KIND) ? c.kind : c?.expected === true ? "business-rule" : "program-error");
 /** The one meaning of `expected`: the kind is a business rule working. */
 export const isExpectedKind = (kind) => kind === "business-rule";
 // Why a participant who got IN fell off at a step (ao_participants.FailureReasons,
@@ -356,8 +367,9 @@ export function validateCategories(list) {
 /**
  * The category table a pull counts with: the shipped list for the part, then
  * the tenant's own entries, each normalized to {id, label, pattern, definition, kind, expected}
- * (a bounce category with no kind is a bad address; any other with none is a
- * business rule when flagged expected, else a program error).
+ * (a bounce category with no kind is a bad address, whatever its expected flag
+ * says, unless flagged expected: true, a business rule — F-495; any other with
+ * none is a business rule when flagged expected, else a program error).
  * @param {"bounceReasons"|"participantFailures"} part
  * @param {ReadonlyArray<FailureCategory>} [extra]
  * @returns {Array<{id: string, label: string, pattern: string, definition: string, kind: string, expected: boolean}>}
@@ -366,7 +378,7 @@ export function categoryTable(part, extra = []) {
   if (!FAILURE_PARTS.includes(part)) throw new Error(`engagement query: no failure categories for "${part}"`);
   const problems = validateCategories([...FAILURE_CATEGORIES[part], ...extra]);
   const list = [...FAILURE_CATEGORIES[part], ...extra].map((c) => {
-    const kind = part === "bounceReasons" && c.kind == null && c.expected == null ? "bad-address" : kindOf(c);
+    const kind = part === "bounceReasons" && c.kind == null ? (c.expected === true ? "business-rule" : "bad-address") : kindOf(c);
     return { id: c.id.trim(), label: c.label.trim(), pattern: c.pattern.trim(), definition: c.definition.trim(), kind, expected: isExpectedKind(kind) };
   });
   problems.push(...validateCategories(list).filter((p) => !problems.includes(p)));
@@ -617,6 +629,7 @@ export const REASONS = deepFreeze({
   "tab-off": "This tab is turned off for this page, so what it shows is not part of the page.",
   "no-internal-domain": "No internal email domain is named for this dashboard, so every recipient counts as external and there is nothing to leave out.",
   "test-accounts-need-accounts": "Accounts named as test accounts are not left out: this filter works by email domain, and the pull holds no account data to subtract them with.",
+  "templates-not-pulled": "Template content is not in this snapshot: no pull reads it yet. A pull made with a plugin version that reads templates adds it.",
 });
 /** @param {?string} id @returns {string} the reason in words; an id the table lacks is shown as itself */
 export const reasonText = (id) => (id == null ? "" : REASONS[id] ?? `No value (${id}).`);
@@ -667,6 +680,23 @@ const STEP_DIMS = ["step", "variant"];
 
 const cmp = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
 const has = (list, v) => !list || list.includes(v);
+/**
+ * The programs the global filters keep, and how many the status filter hides:
+ * the ONE reading of the program filters, which runQuery and every view share.
+ * @param {T10Snapshot} snapshot @param {EngagementFilters} f
+ */
+function keptPrograms(snapshot, f) {
+  const programOk = (p) =>
+    has(f.programs, p.id) && has(f.supergroups, p.supergroup) && has(f.groups, p.group) && has(f.models, p.model) && has(f.audiences, p.audienceType);
+  const beforeStatus = snapshot.dimensions.programs.filter(programOk);
+  const kept = beforeStatus.filter((p) => !f.statuses || p.statuses.some((s) => f.statuses.includes(s)));
+  return { kept, keptIds: new Set(kept.map((p) => p.id)), hiddenByStatus: beforeStatus.length - kept.length };
+}
+const monthsKept = (snapshot, f) => (f.months ? snapshot.dimensions.months.filter((m) => f.months.includes(m)) : snapshot.dimensions.months);
+const closedMonthsOf = (snapshot) => {
+  const incomplete = String(snapshot.meta.incompleteFrom).slice(0, 7);
+  return snapshot.dimensions.months.filter((m) => m < incomplete);
+};
 
 /**
  * Run one query over a snapshot.
@@ -698,16 +728,12 @@ export function runQuery(snapshot, filters, query) {
 
   const dims = snapshot.dimensions;
   const allMonths = dims.months;
-  const months = f.months ? allMonths.filter((m) => f.months.includes(m)) : allMonths;
+  const months = monthsKept(snapshot, f);
   const monthSet = new Set(months);
   const fullWindow = months.length === allMonths.length;
   const programById = new Map(dims.programs.map((p) => [p.id, p]));
-  const programOk = (p) =>
-    has(f.programs, p.id) && has(f.supergroups, p.supergroup) && has(f.groups, p.group) && has(f.models, p.model) && has(f.audiences, p.audienceType);
-  const beforeStatus = dims.programs.filter(programOk);
-  const kept = beforeStatus.filter((p) => !f.statuses || p.statuses.some((s) => f.statuses.includes(s)));
-  const keptIds = new Set(kept.map((p) => p.id));
-  const scope = { months, fullWindow, programs: kept.length, programsHiddenByStatus: beforeStatus.length - kept.length };
+  const { kept, keptIds, hiddenByStatus } = keptPrograms(snapshot, f);
+  const scope = { months, fullWindow, programs: kept.length, programsHiddenByStatus: hiddenByStatus };
   const empty = (reason) => ({ table, unavailable: { reason }, rows: [], total: null, scope });
   if (table === "byAccount" && !accountAvailability(snapshot).pulled) return empty(accountAvailability(snapshot).reason ?? "not-pulled");
   if (table === "byStep" && !snapshot.meta.stepDetail) return empty("step-detail-off");
@@ -1102,8 +1128,9 @@ export const CANNOT_JUDGE_REASONS = deepFreeze({
 /** The lists table under the name S4b's plan reads it by. */
 export const SILENT_LISTS = HEALTH_LISTS;
 const ALARM_LISTS = Object.freeze(["schedule-ended", "sync-disabled", "ingest-overdue", "failing-entries", "admitting-nobody", "step-errors", "no-recent-sends"]);
-// A stored category row's kind: its own (F-491, 2026-10-08), else read off its expected flag (a snapshot made before kinds).
-const rowKind = (r) => (FAILURE_KINDS.includes(r?.kind) ? r.kind : r?.expected === true ? "business-rule" : "program-error");
+// A stored category row's kind: its own (F-491, 2026-10-08; "unknown" included), else read off its expected flag (a
+// snapshot made before kinds) — kindOf's one rule, never a second copy (F-501).
+const rowKind = (r) => kindOf(r, { stored: true });
 const monthEnd = (ym) => `${ym}-${String(daysInMonth(Number(ym.slice(0, 4)), Number(ym.slice(5, 7)))).padStart(2, "0")}`;
 const monthsApart = (a, b) => (Number(b.slice(0, 4)) - Number(a.slice(0, 4))) * 12 + Number(b.slice(5, 7)) - Number(a.slice(5, 7));
 // An epoch-millisecond time (what the describe payload carries) or an ISO text → its day; 0 and null are "none".
@@ -1250,9 +1277,9 @@ export function judgeHealth({ asOf, dayWindow, days, quietDueDays = QUIET_DUE_DA
     // finished campaign. A program whose schedule the pull does not have is never a one-off by default (F-491).
     const oneOff = ["one-time", "none"].includes(schedule.state);
     const finished = oneOff && p.inFlight === 0 && (p.participants ?? 0) > 0;
-    // Why the program cannot be judged, when it cannot (CANNOT_JUDGE_REASONS); null otherwise.
+    // What would stop a judgment (CANNOT_JUDGE_REASONS), if nothing more urgent decides the list first; a program
+    // that lands on another list carries no why (F-498: a finished one-off two months old is judged, not too new).
     const why = ingest.state === "cannot-judge" ? ingest.why : sends.state === "no-history" ? "too-new" : null;
-    const signals = { schedule, ingest, admissions, entry, steps, sends, finished: p.inFlight == null ? null : finished, why, templates: p.templates ?? 0, monthsSent: sentMonths.length };
 
     // ONE list per program, the most urgent signal first. A program whose schedule the pull does not have (no doc,
     // no KB) is judged on its own data for the alarms above the line (its steps, its sends in the window) and is
@@ -1272,6 +1299,7 @@ export function judgeHealth({ asOf, dayWindow, days, quietDueDays = QUIET_DUE_DA
                         : sends.state === "late" ? "no-recent-sends"
                           : why != null ? "cannot-judge"
                             : "ok";
+    const signals = { schedule, ingest, admissions, entry, steps, sends, finished: p.inFlight == null ? null : finished, why: list === "cannot-judge" ? why : null, templates: p.templates ?? 0, monthsSent: sentMonths.length };
     out.push({ ...base, list, label: HEALTH_LISTS[list], signals });
   }
   return out;
@@ -1312,7 +1340,10 @@ export function programHealth(snapshot, { days = SILENT_DAYS_DEFAULT, quietDueDa
   const entryRows = byProgram(read("entryFailures"));
   const stepRows = byProgram(read("stepFailures"));
   const states = byProgram(read("participantStates"));
+  // The refusal sample's split by category: the categorised sample table (entrySamples, which a page carries) first, the
+  // text sample table (failureSamples; terminal only, emptied on a page) on a snapshot made before entrySamples existed.
   const samples = byProgram(read("failureSamples"));
+  const entrySamples = byProgram(read("entrySamples"));
   const notSampled = new Set((h.samples?.participantFailures?.notSampled ?? []).map((x) => x.programId));
   // The refusals still happening in the day window, per program (F-484: the count the samples are picked from,
   // stored with its window); null on a snapshot that stored none or stored another window's.
@@ -1332,12 +1363,12 @@ export function programHealth(snapshot, { days = SILENT_DAYS_DEFAULT, quietDueDa
       const p = program.get(r.programId);
       const entries = entryRows?.get(r.programId)?.filter((x) => inWindow.has(x.month)) ?? null;
       const window = entries ? entries.reduce((s, x) => ({ participants: s.participants + x.participants, occurrences: s.occurrences + x.occurrences }), { participants: 0, occurrences: 0 }) : null;
-      const sampleRows = (samples?.get(r.programId) ?? []).filter((x) => x.part === "participantFailures");
+      const sampleRows = entrySamples ? entrySamples.get(r.programId) ?? [] : (samples?.get(r.programId) ?? []).filter((x) => x.part === "participantFailures");
       // The split by KIND: a business rule is expected; a bad address, a program error and an UNCLASSIFIED wording
       // (kind unknown, F-484 2026-10-08) are not; the unclassified are counted apart as well, so a list row can say
       // the cause needs investigation. A row stored before kinds (category null) reads unclassified too.
-      const sample = samples == null || !sampleRows.length || notSampled.has(r.programId) ? null : sampleRows.reduce((s, x) => {
-        const n = x.count ?? 1;
+      const sample = (entrySamples ?? samples) == null || !sampleRows.length || notSampled.has(r.programId) ? null : sampleRows.reduce((s, x) => {
+        const n = x.participants ?? x.count ?? 1;
         const kind = x.category == null || x.category === OTHER_CATEGORY || x.category === UNCLASSIFIED_CATEGORY ? UNKNOWN_KIND : rowKind(x);
         s.byKind[kind] = (s.byKind[kind] ?? 0) + n;
         return { ...s, rows: s.rows + n, expected: s.expected + (kind === "business-rule" ? n : 0), unexpected: s.unexpected + (kind !== "business-rule" ? n : 0), unclassified: s.unclassified + (kind === UNKNOWN_KIND ? n : 0) };
@@ -1368,6 +1399,300 @@ export function programHealth(snapshot, { days = SILENT_DAYS_DEFAULT, quietDueDa
 }
 /** programHealth under the name S4b's plan reads it by. */
 export const silentPrograms = programHealth;
+
+// ── Views beyond a table (DSH-4) ─────────────────────────────────────────────
+// Every figure a dashboard page draws is computed HERE: the page lays out what
+// comes back and never adds, divides or counts a fact row itself (house rule
+// 11). One function per view kind, each over the same global filters runQuery
+// takes. What a filter cannot narrow says so in the result: a health signal is
+// judged over the pull's own day window (monthsIgnored), an all-time total
+// carries its basis.
+// The usual (a KPI's and a category's "change against the usual"): the same
+// figure over the window's CLOSED months, per month for a count, as itself for
+// a rate. The current month is never in it (opens keep arriving).
+/**
+ * Headline figures (a kpi panel): each metric over everything the filters
+ * keep, the usual beside it and the change against it, and for a rate the
+ * denominator's count as send-size context (R2b). "Since last pull" is null
+ * until a refresh carries a delta (PUB-1); the page says so.
+ * @param {T10Snapshot} snapshot
+ * @param {EngagementFilters} filters
+ * @param {{metrics: string[]}} query
+ * @returns {{tiles: Array<{id: string, label: string, cell: EngagementCell, usual: ?{value: number, perMonth: boolean, closedMonths: number}, change: ?{kind: "points"|"ratio", value: ?number}, denominator: ?{id: string, label: string, cell: EngagementCell}, sinceLastPull: null}>, scope: *, incomplete: boolean, carried: boolean, previousPulledAt: ?string}}
+ */
+export function kpiView(snapshot, filters, query) {
+  const f = filters ?? {};
+  const now = runQuery(snapshot, f, { groupBy: [], metrics: query.metrics });
+  const closed = closedMonthsOf(snapshot);
+  const usualRun = closed.length ? runQuery(snapshot, { ...f, months: closed }, { groupBy: [], metrics: query.metrics }) : null;
+  const dens = [...new Set(query.metrics.map((id) => metric(id).denominator).filter(Boolean))];
+  const context = dens.length ? runQuery(snapshot, f, { groupBy: [], metrics: dens }).total.cells : {};
+  const months = now.scope.months.length;
+  const tiles = query.metrics.map((id) => {
+    const def = metric(id);
+    const cell = now.total.cells[id];
+    const rate = isRate(def);
+    const u = usualRun?.total.cells[id] ?? null;
+    const usual = u && u.value != null ? { value: rate ? u.value : u.value / closed.length, perMonth: !rate, closedMonths: closed.length } : null;
+    let change = null;
+    if (usual && cell.value != null) change = rate ? { kind: "points", value: (cell.value - usual.value) * 100 } : { kind: "ratio", value: usual.value && months ? cell.value / months / usual.value : null };
+    const den = def.denominator ? { id: def.denominator, label: metric(def.denominator).label, cell: context[def.denominator] } : null;
+    return { id, label: def.label, cell, usual, change, denominator: den, sinceLastPull: null };
+  });
+  return { tiles, scope: now.scope, incomplete: now.total.incomplete, carried: now.total.carried, previousPulledAt: snapshot.meta.refresh?.previousPulledAt ?? null };
+}
+
+/**
+ * The health tables as a PAGE may carry them (aggregates only; ruled
+ * 2026-10-05): the categorised rows and the counted remainders, never a
+ * distinct message and never the samples. A row read as text (category null:
+ * a snapshot made before categories, or a reason the pull could not count by
+ * category) folds into the per-key "other" row with its count added; the
+ * sample table is emptied. Every count a reader computes is the same over the
+ * folded tables. Returns a NEW object; the snapshot is not touched.
+ * @param {*} health facts.health
+ */
+export function healthForPage(health) {
+  if (!health || typeof health !== "object") return health;
+  const out = { ...health };
+  const isText = (r) => r.category == null || r.category === OTHER_CATEGORY;
+  const fold = (rows, keyOf, add) => {
+    const keep = [];
+    const folded = new Map();
+    for (const r of rows) {
+      if (!isText(r)) { keep.push(r); continue; }
+      const k = keyOf(r);
+      const row = folded.get(k);
+      if (row) add(row, r);
+      else folded.set(k, { ...r, message: null, category: OTHER_CATEGORY });
+    }
+    return [...keep, ...folded.values()];
+  };
+  if (Array.isArray(health.bounceReasons)) out.bounceReasons = fold(health.bounceReasons, (r) => JSON.stringify([r.programId, r.templateId ?? null, r.month, r.recipientClass, r.bounceType ?? null, r.provenance, r.pulledAt]), (a, r) => { a.count += r.count; });
+  if (Array.isArray(health.participantFailures)) out.participantFailures = fold(health.participantFailures, (r) => r.programId, (a, r) => { a.participants += r.participants; a.occurrences += r.occurrences; });
+  if ("failureSamples" in health) out.failureSamples = [];
+  return out;
+}
+
+// Uncategorised failures over this share of the total are a SIGNAL the page states (ruled 2026-10-05: "a few percent").
+export const OTHER_SHARE_FLAG = 0.05;
+// The label of the schedule audit for a documented program with no schedule (engagement.mjs NO_SCHEDULE; spelled here
+// because this module imports nothing).
+const NO_SCHEDULE_CLASSIFICATION = "no schedule captured";
+const UNCLASSIFIED_NAMED = Object.freeze({ label: "Unclassified wording", definition: "A wording no category knows: treated as a failure needing investigation, never as a business rule or a known error.", kind: UNKNOWN_KIND });
+const OTHER_NAMED = Object.freeze({ label: "Other", definition: "Text no category of this dashboard's list matches: the counted remainder.", kind: UNKNOWN_KIND });
+/** The category table a snapshot was counted with: the pull's echo (the tenant's list included) first, then the shipped list. */
+const categoryLookup = (snapshot, part, shipped) => {
+  const byId = new Map();
+  for (const c of [...(snapshot.meta.params?.health?.categories?.[part] ?? []), ...shipped]) if (c && typeof c.id === "string" && !byId.has(c.id)) byId.set(c.id, c);
+  return byId;
+};
+const namedCategory = (id, table, fallback) => {
+  const c = table.get(id);
+  const kind = c ? (FAILURE_KINDS.includes(c.kind) ? c.kind : kindOf(c)) : fallback.kind;
+  return { id, label: c?.label ?? fallback.label, definition: c?.definition ?? fallback.definition, kind, expected: isExpectedKind(kind) };
+};
+const sumBy = (rows, field) => rows.reduce((s, r) => s + (r[field] ?? 0), 0);
+/**
+ * Why sends and participants fail (a health-reasons panel): bounce reasons by
+ * category over the months and recipients kept, each beside its usual and the
+ * change against it, with the "Other" remainder and whether it is over the
+ * share worth stating; refusals at entry (the exact totals over the months
+ * kept and all time, and the split by category: exact where the pull counted
+ * by category, else the SAMPLE, labelled); step failures by category over the
+ * months kept. Every category carries its definition (never tenant text) and
+ * its kind; `expected` is a business rule working, which a page shows behind a
+ * toggle. A part the pull did not read says so.
+ * @param {T10Snapshot} snapshot
+ * @param {EngagementFilters} filters
+ * @param {{otherShareFlag?: number}} [opts]
+ */
+export function healthReasonsView(snapshot, filters, { otherShareFlag = OTHER_SHARE_FLAG } = {}) {
+  const f = filters ?? {};
+  const h = healthAvailability(snapshot);
+  if (!h.pulled) return { unavailable: { reason: h.reason ?? "not-pulled" }, asOf: null, bounces: null, entry: null, steps: null, recipientClass: f.recipientClass ?? "all" };
+  const { keptIds } = keptPrograms(snapshot, f);
+  const months = monthsKept(snapshot, f);
+  const monthSet = new Set(months);
+  const closed = closedMonthsOf(snapshot);
+  const cls = f.recipientClass ?? "all";
+  const H = /** @type {any} */ (snapshot.facts.health ?? {});
+  const part = (name) => (h.parts[name]?.pulled ? { rows: H[name] ?? [], unavailable: null, basis: h.parts[name].basis ?? null } : { rows: null, unavailable: { reason: h.parts[name]?.reason ?? "not-pulled" }, basis: null });
+  const remainder = (id) => id == null || id === OTHER_CATEGORY;
+  const byCategory = (rows, idOf, measures, table, fallbackForText) => {
+    const out = new Map();
+    for (const r of rows) {
+      const id = idOf(r);
+      if (!out.has(id)) out.set(id, { ...namedCategory(id, table, id === UNCLASSIFIED_CATEGORY ? UNCLASSIFIED_NAMED : fallbackForText), ...Object.fromEntries(measures.map((m) => [m, 0])) });
+      for (const m of measures) out.get(id)[m] += r[m] ?? 0;
+    }
+    return [...out.values()].sort((a, b) => cmp(a.label.toLowerCase(), b.label.toLowerCase()) || cmp(a.id, b.id));
+  };
+
+  // Bounces: by category, this period against the usual.
+  let bounces;
+  {
+    const p = part("bounceReasons");
+    if (p.rows == null) bounces = { unavailable: p.unavailable, basis: null, total: 0, months: months.length, closedMonths: closed.length, categories: [], other: null };
+    else {
+      const table = categoryLookup(snapshot, "bounceReasons", FAILURE_CATEGORIES.bounceReasons);
+      const inScope = p.rows.filter((r) => keptIds.has(r.programId) && (cls === "all" || r.recipientClass === cls));
+      const period = inScope.filter((r) => monthSet.has(r.month));
+      const closedRows = inScope.filter((r) => closed.includes(r.month));
+      const idOf = (r) => (remainder(r.category) ? OTHER_CATEGORY : r.category);
+      const sumOf = (rows, id) => sumBy(rows.filter((r) => idOf(r) === id), "count");
+      const withUsual = (c) => {
+        const usual = closed.length ? sumOf(closedRows, c.id) / closed.length : null;
+        return { ...c, usualPerMonth: usual, change: usual && months.length ? c.count / months.length / usual : null };
+      };
+      const ids = [...new Set(inScope.map(idOf))];
+      const named = ids.filter((id) => id !== OTHER_CATEGORY).map((id) => withUsual({ ...namedCategory(id, table, OTHER_NAMED), count: sumOf(period, id) })).sort((a, b) => b.count - a.count || cmp(a.label, b.label));
+      const total = sumBy(period, "count");
+      const other = withUsual({ id: OTHER_CATEGORY, ...OTHER_NAMED, expected: false, count: sumOf(period, OTHER_CATEGORY) });
+      bounces = { unavailable: null, basis: p.basis, total, months: months.length, closedMonths: closed.length, categories: named, other: { ...other, share: total ? other.count / total : null, overThreshold: total > 0 && other.count / total > otherShareFlag } };
+    }
+  }
+  // Refusals at entry: exact totals, and the split by category, exact or a sample.
+  let entry;
+  {
+    const windowPart = part("entryFailures");
+    const allPart = part("participantFailures");
+    const samplePart = part("entrySamples");
+    const table = categoryLookup(snapshot, "participantFailures", FAILURE_CATEGORIES.participantFailures);
+    const totals = (rows) => ({ participants: sumBy(rows, "participants"), occurrences: sumBy(rows, "occurrences") });
+    const window = windowPart.rows == null ? null : totals(windowPart.rows.filter((r) => keptIds.has(r.programId) && monthSet.has(r.month)));
+    const allRows = allPart.rows == null ? null : allPart.rows.filter((r) => keptIds.has(r.programId));
+    const counted = !!h.categories?.participantFailures?.counted;
+    let split = null;
+    if (counted && allRows) split = { exact: true, basis: "all-time", rows: byCategory(allRows.filter((r) => !remainder(r.category)), (r) => r.category, ["participants", "occurrences"], table, OTHER_NAMED), other: totals(allRows.filter((r) => remainder(r.category))) };
+    else if (samplePart.rows != null) {
+      const sampled = samplePart.rows.filter((r) => keptIds.has(r.programId));
+      split = { exact: false, basis: "sample", rows: byCategory(sampled, (r) => (remainder(r.category) ? UNCLASSIFIED_CATEGORY : r.category), ["participants", "occurrences"], table, UNCLASSIFIED_NAMED), programsSampled: new Set(sampled.map((r) => r.programId)).size, other: null };
+    }
+    entry = {
+      unavailable: window == null && allRows == null ? allPart.unavailable ?? windowPart.unavailable : null,
+      window, windowMonths: months.length, allTime: allRows == null ? null : totals(allRows), allTimeBasis: allPart.basis,
+      counted, split, splitUnavailable: split ? null : samplePart.unavailable ?? allPart.unavailable,
+    };
+  }
+  // Step failures this period, by category.
+  let steps;
+  {
+    const p = part("stepFailures");
+    if (p.rows == null) steps = { unavailable: p.unavailable, basis: null, months: months.length, categories: [] };
+    else {
+      const table = new Map(STEP_FAILURE_CATEGORIES.map((c) => [c.id, c]));
+      const rows = p.rows.filter((r) => keptIds.has(r.programId) && monthSet.has(r.month) && r.participants > 0);
+      steps = { unavailable: null, basis: p.basis, months: months.length, categories: byCategory(rows, (r) => (remainder(r.category) ? UNCLASSIFIED_CATEGORY : r.category), ["participants"], table, UNCLASSIFIED_NAMED).sort((a, b) => b.participants - a.participants || cmp(a.label, b.label)) };
+    }
+  }
+  return { unavailable: null, asOf: h.asOf, bounces, entry, steps, recipientClass: cls };
+}
+
+/**
+ * Program health (a health-silent panel): programHealth's lists narrowed to
+ * the programs the filters keep. A program the pull judged that the snapshot's
+ * program table does not list (an Active program with no send in the pull)
+ * passes every filter but the status one. The date filter does not apply: a
+ * signal is judged over the pull's own day window, and the result says so.
+ * @param {T10Snapshot} snapshot
+ * @param {EngagementFilters} filters
+ * @param {{days?: number, quietDueDays?: number}} [opts]
+ */
+export function healthSilentView(snapshot, filters, opts = {}) {
+  const f = filters ?? {};
+  const base = programHealth(snapshot, opts);
+  const common = { labels: HEALTH_LISTS, alarmLists: ALARM_LISTS, cannotJudgeReasons: CANNOT_JUDGE_REASONS, monthsIgnored: !!f.months };
+  if (base.unavailable) return { ...base, counts: Object.fromEntries(Object.keys(HEALTH_LISTS).map((k) => [k, 0])), ...common };
+  const { keptIds } = keptPrograms(snapshot, f);
+  const known = new Set(snapshot.dimensions.programs.map((p) => p.id));
+  const programFilters = !!(f.programs || f.supergroups || f.groups || f.models || f.audiences);
+  const keep = (r) => (known.has(r.programId) ? keptIds.has(r.programId) : !programFilters && (!f.statuses || r.statuses.some((s) => f.statuses.includes(s))));
+  const lists = Object.fromEntries(Object.entries(base.lists).map(([k, rows]) => [k, rows.filter(keep)]));
+  return { ...base, rows: base.rows.filter(keep), lists, counts: Object.fromEntries(Object.entries(lists).map(([k, v]) => [k, v.length])), ...common };
+}
+
+/**
+ * Schedules (a health-schedules panel): each kept program's schedule as the
+ * knowledge base documents it, with the day it is as of and whether that day
+ * is older than the dashboard's staleness threshold counted back from the
+ * pull; a program with no KB doc is a row that says so.
+ * @param {T10Snapshot} snapshot
+ * @param {EngagementFilters} filters
+ * @param {{staleAfterDays: number}} opts
+ */
+export function healthSchedulesView(snapshot, filters, { staleAfterDays }) {
+  const f = filters ?? {};
+  const h = healthAvailability(snapshot);
+  const part = h.parts.schedules;
+  if (!h.pulled || !part?.pulled) return { unavailable: { reason: (!h.pulled ? h.reason : part?.reason) ?? "not-pulled" }, rows: [], staleAfterDays, cutoff: null, pulledDay: null, undocumented: 0 };
+  if (!Number.isInteger(staleAfterDays) || staleAfterDays < 1) throw new Error(`engagement query: stale-after days must be a whole number >= 1 (got ${staleAfterDays})`);
+  const { kept } = keptPrograms(snapshot, f);
+  const pulledDay = String(snapshot.meta.pulledAt).slice(0, 10);
+  const cutoff = dayText(dayNumber(pulledDay) - staleAfterDays);
+  const byProgram = new Map();
+  for (const r of /** @type {any[]} */ (snapshot.facts.health?.schedules ?? [])) byProgram.set(r.programId, [...(byProgram.get(r.programId) ?? []), r]);
+  const rows = [];
+  for (const p of kept) {
+    const base = { programId: p.id, name: p.name, statuses: p.statuses, syncDisabled: p.syncScheduleDisabled ?? null };
+    const own = byProgram.get(p.id) ?? [];
+    if (!own.length) { rows.push({ ...base, documented: false, classification: null, cronExpression: null, timeZoneName: null, startDay: null, endDay: null, asOf: null, stale: null, source: null }); continue; }
+    for (const s of own) {
+      const asOf = dayOfTime(s.asOf);
+      rows.push({ ...base, documented: true, classification: s.classification, cronExpression: s.cronExpression ?? null, timeZoneName: s.timeZoneName ?? null, startDay: dayOfTime(s.startTime), endDay: dayOfTime(s.endTime), asOf, stale: asOf == null ? null : asOf < cutoff, source: s.source ?? "kb" });
+    }
+  }
+  rows.sort((a, b) => cmp(String(a.name ?? a.programId).toLowerCase(), String(b.name ?? b.programId).toLowerCase()) || cmp(a.programId, b.programId));
+  return { unavailable: null, rows, staleAfterDays, cutoff, pulledDay, undocumented: rows.filter((r) => !r.documented).length, stale: rows.filter((r) => r.stale).length };
+}
+
+/**
+ * One-time and ad-hoc programs (a health-one-time panel): the kept programs
+ * whose documented schedule does not recur, each with its last send, the
+ * months it sent in, its templates and its sends over the last `months`
+ * months (never "finished": a one-off can be reused). Read from the program
+ * dimension's schedule, which rides every pull made with a KB; a program whose
+ * schedule the pull does not have is counted, never listed as a one-off.
+ * @param {T10Snapshot} snapshot
+ * @param {EngagementFilters} filters
+ * @param {{months: number}} opts
+ */
+export function healthOneTimeView(snapshot, filters, { months: n }) {
+  const f = filters ?? {};
+  if (!Number.isInteger(n) || n < 1) throw new Error(`engagement query: one-time history months must be a whole number >= 1 (got ${n})`);
+  const { kept } = keptPrograms(snapshot, f);
+  const cls = f.recipientClass ?? "all";
+  const allMonths = snapshot.dimensions.months;
+  const history = allMonths.slice(-Math.min(n, allMonths.length));
+  const h = healthAvailability(snapshot);
+  const lastSends = h.pulled && h.parts.lastSends?.pulled ? new Map(/** @type {any[]} */ (snapshot.facts.health?.lastSends ?? []).map((r) => [r.programId, r])) : null;
+  const templates = new Map();
+  for (const t of snapshot.dimensions.templates) for (const u of t.uses) templates.set(u.programId, (templates.get(u.programId) ?? 0) + 1);
+  const sentByMonth = new Map();
+  for (const r of snapshot.facts.byTemplate) {
+    if (cls !== "all" && r.recipientClass !== cls) continue;
+    const m = sentByMonth.get(r.programId) ?? new Map();
+    m.set(r.month, (m.get(r.month) ?? 0) + r.sent);
+    sentByMonth.set(r.programId, m);
+  }
+  const rows = [];
+  let scheduleUnknown = 0;
+  for (const p of kept) {
+    const c = p.schedule?.classification ?? null;
+    if (c == null) { scheduleUnknown++; continue; }
+    if (c !== "one-time" && c !== NO_SCHEDULE_CLASSIFICATION) continue;
+    const m = sentByMonth.get(p.id) ?? new Map();
+    const monthsWithSends = [...m].filter(([, v]) => v > 0).map(([k]) => k).sort();
+    const ls = lastSends?.get(p.id) ?? null;
+    rows.push({
+      programId: p.id, name: p.name, statuses: p.statuses, classification: c,
+      lastSendDay: ls?.lastSendDay ?? null, lastSendMonth: ls ? ls.lastSendMonth : monthsWithSends[monthsWithSends.length - 1] ?? null,
+      monthsWithSends: monthsWithSends.length, templates: templates.get(p.id) ?? 0, history: history.map((month) => ({ month, sent: m.get(month) ?? 0 })),
+    });
+  }
+  rows.sort((a, b) => cmp(b.lastSendMonth ?? "", a.lastSendMonth ?? "") || cmp(b.lastSendDay ?? "", a.lastSendDay ?? "") || cmp(String(a.name ?? a.programId).toLowerCase(), String(b.name ?? b.programId).toLowerCase()));
+  return { unavailable: null, rows, historyMonths: history, scheduleUnknown, lastSendBasis: lastSends ? "day" : "month" };
+}
 
 // ── What is provisional, stated once (F-493) ─────────────────────────────────
 // Two windows move after a pull: opens keep arriving on sends from the first
@@ -1546,8 +1871,15 @@ export const CAVEATS = Object.freeze({
   "failure-samples-capped": (d) => `${d.notSampled} program(s) with ${d.part === "participantFailures" ? "refused participants" : "uncategorised bounce text"} were not sampled this pull: the sample reads at most ${d.cap} programs a pull, most failures first (about ${d.secondsEach} seconds each). Their text is carried from the previous pull where it had one. Raise --sample-programs to read them.`,
   "failure-samples-sampled": () => "The breakdown of refused participants by reason is a SAMPLE: one page per program of the refusals still happening in the day window, the most repeated first, because the reason field takes no filter on this tenant. The totals beside it are exact. Each sampled text carries how many participants it refused and how many times in all.",
   "unclassified-wordings": (d) =>
-    `${d.wordings} failure wording(s) in the samples of ${d.programs} program(s) match no known category and are labelled "unclassified" (kind unknown): ${d.participants} sampled participant(s), ${d.occurrences} refusal(s) in all${d.stepParticipants ? `, plus ${d.stepParticipants} participant(s) who fell off at a step for a reason the shipped list does not name` : ""}. ` +
-    "An unknown wording is treated as a failure needing investigation, never as a business rule or a known error. Read the texts in the snapshot's failureSamples table (terminal only; they never reach a page) and report them with /gs-superadmin:report-bug so the shipped list can learn them, or add them to this tenant's --failure-categories file.",
+    [
+      d.wordings || d.stepParticipants
+        ? `${d.wordings} entry-refusal wording(s) in the samples of ${d.programs} program(s) match no known category and are labelled "unclassified" (kind unknown): ${d.participants} sampled participant(s), ${d.occurrences} refusal(s) in all${d.stepParticipants ? `, plus ${d.stepParticipants} participant(s) who fell off at a step for a reason the shipped list does not name` : ""}. ` +
+          "An unknown product wording is treated as a failure needing investigation, never as a business rule or a known error. Read the texts in the snapshot's failureSamples table (terminal only; they never reach a page) and report them with /gs-superadmin:report-bug so the shipped list can learn them, or add them to this tenant's --failure-categories file."
+        : "",
+      d.bounceWordings
+        ? `${d.bounceWordings} bounce wording(s) in the samples of ${d.bouncePrograms} program(s) match no category of this dashboard's list and are counted as "other" (mail-server text, which no shipped list carries): the only remedy is this tenant's --failure-categories file, read from the snapshot's failureSamples table (terminal only).`
+        : "",
+    ].filter(Boolean).join(" "),
   "kb-behind-tenant": (d) =>
     `The knowledge base is behind the tenant for ${d.undocumented + d.behind} selected program(s): ${d.undocumented} ${d.undocumented === 1 ? "has" : "have"} no doc (created after the KB's last journey capture) and ${d.behind} ${d.behind === 1 ? "was" : "were"} modified after ${d.behind === 1 ? "its" : "their"} doc was written. ` +
     "An undocumented program's schedule is unknown to this pull, so it reads Cannot judge yet (no doc) and is never read as a one-off; a program with a doc behind the tenant is judged from that doc and flagged. " +

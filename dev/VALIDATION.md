@@ -2087,3 +2087,77 @@ class tests, one per invariant:
   Ruled (Bradley, 2026-10-06, after the run): the tenant-wide "count and names" and "not evidence" clauses are bar overreach — the third Fix note claimed names on the JO surface only, and round 2 accepted the aggregate tenant-wide text. P13 CLEARED by ruling on the measurements above (unchanged); the missing tenant-wide detail is F-488 (polish).
 Section FAILED (F-487 third verdict round @ hb-20261006-03, tester, 2026-10-06; production, reads only): P12 CLEARED, P13 FAILED on the tenant-wide caveat's content; F-487 reopened a third time (the valve: DEFERRED past 0.48.0 is Bradley's call, see the bus).
 Section CLEARED by ruling (F-487 third verdict round @ hb-20261006-03, Bradley's ruling the same day): P12 CLEARED; P13 CLEARED by ruling; F-487 VERIFIED; F-488 (polish) carries the tenant-wide detail.
+
+## DSH-4 — the views and presets built over a real snapshot: both presets opened in the browser pane in light and dark, the leaders' page checked for account names and for recipients values, the admin page's size with health on (banked 2026-10-09, builder, Session S4b; verdict at V2)
+
+Owed by: V2, the batched verdict session after S4c, in the consumer workspace with the plugin loaded from `dev`
+(the PR for `feat/jo-dash-s4b-views` merges on green CI plus its review round, before V2).
+Token: the one `dev-utils handoff --branch feat/jo-dash-s4b-views` mints at the end of the session (the bus's Under
+test line names it; this section is keyed to it).
+Why it is banked: the panel types, the four typed health views, the About tab, the banners and the presets were built
+offline against the fictional tenant, the stand-in CLI (the signals variant, one program per health list) and edits of
+the committed fixture snapshot. How the pages read over a real pull — real program and account names in the charts and
+lists, real failure categories against a tenant's category file, a real health day window, the size of an admin page
+whose health tables are aggregates only — cannot be measured without a tenant. No gs-admin call is made in this section:
+every step reads files the earlier sections' pulls wrote (Y1's snapshot with health on, or V2's own re-pull).
+Tenant data stays in the workspace: pages and snapshots live under the workspace's ignored paths; no name, count, size
+beyond an order of magnitude, or message text is copied into this file or the bus.
+
+THIS LIST IS COMPLETE. It is everything this round judges for DSH-4; a check that is not here is not owed, and a
+thing the round thinks should be here is a finding. Nothing is "noted on the verdict": anything observed beside a
+pass bar becomes an F-section on the bus, or a GitHub issue, before the round closes.
+
+Inputs: a snapshot pulled with `--health --kb` and the tenant's `--failure-categories` file (Y1's, or V2's own
+re-pull); a saved spec whose pages list NO panels (the presets draw) with the admin page's `statusDefault` left at
+the writer's default (null) and `pages[].dateDefault` at the presets' (the writer fills both; a spec saved before
+S4b opens as it is and takes the presets' months). The browser pane: served from localhost so the page's script runs
+(a local file renders as a static picture), once in light and once in dark (the pane's colour-scheme emulation).
+
+- D0 (the contract, before anything is built). Bradley reads the As-shipped (S4b) note under DSH-4 and rules on the
+  executor's choices listed there (the kpi tile's "usual"; three customer-list panels rather than one; the one-time
+  view's `months` meaning; the `health-off` and `templates-not-pulled` rows; the About tab's How-to prose as the one
+  hand-written part; the leaders' About naming the tenant host). Pass bar: each confirmed or overruled; an overrule
+  that changes what a page embeds is the builder's change before V2 builds a page.
+- D1 (both presets built over a real snapshot). `node .gs-superadmin/plugin/scripts/dashboard-page.mjs --spec <spec>
+  --snapshot <snapshot> --out-dir <pages>`. Pass bar: exit 0; both pages written; the summary's size report per page;
+  the admin page's health tables, by the report's `tables` rows, hold NO sample table and no text rows
+  (`health.failureSamples` absent; every `health.bounceReasons` row carries a category); the admin page with health
+  on is well under 1 MB of health data (the `health.*` entries of `tables` summed; record the order of magnitude and
+  the share of `bytes.data`); no warning fires on either page.
+- D2 (the admin page in the browser pane, light). Serve the pages folder on localhost and open the admin page. Pass
+  bar, each in turn, with no console error: the page opens on every program that sent, status badges on every row,
+  "Running now" narrows to Active and the address carries `s=PROCESSING`; the headline tiles show the usual and "no
+  previous pull to compare with"; the open-rate trend and the sends-by-month bars draw with the current month shaded
+  and a table under each; the Programs, Emails, Steps (the notice when step detail is off) and Survey tables draw;
+  the three customer lists draw with each account's programs underneath when accounts were pulled, or the
+  accounts-off notice in each; the Health tab's six panels draw: send health against the usual, the program-health
+  lists with the alarms first and the threshold chips moving the lists (14 / 30 / 60 / 90 beside the spec's), the
+  failure reasons with each category's definition as its tooltip and expected failures behind the toggle, the "Other"
+  signal and its terminal line where uncategorised bounces exceed a few percent, the schedules with the stale mark,
+  the one-time programs with their mini bars, the error rate by program; the About tab's six parts; the caveats
+  footer.
+- D3 (the same page, dark). The pane's dark colour scheme: every panel, chart, badge and banner legible; the series
+  colours distinguishable; no white block. Pass bar: nothing unreadable; a judgment call Bradley records, not a
+  measurement (UX-1 owns the aesthetic; a "feels wrong" note here goes to S4d, never a finding).
+- D4 (the leaders' page, light and dark). Pass bar: it opens on the closed months with "Include <month> (provisional)"
+  one click away, and the click shows the current month; headline figures, the two charts, By group, the top and
+  lowest ten, with Sent beside every rate; no Health tab, no customer list; `grep -c` of two account names from the
+  admin page returns 0 on the leaders' page file; the About tab holds NO internal domain value and NO unsubscribe link
+  value (`grep -c` of each on the file returns 0) while its recipients sentences read with counts; definitions show
+  the plain definition and formula only.
+- D5 (the figures are the engine's). For two programs Bradley picks: the admin page's Programs table and the open-rate
+  report written over the same snapshot show the same sent, delivered, opened and open rate; one kpi tile's figure
+  equals the Programs table's total row; the Health tab's program-health alarm rows equal `programHealth(snapshot,
+  {days})` run in a node one-liner over the snapshot file for the same threshold (ids and lists; a difference is a
+  filter or packing defect).
+- D6 (the lists read true). Bradley reads the admin page's program-health lists and the failure-reasons panel on the
+  real tenant: each alarm names a program he recognises as such, or the row is a finding; the category definitions
+  read as product wording, never a tenant's text; the "Other" share and its terminal line match what the snapshot's
+  `failureSamples` show (the `health` verb is S5's).
+- D7 (the stale banner and the page-level health banner). Open a page built from a snapshot older than the spec's
+  freshness: the stale banner shows the age, the cadence and the threshold. Build from a snapshot whose health pull
+  lost a part (Y1's, if any part read `call-failed`, else one edited offline): the admin page's banner names the part;
+  the leaders' page carries none.
+- D8 (CSV from a health view). Download CSV on the program-health panel and on the failure-reasons panel; open each in
+  a spreadsheet. Pass bar: one row per judged program with its list and why; one row per category with its table; no
+  formula evaluated; the file names carry the dashboard, the page, the panel and the pull's time.
