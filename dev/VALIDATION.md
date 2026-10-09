@@ -2092,8 +2092,8 @@ Section CLEARED by ruling (F-487 third verdict round @ hb-20261006-03, Bradley's
 
 Owed by: V2, the batched verdict session after S4c, in the consumer workspace with the plugin loaded from `dev`
 (the PR for `feat/jo-dash-s4b-views` merges on green CI plus its review round, before V2).
-Token: the one `dev-utils handoff --branch feat/jo-dash-s4b-views` mints at the end of the session (the bus's Under
-test line names it; this section is keyed to it).
+Token: hb-20261009-01 (minted by `dev-utils handoff --branch feat/jo-dash-s4b-views` on 2026-10-09; the bus's Under
+test line names it; this section is keyed to it). PR #44 to dev, unmerged at banking.
 Why it is banked: the panel types, the four typed health views, the About tab, the banners and the presets were built
 offline against the fictional tenant, the stand-in CLI (the signals variant, one program per health list) and edits of
 the committed fixture snapshot. How the pages read over a real pull — real program and account names in the charts and
