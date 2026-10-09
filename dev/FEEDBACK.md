@@ -213,6 +213,17 @@ Walk (hb-20261008-02): 2026-10-09 (tester) — S3b FIX ROUND 3 verdict @ hb-2026
        scripts in the workspace's tmp folder; the tenant's category file (30 -> 55 bounce categories, backup beside it).
      PR #43 stays unmerged: no open normal finding remains on F-484 or F-491; the merge is Bradley's. -->
 
+<!-- tester 2026-10-09 (S3b — POINTER RE-STAMPED after the fix-round-3 verdict @ hb-20261008-02 (V4): F-484 VERIFIED, F-491 VERIFIED by Bradley's ruling; PR #43 stays unmerged; next free F-495):
+     Branch: feat/jo-dash-s3b-health-batch at d52bebb (the verdict commit). PR: #43 to dev, open, unmerged, MERGEABLE CLEAN.
+     Status transitions riding the branch (re-stamps the builder's round-3 handoff block below, which says both REDESIGNED; their
+       headers read OPEN at the handoff): F-484 OPEN -> VERIFIED; F-491 OPEN -> VERIFIED (by ruling). Nothing new logged; next free F-495.
+     VALIDATION section HLT-1 / DSH-1 / DSH-5 (on the branch): Y2 (participant half), Y20 CLEARED; Y6 CLEARED by ruling.
+     CI on d52bebb, QUOTED per job after completion:
+         validate-plugin 37973628515: changes pass / manifests pass / validate (ubuntu-latest) pass
+         docs-drift 37973628529: drift (full) pass
+         GitGuardian Security Checks: pass
+     Open PRs to dev: #43 only. The merge is Bradley's. Detail: the tester comment above and the Walk (hb-20261008-02) line. -->
+
 <!-- tester 2026-10-08 (S3b FIX ROUND 2 verdict @ hb-20261008-01, V3 — F-492 VERIFIED; F-484 REOPENED (third), F-491 REOPENED (second since its Redesign); Bradley ruled NEITHER deferred; Y19 CLEARED, Y6 CLEARED on its bar, Y2 (participant half) FAILED; PR #43 stays unmerged; next free F-495):
      Under test: feat/jo-dash-s3b-health-batch, clean and level with origin at b434add; the gs-superadmin:dev-canary skill read
        hb-20261008-01 in session, matching the Under test line; plugin loaded from the working tree (the workspace's plugin link
