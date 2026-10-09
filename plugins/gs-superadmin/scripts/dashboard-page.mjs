@@ -131,6 +131,8 @@ export function pageSnapshot(snapshot, page) {
     meta.health = { pulled: false, reason: "tab-off", asOf: null, dayWindow: null, parts: {} };
     facts.health = Object.fromEntries(Object.keys(facts.health ?? {}).map((k) => [k, []]));
   }
+  // The failure samples (the masked text behind the "Other" rows) are for the terminal: NEVER on a page (ruled 2026-10-05).
+  if (facts.health && "failureSamples" in facts.health) facts.health = { ...facts.health, failureSamples: [] };
   return { ...snapshot, meta, dimensions, facts };
 }
 

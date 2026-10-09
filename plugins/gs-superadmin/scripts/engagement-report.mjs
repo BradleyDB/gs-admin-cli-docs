@@ -44,7 +44,7 @@ import { join, resolve } from "node:path";
 import { makeCliHelpers, readJsonFile, readKbIdentity, isMainModule, shq, termKey } from "./doc-lib.mjs";
 import { renderReport, reportPath, mdTable, toCsv, nowIso, ACTIVE_STATUSES } from "./jo-report.mjs";
 import {
-  openSnapshot, accountAvailability, runQuery, formatCell, glossary, glossaryNotes, caveatsFor, dataPulledLine, reasonText, statusLabel, metric, NO_VALUE, STATUS_LABELS,
+  openSnapshot, accountAvailability, runQuery, formatCell, glossary, glossaryNotes, caveatsFor, dataPulledLine, provisionalText, reasonText, statusLabel, metric, NO_VALUE, STATUS_LABELS,
 } from "./engagement-query.mjs";
 
 /** @typedef {import("./engagement.mjs").T10Snapshot} T10Snapshot */
@@ -299,7 +299,7 @@ export function buildReport(snapshot, opts = {}) {
     carriedMonths ? `${carriedMonths} month(s) carried forward from an earlier pull, not read again` : null,
     own("recipient-class-not-configured") ? "no internal domain was named, so internal recipients are not separated" : null,
     own("deleted-programs-excluded") ? `${own("deleted-programs-excluded").programs} deleted program(s) left out` : null,
-    `sends on or after ${meta.incompleteFrom} are provisional`,
+    provisionalText(meta),
   ].filter(Boolean).slice(0, 2);
   return {
     sections,

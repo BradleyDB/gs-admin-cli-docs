@@ -200,6 +200,9 @@ const normSchedule = (s) => ({
   runningNow: s.runningNow ?? null,
   timeZoneName: s.timeZoneName ?? null,
   jobType: s.jobType ?? null,
+  // The schedule's bounds (epoch milliseconds; measured 2026-10-07 on a live describe): a schedule past its end has ended (F-491).
+  startTime: s.startTime ?? null,
+  endTime: s.endTime ?? null,
 });
 
 const normCondition = (c) => {

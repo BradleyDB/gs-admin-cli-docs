@@ -19,6 +19,7 @@
    "unsubscribeLinks": [
     "www.acme.com/mail-settings"
    ],
+   "testAccounts": [],
    "stepDetail": true,
    "accounts": {
     "busiest": 3,
@@ -33,7 +34,104 @@
    "pageSize": 400,
    "health": {
     "pull": true,
-    "lookbackDays": 90
+    "lookbackDays": 90,
+    "categories": {
+     "bounceReasons": [
+      {
+       "id": "user-unknown",
+       "label": "Recipient address rejected: user unknown",
+       "pattern": "User unknown in virtual mailbox table",
+       "definition": "The receiving mail server says the address does not exist.",
+       "kind": "bad-address",
+       "expected": false
+      },
+      {
+       "id": "blocked-by-policy",
+       "label": "Message blocked by policy",
+       "pattern": "blocked by policy",
+       "definition": "The receiving mail server refused the message under a policy of its own.",
+       "kind": "bad-address",
+       "expected": false
+      }
+     ],
+     "participantFailures": [
+      {
+       "id": "already-in-list",
+       "label": "Already in the participant list",
+       "pattern": "Participant already exists in participant list",
+       "definition": "The participant is already in the program, so the source did not add them again.",
+       "kind": "business-rule",
+       "expected": true
+      },
+      {
+       "id": "unique-criteria",
+       "label": "Unique criteria already met",
+       "pattern": "Participant with unique criteria already exists",
+       "definition": "A participant with the same unique criteria is already in the program.",
+       "kind": "business-rule",
+       "expected": true
+      },
+      {
+       "id": "advanced-criteria",
+       "label": "Met the advanced criteria",
+       "pattern": "Participant has met the advanced criteria",
+       "definition": "The program's advanced criteria excluded the participant, as configured.",
+       "kind": "business-rule",
+       "expected": true
+      },
+      {
+       "id": "unsubscribed",
+       "label": "Unsubscribed from a category",
+       "pattern": "Participant has unsubscribed from one or more categories",
+       "definition": "The recipient has unsubscribed from an email category the program sends.",
+       "kind": "business-rule",
+       "expected": true
+      },
+      {
+       "id": "global-opt-out",
+       "label": "On the global opt-out",
+       "pattern": "Participant part of Global Opt Out",
+       "definition": "The recipient is on the tenant's global opt-out list.",
+       "kind": "business-rule",
+       "expected": true
+      },
+      {
+       "id": "bounce-list",
+       "label": "On the bounce list",
+       "pattern": "Participant part of Bounce list",
+       "definition": "The recipient's address is on the tenant's bounce list: it bounced before.",
+       "kind": "bad-address",
+       "expected": false
+      },
+      {
+       "id": "opt-out-at-send",
+       "label": "Opted out at the send step",
+       "pattern": "GlobalOptOut recipient(to) email",
+       "definition": "The recipient was on the global opt-out when the Send Email step ran.",
+       "kind": "business-rule",
+       "expected": true
+      },
+      {
+       "id": "bounced-at-send",
+       "label": "Bounced at the send step",
+       "pattern": "Bounced recipient(to) email",
+       "definition": "The recipient's address had bounced when the Send Email step ran.",
+       "kind": "bad-address",
+       "expected": false
+      },
+      {
+       "id": "invalid-field-value",
+       "label": "Invalid or missing value in a mapped field",
+       "pattern": "contains Invalid value",
+       "definition": "A field the program maps (most often the recipient's email address) holds no value or an invalid one on the participant record: a data problem at the source. The wording names the field.",
+       "kind": "bad-address",
+       "expected": false
+      }
+     ]
+    },
+    "expectedReasons": [],
+    "samplePrograms": 25,
+    "quietDueDays": 5
    }
   },
   "pulledAt": "2026-09-15T09:00:00-07:00",
@@ -77,23 +175,130 @@
    "parts": {
     "bounceReasons": {
      "pulled": true,
-     "reason": null
+     "reason": null,
+     "basis": "window"
     },
     "participantFailures": {
      "pulled": true,
-     "reason": null
+     "reason": null,
+     "basis": "all-time"
     },
     "participantStates": {
      "pulled": true,
-     "reason": null
+     "reason": null,
+     "basis": "all-time"
     },
     "lastSends": {
      "pulled": true,
-     "reason": null
+     "reason": null,
+     "basis": "lookback"
     },
     "schedules": {
      "pulled": true,
-     "reason": null
+     "reason": null,
+     "basis": "as-documented"
+    },
+    "failureSamples": {
+     "pulled": true,
+     "reason": null,
+     "basis": "sample"
+    },
+    "entrySamples": {
+     "pulled": true,
+     "reason": null,
+     "basis": "sample"
+    },
+    "sources": {
+     "pulled": true,
+     "reason": null,
+     "basis": "at-pull"
+    },
+    "admissions": {
+     "pulled": true,
+     "reason": null,
+     "basis": "lookback"
+    },
+    "entryFailures": {
+     "pulled": true,
+     "reason": null,
+     "basis": "window"
+    },
+    "stepFailures": {
+     "pulled": true,
+     "reason": null,
+     "basis": "window"
+    }
+   },
+   "categories": {
+    "bounceReasons": {
+     "counted": true,
+     "reason": null,
+     "ids": [
+      "user-unknown",
+      "blocked-by-policy"
+     ],
+     "configured": [
+      "user-unknown",
+      "blocked-by-policy"
+     ]
+    },
+    "participantFailures": {
+     "counted": false,
+     "reason": "not-filterable",
+     "ids": [],
+     "configured": [
+      "already-in-list",
+      "unique-criteria",
+      "advanced-criteria",
+      "unsubscribed",
+      "global-opt-out",
+      "bounce-list",
+      "opt-out-at-send",
+      "bounced-at-send",
+      "invalid-field-value"
+     ]
+    }
+   },
+   "samples": {
+    "participantFailures": {
+     "cap": 25,
+     "sampled": 2,
+     "carried": 0,
+     "notSampled": [],
+     "programs": [
+      "p-nps",
+      "p-onboard"
+     ],
+     "window": {
+      "start": "2026-06-18",
+      "endExclusive": "2026-09-16"
+     },
+     "counts": {
+      "p-nps": 2,
+      "p-onboard": 7
+     }
+    },
+    "bounceReasons": {
+     "cap": 25,
+     "sampled": 4,
+     "carried": 0,
+     "notSampled": [],
+     "programs": [
+      "p-nps",
+      "p-onboard",
+      "p-pilot",
+      "p-renew"
+     ],
+     "window": {
+      "start": "2026-06-01",
+      "endExclusive": "2026-10-01"
+     },
+     "counts": {
+      "p-nps": 1,
+      "p-onboard": 6,
+      "p-pilot": 1,
+      "p-renew": 3
+     }
     }
    }
   },
@@ -280,7 +485,17 @@
     "audienceType": "CUSTOMER",
     "supergroup": null,
     "group": null,
-    "folderId": "101"
+    "folderId": "101",
+    "syncScheduleDisabled": false,
+    "modifiedAt": null,
+    "schedule": {
+     "classification": "recurring",
+     "cronExpression": "0 0 9 1 * ? *",
+     "timeZoneName": "America/Los_Angeles",
+     "startTime": 1767225600000,
+     "endTime": 1830297600000,
+     "asOf": "2026-08-20T00:00:00.000Z"
+    }
    },
    {
     "id": "p-onboard",
@@ -293,7 +508,17 @@
     "audienceType": "CUSTOMER",
     "supergroup": null,
     "group": null,
-    "folderId": "101"
+    "folderId": "101",
+    "syncScheduleDisabled": false,
+    "modifiedAt": null,
+    "schedule": {
+     "classification": "recurring",
+     "cronExpression": "0 0 8 ? * MON *",
+     "timeZoneName": "America/Los_Angeles",
+     "startTime": 1767225600000,
+     "endTime": 1830297600000,
+     "asOf": "2026-09-01T00:00:00.000Z"
+    }
    },
    {
     "id": "p-pilot",
@@ -306,7 +531,17 @@
     "audienceType": "USER",
     "supergroup": null,
     "group": null,
-    "folderId": "303"
+    "folderId": "303",
+    "syncScheduleDisabled": false,
+    "modifiedAt": null,
+    "schedule": {
+     "classification": "no schedule captured",
+     "cronExpression": null,
+     "timeZoneName": null,
+     "startTime": null,
+     "endTime": null,
+     "asOf": "2026-08-20T00:00:00.000Z"
+    }
    },
    {
     "id": "p-renew",
@@ -320,7 +555,17 @@
     "audienceType": "CUSTOMER",
     "supergroup": null,
     "group": null,
-    "folderId": "202"
+    "folderId": "202",
+    "syncScheduleDisabled": false,
+    "modifiedAt": null,
+    "schedule": {
+     "classification": "no schedule captured",
+     "cronExpression": null,
+     "timeZoneName": null,
+     "startTime": null,
+     "endTime": null,
+     "asOf": "2026-08-20T00:00:00.000Z"
+    }
    },
    {
     "id": "p-unlisted",
@@ -333,7 +578,10 @@
     "audienceType": "CUSTOMER",
     "supergroup": null,
     "group": null,
-    "folderId": "303"
+    "folderId": "303",
+    "syncScheduleDisabled": null,
+    "modifiedAt": null,
+    "schedule": null
    }
   ],
   "templates": [
@@ -345,7 +593,8 @@
       "programId": "p-onboard",
       "stepName": "Day 7 check-in",
       "stepOrder": 2,
-      "stepCount": 1
+      "stepCount": 1,
+      "asOf": "2026-09-01T00:00:00.000Z"
      }
     ]
    },
@@ -357,7 +606,8 @@
       "programId": "p-nps",
       "stepName": "Survey email",
       "stepOrder": 1,
-      "stepCount": 1
+      "stepCount": 1,
+      "asOf": "2026-08-20T00:00:00.000Z"
      }
     ]
    },
@@ -369,7 +619,8 @@
       "programId": "p-renew",
       "stepName": null,
       "stepOrder": null,
-      "stepCount": 2
+      "stepCount": 2,
+      "asOf": "2026-08-20T00:00:00.000Z"
      }
     ]
    },
@@ -381,7 +632,8 @@
       "programId": "p-renew",
       "stepName": "Renewal thanks",
       "stepOrder": 3,
-      "stepCount": 1
+      "stepCount": 1,
+      "asOf": "2026-08-20T00:00:00.000Z"
      }
     ]
    },
@@ -393,7 +645,8 @@
       "programId": "p-unlisted",
       "stepName": null,
       "stepOrder": null,
-      "stepCount": 0
+      "stepCount": 0,
+      "asOf": null
      }
     ]
    },
@@ -405,7 +658,8 @@
       "programId": "p-onboard",
       "stepName": "Welcome",
       "stepOrder": 1,
-      "stepCount": 1
+      "stepCount": 1,
+      "asOf": "2026-09-01T00:00:00.000Z"
      }
     ]
    }
@@ -3299,7 +3553,8 @@
      "templateId": "tpl-nps",
      "month": "2026-07",
      "bounceType": "HARD_BOUNCE",
-     "message": "452 4.2.2 Mailbox full",
+     "message": null,
+     "category": "other",
      "recipientClass": "external",
      "count": 1,
      "provenance": "pulled",
@@ -3310,7 +3565,8 @@
      "templateId": "tpl-day7",
      "month": "2026-06",
      "bounceType": "HARD_BOUNCE",
-     "message": "550 5.1.1 <email>: Recipient address rejected: User unknown in virtual mailbox table (ref <number>)",
+     "message": "Recipient address rejected: user unknown",
+     "category": "user-unknown",
      "recipientClass": "external",
      "count": 1,
      "provenance": "pulled",
@@ -3321,7 +3577,8 @@
      "templateId": "tpl-welcome",
      "month": "2026-06",
      "bounceType": "HARD_BOUNCE",
-     "message": "smtp;554 5.7.1 Message for <email> blocked by policy at <ip>, id=<id>",
+     "message": "Message blocked by policy",
+     "category": "blocked-by-policy",
      "recipientClass": "internal",
      "count": 1,
      "provenance": "pulled",
@@ -3332,7 +3589,8 @@
      "templateId": "tpl-welcome",
      "month": "2026-06",
      "bounceType": "SOFT_BOUNCE",
-     "message": "452 4.2.2 Mailbox full",
+     "message": null,
+     "category": "other",
      "recipientClass": "external",
      "count": 1,
      "provenance": "pulled",
@@ -3343,7 +3601,8 @@
      "templateId": "tpl-day7",
      "month": "2026-07",
      "bounceType": "HARD_BOUNCE",
-     "message": "452 4.2.2 Mailbox full",
+     "message": "Recipient address rejected: user unknown",
+     "category": "user-unknown",
      "recipientClass": "external",
      "count": 1,
      "provenance": "pulled",
@@ -3354,7 +3613,8 @@
      "templateId": "tpl-welcome",
      "month": "2026-07",
      "bounceType": "HARD_BOUNCE",
-     "message": "452 4.2.2 Mailbox full",
+     "message": null,
+     "category": "other",
      "recipientClass": "external",
      "count": 1,
      "provenance": "pulled",
@@ -3364,52 +3624,57 @@
      "programId": "p-onboard",
      "templateId": "tpl-welcome",
      "month": "2026-07",
-     "bounceType": "SOFT_BOUNCE",
-     "message": "550 5.1.1 <email>: Recipient address rejected: User unknown in virtual mailbox table (ref <number>)",
-     "recipientClass": "external",
-     "count": 1,
-     "provenance": "pulled",
-     "pulledAt": "2026-09-15T09:00:00-07:00"
-    },
-    {
-     "programId": "p-onboard",
-     "templateId": "tpl-day7",
-     "month": "2026-08",
-     "bounceType": "HARD_BOUNCE",
-     "message": "550 5.1.1 <email>: Recipient address rejected: User unknown in virtual mailbox table (ref <number>)",
-     "recipientClass": "external",
-     "count": 1,
-     "provenance": "pulled",
-     "pulledAt": "2026-09-15T09:00:00-07:00"
-    },
-    {
-     "programId": "p-onboard",
-     "templateId": "tpl-day7",
-     "month": "2026-08",
-     "bounceType": "SOFT_BOUNCE",
-     "message": "452 4.2.2 Mailbox full",
-     "recipientClass": "external",
-     "count": 1,
-     "provenance": "pulled",
-     "pulledAt": "2026-09-15T09:00:00-07:00"
-    },
-    {
-     "programId": "p-onboard",
-     "templateId": "tpl-welcome",
-     "month": "2026-08",
-     "bounceType": "HARD_BOUNCE",
-     "message": "550 5.1.1 <email>: Recipient address rejected: User unknown in virtual mailbox table (ref <number>)",
-     "recipientClass": "external",
-     "count": 1,
-     "provenance": "pulled",
-     "pulledAt": "2026-09-15T09:00:00-07:00"
-    },
-    {
-     "programId": "p-onboard",
-     "templateId": "tpl-welcome",
-     "month": "2026-08",
      "bounceType": "SOFT_BOUNCE",
      "message": null,
+     "category": "other",
+     "recipientClass": "external",
+     "count": 1,
+     "provenance": "pulled",
+     "pulledAt": "2026-09-15T09:00:00-07:00"
+    },
+    {
+     "programId": "p-onboard",
+     "templateId": "tpl-day7",
+     "month": "2026-08",
+     "bounceType": "HARD_BOUNCE",
+     "message": null,
+     "category": "other",
+     "recipientClass": "external",
+     "count": 1,
+     "provenance": "pulled",
+     "pulledAt": "2026-09-15T09:00:00-07:00"
+    },
+    {
+     "programId": "p-onboard",
+     "templateId": "tpl-day7",
+     "month": "2026-08",
+     "bounceType": "SOFT_BOUNCE",
+     "message": "Recipient address rejected: user unknown",
+     "category": "user-unknown",
+     "recipientClass": "external",
+     "count": 1,
+     "provenance": "pulled",
+     "pulledAt": "2026-09-15T09:00:00-07:00"
+    },
+    {
+     "programId": "p-onboard",
+     "templateId": "tpl-welcome",
+     "month": "2026-08",
+     "bounceType": "HARD_BOUNCE",
+     "message": null,
+     "category": "other",
+     "recipientClass": "external",
+     "count": 1,
+     "provenance": "pulled",
+     "pulledAt": "2026-09-15T09:00:00-07:00"
+    },
+    {
+     "programId": "p-onboard",
+     "templateId": "tpl-welcome",
+     "month": "2026-08",
+     "bounceType": "SOFT_BOUNCE",
+     "message": "Recipient address rejected: user unknown",
+     "category": "user-unknown",
      "recipientClass": "external",
      "count": 1,
      "provenance": "pulled",
@@ -3420,7 +3685,8 @@
      "templateId": "tpl-day7",
      "month": "2026-09",
      "bounceType": "HARD_BOUNCE",
-     "message": "452 4.2.2 Mailbox full",
+     "message": null,
+     "category": "other",
      "recipientClass": "external",
      "count": 1,
      "provenance": "pulled",
@@ -3431,7 +3697,8 @@
      "templateId": "tpl-day7",
      "month": "2026-09",
      "bounceType": "HARD_BOUNCE",
-     "message": "smtp;554 5.7.1 Message for <email> blocked by policy at <ip>, id=<id>",
+     "message": "Recipient address rejected: user unknown",
+     "category": "user-unknown",
      "recipientClass": "external",
      "count": 1,
      "provenance": "pulled",
@@ -3442,7 +3709,8 @@
      "templateId": "tpl-welcome",
      "month": "2026-09",
      "bounceType": "HARD_BOUNCE",
-     "message": "550 5.1.1 <email>: Recipient address rejected: User unknown in virtual mailbox table (ref <number>)",
+     "message": "Message blocked by policy",
+     "category": "blocked-by-policy",
      "recipientClass": "external",
      "count": 1,
      "provenance": "pulled",
@@ -3453,7 +3721,8 @@
      "templateId": null,
      "month": "2026-06",
      "bounceType": "HARD_BOUNCE",
-     "message": null,
+     "message": "Message blocked by policy",
+     "category": "blocked-by-policy",
      "recipientClass": "internal",
      "count": 1,
      "provenance": "pulled",
@@ -3464,7 +3733,8 @@
      "templateId": null,
      "month": "2026-08",
      "bounceType": "SOFT_BOUNCE",
-     "message": "452 4.2.2 Mailbox full",
+     "message": null,
+     "category": "other",
      "recipientClass": "internal",
      "count": 1,
      "provenance": "pulled",
@@ -3475,7 +3745,8 @@
      "templateId": "tpl-renew",
      "month": "2026-06",
      "bounceType": "HARD_BOUNCE",
-     "message": "550 5.1.1 <email>: Recipient address rejected: User unknown in virtual mailbox table (ref <number>)",
+     "message": null,
+     "category": "other",
      "recipientClass": "external",
      "count": 1,
      "provenance": "pulled",
@@ -3486,7 +3757,8 @@
      "templateId": "tpl-renew",
      "month": "2026-07",
      "bounceType": "HARD_BOUNCE",
-     "message": "452 4.2.2 Mailbox full",
+     "message": "Recipient address rejected: user unknown",
+     "category": "user-unknown",
      "recipientClass": "external",
      "count": 1,
      "provenance": "pulled",
@@ -3497,7 +3769,8 @@
      "templateId": "tpl-renew-b",
      "month": "2026-07",
      "bounceType": "SOFT_BOUNCE",
-     "message": "smtp;554 5.7.1 Message for <email> blocked by policy at <ip>, id=<id>",
+     "message": null,
+     "category": "other",
      "recipientClass": "external",
      "count": 1,
      "provenance": "pulled",
@@ -3508,7 +3781,8 @@
      "templateId": "tpl-renew",
      "month": "2026-08",
      "bounceType": "SOFT_BOUNCE",
-     "message": "550 5.1.1 <email>: Recipient address rejected: User unknown in virtual mailbox table (ref <number>)",
+     "message": null,
+     "category": "other",
      "recipientClass": "external",
      "count": 1,
      "provenance": "pulled",
@@ -3519,7 +3793,8 @@
      "templateId": "tpl-renew-b",
      "month": "2026-09",
      "bounceType": "HARD_BOUNCE",
-     "message": "452 4.2.2 Mailbox full",
+     "message": "Recipient address rejected: user unknown",
+     "category": "user-unknown",
      "recipientClass": "external",
      "count": 1,
      "provenance": "pulled",
@@ -3528,52 +3803,28 @@
    ],
    "participantFailures": [
     {
-     "programId": "p-onboard",
-     "message": "Duplicate participant",
+     "programId": "p-nps",
+     "message": null,
+     "category": "other",
+     "expected": false,
      "participants": 2,
-     "occurrences": 6
-    },
-    {
-     "programId": "p-onboard",
-     "message": "Email address <email> is invalid",
-     "participants": 3,
      "occurrences": 3
     },
     {
      "programId": "p-onboard",
-     "message": "Missing required field: Email",
-     "participants": 2,
-     "occurrences": 6
-    },
-    {
-     "programId": "p-onboard",
-     "message": "Participant <id> has no company",
-     "participants": 2,
-     "occurrences": 4
+     "message": null,
+     "category": "other",
+     "expected": false,
+     "participants": 7,
+     "occurrences": 13
     },
     {
      "programId": "p-renew",
-     "message": "Duplicate participant",
-     "participants": 1,
-     "occurrences": 2
-    },
-    {
-     "programId": "p-renew",
-     "message": "Email address <email> is invalid",
-     "participants": 1,
-     "occurrences": 3
-    },
-    {
-     "programId": "p-renew",
-     "message": "Missing required field: Email",
-     "participants": 1,
-     "occurrences": 2
-    },
-    {
-     "programId": "p-renew",
-     "message": "Participant <id> has no company",
-     "participants": 2,
-     "occurrences": 2
+     "message": null,
+     "category": "other",
+     "expected": false,
+     "participants": 4,
+     "occurrences": 7
     }
    ],
    "participantStates": [
@@ -3740,10 +3991,13 @@
     {
      "programId": "p-nps",
      "asOf": "2026-08-20T00:00:00.000Z",
+     "source": "kb",
      "scheduleType": "CRON",
      "classification": "recurring",
      "cronExpression": "0 0 9 1 * ? *",
      "timeZoneName": "America/Los_Angeles",
+     "startTime": 1767225600000,
+     "endTime": 1830297600000,
      "lastRunSuccess": true,
      "lastSuccessTime": 1756717200000,
      "nextRunTime": 1759309200000,
@@ -3752,10 +4006,13 @@
     {
      "programId": "p-onboard",
      "asOf": "2026-09-01T00:00:00.000Z",
+     "source": "kb",
      "scheduleType": "CRON",
      "classification": "recurring",
      "cronExpression": "0 0 8 ? * MON *",
      "timeZoneName": "America/Los_Angeles",
+     "startTime": 1767225600000,
+     "endTime": 1830297600000,
      "lastRunSuccess": false,
      "lastSuccessTime": 1756712400000,
      "nextRunTime": 1757926800000,
@@ -3764,10 +4021,13 @@
     {
      "programId": "p-pilot",
      "asOf": "2026-08-20T00:00:00.000Z",
+     "source": "kb",
      "scheduleType": null,
      "classification": "no schedule captured",
      "cronExpression": null,
      "timeZoneName": null,
+     "startTime": null,
+     "endTime": null,
      "lastRunSuccess": null,
      "lastSuccessTime": null,
      "nextRunTime": null,
@@ -3776,14 +4036,430 @@
     {
      "programId": "p-renew",
      "asOf": "2026-08-20T00:00:00.000Z",
+     "source": "kb",
      "scheduleType": null,
      "classification": "no schedule captured",
      "cronExpression": null,
      "timeZoneName": null,
+     "startTime": null,
+     "endTime": null,
      "lastRunSuccess": null,
      "lastSuccessTime": null,
      "nextRunTime": null,
      "runningNow": null
+    }
+   ],
+   "failureSamples": [
+    {
+     "programId": "p-nps",
+     "part": "bounceReasons",
+     "message": "452 4.2.2 Mailbox full",
+     "category": "unclassified",
+     "kind": "unknown",
+     "expected": false,
+     "count": 1,
+     "occurrences": 1,
+     "pulledAt": "2026-09-15T09:00:00-07:00"
+    },
+    {
+     "programId": "p-nps",
+     "part": "participantFailures",
+     "message": "Email address <email> is invalid",
+     "category": "unclassified",
+     "kind": "unknown",
+     "expected": false,
+     "count": 1,
+     "occurrences": 2,
+     "pulledAt": "2026-09-15T09:00:00-07:00"
+    },
+    {
+     "programId": "p-nps",
+     "part": "participantFailures",
+     "message": "Participant already exists in participant list",
+     "category": "already-in-list",
+     "kind": "business-rule",
+     "expected": true,
+     "count": 1,
+     "occurrences": 1,
+     "pulledAt": "2026-09-15T09:00:00-07:00"
+    },
+    {
+     "programId": "p-onboard",
+     "part": "bounceReasons",
+     "message": "452 4.2.2 Mailbox full",
+     "category": "unclassified",
+     "kind": "unknown",
+     "expected": false,
+     "count": 3,
+     "occurrences": 3,
+     "pulledAt": "2026-09-15T09:00:00-07:00"
+    },
+    {
+     "programId": "p-onboard",
+     "part": "participantFailures",
+     "message": "Bounced recipient(to) email <email>' in Step 'Send Email'",
+     "category": "bounced-at-send",
+     "kind": "bad-address",
+     "expected": false,
+     "count": 1,
+     "occurrences": 3,
+     "pulledAt": "2026-09-15T09:00:00-07:00"
+    },
+    {
+     "programId": "p-onboard",
+     "part": "participantFailures",
+     "message": "Duplicate participant",
+     "category": "unclassified",
+     "kind": "unknown",
+     "expected": false,
+     "count": 1,
+     "occurrences": 2,
+     "pulledAt": "2026-09-15T09:00:00-07:00"
+    },
+    {
+     "programId": "p-onboard",
+     "part": "participantFailures",
+     "message": "Email address <email> is invalid",
+     "category": "unclassified",
+     "kind": "unknown",
+     "expected": false,
+     "count": 1,
+     "occurrences": 2,
+     "pulledAt": "2026-09-15T09:00:00-07:00"
+    },
+    {
+     "programId": "p-onboard",
+     "part": "participantFailures",
+     "message": "Missing required field: Email",
+     "category": "unclassified",
+     "kind": "unknown",
+     "expected": false,
+     "count": 1,
+     "occurrences": 2,
+     "pulledAt": "2026-09-15T09:00:00-07:00"
+    },
+    {
+     "programId": "p-onboard",
+     "part": "participantFailures",
+     "message": "Participant already exists in participant list",
+     "category": "already-in-list",
+     "kind": "business-rule",
+     "expected": true,
+     "count": 2,
+     "occurrences": 2,
+     "pulledAt": "2026-09-15T09:00:00-07:00"
+    },
+    {
+     "programId": "p-renew",
+     "part": "bounceReasons",
+     "message": "452 4.2.2 Mailbox full",
+     "category": "unclassified",
+     "kind": "unknown",
+     "expected": false,
+     "count": 2,
+     "occurrences": 2,
+     "pulledAt": "2026-09-15T09:00:00-07:00"
+    }
+   ],
+   "entrySamples": [
+    {
+     "programId": "p-nps",
+     "category": "already-in-list",
+     "kind": "business-rule",
+     "expected": true,
+     "participants": 1,
+     "occurrences": 1,
+     "sampleRows": 2,
+     "pulledAt": "2026-09-15T09:00:00-07:00"
+    },
+    {
+     "programId": "p-nps",
+     "category": "unclassified",
+     "kind": "unknown",
+     "expected": false,
+     "participants": 1,
+     "occurrences": 2,
+     "sampleRows": 2,
+     "pulledAt": "2026-09-15T09:00:00-07:00"
+    },
+    {
+     "programId": "p-onboard",
+     "category": "already-in-list",
+     "kind": "business-rule",
+     "expected": true,
+     "participants": 2,
+     "occurrences": 2,
+     "sampleRows": 8,
+     "pulledAt": "2026-09-15T09:00:00-07:00"
+    },
+    {
+     "programId": "p-onboard",
+     "category": "bounced-at-send",
+     "kind": "bad-address",
+     "expected": false,
+     "participants": 1,
+     "occurrences": 3,
+     "sampleRows": 8,
+     "pulledAt": "2026-09-15T09:00:00-07:00"
+    },
+    {
+     "programId": "p-onboard",
+     "category": "unclassified",
+     "kind": "unknown",
+     "expected": false,
+     "participants": 4,
+     "occurrences": 7,
+     "sampleRows": 8,
+     "pulledAt": "2026-09-15T09:00:00-07:00"
+    },
+    {
+     "programId": "p-onboard",
+     "category": "unique-criteria",
+     "kind": "business-rule",
+     "expected": true,
+     "participants": 1,
+     "occurrences": 3,
+     "sampleRows": 8,
+     "pulledAt": "2026-09-15T09:00:00-07:00"
+    }
+   ],
+   "sources": [
+    {
+     "programId": "p-nps",
+     "sourceType": "QUERY_BUILDER",
+     "lastSyncedOn": "2026-09-01 09:03:40",
+     "operation": "ADD_ALL_PARTICIPANT_IN_POWER_LIST"
+    },
+    {
+     "programId": "p-onboard",
+     "sourceType": "QUERY_BUILDER",
+     "lastSyncedOn": "2026-09-14 08:02:11",
+     "operation": "ADD_ALL_PARTICIPANT_IN_POWER_LIST"
+    },
+    {
+     "programId": "p-pilot",
+     "sourceType": "CSV",
+     "lastSyncedOn": null,
+     "operation": "ADD_ALL_PARTICIPANT_IN_POWER_LIST"
+    },
+    {
+     "programId": "p-renew",
+     "sourceType": "CSV",
+     "lastSyncedOn": "2026-03-02 10:00:00",
+     "operation": "ADD_ALL_PARTICIPANT_IN_POWER_LIST"
+    }
+   ],
+   "admissions": [
+    {
+     "programId": "p-nps",
+     "day": "2026-07-15",
+     "participants": 3
+    },
+    {
+     "programId": "p-onboard",
+     "day": "2026-08-01",
+     "participants": 1
+    },
+    {
+     "programId": "p-onboard",
+     "day": "2026-08-02",
+     "participants": 1
+    },
+    {
+     "programId": "p-onboard",
+     "day": "2026-08-03",
+     "participants": 1
+    },
+    {
+     "programId": "p-onboard",
+     "day": "2026-08-04",
+     "participants": 1
+    },
+    {
+     "programId": "p-onboard",
+     "day": "2026-08-05",
+     "participants": 1
+    },
+    {
+     "programId": "p-onboard",
+     "day": "2026-08-06",
+     "participants": 1
+    },
+    {
+     "programId": "p-onboard",
+     "day": "2026-08-07",
+     "participants": 1
+    },
+    {
+     "programId": "p-onboard",
+     "day": "2026-08-08",
+     "participants": 1
+    },
+    {
+     "programId": "p-onboard",
+     "day": "2026-08-14",
+     "participants": 1
+    },
+    {
+     "programId": "p-onboard",
+     "day": "2026-08-15",
+     "participants": 1
+    },
+    {
+     "programId": "p-onboard",
+     "day": "2026-08-16",
+     "participants": 1
+    },
+    {
+     "programId": "p-onboard",
+     "day": "2026-08-17",
+     "participants": 1
+    },
+    {
+     "programId": "p-onboard",
+     "day": "2026-08-18",
+     "participants": 1
+    },
+    {
+     "programId": "p-onboard",
+     "day": "2026-08-19",
+     "participants": 1
+    },
+    {
+     "programId": "p-onboard",
+     "day": "2026-08-20",
+     "participants": 1
+    },
+    {
+     "programId": "p-onboard",
+     "day": "2026-08-21",
+     "participants": 1
+    },
+    {
+     "programId": "p-onboard",
+     "day": "2026-08-22",
+     "participants": 1
+    },
+    {
+     "programId": "p-onboard",
+     "day": "2026-08-23",
+     "participants": 1
+    },
+    {
+     "programId": "p-onboard",
+     "day": "2026-08-24",
+     "participants": 1
+    },
+    {
+     "programId": "p-onboard",
+     "day": "2026-08-25",
+     "participants": 1
+    },
+    {
+     "programId": "p-onboard",
+     "day": "2026-08-26",
+     "participants": 1
+    },
+    {
+     "programId": "p-onboard",
+     "day": "2026-08-27",
+     "participants": 1
+    },
+    {
+     "programId": "p-unlisted",
+     "day": "2026-08-01",
+     "participants": 1
+    },
+    {
+     "programId": "p-unlisted",
+     "day": "2026-08-02",
+     "participants": 1
+    },
+    {
+     "programId": "p-unlisted",
+     "day": "2026-08-03",
+     "participants": 1
+    },
+    {
+     "programId": "p-unlisted",
+     "day": "2026-08-04",
+     "participants": 1
+    },
+    {
+     "programId": "p-unlisted",
+     "day": "2026-08-05",
+     "participants": 1
+    },
+    {
+     "programId": "p-unlisted",
+     "day": "2026-08-27",
+     "participants": 1
+    }
+   ],
+   "entryFailures": [
+    {
+     "programId": "p-nps",
+     "month": "2026-07",
+     "participants": 1,
+     "occurrences": 1
+    },
+    {
+     "programId": "p-nps",
+     "month": "2026-08",
+     "participants": 1,
+     "occurrences": 2
+    },
+    {
+     "programId": "p-onboard",
+     "month": "2026-07",
+     "participants": 3,
+     "occurrences": 3
+    },
+    {
+     "programId": "p-onboard",
+     "month": "2026-08",
+     "participants": 2,
+     "occurrences": 4
+    },
+    {
+     "programId": "p-onboard",
+     "month": "2026-09",
+     "participants": 2,
+     "occurrences": 6
+    }
+   ],
+   "stepFailures": [
+    {
+     "programId": "p-onboard",
+     "month": "2026-08",
+     "category": "bounce-drop",
+     "kind": "bad-address",
+     "expected": false,
+     "participants": 2
+    },
+    {
+     "programId": "p-onboard",
+     "month": "2026-08",
+     "category": "record-delete",
+     "kind": "business-rule",
+     "expected": true,
+     "participants": 3
+    },
+    {
+     "programId": "p-unlisted",
+     "month": "2026-08",
+     "category": "bounce-drop",
+     "kind": "bad-address",
+     "expected": false,
+     "participants": 1
+    },
+    {
+     "programId": "p-unlisted",
+     "month": "2026-08",
+     "category": "record-delete",
+     "kind": "business-rule",
+     "expected": true,
+     "participants": 1
     }
    ]
   }
@@ -3807,7 +4483,7 @@
    "unreadable": 0
   },
   "calls": {
-   "answered": 60,
+   "answered": 82,
    "split": 0,
    "retried": 0
   },
@@ -3821,6 +4497,13 @@
    "source": "kb",
    "programsWithDesign": 4,
    "programsWithout": 1
+  },
+  "kb": {
+   "source": "kb",
+   "undocumented": [
+    "p-unlisted"
+   ],
+   "behind": []
   },
   "accountNames": {
    "requested": 8,
@@ -3841,12 +4524,23 @@
    "testParticipantsExcluded": 3
   },
   "health": {
-   "otherPrograms": 0,
+   "otherPrograms": 1,
    "unreadableRows": 0,
    "schedules": {
     "programsWithDoc": 4,
     "programsWithout": 1
+   },
+   "samples": {
+    "bounceReasons": 3,
+    "participantFailures": 7
+   },
+   "categories": {
+    "overlapRows": 0
    }
+  },
+  "testAccounts": {
+   "accounts": 0,
+   "sent": 0
   }
  },
  "reconciliation": {
@@ -3917,9 +4611,61 @@
    }
   },
   {
+   "id": "step-names-as-of",
+   "detail": {
+    "oldest": "2026-08-20T00:00:00.000Z",
+    "programs": 4
+   }
+  },
+  {
    "id": "schedules-from-kb",
    "detail": {
     "oldest": "2026-08-20T00:00:00.000Z"
+   }
+  },
+  {
+   "id": "kb-behind-tenant",
+   "detail": {
+    "undocumented": 1,
+    "behind": 0,
+    "programs": [
+     "p-unlisted"
+    ],
+    "keysFile": "kb-gap-keys.json",
+    "refreshSeconds": 3
+   }
+  },
+  {
+   "id": "unclassified-wordings",
+   "detail": {
+    "wordings": 4,
+    "programs": 3,
+    "participants": 10,
+    "occurrences": 14,
+    "stepParticipants": 0
+   }
+  },
+  {
+   "id": "health-all-time",
+   "detail": {
+    "parts": [
+     "participantFailures",
+     "participantStates"
+    ],
+    "reason": "all-time"
+   }
+  },
+  {
+   "id": "participant-failures-no-breakdown",
+   "detail": {
+    "reason": "not-filterable",
+    "expectedReasons": 0
+   }
+  },
+  {
+   "id": "failure-samples-sampled",
+   "detail": {
+    "programs": 2
    }
   }
  ]

@@ -81,7 +81,7 @@ export const NOT_LACKS = Object.freeze({
 });
 // Reasons of the health facts. Nothing a page draws reads them yet: they get
 // their rows with the Health tab's views (DSH-4).
-export const LACKS_LATER = Object.freeze(["predates-health", "health-off", "not-in-previous", "call-failed", "no-schema", "no-kb"]);
+export const LACKS_LATER = Object.freeze(["predates-health", "health-off", "not-in-previous", "call-failed", "no-schema", "no-kb", "too-large", "all-time", "not-filterable"]);
 
 export const NEEDS = Object.freeze({
   pull: "It needs a new pull: the next refresh reads every table again.",
@@ -359,7 +359,7 @@ export function createDashboard(engine, model) {
       const heading = [...labels].join(", ");
       return facts.known ? renderNotice(facts, { heading, compact: true }) : `<p class="gs-note"><strong>${esc(heading)}:</strong> ${esc(facts.text)}</p>`;
     });
-    if (shownRows.some((r) => r.incomplete)) notes.push(`<p class="gs-note">* Includes sends on or after ${esc(snapshot.meta.incompleteFrom)}, which are provisional: opens keep arriving.</p>`);
+    if (shownRows.some((r) => r.incomplete)) notes.push(`<p class="gs-note">* Includes the provisional period: ${esc(engine.provisionalText(snapshot.meta))}.</p>`);
     if (shownRows.some((r) => r.carried)) notes.push(`<p class="gs-note">&dagger; Includes months carried forward from an earlier pull.</p>`);
     const none = dims.length && !result.rows.length ? `<p class="gs-note">Nothing matches the current filters.</p>` : "";
     return `${open}${tools}<div class="gs-scroll"><table><thead>${head}</thead><tbody>${body}</tbody><tfoot>${total}</tfoot></table></div>${none}${notes.join("")}</section>`;

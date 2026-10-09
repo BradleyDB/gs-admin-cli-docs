@@ -143,7 +143,7 @@ try {
     check("per-step rows appear only when the snapshot carries step detail: with it off, --by-template gives the template table and NO step table",
       byTpl.code === 0 && byTpl.md.includes("## Emails by template") && !byTpl.md.includes("## Emails by step") && byTpl.json.counts.stepRows === null && byTpl.json.counts.templateRows > 0);
     check("F-481: the summary names the one or two caveats to lead with, chosen by the script in a fixed order; on a clean full pull with an internal domain that is the provisional period alone",
-      isDeepStrictEqual(first.json.leadCaveats, ["sends on or after 2026-09-01 are provisional"]));
+      isDeepStrictEqual(first.json.leadCaveats, ["sends on or after 2026-09-01 are provisional (opens keep arriving), and bounces and unsubscribes on sends since 2026-08-01 can still change (the 2 months a refresh reads again)"]));
     const footer = /\nRe-run: `([^`]+)`\n/.exec(md1)?.[1];
     check("F-480: the report's Re-run code span holds the command and nothing else — exactly the summary's rerun, ending at its last argument — and the explanation sits outside it, beside the snapshot path",
       footer === first.json.rerun && !/\(|\)/.test(footer.split(" --snapshot ")[1]) && footer.endsWith(`--report ${dir1.replace(/\\/g, "/")}`) === first.json.rerun.endsWith(`--report ${dir1.replace(/\\/g, "/")}`) && /^- snapshot: .* \(the Re-run command at the foot of this report rebuilds it from this file; it pulls nothing\)$/m.test(md1),
@@ -212,7 +212,7 @@ try {
     check("--name takes a program's id as well as its name (email-report's vocabulary), and a name that matched no program is said first in the caveats, never passed over",
       mixed.code === 0 && isDeepStrictEqual(names(mixedReport), ["Acme NPS Survey"]) && isDeepStrictEqual(mixedReport.json.unmatchedNames, ["Acme Renewl Dynamic"]) &&
         section(mixedReport.md, "## Caveats & data gaps").split("\n")[2].startsWith('- No program with sends in the window is named "Acme Renewl Dynamic"') &&
-        isDeepStrictEqual(mixedReport.json.leadCaveats, ['no program with sends in the window is named "Acme Renewl Dynamic"', "sends on or after 2026-09-01 are provisional"]), [mixed.stderr?.slice(-200), mixedReport.json]);
+        isDeepStrictEqual(mixedReport.json.leadCaveats, ['no program with sends in the window is named "Acme Renewl Dynamic"', "sends on or after 2026-09-01 are provisional (opens keep arriving), and bounces and unsubscribes on sends since 2026-08-01 can still change (the 2 months a refresh reads again)"]), [mixed.stderr?.slice(-200), mixedReport.json]);
   }
 
   // ══ The full report: accounts and step detail on (the committed fixture snapshot) ══
@@ -382,9 +382,16 @@ try {
     const table = (heading) => [...(skill.split(heading)[1] ?? "").split("\n\n")[1].matchAll(/^\| `(--[a-z-]+)/gm)].map((m) => m[1]);
     const pullFlags = table("Pull flags");
     const repFlags = table("Report flags");
-    check("every flag the skill passes through exists in the script it is passed to, in that script's own spelling: pull flags in the adapter, report flags in the report script",
+    // A fenced line that names another plugin script (the narrow re-documentation of F-491: manifest.mjs, describe-batch.mjs)
+    // is held to THAT script's flags; every other flag in the skill is the adapter's, the report's or the skill's own.
+    const scriptLines = skill.split("\n").filter((l) => /node \.gs-superadmin\/plugin\/scripts\/[a-z-]+\.mjs/.test(l) && !/engagement(-report)?\.mjs/.test(l));
+    const scriptFlagsOf = (l) => flags(readFileSync(join(PLUGIN, "scripts", l.match(/scripts\/([a-z-]+\.mjs)/)[1]), "utf8"));
+    const otherLineFlags = new Set(scriptLines.flatMap((l) => [...flags(l)]));
+    const prose = skill.split("\n").filter((l) => !scriptLines.includes(l)).join("\n");
+    check("every flag the skill passes through exists in the script it is passed to, in that script's own spelling: pull flags in the adapter, report flags in the report script, and a fenced line naming another plugin script carries only that script's flags",
       pullFlags.length >= 9 && pullFlags.every((f) => adapterFlags.has(f)) && repFlags.length === 4 && repFlags.every((f) => reportFlags.has(f)) && ["--internal-domain", "--unsubscribe-link", "--accounts", "--step-detail"].every((f) => pullFlags.includes(f)) &&
-        [...flags(skill)].every((f) => adapterFlags.has(f) || reportFlags.has(f) || skillOnly.has(f)), [pullFlags, repFlags, [...flags(skill)].filter((f) => !adapterFlags.has(f) && !reportFlags.has(f) && !skillOnly.has(f))]);
+        scriptLines.length >= 3 && scriptLines.every((l) => { const own = scriptFlagsOf(l); return [...flags(l)].every((f) => own.has(f)); }) &&
+        [...flags(prose)].every((f) => adapterFlags.has(f) || reportFlags.has(f) || skillOnly.has(f) || otherLineFlags.has(f)), [pullFlags, repFlags, [...flags(prose)].filter((f) => !adapterFlags.has(f) && !reportFlags.has(f) && !skillOnly.has(f) && !otherLineFlags.has(f)), scriptLines.length]);
   }
 
   // ══ One aggregation path (house rule 11) ══════════════════════════════════

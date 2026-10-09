@@ -1451,6 +1451,398 @@ in this order, stopping at the first that holds:
 - (p3) Else participant failures stay all time, with the page saying so wherever the figure shows.
 Participant states (`ao_participants`) are expected to stay all time whichever holds.
 
+### Re-banked for V2 after the S3b health batch (builder, 2026-10-07, feat/jo-dash-s3b-health-batch @ hb-20261007-02, PR #43)
+
+Y0 was RULED at S4a's kickoff and Y3 CLEARED at the spot check; both stand. Y4, Y5, Y7, Y8, Y9, Y10, Y11 and Y12
+stay owed as written above. Y1, Y2 and Y6 are REPLACED by the versions below (the S3b batch changed what they
+measure: failure reasons are counted by category, the silent rules are cadence-aware, the schedule rides the program
+dimension). Y13 to Y16 are new. The two reads the batch was gated on were made in the build session on 2026-10-07
+with Bradley's live token (reads only, through the spike's catalog-checked runner); their results are stated where
+the check depends on them, and V2 re-measures nothing it does not need to.
+
+- Y1 (health facts on a real tenant, count first). `engagement.mjs plan <common> --health --kb <slug> --run v2-health`,
+  then `run` with the same flags and `--out <slug>/reports-adhoc/v2-health.json`. The shipped category list is
+  empty, so pass none; the read that gates categories was made at S3b: a CONTAINS, DOES_NOT_CONTAINS or
+  STARTS_WITH filter on `ao_failed_participants.FailureReasons` is refused by the server ("Unrecognized data type
+  found in Filter or Ranking fields"), and `rp schema` declares the field (every JSON-path field of that object)
+  `filterable: false, groupable: false`; CONTAINS on `email_log_v2.BouncedReason` returned in a plain count and in the
+  grouped shape the batch uses, with DOES_NOT_CONTAINS its complement (one month, no null reason among its
+  bounces). FIRST clause, before the pull: the plan's own count-first reads replace the spike-runner count of the
+  spot check — record `estimate.health.failedParticipantRows` (an order of magnitude) and `estimate.rowBudget`.
+  Pass bar: exit 0 with `ok: true`; `health.pulled` true; every part of `health.parts` is either pulled or
+  carries a reason (`too-large`, `call-failed`, `no-schema`, `no-kb`, `not-in-previous`), with its `basis`;
+  `participantFailures` IS read (one row per program, category other, participants and occurrences; its
+  `meta.health.categories` entry reads `counted: false, reason: not-filterable`); `bounceReasons` rows are all
+  category `other` with no message (no list was passed) and sum to the send tables' bounced (the check is ok in
+  closed months); `failureSamples` holds at most five masked texts per program and part. The pull's health calls
+  are within 2x of `estimate.health.addsCalls` (read both from the summary and the fetch log's `health-` and
+  `schedule-describe` records); record the health calls made, their seconds, how many split, which parts were not
+  read, and the whole run's calls against `estimate.thisRun` (the click families are now priced from a count).
+  A health part refused as `too-large` is recorded with the rows the estimate saw; it is a pass only if the rows
+  really exceed `rowBudget.rows`.
+  CLEARED (S3b verdict round @ hb-20261007-02, tester, 2026-10-07; production, reads only; pass bar as written above).
+  First clause: `estimate.health.failedParticipantRows` order 10^6; `estimate.rowBudget` 40 pages of 5000, nothing
+  over it. Plan 14 calls; run exit 0, `ok: true`, reconciled (all four checks, 0 mismatches), 71 calls made and 13
+  reused, 0 split, 556 s. `health.pulled` true; all six parts pulled with their basis (window, all-time, all-time,
+  lookback, as-documented, sample); none refused. `participantFailures` read: one row per selected program with
+  failures (order 10^2), every row category other with participants and occurrences and no message; the categories
+  entry reads `counted: false, reason: not-filterable`. `bounceReasons` order 10^2 rows, all category other, no message;
+  `bounce-reasons-sum-to-bounced` ok. `failureSamples` at most 5 per program and part (bounce part only: see Y2).
+  Health calls 36 (35 in the run plus the count-first `health-reasons-total` made at the plan) against
+  `estimate.health.addsCalls` 40 (0.90x); about 153 s against 219; nothing split; no part unread. Whole run 71 / 556 s
+  against `estimate.thisRun` 75 / 546 s; the click families 7 against 7. F-476 VERIFIED.
+- Y2 (masking holds on real messages; the category capture). Over Y1's snapshot and run directory, by script:
+  search every `facts.health` message and sample, and every payload file of a `health-bounce-sample` or
+  `health-reasons-sample` call, for an `@`, a run of five or more digits, an IPv4 address, a word with an `@` and
+  NO dot after it (the gap the email rule has: `bob@localhost`, a bare login), and the value after "Invalid value".
+  Pass bar: zero hits of the first three in the snapshot's rows and the payload files; hits of the last two are
+  recorded as counts (they are what the categories exist to cut) and are a finding only if they reach a row that
+  is not a sample. Then Bradley reads `facts.health.failureSamples` (the terminal, never a page): the bounce
+  samples and the participant-failure samples per program. THE CAPTURE: for every sample that carries a value
+  (an address, a field name, a number), Bradley marks it, and its EXACT wording up to the value is captured into
+  the consumer workspace as a `--failure-categories` file ({id, label, pattern, definition}; tenant data until it
+  is judged product text); for every sample that is expected by design, its wording goes to `--expected-reason`.
+  Pass bar: the file exists with no wording cut off; a second pull with it passed (Y1's flags plus
+  `--failure-categories <file>`) is a full refresh that says the categories changed, its category rows carry the
+  labels, the "Other" share per program is recorded as a percentage, and no "Other" row counts below zero (a
+  negative one is the overlap caveat and a list defect). What of the captured list is product text with no
+  tenant value is Bradley's call; only that may ship.
+  FAILED on the participant half (S3b verdict round @ hb-20261007-02, tester, 2026-10-07; production, reads only).
+  Search, over Y1's snapshot and run directory and again over the second pull's: zero addresses, five-digit runs and
+  IPv4 addresses in the snapshot rows and in both sample payload files; the local-address pattern 0; "Invalid value"
+  once, in the participant sample PAYLOAD only (its program never reached the snapshot). The bounce samples: order
+  10^2 rows over a quarter to a third of the programs with bounces (first and second pull), read in the terminal by Bradley; 98 distinct texts. THE
+  CAPTURE: a 30-category file drawn verbatim from those texts (each pattern the wording up to the first value; none
+  holds a value or a placeholder; the plugin's validator clean; 82 of the 98 matched by exactly one pattern, checked
+  case-sensitively and case-insensitively), accepted by Bradley as his marking; in the workspace, tenant data until
+  judged. Second pull with it: a full refresh saying the categories changed; every category row's message is its
+  label; no Other row below zero and no overlap caveat; 29 of 30 categories counted; the Other share per program
+  median 30%, quartiles 18% and 50%, range 0 to 100% (overall about 44%); the sum check ok. The participant half
+  FAILED: `failureSamples` held no participant-failure sample for any selected program (the sample is one tenant-wide
+  page, and all of it was one program outside the selection), so there was nothing to read, no participant wording to
+  capture and no `--expected-reason` to name; F-484 REOPENED. Which of the captured list is product text that may
+  ship is not yet ruled (Bradley's call; the file stays in the workspace).
+- Y6 (the silent lists). `silentPrograms` over Y1's snapshot at 30 days (a node one-liner over the snapshot file),
+  printing `lists` by id. Pass bar: Bradley reads each list and every one must read true to him: "Possible silent
+  failure" (a recurring schedule was due and nothing was sent since; a quarterly program is not on it at 30 days;
+  each row names its last due day and the live last-run result, "last run succeeded" where it was); "Schedule run
+  failed" (the live read said so); "No recent sends" (event-driven, hand-fed and unknown programs against their
+  own history — THE STARTING RULE, which this read is the judge of: a program that sends fewer than half the
+  closed months is late only past its longest gap between send months, one that sends most months or has under
+  three months of history is late at the flat threshold); "One-time and ad-hoc programs" (never on a silent list,
+  each with its last send, the months it sent in and its templates); "Cannot judge: period longer than the
+  window"; and "Active, no sends in this window", apart from the alarms. For two programs on an alarm list a direct
+  program x day read of the last 90 days shows no later send. `honesty.health.schedules` records how many were
+  flagged and read live (the cap is 25); the `schedules-from-kb` caveat names the same figures. Two reads besides:
+  whether a schedule's start and end dates are in the `jo p describe` payload (an ended schedule must not read
+  as broken; record the field names and shapes only), and whether any tenant-wide reportable object holds
+  schedule or query run results (record its API name and field types, or that none was found).
+  FAILED (S3b verdict round @ hb-20261007-02, tester, 2026-10-07; production, reads only): the lists do not read
+  true. At 30 days: possible-silent-failure 6, schedule-run-failed 25, no-recent-sends 3, ok 30, one-time 0,
+  no-sends-in-window 0, cannot-judge 0; `honesty.health.schedules` flagged 31, read live 25 (the cap), 0 failed, and
+  the `schedules-from-kb` caveat names the same. "Schedule run failed" holds every program read live, and on every
+  live-read schedule the run-state is unset (`lastRunSuccess` false with `lastSuccessTime`, `lastFailureTime` and
+  `failingSince` 0); Bradley checked two in the UI — each runs daily as expected, its recent participants failed only
+  as already in the program. Two schedules ended weeks ago and read failed. "No recent sends": Bradley reads all three
+  as finished one-off campaigns left Active. "Possible silent failure" includes a program the settled picks record
+  as sending monthly on the 1st, six days after its send (daily ingest crons read as send cadence). Two programs on
+  the run-failed list, read direct (program x day, last 90 days): the last send day equals the snapshot's, no later
+  send. Describe payload: the schedule objects sit in `data.advancedOutreach.participantSourceConfigurations[]
+  .scheduleInfo`, a JSON STRING holding `schedules[]`, each with `startTime` and `endTime` (epoch-ms numbers) beside
+  `lastRunSuccess` (boolean), `lastSuccessTime`, `lastFailureTime`, `failingSince` and `nextRunTime` (numbers); not
+  every describe carries it. Tenant-wide run results: `ao_participant_source_configuration` holds `LastSyncedOn`
+  (DATETIME) per participant source, with `AdvancedOutreachId` (STRING), `GsAdvancedOutreachId` (LOOKUP),
+  `ParticipantSourceType` (STRING), `RefreshPowerlistFlag` and `ActiveVersion` (BOOLEAN) — a last-sync time, no
+  success or failure field; `participant_criteria_step_execution` holds branch evaluations, not runs. F-491 logged.
+- Y13 (the lookback, derived). `estimate.health.lookback` from Y1's plan: `longestPeriodDays` among the selected
+  programs' schedules, `programsBeyondWindow` and `unreadableCrons`. Pass bar: the longest period reads as the
+  program Bradley knows to run least often (quarterly on this tenant); with the default 90 days that program is
+  on the "cannot judge" list; a second plan with `--health-lookback-days` above its period plans the same calls
+  plus the longer day read and, after its pull, judges that program by its cadence. `unreadableCrons` is 0, or
+  each unreadable expression is recorded (shape only) as a finding for the calculator.
+  CLEARED for the arms this tenant has (S3b verdict round @ hb-20261007-02, tester, 2026-10-07): `lookback` = days 90,
+  `longestPeriodDays` 30, `programsBeyondWindow` 0, `unreadableCrons` 0. Every cron in the KB is daily, weekday,
+  weekly or monthly; the program named as quarterly carries a monthly cron, and Bradley confirmed it runs monthly by
+  design and takes participants quarterly, and that monthly is the least frequent schedule he knows. The pull judged
+  that program by its monthly cadence (rule cadence, period 30). NOT measurable here: a program beyond the 90-day
+  window on the cannot-judge list, and the second plan above its period (no period exceeds the default window);
+  owed to a tenant that schedules something less often than the window. (That a monthly ingest cron is judged as a
+  monthly send cadence is F-491's, not this check's.)
+- Y14 (the schedule rides every pull with a KB). A pull WITHOUT `--health` but with `--kb` (the open-rate report's
+  own pull): every `dimensions.programs[].schedule` is filled for a program with a full KB doc (classification,
+  cron, zone, as of the doc's date), "no schedule captured" for a documented program with none, and null for a
+  program the KB has no doc for; `dashboard-groups.mjs resolve` over that snapshot with a `recurring` rule assigns
+  the same programs as over Y1's snapshot (Y9's rule). `dimensions.templates[].uses[].asOf` is the doc's date and
+  the `step-names-as-of` caveat names the oldest. Pass bar: the counts of programs per schedule classification
+  equal those of Y1's snapshot, and the program with no doc reads null, never "no schedule".
+  CLEARED (S3b verdict round @ hb-20261007-02, tester, 2026-10-07; production, reads only). The pull with `--kb` and no
+  `--health`: exit 0, reconciled, 45 calls / 493 s against its plan's 35 / 327 s (exactly `addsCalls` 40 below Y1's
+  75). Classification counts identical to Y1's (recurring, "no schedule captured" and null: order 10^2, 10^1 and
+  10^1), and every program's `schedule` object identical between the two snapshots; the null count equals
+  `honesty.health.schedules.programsWithout`, the other two sum to `programsWithDoc`. `dashboard-groups.mjs resolve`
+  with a recurring-true and a recurring-false supergroup rule (a scratch spec in the workspace): identical supergroup
+  counts over both snapshots, the no-doc programs Ungrouped. `uses[].asOf`: every use on a program with a full doc
+  equals that doc's `last_verified` (order 10^2 uses), every other use null; the `step-names-as-of` caveat names the
+  oldest `last_verified` of the selected full docs and their count.
+- Y15 (test accounts, server-side). Bradley names one or two test COMPANY records by id (tenant data: the
+  workspace picks file). Y1's flags plus `--test-account <id>` each, a full refresh (the snapshot says the test
+  accounts changed). Pass bar: the test accounts' sends are in the internal class (the program's internal rows
+  grew by `honesty.testAccounts.sent`, the external rows shrank by the same, the totals unchanged), a test contact
+  on an internal domain is counted once (the overlap call is in the fetch log), external unique recipients fell
+  by the people of those accounts and no further, the no-company-link rows are unchanged (NOT_IN keeps them: the
+  read made at S3b over the whole window, IN plus NOT_IN equal to the plain count with order 10^4 null rows), and
+  `meta.params.testAccounts` echoes the ids sorted.
+  CLEARED (S3b verdict round @ hb-20261007-02, tester, 2026-10-07; production, reads only; two company ids named by
+  Bradley, kept in the workspace picks file). Y1's flags plus both `--test-account`s and `--previous` Y1's snapshot:
+  the plan says mode full, "the test accounts changed"; exit 0, reconciled, 92 calls against 84. `meta.params.
+  testAccounts` echoes both ids, sorted. Sends moved between classes exactly: internal grew and external shrank by the
+  same order-10^3 count, total sent unchanged, and per program x template x month (order 10^3 keys) internal growth
+  equals external shrink on every key with no total changed. The overlap calls (`test-internal`, one per internal
+  domain, for the send and click families and the bounce total) are in the fetch log, and a test contact on an
+  internal domain is counted once: `honesty.testAccounts.sent` counts ALL the accounts' sends, and the internal rows
+  grew by that less the overlap calls' sum (order 10^2) — the bar's "grew by `honesty.testAccounts.sent`" holds once
+  its own counted-once clause is applied. External distinct counts: accounts fell by at most 1 per program, every program's all-recipients people count unchanged, external people fell by a
+  figure within 1% of the sends moved, which bounds out any loss of the order-10^4 no-company rows NOT_IN keeps.
+  Totals beside sends: the previous, closed month moved by a handful of bounces and one unsubscribe between the two
+  pulls (late flags, tenant data; F-493).
+- Y16 (the run clock). Y1's plan and run were one `--run`: the snapshot's `meta.pulledAt` is at or after the plan's
+  end and at or before the first fact call's record in the fetch log (the day buckets and templates, not the
+  cheap calls), and `run.json` holds the same stamp; the report's "Data pulled" line reads it. If the round
+  crosses midnight between plan and run (or resumes after a login past midnight), the run continues with no
+  `--today` and the snapshot's day is the plan's. Pass bar: one stamp everywhere, inside the fact calls' span; a
+  resume across midnight needs no flag.
+  CLEARED (S3b verdict round @ hb-20261007-02, tester, 2026-10-07; production, reads only). After Y1's plan `run.json`
+  read `pulledAt: null`; after the run one stamp sits in `meta.pulledAt`, `run.json`, all order-10^3 fact rows, the
+  live schedule rows' `asOf` and the report's "Data pulled" line, 12 s after the plan ended and before the first
+  fact call began (the fetch log has no times: a call's start is its call file's mtime less its logged duration).
+  The round did not cross midnight; the crossing's code path was driven instead: a one-program run planned with
+  `--today` set to the day before, then run with no `--today` — exit 0, the plan's day kept, its day-derived fields
+  the plan's; the same with `--today` set to today refused before any call ("today moved"). F-482, F-483 VERIFIED.
+
+### Re-banked for V2 after the S3b fix round (builder, 2026-10-07, feat/jo-dash-s3b-health-batch; the branch's next handoff token)
+
+Y2's participant half and Y6 are REPLACED by the versions below (F-484's second fix reads the samples per program;
+F-491's redesign replaced the cadence rules with signals). Y17 and Y18 are new. The build session measured the
+shapes on 2026-10-07 (brief: `dev/S3B-FIX-ROUND-BRIEF.md`); V2 re-measures nothing it does not need to.
+
+- Y2 (participant half, re-banked). Y1's flags: `failureSamples` holds participant-failure rows for EVERY selected
+  program with refusals in the window (`entryFailures`), each read by its own call (`--order-by` ModifiedAt DESC,
+  one program in the IN filter, the day window), never a tenant-wide page; `entrySamples` splits each program's
+  sample by the shipped expected categories; `meta.health.samples.participantFailures` names what the cap left out
+  (none at 25 on this tenant, or the exact programs with reason cap) and the plan printed `withFailures`,
+  `planned`, `beyondCap` and `secondsBeyondCap`. Bradley reads the samples and the split per program: the
+  expected ones read as business rules working, the null-address ones as data problems. Pass bar: no selected
+  program with refusals lacks a sample unless named; the "Other" (uncategorised) share per program is small and
+  its texts are product wordings not yet in the list (capture them into `--failure-categories`).
+  FAILED (S3b fix-round verdict @ hb-20261007-03, tester, 2026-10-08; production, reads only), on F-484 (reopened a
+  second time). The plan printed withFailures, planned, carried, beyondCap and secondsBeyondCap; every sample call
+  names one program and one day window; `notSampled` names what the cap left out with reason cap; a three-program pull
+  at `--sample-programs 1` named the other two. But the picks are ranked over the month window and read over the day
+  window: 10 of 25 participant picks (17 of 25 bounce picks) came back with 0 rows, were counted as sampled and named
+  nowhere, so programs with refusals in the window lack a sample without being named. Bradley read the 15 real
+  samples' split (one program: the GlobalOptOut wording expected, the Bounced-recipient wording at Send Email misread
+  as unexpected, F-491) and found a null-address wording dominant in the UI that no 100-newest page carried. Detail
+  under F-484.
+- Y6 (the lists, re-banked). `programHealth(snapshot).lists` over Y1's snapshot. Pass bar: Bradley reads each list
+  and every one must read true to him — Schedule ended (a schedule past its end date; none expected on this tenant
+  unless one exists), Participant sync disabled (the list's flag), Participant sync overdue (a daily ingest whose
+  source last synced before its last due day — read the two programs with sync ages over 120 days measured at the
+  build), Admitting nobody (zero admissions over the last 5 due days with an ingest that runs), Only refused
+  participants arriving, Step errors this period (the programs whose participants carry the CTA-step wording or a
+  SYSTEM_ERROR this month or last), No recent sends (own history), Finished campaign (one-offs with nothing in
+  flight: the DRIPV2 programs synced once at creation), Working as expected. Record the counts per list and the
+  signals of two programs per alarm list; for one program on each alarm list, Bradley's read of the Gainsight UI.
+  The threshold: a second read of the lists with `--quiet-due-days 2` moves the admitting-nobody line as expected.
+  FAILED (S3b fix-round verdict @ hb-20261007-03, tester, 2026-10-08; production, reads only), on F-491 (reopened: the
+  model). Counts: schedule-ended 35, admitting-nobody 1, step-errors 6, no-recent-sends 2, finished 10, ok 11, every
+  other list 0, order 10^1 Active programs judged. Read true by Bradley: admitting-nobody, finished, ok, one of two
+  no-recent-sends, and the 20 schedule-ended programs whose every schedule has ended. Read false: 15 schedule-ended
+  (an ended job schedule read over the live participant sync; Bradley's UI read and a live describe agree the sync
+  runs to 2030), all 6 step-errors (bad-address drops at Send Email, which Bradley ruled a kind of their own: business
+  rule, bad-address error, program error), and a quarterly-intake program on no-recent-sends. `--quiet-due-days 2`:
+  admitting-nobody 1 -> 2, the expected direction, onto that same quarterly program (a false read). Bradley's words
+  are recorded verbatim under F-491.
+- Y17 (the heartbeat is the ingest). For five Active programs with a daily cron: `facts.health.sources[].lastSyncedOn`
+  against the program's last run in the UI (date and time). Pass bar: equal to the day for every one; a program
+  whose sync is older than its cron's last due day shows no newer run in the UI.
+  CLEARED (S3b fix-round verdict @ hb-20261007-03, tester, 2026-10-08; production, reads only). Five Active daily-cron
+  programs: `sources[].lastSyncedOn` equals the Gainsight UI's last run on 5 of 5, to the day and to the time (one
+  also by a live describe the same day); Bradley: "these all look correct and are when execution finished, not
+  started" — the field is the run's finish time. The second arm (a sync older than its last due day shows no newer
+  run) has no instance: ingest-overdue is 0 on this pull; unexercised.
+- Y18 (step failures by category). `facts.health.stepFailures` for the current and previous month, against a direct
+  `rp run` COUNT of `ao_participants` with `FailureReasons IS_NOT_NULL` grouped by program and month (total), one
+  CONTAINS per shipped pattern and the SYSTEM_ERROR state. Pass bar: identical per program and month; "other" is
+  the remainder and never below zero; the platform-error months match the incident dates Bradley knows.
+  CLEARED (S3b fix-round verdict @ hb-20261007-03, tester, 2026-10-08; production, reads only). Direct `rp run` COUNTs
+  of `ao_participants` over the selected programs, grouped by program and month for the current and previous month
+  (FailureReasons IS_NOT_NULL; one CONTAINS per shipped pattern; ParticipantState SYSTEM_ERROR): 95 of 95 cells (19
+  program x month keys x 5 categories) equal `facts.health.stepFailures`; "other" never below zero. The tenant-wide
+  total timed out server-side once; scoped to the selected programs, as the adapter scopes it, every count answered.
+  The only platform-error month in the window matches an outage Bradley knows ("there was a huge outage in nov/dec of
+  last year. programs had a lot of issues and most just were hard shut off"). The categories themselves are F-491's:
+  the counts are right, the expected flag over them is not.
+- Banked as measured, not owed: the server's CONTAINS is case-insensitive (four casings of one wording returned
+  one count, 2026-10-07).
+
+### Re-banked for V3 after the S3b fix round 2 (builder, 2026-10-08, feat/jo-dash-s3b-health-batch; the branch's next handoff token)
+
+Y2's participant half and Y6 are REPLACED again by the versions below (F-484 redesigned: one window for the pick and the
+page, the most repeated refusals first; F-491 tuned: the live schedule, a stale doc, three kinds, a too-new program).
+Y19 is new (F-492's class test on the live wordings). The build session measured first on 2026-10-08 (three reads on
+the live token, the rest offline over V2's snapshot; shapes in `dev/S3B-FIX-ROUND-BRIEF.md` § Round 2). Round type:
+RE-VERIFICATION of F-484, F-491 and F-492 by their Judge lines plus these checks; nothing else is owed.
+
+- Y2 (participant half, re-banked for V3). Y1's flags, a full pull. Pass bar, from F-484's Judge line: the plan prints
+  `estimate.health.samples.participantFailures` with `withFailures` equal to the number of selected programs whose
+  refusals have a ModifiedAt in the day window (a direct COUNT grouped by program over that window confirms it: 64 on
+  2026-10-08); EVERY program in `meta.health.samples.participantFailures.programs` has `failureSamples` rows (no empty
+  pick: the sample page and the count share one window object, so the fetch log's sample calls carry the SAME two
+  ModifiedAt bounds as the `health-entry-window` call); `meta.health.samples.participantFailures.window` equals
+  `meta.health.dayWindow` and `.counts` names exactly the programs with such refusals; a program with refusals in the
+  per-month table but none in the day window is in neither `programs` nor `notSampled` and its entry signal reads
+  `none-recent`; each sample call orders by `OccurrenceCount DESC`. Bradley reads the dominant program's split: the
+  null-address wording he saw in the UI is now in its `failureSamples` (the most repeated page carried it on 75 of 100
+  rows at the build) and its `entrySamples` split names it under `no-email` as a bad address.
+  FAILED (S3b fix round 2 verdict @ hb-20261008-01, tester, 2026-10-08; production, reads only), on F-484 (reopened a third
+  time; Bradley ruled it not deferred). Every structural arm held: `withFailures` 64 equals a direct COUNT grouped by program
+  over the plan's day window and the selected programs, 64 of 64 with equal counts; `.window` equals `meta.health.dayWindow`;
+  `.counts` names exactly those programs; every one of the 25 picks has `failureSamples` rows, the other 39 named with reason
+  cap; month-only programs in neither list; the 25 sample calls carry the entry-window call's ModifiedAt bounds, one program
+  each, ordered by `OccurrenceCount` DESC. The dominant program's sample carries the null-address wording Bradley saw (76 of
+  100 rows), but as `Custom field contains Invalid value {null} for EMAIL data type`, which the shipped `no-email` pattern
+  (`Recipient Email Address field contains Invalid value`) does not match: kind null in `failureSamples`, `other` /
+  `program-error` in `entrySamples`. Detail and Bradley's words under F-484.
+- Y6 (the lists, re-banked for V3). `programHealth(snapshot).lists` over Y2's pull. Pass bar, from F-491's Judge line:
+  Schedule ended holds ONLY programs whose every documented schedule has ended AND whose source has not synced since
+  (the 20 Bradley read true at V2), none of the 15 that carry a live participant sync beside an ended job schedule
+  (each now reads by the live one: `dimensions.programs[].schedule.cronExpression` is the sync's cron and `endTime`
+  its 2028–2034 end); a program whose documented schedule ended before its source's last sync is on Cannot judge yet
+  with `signals.why` = doc-stale (none expected on this tenant after the refresh; if one appears, Bradley reads it);
+  Step errors holds only programs with a program-error kind this period (`signals.steps.byCategory` names
+  step-action-failed, platform-error or other, never a Send Email drop) — expected 0 or the platform-error programs
+  of the current and previous month; the six V2 programs read `steps.state` none with `byKind` naming bad-address and
+  business-rule; the quarterly-intake program is on Cannot judge yet with `signals.why` = too-new and
+  `sends.firstSendMonth` 2026-08, NOT on No recent sends, and at `--quiet-due-days 2` it still reads admitting-nobody
+  (the knob's definition: two monthly runs that admitted nobody; recorded, not a defect); every other list reads as
+  at V2 (admitting-nobody 1, finished 10, no-recent-sends 1 — the weekly program Bradley called broken — ok the
+  rest). Record the counts per list and Bradley's read of each list that changed.
+  CLEARED on its bar (S3b fix round 2 verdict @ hb-20261008-01, tester, 2026-10-08; production, reads only); F-491 REOPENED
+  nonetheless, on the Fix note's own claim. Counts: schedule-ended 19, admitting-nobody 5, step-errors 0, no-recent-sends 2,
+  finished 15, cannot-judge 3, ok 21, every other list 0. Every list read true by Bradley: Schedule ended holds the programs
+  whose one documented schedule ended with no sync since and none of the 15 live syncs (each now on its participant-sync
+  schedule, ends 2028–2034); the doc-stale program reads No recent sends (precedence) and Bradley read it true; Step errors 0,
+  the six V2 programs `steps.state` none with `byKind` bad-address (two with business-rule); the quarterly program on Cannot
+  judge yet, too-new, first send 2026-08, and on Admitting nobody at `--quiet-due-days 2`; the lists that changed since V2
+  (Admitting nobody 1 -> 5, Finished 10 -> 15, Cannot judge yet 0 -> 3, ok 11 -> 21) read true, Admitting nobody after one
+  extra direct read of the new members' refusals. The reopen: a program with no KB doc reads ingest `one-time` and counts as a
+  one-off for Finished from a default (a live describe shows a daily cron). Bradley's words under F-491.
+- Y19 (the mask on the live wordings, F-492). The 30 bounce wordings Bradley accepted at hb-20261007-02 (the workspace
+  file, never the repo) run through `maskMessage`: pass bar, every one equals itself (the leading-space entry trims,
+  nothing else changes) — 11 of 30 changed at V2, 12 counting the trim; and the previous round's order-10^3 raw sample
+  texts through the mask searched with the tester's own detectors (addresses, five-digit runs, IPv4): 0 addresses, 0
+  five-digit runs, 0 IPv4; host names and URL paths are EXPECTED to appear (ruling 8). Bradley confirms or overrules
+  hosts unmasked.
+  CLEARED (S3b fix round 2 verdict @ hb-20261008-01, tester, 2026-10-08; workspace files, no gs-admin call). The 30 wordings:
+  29 equal, 1 trim-only, 0 changed (rules email, uuid, ipv4, token, number). The hb-20261007-02 texts through the mask, the
+  tester's own detectors: 0 addresses, 0 `@`, 0 IPv4, 0 five-digit runs; hosts and URL paths appear as ruled. A host with a
+  digit in a label still masks whole to `<id>` (accepted in the Fix note). Bradley confirmed hosts unmasked as shipped; F-492
+  VERIFIED.
+
+### Re-banked for V4 after the S3b fix round 3 (builder, 2026-10-08, feat/jo-dash-s3b-health-batch; the branch's next handoff token)
+
+Y2's participant half and Y6 are REPLACED again by the versions below (F-484 redesigned a second time: the invariant
+core of a product wording, and "unclassified" as one explicit state; F-491 redesigned: the KB is the one source of
+schedules, what it lacks is named and a narrow refresh is offered). Y20 is new (the ask and the narrow refresh, walked
+in the email-engagement skill — its SKILL.md changed this round and it is model-invocable, so the tester session
+invokes it). The build session measured first on 2026-10-08 (six reads on Bradley's token: two `rp schema`, one
+`jo p list` page, two 2000-row refusal pages over the day window; shapes in `dev/S3B-FIX-ROUND-BRIEF.md` § Round 3).
+Round type: RE-VERIFICATION of F-484 and F-491 by their Judge lines plus these checks; nothing else is owed. Every
+other check of this section stands as last re-banked.
+
+- Y2 (participant half, re-banked for V4). Y1's flags, a full pull, no --previous. Pass bar, from F-484's Judge line:
+  every structural arm of V3 still holds (withFailures equals the direct count, one window object for the count and
+  every page, no empty pick, OccurrenceCount DESC); the dominant program's `failureSamples` row for `Custom field
+  contains Invalid value {null} for EMAIL data type` reads category `invalid-field-value`, kind `bad-address`,
+  with `occurrences` far above `count` (one key was refused order 10^4 times at the build), and its `entrySamples`
+  row carries the same category and kind; the five programs whose refusals carry the `Recipient Email Address field`
+  spelling land in the SAME category; no `failureSamples` or `entrySamples` row carries category null, kind null or
+  `other`; every row that reads `unclassified` reads kind `unknown` in both tables, is counted in the
+  `unclassified-wordings` caveat (wordings, programs, participants, occurrences) and in its program's
+  `signals.entry.sample.unclassified`, and a program kept from admitting anyone by such a wording is on Only refused
+  participants arriving. Bradley reads the dominant program's split and EVERY unclassified wording (none is expected:
+  the build's two 2000-row pages matched every other wording; one that appears is reported through report-bug as the
+  caveat says, and recorded here with its masked text).
+  CLEARED (S3b fix round 3 verdict @ hb-20261008-02, tester, 2026-10-09; production, reads only). The pull: the
+  email-engagement skill's plan then run (Y1's flags, full, no --previous), exit 0, 196 calls made + 20 reused, none
+  failed. Structural arms: `withFailures` 64 equals a direct COUNT grouped by program over the day window and the
+  selected programs (64 programs; 63 per-program counts equal, one +4: the direct count ran about 40 minutes after the
+  pull, and a narrow count of that program's refusals modified that day returned exactly 4 — accrual in an open window);
+  one window object for the count and all 25 sample calls, one program each, 25 of 25 picks with rows, every page
+  non-increasing in occurrences. The dominant program's `failureSamples` row for `Custom field contains Invalid value
+  {null} for EMAIL data type` reads `invalid-field-value` / `bad-address` with occurrences about 650 times its count
+  (order 10^4 against order 10^1); its `entrySamples` row the same category, kind and counts. The `Recipient Email
+  Address field` spelling (6 programs) and the `Manager Email Address field` spelling (1 program) land in the same
+  category in both tables. No participant-failure row in either table carries category null, kind null or `other`;
+  occurrences >= count on every row; 0 participant-failure rows read unclassified. Bradley read the split: "that seems
+  right". Beyond the expectation ("none is expected"): the `unclassified-wordings` caveat fired on 28 wordings in 25
+  programs, every one from the BOUNCE part's samples (all 124 bounce sample rows read unclassified / unknown, null / null
+  at V3; none matches the tenant's 30 patterns), plus a step remainder of order 10^2 participants, all in months before
+  the period. Bradley read all 28 as bad-address variants and ruled the flag working as intended (ruling 12); they were
+  added to the tenant's category file in the workspace (masked texts there, never here). Words and the residual under
+  F-484's verdict.
+- Y6 (the lists, re-banked for V4). Pass bar, from F-491's Judge line: BEFORE any refresh, `plan` prints
+  `estimate.kb` naming every selected program the KB has no doc for (12 at V3: eleven DRIPV2 one-offs and the daily
+  program Bradley read in the UI) and every documented program modified after its doc, `refreshSeconds` 3 per program,
+  `unlisted` the programs the list itself lacks, and the two files beside plan.json (`kb-gap-keys.json`: the
+  manifest keys; `kb-gap-list.json`: the list rows of the undocumented ones in the list's envelope); a run WITHOUT
+  the refresh reads every undocumented program as Cannot judge yet with `signals.why` no-doc, `schedule.state`
+  undocumented, `ingest.state` cannot-judge and `finished` false — none on Finished, none with ingest one-time —
+  and `honesty.kb` and the `kb-behind-tenant` caveat name them; a documented program the list says was modified
+  after its doc reads with `signals.schedule.docBehind` true and is judged from the doc. The eleven one-offs moving
+  from Finished (true at V3) to Cannot judge yet is EXPECTED before the refresh and is the ask's reason; record the
+  counts per list before and after. AFTER Y20's refresh and the re-plan, the formerly undocumented daily program
+  reads by its own cron (recurring; ingest on-schedule or overdue by its heartbeat) and the one-offs read Finished
+  again; Bradley reads each list that changed, his words verbatim. With a plain `--quiet-due-days` change nothing
+  here moves.
+  CLEARED by Bradley's ruling (S3b fix round 3 verdict @ hb-20261008-02, tester, 2026-10-09; production, reads only).
+  Before: `estimate.kb` 12 undocumented (eleven DRIPV2 one-offs and the daily dynamic program), 8 behind, `unlisted` 0,
+  `refreshSeconds` 60 (3 per program); `kb-gap-keys.json` the 20 manifest keys in `estimate.kb.programs` order,
+  `kb-gap-list.json` the 12 undocumented rows in the list envelope. The run without the refresh: all 12 on Cannot judge
+  yet, `signals.why` no-doc, `schedule.state` undocumented, `ingest.state` cannot-judge, `finished` false; none on
+  Finished, none with ingest one-time; `honesty.kb` (12, 8) and the `kb-behind-tenant` caveat name the same 20; 5 of the
+  8 behind are judged (the other 3 are Paused, which no list judges) and all 5 read `docBehind` true, judged from the doc.
+  Counts per list before (V3 -> now): schedule-ended 19 -> 19, admitting-nobody 5 -> 5, no-recent-sends 2 -> 2,
+  finished 15 -> 4, cannot-judge 3 -> 14, ok 21 -> 21, every other list 0; the move is the eleven one-offs. Bradley: "that
+  seems right". After Y20's refresh (same run, exit 0, 213 calls reused, 1 made): the daily program reads by its own cron
+  (recurring, period 1 day, ingest on-schedule) and stays on Cannot judge yet for too-new, no longer no-doc. The
+  one-offs: 2 of 11 read Finished (no schedule in the doc); 9 read Schedule ended — their docs carry a daily cron windowed
+  to one run (24 h or 0 h), the shape of every program on that list (29) and of 208 of 568 documented programs — and one
+  re-documented behind program moved Finished -> Schedule ended for the same reason. Counts after: schedule-ended 29,
+  finished 5, cannot-judge 3, admitting-nobody 5, no-recent-sends 2, ok 21, every other list 0. Bradley read the nine as
+  one-offs, then ruled the rules correct on the data available (a single-run window cannot be told from a program meant to
+  run on with a limited schedule); an admin acknowledgement is a backlog item, not this round's. Words under F-491.
+- Y20 (the ask and the narrow refresh, new; the walk of the changed SKILL.md). In the tester session, the
+  email-engagement skill invoked on the production tenant with Y1's flags: at step 2 the skill tells the user the two
+  counts (undocumented, behind) and `estimate.kb.refreshSeconds` and ASKS; the tester records the ask's text
+  verbatim. Bradley says yes: the three commands run once for real, in order, exactly as the skill spells them
+  (upsert-batch --partial over `kb-gap-list.json`, skipped only if undocumented is 0; mark --status stale over
+  `kb-gap-keys.json`; describe-batch --keys-file over the same, `moreRemaining` false), each exit 0 and its summary
+  recorded; the re-issued plan (same run) reads `estimate.kb.undocumented` 0 and `behind` 0 (or names what it
+  could not register: `unlisted`), and the run's `kb-steps.json` carries a different `stamp` from before the
+  refresh. Guard-wiring for the round: the describe-batch step is reads only; the KB writes are workspace files. If
+  Bradley says no, the walk records the ask and the caveat's text on the report instead, and Y6's "after" half is
+  banked, not failed.
+  CLEARED (S3b fix round 3 verdict @ hb-20261008-02, tester, 2026-10-09; production, reads only). The tester session
+  invoked the skill with Y1's flags. At step 2 the skill quoted the two counts (12, 8) and the seconds (60) and asked; the
+  ask's text is verbatim on the bus's Walk (hb-20261008-02) line. It was held unanswered while the run without it was
+  measured (Y6's before half). Bradley: "yes redocument". The three commands, once each, in order, as the skill spells
+  them: upsert-batch --partial exit 0 (12 matched existing manifest entries, 0 added: registered, never documented;
+  warnings 0); mark --status stale exit 0 (20 marked); describe-batch --keys-file exit 0 (20 selected, 20 documented,
+  0 failed, `moreRemaining` false). The re-issued plan on the same run: `estimate.kb` undocumented 0, behind 0,
+  unlisted 0; `kb-steps.json`'s stamp moved. The token expired before the refresh and Bradley logged in again; no call
+  reached the tenant on the expired token. Guard-wiring for the round: see the Walk line.
+
 ## DSH-2 — the dashboard page built over a real snapshot: filtered in a browser, its size measured, a CSV export opened in a spreadsheet (banked 2026-10-04, builder, Session S4a; verdict at V2)
 
 Owed by: V2, the batched verdict session after S4c, in the consumer workspace with the plugin loaded from `dev`

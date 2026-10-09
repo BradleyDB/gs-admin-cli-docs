@@ -139,10 +139,22 @@ const ENG_UNITS = {
   "step-click": { cls: "all", window: ENG_SPAN, programs: ENG_PROGRAMS },
   "participants-month": { cls: "all", window: ENG_SPAN, programs: ENG_PROGRAMS },
   "participants-window": { cls: "all", window: ENG_SPAN, programs: ENG_PROGRAMS },
-  "health-bounce": { cls: "all", window: ENG_SPAN },
+  "count-clicks": { cls: "all", window: ENG_SPAN },
+  "count-bounces": { cls: "all", window: ENG_SPAN },
+  "health-bounce-total": { cls: "all", window: ENG_SPAN },
+  "health-bounce-cat": { cls: "all", window: ENG_SPAN, category: { id: "user-unknown", pattern: "User unknown in virtual mailbox table" } },
+  "health-bounce-sample": { cls: "all", window: ENG_SPAN, programs: ENG_PROGRAMS.slice(0, 1), excludePatterns: ["User unknown in virtual mailbox table"] },
   "health-days": { cls: "all", window: ENG_SPAN },
-  "health-reasons": { cls: "all", programs: ENG_PROGRAMS },
+  "health-reasons-total": { cls: "all" },
+  "health-reasons-sample": { cls: "all", window: ENG_SPAN, programs: ENG_PROGRAMS.slice(0, 1) },
   "health-states": { cls: "all", programs: ENG_PROGRAMS },
+  // The health signals' reads (F-491).
+  "health-sources": { cls: "all" },
+  "health-admissions": { cls: "all", window: ENG_SPAN },
+  "health-entry-month": { cls: "all", window: ENG_SPAN },
+  "health-step-total": { cls: "all", window: ENG_SPAN },
+  "health-step-cat": { cls: "all", window: ENG_SPAN, category: { id: "step-action-failed", pattern: "creation failed at step" } },
+  "health-step-state": { cls: "all", window: ENG_SPAN, category: { id: "platform-error", state: "SYSTEM_ERROR" } },
 };
 const engAnswer = (argv) => JSON.parse(answer(argv, ENG_TENANT).stdout);
 const ENG_RP_RUN = Object.entries(ENG_UNITS).map(([family, d]) => engAnswer(rpRunArgv(buildQuery({ family, ...d }), 5000)).slice(0, 6));
@@ -363,7 +375,7 @@ readers: ["jo-report.mjs parseJourneyDoc (→ embedded, classicStep / nodeStep, 
   },
   {
     command: "rp run",
-    readers: ["engagement.mjs ROW_READERS — one reader per call family of the jo-engagement adapter (send-log rows by template, account and step; distinct counts; clicked sends and their LinkClickedJson; survey responses; company names; and the health reads: bounced attempts with their reason, a program's send days, failed participants with their reasons, participants by state). reduceEngagement and the fetch-time click stripper read rows through these and nothing else."],
+    readers: ["engagement.mjs ROW_READERS — one reader per call family of the jo-engagement adapter (send-log rows by template, account and step; distinct counts; clicked sends and their LinkClickedJson; survey responses; company names; the count-first reads of clicked and bounced attempts; and the health reads: bounced attempts counted in total and per category, a masked sample of their text, a program's send days, failed participants as per-program totals and a masked sample of their reasons, participants by state). reduceEngagement and the fetch-time click stripper read rows through these and nothing else."],
     modules: ["scripts/engagement.mjs"],
     calls: Object.entries(ROW_READERS).map(([family, reader]) => ({ reader: `ROW_READERS["${family}"]`, mode: /** @type {"object"} */ ("object"), fn: (rows) => (Array.isArray(rows) ? rows : []).map((row) => reader(row)) })),
     fixtures: ENG_RP_RUN,

@@ -1436,6 +1436,7 @@ export async function run(argv) {
   const objects = makeObjectResolver({ kbDir, folder: laneDirs.objects });
   const plStats = { sources: 0, resolved: 0, querySources: 0, programsWithPowerLists: 0 };
   const missingRefPrograms = new Map(); // ruleId → Set of program ids that reference an unresolved rule
+  const journeyNames = new Map(); // program id → name, for the caveat that names the referencing programs (F-488)
 
   // Alias pattern in force (ER-22/ER-23; DS-27): explicit --alias-prefix wins
   // — an invalid EXPLICIT regex fails loudly, never degrades silently —
@@ -1519,6 +1520,7 @@ export async function run(argv) {
           else if (rid != null) {
             if (!missingRefPrograms.has(rid)) missingRefPrograms.set(rid, new Set());
             missingRefPrograms.get(rid).add(entry.id ?? path);
+            journeyNames.set(entry.id ?? path, entry.name ?? null);
           }
         }
         if (plHere) plStats.programsWithPowerLists++;
@@ -1951,11 +1953,20 @@ export async function run(argv) {
       // List program in the KB (F-487 reopen, instance 4)
       const affected = new Set();
       for (const s of missingRefPrograms.values()) for (const id of s) affected.add(id);
-      const sample = problems.slice(0, 8).map((p) => `\`${p.ruleId}\`${p.reason === "missing" ? "" : ` (${p.reason})`} (${missingRefPrograms.get(p.ruleId)?.size ?? 0} program(s))`).join(", ");
+      // Each unresolved rule names the programs that reference it (name and id, capped: hundreds of programs can
+      // share a few dozen lists), the same facts the JO surface states per program (F-488).
+      const NAMES_PER_RULE = 10;
+      const programName = (id) => journeyNames.get(id) ?? null;
+      const who = (ruleId) => {
+        const ids = [...(missingRefPrograms.get(ruleId) ?? [])].sort();
+        const shown = ids.slice(0, NAMES_PER_RULE).map((id) => `${programName(id) ?? "(unnamed)"} (${id})`).join("; ");
+        return `${ids.length} program(s)${ids.length ? `: ${shown}${ids.length > NAMES_PER_RULE ? `; … ${ids.length - NAMES_PER_RULE} more` : ""}` : ""}`;
+      };
+      const sample = problems.slice(0, 8).map((p) => `\`${p.ruleId}\`${p.reason === "missing" ? "" : ` (${p.reason})`} (${who(p.ruleId)})`).join(", ");
       caveats.push(
         `${problems.length} Power List rule(s) referenced by ${affected.size} journey program(s) have no readable KB doc under ${laneDirs.rules}/ ` +
           `(${plStats.resolved} of ${plStats.sources} Power List sources resolved): ${sample}${problems.length > 8 ? `, … (${problems.length - 8} more)` : ""} — ` +
-          `those programs' Power List objects, connections and output fields are NOT in this report, so an --object or --connection search cannot reach them through that source. ` +
+          `those programs' Power List objects, connections and output fields are NOT in this report, so an --object or --connection search cannot reach them through that source, and their absence from the tables above is not evidence. ` +
           `Run \`/gs-superadmin:refresh\` — its Power List step re-documents every referenced rule whose doc is not readable on disk, whatever the manifest says — then re-run.`
       );
     }

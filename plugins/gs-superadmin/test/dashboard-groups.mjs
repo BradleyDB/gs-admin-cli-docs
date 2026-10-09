@@ -54,9 +54,15 @@ check("traits: sendsSurveys is true for a survey model, false for a program with
       .map((p) => p.sendsSurveys).join() === "true,,,," );
 check("traits: recurring is true for a program with a recurring schedule, false for a documented program with none, and null for a program the KB has no doc for (never false)",
   trait("p-onboard").recurring === true && trait("p-nps").recurring === true && trait("p-renew").recurring === false && trait("p-pilot").recurring === false && trait("p-unlisted").recurring === null);
-check("traits: with the schedules part not read, recurring is unknown for every program — a missing part never reads as 'not recurring'",
-  programTraits({ ...S, meta: { ...S.meta, health: { ...S.meta.health, parts: { ...S.meta.health.parts, schedules: { pulled: false, reason: "no-kb" } } } } }).every((p) => p.recurring === null) &&
-    programTraits({ ...S, meta: { ...S.meta, health: undefined } }).every((p) => p.recurring === null));
+check("traits: a pass-through classification is NOT a boolean (F-494): a CRON-type schedule whose cron the KB did not capture reads classification CRON, and the trait is null (unknown), never false; a one-time schedule reads false",
+  (() => {
+    const withLabel = (label) => programTraits({ ...S, dimensions: { ...S.dimensions, programs: S.dimensions.programs.map((p) => (p.id === "p-onboard" ? { ...p, schedule: { ...p.schedule, classification: label, cronExpression: null } } : p)) } }).find((p) => p.id === "p-onboard").recurring;
+    return withLabel("CRON") === null && withLabel("unknown") === null && withLabel("one-time") === false && withLabel("no schedule captured") === false && withLabel("recurring") === true;
+  })());
+check("traits: recurring is read from the program dimension's schedule (ruled 2026-10-05: it rides every pull with a KB, independent of health) — with health not pulled it still reads, and a snapshot whose programs carry no schedule (pulled without a KB, or made before it existed) reads unknown for every program, never 'not recurring'",
+  programTraits({ ...S, meta: { ...S.meta, health: { pulled: false, reason: "health-off", asOf: null, dayWindow: null, parts: {} } }, facts: { ...S.facts, health: { bounceReasons: [], participantFailures: [], participantStates: [], lastSends: [], schedules: [] } } }).map((p) => p.recurring).join() === T.map((p) => p.recurring).join() &&
+    programTraits({ ...S, dimensions: { ...S.dimensions, programs: S.dimensions.programs.map((p) => ({ ...p, schedule: null })) } }).every((p) => p.recurring === null) &&
+    programTraits({ ...S, dimensions: { ...S.dimensions, programs: S.dimensions.programs.map(({ schedule: _s, ...p }) => p) } }).every((p) => p.recurring === null) && S.dimensions.programs.some((p) => p.schedule?.classification === "recurring"));
 
 // ── The resolver: two levels, stated precedence, Ungrouped ───────────────────
 const RULES = [

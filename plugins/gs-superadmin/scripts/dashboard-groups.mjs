@@ -70,10 +70,13 @@
  */
 import { resolve } from "node:path";
 import { makeCliHelpers, readJsonFile, writeFileAtomicSync, isMainModule, cmpKey } from "./doc-lib.mjs";
-import { openSnapshot, healthAvailability, runQuery, statusLabel } from "./engagement-query.mjs";
+import { openSnapshot, runQuery, statusLabel } from "./engagement-query.mjs";
 
 export const UNGROUPED = "Ungrouped";
 export const GROUP_LEVELS = Object.freeze(["supergroup", "group"]);
+// The classification the adapter gives a documented program with no schedule (engagement.mjs NO_SCHEDULE; spelled
+// here because this module imports only the import-free query module).
+const NO_SCHEDULE_LABEL = "no schedule captured";
 // Programs of these models send a survey by design (a Dynamic Program may too:
 // that is read from its survey participants).
 export const SURVEY_MODELS = Object.freeze(["CSAT_SURVEY_V2", "GENERIC_SURVEY_V2"]);
@@ -234,21 +237,21 @@ export function describeRule(rule) {
  * @returns {ProgramTraits[]} one per program of the snapshot, by id
  */
 export function programTraits(snapshot) {
-  const health = healthAvailability(snapshot);
-  const schedulesRead = health.pulled && health.parts.schedules?.pulled === true;
-  const scheduleRows = new Map();
-  for (const r of schedulesRead ? snapshot.facts.health?.schedules ?? [] : []) scheduleRows.set(r.programId, [...(scheduleRows.get(r.programId) ?? []), r]);
   const responses = snapshot.meta.metricAvailability.responses.programs;
   return snapshot.dimensions.programs
     .map((p) => {
       const survey = responses[p.id]?.state;
-      const rows = scheduleRows.get(p.id);
+      // The schedule rides the program dimension on every pull made with a KB (ruled 2026-10-05, S3b): a
+      // documented program carries one (classification "no schedule captured" when it has none); null for a
+      // program the KB has no full doc for, for a pull made without a KB, and on a snapshot made before it existed.
+      const schedule = p.schedule ?? null;
       return {
         id: p.id, name: p.name, statuses: p.statuses, model: p.model, modelName: p.modelName, audienceType: p.audienceType, folderId: p.folderId,
         // A survey model sends one by design; otherwise its own survey participants say so, and unreadable survey data says nothing.
         sendsSurveys: SURVEY_MODELS.includes(p.model) || survey === "tracked" ? true : survey === "not-tracked" ? false : null,
-        // A documented program has at least one schedule row (one that says "no schedule" when it has none); an undocumented one has no row.
-        recurring: rows ? rows.some((r) => r.classification === "recurring") : null,
+        // A classification the audit could settle decides; a pass-through label (a CRON-type schedule whose cron the KB
+        // did not capture, "unknown") is a kind that could not be read, so the trait is unknown, never false (F-494).
+        recurring: !schedule ? null : schedule.classification === "recurring" ? true : schedule.classification === "one-time" || schedule.classification === NO_SCHEDULE_LABEL ? false : null,
       };
     })
     .sort((a, b) => cmpKey(a.id, b.id));
@@ -341,7 +344,7 @@ export function suggestionInput(snapshot) {
     window: { from: snapshot.meta.window.from, to: snapshot.meta.window.to },
     notes: [
       "Folder NAMES are not available from Gainsight: a folder shows as its id, and a folder group needs a label from the person.",
-      "sendsSurveys and recurring are null where they could not be determined (survey data unreadable; no knowledge-base doc for the program).",
+      "sendsSurveys and recurring are null where they could not be determined (survey data unreadable; no knowledge-base doc for the program; a schedule whose kind the doc does not settle).",
       "A survey's TYPE is known only through the program model (CSAT or generic survey programs). A Dynamic Program that sends a survey does not say which type.",
     ],
     programs: traits.map((p) => ({ id: p.id, name: p.name, status: p.statuses.map(statusLabel).join(" + "), model: p.modelName ?? p.model, audience: p.audienceType, folderId: p.folderId, sendsSurveys: p.sendsSurveys, recurring: p.recurring, sent: sent.get(p.id) ?? 0 })),

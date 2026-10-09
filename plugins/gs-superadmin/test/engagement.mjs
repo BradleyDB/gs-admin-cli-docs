@@ -33,15 +33,16 @@ import { makeTempDir, removeTempDir, writeFiles, runNode } from "../../../test/r
 import {
   fetchEngagement, reduceEngagement, loadRun, resolveParams, makeGate, parseWhoami, parseSentSince, parseIdList,
   expectedCalls, classifyFailure, classifyLink, readLinkClicks, parseUnsubscribeLink, validateQuery, buildQuery, splitUnit, selectAccounts, decideClickState,
-  monthsBetween, ENGAGEMENT_READ_PATHS, joEngagementAdapter, readFailureReasons, healthDayWindow, HEALTH_PARTS,
+  monthsBetween, ENGAGEMENT_READ_PATHS, joEngagementAdapter, readFailureReasons, healthDayWindow, HEALTH_PARTS, pickSchedule, schemaFlags, NO_SCHEDULE,
+  SAMPLES_PER_PROGRAM, SAMPLE_PROGRAM_CAP, SAMPLE_PAGE, MAX_PAGES, sampleTargets, matchCategory,
 } from "../scripts/engagement.mjs";
 // The T-10 read floor and the tables the adapter counts with live in the query
 // module (ENG-4); the adapter imports them, and so does this suite.
 import {
   openSnapshot, readClicked, clickAvailability, programClickAvailability, accountAvailability, readResponses,
-  NON_CONTENT_LINK_RULES, SEND_MEASURES, T10_SCHEMA_VERSION, MASK_RULES, MASK_MAX_LENGTH, maskMessage, healthAvailability, silentPrograms,
+  NON_CONTENT_LINK_RULES, SEND_MEASURES, T10_SCHEMA_VERSION, MASK_RULES, MASK_PROTECTED, MASK_MAX_LENGTH, maskMessage, healthAvailability, programHealth, HEALTH_LISTS, judgeHealth, dueDaysBefore, cronLastDue, validateCategories, FAILURE_CATEGORIES, STEP_FAILURE_CATEGORIES, QUIET_DUE_DAYS_DEFAULT, caveatText, FAILURE_KINDS, kindOf,
 } from "../scripts/engagement-query.mjs";
-import { buildTenant, answer, applyFaults, kbFiles, FAULT_TEXT, OWN_SITE_UNSUBSCRIBE, BOUNCE_REASONS, FAILURE_REASONS } from "./fixtures/engagement/acme-tenant.mjs";
+import { buildTenant, answer, applyFaults, kbFiles, FAULT_TEXT, OWN_SITE_UNSUBSCRIBE, BOUNCE_REASONS, FAILURE_REASONS, NULL_EMAIL_REASON, NULL_EMAIL_REASONS, UNKNOWN_REASON, UNKNOWN_STEP_REASON, FIXTURE_BOUNCE_CATEGORIES, FIXTURE_BOUNCE_KIND_CATEGORY } from "./fixtures/engagement/acme-tenant.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const PLUGIN = join(HERE, "..");
@@ -66,17 +67,29 @@ function check(label, cond, detail) {
 const ROOT = makeTempDir("gs-superadmin-engagement");
 const KB_DIR = join(ROOT, "kb", "acme-prod");
 writeFiles(join(ROOT, "kb"), kbFiles("acme-prod"));
+// The same KB with the cadence variant's four programs documented (HLT-1 S3b).
+const KB_CADENCE = join(ROOT, "kb-cadence", "acme-prod");
+writeFiles(join(ROOT, "kb-cadence"), kbFiles("acme-prod", { cadence: true }));
+// The same KB with the signals variant's six programs documented too (HLT-1 F-491).
+const KB_SIGNALS = join(ROOT, "kb-signals", "acme-prod");
+writeFiles(join(ROOT, "kb-signals"), kbFiles("acme-prod", { cadence: true, signals: true }));
+// A copy that a narrow refresh will move between a plan and its run (F-491, redesigned): p-undoc's doc lands later.
+const KB_STAMP = join(ROOT, "kb-stamp", "acme-prod");
+writeFiles(join(ROOT, "kb-stamp"), kbFiles("acme-prod", { cadence: true, signals: true }));
 let runSeq = 0;
 // Small selection numbers so the fixture's twelve accounts overflow them and
 // the "all other accounts" row has something in it. The account grain is ON
 // for the suite's pulls (the adapter's own default is off; its block is below).
 const ACC = { busiest: 3, lowEngagement: 2, mostBounces: 2, lowEngagementMinDelivered: 4, pull: true };
+// Health facts are ON for the suite's pulls, with the FICTIONAL category list (the shipped one is empty until V2).
+const HEALTH = { pull: true, categories: { bounceReasons: FIXTURE_BOUNCE_CATEGORIES } };
 const TODAY = "2026-09-15";
 const PULLED_AT = "2026-09-15T09:00:00-07:00";
 
 /**
  * One pull through the in-process transport. Returns everything a check may want.
- * @param {{variant?: *, raw?: *, faults?: Array<*>, previous?: *, kb?: boolean, phase?: "all"|"plan", runDir?: ?string, now?: () => number, gate?: (argv: string[]) => ?string, linkSettings?: *}} [opts]
+ * @param {{variant?: *, raw?: *, faults?: Array<*>, previous?: *, kb?: boolean|string, phase?: "all"|"plan", runDir?: ?string, now?: () => number, gate?: (argv: string[]) => ?string, linkSettings?: *}} [opts]
+ *   kb: true for the suite's KB, or a KB directory
  */
 function pull({ variant = {}, raw = {}, faults = [], previous = null, kb = false, phase = "all", runDir = null, now, gate = GATE, linkSettings = null } = {}) {
   const tenant = buildTenant(variant);
@@ -97,13 +110,13 @@ function pull({ variant = {}, raw = {}, faults = [], previous = null, kb = false
     },
   };
   // Health facts are ON for the suite's pulls, like the account grain (the adapter's own default is off; its block is with the health checks).
-  const params = resolveParams({ today: TODAY, pulledAt: PULLED_AT, internalDomains: ["acme.com"], pageSize: 400, accounts: ACC, health: { pull: true }, ...raw });
+  const params = resolveParams({ today: TODAY, pulledAt: PULLED_AT, internalDomains: ["acme.com"], pageSize: 400, accounts: ACC, health: HEALTH, ...raw });
   mkdirSync(dir, { recursive: true });
   if (!existsSync(join(dir, "run.json"))) writeFileSync(join(dir, "run.json"), JSON.stringify({ params }));
   let summary = null;
   let error = null;
   try {
-    summary = fetchEngagement({ params, runDir: dir, transport, gate, kbDir: kb ? KB_DIR : null, previous, phase, now, onCall: (line) => progress.push(line) });
+    summary = fetchEngagement({ params, runDir: dir, transport, gate, kbDir: kb === true ? KB_DIR : kb || null, previous, phase, now, onCall: (line) => progress.push(line) });
   } catch (e) {
     error = e;
   }
@@ -303,7 +316,7 @@ try {
   check("the window is the last 12 full months plus the current one, and the month before it is not pulled", isDeepStrictEqual(S.dimensions.months, monthsBetween("2025-09", "2026-09")) && !S.facts.byTemplate.some((r) => r.month === "2025-08") && base.tenant.tables.email_log_v2.some((r) => r.ExecutedDate.startsWith("2025-08")));
   check("incompleteFrom defaults to the start of the current month; pulledAt carries a UTC offset", S.meta.incompleteFrom === "2026-09-01" && /[+-]\d\d:\d\d$/.test(S.meta.pulledAt));
   {
-    const paged = pull({ variant: { listMax: 2 } });
+    const paged = pull({ kb: true, variant: { listMax: 2 } });
     check("jo p list is paged by its envelope: three pages of two list every program", paged.argv.filter((a) => a.includes("list")).map((a) => flag(a, "--page")).join(",") === "1,2,3" && isDeepStrictEqual(paged.snapshot.dimensions.programs, base.snapshot.dimensions.programs.map((p) => p)));
   }
 
@@ -311,7 +324,7 @@ try {
   const stepPull = pull({ kb: true, raw: { stepDetail: true } });
   const SS = stepPull.snapshot;
   const every = [...rpRuns(base.argv), ...rpRuns(stepPull.argv)];
-  check("every rp run passes --page-size (omitted, the CLI returns 50 rows and says nothing)", every.length > 60 && every.every((a) => a.includes("--page-size") && Number(flag(a, "--page-size")) === 400));
+  check("every rp run passes --page-size (omitted, the CLI returns 50 rows and says nothing); a per-program sample passes its own small page", every.length > 60 && every.every((a) => a.includes("--page-size") && Number(flag(a, "--page-size")) === (a.includes("--order-by") ? SAMPLE_PAGE : 400)) && every.some((a) => a.includes("--order-by")));
   check("no rp run passes --limit (it does not bound the rows, and above 2000 it is refused client-side)", every.every((a) => !a.includes("--limit")));
   {
     const DATE = new Set(["ExecutedDate", "CreatedAt", "RespondedDate", "SentDate", "EmailSendTime", "FirstOpenDate"]);
@@ -345,10 +358,10 @@ try {
     check("validateQuery refuses a LOOKUP grouped by name, and a field the schema lacks", validateQuery({ object: "email_log_v2", show: [], group: [{ name: "GsCompanyId" }], where: [] }, types("email_log_v2")).length === 1 && validateQuery({ object: "email_log_v2", show: [], group: [], where: [{ leftOperand: { fieldName: "Nope" }, operator: "EQ", rightOperand: { value: 1 } }] }, types("email_log_v2")).length === 1);
   }
   check("the default source is email_log_v2, filtered to Source = Advanced Outreach and AddressType = To; ao_emails is read only with step detail",
-    rpRuns(base.argv).every((a) => ["email_log_v2", "survey_participant", "company", "ao_failed_participants", "ao_participants"].includes(flag(a, "--object"))) && rpRuns(stepPull.argv).some((a) => flag(a, "--object") === "ao_emails") &&
+    rpRuns(base.argv).every((a) => ["email_log_v2", "survey_participant", "company", "ao_failed_participants", "ao_participants", "ao_participant_source_configuration"].includes(flag(a, "--object"))) && rpRuns(stepPull.argv).some((a) => flag(a, "--object") === "ao_emails") &&
       rpRuns(base.argv).filter((a) => flag(a, "--object") === "email_log_v2" && !flag(a, "--group-by")?.includes('"AddressType"')).every((a) => flag(a, "--where-filters").includes('"Advanced Outreach"') && flag(a, "--where-filters").includes('{"leftOperand":{"fieldName":"AddressType"},"operator":"EQ","rightOperand":{"value":"To"}}')));
   check("no call asks the server for what it cannot do: no MAX on a date, no formula, no pivot, and no content field (the send log holds none)",
-    every.every((a) => !/"aggregation":"MAX"|"formula"|"pivoted"|EmailSubject|TextBody|HtmlBody/.test(a.join(" "))) && every.every((a) => parsed(a).show.every((s) => !s.aggregation || ["COUNT", "COUNT_DISTINCT"].includes(s.aggregation))));
+    every.every((a) => !/"aggregation":"MAX"|"formula"|"pivoted"|EmailSubject|TextBody|HtmlBody/.test(a.join(" "))) && every.every((a) => parsed(a).show.every((s) => !s.aggregation || ["COUNT", "COUNT_DISTINCT", "SUM"].includes(s.aggregation))));
   check("a subset of programs goes in one call with IN (account batches),",
     rpRuns(base.argv).some((a) => /"SourceId"\},"operator":"IN","rightOperand":\{"value":\["p-/.test(flag(a, "--where-filters"))));
   check("month buckets are read from k, whatever order the rows come back in (the fixture returns them reversed)", S.facts.byTemplate.every((r) => /^\d{4}-\d{2}$/.test(r.month)) && isDeepStrictEqual(S.facts.byTemplate.map((r) => r.programId), [...S.facts.byTemplate.map((r) => r.programId)].sort()));
@@ -359,7 +372,8 @@ try {
     const p = pull({ phase: "plan" });
     let refused = "";
     try { loadRun(p.runDir); } catch (e) { refused = e.message; }
-    check("plan makes only the cheap tenant-wide calls, writes the estimate, and leaves a run reduce refuses", p.summary.status === "ok" && rpRuns(p.argv).length === 2 && existsSync(join(p.runDir, "plan.json")) && /not complete/.test(refused), [rpRuns(p.argv).length, refused]);
+    check("plan makes only the cheap tenant-wide calls (sends, accounts reached, the count-first reads of clicked sends, bounced attempts, failed participants, refusals per month and refusals still happening in the day window), writes the estimate, and leaves a run reduce refuses",
+      p.summary.status === "ok" && rpRuns(p.argv).length === 7 && isDeepStrictEqual(rpRuns(p.argv).map((a) => flag(a, "--object")), ["email_log_v2", "email_log_v2", "email_log_v2", "email_log_v2", "ao_failed_participants", "ao_failed_participants", "ao_failed_participants"]) && rpRuns(pull({ raw: { health: {} }, phase: "plan" }).argv).length === 4 && existsSync(join(p.runDir, "plan.json")) && /not complete/.test(refused), [rpRuns(p.argv).length, refused]);
   }
 
   // ── Step detail (R21) ─────────────────────────────────────────────────────
@@ -379,10 +393,10 @@ try {
   {
     const uses = (t, p) => SS.dimensions.templates.find((x) => x.id === t).uses.find((u) => u.programId === p);
     check("jo p describe embeds JSON as strings (stepJson, and emailActionJson inside it): step name and order come through the KB's one parser when the template sits on ONE step",
-      isDeepStrictEqual(uses("tpl-welcome", "p-onboard"), { programId: "p-onboard", stepName: "Welcome", stepOrder: 1, stepCount: 1 }) && isDeepStrictEqual(uses("tpl-day7", "p-onboard"), { programId: "p-onboard", stepName: "Day 7 check-in", stepOrder: 2, stepCount: 1 }));
-    check("a template reused on two steps of a program has no single step name (stepCount 2)", isDeepStrictEqual(uses("tpl-renew", "p-renew"), { programId: "p-renew", stepName: null, stepOrder: null, stepCount: 2 }));
+      isDeepStrictEqual(uses("tpl-welcome", "p-onboard"), { programId: "p-onboard", stepName: "Welcome", stepOrder: 1, stepCount: 1, asOf: "2026-09-01T00:00:00.000Z" }) && isDeepStrictEqual(uses("tpl-day7", "p-onboard"), { programId: "p-onboard", stepName: "Day 7 check-in", stepOrder: 2, stepCount: 1, asOf: "2026-09-01T00:00:00.000Z" }));
+    check("a template reused on two steps of a program has no single step name (stepCount 2)", isDeepStrictEqual(uses("tpl-renew", "p-renew"), { programId: "p-renew", stepName: null, stepOrder: null, stepCount: 2, asOf: "2026-08-20T00:00:00.000Z" }));
     check("a program the KB has no full doc for keeps its template names from the send log and is counted, not described again",
-      isDeepStrictEqual(uses("tpl-promo", "p-promo"), { programId: "p-promo", stepName: null, stepOrder: null, stepCount: 0 }) && SS.dimensions.templates.find((x) => x.id === "tpl-promo").name === "Acme Promo" && isDeepStrictEqual(SS.honesty.stepNames, { source: "kb", programsWithDesign: 4, programsWithout: 2 }) && !base.argv.some((a) => a.includes("describe") && a.includes("p-promo")));
+      isDeepStrictEqual(uses("tpl-promo", "p-promo"), { programId: "p-promo", stepName: null, stepOrder: null, stepCount: 0, asOf: null }) && SS.dimensions.templates.find((x) => x.id === "tpl-promo").name === "Acme Promo" && isDeepStrictEqual(SS.honesty.stepNames, { source: "kb", programsWithDesign: 4, programsWithout: 2 }) && !base.argv.some((a) => a.includes("describe") && a.includes("p-promo")));
     check("template ids come from the send log's EmailTemplateId, never from a template list: a template no KB doc names is still a dimension row", SS.dimensions.templates.some((t) => t.id === "tpl-unlisted"));
     check("step rows carry the step's name and order where the KB has the design", SS.dimensions.steps.find((s) => s.stepId === "st-ob-2")?.name === "Day 7 check-in" && SS.dimensions.steps.find((s) => s.stepId === "st-pr-1")?.name === null);
   }
@@ -413,10 +427,12 @@ try {
   }
 
   // ── Row caps and splitting ────────────────────────────────────────────────
+  // The failure samples are one page of whatever came back: a smaller page is a smaller sample, never a different fact.
+  const sansSamples = (facts) => ({ ...facts, health: { ...facts.health, failureSamples: null } });
   {
     const small = pull({ kb: true, raw: { pageSize: 20 } });
     check("a result as long as the page is treated as truncated and split, by program, then by day, then by flag: a 20-row page reduces to the same facts as a 400-row one",
-      small.summary?.status === "ok" && small.summary.calls.split > 20 && isDeepStrictEqual(small.snapshot.facts, S.facts) && small.snapshot.reconciliation.ok, small.summary);
+      small.summary?.status === "ok" && small.summary.calls.split > 20 && isDeepStrictEqual(sansSamples(small.snapshot.facts), sansSamples(S.facts)) && small.snapshot.reconciliation.ok, small.summary);
     check("the truncated answer is kept as evidence and never reduced: its record says truncated", readFileSync(join(small.runDir, "fetch-log.jsonl"), "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l)).some((r) => r.truncated === true && r.rows === 20));
     const t = buildTenant({});
     const dflt = JSON.parse(answer(["--json", "rp", "run", "--object", "email_log_v2", "--show-fields", '[{"name":"Gsid"}]'], t).stdout).length;
@@ -462,7 +478,7 @@ try {
     check("an expired token stops cleanly: status token-expired, the calls already made kept, nothing reduced", first.summary.status === "token-expired" && first.snapshot === null && first.summary.calls.made > 12 && first.summary.failed.length === 0, first.summary);
     const second = pull({ runDir: dir });
     check("…and stays resumable: the second run re-reads whoami, skips every call already answered, makes only the rest, and reduces to the baseline's facts",
-      second.summary.status === "ok" && second.summary.calls.reused >= 12 && second.summary.calls.made - 1 + second.summary.calls.reused === base.summary.calls.made - base.summary.calls.retried && second.argv[0][0] === "whoami" && isDeepStrictEqual(second.snapshot.facts, pull({}).snapshot.facts), second.summary);
+      second.summary.status === "ok" && second.summary.calls.reused >= 12 && second.summary.calls.made + second.summary.calls.reused === base.summary.calls.made - base.summary.calls.retried + base.summary.calls.reused + 1 && second.argv[0][0] === "whoami" && isDeepStrictEqual(second.snapshot.facts, pull({}).snapshot.facts), [second.summary.calls, base.summary.calls]);
     let clock = 0;
     const short = pull({ variant: { token: { state: "valid", seconds: 60 } }, now: () => (clock += 5000) });
     check("a run that would outlast the token stops before the call that would cross it, and says so", short.summary.status === "token-expired" && /would expire/.test(short.summary.stopped) && short.argv.length < 12 && short.argv.length > 2, [short.summary, short.argv.length]);
@@ -787,16 +803,19 @@ try {
     const full = pull({ variant, raw });
     const flat = pull({ raw });
     const within = (est, actual) => est <= actual * 2 && actual <= est * 2;
-    check("F-476 fixture: at this page only the mass-send program-day splits; the same pull without it makes exactly the calls it plans",
-      factSplits(flat) === 0 && flat.summary.estimate.thisRun.calls === flat.summary.estimate.thisRun.units && factSplits(full) > 3, [flat.summary.calls, full.summary.calls]);
+    // The calls plan makes before the estimate (whoami, the list, schemas, the four cheap reads, the describes of the two unlisted programs).
+    const cheapCalls = pull({ raw, phase: "plan" }).summary.calls.made;
+    const callsAfterPlan = (run) => run.summary.calls.made - cheapCalls;
+    check("F-476 fixture: at this page the mass-send program-day splits the account grain, and the same pull without it is priced within 2x of the calls it took (its click detail splits at this page too, and the estimate prices that from the count-first read)",
+      factSplits(full) > factSplits(flat) + 3 && within(flat.summary.estimate.thisRun.calls, callsAfterPlan(flat)) && flat.summary.estimate.thisRun.calls > flat.summary.estimate.thisRun.units, [flat.summary.calls, flat.summary.estimate.thisRun, full.summary.calls]);
     const planned = full.summary.estimate.thisRun;
-    const afterPlan = full.summary.calls.made - (flat.summary.calls.made - flat.summary.estimate.thisRun.calls) ;
+    const afterPlan = callsAfterPlan(full);
     check("F-476: plan prices the splits it will meet: on a tenant with a mass-send day the estimated calls are within 2x of the calls the facts actually took, and above the count of unsplit units",
       planned.calls > planned.units && within(planned.calls, afterPlan) && planned.byFamily.account > flat.summary.estimate.thisRun.byFamily.account + 3 && planned.seconds > flat.summary.estimate.thisRun.seconds, [planned, afterPlan, full.summary.calls]);
     const prev = JSON.parse(JSON.stringify(pull({ variant: { cutoff: "2026-08-16" }, raw: { ...raw, today: "2026-08-15", pulledAt: "2026-08-15T09:00:00-07:00" } }).snapshot));
     const sel = pull({ variant: { massDay: true, massMonth: "2026-09" }, raw, previous: prev });
     const selPlanned = sel.summary.estimate.thisRun;
-    const selActual = sel.summary.calls.made - (flat.summary.calls.made - flat.summary.estimate.thisRun.calls);
+    const selActual = callsAfterPlan(sel);
     check("F-476: the selective refresh, the pull users run most, is priced the same way: its estimate is within 2x of what it took when the re-pull months hold the mass-send day",
       sel.snapshot.meta.refresh.mode === "selective" && sel.summary.calls.split > 3 && selPlanned.calls > selPlanned.units && within(selPlanned.calls, selActual), [selPlanned, selActual, sel.summary.calls]);
     const b = new Map([[JSON.stringify(["p", "2026-07"]), { sent: 9000, accounts: 6000 }], [JSON.stringify(["q", "2026-07"]), { sent: 40, accounts: 30 }], [JSON.stringify(["r", "2026-07"]), { sent: 9000, accounts: null }]]);
@@ -852,8 +871,10 @@ try {
     check("…and a refresh that keeps them off stays selective, with no account call and the marker still set", stay.snapshot.meta.refresh.mode === "selective" && stay.snapshot.facts.byAccount.length === 0 && !ACCOUNT_FAMILIES.some((x) => families(stay).has(x)) && stay.snapshot.meta.accounts.pulled === false);
     const offPlan = pull({ previous: prevOff, raw: OFF, phase: "plan" }).summary.estimate;
     const onPlan = pull({ previous: prevOff, phase: "plan" }).summary.estimate;
+    // The per-program health samples ride this run (a full refresh re-samples what a selective one carries): the account grain's cost is read without them.
+    const sansSamples = (e) => { const sp = e.health.samples; const n = sp.participantFailures.planned + sp.bounceReasons.planned; return { calls: e.thisRun.calls - n, seconds: e.thisRun.seconds - sp.participantFailures.planned * sp.participantFailures.secondsEach - sp.bounceReasons.planned * sp.bounceReasons.secondsEach }; };
     check("the cost of ADDING accounts is the cost of the refresh that adds them: over a snapshot that holds none, a selective plan with accounts off prints what the full refresh with accounts would add to it, not the account calls of a selective one",
-      offPlan.mode === "selective" && onPlan.mode === "full" && offPlan.accounts.addsCalls === onPlan.thisRun.calls - offPlan.thisRun.calls && offPlan.accounts.addsSeconds === onPlan.thisRun.seconds - offPlan.thisRun.seconds &&
+      offPlan.mode === "selective" && onPlan.mode === "full" && offPlan.accounts.addsCalls === sansSamples(onPlan).calls - sansSamples(offPlan).calls && offPlan.accounts.addsSeconds === sansSamples(onPlan).seconds - sansSamples(offPlan).seconds &&
         offPlan.accounts.addsCalls > base.summary.estimate.accounts.addsCalls, [offPlan.accounts, offPlan.thisRun, onPlan.thisRun]);
     const oldRun = pull({});
     const oldParams = JSON.parse(readFileSync(join(oldRun.runDir, "run.json"), "utf8"));
@@ -1036,8 +1057,11 @@ try {
     writeFiles(WS, { ".gs-superadmin/.keep": "" });
     const LINKS = join(ROOT, "link-settings.json");
     writeFileSync(LINKS, JSON.stringify({ "tpl-nps": { reading: "tracked-link-present", asOf: "2026-09-01" }, "tpl-renew-b": { reading: "links-none-tracked", asOf: "2026-09-01" } }));
+    // The fictional category list, as a tenant would pass its own (the shipped list is empty).
+    const CATS = join(ROOT, "categories.json");
+    writeFileSync(CATS, JSON.stringify({ bounceReasons: FIXTURE_BOUNCE_CATEGORIES }));
     const common = ["--workspace", WS, "--bin", FAKE, "--kb", KB_DIR, "--today", TODAY, "--pulled-at", PULLED_AT, "--from", "2026-06", "--internal-domain", "acme.com", "--step-detail", "--page-size", "400",
-      "--accounts", "--accounts-busiest", "3", "--accounts-low", "2", "--accounts-bounce", "2", "--accounts-low-min-delivered", "4", "--health", "--link-settings", LINKS, "--unsubscribe-link", OWN_SITE_UNSUBSCRIBE];
+      "--accounts", "--accounts-busiest", "3", "--accounts-low", "2", "--accounts-bounce", "2", "--accounts-low-min-delivered", "4", "--health", "--failure-categories", CATS, "--link-settings", LINKS, "--unsubscribe-link", OWN_SITE_UNSUBSCRIBE];
     const cli = (mode, extra, env) => {
       const r = runNode(ENGINE, [mode, ...common, ...extra], { env: { ...process.env, ...env } });
       let json = null;
@@ -1073,6 +1097,10 @@ try {
     const otherLink = cli("fetch", ["--run", "golden", "--unsubscribe-link", "links.example.net"], env);
     check("F-470: the unsubscribe links are part of a run's identity: a run resumes only with the input it started with (its click payloads were classified under it), through the real process",
       otherLink.code === 1 && /started with different parameters/.test(otherLink.stderr) && isDeepStrictEqual(snap.meta.params.unsubscribeLinks, ["www.acme.com/mail-settings"]), otherLink.stderr);
+    const strayCats = join(ROOT, "stray-categories.json");
+    writeFileSync(strayCats, JSON.stringify({ bounceReason: [] }));
+    const strayRun = runNode(ENGINE, ["plan", ...common.filter((x, i) => !(x === "--failure-categories" || common[i - 1] === "--failure-categories")), "--failure-categories", strayCats, "--run", "stray-cats"], { env: { ...process.env, FAKE_STATE: state } });
+    check("a categories file with a key the adapter does not read is refused before any call, never ignored (a typo would silently count no category)", strayRun.status === 1 && /unknown key.s. bounceReason/.test(strayRun.stderr) && !existsSync(join(WS, ".gs-superadmin", "tmp", "engagement", "stray-cats")), strayRun.stderr.slice(-300));
     const badLink = cli("plan", ["--run", "bad-link", "--unsubscribe-link", "mail-settings"], env);
     check("F-470: a value that names no web host is refused at the command line, before any call", badLink.code === 1 && /--unsubscribe-link takes a link or a host/.test(badLink.stderr) && !existsSync(join(WS, ".gs-superadmin", "tmp", "engagement", "bad-link")), badLink.stderr);
     const otherPlan = cli("fetch", ["--run", "golden", "--previous", GOLDEN], env);
@@ -1095,6 +1123,26 @@ try {
     writeFiles(join(ROOT, "kb-other"), Object.fromEntries(Object.entries(kbFiles("acme-sbx")).map(([k, v]) => [k, v.replace("https://acme.gainsightcloud.com", "https://acme-sbx.gainsightcloud.com")])));
     const wrong = runNode(ENGINE, ["plan", "--workspace", WS, "--bin", FAKE, "--kb", join(ROOT, "kb-other", "acme-sbx"), "--today", TODAY, "--run", "wrong-tenant"]);
     check("a KB that belongs to another tenant is refused before any pull: step names never cross tenants", wrong.status === 1 && /belongs to acme-sbx\.gainsightcloud\.com but the CLI is on acme\.gainsightcloud\.com/.test(wrong.stderr), wrong.stderr);
+    // ── The run's clock (F-482, F-483) ──
+    {
+      const noClock = common.filter((x, i) => !(x === "--pulled-at" || common[i - 1] === "--pulled-at") && !(x === "--today" || common[i - 1] === "--today"));
+      const runJson = () => JSON.parse(readFileSync(join(WS, ".gs-superadmin", "tmp", "engagement", "clock", "run.json"), "utf8"));
+      const planned = runNode(ENGINE, ["plan", ...noClock, "--today", "2026-09-14", "--run", "clock"], { env: { ...process.env, FAKE_STATE: state } });
+      const afterPlan = runJson();
+      check("F-482: a plan stamps no pull time — the run directory records the parameters with pulledAt null until the fact calls start", planned.status === 0 && afterPlan.params.pulledAt === null && afterPlan.params.today === "2026-09-14", afterPlan.params.pulledAt);
+      const stopped = runNode(ENGINE, ["run", ...noClock, "--run", "clock", "--out", join(ROOT, "clock.json")], { env: { ...process.env, FAKE_STATE: state, FAKE_FAULTS: JSON.stringify([{ match: "rp run", kind: "auth", skip: 12, times: 9999 }]) } });
+      const stampedAt = runJson().params.pulledAt;
+      const t0 = Date.now();
+      const resumed = runNode(ENGINE, ["run", ...noClock, "--run", "clock", "--out", join(ROOT, "clock.json")], { env: { ...process.env, FAKE_STATE: state } });
+      const snap = resumed.status === 0 ? JSON.parse(readFileSync(join(ROOT, "clock.json"), "utf8")) : null;
+      check("F-482: the pull time is stamped when the fact calls START (after the plan's own calls, in this process) and kept across a resume: the run stopped by the token and resumed later carries ONE pulledAt, the one the first fact call was made under, on the snapshot and on every row",
+        stopped.status === 3 && typeof stampedAt === "string" && /T\d\d:\d\d:\d\d[+-]\d\d:\d\d$/.test(stampedAt) && Date.parse(stampedAt) <= t0 && resumed.status === 0 && snap?.meta.pulledAt === stampedAt && runJson().params.pulledAt === stampedAt &&
+          snap.facts.byTemplate.every((r) => r.pulledAt === stampedAt) && snap.facts.health.schedules.filter((r) => r.source === "live").every((r) => r.asOf === stampedAt) && typeof snap.meta.timeZone === "string", [stopped.status, stampedAt, resumed.status, snap?.meta.pulledAt]);
+      check("F-483: a run planned on one day resumes on another: the same flags without --today continue the run under the day it was planned on (today is kept with the run's parameters, like the pull time), and the day in the snapshot is the plan's",
+        afterPlan.params.today === "2026-09-14" && snap?.meta.incompleteFrom === "2026-09-01" && snap.meta.health.asOf === "2026-09-14" && new Date().toISOString().slice(0, 10) !== "2026-09-14");
+      const moved = runNode(ENGINE, ["fetch", ...noClock, "--today", "2026-09-15", "--run", "clock"], { env: { ...process.env, FAKE_STATE: state } });
+      check("F-483: a different --today given on purpose is still a different run, and the refusal names the parameter that moved", moved.status === 1 && /different parameters \(today/.test(moved.stderr), moved.stderr.slice(-300));
+    }
     const mut = structuredClone(CATALOG);
     mut.commands.find((c) => c.path === "report run").mutating = true;
     const WS2 = join(ROOT, "ws-mutating");
@@ -1106,35 +1154,45 @@ try {
       refusedRun.status === 1 && /is MUTATING/.test(refusedRun.stderr) && !readFileSync(join(state2, "argv.jsonl"), "utf8").includes('"run"'), refusedRun.stderr);
   }
 
-  // ══ HLT-1 · health facts ══════════════════════════════════════════════════
-  // What each raw message of the fixture must read as once masked, written by
-  // hand (never through maskMessage): the oracle's half of the comparison.
-  const BOUNCE_TEXT = {
-    "unknown-user": "550 5.1.1 <email>: Recipient address rejected: User unknown in virtual mailbox table (ref <number>)",
-    policy: "smtp;554 5.7.1 Message for <email> blocked by policy at <ip>, id=<id>",
-    "mailbox-full": "452 4.2.2 Mailbox full",
-    none: null,
-  };
-  const FAILURE_TEXT = { "invalid-email": ["Email address <email> is invalid"], "no-company": ["Participant <id> has no company"], array: ["Missing required field: Email", "Duplicate participant"] };
-  const bounceOracle = (tenant, snapshot) => {
+  // ══ HLT-1 · health facts (counted by category since S3b) ══════════════════
+  // What each raw message of the fixture must read as, written by hand (never
+  // through maskMessage or the category table): the oracle's half.
+  const BOUNCE_TEXT = { "mailbox-full": "452 4.2.2 Mailbox full", none: null };
+  const BOUNCE_LABEL = { "user-unknown": "Recipient address rejected: user unknown", "blocked-by-policy": "Message blocked by policy" };
+  const FAILURE_TEXT = { "already-in-list": ["Participant already exists in participant list"], "invalid-email": ["Email address <email> is invalid"], "unique-criteria": ["Participant with unique criteria already exists"], "no-company": ["Participant <id> has no company"], "bounced-at-send": ["Bounced recipient(to) email <email>' in Step 'Send Email'"], array: ["Missing required field: Email", "Duplicate participant"] };
+  // Which shipped category each refusal kind lands in, written by hand (the oracle's half of the sampled split).
+  const FAILURE_KIND_CATEGORY = { "already-in-list": "already-in-list", "unique-criteria": "unique-criteria", "invalid-email": null, "no-company": null, array: null, "bounced-at-send": "bounced-at-send", "null-email": "invalid-field-value", "unknown-wording": null };
+  const inScopeBounced = (tenant, snapshot) => {
     const months = new Set(snapshot.dimensions.months);
     const programs = new Set(snapshot.dimensions.programs.map((p) => p.id));
+    return tenant.tables.email_log_v2.filter((r) => r.Source === "Advanced Outreach" && r.AddressType === "To" && months.has(r.ExecutedDate.slice(0, 7)) && programs.has(r.SourceId) && r.IsBounced === "YES");
+  };
+  // Per program × template × month × class × type × category: a categorised kind under its label, everything else in "other" with no text.
+  const bounceOracle = (tenant, snapshot, isInt = (r) => isInternal(r.LowerCaseEmailId)) => {
     const out = new Map();
-    for (const r of tenant.tables.email_log_v2) {
-      if (r.Source !== "Advanced Outreach" || r.AddressType !== "To" || !months.has(r.ExecutedDate.slice(0, 7)) || !programs.has(r.SourceId) || r.IsBounced !== "YES") continue;
-      const k = [r.SourceId, r.EmailTemplateId, r.ExecutedDate.slice(0, 7), isInternal(r.LowerCaseEmailId) ? "internal" : "external", r.BounceType, BOUNCE_TEXT[r._bounceKind]].join("|");
+    for (const r of inScopeBounced(tenant, snapshot)) {
+      const category = FIXTURE_BOUNCE_KIND_CATEGORY[r._bounceKind] ?? "other";
+      const k = [r.SourceId, r.EmailTemplateId, r.ExecutedDate.slice(0, 7), isInt(r) ? "internal" : "external", r.BounceType, category, category === "other" ? null : BOUNCE_LABEL[category]].join("|");
       out.set(k, (out.get(k) ?? 0) + 1);
     }
     return out;
   };
-  const bounceMap = (rows) => new Map(rows.map((r) => [[r.programId, r.templateId, r.month, r.recipientClass, r.bounceType, r.message].join("|"), r.count]));
+  const bounceMap = (rows) => new Map(rows.map((r) => [[r.programId, r.templateId, r.month, r.recipientClass, r.bounceType, r.category, r.message].join("|"), r.count]));
   const H = S.facts.health;
   const logOf = (run) => readFileSync(join(run.runDir, "fetch-log.jsonl"), "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l));
+  const bounceCalls = (run) => rpRuns(run.argv).filter((a) => flag(a, "--object") === "email_log_v2" && flag(a, "--where-filters").includes('"IsBounced"},"operator":"EQ","rightOperand":{"value":"YES"}'));
   {
-    check("HLT-1 fixture: the kinds the oracle names are the fixture's own, and the raw messages NAME people: bounce reasons carry addresses and long digit runs, failure reasons an address or an id",
-      isDeepStrictEqual(BOUNCE_REASONS.map((r) => r.kind).sort(), Object.keys(BOUNCE_TEXT).sort()) && isDeepStrictEqual(FAILURE_REASONS.map((r) => r.kind).sort(), Object.keys(FAILURE_TEXT).sort()) &&
+    const local = O.rows.filter((r) => r._bounceKind === "unknown-user-local");
+    check("HLT-1 fixture: every bounce kind the fixture writes has its category (or none) spelled by hand; the raw messages NAME people (addresses, long digit runs, an id); and one kind carries an address the mask cannot see — no dot after the @ — which survives masking",
+      isDeepStrictEqual(BOUNCE_REASONS.map((r) => r.kind).sort(), Object.keys(FIXTURE_BOUNCE_KIND_CATEGORY).sort()) && isDeepStrictEqual(FAILURE_REASONS.map((r) => r.kind).sort(), Object.keys(FAILURE_TEXT).sort()) &&
         O.rows.some((r) => /@c\d\d\.example\.com/.test(r.BouncedReason ?? "") && /\d{5,}/.test(r.BouncedReason)) && O.rows.some((r) => r.IsBounced === "YES" && r.BouncedReason === null) &&
-        base.tenant.tables.ao_failed_participants.some((r) => r.FailureReasons.includes("@")) && base.tenant.tables.ao_failed_participants.some((r) => /1P02ACMEX\d+ZQ/.test(r.FailureReasons)));
+        base.tenant.tables.ao_failed_participants.some((r) => r.FailureReasons.includes("@")) && base.tenant.tables.ao_failed_participants.some((r) => /1P02ACMEX\d+ZQ/.test(r.FailureReasons)) &&
+        local.length > 3 && local.every((r) => /@localhost>/.test(maskMessage(r.BouncedReason))), local.length);
+    check("HLT-1 fixture: the fictional category list is a usable list (ids, labels, patterns, definitions; disjoint patterns); the SHIPPED bounce list is empty until the captured wordings are ruled product text, and the shipped refusal list is the nine product wordings measured 2026-10-07 and 2026-10-08, each with its kind: six business rules, three bad addresses (the bounce list, a bounce at the send step, a null address), no program error",
+      validateCategories(FIXTURE_BOUNCE_CATEGORIES).length === 0 && FIXTURE_BOUNCE_CATEGORIES.length === 2 && isDeepStrictEqual(FAILURE_CATEGORIES.bounceReasons, []) && Object.isFrozen(FAILURE_CATEGORIES.bounceReasons) &&
+        FAILURE_CATEGORIES.participantFailures.length === 9 && validateCategories(FAILURE_CATEGORIES.participantFailures).length === 0 && FAILURE_CATEGORIES.participantFailures.filter((c) => c.kind !== "business-rule").map((c) => c.id).join() === "bounce-list,bounced-at-send,invalid-field-value" && NULL_EMAIL_REASONS.every((t) => matchCategory(t, FAILURE_CATEGORIES.participantFailures)?.id === "invalid-field-value") && matchCategory(UNKNOWN_REASON, FAILURE_CATEGORIES.participantFailures) === null && FAILURE_CATEGORIES.participantFailures.filter((c) => c.kind === "business-rule").length === 6 &&
+        FAILURE_REASONS.every((r) => matchCategory(maskMessage(r.text(3)), FAILURE_CATEGORIES.participantFailures)?.id === (FAILURE_KIND_CATEGORY[r.kind] ?? undefined) || (FAILURE_KIND_CATEGORY[r.kind] === null && matchCategory(maskMessage(r.text(3)), FAILURE_CATEGORIES.participantFailures) === null)) &&
+        matchCategory(NULL_EMAIL_REASON, FAILURE_CATEGORIES.participantFailures)?.kind === "bad-address" && matchCategory("participant ALREADY EXISTS in participant list", FAILURE_CATEGORIES.participantFailures)?.id === "already-in-list", FAILURE_CATEGORIES.participantFailures.map((c) => c.id));
     check("HLT-1 send failures: failed counts an attempt that bounced or was rejected, per row of every send table, and with no attempt carrying both flags it is bounced plus rejected",
       [...S.facts.byTemplate, ...S.facts.byAccount].every((r) => r.failed === r.bounced + r.rejected) && S.facts.byTemplate.some((r) => r.failed > 0) && SS.facts.byStep.every((r) => r.failed === r.bounced + r.rejected));
     const both = pull({ kb: true, variant: { bothFlags: true } });
@@ -1143,29 +1201,72 @@ try {
     check("HLT-1 send failures: an attempt flagged bounced AND rejected is ONE failure — with such attempts in the log, failed equals a straight count of attempts with either flag and is less than bounced plus rejected",
       sameMap(factMap(both.snapshot.facts.byTemplate, (r) => [r.programId, r.templateId, r.month, r.recipientClass]), OB.byTemplate) && sums.failed > 0 && sums.failed < sums.parts && both.snapshot.reconciliation.ok, sums);
 
-    check("HLT-1 bounce reasons: bounced attempts by program × template × month × class × type × masked message equal a straight count of the fixture's bounced rows, each message as the oracle spells it; an attempt with no reason keeps a row with a null message",
-      H.bounceReasons.length > 5 && sameMap(bounceMap(H.bounceReasons), bounceOracle(base.tenant, S)) && H.bounceReasons.some((r) => r.message === null) && new Set(H.bounceReasons.map((r) => r.recipientClass)).size === 2,
+    // Bounce reasons, counted by category (F-484, ruled 2026-10-05).
+    check("HLT-1 categories: bounced attempts by program × template × month × class × type × CATEGORY equal a straight count of the fixture's bounced rows: a categorised row keeps message = the category's label and carries its id; the remainder is ONE row per key with category other, the count and no message (an attempt with no reason, and one whose reason no category names, are both in it)",
+      H.bounceReasons.length > 5 && sameMap(bounceMap(H.bounceReasons), bounceOracle(base.tenant, S)) && H.bounceReasons.some((r) => r.category === "other" && r.message === null && r.count >= 1) &&
+        H.bounceReasons.filter((r) => r.category !== "other").every((r) => r.message === BOUNCE_LABEL[r.category]) && new Set(H.bounceReasons.map((r) => r.recipientClass)).size === 2 && new Set(H.bounceReasons.map((r) => r.category)).size === 3,
       diffMap(bounceMap(H.bounceReasons), bounceOracle(base.tenant, S)));
-    check("HLT-1 masking groups: bounces that differ only in whom they name are ONE message, counted together (the same text on several rows of the log, one row here)",
-      H.bounceReasons.some((r) => r.count > 1 && r.message === BOUNCE_TEXT["unknown-user"]) || new Set(O.rows.filter((r) => r._bounceKind === "unknown-user").map((r) => r.BouncedReason)).size > new Set(H.bounceReasons.filter((r) => r.message === BOUNCE_TEXT["unknown-user"]).map((r) => r.message)).size);
-    check("HLT-1 reconciliation: bounce reasons sum to the send tables' bounced per program × month, and a reason row lost in transit fails the check", (() => {
+    check("HLT-1 categories CUT, the mask keeps: the rows whose address the mask missed are counted under their category with no text at all, and no stored health message holds an @",
+      O.rows.some((r) => r._bounceKind === "unknown-user-local") && H.bounceReasons.filter((r) => r.category === "user-unknown").reduce((x, r) => x + r.count, 0) === O.rows.filter((r) => ["unknown-user", "unknown-user-local"].includes(r._bounceKind)).length &&
+        !JSON.stringify(H).includes("@") && !JSON.stringify(H).includes("localhost"));
+    const bare = pull({ kb: true, raw: { health: { pull: true } } });
+    const BH = bare.snapshot.facts.health;
+    check("HLT-1 with NO category (the shipped list): every bounce is in an other row (no text), the discovery sample carries the masked text — including the local address the mask misses, which is what the sample is for and why it never reaches a page — and the counts still equal the fixture's",
+      BH.bounceReasons.length > 0 && BH.bounceReasons.every((r) => r.category === "other" && r.message === null) && BH.bounceReasons.reduce((x, r) => x + r.count, 0) === inScopeBounced(bare.tenant, bare.snapshot).length &&
+        BH.failureSamples.some((r) => r.part === "bounceReasons" && /@localhost>/.test(r.message)) && !JSON.stringify(BH.bounceReasons).includes("@") && bare.snapshot.meta.health.categories.bounceReasons.ids.length === 0 && bare.snapshot.reconciliation.ok,
+      BH.failureSamples.slice(0, 3));
+    check("HLT-1 the stored rows scale with the categories, not the failures (F-484's class test): the same tenant with three hundred more failed participants holds the same number of failure rows, and the bounce rows per key are at most the categories plus one",
+      (() => {
+        const many = pull({ kb: true, variant: { manyFailures: 300 } });
+        const rowsOfP = (snap) => snap.facts.health.participantFailures.filter((r) => r.programId === "p-onboard");
+        const perKey = new Map();
+        for (const r of H.bounceReasons) { const k = [r.programId, r.templateId, r.month, r.recipientClass, r.bounceType].join("|"); perKey.set(k, (perKey.get(k) ?? 0) + 1); }
+        return many.snapshot.facts.health.participantFailures.length === H.participantFailures.length && rowsOfP(many.snapshot)[0].participants === rowsOfP(S)[0].participants + 300 && [...perKey.values()].every((n) => n <= FIXTURE_BOUNCE_CATEGORIES.length + 1);
+      })());
+    const total = bounceCalls(base).filter((a) => !flag(a, "--where-filters").includes('"BouncedReason"') && flag(a, "--group-by")?.includes('"BounceType"'));
+    const cat = bounceCalls(base).filter((a) => flag(a, "--where-filters").includes('"fieldName":"BouncedReason"},"operator":"CONTAINS"'));
+    check("HLT-1 counting is server-side: the total and one CONTAINS call per category, each grouped by program, template, month and type with the reason text in NO group-by (measured: CONTAINS works on this STRING field in the grouped shape), and a capped sample of the rest with one DOES_NOT_CONTAINS per category, never split",
+      total.length >= 2 && cat.length >= 2 * FIXTURE_BOUNCE_CATEGORIES.length && [...total, ...cat].every((a) => !flag(a, "--group-by").includes("BouncedReason") && flag(a, "--group-by").includes('"BounceType"')) &&
+        FIXTURE_BOUNCE_CATEGORIES.every((c) => cat.some((a) => flag(a, "--where-filters").includes(`"operator":"CONTAINS","rightOperand":{"value":${JSON.stringify(c.pattern)}}`))) &&
+        bounceCalls(base).filter((a) => !flag(a, "--group-by")).every((a) => FIXTURE_BOUNCE_CATEGORIES.every((c) => flag(a, "--where-filters").includes(`"operator":"DOES_NOT_CONTAINS","rightOperand":{"value":${JSON.stringify(c.pattern)}}`))) &&
+        logOf(base).filter((r) => r.family === "health-bounce-sample").every((r) => r.status === "ok" && !r.truncated) && !rpRuns(base.argv).some((a) => flag(a, "--group-by")?.includes("BouncedReason")), [total.length, cat.length]);
+    let refusedList = "";
+    try { resolveParams({ today: TODAY, health: { pull: true, categories: { bounceReasons: [{ id: "a", label: "A", pattern: "User unknown", definition: "x" }, { id: "b", label: "B", pattern: "unknown", definition: "y" }] } } }); } catch (e) { refusedList = e.message; }
+    const overlap = pull({ kb: true, raw: { health: { pull: true, categories: { bounceReasons: [{ id: "a", label: "A", pattern: "User unknown", definition: "x" }, { id: "b", label: "B", pattern: "virtual mailbox", definition: "y" }] } } } });
+    const OH = overlap.snapshot.facts.health;
+    check("HLT-1 patterns must be disjoint: a list where one pattern is inside another is refused before any call; two patterns that both match one message (which text alone cannot show) count it twice, so the other row reads BELOW ZERO — flagged as a list defect by a caveat, never clamped — and the category rows sum to the bounced count all the same",
+      /patterns must be disjoint/.test(refusedList) && OH.bounceReasons.some((r) => r.category === "other" && r.count < 0) && overlap.snapshot.caveats.some((c) => c.id === "failure-categories-overlap" && c.detail.rows > 0) &&
+        overlap.snapshot.reconciliation.checks.find((c) => c.id === "bounce-reasons-sum-to-bounced").ok && !JSON.stringify(validateCategories([{ id: "a", label: "A", pattern: "User unknown", definition: "x" }, { id: "b", label: "B", pattern: "virtual mailbox", definition: "y" }])).includes("disjoint"),
+      [refusedList, OH.bounceReasons.filter((r) => r.count < 0).slice(0, 2)]);
+    for (const [bad, re] of /** @type {Array<[any, RegExp]>} */ ([[[{ id: "other", label: "x", pattern: "y", definition: "z" }], /reserved/], [[{ id: "a", label: "", pattern: "y", definition: "z" }], /label must be/], [[{ id: "a", label: "x", pattern: "y", definition: "z", extra: 1 }], /unknown key/], [[{ id: "a", label: "x", pattern: "y", definition: "z" }, { id: "a", label: "x", pattern: "q", definition: "z" }], /used twice/], ["no", /must be an array/]])) {
+      check(`validateCategories refuses ${JSON.stringify(bad).slice(0, 60)}`, validateCategories(bad).some((p) => re.test(p)), validateCategories(bad));
+    }
+    check("HLT-1 reconciliation: category rows and other rows sum to the send tables' bounced per program × month (the other row is the remainder, so the sum is the total's), and a total row lost in transit fails the check", (() => {
       const c = S.reconciliation.checks.find((x) => x.id === "bounce-reasons-sum-to-bounced");
-      // One row, from the first month's call that has any.
-      const hit = base.input.units.findIndex((u) => u.family === "health-bounce" && u.cls === "all" && u.rows.length > 0);
+      const hit = base.input.units.findIndex((u) => u.family === "health-bounce-total" && u.cls === "all" && u.rows.length > 0);
       const input = { ...base.input, units: base.input.units.map((u, i) => (i === hit ? { ...u, rows: u.rows.slice(1) } : u)) };
       const lost = reduceEngagement(input).reconciliation.checks.find((x) => x.id === "bounce-reasons-sum-to-bounced");
-      return c?.ok === true && c.compared > 5 && lost.mismatches + lost.drift === 1;
+      return c?.ok === true && c.compared > 5 && hit >= 0 && lost.mismatches + lost.drift === 1;
     })());
+    // The expected class (ruled 2026-10-04): a tenant's own expected reasons are category data, flagged, and never hidden.
+    const expected = pull({ kb: true, raw: { health: { ...HEALTH, expectedReasons: ["Duplicate participant", "Duplicate participant", "participant already exists in participant list"] } } });
+    const EM = expected.snapshot.meta;
+    const shippedIds = FAILURE_CATEGORIES.participantFailures.map((c) => c.id);
+    check("HLT-1 expected failures are data: --expected-reason becomes a participant category flagged expected (de-duplicated, echoed in meta.params; one the shipped list already names is dropped, not doubled); on this CLI the reason field takes no filter, so it is configured and not counted server-side — the snapshot says so (meta.health.categories, a caveat naming how many), every failure TOTAL row is category other and expected false, and the sampled split carries the expected category",
+      isDeepStrictEqual(EM.params.health.expectedReasons, ["Duplicate participant"]) && EM.params.health.categories.participantFailures.length === shippedIds.length + 1 && EM.params.health.categories.participantFailures.at(-1).expected === true && EM.params.health.categories.participantFailures.at(-1).id === "expected-1" &&
+        isDeepStrictEqual(EM.health.categories.participantFailures, { counted: false, reason: "not-filterable", ids: [], configured: [...shippedIds, "expected-1"] }) && expected.snapshot.caveats.some((c) => c.id === "participant-failures-no-breakdown" && c.detail.reason === "not-filterable" && c.detail.expectedReasons === 1) &&
+        expected.snapshot.facts.health.participantFailures.every((r) => r.category === "other" && r.expected === false) && isDeepStrictEqual(expected.snapshot.facts.health.participantFailures, H.participantFailures) &&
+        expected.snapshot.facts.health.entrySamples.some((r) => r.category === "expected-1" && r.expected === true) && expected.snapshot.facts.health.failureSamples.some((r) => r.message === "Duplicate participant" && r.category === "expected-1" && r.expected === true), [EM.health.categories, expected.snapshot.caveats.map((c) => c.id)]);
 
     // Masked BEFORE it reaches a snapshot, and before it reaches disk.
-    const files = logOf(base).filter((r) => ["health-bounce", "health-reasons"].includes(r.family) && r.status === "ok").map((r) => readFileSync(join(base.runDir, r.file), "utf8"));
-    check("HLT-1 masking: messages are masked when they are FETCHED — no payload file of a message call holds an address or a long digit run — and nothing in the snapshot's health facts does",
-      files.length >= 3 && files.every((t) => !t.includes("@") && !/\d{5,}/.test(t) && !/1P02ACMEX/.test(t)) && files.some((t) => t.includes("<email>")) &&
-        !JSON.stringify(H).includes("@") && [...H.bounceReasons, ...H.participantFailures].every((r) => r.message === null || !/\d{5,}/.test(r.message)));
-    const rawRows = base.input.units.find((u) => u.family === "health-bounce" && u.cls === "all").rows;
-    const dirty = { ...base.input, units: base.input.units.map((u) => (u.family === "health-bounce" ? { ...u, rows: u.rows.map((r) => (r.message === BOUNCE_TEXT["mailbox-full"] ? { ...r, message: "452 4.2.2 Mailbox full for kim@c09.example.com (ref 7755001234)" } : r)) } : u)) };
-    check("HLT-1 masking: the snapshot is masked whatever a payload file holds — a raw message seeded into a fetched row comes out masked",
-      rawRows.some((r) => r.message === BOUNCE_TEXT["mailbox-full"]) && !JSON.stringify(reduceEngagement(dirty).facts.health).includes("@") && reduceEngagement(dirty).facts.health.bounceReasons.some((r) => r.message === "452 4.2.2 Mailbox full for <email> (ref <number>)"));
+    const files = logOf(base).filter((r) => ["health-bounce-sample", "health-reasons-sample"].includes(r.family) && r.status === "ok").map((r) => readFileSync(join(base.runDir, r.file), "utf8"));
+    check("HLT-1 masking: messages are masked when they are FETCHED — no payload file of a sample call holds an address or a long digit run — and nothing in the snapshot's health facts does",
+      files.length >= 2 && files.every((t) => !t.includes("@") && !/\d{5,}/.test(t) && !/1P02ACMEX/.test(t)) && files.some((t) => t.includes("<email>")) &&
+        !JSON.stringify(H).includes("@") && [...H.bounceReasons, ...H.participantFailures, ...H.failureSamples].every((r) => r.message === null || !/\d{5,}/.test(r.message)));
+    const rawRows = base.input.units.filter((u) => u.family === "health-bounce-sample").flatMap((u) => u.rows);
+    const dirty = { ...base.input, units: base.input.units.map((u) => (u.family === "health-bounce-sample" ? { ...u, rows: u.rows.map((r) => (r.message === BOUNCE_TEXT["mailbox-full"] ? { ...r, message: "452 4.2.2 Mailbox full for kim@c09.example.com (ref 7755001234)" } : r)) } : u)) };
+    check("HLT-1 masking: the snapshot is masked whatever a payload file holds — a raw message seeded into a fetched sample row comes out masked",
+      rawRows.some((r) => r.message === BOUNCE_TEXT["mailbox-full"]) && !JSON.stringify(reduceEngagement(dirty).facts.health).includes("@") && reduceEngagement(dirty).facts.health.failureSamples.some((r) => r.message === "452 4.2.2 Mailbox full for <email> (ref <number>)"));
 
     // The rules are data, and each one is tested.
     const MASKS = [
@@ -1173,41 +1274,155 @@ try {
       ["email", "550 <raj@acme.com>: denied", "550 <email>: denied"],
       ["uuid", "trace 0f8fad5b-d9cb-469f-a165-70867728950e lost", "trace <id> lost"],
       ["ipv4", "host 198.51.100.24 refused the connection", "host <ip> refused the connection"],
+      // F-492: a gateway id with dots, hyphens and underscores is an id; a help link's path is not (its query is).
       ["token", "participant 1P02ACMEX1000003ZQ skipped", "participant <id> skipped"],
+      ["token", "see https://help.example.com/articles/12345678?t=abcDEF123456xyz", "see https://help.example.com/articles/12345678?<id>"],
+      ["token", "queued as [AbC-123_xyz.eu1] by the gateway", "queued as [<id>] by the gateway"],
+      ["token", "ticket a1B2c3D4e5F6g7H8+i9/j0k1= closed", "ticket <id> closed"],
       ["number", "ref 8842190731", "ref <number>"],
     ];
-    check("HLT-1 mask rules: the rules are data (id, what, pattern, placeholder), and EVERY rule has a case here that it is the first to change (the rules apply in order): an address with and without angle brackets, a UUID, an IPv4 address, a record id, a long digit run",
+    check("HLT-1 mask rules: the rules are data (id, what, pattern, placeholder), and EVERY rule has a case here that it is the first to change (the rules apply in order): an address with and without angle brackets, a UUID, an IPv4 address, a record id and gateway ids with dots, hyphens, underscores, plus, slash and equals (F-492), a long digit run; the host rule is GONE (F-492, ruled 2026-10-08)",
       MASK_RULES.every((r) => typeof r.id === "string" && typeof r.what === "string" && r.re instanceof RegExp && r.re.global && /^<[a-z]+>$/.test(r.as)) && isDeepStrictEqual([...new Set(MASKS.map((m) => m[0]))], MASK_RULES.map((r) => r.id)) &&
         MASKS.every(([id, raw, want]) => maskMessage(raw) === want && MASK_RULES.find((r) => raw.replace(r.re, r.as) !== raw).id === id),
       MASKS.map(([id, raw]) => [id, maskMessage(raw), MASK_RULES.filter((r) => raw.replace(r.re, r.as) !== raw).map((r) => r.id)]));
     check("HLT-1 mask rules: what diagnoses the failure is kept — SMTP codes, enhanced status codes and short numbers — and masking twice changes nothing",
       maskMessage("550 5.1.1 Mailbox full (code 4.2.2) on port 2525") === "550 5.1.1 Mailbox full (code 4.2.2) on port 2525" && MASKS.every(([, raw]) => maskMessage(maskMessage(raw)) === maskMessage(raw)));
+    // F-492 (reopened 2026-10-08): the widened mask took product text — Microsoft's dotted diagnostic codes and vendors' help links
+    // were 11 of the 30 bounce wordings a tenant captured. The class test: a product wording is its own mask.
+    const PRODUCT_WORDINGS = [
+      "550 5.1.10 RESOLVER.ADR.RecipientNotFound; Recipient not found by SMTP address lookup",
+      "550 5.7.129 RESOLVER.RST.RestrictedToRecipientsPermission; not authorized to send to recipient",
+      "554 5.2.2 mailbox full; STOREDRV.Deliver.Exception:QuotaExceededException.MapiExceptionStorageShutoffQuotaExceeded",
+      "550 5.7.1 TRANSPORT.RULES.RejectMessage; the message was rejected by organization policy",
+      "550 5.4.1 Recipient address rejected: Access denied. For more information see https://aka.ms/EXOSmtpErrors [",
+      "550 Envelope blocked - User Entry - https://community.mimecast.com/docs/DOC-1369#550 [",
+      "550 5.1.1 The email account that you tried to reach does not exist. For more information, go to https://support.google.com/mail/?p=NoSuchUser",
+      "The user or domain that you are sending to (or from) has a policy that prohibited the mail that you sent. For more information, go to https://support.google.com/a/answer/",
+      "error dialing remote address: dial tcp",
+      "unable to get mx info: failed to get IPs from PTR record: lookup",
+    ];
+    check("F-492 (reopened) class test: every product wording a category list may name is ITS OWN mask — Microsoft's dotted diagnostic codes, vendors' help links with their paths, SMTP phrases — while a recipient's value beside one still goes: the host rule is gone and the id and number rules stop at a URL's query",
+      PRODUCT_WORDINGS.every((w) => maskMessage(w) === w) && maskMessage("550 5.1.10 RESOLVER.ADR.RecipientNotFound; Recipient ann.lee@mail.c01.example.com not found by SMTP address lookup") === "550 5.1.10 RESOLVER.ADR.RecipientNotFound; Recipient <email> not found by SMTP address lookup" &&
+        maskMessage("see https://community.mimecast.com/docs/DOC-1369?ref=9f8e7d6c5b4a3f2e1d0c&id=8842190731") === "see https://community.mimecast.com/docs/DOC-1369?<id>&<id>" && maskMessage("queued as [AbC-123_xyz.eu1] via https://mta.example.com/q/AbC-123_xyz.eu1") === "queued as [<id>] via https://mta.example.com/q/AbC-123_xyz.eu1" &&
+        MASK_PROTECTED.re.global && typeof MASK_PROTECTED.what === "string", PRODUCT_WORDINGS.map((w) => [w, maskMessage(w)]).filter(([w, m]) => w !== m));
     check("HLT-1 mask rules: white space is collapsed, an empty or non-text message is null (never an empty string), and a long message is cut at the limit",
       maskMessage("  mailbox \n\t full ") === "mailbox full" && maskMessage("   ") === null && maskMessage(null) === null && maskMessage(42) === null && Array.from(maskMessage("x ".repeat(400))).length === MASK_MAX_LENGTH + 3);
+    check("HLT-1 mask rules, the known gap (ruled 2026-10-05): an address with no dot after its @ passes the email rule — Y2's leak search looks for it, and a category is what cuts it",
+      maskMessage("550 <bob@localhost>: user unknown") === "550 <bob@localhost>: user unknown" && maskMessage("550 <bob@mail.example.com>: user unknown") === "550 <email>: user unknown");
 
-    // Failure reasons: plain rows, grouped here.
+    // Failed participants: a per-program total, the one read the object allows (measured S3b).
     const t = buildTenant({});
     const grouped = answer(["--json", "rp", "run", "--object", "ao_failed_participants", "--show-fields", '[{"name":"Gsid","aggregation":"COUNT"}]', "--group-by", '[{"name":"FailureReasons"}]', "--page-size", "400"], t);
-    const distinct = answer(["--json", "rp", "run", "--object", "ao_failed_participants", "--show-fields", '[{"name":"FailureReasons","aggregation":"COUNT_DISTINCT"}]', "--page-size", "400"], t);
+    const filtered = answer(["--json", "rp", "run", "--object", "ao_failed_participants", "--show-fields", '[{"name":"Gsid","aggregation":"COUNT"}]', "--where-filters", '{"conditions":[{"leftOperand":{"fieldName":"FailureReasons"},"operator":"CONTAINS","rightOperand":{"value":"invalid"}}]}', "--page-size", "400"], t);
     const reasonCalls = rpRuns(base.argv).filter((a) => flag(a, "--object") === "ao_failed_participants");
-    check("HLT-1 failure reasons are read as plain rows and grouped client-side (SPIKE fact 6: grouping or distinct-counting the JSON-typed field fails with a text that reads like an outage)",
-      grouped.status === 1 && /network outage/.test(grouped.stderr) && distinct.status === 1 && reasonCalls.length >= 1 && reasonCalls.every((a) => !a.includes("--group-by") && parsed(a).show.every((x) => !x.aggregation)));
+    const fpTypes = new Map(t.schemas.ao_failed_participants.map((f) => [f.fieldName, f.dataType]));
+    const fpFlags = schemaFlags({ data: { fields: t.schemas.ao_failed_participants } });
+    const sampleCalls = reasonCalls.filter((a) => a.includes("--order-by"));
+    const inDayWindow = (r) => r.ModifiedAt >= "2026-06-18" && r.ModifiedAt < "2026-09-16";
+    const refusedPrograms = [...new Set(base.tenant.tables.ao_failed_participants.filter((r) => S.dimensions.programs.some((p) => p.id === r.AdvancedOutreachId) && inDayWindow(r)).map((r) => r.AdvancedOutreachId))].sort();
+    const dayCounts = Object.fromEntries(refusedPrograms.map((id) => [id, base.tenant.tables.ao_failed_participants.filter((r) => r.AdvancedOutreachId === id && inDayWindow(r)).length]));
+    check("HLT-1 the reason field takes NO filter (its schema says filterable false, groupable false; measured on the tenant with CONTAINS, DOES_NOT_CONTAINS and STARTS_WITH, all refused with one text): the stand-in refuses a filter on it with that text and a group-by with the outage text; validateQuery refuses a filter on a field the schema declares not filterable BEFORE it is spawned; and the pull's calls on the object are the per-program total (COUNT and SUM, grouped by program, no filter), the refusals per program × month (the window on ModifiedAt), the refusals per program still happening in the DAY window (the count the samples are picked from) and ONE sample per selected program with such refusals — plain rows of that program alone over that same day window, the most repeated first (F-484, redesigned 2026-10-08), never a tenant-wide page",
+      filtered.status === 1 && /Unrecognized data type found in Filter/.test(filtered.stderr) && grouped.status === 1 && /network outage/.test(grouped.stderr) &&
+        validateQuery({ object: "ao_failed_participants", show: [{ name: "Gsid", aggregation: "COUNT" }], group: [], where: [{ leftOperand: { fieldName: "FailureReasons" }, operator: "CONTAINS", rightOperand: { value: "x" } }] }, fpTypes, fpFlags).some((p) => /declared not filterable/.test(p)) &&
+        validateQuery({ object: "ao_failed_participants", show: [{ name: "Gsid", aggregation: "COUNT" }], group: [{ name: "FailureReasons" }], where: [] }, fpTypes, fpFlags).some((p) => /declared not groupable/.test(p)) &&
+        validateQuery({ object: "ao_failed_participants", show: [{ name: "Gsid", aggregation: "COUNT" }], group: [], where: [{ leftOperand: { fieldName: "FailureReasons" }, operator: "CONTAINS", rightOperand: { value: "x" } }] }, fpTypes, null).length === 0 &&
+        reasonCalls.length === 3 + refusedPrograms.length && refusedPrograms.length >= 1 &&
+        reasonCalls.some((a) => flag(a, "--group-by") === '[{"name":"AdvancedOutreachId"}]' && flag(a, "--show-fields") === '[{"name":"Gsid","aggregation":"COUNT"},{"name":"OccurrenceCount","aggregation":"SUM"}]' && parsed(a).where.map((c) => `${c.leftOperand.fieldName} ${c.operator}`).join() === "ModifiedAt GTE,ModifiedAt LT") &&
+        reasonCalls.some((a) => flag(a, "--group-by") === '[{"name":"AdvancedOutreachId"}]' && flag(a, "--show-fields") === '[{"name":"Gsid","aggregation":"COUNT"},{"name":"OccurrenceCount","aggregation":"SUM"}]' && !a.includes("--where-filters")) &&
+        reasonCalls.some((a) => flag(a, "--group-by") === '[{"name":"AdvancedOutreachId"},{"name":"ModifiedAt","summarize":"Month"}]' && parsed(a).where.map((c) => `${c.leftOperand.fieldName} ${c.operator}`).join() === "ModifiedAt GTE,ModifiedAt LT") &&
+        isDeepStrictEqual(sampleCalls.map((a) => parsed(a).where.find((c) => c.operator === "IN").rightOperand.value).flat().sort(), refusedPrograms) &&
+        sampleCalls.every((a) => flag(a, "--show-fields") === '[{"name":"AdvancedOutreachId"},{"name":"FailureReasons"},{"name":"ModifiedAt"},{"name":"OccurrenceCount"}]' && flag(a, "--order-by") === '[{"name":"OccurrenceCount","order":"DESC"}]' && flag(a, "--page-size") === String(SAMPLE_PAGE) && !a.includes("--group-by") &&
+          parsed(a).where.map((c) => `${c.leftOperand.fieldName} ${c.operator}`).sort().join() === "AdvancedOutreachId IN,ModifiedAt GTE,ModifiedAt LT"), reasonCalls.map((a) => a.join(" ").slice(0, 200)));
+    // The order-by itself: the stand-in refuses an entry that is not shown, and validateQuery refuses it first.
+    const unordered = answer(["--json", "rp", "run", "--object", "ao_failed_participants", "--show-fields", '[{"name":"AdvancedOutreachId"}]', "--order-by", '[{"name":"ModifiedAt","order":"DESC"}]', "--page-size", "5"], t);
+    check("rp run --order-by (measured 2026-10-07): the field must be shown or grouped by — the stand-in refuses one that is not, and validateQuery refuses the query before it is spawned; a shown DATETIME sorts newest first",
+      unordered.status === 1 && validateQuery({ object: "ao_failed_participants", show: [{ name: "AdvancedOutreachId" }], group: [], where: [], orderBy: [{ name: "ModifiedAt", order: "DESC" }] }, fpTypes, fpFlags).some((p) => /ordered by but neither shown/.test(p)) &&
+        (() => {
+          const rows = JSON.parse(answer(["--json", "rp", "run", "--object", "ao_failed_participants", "--show-fields", '[{"name":"AdvancedOutreachId"},{"name":"ModifiedAt"}]', "--order-by", '[{"name":"ModifiedAt","order":"DESC"}]', "--page-size", "50"], t).stdout).map((r) => r.ao_failed_participants_ModifiedAt.k);
+          return rows.length > 2 && rows.every((d, i) => i === 0 || d <= rows[i - 1]);
+        })());
     const want = new Map();
     for (const r of base.tenant.tables.ao_failed_participants) {
       if (!S.dimensions.programs.some((p) => p.id === r.AdvancedOutreachId)) continue;
-      for (const m of FAILURE_TEXT[r._failureKind]) {
-        const k = [r.AdvancedOutreachId, m].join("|");
-        const x = want.get(k) ?? { participants: 0, occurrences: 0 };
-        want.set(k, { participants: x.participants + 1, occurrences: x.occurrences + r.OccurrenceCount });
-      }
+      const x = want.get(r.AdvancedOutreachId) ?? { participants: 0, occurrences: 0 };
+      want.set(r.AdvancedOutreachId, { participants: x.participants + 1, occurrences: x.occurrences + r.OccurrenceCount });
     }
-    const got = new Map(H.participantFailures.map((r) => [[r.programId, r.message].join("|"), { participants: r.participants, occurrences: r.occurrences }]));
-    check("HLT-1 failure reasons: per program × masked reason, the participants and their occurrences equal a straight count; a row carrying two reasons counts under each; a deleted program's are left out",
-      want.size >= 4 && sameMap(got, want) && base.tenant.tables.ao_failed_participants.some((r) => r.AdvancedOutreachId === "p-gone") && !H.participantFailures.some((r) => r.programId === "p-gone"), { got: [...got], want: [...want] });
+    const got = new Map(H.participantFailures.map((r) => [r.programId, { participants: r.participants, occurrences: r.occurrences }]));
+    check("HLT-1 failed participants: ONE row per program, category other and no message, participants = its rows and occurrences = the SUM of theirs, a deleted program's left out; the marker says the breakdown could not be counted and why, the part's basis is all time, and the caveats say so (health-all-time naming both all-time parts, participant-failures-no-breakdown)",
+      want.size >= 2 && sameMap(got, want) && H.participantFailures.every((r) => r.category === "other" && r.message === null && r.expected === false) && !H.participantFailures.some((r) => r.programId === "p-gone") &&
+        isDeepStrictEqual(S.meta.health.categories.participantFailures, { counted: false, reason: "not-filterable", ids: [], configured: FAILURE_CATEGORIES.participantFailures.map((c) => c.id) }) && isDeepStrictEqual(S.meta.health.categories.bounceReasons, { counted: true, reason: null, ids: ["user-unknown", "blocked-by-policy"], configured: ["user-unknown", "blocked-by-policy"] }) &&
+        S.meta.health.parts.participantFailures.basis === "all-time" && S.meta.health.parts.participantStates.basis === "all-time" && S.meta.health.parts.bounceReasons.basis === "window" && S.meta.health.parts.lastSends.basis === "lookback" && S.meta.health.parts.schedules.basis === "as-documented" &&
+        isDeepStrictEqual(S.caveats.find((c) => c.id === "health-all-time")?.detail, { parts: ["participantFailures", "participantStates"], reason: "all-time" }) && S.caveats.some((c) => c.id === "participant-failures-no-breakdown"), { got: [...got], want: [...want] });
     check("readFailureReasons takes what the field holds: plain text, a JSON array, the {type=json, value=…} wrapper, an object naming its message, an already-parsed value; text that is not JSON after all is one reason; nothing is [null]; every text is masked",
       isDeepStrictEqual(readFailureReasons("No email for bo@c02.example.com"), ["No email for <email>"]) && isDeepStrictEqual(readFailureReasons('["A","B","A"]'), ["A", "B"]) &&
         isDeepStrictEqual(readFailureReasons('{type=json, value=["A",{"message":"B for 1234567"}], null=false}'), ["A", "B for <number>"]) && isDeepStrictEqual(readFailureReasons([{ reason: "C" }]), ["C"]) &&
         isDeepStrictEqual(readFailureReasons("[not json"), ["[not json"]) && isDeepStrictEqual(readFailureReasons(null), [null]) && isDeepStrictEqual(readFailureReasons("  "), [null]) && isDeepStrictEqual(readFailureReasons("[]"), [null]));
+    const sampleTexts = new Set(H.failureSamples.filter((r) => r.part === "participantFailures").map((r) => r.message));
+    const perKey = new Map();
+    for (const r of H.failureSamples) perKey.set([r.programId, r.part].join("|"), (perKey.get([r.programId, r.part].join("|")) ?? 0) + 1);
+    check("HLT-1 failure samples: at most five distinct masked texts per program and part (the most frequent in the page), for selected programs only, both parts present; the participant samples are the fixture's reasons as the oracle spells them masked, each with the shipped category it matches (or 'unclassified', kind unknown, never null; F-484 redesigned 2026-10-08), how many rows carried it and their occurrences; the bounce samples are the uncategorised texts only; and the part has its own marker and basis",
+      H.failureSamples.length > 3 && [...perKey.values()].every((n) => n <= SAMPLES_PER_PROGRAM) && new Set(H.failureSamples.map((r) => r.part)).size === 2 && H.failureSamples.every((r) => S.dimensions.programs.some((p) => p.id === r.programId)) &&
+        [...sampleTexts].every((m) => Object.values(FAILURE_TEXT).flat().includes(m)) && sampleTexts.size >= 5 && H.failureSamples.filter((r) => r.part === "bounceReasons").every((r) => r.message === BOUNCE_TEXT["mailbox-full"] && r.category === "unclassified" && r.kind === "unknown" && r.occurrences === r.count) &&
+        H.failureSamples.every((r) => Number.isInteger(r.count) && r.count >= 1 && r.pulledAt === PULLED_AT && typeof r.expected === "boolean") &&
+        H.failureSamples.some((r) => r.message === "Participant already exists in participant list" && r.category === "already-in-list" && r.expected === true) && H.failureSamples.some((r) => r.message === "Email address <email> is invalid" && r.category === "unclassified" && r.kind === "unknown" && r.expected === false && r.occurrences >= r.count) && !H.failureSamples.some((r) => r.category == null || r.kind == null) && H.failureSamples.some((r) => r.message === "Bounced recipient(to) email <email>' in Step 'Send Email'" && r.category === "bounced-at-send" && r.kind === "bad-address" && r.expected === false) &&
+        isDeepStrictEqual(S.meta.health.parts.failureSamples, { pulled: true, reason: null, basis: "sample" }) && isDeepStrictEqual(S.meta.health.parts.entrySamples, { pulled: true, reason: null, basis: "sample" }), [...sampleTexts]);
+    // The sampled split (entrySamples), against the oracle: per selected program, the refusals of the window by the category the oracle assigns their kind.
+    const splitWant = new Map();
+    for (const r of base.tenant.tables.ao_failed_participants) {
+      if (!S.dimensions.programs.some((p) => p.id === r.AdvancedOutreachId) || r.ModifiedAt < "2026-06-18") continue;
+      const cat = r._failureKind === "array" ? null : FAILURE_KIND_CATEGORY[r._failureKind];
+      // The array row holds two texts, each a sample row of its own (neither in a category).
+      for (const k of [[r.AdvancedOutreachId, cat ?? "unclassified"].join("|"), ...(r._failureKind === "array" ? [[r.AdvancedOutreachId, "unclassified"].join("|")] : [])]) splitWant.set(k, (splitWant.get(k) ?? 0) + 1);
+    }
+    check("HLT-1 entrySamples (F-484, F-491): per program, the sample's rows by shipped category — each with its kind, expected meaning a business rule, everything no category knows 'unclassified' (kind unknown) — equal a straight count of the fixture's refusals in the day window by the category the oracle gives their kind; sampleRows is the page each split came from; a page may show it as a SAMPLE and the caveat says so",
+      sameMap(new Map(H.entrySamples.map((r) => [[r.programId, r.category].join("|"), r.participants])), splitWant) && H.entrySamples.every((r) => r.sampleRows >= r.participants && r.pulledAt === PULLED_AT && typeof r.kind === "string" && r.expected === (r.kind === "business-rule") && (r.category !== "unclassified" || r.kind === "unknown") && Number.isInteger(r.occurrences) && r.occurrences >= r.participants) &&
+        S.caveats.some((c) => c.id === "failure-samples-sampled") && isDeepStrictEqual(S.meta.health.samples.participantFailures, { cap: SAMPLE_PROGRAM_CAP, sampled: refusedPrograms.length, carried: 0, notSampled: [], programs: refusedPrograms, window: { start: "2026-06-18", endExclusive: "2026-09-16" }, counts: dayCounts }), [diffMap(new Map(H.entrySamples.map((r) => [[r.programId, r.category].join("|"), r.participants])), splitWant), S.meta.health.samples]);
+    // F-484's class, reopened: a sample is per program, so a program OUTSIDE the selection that refused more participants than a page cannot fill it.
+    const outsider = pull({ kb: true, variant: { outsiderFailures: SAMPLE_PAGE * 3 } });
+    const OH2 = outsider.snapshot.facts.health;
+    check("F-484 (reopened) class test: with a draft program (never selected) holding three pages of refusals this month, every selected program with refusals in the window still has its own sample, the draft has none, no sample call is tenant-wide (each names ONE program), and nothing is left unsampled or unnamed",
+      refusedPrograms.every((id) => OH2.failureSamples.some((r) => r.programId === id && r.part === "participantFailures") && OH2.entrySamples.some((r) => r.programId === id)) && !OH2.failureSamples.some((r) => r.programId === "p-draft") &&
+        rpRuns(outsider.argv).filter((a) => flag(a, "--object") === "ao_failed_participants" && a.includes("--order-by")).every((a) => parsed(a).where.some((c) => c.operator === "IN" && c.rightOperand.value.length === 1)) &&
+        outsider.snapshot.meta.health.samples.participantFailures.notSampled.length === 0 && isDeepStrictEqual(OH2.failureSamples, H.failureSamples), outsider.snapshot.meta.health.samples);
+    // The cap, and the carry: a program whose window counts did not move keeps the previous snapshot's sample at no call.
+    const capped = pull({ kb: true, raw: { health: { ...HEALTH, samplePrograms: 1 } } });
+    const CM = capped.snapshot.meta.health.samples.participantFailures;
+    const again = pull({ kb: true, previous: S });
+    const capClauses = {
+      capped: CM.sampled === 1 && CM.notSampled.length === refusedPrograms.length - 1 && CM.notSampled.every((x) => x.reason === "cap"),
+      caveat: capped.snapshot.caveats.some((c) => c.id === "failure-samples-capped" && c.detail.part === "participantFailures" && c.detail.notSampled === CM.notSampled.length && c.detail.cap === 1 && c.detail.secondsEach > 0),
+      plan: capped.summary.estimate.health.samples.cap === 1 && capped.summary.estimate.health.samples.participantFailures.planned === 1 && capped.summary.estimate.health.samples.participantFailures.beyondCap === refusedPrograms.length - 1 && capped.summary.estimate.health.samples.participantFailures.secondsBeyondCap > 0,
+      basePlan: isDeepStrictEqual(base.summary.estimate.health.samples.participantFailures, { withFailures: refusedPrograms.length, planned: refusedPrograms.length, carried: 0, beyondCap: 0, secondsEach: 12, secondsBeyondCap: 0, family: "health-reasons-sample" }),
+      carried: again.snapshot.meta.health.samples.participantFailures.sampled === 0 && again.snapshot.meta.health.samples.participantFailures.carried === refusedPrograms.length && again.snapshot.meta.health.samples.bounceReasons.sampled === 0,
+      sameRows: isDeepStrictEqual(again.snapshot.facts.health.failureSamples, H.failureSamples) && isDeepStrictEqual(again.snapshot.facts.health.entrySamples, H.entrySamples),
+      noCall: !rpRuns(again.argv).some((a) => a.includes("--order-by")),
+    };
+    check("F-484 the cap and the carry: with --sample-programs 1 the program with the most refusals is sampled, the other is named (reason cap) with a caveat that prices reading it, and the plan priced the samples against the cap; a second (selective) pull over the first's snapshot samples NOTHING (every program's counts are unchanged) and keeps the first pull's samples and split, saying how many it carried",
+      Object.values(capClauses).every(Boolean), [capClauses, CM, again.snapshot.meta.health.samples, again.snapshot.meta.refresh.mode]);
+    check("sampleTargets is pure data: most failures first, ties by id, a program whose count equals the previous snapshot's and which that snapshot sampled is carried, the cap cuts the rest and names them",
+      isDeepStrictEqual(sampleTargets({ counts: new Map([["a", 5], ["b", 9], ["c", 0], ["d", 5]]), previousCounts: new Map([["a", 5], ["b", 8]]), previousSampled: new Set(["a"]), cap: 1 }), { sample: ["b"], carried: ["a"], notSampled: [{ programId: "d", reason: "cap" }] }) &&
+        isDeepStrictEqual(sampleTargets({ counts: new Map([["a", 5]]), previousCounts: null, previousSampled: new Set(), cap: 0 }), { sample: [], carried: [], notSampled: [{ programId: "a", reason: "cap" }] }));
+    // F-484, REDESIGNED (2026-10-08, second reopen): one window for the count and the page, the most repeated refusals first.
+    const windowCall = reasonCalls.find((a) => flag(a, "--group-by") === '[{"name":"AdvancedOutreachId"}]' && a.includes("--where-filters"));
+    const bounds = (a) => parsed(a).where.filter((c) => c.leftOperand.fieldName === "ModifiedAt").map((c) => `${c.operator} ${c.rightOperand.value}`).sort().join();
+    const renewRow = Object.values(programHealth(S).lists).flat().find((r) => r.programId === "p-renew");
+    check("F-484 (redesigned) class test: the picks are ranked by a count-first read over the DAY window and every sample page reads that SAME window (identical ModifiedAt bounds on the count call and on each sample call); a program whose refusals the per-month table shows but none still happening (p-renew: April and May) is neither picked, nor counted as sampled, nor named, and its entry signal reads none-recent; the snapshot stores the window and the counts the picks were made from",
+      windowCall != null && sampleCalls.length >= 1 && sampleCalls.every((a) => bounds(a) === bounds(windowCall)) && bounds(windowCall) === "GTE 2026-06-18,LT 2026-09-16" &&
+        H.entryFailures.some((r) => r.programId === "p-renew") && !H.failureSamples.some((r) => r.programId === "p-renew" && r.part === "participantFailures") && !S.meta.health.samples.participantFailures.programs.includes("p-renew") && !S.meta.health.samples.participantFailures.notSampled.some((x) => x.programId === "p-renew") &&
+        (renewRow == null || renewRow.signals.entry.state === "none-recent") && isDeepStrictEqual(S.meta.health.samples.participantFailures.window, S.meta.health.dayWindow) && isDeepStrictEqual(Object.keys(S.meta.health.samples.participantFailures.counts), refusedPrograms) && !("p-renew" in S.meta.health.samples.participantFailures.counts),
+      [bounds(windowCall ?? []), sampleCalls.map(bounds), S.meta.health.samples.participantFailures, renewRow?.signals.entry]);
+    const chronic = pull({ kb: true, variant: { chronicFailures: true } });
+    const CH = chronic.snapshot.facts.health;
+    const chronicSplit = Object.fromEntries(CH.entrySamples.filter((r) => r.programId === "p-onboard").map((r) => [r.category, r.participants]));
+    const chronicRow = Object.values(programHealth(chronic.snapshot).lists).flat().find((r) => r.programId === "p-onboard");
+    check("F-484 (redesigned): the page reads the most REPEATED refusals — with 150 newest once-refused opt-outs and 20 older null-address refusals repeated forty times each on one program, the page holds every null-address row (a newest-first page would hold none), the split names the bad address, the kept text counts it, and the program's entry signal reads unexpected; every sample call orders by OccurrenceCount DESC and shows the field",
+      chronicSplit["invalid-field-value"] === 20 && chronicSplit["opt-out-at-send"] >= 70 && CH.failureSamples.filter((r) => r.programId === "p-onboard" && r.category === "invalid-field-value" && r.kind === "bad-address" && r.expected === false).reduce((n, r) => n + r.count, 0) === 20 &&
+        chronicRow.signals.entry.state === "unexpected" && chronicRow.signals.entry.sample.byKind["bad-address"] >= 20 && chronicRow.signals.entry.sample.byKind["business-rule"] >= 76 &&
+        rpRuns(chronic.argv).filter((a) => flag(a, "--object") === "ao_failed_participants" && a.includes("--order-by")).every((a) => flag(a, "--order-by") === '[{"name":"OccurrenceCount","order":"DESC"}]' && flag(a, "--show-fields").includes('"OccurrenceCount"')), [chronicSplit, chronicRow?.signals.entry]);
+    const later = pull({ kb: true, previous: S, raw: { today: "2026-09-16", pulledAt: "2026-09-16T09:00:00-07:00" } });
+    check("F-484 (redesigned): the carry compares counts over the SAME window — a selective pull a day later, whose day window has moved, carries no refusal sample (the stored counts are another window's) and reads them again where refusals still happen, while the bounce text, compared over the window's months from stored rows, is carried as before",
+      later.snapshot.meta.refresh.mode === "selective" && later.snapshot.meta.health.samples.participantFailures.carried === 0 && later.snapshot.meta.health.samples.participantFailures.sampled === refusedPrograms.length && isDeepStrictEqual(later.snapshot.meta.health.samples.participantFailures.window, later.snapshot.meta.health.dayWindow) &&
+        later.snapshot.meta.health.dayWindow.start === "2026-06-19" && later.snapshot.meta.health.samples.bounceReasons.carried === S.meta.health.samples.bounceReasons.sampled && later.snapshot.meta.health.samples.bounceReasons.sampled === 0, [later.snapshot.meta.refresh.mode, later.snapshot.meta.health.samples]);
 
     const states = new Map();
     for (const p of base.tenant.tables.ao_participants) {
@@ -1219,8 +1434,8 @@ try {
       sameMap(new Map(H.participantStates.map((r) => [[r.programId, r.state].join("|"), r.participants])), states) && H.participantStates.some((r) => r.state === "SYSTEM_ERROR"));
   }
   {
-    // Silent programs, from day buckets.
-    const dayCalls = rpRuns(base.argv).filter((a) => a.includes("--group-by") && flag(a, "--group-by").includes('"summarize":"Day"'));
+    // Last sends, from day buckets; the silent rules, cadence-aware (ruled 2026-10-04).
+    const dayCalls = rpRuns(base.argv).filter((a) => flag(a, "--object") === "email_log_v2" && a.includes("--group-by") && flag(a, "--group-by").includes('"summarize":"Day"'));
     const lastDay = (tenant, id, upTo) => tenant.tables.email_log_v2.filter((r) => r.SourceId === id && r.Source === "Advanced Outreach" && r.AddressType === "To" && r.ExecutedDate.slice(0, 10) <= upTo).map((r) => r.ExecutedDate.slice(0, 10)).sort().pop() ?? null;
     const hm = healthAvailability(S);
     check("HLT-1 last sends come from day buckets (SPIKE (k): there is no last-send aggregate): a program × day call over the lookback, two-sided, and no MAX anywhere",
@@ -1229,67 +1444,228 @@ try {
     check("HLT-1 last sends: each program's last send day equals the latest day in the fixture's rows up to the day silence is measured from",
       H.lastSends.length === S.dimensions.programs.length && H.lastSends.every((r) => r.selected && (lastDay(base.tenant, r.programId, "2026-09-15") ?? "") >= "2026-06-18" ? r.lastSendDay === lastDay(base.tenant, r.programId, "2026-09-15") : r.lastSendDay === null),
       H.lastSends.map((r) => [r.programId, r.lastSendDay, lastDay(base.tenant, r.programId, "2026-09-15")]));
-    const silent = silentPrograms(S);
-    const npsGap = Math.round((Date.UTC(2026, 8, 15) - Date.parse(lastDay(base.tenant, "p-nps", "2026-09-15") + "T00:00:00Z")) / 86400000);
-    check("HLT-1 silent programs: Active with no send in 30 days — the survey program whose last send was in July is silent, the chain that sent this month is not, and a Paused or Stopped program is never silent however long ago it sent",
-      silent.unavailable === null && silent.days === 30 && isDeepStrictEqual(silent.rows.map((r) => [r.programId, r.daysSilent]), [["p-nps", npsGap]]) && npsGap >= 30 &&
-        H.lastSends.some((r) => r.programId === "p-promo" && r.lastSendDay === null && !r.statuses.includes("PROCESSING")));
-    check("HLT-1 silent programs: the threshold is the reader's — one day more than the gap and the program is no longer silent; a threshold longer than the days held by day is refused, never answered from months",
-      silentPrograms(S, { days: npsGap }).rows.length === 1 && silentPrograms(S, { days: npsGap + 1 }).rows.length === 0 && (() => { try { silentPrograms(S, { days: 200 }); return false; } catch (e) { return /from 1 to 90/.test(e.message); } })());
-    const quiet = pull({ kb: true, variant: { silent: true } });
-    const qs = silentPrograms(quiet.snapshot);
-    check("HLT-1 silent programs: an Active program whose last send is before the day window is silent with its last send MONTH; an Active program the pull holds no sends for is listed too (selected false), first, since it is the most silent of all",
-      isDeepStrictEqual(qs.rows.map((r) => [r.programId, r.selected, r.lastSendDay, r.lastSendMonth, r.daysSilent]), [["p-never", false, null, null, null], ["p-quiet", true, null, "2026-02", null], ["p-nps", true, lastDay(quiet.tenant, "p-nps", "2026-09-15"), "2026-07", npsGap]]), qs.rows);
+    // The schedule rides the program dimension on every pull with a KB (ruled 2026-10-05).
+    const sched = (snap, id) => snap.dimensions.programs.find((p) => p.id === id)?.schedule;
+    check("HLT-1 the program dimension carries each program's schedule from the KB (classification as the audit classifies it, cron, zone, as of the doc's date): the weekly chain, the monthly survey, a documented program with none, null for one the KB has no doc for, and null on every program of a pull made without a KB — whether or not health is pulled",
+      isDeepStrictEqual(sched(S, "p-onboard"), { classification: "recurring", cronExpression: "0 0 8 ? * MON *", timeZoneName: "America/Los_Angeles", startTime: 1767225600000, endTime: 1830297600000, asOf: "2026-09-01T00:00:00.000Z" }) && sched(S, "p-nps").classification === "recurring" &&
+        isDeepStrictEqual(sched(S, "p-renew"), { classification: NO_SCHEDULE, cronExpression: null, timeZoneName: null, startTime: null, endTime: null, asOf: "2026-08-20T00:00:00.000Z" }) && sched(S, "p-unlisted") === null &&
+        pull({}).snapshot.dimensions.programs.every((p) => p.schedule === null) && isDeepStrictEqual(pull({ kb: true, raw: { health: {} } }).snapshot.dimensions.programs.map((p) => p.schedule), S.dimensions.programs.map((p) => p.schedule)), S.dimensions.programs.map((p) => [p.id, p.schedule]));
+    check("pickSchedule: with several schedules the most frequent recurring one decides; recurring when any is, one-time when any is and none recurs; a documented program with none says so",
+      pickSchedule({ asOf: "d", schedules: [{ classification: "recurring", cronExpression: "0 0 9 1 * ? *", timeZoneName: "UTC" }, { classification: "recurring", cronExpression: "0 0 8 ? * MON *", timeZoneName: "UTC" }] }, TODAY).cronExpression === "0 0 8 ? * MON *" &&
+        pickSchedule({ asOf: "d", schedules: [{ classification: "unknown", cronExpression: null }, { classification: "one-time", cronExpression: null }] }, TODAY).classification === "one-time" && pickSchedule({ asOf: "d", schedules: [] }, TODAY).classification === NO_SCHEDULE && pickSchedule(null, TODAY) === null);
+    check("pickSchedule (F-491, 2026-10-08): a LIVE recurring schedule decides before an ENDED one whatever its position or period (the tenant documents an ended daily job schedule beside the live participant sync); when every recurring schedule has ended, the latest end decides",
+      pickSchedule({ asOf: "d", schedules: [{ classification: "recurring", cronExpression: "0 0 8 * * ? *", endTime: Date.parse("2024-03-13") }, { classification: "recurring", cronExpression: "0 0 9 ? * MON *", endTime: Date.parse("2030-03-11") }] }, TODAY).cronExpression === "0 0 9 ? * MON *" &&
+        pickSchedule({ asOf: "d", schedules: [{ classification: "recurring", cronExpression: "0 0 8 * * ? *", endTime: Date.parse("2024-03-13") }, { classification: "recurring", cronExpression: "0 0 6 * * ? *", endTime: Date.parse("2025-05-06") }] }, TODAY).endTime === Date.parse("2025-05-06") &&
+        pickSchedule({ asOf: "d", schedules: [{ classification: "recurring", cronExpression: "0 0 8 * * ? *", endTime: null }, { classification: "recurring", cronExpression: "0 0 9 ? * MON *", endTime: Date.parse("2030-03-11") }] }, TODAY).cronExpression === "0 0 8 * * ? *");
+    // The health signals (F-491; ruled 2026-10-07): each read from its own data, one list per program.
+    const health = programHealth(S);
+    const onboard = Object.values(health.lists).flat().find((r) => r.programId === "p-onboard");
+    const npsRow = Object.values(health.lists).flat().find((r) => r.programId === "p-nps");
+    check("HLT-1 signals over the baseline: the weekly chain's source synced on its last due Monday (on-schedule), it admitted participants over its last five due days, its step failures this period are the expected kinds only, and it sends every month — Working as expected; the monthly-ingest survey program synced on the 1st and sends QUARTERLY by its own history, so it reads ok too (an ingest cron says nothing about sends); the rows are the alarms only, every Active program is in exactly one list, and the lists are the health lists",
+      health.unavailable === null && health.days === 30 && health.quietDueDays === QUIET_DUE_DAYS_DEFAULT && health.rows.length === 0 &&
+        onboard.list === "ok" && isDeepStrictEqual([onboard.signals.schedule.state, onboard.signals.ingest.state, onboard.signals.ingest.lastSync, onboard.signals.ingest.lastDue], ["recurring", "on-schedule", "2026-09-14", "2026-09-14"]) &&
+        onboard.signals.admissions.state === "admitting" && onboard.signals.admissions.dueDays === 5 && onboard.signals.admissions.since === "2026-08-17" && onboard.signals.admissions.admitted > 0 && onboard.signals.steps.state === "none" && onboard.signals.sends.state === "ok" && onboard.signals.finished === false &&
+        npsRow.list === "ok" && npsRow.signals.ingest.state === "on-schedule" && npsRow.signals.admissions.state === "too-few-due-days" && npsRow.signals.sends.state === "ok" && npsRow.signals.sends.rule === "history" && npsRow.signals.sends.longestGapMonths === 3 &&
+        Object.values(health.lists).flat().length === H.lastSends.filter((r) => r.statuses.includes("PROCESSING")).length && H.lastSends.some((r) => r.programId === "p-promo" && r.lastSendDay === null && !r.statuses.includes("PROCESSING")) &&
+        isDeepStrictEqual(Object.keys(health.lists), Object.keys(HEALTH_LISTS)), Object.fromEntries(Object.entries(health.lists).map(([k, v]) => [k, v.map((r) => r.programId)])));
+    check("HLT-1 the schedule rows come from the KB alone (no live describe is made for them, F-491 retired it): every row source kb as of its doc, with the schedule's start and end; the run-state fields are stored as documented and never read as a run result; honesty counts the documented programs; the caveat names the oldest doc and the heartbeat",
+      H.schedules.every((r) => r.source === "kb") && H.schedules.find((r) => r.programId === "p-onboard").asOf === "2026-09-01T00:00:00.000Z" && H.schedules.find((r) => r.programId === "p-onboard").lastRunSuccess === false &&
+        !base.argv.some((a) => a.includes("describe") && (a.includes("p-nps") || a.includes("p-onboard"))) && isDeepStrictEqual(S.honesty.health.schedules, { programsWithDoc: 4, programsWithout: 2 }) &&
+        isDeepStrictEqual(S.caveats.find((c) => c.id === "schedules-from-kb")?.detail, { oldest: "2026-08-20T00:00:00.000Z" }) && /last sync time at this pull/.test(caveatText("schedules-from-kb", { oldest: "x" })) &&
+        H.schedules.filter((r) => r.classification === "recurring").every((r) => typeof r.startTime === "number" && typeof r.endTime === "number") && S.dimensions.programs.find((p) => p.id === "p-onboard").schedule.endTime > Date.parse("2027-01-01"), S.honesty.health.schedules);
+    check("HLT-1 the sources table: each selected program's ACTIVE participant sources with their last sync (the superseded version is left out by the standing filter), null for one that never synced; admissions per program × day inside the day window equal a straight count of the fixture's participants by CreatedAt; refusals per program × month over the window equal a straight count by ModifiedAt",
+      (() => {
+        const want = base.tenant.tables.ao_participant_source_configuration.filter((r) => r.ActiveVersion && !r.Deleted && S.dimensions.programs.some((p) => p.id === r.AdvancedOutreachId)).map((r) => [r.AdvancedOutreachId, r.ParticipantSourceType, r.LastSyncedOn].join("|")).sort();
+        const got = H.sources.map((r) => [r.programId, r.sourceType, r.lastSyncedOn].join("|")).sort();
+        const adm = new Map();
+        for (const p of base.tenant.tables.ao_participants) { const d = p.CreatedAt.slice(0, 10); if (S.dimensions.programs.some((x) => x.id === p.AdvancedOutreachId) && d >= "2026-06-18" && d < "2026-09-16") adm.set([p.AdvancedOutreachId, d].join("|"), (adm.get([p.AdvancedOutreachId, d].join("|")) ?? 0) + 1); }
+        const ref = new Map();
+        for (const r of base.tenant.tables.ao_failed_participants) if (S.dimensions.programs.some((x) => x.id === r.AdvancedOutreachId) && r.ModifiedAt >= "2025-09") ref.set([r.AdvancedOutreachId, r.ModifiedAt.slice(0, 7)].join("|"), (ref.get([r.AdvancedOutreachId, r.ModifiedAt.slice(0, 7)].join("|")) ?? 0) + 1);
+        return isDeepStrictEqual(got, want) && !H.sources.some((r) => r.lastSyncedOn === "2025-12-01 08:00:00") && H.sources.some((r) => r.lastSyncedOn === null && r.programId === "p-pilot") &&
+          sameMap(new Map(H.admissions.map((r) => [[r.programId, r.day].join("|"), r.participants])), adm) && sameMap(new Map(H.entryFailures.map((r) => [[r.programId, r.month].join("|"), r.participants])), ref) && H.entryFailures.every((r) => r.occurrences >= r.participants) &&
+          isDeepStrictEqual([S.meta.health.parts.sources.basis, S.meta.health.parts.admissions.basis, S.meta.health.parts.entryFailures.basis, S.meta.health.parts.stepFailures.basis], ["at-pull", "lookback", "window", "window"]);
+      })(), { sources: H.sources.slice(0, 3), admissions: H.admissions.length, entry: H.entryFailures });
+    check("HLT-1 step failures are counted server-side by category (one CONTAINS per text category, the platform error by its STATE, a total with any reason): per program × month they equal a straight count of the fixture's participants by the kind the generator chose, with other = the remainder; the baseline's platform errors sit at the 2025 incident, outside the window; each row carries its KIND (a bounce drop is a bad address, a record delete a business rule; F-491, 2026-10-08), and expected means a business rule",
+      (() => {
+        const kinds = { "bounce-drop": "bounce-drop", "cta-failed": "step-action-failed", "record-delete": "record-delete", "platform-error": "platform-error", "unknown-step": "unclassified" };
+        const want = new Map();
+        for (const p of base.tenant.tables.ao_participants) {
+          if (!S.dimensions.programs.some((x) => x.id === p.AdvancedOutreachId) || p.FailureReasons == null || p.ModifiedAt.slice(0, 7) < "2025-09") continue;
+          const k = [p.AdvancedOutreachId, p.ModifiedAt.slice(0, 7), kinds[p._stepKind] ?? "unclassified"].join("|");
+          want.set(k, (want.get(k) ?? 0) + 1);
+        }
+        const stepCalls = rpRuns(base.argv).filter((a) => flag(a, "--object") === "ao_participants" && flag(a, "--group-by")?.includes('"summarize":"Month"'));
+        return sameMap(new Map(H.stepFailures.map((r) => [[r.programId, r.month, r.category].join("|"), r.participants])), want) && H.stepFailures.some((r) => r.category === "bounce-drop" && r.kind === "bad-address" && r.expected === false) && H.stepFailures.some((r) => r.category === "record-delete" && r.kind === "business-rule" && r.expected === true) && H.stepFailures.every((r) => r.expected === (r.kind === "business-rule")) &&
+          !H.stepFailures.some((r) => r.category === "platform-error") && !H.stepFailures.some((r) => r.category === "other") && stepCalls.length === 1 + STEP_FAILURE_CATEGORIES.length &&
+          STEP_FAILURE_CATEGORIES.filter((c) => c.pattern).every((c) => stepCalls.some((a) => flag(a, "--where-filters").includes(`"operator":"CONTAINS","rightOperand":{"value":${JSON.stringify(c.pattern)}}`))) && stepCalls.some((a) => flag(a, "--where-filters").includes('"ParticipantState"},"operator":"EQ","rightOperand":{"value":"SYSTEM_ERROR"}'));
+      })(), H.stepFailures);
+    check("HLT-1 the reader's thresholds: a flat threshold longer than the days held by day is refused, never answered from months; the quiet due days come from the pull's own setting and a bad value is refused",
+      programHealth(S, { days: 1 }).lists.ok.length >= 1 && (() => { try { programHealth(S, { days: 200 }); return false; } catch (e) { return /from 1 to 90/.test(e.message); } })() &&
+        (() => { try { programHealth(S, { quietDueDays: 0 }); return false; } catch (e) { return /quiet due days/.test(e.message); } })() && pull({ kb: true, raw: { health: { ...HEALTH, quietDueDays: 3 } } }).snapshot.meta.params.health.quietDueDays === 3);
+    // The signals tenant: one program per list.
+    const sig = pull({ kb: KB_SIGNALS, variant: { silent: true, cadence: true, signals: true } });
+    const sh = programHealth(sig.snapshot);
+    const list = (id) => Object.entries(sh.lists).find(([, rows]) => rows.some((r) => r.programId === id))?.[0];
+    const row = (id) => Object.values(sh.lists).flat().find((r) => r.programId === id);
+    check("HLT-1 the lists, over the signals tenant (Bradley's four conditions, 2026-10-07): a schedule past its end reads Schedule ended; the list's disabled sync reads Participant sync disabled; a daily ingest last synced in August reads Participant sync overdue (since its last due day); a daily ingest that runs but admitted nobody over its last five due days reads Admitting nobody when its refusals are the expected kinds, and Only refused participants arriving when they carry the unexpected null address; a program whose participants fell off at a CTA step and a platform error this month reads Step errors this period with both categories named",
+      list("p-ended") === "schedule-ended" && row("p-ended").signals.schedule.endDay === "2026-08-01" && row("p-ended").signals.ingest.state === "stopped" &&
+        list("p-disabled") === "sync-disabled" && list("p-overdue") === "ingest-overdue" && isDeepStrictEqual([row("p-overdue").signals.ingest.lastSync, row("p-overdue").signals.ingest.lastDue, row("p-overdue").signals.ingest.daysOverdue], ["2026-08-20", "2026-09-14", 1]) &&
+        list("p-nobody") === "admitting-nobody" && row("p-nobody").signals.admissions.state === "none" && row("p-nobody").signals.admissions.since === "2026-09-10" && row("p-nobody").signals.entry.state === "expected-only" && row("p-nobody").signals.entry.sample.unexpected === 0 &&
+        list("p-refused") === "failing-entries" && row("p-refused").signals.entry.state === "unexpected" && row("p-refused").signals.entry.sample.unexpected === 8 && row("p-refused").signals.entry.sample.expected === 4 && row("p-refused").signals.entry.participants === 12 &&
+        list("p-steperr") === "step-errors" && isDeepStrictEqual(Object.keys(row("p-steperr").signals.steps.byCategory).sort(), ["platform-error", "step-action-failed", "unclassified"]) && row("p-steperr").signals.steps.unclassified === 1 && row("p-steperr").signals.steps.byKind.unknown === 1 && row("p-steperr").signals.admissions.state === "admitting" && row("p-steperr").signals.ingest.state === "on-schedule",
+      Object.fromEntries(Object.entries(sh.lists).map(([k, v]) => [k, v.map((r) => r.programId)])));
+    check("HLT-1 the lists, continued: the one-time announcement whose participants have all completed is a Finished campaign, never late, and so is the hand-fed chain that sent once in February with nobody left in flight; the lapsed digest that sent most months, with participants still active, reads No recent sends under its own history; the hand-fed program that sends every third month is fine; the quarterly program (period longer than the 90-day window) reads Cannot judge, and so does the quiet chain the KB has no doc for (no-doc: its schedule is unknown, so it is neither Finished nor late; F-491 redesigned 2026-10-08); the Active program with no send in the window is listed apart; the alarm rows are exactly the alarms",
+      list("p-once") === "finished" && row("p-once").signals.finished === true && row("p-once").signals.sends.state === "late" && row("p-once").signals.schedule.state === "one-time" && row("p-once").signals.ingest.state === "one-time" &&
+        list("p-lapsed") === "no-recent-sends" && row("p-lapsed").signals.sends.rule === "history" && row("p-lapsed").signals.finished === false &&
+        list("p-sporadic") === "ok" && row("p-sporadic").signals.sends.longestGapMonths === 3 && list("p-quarter") === "cannot-judge" && row("p-quarter").signals.ingest.periodDays > 90 && list("p-quiet") === "cannot-judge" && row("p-quiet").signals.schedule.state === "undocumented" && row("p-quiet").signals.why === "no-doc" && row("p-quiet").signals.finished === false && list("p-never") === "no-sends-in-window" && row("p-never").selected === false &&
+        isDeepStrictEqual(new Set(sh.rows.map((r) => r.list)), new Set(["schedule-ended", "sync-disabled", "ingest-overdue", "admitting-nobody", "failing-entries", "step-errors", "no-recent-sends"])) && sh.rows.every((r) => !["ok", "finished", "cannot-judge", "no-sends-in-window"].includes(r.list)),
+      Object.fromEntries(Object.entries(sh.lists).map(([k, v]) => [k, v.map((r) => [r.programId, r.signals.sends.state])])));
+    const SEND_DROPS = ["reject-drop", "bounce-list-at-send", "opt-out-at-send"];
+    const sf = sig.snapshot.facts.health.stepFailures.filter((r) => r.programId === "p-sendfail");
+    check("F-491 (reopened 2026-10-08), one program per false read measured on the tenant: an ended job schedule documented beside the live participant sync reads by the live one (Working as expected, never Schedule ended); a documented schedule that ended before its source last synced is documentation behind the tenant (Cannot judge yet, doc-stale), never Schedule ended; a monthly program two months old with one completed cohort is too new to judge (Cannot judge yet, too-new), never No recent sends; the Send Email step's own drops are bad addresses and a business rule (Working as expected, never Step errors), each row with its kind and none in other; and a hand-fed program with a short history that is NOT new reads No recent sends",
+      list("p-twosched") === "ok" && row("p-twosched").signals.schedule.state === "recurring" && row("p-twosched").signals.schedule.endDay === "2030-03-11" && row("p-twosched").signals.ingest.state === "on-schedule" && sig.snapshot.dimensions.programs.find((p) => p.id === "p-twosched").schedule.cronExpression === "0 0 6 * * ? *" &&
+        list("p-staledoc") === "cannot-judge" && row("p-staledoc").signals.schedule.state === "doc-stale" && row("p-staledoc").signals.schedule.endDay === "2026-08-01" && row("p-staledoc").signals.ingest.state === "cannot-judge" && row("p-staledoc").signals.why === "doc-stale" &&
+        list("p-newcohort") === "cannot-judge" && row("p-newcohort").signals.why === "too-new" && row("p-newcohort").signals.sends.state === "no-history" && row("p-newcohort").signals.sends.firstSendMonth === "2026-08" && row("p-newcohort").signals.admissions.state === "too-few-due-days" && row("p-newcohort").signals.finished === false &&
+        list("p-sendfail") === "ok" && row("p-sendfail").signals.steps.state === "none" && (row("p-sendfail").signals.steps.byKind["bad-address"] ?? 0) > 0 && (row("p-sendfail").signals.steps.byKind["business-rule"] ?? 0) > 0 && !("program-error" in row("p-sendfail").signals.steps.byKind) &&
+        SEND_DROPS.every((c) => sf.some((r) => r.category === c)) && !sf.some((r) => r.category === "other") && sf.every((r) => r.expected === (r.kind === "business-rule")) &&
+        list("p-oldshort") === "no-recent-sends" && row("p-oldshort").signals.sends.rule === "flat" && row("p-oldshort").signals.finished === false && sh.rows.some((r) => r.programId === "p-oldshort"),
+      Object.fromEntries(["p-twosched", "p-staledoc", "p-newcohort", "p-sendfail", "p-oldshort"].map((id) => [id, [list(id), row(id)?.signals.why, row(id)?.signals.schedule.state, row(id)?.signals.sends.state, row(id)?.signals.steps.byKind]])));
+    // F-491, REDESIGNED (2026-10-08, second reopen since the first redesign): the KB is the ONE source of schedules, and
+    // what it lacks is named, never guessed — an undocumented program is Cannot judge yet (no-doc) and never a one-off; a
+    // documented program the list says was modified after its doc is judged from the doc and flagged; the plan prices the
+    // narrow refresh that closes the gap and writes its inputs beside plan.json.
+    const kbMeta = sig.snapshot.honesty.kb;
+    const undocRow = row("p-undoc");
+    const kbEst = sig.summary.estimate.kb;
+    const gapKeys = JSON.parse(readFileSync(join(sig.runDir, "kb-gap-keys.json"), "utf8"));
+    const gapList = JSON.parse(readFileSync(join(sig.runDir, "kb-gap-list.json"), "utf8"));
+    check("F-491 (redesigned) class test: a program the KB has no doc for (p-undoc: a daily cron, synced yesterday, every participant completed) reads Cannot judge yet with why no-doc, its schedule undocumented and its ingest cannot-judge — never Finished, never ingest one-time; no list decision derives from the missing doc; a documented program modified after its doc (p-behind) is judged from the doc (Working as expected, ingest on-schedule) and flagged docBehind; honesty.kb names both and the kb-behind-tenant caveat counts them with the refresh remedy",
+      list("p-undoc") === "cannot-judge" && undocRow.signals.why === "no-doc" && undocRow.signals.schedule.state === "undocumented" && undocRow.signals.ingest.state === "cannot-judge" && undocRow.signals.ingest.why === "no-doc" && undocRow.signals.finished === false && undocRow.signals.ingest.lastSync === "2026-09-14" &&
+        sig.snapshot.dimensions.programs.find((p) => p.id === "p-undoc").schedule === null && !sh.lists.finished.some((r) => r.programId === "p-undoc") &&
+        list("p-behind") === "ok" && row("p-behind").signals.schedule.docBehind === true && row("p-behind").signals.schedule.asOf === "2026-08-20T00:00:00.000Z" && row("p-behind").signals.schedule.modifiedAt === "2026-09-10T15:00:00.000Z" && row("p-behind").signals.ingest.state === "on-schedule" &&
+        sig.snapshot.dimensions.programs.find((p) => p.id === "p-behind").modifiedAt === "2026-09-10T15:00:00.000Z" && sig.snapshot.dimensions.programs.find((p) => p.id === "p-twosched").modifiedAt === null &&
+        kbMeta.source === "kb" && kbMeta.undocumented.includes("p-undoc") && kbMeta.undocumented.includes("p-quiet") && !kbMeta.undocumented.includes("p-behind") && isDeepStrictEqual(kbMeta.behind, [{ programId: "p-behind", asOf: "2026-08-20T00:00:00.000Z", modifiedAt: "2026-09-10T15:00:00.000Z" }]) &&
+        sig.snapshot.caveats.some((c) => c.id === "kb-behind-tenant" && c.detail.undocumented === kbMeta.undocumented.length && c.detail.behind === 1 && c.detail.programs.includes("p-undoc") && c.detail.programs.includes("p-behind") && c.detail.refreshSeconds === c.detail.programs.length * 3) &&
+        /refresh/.test(caveatText("kb-behind-tenant", sig.snapshot.caveats.find((c) => c.id === "kb-behind-tenant").detail)),
+      [list("p-undoc"), undocRow?.signals, kbMeta, sig.snapshot.caveats.find((c) => c.id === "kb-behind-tenant")]);
+    check("F-491 (redesigned): the plan prices the narrow refresh — estimate.kb names the undocumented and behind programs the list carries (a program the list itself lacks is counted apart), at one describe each — and writes its inputs beside plan.json: the manifest keys of every such program, and the list rows of the undocumented ones in the list's own envelope (what manifest upsert-batch --partial registers); nothing is written to the KB by the pull",
+      kbEst.source === "kb" && kbEst.undocumented === kbMeta.undocumented.length && kbEst.behind === 1 && kbEst.unlisted === 1 && kbEst.programs.includes("p-undoc") && kbEst.programs.includes("p-behind") && !kbEst.programs.includes("p-unlisted") && kbEst.refreshSeconds === kbEst.programs.length * 3 && kbEst.keysFile.endsWith("kb-gap-keys.json") &&
+        isDeepStrictEqual(gapKeys, kbEst.programs.map((id) => "journey/" + id)) && isDeepStrictEqual(gapList.data.advancedOutreaches.map((r) => r.advancedOutreachId).sort(), kbMeta.undocumented.filter((id) => id !== "p-unlisted").sort()) && gapList.data.advancedOutreaches.every((r) => "participantSyncScheduleDisabled" in r && "advancedOutreachName" in r) &&
+        !existsSync(join(KB_SIGNALS, "journey", "p-undoc.md")), [kbEst, gapKeys]);
+    // The run directory's KB copy is re-read when the KB moved between a plan and its run (the narrow refresh lands in between).
+    const stampPlan = pull({ kb: KB_STAMP, variant: { silent: true, cadence: true, signals: true }, phase: "plan" });
+    writeFiles(join(ROOT, "kb-stamp"), kbFiles("acme-prod", { cadence: true, signals: true, documentAll: true }));
+    const stampRun = pull({ kb: KB_STAMP, variant: { silent: true, cadence: true, signals: true }, runDir: stampPlan.runDir });
+    const stampRow = Object.values(programHealth(stampRun.snapshot).lists).flat().find((r) => r.programId === "p-undoc");
+    check("F-491 (redesigned): the KB is read again when it moved between a plan and its run — the plan named p-undoc undocumented, a refresh then wrote its doc, and the run over the same run directory judges it from the doc (Working as expected, recurring) instead of the plan's stale copy; the copy carries the KB's stamp",
+      stampPlan.summary.estimate.kb.programs.includes("p-undoc") && !stampRun.snapshot.honesty.kb.undocumented.includes("p-undoc") && stampRow?.list === "ok" && stampRow.signals.schedule.state === "recurring" && existsSync(join(KB_STAMP, "journey", "p-undoc.md")) &&
+        JSON.parse(readFileSync(join(stampRun.runDir, "kb-steps.json"), "utf8")).stamp !== JSON.parse(readFileSync(join(sig.runDir, "kb-steps.json"), "utf8")).stamp && typeof JSON.parse(readFileSync(join(sig.runDir, "kb-steps.json"), "utf8")).stamp === "string",
+      [stampPlan.summary.estimate.kb, stampRun.snapshot.honesty.kb, stampRow?.list]);
+    // F-484, REDESIGNED a second time (2026-10-08, third reopen): a pattern is the invariant core of a product wording, and a
+    // wording no pattern matches is ONE explicit state everywhere.
+    const refusedSplit = Object.fromEntries(sig.snapshot.facts.health.entrySamples.filter((r) => r.programId === "p-refused").map((r) => [r.category, r]));
+    const refusedSamples = sig.snapshot.facts.health.failureSamples.filter((r) => r.programId === "p-refused" && r.part === "participantFailures");
+    check("F-484 (redesigned, 2026-10-08) class test: every spelling of the null-address wording — the platform's field label varies per program (recipient address, custom field, manager address) — lands in ONE category (invalid-field-value, kind bad-address), by the invariant core, so a label never seen lands there too; a wording no pattern matches carries ONE label in every table and list — category unclassified, kind unknown, expected false — never null, never program-error, never a business rule; it counts as not expected (the program keeping people out with it reads Only refused participants arriving) and the signal and caveat name it as needing investigation; every sample row carries its occurrences",
+      refusedSplit["invalid-field-value"]?.participants === 4 && refusedSplit["invalid-field-value"].kind === "bad-address" && refusedSplit["already-in-list"]?.participants === 4 && refusedSplit.unclassified?.participants === 4 && refusedSplit.unclassified.kind === "unknown" && refusedSplit.unclassified.expected === false && Object.keys(refusedSplit).length === 3 &&
+        refusedSamples.filter((r) => r.category === "invalid-field-value").length === 3 && refusedSamples.filter((r) => r.category === "invalid-field-value").every((r) => r.kind === "bad-address" && /contains Invalid value/.test(r.message)) &&
+        refusedSamples.some((r) => r.message === UNKNOWN_REASON && r.category === "unclassified" && r.kind === "unknown" && r.expected === false && r.count === 4 && r.occurrences === 3 + 6 + 9 + 12) &&
+        list("p-refused") === "failing-entries" && row("p-refused").signals.entry.state === "unexpected" && row("p-refused").signals.entry.sample.unexpected === 8 && row("p-refused").signals.entry.sample.expected === 4 && row("p-refused").signals.entry.sample.unclassified === 4 && row("p-refused").signals.entry.sample.byKind.unknown === 4 && row("p-refused").signals.entry.sample.byKind["bad-address"] === 4 &&
+        sig.tenant.tables.ao_participants.some((p) => p.AdvancedOutreachId === "p-steperr" && p.FailureReasons === UNKNOWN_STEP_REASON) && sig.snapshot.facts.health.stepFailures.some((r) => r.programId === "p-steperr" && r.category === "unclassified" && r.kind === "unknown" && r.expected === false && r.participants === 1) && !sig.snapshot.facts.health.stepFailures.some((r) => r.category === "other") &&
+        sig.snapshot.caveats.some((c) => c.id === "unclassified-wordings" && c.detail.wordings >= 1 && c.detail.programs >= 1 && c.detail.participants >= 4 && c.detail.occurrences >= c.detail.participants && c.detail.stepParticipants === 1) && /report-bug/.test(caveatText("unclassified-wordings", sig.snapshot.caveats.find((c) => c.id === "unclassified-wordings").detail)) &&
+        validateCategories([{ id: "unclassified", label: "x", pattern: "y", definition: "z" }]).some((p) => /reserved/.test(p)) && validateCategories([{ id: "a", label: "x", pattern: "y", definition: "z", kind: "unknown" }]).some((p) => /never a category/.test(p)) && FAILURE_KINDS.includes("unknown") && kindOf({ kind: "unknown" }) === "program-error",
+      [refusedSplit, refusedSamples.map((r) => [r.message, r.category, r.kind, r.count, r.occurrences]), row("p-refused")?.signals.entry, sig.snapshot.caveats.find((c) => c.id === "unclassified-wordings")]);
+    const wide = pull({ kb: KB_CADENCE, variant: { silent: true, cadence: true }, raw: { health: { ...HEALTH, lookbackDays: 120 } } });
+    const quiet = pull({ kb: KB_CADENCE, variant: { silent: true, cadence: true } });
+    const ws = programHealth(wide.snapshot);
+    check("HLT-1 the lookback: with a 120-day lookback the quarterly program's ingest IS judged (last due July 1st, synced that day: on-schedule) and it reads fine; plan reports the longest schedule period among the programs, how many exceed the window and how many crons could not be read, and the lookback flag stays what the runner derives from them (annual is allowed)",
+      ws.lists.ok.some((r) => r.programId === "p-quarter" && r.signals.ingest.state === "on-schedule" && r.signals.ingest.lastDue === "2026-07-01") && ws.windowDays === 120 &&
+        isDeepStrictEqual(quiet.summary.estimate.health.lookback, { days: 90, longestPeriodDays: 91, programsBeyondWindow: 1, unreadableCrons: 0 }) && isDeepStrictEqual(wide.summary.estimate.health.lookback, { days: 120, longestPeriodDays: 91, programsBeyondWindow: 0, unreadableCrons: 0 }) &&
+        resolveParams({ today: TODAY, health: { pull: true, lookbackDays: 366 } }).health.lookbackDays === 366, [quiet.summary.estimate.health.lookback, wide.summary.estimate.health.lookback]);
+    const judgeOne = (p) => judgeHealth({ asOf: "2026-09-15", dayWindow: { start: "2026-06-18", endExclusive: "2026-09-16" }, days: 30, incompleteMonth: "2026-09", months: monthsBetween("2025-09", "2026-09"), programs: [{ programId: "x", name: "x", statuses: ["PROCESSING"], selected: true, lastSendDay: "2026-08-01", lastSendMonth: "2026-08", sentMonths: ["2026-08"], templates: 1, sources: [], admissionDays: [], entryFailures: null, stepFailures: null, participants: null, inFlight: null, kbSource: "kb", schedule: { classification: "no schedule captured" }, ...p }] })[0];
+    check("HLT-1 judgeHealth over plain inputs: an unreadable cron makes the ingest cadence-unreadable and never alarms on it; a program whose one month of sends is recent is too NEW to judge (Cannot judge yet, too-new) while one whose two months of sends are a year old is late under the flat threshold (F-491, 2026-10-08); a part not read is a signal that says not-read and never alarms; a recurring schedule that never synced is ingest-overdue; a program with no in-flight count has finished null; a schedule the pull does not have (no doc, no KB) is never a one-off and reads Cannot judge yet before its sends are read as late (F-491, redesigned 2026-10-08); the last N due days of a cron stop at the window's floor",
+      judgeOne({ schedule: { classification: "recurring", cronExpression: "0 0 9 ? * MON#6 *" } }).signals.ingest.state === "cadence-unreadable" && judgeOne({ schedule: { classification: "recurring", cronExpression: "0 0 9 ? * MON#6 *" } }).list === "cannot-judge" && judgeOne({}).signals.why === "too-new" && judgeOne({}).signals.sends.state === "no-history" &&
+        judgeOne({ sentMonths: ["2025-10", "2025-11"], lastSendDay: null, lastSendMonth: "2025-11" }).list === "no-recent-sends" && judgeOne({ sentMonths: ["2025-10", "2025-11"], lastSendDay: null, lastSendMonth: "2025-11" }).signals.sends.rule === "flat" &&
+        judgeOne({ sources: null, admissionDays: null }).signals.ingest.state === "not-read" && judgeOne({ sources: null, admissionDays: null }).signals.admissions.state === "not-read" &&
+        judgeOne({ schedule: { classification: "recurring", cronExpression: "0 0 8 * * ? *" } }).list === "ingest-overdue" && judgeOne({ schedule: { classification: "recurring", cronExpression: "0 0 8 * * ? *" } }).signals.ingest.state === "never-synced" &&
+        judgeOne({}).signals.finished === null && judgeOne({ participants: 3, inFlight: 0 }).signals.finished === true && judgeOne({ participants: 3, inFlight: 0 }).list === "finished" &&
+        // F-491, redesigned: a schedule the pull does not HAVE decides nothing — no doc reads undocumented (Cannot judge yet, no-doc), no KB reads unknown (no-kb); neither is a one-off, however many participants completed; a doc behind the list's modified date is flagged, not discarded.
+        judgeOne({ schedule: null }).signals.schedule.state === "undocumented" && judgeOne({ schedule: null }).signals.ingest.state === "cannot-judge" && judgeOne({ schedule: null }).signals.why === "no-doc" && judgeOne({ schedule: null, participants: 3, inFlight: 0 }).signals.finished === false && judgeOne({ schedule: null, participants: 3, inFlight: 0, sentMonths: ["2025-10", "2025-11"], lastSendDay: null, lastSendMonth: "2025-11" }).list === "cannot-judge" &&
+        judgeOne({ schedule: null, kbSource: "none" }).signals.schedule.state === "unknown" && judgeOne({ schedule: null, kbSource: "none" }).signals.why === "no-kb" &&
+        judgeOne({ schedule: { classification: "recurring", cronExpression: "0 0 8 * * ? *", asOf: "2026-08-20T00:00:00.000Z" }, docModifiedAt: "2026-09-10T15:00:00.000Z", sources: [{ lastSyncedOn: "2026-09-14 08:01:00" }] }).signals.schedule.docBehind === true && judgeOne({ schedule: { classification: "recurring", cronExpression: "0 0 8 * * ? *", asOf: "2026-08-20T00:00:00.000Z" }, docModifiedAt: "2026-09-10T15:00:00.000Z", sources: [{ lastSyncedOn: "2026-09-14 08:01:00" }] }).signals.ingest.state === "on-schedule" &&
+        isDeepStrictEqual(dueDaysBefore("0 0 8 ? * MON *", "2026-09-15", 3, "2026-06-18"), ["2026-09-14", "2026-09-07", "2026-08-31"]) && dueDaysBefore("0 0 9 1 * ? *", "2026-09-15", 5, "2026-06-18").length === 3 && dueDaysBefore("bad", "2026-09-15", 5, "2026-06-18").length === 0 &&
+        cronLastDue("0 0 9 ? * MON#6 *", TODAY).readable === false);
     const named = pull({ kb: true, variant: { silent: true }, raw: { names: ["Acme NPS Survey"] } });
-    check("HLT-1 silent programs: a pull that named its programs lists only those", isDeepStrictEqual(named.snapshot.facts.health.lastSends.map((r) => r.programId), ["p-nps"]));
-    check("HLT-1 silent programs: a snapshot with no health facts has no silent list — it says why, and never reads as 'no silent programs'",
-      isDeepStrictEqual(silentPrograms({ ...S, meta: { ...S.meta, health: undefined } }).unavailable, { reason: "predates-health" }) &&
-        isDeepStrictEqual(silentPrograms({ ...S, meta: { ...S.meta, health: { ...S.meta.health, parts: { ...S.meta.health.parts, lastSends: { pulled: false, reason: "call-failed" } } } } }).unavailable, { reason: "call-failed" }));
+    check("HLT-1 health lists: a pull that named its programs lists only those", isDeepStrictEqual(named.snapshot.facts.health.lastSends.map((r) => r.programId), ["p-nps"]));
+    check("HLT-1 health lists: a snapshot with no health facts has no list — it says why, and never reads as 'nothing wrong'",
+      isDeepStrictEqual(programHealth({ ...S, meta: { ...S.meta, health: undefined } }).unavailable, { reason: "predates-health" }) &&
+        isDeepStrictEqual(programHealth({ ...S, meta: { ...S.meta, health: { ...S.meta.health, parts: { ...S.meta.health.parts, lastSends: { pulled: false, reason: "call-failed" } } } } }).unavailable, { reason: "call-failed" }));
   }
   {
     // Schedules: read the way the schedule audit reads them, from the KB.
     const failing = H.schedules.find((r) => r.programId === "p-onboard");
-    check("HLT-1 schedules: a schedule's last-run result comes from the KB's program docs through the schedule audit's own parser and classifier — the failing one reads lastRunSuccess false, recurring, as of the doc's last verified date — and costs no call",
-      H.schedules.length === 4 && H.schedules.filter((r) => r.classification === "no schedule captured" && r.lastRunSuccess === null).map((r) => r.programId).join() === "p-pilot,p-renew" && failing?.lastRunSuccess === false && failing.classification === "recurring" && failing.asOf === "2026-09-01T00:00:00.000Z" && H.schedules.find((r) => r.programId === "p-nps").lastRunSuccess === true &&
-        base.argv.filter((a) => a.includes("describe")).length === 3 && S.caveats.some((c) => c.id === "schedules-from-kb" && c.detail.oldest === "2026-08-20T00:00:00.000Z") && isDeepStrictEqual(S.honesty.health.schedules, { programsWithDoc: 4, programsWithout: 2 }), [H.schedules, S.honesty.health]);
+    check("HLT-1 schedules: a schedule's configuration comes from the KB's program docs through the schedule audit's own parser and classifier — the weekly chain reads recurring, as of the doc's last verified date, its run-state fields as documented — and costs NO call (the only describes are the two programs the list lacks, one retried)",
+      H.schedules.length === 4 && H.schedules.filter((r) => r.classification === "no schedule captured" && r.lastRunSuccess === null).map((r) => r.programId).join() === "p-pilot,p-renew" && failing?.lastRunSuccess === false && failing.classification === "recurring" && failing.asOf === "2026-09-01T00:00:00.000Z" &&
+        base.argv.filter((a) => a.includes("describe")).length === 3 && S.caveats.some((c) => c.id === "schedules-from-kb" && c.detail.oldest === "2026-08-20T00:00:00.000Z") && S.caveats.some((c) => c.id === "step-names-as-of" && c.detail.oldest === "2026-08-20T00:00:00.000Z" && c.detail.programs === 4), [H.schedules, S.honesty.health]);
     const noKb = pull({});
-    check("HLT-1 schedules: with no KB the part is not read and says so (no-kb) — an empty table and a caveat, never 'no failing schedules'",
-      isDeepStrictEqual(healthAvailability(noKb.snapshot).parts.schedules, { pulled: false, reason: "no-kb" }) && noKb.snapshot.facts.health.schedules.length === 0 && noKb.snapshot.caveats.some((c) => c.id === "health-incomplete" && c.detail.parts.some((p) => p.part === "schedules" && p.reason === "no-kb")));
+    check("HLT-1 schedules: with no KB the part is not read and says so (no-kb) — an empty table and a caveat, never 'no failing schedules'; the signals still read their own tables, and no step-names caveat is written; with no KB no program's schedule is known, so nothing reads ok or Finished — every program not alarmed on its own data is Cannot judge yet (no-kb) (F-491, redesigned 2026-10-08)",
+      isDeepStrictEqual(healthAvailability(noKb.snapshot).parts.schedules, { pulled: false, reason: "no-kb", basis: "as-documented" }) && noKb.snapshot.facts.health.schedules.length === 0 && noKb.snapshot.caveats.some((c) => c.id === "health-incomplete" && c.detail.parts.some((p) => p.part === "schedules" && p.reason === "no-kb")) &&
+        noKb.argv.filter((a) => a.includes("describe")).length === 3 && !noKb.snapshot.caveats.some((c) => c.id === "step-names-as-of") && noKb.snapshot.facts.health.sources.length > 0 && programHealth(noKb.snapshot).lists.ok.length === 0 && programHealth(noKb.snapshot).lists.finished.length === 0 && programHealth(noKb.snapshot).lists["cannot-judge"].length > 0 && programHealth(noKb.snapshot).lists["cannot-judge"].every((r) => r.signals.why === "no-kb" && r.signals.schedule.state === "unknown") && isDeepStrictEqual(noKb.snapshot.honesty.kb, { source: "none", undocumented: [], behind: [] }), Object.fromEntries(Object.entries(programHealth(noKb.snapshot).lists).map(([k, v]) => [k, v.map((r) => r.programId)])));
   }
   {
     // Health never fails a pull.
     const rest = (snap) => ({ ...snap.facts, health: { ...snap.facts.health, participantStates: null } });
-    const flaky = pull({ kb: true, faults: [{ match: '"ParticipantState"', kind: "timeout", times: 99 }] });
-    const stateCalls = flaky.argv.filter((a) => a.includes("run") && a.join(" ").includes('"ParticipantState"'));
+    const flaky = pull({ kb: true, faults: [{ match: '{"name":"ParticipantState"}]', kind: "timeout", times: 99 }] });
+    const stateCalls = flaky.argv.filter((a) => a.includes("run") && a.join(" ").includes('{"name":"ParticipantState"}]'));
     check("HLT-1 health never fails a pull: a participant-state call that times out twice is recorded as not read (call-failed) — the pull is ok, every other table is as on a clean pull, the part is empty with a caveat — and it is NOT halved after the timeouts: two attempts, no more",
       flaky.summary?.status === "ok" && flaky.summary.failed.length === 0 && isDeepStrictEqual(flaky.summary.health.unread.participantStates, [{ family: "health-states", kind: "timeout" }]) && stateCalls.length === 2 &&
-        isDeepStrictEqual(healthAvailability(flaky.snapshot).parts.participantStates, { pulled: false, reason: "call-failed" }) && flaky.snapshot.facts.health.participantStates.length === 0 &&
+        isDeepStrictEqual(healthAvailability(flaky.snapshot).parts.participantStates, { pulled: false, reason: "call-failed", basis: "all-time" }) && flaky.snapshot.facts.health.participantStates.length === 0 &&
         isDeepStrictEqual(rest(flaky.snapshot), rest(S)) && flaky.snapshot.caveats.some((c) => c.id === "health-incomplete") && flaky.snapshot.reconciliation.ok, flaky.summary);
     const refused = pull({ kb: true, variant: { dropSchemaField: { object: "email_log_v2", field: "BouncedReason" } } });
-    check("HLT-1 health never fails a pull: on a tenant whose delivery log has no bounce-reason field the bounce-reason query is refused before it is spawned (an unknown field would be dropped silently), the part is not read, and nothing else is affected",
-      refused.summary?.status === "ok" && refused.summary.health.unread.bounceReasons?.every((f) => f.kind === "refused") && isDeepStrictEqual(healthAvailability(refused.snapshot).parts.bounceReasons, { pulled: false, reason: "call-failed" }) &&
+    check("HLT-1 health never fails a pull: on a tenant whose delivery log has no bounce-reason field the category and sample queries are refused before they are spawned (an unknown field would be dropped silently), the bounce-reason part and the samples are not read, and nothing else is affected",
+      refused.summary?.status === "ok" && refused.summary.health.unread.bounceReasons?.every((f) => f.kind === "refused") && isDeepStrictEqual(healthAvailability(refused.snapshot).parts.bounceReasons, { pulled: false, reason: "call-failed", basis: "window" }) &&
         refused.snapshot.facts.health.bounceReasons.length === 0 && !refused.snapshot.reconciliation.checks.some((c) => c.id === "bounce-reasons-sum-to-bounced") && isDeepStrictEqual(refused.snapshot.facts.byTemplate, S.facts.byTemplate) &&
         !rpRuns(refused.argv).some((a) => a.join(" ").includes("BouncedReason")), refused.summary?.health);
     const bare = pull({ kb: true, variant: { noHealthObjects: true } });
     check("HLT-1 health never fails a pull: a tenant without the failed-participant or participant object has those two parts not read (no-schema), no call is made on them, and the other parts are read",
-      bare.summary?.status === "ok" && isDeepStrictEqual([healthAvailability(bare.snapshot).parts.participantFailures, healthAvailability(bare.snapshot).parts.participantStates], [{ pulled: false, reason: "no-schema" }, { pulled: false, reason: "no-schema" }]) &&
-        !rpRuns(bare.argv).some((a) => ["ao_failed_participants", "ao_participants"].includes(flag(a, "--object"))) && isDeepStrictEqual(bare.snapshot.facts.health.bounceReasons, H.bounceReasons) && healthAvailability(bare.snapshot).parts.lastSends.pulled);
-    check("HLT-1 plan: the health calls are inside the estimate and stated on their own, and every part the snapshot reports is one of the five",
+      bare.summary?.status === "ok" && isDeepStrictEqual([healthAvailability(bare.snapshot).parts.participantFailures, healthAvailability(bare.snapshot).parts.participantStates], [{ pulled: false, reason: "no-schema", basis: "all-time" }, { pulled: false, reason: "no-schema", basis: "all-time" }]) &&
+        !rpRuns(bare.argv).some((a) => ["ao_failed_participants", "ao_participants", "ao_participant_source_configuration"].includes(flag(a, "--object"))) && isDeepStrictEqual(bare.snapshot.facts.health.bounceReasons, H.bounceReasons) && healthAvailability(bare.snapshot).parts.lastSends.pulled &&
+        ["entryFailures", "admissions", "stepFailures", "sources"].every((p) => healthAvailability(bare.snapshot).parts[p].reason === "no-schema" && bare.snapshot.facts.health[p].length === 0) && programHealth(bare.snapshot).lists.ok.concat(programHealth(bare.snapshot).rows).every((r) => r.signals.ingest.state === "not-read" && r.signals.steps.state === "not-read"));
+    // The row budget (S3b, count-first): a part that would exceed it is not read, with the reason; the click detail refuses the plan.
+    // One page of sixty rows is the whole budget: the day buckets (about two hundred rows) exceed it, the click detail (under fifty clicked sends) does not.
+    const budgetRaw = { pageSize: 60, maxPages: 1 };
+    const over = pull({ kb: true, raw: budgetRaw });
+    if (over.error) console.log("      over.error:", String(over.error?.stack ?? over.error).slice(0, 600));
+    check("HLT-1 the row budget: a health part whose count-first read says it holds more rows than the budget (MAX_PAGES pages) is NOT read — no call is made on it, its reason is too-large, the silent list says so — and the pull is ok",
+      over.summary?.status === "ok" && over.summary.health.unread.lastSends?.some((f) => f.kind === "too-large") && isDeepStrictEqual(healthAvailability(over.snapshot).parts.lastSends, { pulled: false, reason: "too-large", basis: "lookback" }) &&
+        !rpRuns(over.argv).some((a) => flag(a, "--group-by")?.includes('"summarize":"Day"') && flag(a, "--object") === "email_log_v2") && programHealth(over.snapshot).unavailable.reason === "too-large" && over.summary.estimate.rowBudget.rows === 60 && MAX_PAGES === 40 && resolveParams({ today: TODAY }).maxPages === MAX_PAGES &&
+        over.summary.estimate.rowBudget.overBudget.some((o) => o.family === "health-days" && o.rows > 60), [over.summary?.health, over.summary?.estimate.rowBudget]);
+    const clicks = pull({ raw: { pageSize: 20, maxPages: 1 }, phase: "plan" });
+    check("the click detail is priced from its count-first read, and a pull whose clicked sends exceed the row budget is refused at the plan, naming the count and what to narrow, before any fact call",
+      /click detail of this pull is about \d+ clicked sends, more than the 20 rows \(1 pages of 20\)/.test(String(clicks.error?.message)) && /--sent-since/.test(String(clicks.error?.message)) && clicks.summary === null && !rpRuns(clicks.argv).some((a) => flag(a, "--show-fields").includes("LinkClickedJson") || flag(a, "--group-by")?.includes("EmailTemplateName")), String(clicks.error?.message));
+    const plan50 = pull({ raw: { pageSize: 50 } });
+    const madeBy = (run, family) => logOf(run).filter((r) => r.family === family && r.status !== "split" && !(r.status === "ok" && r.attempt > 1)).length;
+    const HEALTH_FAMILIES = ["health-bounce-total", "health-bounce-cat", "health-bounce-sample", "health-days", "health-reasons-total", "health-entry-window", "health-reasons-sample", "health-states", "health-sources", "health-admissions", "health-entry-month", "health-step-total", "health-step-cat", "health-step-state"];
+    const healthMade = HEALTH_FAMILIES.reduce((s, f) => s + madeBy(plan50, f), 0);
+    const within2 = (est, actual) => est <= actual * 2 && actual <= est * 2;
+    check("F-476 (reopened): every health family is priced from a count — at a 50-row page the day buckets and the bounce counts split, and the estimate of the health calls is within 2x of the health calls the pull made, where it was 7.8x on the measured tenant",
+      plan50.summary?.status === "ok" && within2(plan50.summary.estimate.health.addsCalls, healthMade) && plan50.summary.estimate.thisRun.byFamily["health-days"] > 1 && madeBy(plan50, "health-days") > 1,
+      [plan50.summary?.estimate.health.addsCalls, healthMade, plan50.summary?.estimate.thisRun.byFamily, Object.fromEntries(HEALTH_FAMILIES.map((x) => [x, madeBy(plan50, x)]))]);
+    check("HLT-1 plan: the health calls are inside the estimate and stated on their own (the per-program samples among them, against their cap), and every part the snapshot reports is one of the eleven",
       base.summary.estimate.health.on === true && base.summary.estimate.health.addsCalls >= 5 && base.summary.estimate.health.addsSeconds > 0 &&
         base.summary.estimate.health.addsCalls === Object.entries(base.summary.estimate.thisRun.byFamily).filter(([f]) => f.startsWith("health-")).reduce((x, [, n]) => x + n, 0) &&
-        isDeepStrictEqual(Object.keys(S.meta.health.parts), [...HEALTH_PARTS]), base.summary.estimate.health);
+        isDeepStrictEqual(Object.keys(S.meta.health.parts), [...HEALTH_PARTS]) && base.summary.estimate.health.failedParticipantRows === base.tenant.tables.ao_failed_participants.length && base.summary.estimate.health.samples.cap === SAMPLE_PROGRAM_CAP, base.summary.estimate.health);
     // The adapter's own default: health facts are not pulled unless asked for.
-    const off = pull({ kb: true, raw: { health: {} } });
-    const offObjects = new Set(rpRuns(off.argv).map((a) => flag(a, "--object")));
+    const off = pull({ kb: true, raw: { health: { categories: HEALTH.categories } } });
+    const families = new Set(logOf(off).map((r) => r.family));
     check("HLT-1 health is OFF unless asked for: no health call is made (no bounce-reason, day-bucket, failed-participant or participant-state read, and no schema read of the two objects only health uses), every health table is an empty array, the marker says health-off, and no caveat is added to an output that shows no health",
-      off.summary?.status === "ok" && !off.argv.some((a) => /BouncedReason|"summarize":"Day"|ao_failed_participants|ao_participants"?$/.test(a.join(" "))) && !offObjects.has("ao_failed_participants") && !offObjects.has("ao_participants") &&
-        !off.argv.some((a) => a.includes("schema") && ["ao_failed_participants", "ao_participants"].includes(flag(a, "--object"))) &&
+      off.summary?.status === "ok" && ![...families].some((f) => f.startsWith("health-")) && !off.argv.some((a) => ["ao_failed_participants", "ao_participants", "ao_participant_source_configuration"].includes(flag(a, "--object"))) &&
         isDeepStrictEqual(healthAvailability(off.snapshot), { pulled: false, reason: "health-off", asOf: null, dayWindow: null, parts: {} }) && Object.values(off.snapshot.facts.health).every((t) => Array.isArray(t) && t.length === 0) &&
-        !off.snapshot.caveats.some((c) => c.id === "health-incomplete" || c.id === "schedules-from-kb") && silentPrograms(off.snapshot).unavailable.reason === "health-off", [off.summary?.status, healthAvailability(off.snapshot)]);
+        !off.snapshot.caveats.some((c) => ["health-incomplete", "schedules-from-kb", "health-all-time", "participant-failures-no-breakdown", "failure-samples-sampled"].includes(c.id)) && programHealth(off.snapshot).unavailable.reason === "health-off", [off.summary?.status, healthAvailability(off.snapshot)]);
     check("HLT-1 the failure count is not part of the switch: with health off every send row still carries failed, equal to the pull with health on, and the fact tables are the same",
       isDeepStrictEqual(off.snapshot.facts.byTemplate, S.facts.byTemplate) && isDeepStrictEqual(off.snapshot.facts.byAccount, S.facts.byAccount) && off.snapshot.facts.byTemplate.some((r) => r.failed > 0));
-    check("HLT-1 plan prints what health adds whether it is on or off, the same figure either way, and with it off the run plans exactly that many calls fewer",
-      off.summary.estimate.health.on === false && off.summary.estimate.health.addsCalls === base.summary.estimate.health.addsCalls && off.summary.estimate.health.addsSeconds === base.summary.estimate.health.addsSeconds &&
+    check("HLT-1 plan prints what health adds whether it is on or off, the same figure either way but for the refusal samples (priced from a read health itself makes: with health off their count is unknown, null, never 0), and with it off the run plans exactly that many calls fewer",
+      off.summary.estimate.health.on === false && off.summary.estimate.health.samples.participantFailures.withFailures === null && off.summary.estimate.health.samples.participantFailures.planned === 0 &&
+        off.summary.estimate.health.addsCalls + base.summary.estimate.health.samples.participantFailures.planned === base.summary.estimate.health.addsCalls && off.summary.estimate.health.addsSeconds + base.summary.estimate.health.samples.participantFailures.planned * base.summary.estimate.health.samples.participantFailures.secondsEach === base.summary.estimate.health.addsSeconds &&
         base.summary.estimate.thisRun.calls - off.summary.estimate.thisRun.calls === base.summary.estimate.health.addsCalls, [off.summary.estimate.health, base.summary.estimate.health]);
     const earlierOff = pull({ kb: true, variant: { cutoff: "2026-08-01" }, raw: { today: "2026-07-31", pulledAt: "2026-07-31T09:00:00-07:00", health: {} } });
     const turnedOn = pull({ kb: true, previous: earlierOff.snapshot });
@@ -1303,24 +1679,96 @@ try {
     // Refresh: bounce reasons carry like the facts; everything else is read again.
     const earlier = pull({ kb: true, variant: { cutoff: "2026-08-01" }, raw: { today: "2026-07-31", pulledAt: "2026-07-31T09:00:00-07:00" } });
     const sel = pull({ kb: true, previous: earlier.snapshot });
-    const flat = (rows) => new Map(rows.map((r) => [[r.programId, r.templateId, r.month, r.recipientClass, r.bounceType, r.message].join("|"), r.count]));
-    check("HLT-1 selective refresh: bounce reasons of the carried months come from the previous snapshot with provenance carried, the rest is pulled, and the table equals a full refresh's; last sends, states and failure reasons are read again",
+    const flat = (rows) => new Map(rows.map((r) => [[r.programId, r.templateId, r.month, r.recipientClass, r.bounceType, r.category, r.message].join("|"), r.count]));
+    const sansPulledAt = (rows) => rows.map(({ pulledAt: _p, ...r }) => r);
+    check("HLT-1 selective refresh: bounce reasons of the carried months come from the previous snapshot with provenance carried, the rest is pulled, and the table equals a full refresh's; last sends, states and failure totals are read again; the samples equal a full pull's text for text, a program whose counts did not move keeping the earlier pull's (its pulledAt) and the rest read again",
       sel.snapshot?.meta.refresh.mode === "selective" && sel.snapshot.facts.health.bounceReasons.some((r) => r.provenance === "carried") && sel.snapshot.facts.health.bounceReasons.some((r) => r.provenance === "pulled") &&
         sameMap(flat(sel.snapshot.facts.health.bounceReasons), flat(H.bounceReasons)) && isDeepStrictEqual(sel.snapshot.facts.health.lastSends, H.lastSends) && isDeepStrictEqual(sel.snapshot.facts.health.participantStates, H.participantStates) &&
-        isDeepStrictEqual(sel.snapshot.facts.health.participantFailures, H.participantFailures) && sel.snapshot.reconciliation.ok, sel.snapshot?.meta.refresh);
+        isDeepStrictEqual(sel.snapshot.facts.health.participantFailures, H.participantFailures) && isDeepStrictEqual(sansPulledAt(sel.snapshot.facts.health.failureSamples), sansPulledAt(H.failureSamples)) && isDeepStrictEqual(sansPulledAt(sel.snapshot.facts.health.entrySamples), sansPulledAt(H.entrySamples)) &&
+        sel.snapshot.facts.health.failureSamples.every((r) => r.pulledAt === (sel.snapshot.meta.health.samples[r.part].programs.includes(r.programId) && sel.snapshot.meta.health.samples[r.part].carried && r.pulledAt !== PULLED_AT ? earlier.snapshot.meta.pulledAt : PULLED_AT)) && sel.snapshot.reconciliation.ok, [sel.snapshot?.meta.refresh, sel.snapshot?.meta.health.samples]);
+    const otherList = pull({ kb: true, previous: earlier.snapshot, raw: { health: { pull: true } }, phase: "plan" }).summary.estimate;
+    check("HLT-1 a changed category list forces a full refresh and says so: rows counted under one list never sit beside rows counted under another (a snapshot whose bounce reasons were read as text, before categories, is such a list)",
+      otherList.mode === "full" && /bounce-reason categories changed/.test(otherList.why) && (() => {
+        const textEra = JSON.parse(JSON.stringify(earlier.snapshot));
+        delete textEra.meta.params.health.categories;
+        return /bounce-reason categories changed/.test(pull({ kb: true, previous: textEra, phase: "plan" }).summary.estimate.why);
+      })(), otherList.why);
     const { health: _h, ...oldMeta } = earlier.snapshot.meta;
     const old = { ...earlier.snapshot, meta: oldMeta, facts: { ...earlier.snapshot.facts, byTemplate: earlier.snapshot.facts.byTemplate.map(({ failed: _f, ...r }) => r), health: undefined } };
     const afterOld = pull({ kb: true, previous: old });
     check("HLT-1 refresh: a previous snapshot made before failures were counted (no health marker, no failed on its rows) is never carried from — a full refresh that says why, with a failure count on every row",
       afterOld.snapshot?.meta.refresh.mode === "full" && /before send failures and health facts were counted/.test(afterOld.snapshot.meta.refresh.why) && afterOld.snapshot.facts.byTemplate.every((r) => Number.isInteger(r.failed)) && isDeepStrictEqual(afterOld.snapshot.facts.byTemplate, S.facts.byTemplate));
-    const noPrevReasons = { ...earlier.snapshot, meta: { ...earlier.snapshot.meta, health: { ...earlier.snapshot.meta.health, parts: { ...earlier.snapshot.meta.health.parts, bounceReasons: { pulled: false, reason: "call-failed" } } } }, facts: { ...earlier.snapshot.facts, health: { ...earlier.snapshot.facts.health, bounceReasons: [] } } };
+    const noPrevReasons = { ...earlier.snapshot, meta: { ...earlier.snapshot.meta, health: { ...earlier.snapshot.meta.health, parts: { ...earlier.snapshot.meta.health.parts, bounceReasons: { pulled: false, reason: "call-failed", basis: "window" } } } }, facts: { ...earlier.snapshot.facts, health: { ...earlier.snapshot.facts.health, bounceReasons: [] } } };
     const gap = pull({ kb: true, previous: noPrevReasons });
     check("HLT-1 selective refresh: when the previous snapshot read no bounce reasons the carried months have none to give, so the part is not read (not-in-previous) and empty — never a table that silently lacks its older months",
-      gap.snapshot?.meta.refresh.mode === "selective" && isDeepStrictEqual(healthAvailability(gap.snapshot).parts.bounceReasons, { pulled: false, reason: "not-in-previous" }) && gap.snapshot.facts.health.bounceReasons.length === 0);
+      gap.snapshot?.meta.refresh.mode === "selective" && isDeepStrictEqual(healthAvailability(gap.snapshot).parts.bounceReasons, { pulled: false, reason: "not-in-previous", basis: "window" }) && gap.snapshot.facts.health.bounceReasons.length === 0);
     const { health: _p, ...preParams } = base.input.params;
     const pre = reduceEngagement({ ...base.input, params: preParams });
     check("HLT-1 a run directory fetched before health facts existed reduces with none: the marker says health-off, every health table is an empty array, and the send rows still carry their failure count",
       isDeepStrictEqual(healthAvailability(pre), { pulled: false, reason: "health-off", asOf: null, dayWindow: null, parts: {} }) && Object.values(pre.facts.health).every((t) => Array.isArray(t) && t.length === 0) && isDeepStrictEqual(pre.facts.byTemplate, S.facts.byTemplate) && !pre.caveats.some((c) => c.id === "health-incomplete"));
+  }
+
+  // ── Test accounts (ENG-2 item 1, ruled 2026-10-05): company records, excluded server-side, in the internal class ──
+  {
+    const TEST = ["co-01", "co-05"];
+    const withTests = pull({ kb: true, raw: { testAccounts: [...TEST].reverse() } });
+    const T = withTests.snapshot;
+    const isInt = (r) => isInternal(r.LowerCaseEmailId) || TEST.includes(r.GsCompanyId);
+    const OT = (() => {
+      const months = new Set(T.dimensions.months);
+      const programs = new Set(T.dimensions.programs.map((p) => p.id));
+      const rows = withTests.tenant.tables.email_log_v2.filter((r) => r.Source === "Advanced Outreach" && r.AddressType === "To" && months.has(r.ExecutedDate.slice(0, 7)) && programs.has(r.SourceId));
+      const tally = (keyOf) => {
+        const out = new Map();
+        for (const r of rows) {
+          const k = keyOf(r).join("|");
+          const m = out.get(k) ?? blank();
+          m.sent++;
+          if (r.IsSent === "YES" && r.IsBounced !== "YES") m.delivered++;
+          if (r.IsBounced === "YES") m.bounced++;
+          if (r.IsRejected === "YES") m.rejected++;
+          if (r.IsUnsubscribed === "YES") m.unsubscribed++;
+          if (r.IsSpam === "YES") m.spamComplaints++;
+          if (r.IsBounced === "YES" || r.IsRejected === "YES") m.failed++;
+          if (r.IsOpened === "YES") m.opened++;
+          if (r._contentClick) m.clicked++;
+          out.set(k, m);
+        }
+        return out;
+      };
+      const distinct = (list, f) => new Set(list.map(f).filter((v) => v != null)).size;
+      const uniques = new Map();
+      for (const p of programs) {
+        const mine = rows.filter((r) => r.SourceId === p);
+        const ext = mine.filter((r) => !isInt(r));
+        uniques.set(p, { people: distinct(mine, (r) => r.GsPersonId), accounts: distinct(mine, (r) => r.GsCompanyId), extPeople: distinct(ext, (r) => r.GsPersonId), extAccounts: distinct(ext, (r) => r.GsCompanyId) });
+      }
+      return { rows, byTemplate: tally((r) => [r.SourceId, r.EmailTemplateId, r.ExecutedDate.slice(0, 7), isInt(r) ? "internal" : "external"]), byAccount: tally((r) => [r.SourceId, r.GsCompanyId, r.ExecutedDate.slice(0, 7), isInt(r) ? "internal" : "external"]), uniques };
+    })();
+    const testSends = OT.rows.filter((r) => TEST.includes(r.GsCompanyId));
+    const overlapSends = testSends.filter((r) => isInternal(r.LowerCaseEmailId));
+    check("test accounts fixture: the two named companies have sends, and one of them also receives a send on the internal domain (the overlap the subtraction exists for)",
+      testSends.length > 20 && overlapSends.length > 0 && new Set(testSends.map((r) => r.GsCompanyId)).size === 2);
+    check("test accounts join the internal class, server-side: the template table equals a straight count where internal = the internal domain OR a test account (each send once, the overlap never twice), per program × template × month × class, all nine measures, clicks included",
+      sameMap(factMap(T.facts.byTemplate, (r) => [r.programId, r.templateId, r.month, r.recipientClass]), OT.byTemplate) && T.facts.byTemplate.some((r) => r.recipientClass === "internal" && r.clicked > 0), diffMap(factMap(T.facts.byTemplate, (r) => [r.programId, r.templateId, r.month, r.recipientClass]), OT.byTemplate));
+    const selected = T.facts.byAccount.filter((r) => r.bucket === "account");
+    const want = new Map([...OT.byAccount].filter(([k]) => selected.some((r) => k === [r.programId, r.accountKey, r.month, r.recipientClass].join("|"))));
+    check("…and so does the account table: a test account's rows are internal rows, and the table still sums to the program total", sameMap(factMap(selected, (r) => [r.programId, r.accountKey, r.month, r.recipientClass]), want) && T.reconciliation.ok && selected.some((r) => TEST.includes(r.accountKey) && r.recipientClass === "internal"));
+    const win = T.facts.uniques.filter((r) => r.scope === "window");
+    check("external distinct counts leave the test accounts out with NOT_IN on the company lookup (which keeps the sends with no company, as measured): external people and accounts per program equal a straight count over the sends that are neither internal nor a test account's",
+      win.every((r) => { const o = OT.uniques.get(r.programId); return r.people === o.people && r.accounts === o.accounts && r.external.people === o.extPeople && r.external.accounts === o.extAccounts; }) &&
+        rpRuns(withTests.argv).some((a) => flag(a, "--show-fields").includes("COUNT_DISTINCT") && flag(a, "--where-filters").includes('{"leftOperand":{"fieldName":"GsCompanyId"},"operator":"NOT_IN","rightOperand":{"value":["co-01","co-05"]}}')) &&
+        win.some((r) => r.external.accounts < r.accounts), win.map((r) => [r.programId, r.external, OT.uniques.get(r.programId)]));
+    const inCalls = rpRuns(withTests.argv).filter((a) => flag(a, "--where-filters").includes('"GsCompanyId"},"operator":"IN"'));
+    check("the calls: one IN call per family and span for the test accounts, and one overlap call per internal domain (ENDS_WITH the domain AND IN the accounts); the ids are sorted and de-duplicated so the same set in any order is the same run; nothing names an address",
+      inCalls.length >= 6 && inCalls.some((a) => !flag(a, "--where-filters").includes("ENDS_WITH")) && inCalls.some((a) => flag(a, "--where-filters").includes('"ENDS_WITH","rightOperand":{"value":"@acme.com"}')) &&
+        inCalls.every((a) => flag(a, "--where-filters").includes('"value":["co-01","co-05"]')) && isDeepStrictEqual(T.meta.params.testAccounts, TEST) && isDeepStrictEqual(T.honesty.testAccounts, { accounts: 2, sent: testSends.length }), inCalls.length);
+    const prevNone = JSON.parse(JSON.stringify(pull({ kb: true, variant: { cutoff: "2026-08-16" }, raw: { today: "2026-08-15", pulledAt: "2026-08-15T09:00:00-07:00" } }).snapshot));
+    const changed = pull({ kb: true, previous: prevNone, raw: { testAccounts: TEST }, phase: "plan" }).summary.estimate;
+    const stepsToo = pull({ kb: true, raw: { testAccounts: TEST, stepDetail: true } }).snapshot;
+    check("a change to the test accounts forces a full refresh and says so (they are a different class split); with step detail the step table is by domain alone and a caveat says why; without domains or test accounts nobody is internal",
+      changed.mode === "full" && /test accounts changed/.test(changed.why) && stepsToo.caveats.some((c) => c.id === "test-accounts-not-on-steps" && c.detail.accounts === 2) && stepsToo.facts.byStep.length > 0 &&
+        !T.caveats.some((c) => c.id === "test-accounts-not-on-steps") && pull({ raw: { internalDomains: [], testAccounts: TEST } }).snapshot.facts.byTemplate.some((r) => r.recipientClass === "internal"), changed.why);
   }
 
   // ── The ledger: every pitfall and every spike fact names its check ────────
@@ -1358,10 +1806,10 @@ try {
     "fact 15: jo p describe embeds JSON as strings": "jo p describe embeds JSON as strings",
     "fact 16: jo p list paging envelope; several statuses": "jo p list is paged by its envelope",
     "fact 17: CC copies are marked by AddressType": "the default source is email_log_v2",
-    "fact 6 / (k): a JSON-typed field cannot be grouped or distinct-counted; failure reasons are plain rows": "HLT-1 failure reasons are read as plain rows and grouped client-side",
+    "fact 6 / (k): a JSON-typed field cannot be grouped or distinct-counted; S3b: its schema declares it not filterable either, so failures are per-program totals": "HLT-1 the reason field takes NO filter",
     "(k): BouncedReason holds addresses and long digit runs; masking is required": "HLT-1 masking: messages are masked when they are FETCHED",
     "(k): no last-send aggregate; silent programs come from day buckets": "HLT-1 last sends come from day buckets",
-    "(k): a schedule's last-run result is exposed (read from the KB, as the schedule audit reads it)": "HLT-1 schedules: a schedule's last-run result comes from the KB's program docs",
+    "(k): a schedule's last-run result is exposed (read from the KB, as the schedule audit reads it)": "HLT-1 schedules: a schedule's configuration comes from the KB's program docs",
     "R17: rejected, unsubscribed and spam measures come from the send tables; the error rate's numerator is counted once per attempt": "HLT-1 send failures: an attempt flagged bounced AND rejected is ONE failure",
   };
   for (const [what, label] of Object.entries(LEDGER)) {

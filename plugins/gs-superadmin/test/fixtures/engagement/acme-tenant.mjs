@@ -32,16 +32,26 @@
 //     normalizeGroupByDedup, then assertShowFieldsNonEmpty)
 //   - a field typed JSONSTRING cannot be grouped by or distinct-counted: the
 //     call fails with the "network outage" text; plain rows of it are returned
+//   - a WHERE condition on a field whose schema says filterable: false fails
+//     with "Unrecognized data type found in Filter or Ranking fields" (measured
+//     2026-10-07 on ao_failed_participants.FailureReasons with CONTAINS,
+//     DOES_NOT_CONTAINS and STARTS_WITH; the field is a JSON-path extraction
+//     and its schema declares it neither filterable nor groupable — S3b)
+//   - CONTAINS on a filterable STRING field works in a plain count and in a
+//     grouped call alike, and DOES_NOT_CONTAINS is its complement (measured
+//     on email_log_v2.BouncedReason, S3b); IN and NOT_IN on the company LOOKUP
+//     work, and NOT_IN KEEPS rows whose company is null (measured S3b: IN plus
+//     NOT_IN equals the plain count on a window holding order 10^4 null rows)
+//   - SUM is an aggregation: `sum_of_<obj>_<Field>`, a numeric cell (measured S3b)
 //   - day buckets are summarize_day_of_<obj>_<Field> with k = YYYY-MM-DD
 //   - a bounce reason comes back in `fv`, and in `v` too on only some rows
-// Every behaviour above was measured on a real tenant. One is still ASSUMED,
-// measured only where it has nothing to act on: DOES_NOT_CONTAINS keeps a row
-// whose field is null (the measured tenant has no in-scope send with a null
-// address). One SHAPE is assumed as well, because the spike recorded it only
-// in words: a failed participant's FailureReasons is "a short product message"
-// in plain rows. The fixture writes it as plain text, and one row as a JSON
-// array of texts; the adapter's reader takes either, and the live check banked
-// beside HLT-1 reads the real one.
+// Every behaviour above was measured on a real tenant. Two are still ASSUMED,
+// measured only where they have nothing to act on: DOES_NOT_CONTAINS keeps a
+// row whose field is null (the measured tenant has no in-scope send with a null
+// address, and the month measured for bounce reasons had no bounce with a null
+// reason). The failed participant's FailureReasons shape was measured at the
+// spot check (Y3): plain text in {v, fv}, one product sentence per cell; the
+// fixture also writes one row as a JSON array of texts, which the reader takes.
 // Values are fictional throughout (acme.com is the tenant's own domain, the
 // customers live under example.com); the SHAPES are the tenant's.
 //
@@ -80,7 +90,7 @@ const PROGRAMS = [
     id: "p-onboard", name: "Acme Onboarding Chain", model: "DRIPV2", modelName: "Email Chain", statuses: ["PROCESSING"], type: "CUSTOMER", folderId: "101",
     months: monthsBetween(FIRST_MONTH, LAST_MONTH), accounts: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9], perAccount: 2, internalOn: 0,
     // Its last scheduled run FAILED (the health facts read this from the KB doc).
-    schedules: [{ type: "CRON", cronExpression: "0 0 8 ? * MON *", lastRunSuccess: false, lastSuccessTime: 1756712400000, nextRunTime: 1757926800000, runningNow: false, timeZoneName: "America/Los_Angeles", jobType: "PARTICIPANT_SYNC" }],
+    schedules: [{ type: "CRON", cronExpression: "0 0 8 ? * MON *", lastRunSuccess: false, lastSuccessTime: 1756712400000, nextRunTime: 1757926800000, runningNow: false, timeZoneName: "America/Los_Angeles", jobType: "PARTICIPANT_SYNC", startTime: 1767225600000, endTime: 1830297600000 }],
     steps: [
       { stepId: "st-ob-1", stepName: "Welcome", order: 1, templateId: "tpl-welcome", variants: ["var-welcome-a", "var-welcome-b"] },
       { stepId: "st-ob-2", stepName: "Day 7 check-in", order: 2, templateId: "tpl-day7", variants: ["var-day7"] },
@@ -89,7 +99,7 @@ const PROGRAMS = [
   {
     id: "p-nps", name: "Acme NPS Survey", model: "CSAT_SURVEY_V2", modelName: "CSAT Survey", statuses: ["PROCESSING"], type: "CUSTOMER", folderId: "101",
     months: ["2025-10", "2026-01", "2026-04", "2026-07"], accounts: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11], perAccount: 1, survey: true,
-    schedules: [{ type: "CRON", cronExpression: "0 0 9 1 * ? *", lastRunSuccess: true, lastSuccessTime: 1756717200000, nextRunTime: 1759309200000, runningNow: false, timeZoneName: "America/Los_Angeles", jobType: "PARTICIPANT_SYNC" }],
+    schedules: [{ type: "CRON", cronExpression: "0 0 9 1 * ? *", lastRunSuccess: true, lastSuccessTime: 1756717200000, nextRunTime: 1759309200000, runningNow: false, timeZoneName: "America/Los_Angeles", jobType: "PARTICIPANT_SYNC", startTime: 1767225600000, endTime: 1830297600000 }],
     steps: [{ stepId: "st-nps-1", stepName: "Survey email", order: 1, templateId: "tpl-nps", variants: ["var-nps"] }],
   },
   {
@@ -145,6 +155,100 @@ const QUIET = {
   months: ["2026-02"], accounts: [0, 1], perAccount: 1, steps: [{ stepId: "st-qt-1", stepName: "Quiet note", order: 1, templateId: "tpl-quiet", variants: ["var-quiet"] }],
 };
 const NEVER = { id: "p-never", name: "Acme Never Sent", model: "DRIPV2", modelName: "Email Chain", statuses: ["PROCESSING"], type: "CUSTOMER", folderId: "606", months: [], steps: [] };
+// Only with the cadence variant (HLT-1 S3b, the cadence-aware silent rule).
+// Each is Active and documented in the KB (kbFiles takes the variant):
+//   p-quarter   a quarterly schedule the audit's humanizer does not read (the
+//               scheduleType says RECURRING; the cron steps months): last sent
+//               in July, next due in October, so it is NOT a silent failure in
+//               September though the flat 30-day rule would flag it
+//   p-sporadic  no schedule (hand-fed), sends about every third month: judged
+//               against its own history, its 60-odd quiet days are its habit
+//   p-once      a ONE-TIME schedule that sent in one month: never on a silent list
+//   p-lapsed    no schedule, sent every month until June and nothing since:
+//               "No recent sends" under its own history
+const QUARTER = {
+  id: "p-quarter", name: "Acme Quarterly Review", model: "DRIPV2", modelName: "Email Chain", statuses: ["PROCESSING"], type: "CUSTOMER", folderId: "707",
+  months: ["2025-10", "2026-01", "2026-04", "2026-07"], accounts: [0, 1, 2], perAccount: 1,
+  schedules: [{ type: "RECURRING", cronExpression: "0 0 9 1 1/3 ? *", lastRunSuccess: true, lastSuccessTime: 1751360400000, nextRunTime: 1759309200000, runningNow: false, timeZoneName: "America/Los_Angeles", jobType: "PARTICIPANT_SYNC" }],
+  steps: [{ stepId: "st-qr-1", stepName: "Quarterly note", order: 1, templateId: "tpl-quarter", variants: ["var-quarter"] }],
+};
+const SPORADIC = {
+  id: "p-sporadic", name: "Acme Sporadic Outreach", model: "DRIPV2", modelName: "Email Chain", statuses: ["PROCESSING"], type: "CUSTOMER", folderId: "707",
+  months: ["2025-10", "2026-01", "2026-04", "2026-07"], accounts: [3, 4], perAccount: 1,
+  steps: [{ stepId: "st-sp-1", stepName: "Sporadic note", order: 1, templateId: "tpl-sporadic", variants: ["var-sporadic"] }],
+};
+const ONCE = {
+  id: "p-once", name: "Acme One-time Announcement", model: "SIMPLE_PROGRAM", modelName: "Simple Program", statuses: ["PROCESSING"], type: "CUSTOMER", folderId: "707",
+  months: ["2026-03"], accounts: [5, 6, 7], perAccount: 1,
+  schedules: [{ type: "ONE-TIME", cronExpression: null, lastRunSuccess: true, lastSuccessTime: 1741000000000, nextRunTime: 0, runningNow: false, timeZoneName: "America/Los_Angeles", jobType: "PARTICIPANT_SYNC" }],
+  steps: [{ stepId: "st-on-1", stepName: "Announcement", order: 1, templateId: "tpl-once", variants: ["var-once"] }],
+};
+const LAPSED = {
+  id: "p-lapsed", name: "Acme Lapsed Digest", model: "DRIPV2", modelName: "Email Chain", statuses: ["PROCESSING"], type: "CUSTOMER", folderId: "707",
+  months: monthsBetween("2025-09", "2026-06"), accounts: [8, 9], perAccount: 1,
+  steps: [{ stepId: "st-lp-1", stepName: "Digest", order: 1, templateId: "tpl-lapsed", variants: ["var-lapsed"] }],
+};
+const CADENCE = [QUARTER, SPORADIC, ONCE, LAPSED];
+// Only with the signals variant (HLT-1 F-491, the health signals). Each is Active and documented in the KB.
+// `lastSync` is the participant source's LastSyncedOn (the ingest heartbeat); `endTime` ends a schedule.
+//   p-ended     weekly schedule that ENDED on 2026-08-01, synced last in July: "Schedule ended"
+//   p-overdue   daily cron, last synced 2026-08-20 though due daily: "Participant sync overdue"
+//   p-nobody    daily cron, synced yesterday, but no participant created since July: "Admitting nobody"
+//   p-refused   like p-nobody, and its recent refusals carry the UNEXPECTED null-email wording: "Only refused participants arriving"
+//   p-steperr   daily cron, synced, admitting; its dropped participants carry the CTA step failure and a
+//               platform error this month: "Step errors this period"
+//   p-disabled  the list says its participant sync is disabled: "Participant sync disabled"
+const DAILY = "0 0 8 * * ? *";
+const sched = (cron, extra = {}) => ({ type: "CRON", cronExpression: cron, lastRunSuccess: false, lastSuccessTime: 0, lastFailureTime: 0, failingSince: 0, nextRunTime: 0, runningNow: false, timeZoneName: "America/Los_Angeles", jobType: "PARTICIPANT_SYNC", startTime: 1767225600000, endTime: 1830297600000, ...extra });
+const ENDED = { id: "p-ended", name: "Acme Ended Chain", model: "DRIPV2", modelName: "Email Chain", statuses: ["PROCESSING"], type: "CUSTOMER", folderId: "808", months: monthsBetween("2026-03", "2026-07"), accounts: [0, 1], perAccount: 1, lastSync: "2026-07-27 08:01:00", schedules: [sched("0 0 8 ? * MON *", { endTime: 1785542400000 })], steps: [{ stepId: "st-en-1", stepName: "Ended note", order: 1, templateId: "tpl-ended", variants: ["var-ended"] }] };
+const OVERDUE = { id: "p-overdue", name: "Acme Overdue Chain", model: "DRIPV2", modelName: "Email Chain", statuses: ["PROCESSING"], type: "CUSTOMER", folderId: "808", months: monthsBetween("2026-06", LAST_MONTH), accounts: [2, 3], perAccount: 1, lastSync: "2026-08-20 08:01:00", schedules: [sched(DAILY)], steps: [{ stepId: "st-ov-1", stepName: "Overdue note", order: 1, templateId: "tpl-overdue", variants: ["var-overdue"] }] };
+const NOBODY = { id: "p-nobody", name: "Acme Nobody Chain", model: "DRIPV2", modelName: "Email Chain", statuses: ["PROCESSING"], type: "CUSTOMER", folderId: "808", months: monthsBetween("2026-05", "2026-07"), accounts: [4, 5], perAccount: 1, lastSync: "2026-09-14 08:01:00", schedules: [sched(DAILY)], steps: [{ stepId: "st-nb-1", stepName: "Nobody note", order: 1, templateId: "tpl-nobody", variants: ["var-nobody"] }] };
+const REFUSED = { id: "p-refused", name: "Acme Refused Chain", model: "DRIPV2", modelName: "Email Chain", statuses: ["PROCESSING"], type: "CUSTOMER", folderId: "808", months: monthsBetween("2026-05", "2026-07"), accounts: [6, 7], perAccount: 1, lastSync: "2026-09-14 08:01:00", schedules: [sched(DAILY)], steps: [{ stepId: "st-rf-1", stepName: "Refused note", order: 1, templateId: "tpl-refused", variants: ["var-refused"] }] };
+const STEPERR = { id: "p-steperr", name: "Acme Step Error Chain", model: "DRIPV2", modelName: "Email Chain", statuses: ["PROCESSING"], type: "CUSTOMER", folderId: "808", months: monthsBetween("2026-06", LAST_MONTH), accounts: [8, 9], perAccount: 2, fixedDay: "14", lastSync: "2026-09-14 08:01:00", schedules: [sched(DAILY)], stepErrors: true, steps: [{ stepId: "st-se-1", stepName: "Step error note", order: 1, templateId: "tpl-steperr", variants: ["var-steperr"] }] };
+const DISABLED = { id: "p-disabled", name: "Acme Disabled Chain", model: "DRIPV2", modelName: "Email Chain", statuses: ["PROCESSING"], type: "CUSTOMER", folderId: "808", months: monthsBetween("2026-06", LAST_MONTH), accounts: [10, 11], perAccount: 1, lastSync: "2026-09-14 08:01:00", syncDisabled: true, schedules: [sched(DAILY)], steps: [{ stepId: "st-di-1", stepName: "Disabled note", order: 1, templateId: "tpl-disabled", variants: ["var-disabled"] }] };
+// The second round of F-491 (2026-10-08), each a false read measured on the tenant:
+//   p-twosched  an ENDED daily job schedule documented BESIDE the live daily participant sync (as the tenant's
+//               programs carry them), synced yesterday, admitting, sending monthly: "Working as expected" —
+//               never "Schedule ended" (15 of 35 such reads were false)
+//   p-staledoc  its one documented schedule ended on 2026-08-01, yet its source synced on 2026-09-14: the KB doc is
+//               behind the tenant — "Cannot judge yet" (doc-stale), never "Schedule ended"
+//   p-newcohort a monthly cron, one cohort admitted on 2026-08-01, all completed, sends in August only: too new to
+//               judge — "Cannot judge yet" (too-new), never "No recent sends" under the flat threshold
+//   p-sendfail  daily cron, synced, admitting; its dropped participants carry the Send Email step's own drops (a
+//               reject, the bounce list, an opt-out): bad addresses and a business rule, so "Working as expected",
+//               never "Step errors this period"
+//   p-oldshort  hand-fed, sent in two months a year ago with people still in flight: a SHORT history that is NOT
+//               new reads "No recent sends" under the flat threshold (the too-new rule does not reach it)
+const TWOSCHED = { id: "p-twosched", name: "Acme Two-schedule Chain", model: "DRIPV2", modelName: "Email Chain", statuses: ["PROCESSING"], type: "CUSTOMER", folderId: "808", months: monthsBetween("2025-10", LAST_MONTH), accounts: [0, 1], perAccount: 1, fixedDay: "14", freshEntry: true, lastSync: "2026-09-14 06:05:00",
+  schedules: [sched(DAILY, { jobType: "ADVANCED_OUTREACH_SCHEDULE", startTime: 1678665600000, endTime: 1710288000000 }), sched("0 0 6 * * ? *", { jobType: "ADVANCED_OUTREACH_BIONIC_QUERY", startTime: 1678665600000, endTime: 1899417600000 })],
+  steps: [{ stepId: "st-ts-1", stepName: "Two-schedule note", order: 1, templateId: "tpl-twosched", variants: ["var-twosched"] }] };
+const STALEDOC = { id: "p-staledoc", name: "Acme Stale Doc Chain", model: "DRIPV2", modelName: "Email Chain", statuses: ["PROCESSING"], type: "CUSTOMER", folderId: "808", months: monthsBetween("2026-03", LAST_MONTH), accounts: [2, 3], perAccount: 1, lastSync: "2026-09-14 08:01:00", schedules: [sched("0 0 8 ? * MON *", { endTime: 1785542400000 })], steps: [{ stepId: "st-sd-1", stepName: "Stale doc note", order: 1, templateId: "tpl-staledoc", variants: ["var-staledoc"] }] };
+const NEWCOHORT = { id: "p-newcohort", name: "Acme New Cohort Chain", model: "DRIPV2", modelName: "Email Chain", statuses: ["PROCESSING"], type: "CUSTOMER", folderId: "808", months: ["2026-08"], accounts: [4, 5, 6], perAccount: 2, fixedDay: "01", fixedState: "COMPLETED", lastSync: "2026-09-01 09:00:12", schedules: [sched("0 0 9 1 * ? *")], steps: [{ stepId: "st-nc-1", stepName: "New cohort note", order: 1, templateId: "tpl-newcohort", variants: ["var-newcohort"] }] };
+const SENDFAIL = { id: "p-sendfail", name: "Acme Send Fail Chain", model: "DRIPV2", modelName: "Email Chain", statuses: ["PROCESSING"], type: "CUSTOMER", folderId: "808", months: monthsBetween("2026-06", LAST_MONTH), accounts: [7, 8, 9], perAccount: 3, fixedDay: "14", freshEntry: true, sendFail: true, fixedState: "DROP", lastSync: "2026-09-14 08:01:00", schedules: [sched(DAILY)], steps: [{ stepId: "st-sf-1", stepName: "Send Email", order: 1, templateId: "tpl-sendfail", variants: ["var-sendfail"] }] };
+const OLDSHORT = { id: "p-oldshort", name: "Acme Old Short Chain", model: "DRIPV2", modelName: "Email Chain", statuses: ["PROCESSING"], type: "CUSTOMER", folderId: "808", months: ["2025-11", "2025-12"], accounts: [10, 11], perAccount: 1, fixedState: "ACTIVE", steps: [{ stepId: "st-os-1", stepName: "Old short note", order: 1, templateId: "tpl-oldshort", variants: ["var-oldshort"] }] };
+// The third round of F-491 (2026-10-08, redesigned: the KB is the one source of schedules; what it lacks is named, never guessed):
+//   p-undoc     an Active daily program the KB has NO doc for (created after its last journey capture), synced yesterday,
+//               its participants all completed: "Cannot judge yet" (no-doc) — never "Finished" and never ingest
+//               one-time from the missing doc (the tenant's twelfth undocumented program was a daily cron read as a one-off)
+//   p-behind    documented, but the list says it was modified AFTER its doc was written: judged from the doc (Working as
+//               expected) and flagged behind, named by honesty.kb and the kb-behind-tenant caveat
+const UNDOC = { id: "p-undoc", name: "Acme Undocumented Chain", model: "DRIPV2", modelName: "Email Chain", statuses: ["PROCESSING"], type: "CUSTOMER", folderId: "808", months: monthsBetween("2026-03", LAST_MONTH), accounts: [0, 2], perAccount: 1, fixedDay: "14", freshEntry: true, fixedState: "COMPLETED", noDoc: true, lastSync: "2026-09-14 10:15:00", schedules: [sched("0 15 10 1/1 * ? *")], steps: [{ stepId: "st-ud-1", stepName: "Undocumented note", order: 1, templateId: "tpl-undoc", variants: ["var-undoc"] }] };
+const BEHIND = { id: "p-behind", name: "Acme Behind Doc Chain", model: "DRIPV2", modelName: "Email Chain", statuses: ["PROCESSING"], type: "CUSTOMER", folderId: "808", months: monthsBetween("2026-03", LAST_MONTH), accounts: [1, 3], perAccount: 1, fixedDay: "14", freshEntry: true, modifiedDate: "2026-09-10T15:00:00.000Z", lastSync: "2026-09-14 08:01:00", schedules: [sched(DAILY)], steps: [{ stepId: "st-bh-1", stepName: "Behind doc note", order: 1, templateId: "tpl-behind", variants: ["var-behind"] }] };
+const SIGNALS = [ENDED, OVERDUE, NOBODY, REFUSED, STEPERR, DISABLED, TWOSCHED, STALEDOC, NEWCOHORT, SENDFAIL, OLDSHORT, UNDOC, BEHIND];
+// What the product writes on a participant who got in and fell off at a STEP (ao_participants.FailureReasons;
+// measured 2026-10-07, the Send Email step's own drops 2026-10-08), by the participant's state. `kind` is the
+// oracle's key. The first two DROP wordings keep their positions (the generator indexes them).
+export const STEP_REASONS = {
+  DROP: [
+    { kind: "bounce-drop", text: (step) => `Email is Bounce, participant is dropped from process at step '${step}'` },
+    { kind: "cta-failed", text: () => "CTA creation failed at step 'Create CTA', Reason: 'Found invalid IDs in fields : OwnerId'" },
+    { kind: "reject-drop", text: (step) => `Email is Reject, participant is dropped from process at step '${step}'` },
+    { kind: "bounce-list-at-send", text: (step) => `Sending email failed with errors Email Failed: Recipient on Gainsight bounce list at step ${step}` },
+    { kind: "opt-out-at-send", text: (step) => `Sending email failed with errors Email Failed: Recipient has opted out at step ${step}` },
+  ],
+  KNOCKED_OFF: [{ kind: "record-delete", text: () => "Participant was dropped from the journey as part of Record Delete operation. The base object record that got deleted was of type: Company_Person" }],
+  SYSTEM_ERROR: [{ kind: "platform-error", text: () => "Failed to evaluate condition, Reason: null" }],
+};
 const BLAST_ACCOUNTS = Array.from({ length: 60 }, (_, i) => ({ Gsid: `co-b${pad(i + 1)}`, Name: `Acme Blast Customer ${pad(i + 1)}` }));
 const BLAST_NAMES = ["ann", "bo", "cy", "dee", "eli", "fay", "gus", "hal", "ivy", "jo", "kit", "lou", "max", "ned", "oz", "pru", "quin", "roy", "sy", "tu"];
 export const OWN_SITE_UNSUBSCRIBE = "https://www.acme.com/mail-settings";
@@ -153,6 +257,9 @@ const TEMPLATE_NAMES = {
   "tpl-welcome": "Acme Welcome", "tpl-day7": "Acme Day 7", "tpl-nps": "Acme NPS Request", "tpl-renew": "Acme Renewal",
   "tpl-renew-b": "Acme Renewal Thanks", "tpl-promo": "Acme Promo", "tpl-unlisted": "Acme Unlisted", "tpl-gone": "Acme Gone",
   "tpl-prefs": "Acme Prefs", "tpl-prefs-mix": "Acme Prefs Follow-up", "tpl-blast": "Acme Announcement", "tpl-quiet": "Acme Quiet",
+  "tpl-quarter": "Acme Quarterly", "tpl-sporadic": "Acme Sporadic", "tpl-once": "Acme One-time", "tpl-lapsed": "Acme Digest",
+  "tpl-ended": "Acme Ended", "tpl-overdue": "Acme Overdue", "tpl-nobody": "Acme Nobody", "tpl-refused": "Acme Refused", "tpl-steperr": "Acme Step Error", "tpl-disabled": "Acme Disabled",
+  "tpl-twosched": "Acme Two-schedule", "tpl-staledoc": "Acme Stale Doc", "tpl-newcohort": "Acme New Cohort", "tpl-sendfail": "Acme Send Fail", "tpl-oldshort": "Acme Old Short", "tpl-undoc": "Acme Undocumented", "tpl-behind": "Acme Behind Doc",
 };
 // Click behaviour per template (the five R19 fixtures ride on these):
 //   content — content-link clicks are recorded
@@ -177,21 +284,52 @@ const INTERNAL_PEOPLE = [
 // What a mail service writes for a bounce: free text that NAMES the recipient
 // and carries ids. Every address and id here is fictional. `kind` is the
 // oracle's key: which message a row is, written by the generator that chose it.
+// "unknown-user-local" carries an address the email mask cannot see (no dot
+// after the @, no digit in it): the category CUTS it where the mask would keep it.
 export const BOUNCE_REASONS = [
   { kind: "unknown-user", text: (email, n) => `550 5.1.1 <${email}>: Recipient address rejected: User unknown in virtual mailbox table (ref ${8842100000 + n})` },
   { kind: "policy", text: (email, n) => `smtp;554 5.7.1 Message for ${email} blocked by policy at 203.0.113.${n % 250}, id=4f9a2c1e-0000-4000-8000-${String(100000000000 + n)}` },
   { kind: "mailbox-full", text: () => "452 4.2.2 Mailbox full" },
   { kind: "none", text: () => null },
+  { kind: "unknown-user-local", text: (email) => `550 5.1.1 <${email.split("@")[0]}@localhost>: Recipient address rejected: User unknown in virtual mailbox table` },
 ];
 const bounceReason = (n) => BOUNCE_REASONS[n % BOUNCE_REASONS.length];
-// What the product writes for a participant it could not process.
+// FICTIONAL failure categories, in the shape the adapter's table takes (S3b):
+// a pattern the server counts with CONTAINS, the label a row keeps instead of
+// its text, and the one-sentence definition a page shows. The shipped list in
+// engagement-query.mjs is EMPTY until V2 captures the product wordings; this
+// list proves the mechanism over the fictional tenant. "Mailbox full" and a
+// bounce with no reason are in no category: they are the "Other" rows.
+export const FIXTURE_BOUNCE_CATEGORIES = [
+  { id: "user-unknown", label: "Recipient address rejected: user unknown", pattern: "User unknown in virtual mailbox table", definition: "The receiving mail server says the address does not exist." },
+  { id: "blocked-by-policy", label: "Message blocked by policy", pattern: "blocked by policy", definition: "The receiving mail server refused the message under a policy of its own." },
+];
+// Which category each bounce kind lands in, written by hand: the oracle's half.
+export const FIXTURE_BOUNCE_KIND_CATEGORY = { "unknown-user": "user-unknown", "unknown-user-local": "user-unknown", policy: "blocked-by-policy", "mailbox-full": null, none: null };
+// What the product writes for a participant it refused at entry. The first two are the shipped EXPECTED
+// wordings (measured 2026-10-07); the others carry a value the mask must take out.
 export const FAILURE_REASONS = [
+  { kind: "already-in-list", text: () => "Participant already exists in participant list" },
   { kind: "invalid-email", text: (i) => `Email address first.last${i}@c0${(i % 9) + 1}.example.com is invalid` },
+  { kind: "unique-criteria", text: () => "Participant with unique criteria already exists" },
   { kind: "no-company", text: (i) => `Participant 1P02ACMEX${String(1000000 + i)}ZQ has no company` },
   // One row carries its reasons as a JSON array of texts.
   { kind: "array", text: () => JSON.stringify(["Missing required field: Email", "Duplicate participant"]) },
+  // The Send Email step's bounced-recipient refusal (measured 2026-10-08 on the largest program's newest page): a
+  // shipped BAD-ADDRESS wording, with the address the mask must take out.
+  { kind: "bounced-at-send", text: (i) => `Bounced recipient(to) email first.last${i}@c0${(i % 9) + 1}.example.com' in Step 'Send Email'` },
 ];
+// The UNEXPECTED refusal (a data problem), as the product writes it: a TEMPLATE whose field label the platform fills in
+// per program (three labels measured on one tenant, 2026-10-08) — every spelling is one category (F-484, redesigned).
+export const NULL_EMAIL_REASON = "Recipient Email Address field contains Invalid value {null} for EMAIL data type";
+export const NULL_EMAIL_REASONS = [NULL_EMAIL_REASON, "Custom field contains Invalid value {null} for EMAIL data type", "Manager Email Address field contains Invalid value {null} for EMAIL data type"];
+// A wording NO shipped category knows (fictional product text): unclassified, kind unknown, never a known kind.
+export const UNKNOWN_REASON = "Participant source returned no rows for the mapped object";
+// A step-failure wording no shipped step category knows: the step remainder is unclassified too.
+export const UNKNOWN_STEP_REASON = "Participant could not be processed: unexpected engine state at step 'Step error note'";
 const PARTICIPANT_STATES = ["ACTIVE", "COMPLETED", "ACTIVE", "COMPLETED", "DROP", "ACTIVE", "SYSTEM_ERROR", "COMPLETED", "KNOCKED_OFF"];
+// When the platform's own errors happened on this tenant: one incident, long before any window the suites pull.
+const PLATFORM_INCIDENT = "2025-06-20T03:00:00.000Z";
 
 const wrapClicks = (entries) => `{type=json, value=${JSON.stringify(entries)}, null=true}`;
 const LINKS = {
@@ -224,6 +362,11 @@ const CONTENT_KINDS = new Set(["content", "lookalike"]);
  *   bothFlags       true — some attempts that bounced at send are ALSO flagged rejected (one failure, two flags)
  *   silent          true — two more Active programs: one whose last send is months back, one with no send at all
  *   noHealthObjects true — ao_failed_participants and ao_participants have no schema
+ *   cadence         true — four more Active, documented programs for the cadence-aware silent rules (see CADENCE)
+ *   manyFailures    number — that many more failed participants on p-onboard, each with a distinct value in its reason
+ *   outsiderFailures number — that many refused participants on the DRAFT program (never selected: no sends), all
+ *                   refused this month — more than a sample page holds (F-484's class: a tenant-wide page is theirs)
+ *   signals         true — six more Active, documented programs, one per health signal (see SIGNALS)
  */
 export function buildTenant(variant = {}) {
   const log = [];
@@ -235,7 +378,7 @@ export function buildTenant(variant = {}) {
 
   const send = (program, step, month, { account, person, email, source = JO_SOURCE, addressType = "To", onDay = null }) => {
     n++;
-    const day = onDay ?? pad((n % 27) + 1);
+    const day = onDay ?? program.fixedDay ?? pad((n % 27) + 1);
     const executed = `${month}-${day}T10:00:00.000Z`;
     if (executed.slice(0, 10) >= cutoff) return;
     const tpl = step.templateId;
@@ -280,9 +423,22 @@ export function buildTenant(variant = {}) {
     // The JO send log mirrors each To-row of a JO program, with the step and
     // variant the delivery log lacks. A person re-enters p-onboard every six
     // months, so participant records outnumber people.
-    const entry = program.id === "p-onboard" ? Math.floor(program.months.indexOf(month) / 6) : 0;
+    // The step-error program (and any program marked freshEntry) admits its people afresh every month (so its admissions are recent).
+    const entry = program.id === "p-onboard" ? Math.floor(program.months.indexOf(month) / 6) : program.stepErrors || program.freshEntry ? program.months.indexOf(month) : 0;
     const parId = `par-${program.id}-${person}-${entry}`;
-    if (!participants.has(parId)) participants.set(parId, { Gsid: parId, AdvancedOutreachId: program.id, ParticipantState: PARTICIPANT_STATES[participants.size % PARTICIPANT_STATES.length] });
+    if (!participants.has(parId)) {
+      // The state cycles; a one-off program's participants have all finished (p-once: a finished campaign).
+      // The lapsed digest keeps people in flight (so it is late, not finished). A fixedState program's are all one state.
+      const state = program.fixedState ?? (program.id === "p-once" ? "COMPLETED" : program.id === "p-lapsed" ? "ACTIVE" : PARTICIPANT_STATES[participants.size % PARTICIPANT_STATES.length]);
+      // Admitted (CreatedAt) at the first send; a participant who fell off at a step carries the product's
+      // wording and was last touched when it fell (the platform's errors at the one incident; the step-error
+      // program's this month). The underscore key is the oracle's. A sendFail program's drops are the Send Email
+      // step's own (the three wordings after the first two), in turn.
+      const reasons = STEP_REASONS[state] ?? null;
+      const reason = reasons ? reasons[state === "DROP" && program.sendFail ? 2 + (participants.size % 3) : program.stepErrors ? 1 % reasons.length : 0] : null;
+      const modified = state === "SYSTEM_ERROR" ? (program.stepErrors ? "2026-09-12T03:00:00.000Z" : PLATFORM_INCIDENT) : executed;
+      participants.set(parId, { Gsid: parId, AdvancedOutreachId: program.id, ParticipantState: state, ParticipantSourceType: "QUERY_BUILDER", CreatedAt: executed, ModifiedAt: modified, FailureReasons: reason ? reason.text(step.stepName ?? "Step") : null, _stepKind: reason?.kind ?? null });
+    }
     const variantId = step.variants[n % step.variants.length];
     joLog.push({
       Gsid: `jo-${String(n).padStart(5, "0")}`, AdvancedOutreachId: program.id, StepId: step.stepId,
@@ -306,9 +462,9 @@ export function buildTenant(variant = {}) {
     }
   };
 
-  const listed = [...PROGRAMS, ...(variant.ownSiteUnsub ? [OWN_SITE] : []), ...(variant.massDay ? [BLAST] : []), ...(variant.silent ? [QUIET, NEVER] : [])];
+  const listed = [...PROGRAMS, ...(variant.ownSiteUnsub ? [OWN_SITE] : []), ...(variant.massDay ? [BLAST] : []), ...(variant.silent ? [QUIET, NEVER] : []), ...(variant.cadence ? CADENCE : []), ...(variant.signals ? SIGNALS : [])];
   // A variant's program goes last, so every other send keeps its number.
-  for (const program of [...PROGRAMS, UNLISTED, DELETED, ...(variant.ownSiteUnsub ? [OWN_SITE] : []), ...(variant.silent ? [QUIET] : [])]) {
+  for (const program of [...PROGRAMS, UNLISTED, DELETED, ...(variant.ownSiteUnsub ? [OWN_SITE] : []), ...(variant.silent ? [QUIET] : []), ...(variant.cadence ? CADENCE : []), ...(variant.signals ? SIGNALS : [])]) {
     for (const month of program.months) {
       for (const step of program.steps) {
         if (program.internalOnly) {
@@ -343,7 +499,7 @@ export function buildTenant(variant = {}) {
   // counts are larger than any window's, as on a program older than the window.
   for (const [i, status] of ["Submitted", "Submitted", "Partially Submitted", null].entries()) {
     const parId = `par-p-nps-early-${i}`;
-    participants.set(parId, { Gsid: parId, AdvancedOutreachId: "p-nps", ParticipantState: "COMPLETED" });
+    participants.set(parId, { Gsid: parId, AdvancedOutreachId: "p-nps", ParticipantState: "COMPLETED", ParticipantSourceType: "QUERY_BUILDER", CreatedAt: `2025-03-0${i + 1}T09:00:00.000Z`, ModifiedAt: `2025-03-1${i}T12:00:00.000Z`, FailureReasons: null, _stepKind: null });
     surveyRows.push({ Gsid: `sp-early-${i}`, AOParticipantId: parId, Responded: status != null, RespondedDate: status ? `2025-03-1${i}T12:00:00.000Z` : null, ResponseStatus: status ?? "Not Responded", SurveyOpened: true });
   }
 
@@ -351,24 +507,74 @@ export function buildTenant(variant = {}) {
   // one of them a submitted response inside the window.
   for (const [i, status] of ["Submitted", null, null].entries()) {
     const parId = `par-p-nps-test-${i}`;
-    participants.set(parId, { Gsid: parId, AdvancedOutreachId: "p-nps", ParticipantState: "COMPLETED" });
+    participants.set(parId, { Gsid: parId, AdvancedOutreachId: "p-nps", ParticipantState: "COMPLETED", ParticipantSourceType: "QUERY_BUILDER", CreatedAt: "2026-07-15T09:00:00.000Z", ModifiedAt: "2026-07-20T12:00:00.000Z", FailureReasons: null, _stepKind: null });
     surveyRows.push({ Gsid: `sp-test-${i}`, AOParticipantId: parId, Responded: status != null, RespondedDate: status ? "2026-07-20T12:00:00.000Z" : null, ResponseStatus: status ?? "Not Responded", SurveyOpened: true, TestParticipant: true });
   }
   for (const r of surveyRows) if (!("TestParticipant" in r)) r.TestParticipant = false;
 
-  // Participants the programs could not process: one row each, with the reason
-  // as the product wrote it. p-gone's are a deleted program's and must be left out.
+  // Participants the programs refused at entry: one row each, with the reason as the product wrote it and
+  // the day the same participant was LAST refused (ModifiedAt moves when the key is refused again; measured).
+  // p-gone's are a deleted program's and must be left out. p-onboard's refusals of the window's months are spread
+  // over July to September 2026 so the per-month table and the samples have something to read; p-renew's all
+  // fall in April and May 2026 — inside the pull's window, BEFORE the day window — so a program with refusals the
+  // per-month table shows but none still happening is never picked for a sample (F-484, redesigned 2026-10-08).
   const failedParticipants = [];
-  for (const [programId, count] of /** @type {Array<[string, number]>} */ ([["p-onboard", 7], ["p-renew", 4], ["p-gone", 2]])) {
+  const refusedOn = (i) => `2026-0${7 + (i % 3)}-${pad(1 + (i % 27))}T06:00:00.000Z`;
+  const refusedBeforeDayWindow = (i) => `2026-0${4 + (i % 2)}-${pad(1 + i)}T06:00:00.000Z`;
+  // p-nps's two are recent too, so a cap of one program has one to name.
+  for (const [programId, count] of /** @type {Array<[string, number]>} */ ([["p-onboard", 7], ["p-renew", 4], ["p-nps", 2], ["p-gone", 2]])) {
     for (let i = 0; i < count; i++) {
       const reason = FAILURE_REASONS[(i + (programId === "p-renew" ? 1 : 0)) % FAILURE_REASONS.length];
-      failedParticipants.push({ Gsid: `fp-${programId}-${i}`, AdvancedOutreachId: programId, FailureReasons: reason.text(i), OccurrenceCount: 1 + (i % 3), _failureKind: reason.kind });
+      failedParticipants.push({ Gsid: `fp-${programId}-${i}`, AdvancedOutreachId: programId, FailureReasons: reason.text(i), OccurrenceCount: 1 + (i % 3), ModifiedAt: programId === "p-renew" ? refusedBeforeDayWindow(i) : refusedOn(i), _failureKind: reason.kind });
     }
   }
+  // The chronic variant (F-484, redesigned): p-onboard's page-and-a-half of Send Email opt-out refusals are the
+  // NEWEST rows, each refused once; its twenty null-address refusals are older in the window and each refused forty
+  // times or more — the wording that dominates the program, which a newest-first page could not see.
+  for (let i = 0; i < (variant.chronicFailures ? 150 : 0); i++) {
+    failedParticipants.push({ Gsid: `fp-chronic-new-${i}`, AdvancedOutreachId: "p-onboard", FailureReasons: `GlobalOptOut recipient(to) email first.last${i}@c0${(i % 9) + 1}.example.com' in Step 'Send Email'`, OccurrenceCount: 1, ModifiedAt: `2026-09-${pad(10 + (i % 5))}T${pad(i % 24)}:${pad(i % 60)}:00.000Z`, _failureKind: "opt-out-at-send" });
+  }
+  for (let i = 0; i < (variant.chronicFailures ? 20 : 0); i++) {
+    failedParticipants.push({ Gsid: `fp-chronic-old-${i}`, AdvancedOutreachId: "p-onboard", FailureReasons: NULL_EMAIL_REASONS[i % NULL_EMAIL_REASONS.length], OccurrenceCount: 40 + i, ModifiedAt: `2026-09-01T0${i % 10}:00:00.000Z`, _failureKind: "null-email" });
+  }
+  // The large variant: most failures share one wording with a distinct value in each (F-484's class).
+  for (let i = 0; i < (variant.manyFailures ?? 0); i++) {
+    failedParticipants.push({ Gsid: `fp-many-${i}`, AdvancedOutreachId: "p-onboard", FailureReasons: FAILURE_REASONS[1].text(1000 + i), OccurrenceCount: 1, ModifiedAt: refusedOn(i), _failureKind: FAILURE_REASONS[1].kind });
+  }
+  // The outsider (F-484 reopened): the draft program, never selected, refused more participants this month
+  // than a sample page holds — a tenant-wide first page would be all theirs.
+  for (let i = 0; i < (variant.outsiderFailures ?? 0); i++) {
+    failedParticipants.push({ Gsid: `fp-outsider-${i}`, AdvancedOutreachId: "p-draft", FailureReasons: FAILURE_REASONS[0].text(i), OccurrenceCount: 1, ModifiedAt: `2026-09-14T0${i % 10}:00:00.000Z`, _failureKind: FAILURE_REASONS[0].kind });
+  }
+  // The signals variant's refusals: p-refused's recent ones carry the UNEXPECTED null-email wording beside
+  // expected ones; p-nobody's are all expected (and older).
+  if (variant.signals) {
+    // Four expected refusals, four null addresses (one per field label the platform writes, cycling) and four of a
+    // wording no list knows: the split reads 4 business-rule, 4 bad-address (ONE category), 4 unclassified (F-484).
+    for (let i = 0; i < 12; i++) failedParticipants.push({ Gsid: `fp-refused-${i}`, AdvancedOutreachId: "p-refused", FailureReasons: i % 3 === 0 ? FAILURE_REASONS[0].text(i) : i % 3 === 1 ? NULL_EMAIL_REASONS[Math.floor(i / 3) % NULL_EMAIL_REASONS.length] : UNKNOWN_REASON, OccurrenceCount: 1 + i, ModifiedAt: `2026-09-${pad(2 + i)}T06:00:00.000Z`, _failureKind: i % 3 === 0 ? "already-in-list" : i % 3 === 1 ? "null-email" : "unknown-wording" });
+    // One participant of the step-errors program fell off for a reason the shipped step list does not name.
+    participants.set("par-steperr-unknown", { Gsid: "par-steperr-unknown", AdvancedOutreachId: "p-steperr", ParticipantState: "DROP", ParticipantSourceType: "QUERY_BUILDER", CreatedAt: "2026-09-10T09:00:00.000Z", ModifiedAt: "2026-09-12T09:00:00.000Z", FailureReasons: UNKNOWN_STEP_REASON, _stepKind: "unknown-step" });
+    for (let i = 0; i < 6; i++) failedParticipants.push({ Gsid: `fp-nobody-${i}`, AdvancedOutreachId: "p-nobody", FailureReasons: FAILURE_REASONS[i % 2 === 0 ? 0 : 2].text(i), OccurrenceCount: 1 + i, ModifiedAt: `2026-09-${pad(2 + i)}T06:00:00.000Z`, _failureKind: FAILURE_REASONS[i % 2 === 0 ? 0 : 2].kind });
+  }
+  // Each program's participant sources with the time they last synced (the ingest heartbeat; F-491): one
+  // active row per documented program, plus one superseded version of p-onboard's that the standing filter
+  // must leave out. A program with no `lastSync` has never synced.
+  const sourceRows = [];
+  const syncOf = (p) => p.lastSync ?? (p.id === "p-onboard" ? "2026-09-14 08:02:11" : p.id === "p-nps" ? "2026-09-01 09:03:40" : p.id === "p-quarter" ? "2026-07-01 09:00:12" : p.id === "p-once" ? "2026-03-01 09:00:00" : p.id === "p-renew" ? "2026-03-02 10:00:00" : null);
+  for (const p of listed) {
+    if (!p.steps.length) continue;
+    sourceRows.push({ Gsid: `psc-${p.id}`, AdvancedOutreachId: p.id, ParticipantSourceType: p.schedules ? "QUERY_BUILDER" : "CSV", LastSyncedOn: syncOf(p), ActiveVersion: true, Deleted: false, ParticipantOperationType: "ADD_ALL_PARTICIPANT_IN_POWER_LIST" });
+  }
+  sourceRows.push({ Gsid: "psc-p-onboard-v1", AdvancedOutreachId: "p-onboard", ParticipantSourceType: "QUERY_BUILDER", LastSyncedOn: "2025-12-01 08:00:00", ActiveVersion: false, Deleted: false, ParticipantOperationType: "ADD_ALL_PARTICIPANT_IN_POWER_LIST" });
 
   if (variant.extraJoRow) joLog.push({ ...joLog.find((r) => r.AdvancedOutreachId === "p-onboard" && r.CreatedAt.startsWith("2026-08")), Gsid: "jo-extra", EmailLogId: null });
 
-  const fields = (names, types = {}) => names.map((fieldName) => ({ fieldName, dataType: types[fieldName] ?? "STRING", meta: { filterable: true, groupable: true, aggregatable: true } }));
+  // A JSON-path field (JSONSTRING) is declared neither filterable nor groupable, as the real schema declares it (S3b).
+  const fields = (names, types = {}) => names.map((fieldName) => {
+    const dataType = types[fieldName] ?? "STRING";
+    const json = dataType === "JSONSTRING";
+    return { fieldName, dataType, meta: { filterable: !json, groupable: !json, aggregatable: true } };
+  });
   const schemas = {
     email_log_v2: fields(
       ["Gsid", "Source", "SourceId", "SourceName", "AddressType", "EmailTemplateId", "EmailTemplateName", "ExecutedDate", "SentDate", "IsSent", "IsOpened", "IsBounced", "IsRejected", "IsUnsubscribed", "IsSpam", "BounceType", "BouncedReason", "LowerCaseEmailId", "GsCompanyId", "GsPersonId", "LinkClickedCount", "LinkClickedJson"],
@@ -383,17 +589,19 @@ export function buildTenant(variant = {}) {
       { Gsid: "GSID", AOParticipantId: "LOOKUP", Responded: "BOOLEAN", RespondedDate: "DATETIME", SurveyOpened: "BOOLEAN", TestParticipant: "BOOLEAN" }
     ),
     company: fields(["Gsid", "Name"], { Gsid: "GSID" }),
-    ao_failed_participants: fields(["Gsid", "AdvancedOutreachId", "FailureReasons", "OccurrenceCount"], { Gsid: "GSID", FailureReasons: "JSONSTRING", OccurrenceCount: "NUMBER" }),
-    ao_participants: fields(["Gsid", "AdvancedOutreachId", "ParticipantState"], { Gsid: "GSID" }),
+    ao_failed_participants: fields(["Gsid", "AdvancedOutreachId", "FailureReasons", "OccurrenceCount", "ModifiedAt"], { Gsid: "GSID", FailureReasons: "JSONSTRING", OccurrenceCount: "NUMBER", ModifiedAt: "DATETIME" }),
+    // FailureReasons is a plain STRING here (filterable: CONTAINS works), unlike the refusal object's JSON-path field (measured 2026-10-07).
+    ao_participants: fields(["Gsid", "AdvancedOutreachId", "ParticipantState", "ParticipantSourceType", "CreatedAt", "ModifiedAt", "FailureReasons"], { Gsid: "GSID", CreatedAt: "DATETIME", ModifiedAt: "DATETIME" }),
+    ao_participant_source_configuration: fields(["Gsid", "AdvancedOutreachId", "ParticipantSourceType", "LastSyncedOn", "ActiveVersion", "Deleted", "ParticipantOperationType"], { Gsid: "GSID", LastSyncedOn: "DATETIME", ActiveVersion: "BOOLEAN", Deleted: "BOOLEAN" }),
   };
-  if (variant.noHealthObjects) { delete schemas.ao_failed_participants; delete schemas.ao_participants; }
+  if (variant.noHealthObjects) { delete schemas.ao_failed_participants; delete schemas.ao_participants; delete schemas.ao_participant_source_configuration; }
   if (variant.dropSchemaField) {
     const { object, field } = variant.dropSchemaField;
     schemas[object] = schemas[object].filter((f) => f.fieldName !== field);
   }
   if (variant.noSurveyObject) delete schemas.survey_participant;
 
-  const tables = { email_log_v2: log, ao_emails: joLog, survey_participant: surveyRows, company: variant.massDay ? [...ACCOUNTS, ...BLAST_ACCOUNTS] : ACCOUNTS, ao_participants: [...participants.values()], ao_failed_participants: failedParticipants };
+  const tables = { email_log_v2: log, ao_emails: joLog, survey_participant: surveyRows, company: variant.massDay ? [...ACCOUNTS, ...BLAST_ACCOUNTS] : ACCOUNTS, ao_participants: [...participants.values()], ao_failed_participants: failedParticipants, ao_participant_source_configuration: sourceRows };
   const byGsid = Object.fromEntries(Object.entries(tables).map(([name, rows]) => [name, new Map(rows.map((r) => /** @type {[string, *]} */ ([r.Gsid, r])))]));
   const token = variant.token ?? { state: "valid", seconds: 3200 };
   return {
@@ -420,8 +628,8 @@ export function programPayload(p) {
       advancedOutreach: {
         advancedOutreachId: p.id, advancedOutreachName: p.name, advancedOutreachModel: p.model, advancedOutreachModelName: p.modelName,
         advancedOutreachType: p.type, advancedOutreachStatus: p.statuses[0], folderId: p.folderId, stepJson: JSON.stringify(stepJson),
-        // A schedule sits on the participant source, as embedded JSON.
-        ...(p.schedules ? { participantSourceConfigurations: [{ participantSourceConfigurationId: `psc-${p.id}`, participantSourceType: "QUERY", scheduleInfo: JSON.stringify({ schedules: p.schedules }) }] } : {}),
+        // A schedule sits on the participant source, as embedded JSON; the source carries its last sync too.
+        ...(p.schedules ? { participantSourceConfigurations: [{ participantSourceConfigurationId: `psc-${p.id}`, participantSourceType: "QUERY", lastSyncedOn: p.lastSync ? Date.parse(p.lastSync.replace(" ", "T") + "Z") : null, scheduleInfo: JSON.stringify({ schedules: p.schedules }) }] } : {}),
       },
       versions: [],
     },
@@ -433,12 +641,12 @@ export const listedPrograms = () => PROGRAMS;
 // doc per listed program that has a design — except p-promo, which the KB has
 // no doc for (its template gets no step name), and p-unlisted, which the list
 // never showed setup.
-export function kbFiles(slug = "acme-prod") {
+export function kbFiles(slug = "acme-prod", variant = {}) {
   const files = {
   };
   const inventory = {};
-  for (const p of PROGRAMS) {
-    if (!p.steps.length || p.id === "p-promo") continue;
+  for (const p of [...PROGRAMS, ...(variant.cadence ? CADENCE : []), ...(variant.signals ? SIGNALS : [])]) {
+    if (!p.steps.length || p.id === "p-promo" || (p.noDoc && !variant.documentAll)) continue;
     files[`${slug}/journey/${p.id}.md`] = [
       `# ${p.name}`, "",
       "> Full describe doc — generated by describe-batch.mjs, captured 2026-01-15T00:00:00.000Z.", "",
@@ -456,6 +664,7 @@ export function kbFiles(slug = "acme-prod") {
 const REQUEST_ID = "Request ID: 00000000-0000-4000-8000-000000000000";
 export const FAULT_TEXT = {
   timeout: `Error: The query has timed out. Reduce data by applying filters.\n${REQUEST_ID}`,
+  unfilterable: `Error: Unrecognized data type found in Filter or Ranking fields. Modify the data type to run the report.\n${REQUEST_ID}`,
   "not-found": `Error: Advanced Outreach not found\n${REQUEST_ID}`,
   auth: "Error: Access token has expired. Run `gs-admin login` to re-authenticate.",
   outage: `Error: The communication with the external API could not be established due to a network outage. Try again later. If the issue persists, contact Gainsight Support for further assistance.\n${REQUEST_ID}`,
@@ -511,6 +720,7 @@ function evalCond(row, c, types) {
     case "EQ": return x === val;
     case "NE": return x !== val; // keeps nulls
     case "IN": return Array.isArray(val) && val.includes(x);
+    case "NOT_IN": return !(Array.isArray(val) && val.includes(x)); // keeps nulls (measured on the company lookup)
     case "GT": return typeof x === "number" && x > val;
     case "GTE": return x == null ? true : day(x) >= val; // a null date acts as later than any date
     case "LT": return x == null ? false : day(x) < val;
@@ -553,6 +763,9 @@ function rpRun(argv, tenant) {
   // A JSON-typed field can be shown, never grouped by or distinct-counted: the
   // server fails with a text that reads like an outage.
   if ([...group, ...show.filter((e) => e.aggregation === "COUNT_DISTINCT")].some((e) => !e.fieldPath && types.get(e.name) === "JSONSTRING")) return fail(FAULT_TEXT.outage);
+  // A condition on a field the schema declares not filterable fails whatever the operator (measured S3b).
+  const filterable = new Map(schema.map((f) => [f.fieldName, f.meta?.filterable !== false]));
+  if ((where.conditions ?? []).some((c) => filterable.has(c?.leftOperand?.fieldName) && !filterable.get(c.leftOperand.fieldName))) return fail(FAULT_TEXT.unfilterable);
   let rows;
   try {
     rows = tenant.tables[object].filter((r) => (where.conditions ?? []).every((c) => evalCond(r, c, types)));
@@ -580,6 +793,7 @@ function rpRun(argv, tenant) {
   };
   const aggregate = (s, members) => {
     if (s.aggregation === "COUNT") return [`count_of_${object}_${s.name}`, numCell(members.length)];
+    if (s.aggregation === "SUM") return [`sum_of_${object}_${s.name}`, numCell(members.reduce((x, r) => x + (typeof r[s.name] === "number" ? r[s.name] : 0), 0))];
     if (s.aggregation === "COUNT_DISTINCT") {
       if (s.fieldPath) {
         const hop = s.fieldPath.hops[0];
@@ -618,6 +832,18 @@ function rpRun(argv, tenant) {
     if (cell && typeof cell.v === "string" && cell.v.length % 2 === 1) delete cell.v;
   }
   out.reverse(); // rows are not returned in any useful order
+  // --order-by sorts by a SHOWN field (measured 2026-10-07 on a DATETIME, DESC); an entry that is not shown fails.
+  const orderBy = flagValue(argv, "--order-by");
+  if (orderBy !== undefined) {
+    let entries;
+    try { entries = JSON.parse(orderBy); } catch { return fail("Error: orderBy must be an array"); }
+    for (const e of entries) {
+      if (![...show, ...group].some((s) => s.name === e.name)) return fail(`Error: orderBy entry ${e.name} must exist in showFields or groupBy (spec §10.14).\n${REQUEST_ID}`);
+      const key = `${object}_${e.name}`;
+      const val = (r) => r[key]?.k ?? r[key]?.v ?? "";
+      out.sort((a, b) => (val(a) < val(b) ? -1 : val(a) > val(b) ? 1 : 0) * (e.order === "DESC" ? -1 : 1));
+    }
+  }
   const ps = flagValue(argv, "--page-size");
   const size = ps === undefined ? 50 : Number(ps) === -1 ? tenant.serverMax : Math.min(Number(ps), tenant.serverMax);
   return ok(out.slice(0, size), dedupWarning);
@@ -648,8 +874,11 @@ export function answer(argv, tenant) {
     const page = Number(flagValue(argv, "--page") ?? 1);
     const all = tenant.listed;
     const rows = all.slice((page - 1) * limit, page * limit).map((p) => ({
-      advancedOutreachId: p.id, advancedOutreachName: p.name, modified_date: 0, advancedOutreachModelName: p.modelName, folderId: p.folderId,
+      // When the program was last modified (0 = the list did not say; a doc older than it is behind the tenant, F-491).
+      advancedOutreachId: p.id, advancedOutreachName: p.name, modified_date: p.modifiedDate ? Date.parse(p.modifiedDate) : 0, advancedOutreachModelName: p.modelName, folderId: p.folderId,
       advancedOutreachStatus: p.statuses, advancedOutreachType: p.type, advancedOutreachModel: p.model, gsid: `gs-${p.id}`, testrun: false,
+      // What the list says of the participant sync (measured 2026-10-07: a boolean on every row).
+      participantSyncScheduleDisabled: p.syncDisabled === true,
     }));
     if (tenant.variant.listNoEnvelope) return ok({ result: true, requestId: "r", data: { advancedOutreaches: all.slice(0, limit).map((p) => ({ advancedOutreachId: p.id, advancedOutreachName: p.name, advancedOutreachStatus: p.statuses })) } });
     const totalPages = Math.ceil(all.length / limit);

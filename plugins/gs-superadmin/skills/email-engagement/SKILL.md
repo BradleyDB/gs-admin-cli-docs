@@ -136,6 +136,33 @@ Tell the user the estimate in one line (programs, calls, minutes). Then:
 - The user asked about accounts ("which accounts aren't opening") and did not pass
   `--accounts`: say what it adds (`estimate.accounts.addsSeconds`, in minutes) and ask
   whether to include it. A pull planned with a changed flag needs a new `<run>`.
+- `estimate.kb.undocumented + estimate.kb.behind` is above 0: the knowledge base is behind
+  the tenant for that many of the pull's programs (new programs it has no doc for, and
+  programs modified after their doc was written). Their schedules are unknown to the pull,
+  so they would read "Cannot judge yet" on the health lists. Tell the user the two counts and
+  the seconds `estimate.kb` quotes, and ask whether to re-document those programs in the
+  knowledge base now. On yes, run the three commands below, then re-issue the plan command
+  unchanged (same `<run>`: the plan re-reads the knowledge base it moved) and read the
+  summary again. On no, go on; the report's caveat names the programs and the remedy.
+  Never re-document anything beyond these programs here: bringing the whole knowledge
+  base up to date is the knowledge-base skill's own job, not this one's.
+
+The narrow re-documentation, from `estimate.kb` (three commands, in this order;
+`<journey-domain>` is the manifest's journey programs domain as `domains_indexed` names
+it, and the files are the ones the plan wrote beside `plan.json`):
+
+```
+node .gs-superadmin/plugin/scripts/manifest.mjs upsert-batch --manifest <slug>/_manifest.json --domain <journey-domain> --file <estimate.kb.listFile> --id-field advancedOutreachId --name-field advancedOutreachName --partial
+node .gs-superadmin/plugin/scripts/manifest.mjs mark --manifest <slug>/_manifest.json --keys-file <estimate.kb.keysFile> --status stale
+node .gs-superadmin/plugin/scripts/describe-batch.mjs --manifest <slug>/_manifest.json --domain <journey-domain> --out-dir <slug>/<journey-domain> --keys-file <estimate.kb.keysFile> --limit 25
+```
+
+The first registers the undocumented programs as a declared subset (`--partial` is
+mandatory; skip it when `estimate.kb.undocumented` is 0); the second marks every named
+program stale so the batch selects it; the third re-documents exactly those programs,
+one describe each, and nothing else (re-invoke until `moreRemaining` is false). A
+program the list itself lacks (`estimate.kb.unlisted`) cannot be registered this way and
+stays "Cannot judge yet"; say so.
 
 ### 3 — Pull the snapshot
 

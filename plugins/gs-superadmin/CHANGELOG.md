@@ -38,6 +38,122 @@ before.
   large and what would make the page smaller, and does not write a leaders' page above
   15 MB.
 
+Health data, re-shaped after its first run on a real tenant (the S3b batch; F-476, F-482,
+F-483 and F-484):
+
+- **Failure reasons are counted, never read as text.** Bounce reasons are counted on the
+  server by category: one filtered count per category, grouped by program, email, month
+  and bounce type, with the total beside them and an "Other" row for the rest. A
+  categorised row keeps the category's label in place of the text, so an address the
+  masking misses is cut, not stored. A small masked sample of the uncategorised text is
+  kept in the snapshot for extending the list (shown by the terminal, never on a page).
+  The shipped category list is empty until the product wordings are captured from a real
+  tenant; `--failure-categories <file.json>` adds your own, and `--expected-reason <text>`
+  names failures that are expected by design, kept apart from the rest and never hidden.
+  Participants refused at entry are an exact per-program total and an exact count per
+  month: on this CLI the reason field accepts no filter at all (its schema says so), so the
+  split by reason is a SAMPLE, read one small page per program (the refusals still
+  happening in the last 90 days, the most repeated first) and labelled as one wherever it
+  is shown. Every shipped wording has a KIND: a business rule working (already in the
+  participant list, unique criteria, met the advanced criteria, unsubscribed, opted out),
+  a bad address (a missing address, a bounce at the send step, the bounce list), or a
+  program error; "expected" means a business rule. The million-row read the first live
+  pull made is gone.
+- **A sample is read per program over the window it was picked from, never as the first
+  page of a tenant-wide read.** One program outside the selection used to fill the page;
+  then programs were picked by their refusals over the whole window and read over the last
+  90 days, so a pick could come back empty and still count as sampled. Now one count-first
+  read says which programs have refusals still happening in the last 90 days, and each
+  sample page reads exactly that window, most refusals first, at most `--sample-programs`
+  (25) a pull. The page holds the most REPEATED refusals: on the largest program measured,
+  the newest page held only its Send Email step's wordings and hid the missing-address
+  wording that dominates it. A program whose counts did not move since the previous pull
+  over the same window keeps that pull's sample at no call; the programs the cap left out
+  are named, and `plan` prices reading them so raising the cap is an informed choice.
+- **Program health is read from signals, each from its own data, and never inferred from
+  the schedule.** Measured on a real tenant: the schedule's own run-state fields are unset
+  even on programs that run daily, so no run result is read from them. The one heartbeat an
+  ingest leaves is the participant source's last sync time, read tenant-wide in one call;
+  beside it the pull reads participants admitted per day, refusals per month, and
+  participants who got in and fell off at a step, counted on the server by category (a
+  step whose action failed, a platform error, a bounce drop, a record delete). Sends are
+  judged against the program's own history for every program: an ingest cron says nothing
+  about when a program sends. Read on a real tenant and corrected: a program's schedule is
+  the LIVE one it documents (an ended job schedule documented beside the live participant
+  sync no longer reads as the program's); a documented schedule that ended before the
+  source last synced is documentation behind the tenant, never an ended schedule; a step
+  failure is a program error only when it is one (a step that cannot run, a platform
+  error), while a bounce, a reject or the bounce list at the send step is a bad address
+  and an opt-out a business rule; and a program with fewer than three months of sends,
+  all of them recent, is too new to judge rather than late. The lists an admin reads are:
+  Schedule ended, Participant sync disabled, Participant sync overdue, Only refused
+  participants arriving, Admitting nobody (no admission over the last `--quiet-due-days`
+  due days, 5 by default), Step errors this period, No recent sends, Finished campaign (a
+  one-off with no participant still moving), Active with no sends in this window, Cannot
+  judge yet (with the reason: the ingest period is longer than the window, the
+  documentation is behind the tenant, or the program is too new), and Working as
+  expected. The capped live `jo p describe` read of flagged programs is gone.
+- **Health is sized before it is read.** The plan now makes one server-side count for
+  every family that reads rows (clicked sends, bounced attempts, failed participants) and
+  prices those families from it, so the estimate covers the splits a large tenant forces.
+  A part that would exceed the row budget (`--max-pages`, 40 pages by default) is not read
+  and says why (`too-large`); a click detail over it is refused at the plan, naming what
+  to narrow.
+- **The pull time is when the facts were read.** `meta.pulledAt` is stamped when the fact
+  calls start, not when the run directory is made, and a run resumed after midnight keeps
+  the day it was planned on (`--today` still overrides). The "different parameters"
+  refusal names the parameter that moved.
+- **The cron calculator** (6 or 7 Quartz fields, lists, ranges, steps, names, L, X#n, XL)
+  decides when an ingest was last due. A cron it cannot read says so and never alarms on
+  its own; a schedule whose period is longer than the lookback window reads "cannot
+  judge", and `plan` reports the longest period among the programs so a longer
+  `--health-lookback-days` (up to a year) can be chosen.
+- **Every program's schedule rides every pull made with a knowledge base**, whether or not
+  health is pulled (`dimensions.programs[].schedule`, with its start and end dates), so a
+  grouping rule on "recurring" resolves on any dashboard, and a schedule whose kind the doc
+  does not settle leaves that trait unknown rather than "not recurring". Step names carry
+  the date they are as of, and a caveat names the oldest.
+- **Error messages are masked harder, and no harder than that**: a gateway's message id
+  with dots, hyphens, underscores, plus, slash or equals signs becomes `<id>`, while a
+  URL's scheme, host and path (a vendor's help link) and a mail host are left as they are:
+  masking them took 11 of the 30 bounce wordings a tenant captured for its category list
+  (Microsoft's dotted diagnostic codes, help links), and the samples they appear in are
+  shown by the terminal only and never leave the workspace.
+- **Every output says what is still provisional**: opens keep arriving on sends from the
+  first of the current month, and bounces and unsubscribes can still change on the months a
+  refresh reads again (the last `--repull-months`, 2 by default).
+- **Test accounts are excluded on the server** (`--test-account <company id>`, repeatable):
+  one call per family for the accounts and one for their overlap with each internal
+  domain, and they join the internal class, so the one recipients toggle covers both.
+  Distinct external counts leave them out with NOT_IN, which keeps the sends that have no
+  company at all (measured). The step table is by domain alone, and a caveat says so.
+- **Every all-time health figure carries a reason a page can render** (`all-time`), and a
+  field a query filters or groups on is checked against the schema's own filterable and
+  groupable flags before the call is made.
+
+Two redesigns after the third verdict round on a real tenant (F-484, F-491; 2026-10-08):
+
+- **A failure wording no category knows is one explicit state everywhere: `unclassified`,
+  kind `unknown`.** It is never read as a known error or a business rule and never left as
+  a blank; a program kept from admitting anyone by such a wording is on the alarm list
+  with the signal saying the cause needs investigation, and a caveat names how many
+  wordings and participants are involved and how to report them so the shipped list can
+  learn them. A category's pattern names the invariant core of a product wording, never
+  the field label the platform fills in per program: the null-address refusal, found with
+  three labels on one tenant, is one category (`invalid-field-value`, a bad address)
+  however the field is named. Sampled texts carry both how many participants bore them
+  and how many refusals those participants had in all.
+- **The knowledge base is the one source of a program's schedule, and what it lacks is
+  named, never guessed.** A program the KB does not document (created after its last
+  journey capture) reads "Cannot judge yet (no doc)": its schedule, ingest and finished
+  signals are undecided rather than read as a one-off. A documented program the list says
+  was modified after its doc was written is judged from the doc and flagged. The snapshot
+  names both sets (`honesty.kb`), a caveat says how to close the gap, and the plan prices
+  the narrow refresh (one describe per program) and writes its inputs beside `plan.json`;
+  the email-engagement skill offers that refresh before the pull. A run re-reads the KB
+  when it moved between the plan and the run. A pull made without a KB judges no program
+  "working as expected" or "finished".
+
 ## 0.46.0 — 2026-10-04
 
 Groundwork for the engagement dashboard. No skill changes: `/gs-superadmin:email-engagement
