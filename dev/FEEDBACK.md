@@ -171,6 +171,25 @@ Banked: dev/VALIDATION.md § HLT-1 / DSH-1 / DSH-5, re-banked for V2 (Y1, Y2, Y6
 Blind spots: no tenant pull was made with the new families (the two reads were counts and schema reads); the category wordings are unmeasured until Y2; DOES_NOT_CONTAINS on a null bounce reason is unmeasured (nothing depends on it); the describe payload's schedule start/end dates are V2's read. Next free F-491.
 -->
 
+<!-- tester 2026-10-08 (S3b — POINTER RE-STAMPED after the fix round 2 verdict @ hb-20261008-01 (V3): F-492 VERIFIED; F-484 REOPENED (third), F-491 REOPENED (second since its Redesign); Bradley ruled NEITHER deferred; PR #43 stays unmerged; next free F-495):
+     Branch: feat/jo-dash-s3b-health-batch at 906745c (the verdict commit, a content commit without [skip ci], so the PR suite ran on
+       the head). PR: #43 to dev, open, unmerged, MERGEABLE CLEAN.
+     Status transitions riding the branch (re-stamps the builder pointer below, which says F-484 REDESIGNED and F-491, F-492 FIXED):
+       F-492 FIXED -> VERIFIED (30 of 30 captured wordings are their own mask; hosts unmasked confirmed by Bradley). F-484 FIXED -> OPEN
+       (REOPENED, third: the redesign's window and order hold; an entry refusal's kind is decided by a literal substring that includes
+       text the platform varies per program, and an unmatched wording reads kind null in failureSamples and program-error in
+       entrySamples instead of being flagged as unclassified). F-491 FIXED -> OPEN (REOPENED, second since its Redesign: every list read
+       true by Bradley, but a signal whose input was not read, the schedule of a program the KB does not document, reports a default,
+       one-time and a one-off, instead of cannot-tell). Bradley ruled neither deferred: under rule 5 and the valve each next FIXED owes a
+       redesign. Nothing new logged; next free F-495.
+     VALIDATION section HLT-1 / DSH-1 / DSH-5 (on the branch): Y19 CLEARED; Y6 CLEARED on its bar; Y2 (participant half) FAILED.
+     CI on the final head 906745c, QUOTED per job after completion:
+         validate-plugin 37886289793: changes pass / manifests pass / validate (ubuntu-latest) pass
+         docs-drift 37886289881: drift (full) pass
+         GitGuardian Security Checks: pass
+     Open PRs to dev: #43 only. Open normal findings (F-484, F-491) gate the release, not this merge; the merge is Bradley's.
+       Detail: the tester comment and the Walk (hb-20261008-01) line on the branch's bus. -->
+
 <!-- builder 2026-10-08 (S3b — POINTER RE-STAMPED after the FIX ROUND 2: F-484 REDESIGNED (second reopen; the model replaced named — one window for the pick and the page, the most repeated refusals first), F-491 FIXED (a tune of the redesigned model: the live schedule, a stale doc, three kinds of failure, a too-new program), F-492 FIXED (hosts unmasked on Bradley's lean; a URL's path protected); F-486 (polish) carried to S4b; PR #43 stays unmerged; next free F-495):
      Branch: feat/jo-dash-s3b-health-batch at b434add → PR #43 to dev (open, unmerged; merges after V3 on Bradley's go-ahead; the tip is a
        content commit, so the PR suite runs on the head). The branch's bus carries the Redesign:, Fix:, Judge: and Sibling sweep lines, the
