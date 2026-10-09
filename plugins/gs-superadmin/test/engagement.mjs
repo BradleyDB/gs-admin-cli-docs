@@ -30,7 +30,7 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { isDeepStrictEqual } from "node:util";
 import { makeTempDir, removeTempDir, writeFiles, runNode } from "../../../test/rig.mjs";
-import {
+import { STEP_REMAINDER,
   fetchEngagement, reduceEngagement, loadRun, resolveParams, makeGate, parseWhoami, parseSentSince, parseIdList,
   expectedCalls, classifyFailure, classifyLink, readLinkClicks, parseUnsubscribeLink, validateQuery, buildQuery, splitUnit, selectAccounts, decideClickState,
   monthsBetween, ENGAGEMENT_READ_PATHS, joEngagementAdapter, readFailureReasons, healthDayWindow, HEALTH_PARTS, pickSchedule, schemaFlags, NO_SCHEDULE,
@@ -1360,9 +1360,9 @@ try {
     const sampleTexts = new Set(H.failureSamples.filter((r) => r.part === "participantFailures").map((r) => r.message));
     const perKey = new Map();
     for (const r of H.failureSamples) perKey.set([r.programId, r.part].join("|"), (perKey.get([r.programId, r.part].join("|")) ?? 0) + 1);
-    check("HLT-1 failure samples: at most five distinct masked texts per program and part (the most frequent in the page), for selected programs only, both parts present; the participant samples are the fixture's reasons as the oracle spells them masked, each with the shipped category it matches (or 'unclassified', kind unknown, never null; F-484 redesigned 2026-10-08), how many rows carried it and their occurrences; the bounce samples are the uncategorised texts only; and the part has its own marker and basis",
+    check("HLT-1 failure samples: at most five distinct masked texts per program and part (the most frequent in the page), for selected programs only, both parts present; the participant samples are the fixture's reasons as the oracle spells them masked, each with the shipped category it matches (or 'unclassified', kind unknown, never null; F-484 redesigned 2026-10-08), how many rows carried it and their occurrences; the bounce samples are the uncategorised texts only, labelled 'other' as the bounce table labels the same remainder (F-496); and the part has its own marker and basis",
       H.failureSamples.length > 3 && [...perKey.values()].every((n) => n <= SAMPLES_PER_PROGRAM) && new Set(H.failureSamples.map((r) => r.part)).size === 2 && H.failureSamples.every((r) => S.dimensions.programs.some((p) => p.id === r.programId)) &&
-        [...sampleTexts].every((m) => Object.values(FAILURE_TEXT).flat().includes(m)) && sampleTexts.size >= 5 && H.failureSamples.filter((r) => r.part === "bounceReasons").every((r) => r.message === BOUNCE_TEXT["mailbox-full"] && r.category === "unclassified" && r.kind === "unknown" && r.occurrences === r.count) &&
+        [...sampleTexts].every((m) => Object.values(FAILURE_TEXT).flat().includes(m)) && sampleTexts.size >= 5 && H.failureSamples.filter((r) => r.part === "bounceReasons").every((r) => r.message === BOUNCE_TEXT["mailbox-full"] && r.category === "other" && r.kind === "unknown" && r.occurrences === r.count) &&
         H.failureSamples.every((r) => Number.isInteger(r.count) && r.count >= 1 && r.pulledAt === PULLED_AT && typeof r.expected === "boolean") &&
         H.failureSamples.some((r) => r.message === "Participant already exists in participant list" && r.category === "already-in-list" && r.expected === true) && H.failureSamples.some((r) => r.message === "Email address <email> is invalid" && r.category === "unclassified" && r.kind === "unknown" && r.expected === false && r.occurrences >= r.count) && !H.failureSamples.some((r) => r.category == null || r.kind == null) && H.failureSamples.some((r) => r.message === "Bounced recipient(to) email <email>' in Step 'Send Email'" && r.category === "bounced-at-send" && r.kind === "bad-address" && r.expected === false) &&
         isDeepStrictEqual(S.meta.health.parts.failureSamples, { pulled: true, reason: null, basis: "sample" }) && isDeepStrictEqual(S.meta.health.parts.entrySamples, { pulled: true, reason: null, basis: "sample" }), [...sampleTexts]);
@@ -1539,6 +1539,23 @@ try {
     const kbEst = sig.summary.estimate.kb;
     const gapKeys = JSON.parse(readFileSync(join(sig.runDir, "kb-gap-keys.json"), "utf8"));
     const gapList = JSON.parse(readFileSync(join(sig.runDir, "kb-gap-list.json"), "utf8"));
+    // F-497: the step remainder's category is one constant, written on the row and read by the overlap caveat. The
+    // judge is a run whose category counts exceed the total (an overlapping list): the remainder row goes below zero
+    // under the remainder's own category, and the caveat names stepFailures.
+    {
+      const input = loadRun(sig.runDir, { cliVersion: "fixture", pluginVersion: "fixture" });
+      let bumped = 0;
+      for (const u of input.units) {
+        if (u.family !== "health-step-cat" || !Array.isArray(u.rows)) continue;
+        for (const row of u.rows) for (const cell of Object.values(row ?? {})) if (cell && typeof cell === "object" && typeof cell.v === "number" && cell.v > 0) { cell.v += 50; cell.fv = String(cell.v); cell.k = cell.v; bumped++; }
+      }
+      const over = bumped ? reduceEngagement(input) : null;
+      const remainder = over?.facts.health.stepFailures.filter((r) => r.category === STEP_REMAINDER && r.participants < 0) ?? [];
+      const caveat = over?.caveats.find((c) => c.id === "failure-categories-overlap");
+      check("F-497: a step category list that overlaps (a category's count bumped past the total in the run directory) leaves the remainder row below zero under the remainder's own category and the overlap caveat NAMES stepFailures, counting the rows; the shipped list does not overlap",
+        bumped > 0 && remainder.length > 0 && !!caveat && caveat.detail.parts.includes("stepFailures") && caveat.detail.rows >= remainder.length && STEP_REMAINDER === "unclassified" && !sig.snapshot.caveats.some((c) => c.id === "failure-categories-overlap"),
+        [bumped, remainder.length, caveat?.detail]);
+    }
     check("F-491 (redesigned) class test: a program the KB has no doc for (p-undoc: a daily cron, synced yesterday, every participant completed) reads Cannot judge yet with why no-doc, its schedule undocumented and its ingest cannot-judge — never Finished, never ingest one-time; no list decision derives from the missing doc; a documented program modified after its doc (p-behind) is judged from the doc (Working as expected, ingest on-schedule) and flagged docBehind; honesty.kb names both and the kb-behind-tenant caveat counts them with the refresh remedy",
       list("p-undoc") === "cannot-judge" && undocRow.signals.why === "no-doc" && undocRow.signals.schedule.state === "undocumented" && undocRow.signals.ingest.state === "cannot-judge" && undocRow.signals.ingest.why === "no-doc" && undocRow.signals.finished === false && undocRow.signals.ingest.lastSync === "2026-09-14" &&
         sig.snapshot.dimensions.programs.find((p) => p.id === "p-undoc").schedule === null && !sh.lists.finished.some((r) => r.programId === "p-undoc") &&
