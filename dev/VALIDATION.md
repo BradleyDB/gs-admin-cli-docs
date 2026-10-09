@@ -1704,6 +1704,15 @@ RE-VERIFICATION of F-484, F-491 and F-492 by their Judge lines plus these checks
   `none-recent`; each sample call orders by `OccurrenceCount DESC`. Bradley reads the dominant program's split: the
   null-address wording he saw in the UI is now in its `failureSamples` (the most repeated page carried it on 75 of 100
   rows at the build) and its `entrySamples` split names it under `no-email` as a bad address.
+  FAILED (S3b fix round 2 verdict @ hb-20261008-01, tester, 2026-10-08; production, reads only), on F-484 (reopened a third
+  time; Bradley ruled it not deferred). Every structural arm held: `withFailures` 64 equals a direct COUNT grouped by program
+  over the plan's day window and the selected programs, 64 of 64 with equal counts; `.window` equals `meta.health.dayWindow`;
+  `.counts` names exactly those programs; every one of the 25 picks has `failureSamples` rows, the other 39 named with reason
+  cap; month-only programs in neither list; the 25 sample calls carry the entry-window call's ModifiedAt bounds, one program
+  each, ordered by `OccurrenceCount` DESC. The dominant program's sample carries the null-address wording Bradley saw (76 of
+  100 rows), but as `Custom field contains Invalid value {null} for EMAIL data type`, which the shipped `no-email` pattern
+  (`Recipient Email Address field contains Invalid value`) does not match: kind null in `failureSamples`, `other` /
+  `program-error` in `entrySamples`. Detail and Bradley's words under F-484.
 - Y6 (the lists, re-banked for V3). `programHealth(snapshot).lists` over Y2's pull. Pass bar, from F-491's Judge line:
   Schedule ended holds ONLY programs whose every documented schedule has ended AND whose source has not synced since
   (the 20 Bradley read true at V2), none of the 15 that carry a live participant sync beside an ended job schedule
@@ -1718,12 +1727,27 @@ RE-VERIFICATION of F-484, F-491 and F-492 by their Judge lines plus these checks
   (the knob's definition: two monthly runs that admitted nobody; recorded, not a defect); every other list reads as
   at V2 (admitting-nobody 1, finished 10, no-recent-sends 1 — the weekly program Bradley called broken — ok the
   rest). Record the counts per list and Bradley's read of each list that changed.
+  CLEARED on its bar (S3b fix round 2 verdict @ hb-20261008-01, tester, 2026-10-08; production, reads only); F-491 REOPENED
+  nonetheless, on the Fix note's own claim. Counts: schedule-ended 19, admitting-nobody 5, step-errors 0, no-recent-sends 2,
+  finished 15, cannot-judge 3, ok 21, every other list 0. Every list read true by Bradley: Schedule ended holds the programs
+  whose one documented schedule ended with no sync since and none of the 15 live syncs (each now on its participant-sync
+  schedule, ends 2028–2034); the doc-stale program reads No recent sends (precedence) and Bradley read it true; Step errors 0,
+  the six V2 programs `steps.state` none with `byKind` bad-address (two with business-rule); the quarterly program on Cannot
+  judge yet, too-new, first send 2026-08, and on Admitting nobody at `--quiet-due-days 2`; the lists that changed since V2
+  (Admitting nobody 1 -> 5, Finished 10 -> 15, Cannot judge yet 0 -> 3, ok 11 -> 21) read true, Admitting nobody after one
+  extra direct read of the new members' refusals. The reopen: a program with no KB doc reads ingest `one-time` and counts as a
+  one-off for Finished from a default (a live describe shows a daily cron). Bradley's words under F-491.
 - Y19 (the mask on the live wordings, F-492). The 30 bounce wordings Bradley accepted at hb-20261007-02 (the workspace
   file, never the repo) run through `maskMessage`: pass bar, every one equals itself (the leading-space entry trims,
   nothing else changes) — 11 of 30 changed at V2, 12 counting the trim; and the previous round's order-10^3 raw sample
   texts through the mask searched with the tester's own detectors (addresses, five-digit runs, IPv4): 0 addresses, 0
   five-digit runs, 0 IPv4; host names and URL paths are EXPECTED to appear (ruling 8). Bradley confirms or overrules
   hosts unmasked.
+  CLEARED (S3b fix round 2 verdict @ hb-20261008-01, tester, 2026-10-08; workspace files, no gs-admin call). The 30 wordings:
+  29 equal, 1 trim-only, 0 changed (rules email, uuid, ipv4, token, number). The hb-20261007-02 texts through the mask, the
+  tester's own detectors: 0 addresses, 0 `@`, 0 IPv4, 0 five-digit runs; hosts and URL paths appear as ruled. A host with a
+  digit in a label still masks whole to `<id>` (accepted in the Fix note). Bradley confirmed hosts unmasked as shipped; F-492
+  VERIFIED.
 
 ## DSH-2 — the dashboard page built over a real snapshot: filtered in a browser, its size measured, a CSV export opened in a spreadsheet (banked 2026-10-04, builder, Session S4a; verdict at V2)
 
