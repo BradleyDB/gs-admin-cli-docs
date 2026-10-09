@@ -173,9 +173,11 @@ Walk (hb-20261008-02): 2026-10-09 (tester) — S3b FIX ROUND 3 verdict @ hb-2026
      CI on the PR head d48d863, QUOTED per job after completion: GitGuardian pass; validate-plugin 37998834674 changes
        success / manifests success / validate (ubuntu-latest) success; docs-drift 37998834652 drift (full) success
        (the push-triggered pair on 6caeaeb, 37998524693 and 37998524737, cancelled when the bus commit superseded them).
-     CI on the merged tip 3de74e1: validate-plugin 37999766315 and docs-drift 37999766279 were IN PROGRESS at this
-       writing (changes and manifests success; validate and drift (full) running); not quoted as a result here — owed
-       as a per-job quote in the next re-stamp of this pointer (F-340 rule).
+     CI on the merged tip 3de74e1, QUOTED per job after completion (re-stamped the same day): validate-plugin
+       37999766315 changes success / manifests success / validate (ubuntu-latest) success — success; docs-drift
+       37999766279 drift (full) cancelled (superseded by the bus commit bb4d205 pushed minutes later, whose docs-drift
+       37999876437 drift (full) success — success; validate-plugin did not run on bb4d205, a bus-only change outside
+       its paths). The dev tip bb4d205 therefore carries drift (full) success and the merged tip's validate suite.
      Statuses: unchanged from the handoff block below — the nine FIXED findings are verified at V2 by their Judge
        lines; F-495 (normal) gates the release, not the merge (the same ruling as the S3b close-out). The Under test
        line and canary keep hb-20261009-01 (a merged branch's last token, as after S4a's and S3b's merges); S4c's
