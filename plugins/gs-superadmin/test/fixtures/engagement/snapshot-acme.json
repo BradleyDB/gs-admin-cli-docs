@@ -302,6 +302,12 @@
     }
    }
   },
+  "templates": {
+   "pulled": true,
+   "reason": null,
+   "content": true,
+   "source": "kb"
+  },
   "refresh": {
    "mode": "full",
    "why": "no previous snapshot",
@@ -346,14 +352,17 @@
       }
      },
      "tpl-renew": {
-      "state": "unknown",
+      "state": "not-tracked",
       "evidence": {
        "clickHistory": {
         "everClicked": false,
         "firstMonth": null,
         "lastMonth": null
        },
-       "linkSettings": null
+       "linkSettings": {
+        "reading": "links-none-tracked",
+        "asOf": "2026-09-01"
+       }
       }
      },
      "tpl-renew-b": {
@@ -389,7 +398,10 @@
         "firstMonth": "2026-06",
         "lastMonth": "2026-09"
        },
-       "linkSettings": null
+       "linkSettings": {
+        "reading": "links-none-tracked",
+        "asOf": "2026-08-20"
+       }
       }
      }
     },
@@ -419,11 +431,11 @@
       }
      },
      "p-renew": {
-      "state": "unknown",
+      "state": "not-tracked",
       "templates": {
        "tracked": 0,
-       "notTracked": 1,
-       "unknown": 1
+       "notTracked": 2,
+       "unknown": 0
       }
      },
      "p-unlisted": {
@@ -596,7 +608,18 @@
       "stepCount": 1,
       "asOf": "2026-09-01T00:00:00.000Z"
      }
-    ]
+    ],
+    "lastSendMonth": "2026-09",
+    "content": {
+     "subject": "Day 7: how is it going?",
+     "body": "It has been a week since you joined Acme. <script>alert(1)</script> Need a hand? Reply to this email, ${unresolved::token}.",
+     "bodyIncluded": true,
+     "variants": [],
+     "asOf": "2026-09-02",
+     "modified": "2026-01-20",
+     "editedAfterLastSend": false,
+     "source": "kb"
+    }
    },
    {
     "id": "tpl-nps",
@@ -609,7 +632,18 @@
       "stepCount": 1,
       "asOf": "2026-08-20T00:00:00.000Z"
      }
-    ]
+    ],
+    "lastSendMonth": "2026-07",
+    "content": {
+     "subject": "How is {Product Name} working for you?",
+     "body": "Hi there,\n\nTell us how {Product Name} is working for your team: https://survey.example.com/s/nps\n\nThanks,\nAcme\n\nUnsubscribe: https://mail.example.com/unsubscribe?t=abc",
+     "bodyIncluded": true,
+     "variants": [],
+     "asOf": "2026-09-01",
+     "modified": "2026-08-10",
+     "editedAfterLastSend": true,
+     "source": "kb"
+    }
    },
    {
     "id": "tpl-renew",
@@ -622,7 +656,18 @@
       "stepCount": 2,
       "asOf": "2026-08-20T00:00:00.000Z"
      }
-    ]
+    ],
+    "lastSendMonth": "2026-09",
+    "content": {
+     "subject": "Your Acme renewal is coming up",
+     "body": "Hello,\n\nYour Acme plan renews soon. Review your plan: https://www.example.com/account/plan\nQuestions about renewals: https://www.example.com/help/renewals\n\nThe Acme team",
+     "bodyIncluded": true,
+     "variants": [],
+     "asOf": "2026-09-01",
+     "modified": "2026-02-01",
+     "editedAfterLastSend": false,
+     "source": "kb"
+    }
    },
    {
     "id": "tpl-renew-b",
@@ -635,7 +680,18 @@
       "stepCount": 1,
       "asOf": "2026-08-20T00:00:00.000Z"
      }
-    ]
+    ],
+    "lastSendMonth": "2026-09",
+    "content": {
+     "subject": "Thanks for renewing",
+     "body": "Thank you for renewing with Acme! Your receipt: https://www.example.com/account/receipt",
+     "bodyIncluded": true,
+     "variants": [],
+     "asOf": "2026-09-01",
+     "modified": "2026-09-05",
+     "editedAfterLastSend": null,
+     "source": "kb"
+    }
    },
    {
     "id": "tpl-unlisted",
@@ -648,7 +704,9 @@
       "stepCount": 0,
       "asOf": null
      }
-    ]
+    ],
+    "lastSendMonth": "2026-08",
+    "content": null
    },
    {
     "id": "tpl-welcome",
@@ -661,7 +719,24 @@
       "stepCount": 1,
       "asOf": "2026-09-01T00:00:00.000Z"
      }
-    ]
+    ],
+    "lastSendMonth": "2026-09",
+    "content": {
+     "subject": "Welcome to Acme",
+     "body": "Welcome to Acme!\nStart here: the getting-started guide",
+     "bodyIncluded": true,
+     "variants": [
+      {
+       "name": "Variant B",
+       "subject": "Welcome aboard",
+       "body": "Welcome to Acme, from the B side. Start here: https://www.example.com/guide/getting-started"
+      }
+     ],
+     "asOf": "2026-08-20",
+     "modified": "2026-08-15",
+     "editedAfterLastSend": false,
+     "source": "kb"
+    }
    }
   ],
   "steps": [
@@ -4483,7 +4558,7 @@
    "unreadable": 0
   },
   "calls": {
-   "answered": 82,
+   "answered": 83,
    "split": 0,
    "retried": 0
   },
@@ -4541,6 +4616,14 @@
   "testAccounts": {
    "accounts": 0,
    "sent": 0
+  },
+  "templates": {
+   "referenced": 6,
+   "withContent": 5,
+   "missing": 1,
+   "behind": 1,
+   "unreadLinks": 1,
+   "source": "kb"
   }
  },
  "reconciliation": {
@@ -4633,6 +4716,36 @@
     ],
     "keysFile": "kb-gap-keys.json",
     "refreshSeconds": 3
+   }
+  },
+  {
+   "id": "template-content-current",
+   "detail": {
+    "templates": 5,
+    "oldest": "2026-08-20"
+   }
+  },
+  {
+   "id": "template-content-missing",
+   "detail": {
+    "missing": 1,
+    "referenced": 6,
+    "keysFile": "template-gap-keys.json",
+    "seconds": 3
+   }
+  },
+  {
+   "id": "template-content-behind",
+   "detail": {
+    "behind": 1,
+    "seconds": 3
+   }
+  },
+  {
+   "id": "template-link-readings-missing",
+   "detail": {
+    "count": 1,
+    "seconds": 3
    }
   },
   {

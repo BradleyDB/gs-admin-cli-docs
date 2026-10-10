@@ -205,10 +205,20 @@
             ],
             "limit": 25
           }
+        },
+        {
+          "id": "templates",
+          "tab": "templates",
+          "type": "templates",
+          "title": "Emails: text and search",
+          "knobs": {
+            "snippet": 40
+          }
         }
       ],
       "accountNames": true,
-      "sourceDetail": true
+      "sourceDetail": true,
+      "templateContent": true
     },
     {
       "id": "exec",
@@ -236,7 +246,8 @@
       ],
       "panels": [],
       "accountNames": false,
-      "sourceDetail": false
+      "sourceDetail": false,
+      "templateContent": false
     }
   ],
   "freshness": {

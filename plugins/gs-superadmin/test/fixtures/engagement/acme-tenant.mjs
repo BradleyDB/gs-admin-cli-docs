@@ -57,8 +57,13 @@
 //
 // Not a runner: it lives under test/fixtures/ so check-doc-drift's battery
 // enumeration (non-recursive over test/) never lists it.
-// Zero dependencies — no imports at all.
+// Imports (TPL-1): the KB's template docs are written through the plugin's
+// own renderer (doc-lib renderTemplateDoc, with the engine's link rules), so
+// a fixture doc is byte for byte what describe-batch's template doc-mode
+// writes — never a second spelling of the doc format. Nothing else.
 // ─────────────────────────────────────────────────────────────────────────────
+import { renderTemplateDoc } from "../../../scripts/doc-lib.mjs";
+import { NON_CONTENT_LINK_RULES } from "../../../scripts/engagement-query.mjs";
 
 const pad = (n) => String(n).padStart(2, "0");
 const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -100,7 +105,12 @@ const PROGRAMS = [
     id: "p-nps", name: "Acme NPS Survey", model: "CSAT_SURVEY_V2", modelName: "CSAT Survey", statuses: ["PROCESSING"], type: "CUSTOMER", folderId: "101",
     months: ["2025-10", "2026-01", "2026-04", "2026-07"], accounts: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11], perAccount: 1, survey: true,
     schedules: [{ type: "CRON", cronExpression: "0 0 9 1 * ? *", lastRunSuccess: true, lastSuccessTime: 1756717200000, nextRunTime: 1759309200000, runningNow: false, timeZoneName: "America/Los_Angeles", jobType: "PARTICIPANT_SYNC", startTime: 1767225600000, endTime: 1830297600000 }],
-    steps: [{ stepId: "st-nps-1", stepName: "Survey email", order: 1, templateId: "tpl-nps", variants: ["var-nps"] }],
+    steps: [
+      { stepId: "st-nps-1", stepName: "Survey email", order: 1, templateId: "tpl-nps", variants: ["var-nps"] },
+      // A step the design names but that never sent in any month (noSends): its template is referenced by the design
+      // alone, so the plan's template gap counts it (TPL-1) while the snapshot's send-referenced dimension does not.
+      { stepId: "st-nps-2", stepName: "Survey reminder", order: 2, templateId: "tpl-nps-reminder", variants: ["var-nps-reminder"], noSends: true },
+    ],
   },
   {
     id: "p-renew", name: "Acme Renewal Dynamic", model: "DYNAMIC_PROGRAM", modelName: "Dynamic Program", statuses: ["PAUSE", "NEW"], type: "CUSTOMER", folderId: "202",
@@ -254,7 +264,7 @@ const BLAST_NAMES = ["ann", "bo", "cy", "dee", "eli", "fay", "gus", "hal", "ivy"
 export const OWN_SITE_UNSUBSCRIBE = "https://www.acme.com/mail-settings";
 
 const TEMPLATE_NAMES = {
-  "tpl-welcome": "Acme Welcome", "tpl-day7": "Acme Day 7", "tpl-nps": "Acme NPS Request", "tpl-renew": "Acme Renewal",
+  "tpl-welcome": "Acme Welcome", "tpl-day7": "Acme Day 7", "tpl-nps": "Acme NPS Request", "tpl-nps-reminder": "Acme NPS Reminder", "tpl-renew": "Acme Renewal",
   "tpl-renew-b": "Acme Renewal Thanks", "tpl-promo": "Acme Promo", "tpl-unlisted": "Acme Unlisted", "tpl-gone": "Acme Gone",
   "tpl-prefs": "Acme Prefs", "tpl-prefs-mix": "Acme Prefs Follow-up", "tpl-blast": "Acme Announcement", "tpl-quiet": "Acme Quiet",
   "tpl-quarter": "Acme Quarterly", "tpl-sporadic": "Acme Sporadic", "tpl-once": "Acme One-time", "tpl-lapsed": "Acme Digest",
@@ -272,6 +282,113 @@ const CLICK_MODE = {
   "tpl-renew": "unsub", "tpl-day7": "none", "tpl-nps": "none", "tpl-renew-b": "none",
   "tpl-prefs": "ownsite", "tpl-prefs-mix": "ownsite-mix", "tpl-blast": "content",
 };
+
+// ── Templates (TPL-1): what `jo email template --id` returns ─────────────────
+// Per template: the subject and plain text, the HTML stored ESCAPED (as the
+// tenant stores it, measured 2026-10-02), the per-link tracking flags
+// (builderMetadata.links keeps STALE entries that appear nowhere in the text),
+// the last-modified text and the CLI-synthesized `_tokens`. Which templates
+// the KB documents, and how, is kbFiles's below.
+//   tpl-nps      one tracked content link present in the text (the survey), the
+//                unsubscribe link present but a system link, and a stale
+//                flagged entry that appears nowhere: tracked-link-present. Its
+//                subject carries a token with its metadata, so the snapshot
+//                renders `{Product Name}`. Modified after its last send (July).
+//   tpl-renew    two content links present, none tracked: links-none-tracked.
+//                Modified long before its sends.
+//   tpl-renew-b  one content link present, not tracked: links-none-tracked.
+//                Modified inside its last send month.
+//   tpl-welcome  an EMPTY plain text; the HTML carries a script and a remote
+//                image, which the doc derives its text from with both stripped;
+//                its one content link is not tracked (the click history decides
+//                first). One variant.
+//   tpl-day7     a payload with no link entry (unreadable); its KB doc is a
+//                LEGACY one written by hand without the reading (kbFiles).
+//   tpl-promo    a raw token with no metadata (it stays raw everywhere); the KB
+//                has no doc for it (missing: the gap-fill fetches it).
+//   tpl-unlisted no link entry, no doc (missing).
+//   every other id of TEMPLATE_NAMES: a generic payload (no doc).
+const escapeHtml = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+const TEMPLATES = {
+  "tpl-nps": {
+    subject: "How is ${subj::gs-prod} working for you?",
+    plain: "Hi there,\n\nTell us how ${subj::gs-prod} is working for your team: https://survey.example.com/s/nps\n\nThanks,\nAcme\n\nUnsubscribe: https://mail.example.com/unsubscribe?t=abc",
+    html: `<p>Hi there,</p><p>Tell us how \${subj::gs-prod} is working for your team: <a href="https://survey.example.com/s/nps">take the survey</a></p><p>Thanks,<br>Acme</p><p><a href="https://mail.example.com/unsubscribe?t=abc">Unsubscribe</a></p>`,
+    links: {
+      "lnk-nps-survey": { uniqueId: "u-nps-survey", href: "https://survey.example.com/s/nps", enableClickTracking: true },
+      "lnk-nps-unsub": { uniqueId: "u-nps-unsub", href: "https://mail.example.com/unsubscribe?t=abc", enableClickTracking: false },
+      "lnk-nps-stale": { uniqueId: "u-nps-stale", href: "https://www.example.com/old-guide", enableClickTracking: true },
+    },
+    tokens: [{ variant: "Default", tokenKey: "subj::gs-prod", displayName: "Product Name", defaultValue: "Acme", tokenType: "STANDARD" }],
+    modified: "2026-08-10 09:15:00 UTC",
+  },
+  "tpl-renew": {
+    subject: "Your Acme renewal is coming up",
+    plain: "Hello,\n\nYour Acme plan renews soon. Review your plan: https://www.example.com/account/plan\nQuestions about renewals: https://www.example.com/help/renewals\n\nThe Acme team",
+    html: `<p>Hello,</p><p>Your Acme plan renews soon. <a href="https://www.example.com/account/plan">Review your plan</a>. <a href="https://www.example.com/help/renewals">Questions about renewals</a></p><p>The Acme team</p>`,
+    links: { "lnk-rn-plan": { uniqueId: "u-rn-plan", href: "https://www.example.com/account/plan", enableClickTracking: false }, "lnk-rn-help": { uniqueId: "u-rn-help", href: "https://www.example.com/help/renewals", enableClickTracking: false } },
+    tokens: null,
+    modified: "2026-02-01 08:00:00 UTC",
+  },
+  "tpl-renew-b": {
+    subject: "Thanks for renewing",
+    plain: "Thank you for renewing with Acme! Your receipt: https://www.example.com/account/receipt",
+    html: `<p>Thank you for renewing with Acme! <a href="https://www.example.com/account/receipt">Your receipt</a></p>`,
+    links: { "lnk-rb-receipt": { uniqueId: "u-rb-receipt", href: "https://www.example.com/account/receipt", enableClickTracking: false } },
+    tokens: null,
+    modified: "2026-09-05 12:00:00 UTC",
+  },
+  "tpl-welcome": {
+    subject: "Welcome to Acme",
+    plain: "",
+    html: `<p>Welcome to Acme!</p><script>alert(1)</script><img src="https://cdn.example.com/pixel.gif" alt=""><p>Start here: <a href="https://www.example.com/guide/getting-started">the getting-started guide</a></p>`,
+    links: { "lnk-wl-guide": { uniqueId: "u-wl-guide", href: "https://www.example.com/guide/getting-started", enableClickTracking: false } },
+    tokens: null,
+    modified: "2026-08-15 10:00:00 UTC",
+    variants: [{ name: "Variant B", subject: "Welcome aboard", plain: "Welcome to Acme, from the B side. Start here: https://www.example.com/guide/getting-started" }],
+  },
+  "tpl-day7": { subject: "Day 7: how is it going?", plain: "It has been a week since you joined Acme. Need a hand? Reply to this email.", html: `<p>It has been a week since you joined Acme. Need a hand? Reply to this email.</p>`, links: {}, tokens: null, modified: "2026-01-20 08:00:00 UTC" },
+  "tpl-promo": {
+    subject: "Promo: ${promo::gs-code} inside",
+    plain: "Use code ${promo::gs-code} before December 31: https://www.example.com/promo/winter",
+    html: `<p>Use code \${promo::gs-code} before December 31: <a href="https://www.example.com/promo/winter">claim it</a></p>`,
+    links: { "lnk-pr-claim": { uniqueId: "u-pr-claim", href: "https://www.example.com/promo/winter", enableClickTracking: true } },
+    tokens: null,
+    modified: "2025-10-20 08:00:00 UTC",
+  },
+  "tpl-unlisted": { subject: "A note from Acme", plain: "A note from a program the list missed. Nothing to click here.", html: `<p>A note from a program the list missed. Nothing to click here.</p>`, links: {}, tokens: null, modified: "2026-07-01 08:00:00 UTC" },
+};
+/**
+ * The `jo email template --id` payload of a template, in the shape the CLI
+ * returns (an envelope, the template, its variants); null for an id the
+ * tenant has no template for.
+ * @param {string} id
+ */
+export function templatePayload(id) {
+  const name = TEMPLATE_NAMES[id];
+  if (!name) return null;
+  const t = TEMPLATES[id] ?? { subject: name, plain: `A note from ${name}. Details: https://www.example.com/notes/${id}`, html: `<p>A note from ${name}. <a href="https://www.example.com/notes/${id}">Details</a></p>`, links: {}, tokens: null, modified: "2026-01-10 08:00:00 UTC" };
+  const variants = (t.variants ?? []).map((v) => ({ variantName: v.name, subject: v.subject, plainTextContent: v.plain, htmlContent: escapeHtml(`<p>${v.plain}</p>`) }));
+  return {
+    result: true,
+    requestId: "00000000-0000-4000-8000-000000000002",
+    data: {
+      emailTemplate: {
+        templateId: id, title: name, subject: t.subject, plainTextContent: t.plain, htmlContent: escapeHtml(t.html), editorContent: escapeHtml(t.html),
+        folderId: "501", active: true, transactional: false, variantCount: variants.length, builderVersion: 2, system: false, published: true,
+        createdDateStr: "2025-06-01 08:00:00 UTC", createdByName: "Jordan", modifiedDateStr: t.modified, modifiedByName: "Leah",
+        builderMetadata: { links: t.links },
+        ...(t.tokens ? { _tokens: t.tokens } : {}),
+      },
+      variants,
+    },
+  };
+}
+// Which templates the KB documents, and the day each doc was captured (the manifest's last_verified): tpl-welcome's
+// doc predates the month of its last send (September: behind, at month grain); the others were captured inside it,
+// or after the template's last send (tpl-nps, July). tpl-day7's doc is the legacy one (below), captured in September too.
+const TEMPLATE_DOCS = { "tpl-nps": "2026-09-01", "tpl-renew": "2026-09-01", "tpl-renew-b": "2026-09-01", "tpl-welcome": "2026-08-20" };
+export const TEMPLATES_DOMAIN = "journey-email-templates";
 
 const ACCOUNTS = Array.from({ length: 12 }, (_, i) => ({ Gsid: `co-${pad(i + 1)}`, Name: `Acme Customer ${pad(i + 1)}` }));
 const INTERNAL_PEOPLE = [
@@ -467,6 +584,7 @@ export function buildTenant(variant = {}) {
   for (const program of [...PROGRAMS, UNLISTED, DELETED, ...(variant.ownSiteUnsub ? [OWN_SITE] : []), ...(variant.silent ? [QUIET] : []), ...(variant.cadence ? CADENCE : []), ...(variant.signals ? SIGNALS : [])]) {
     for (const month of program.months) {
       for (const step of program.steps) {
+        if (step.noSends) continue;
         if (program.internalOnly) {
           for (const p of INTERNAL_PEOPLE) send(program, step, month, { account: null, person: p.id, email: p.email });
           continue;
@@ -656,7 +774,35 @@ export function kbFiles(slug = "acme-prod", variant = {}) {
     // When the doc was last checked against the tenant: what a schedule result read from it is "as of".
     inventory[`journey/${p.id}`] = { last_verified: p.id === "p-onboard" ? "2026-09-01T00:00:00.000Z" : "2026-08-20T00:00:00.000Z" };
   }
-  files[`${slug}/_manifest.json`] = JSON.stringify({ slug, baseUrl: "https://acme.gainsightcloud.com", environment: "production", created: "2026-01-01T00:00:00.000Z", last_refresh: null, inventory }, null, 2);
+  // The template docs (TPL-1), through the plugin's own renderer from the same payloads the stand-in CLI answers, each
+  // with a full inventory entry (the gap-fill's manifest verbs select by status and domain) under the templates
+  // domain's recording (its id field is what a gap registration passes).
+  for (const [id, day] of Object.entries(TEMPLATE_DOCS)) {
+    files[`${slug}/${TEMPLATES_DOMAIN}/${id}.md`] = renderTemplateDoc(templatePayload(id), { key: `${TEMPLATES_DOMAIN}/${id}`, linkRules: NON_CONTENT_LINK_RULES }).doc;
+    inventory[`${TEMPLATES_DOMAIN}/${id}`] = { id, domain: TEMPLATES_DOMAIN, status: "documented", depth: "full", last_verified: `${day}T00:00:00.000Z`, doc_path: `${slug}/${TEMPLATES_DOMAIN}/${id}.md` };
+  }
+  // tpl-day7: a LEGACY doc, written by hand the way the renderer wrote docs before the link-tracking bullet existed —
+  // no reading (a never-clicked template whose doc carries none reads unknown, and the plan lists it for a re-read),
+  // and a body that is hostile plain text: a literal script element and a raw token, which a page escapes.
+  files[`${slug}/${TEMPLATES_DOMAIN}/tpl-day7.md`] = [
+    "# Acme Day 7", "",
+    `- key: ${TEMPLATES_DOMAIN}/tpl-day7`,
+    "- subject: Day 7: how is it going?",
+    "- folderId: 501 · active: true · transactional: false",
+    "- variants: 0 · builderVersion: 2 · system: false · published: true",
+    "- created: 2025-06-01 08:00:00 UTC by Jordan",
+    "- modified: 2026-01-20 08:00:00 UTC by Leah",
+    "",
+    "> Full HTML body not stored (~50 KB/template) — re-fetch:",
+    "> `gs-admin --json jo email template --id tpl-day7`",
+    "",
+    "## Body (plain text)", "",
+    "It has been a week since you joined Acme. <script>alert(1)</script> Need a hand? Reply to this email, ${unresolved::token}.",
+    "",
+  ].join("\n");
+  inventory[`${TEMPLATES_DOMAIN}/tpl-day7`] = { id: "tpl-day7", domain: TEMPLATES_DOMAIN, status: "documented", depth: "full", last_verified: "2026-09-02T00:00:00.000Z", doc_path: `${slug}/${TEMPLATES_DOMAIN}/tpl-day7.md` };
+  const domains_indexed = { [TEMPLATES_DOMAIN]: { at: "2026-01-15T00:00:00.000Z", idField: "templateId", itemsPath: "data.emailTemplates", listCommand: "gs-admin --json jo email templates" } };
+  files[`${slug}/_manifest.json`] = JSON.stringify({ slug, baseUrl: "https://acme.gainsightcloud.com", environment: "production", created: "2026-01-01T00:00:00.000Z", last_refresh: null, domains_indexed, inventory }, null, 2);
   return files;
 }
 
@@ -887,6 +1033,11 @@ export function answer(argv, tenant) {
   if (words[0] === "jo" && words[1] === "p" && words[2] === "describe") {
     const p = tenant.describable.get(flagValue(argv, "--id"));
     return p ? ok(programPayload(p)) : fail(FAULT_TEXT["not-found"]);
+  }
+  // The sanctioned template fetch (TPL-1): what the gap-fill's describe-batch spawns, never the engagement adapter.
+  if (words[0] === "jo" && words[1] === "email" && words[2] === "template") {
+    const payload = templatePayload(flagValue(argv, "--id"));
+    return payload ? ok(payload) : fail(`Error: Email template not found\n${REQUEST_ID}`);
   }
   return fail(`Error: command ${words.join(" ")} is not faked`);
 }

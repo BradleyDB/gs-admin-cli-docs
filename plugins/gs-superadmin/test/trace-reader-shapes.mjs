@@ -142,6 +142,7 @@ const ENG_UNITS = {
   "participants-window": { cls: "all", window: ENG_SPAN, programs: ENG_PROGRAMS },
   "count-clicks": { cls: "all", window: ENG_SPAN },
   "count-bounces": { cls: "all", window: ENG_SPAN },
+  "template-months": { cls: "all", window: ENG_SPAN },
   "health-bounce-total": { cls: "all", window: ENG_SPAN },
   "health-bounce-cat": { cls: "all", window: ENG_SPAN, category: { id: "user-unknown", pattern: "User unknown in virtual mailbox table" } },
   "health-bounce-sample": { cls: "all", window: ENG_SPAN, programs: ENG_PROGRAMS.slice(0, 1), excludePatterns: ["User unknown in virtual mailbox table"] },

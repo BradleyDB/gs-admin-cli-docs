@@ -395,8 +395,8 @@ export const NON_CONTENT_LINK_RULES = Object.freeze([
   { kind: "unsubscribe", re: /unsubscribe|opt[-_]?out|email[-_]?preferences|manage[-_]?preferences/i },
 ]);
 // R19: what a template's own link settings say about click tracking, read from
-// its `jo email template --id` payload at the sanctioned fetch (doc-lib
-// readLinkTracking, written into the KB doc; TPL-1). Only link-map entries
+// its `jo email template --id` payload at the sanctioned describe by doc-lib's
+// readLinkTracking, written into the KB doc (TPL-1). Only link-map entries
 // present in the current content count, and system links (the rules above)
 // are left out: a tracked content link means a never-clicked template's 0% is
 // real; content links with none tracked means "Not tracked"; no readable
@@ -1727,6 +1727,8 @@ export const TEMPLATE_VIEW_METRICS = Object.freeze(["sent", "delivered", "opened
 // The survey figures beside a program that sends the template: program level, as the registry defines them.
 const TEMPLATE_PROGRAM_METRICS = Object.freeze(["surveyParticipants", "anyResponse", "responseRate"]);
 export const SEARCH_SNIPPET_DEFAULT = 50;
+/** @type {{metric: string, dir: "desc"}} */
+const SENT_DESC = Object.freeze({ metric: "sent", dir: "desc" });
 // The search primitives, mirroring scripts/jo-report-search.mjs (email-report
 // `search`) so the page and the skill find the same templates: the text and
 // the term NFC-folded, one case-insensitive regex per term (whole word =
@@ -1754,11 +1756,17 @@ export function searchSnippet(text, start, end, radius = SEARCH_SNIPPET_DEFAULT)
   const body = sliceCodePoints(text, s, e).replace(/\s+/g, " ").trim();
   return (s > 0 ? "..." : "") + body + (e < text.length ? "..." : "");
 }
-/** The searchable fields of one template of the snapshot, in report order: the same fields email-report searches. */
+/**
+ * The searchable fields of one template of the snapshot, in report order: the
+ * same fields email-report searches (title, subject, body, each variant's).
+ * A template the snapshot holds no text for has none, as a template with no
+ * doc has none there: its name alone is not searched.
+ */
 export function searchableTemplateFields(t) {
   const fields = [];
-  if (t?.name) fields.push({ field: "title", text: t.name });
   const c = t?.content;
+  if (!c) return fields;
+  if (t?.name) fields.push({ field: "title", text: t.name });
   if (c?.subject) fields.push({ field: "subject", text: c.subject });
   if (c?.body) fields.push({ field: "body", text: c.body });
   for (const v of c?.variants ?? []) {
@@ -1840,11 +1848,11 @@ export function templatesView(snapshot, filters, opts = {}) {
   const f = filters ?? {};
   const avail = templateAvailability(snapshot);
   const base = { metrics: TEMPLATE_VIEW_METRICS, programMetrics: TEMPLATE_PROGRAM_METRICS, stepDetail: !!snapshot.meta.stepDetail };
-  if (!avail.pulled) return { ...base, unavailable: { reason: avail.reason ?? "templates-not-pulled" }, content: { available: false, reason: avail.reason ?? "templates-not-pulled" }, rows: [], total: null, search: null, noTemplate: null, scope: null };
+  if (!avail.pulled) return { ...base, unavailable: { reason: avail.reason ?? "templates-not-pulled" }, content: { available: false, reason: avail.reason ?? "templates-not-pulled" }, rows: [], total: null, search: null, noTemplate: null, scope: null, templatesKept: 0 };
   const content = avail.content ? { available: true, reason: null } : { available: false, reason: avail.reason ?? "templates-not-on-page" };
-  const byTemplate = runQuery(snapshot, f, { groupBy: ["template"], metrics: TEMPLATE_VIEW_METRICS, sort: [{ metric: "sent", dir: "desc" }] });
-  const perProgram = runQuery(snapshot, f, { groupBy: ["program", "template"], metrics: TEMPLATE_VIEW_METRICS, sort: [{ metric: "sent", dir: "desc" }] });
-  const perStep = snapshot.meta.stepDetail ? runQuery(snapshot, f, { groupBy: ["program", "step", "variant"], metrics: TEMPLATE_VIEW_METRICS, sort: [{ dim: "program" }, { label: "stepOrder" }, { metric: "sent", dir: "desc" }] }) : null;
+  const byTemplate = runQuery(snapshot, f, { groupBy: ["template"], metrics: [...TEMPLATE_VIEW_METRICS], sort: [SENT_DESC] });
+  const perProgram = runQuery(snapshot, f, { groupBy: ["program", "template"], metrics: [...TEMPLATE_VIEW_METRICS], sort: [SENT_DESC] });
+  const perStep = snapshot.meta.stepDetail ? runQuery(snapshot, f, { groupBy: ["program", "step", "variant"], metrics: [...TEMPLATE_VIEW_METRICS], sort: [{ dim: "program" }, { label: "stepOrder" }, SENT_DESC] }) : null;
   const surveys = runQuery(snapshot, f, { groupBy: ["program"], metrics: [...TEMPLATE_PROGRAM_METRICS] });
   const surveyOf = new Map(surveys.rows.map((r) => [r.key.program, r.cells]));
   const search = content.available && opts.terms?.length ? searchTemplateContent(snapshot, f, opts.terms, opts) : null;

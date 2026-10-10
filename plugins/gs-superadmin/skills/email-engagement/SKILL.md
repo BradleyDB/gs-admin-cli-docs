@@ -164,6 +164,40 @@ one describe each, and nothing else (re-invoke until `moreRemaining` is false). 
 program the list itself lacks (`estimate.kb.unlisted`) cannot be registered this way and
 stays "Cannot judge yet"; say so.
 
+- `estimate.templates.planned` is above 0: the knowledge base lacks the text of that many
+  of the email templates the pull's programs send (`estimate.templates.missing` have no
+  doc at all, `.behind` a doc older than the template's last send, `.unread` are
+  never-clicked templates whose doc carries no link-tracking reading, so their click
+  tracking would read unknown). Without them the report's Subject column shows a dash
+  for those templates and the dashboard's Templates tab has no text to show or search.
+  When `planned` is 50 or fewer, fill the gap without asking. Above that, ask with the
+  count and the seconds `estimate.templates` quotes (the same ask as
+  `/gs-superadmin:email-report` step 4b): fill all of it, the first 50 (the keys file's
+  order: missing first, then behind, then unread), or none. On a fill, run the three
+  commands below with the chosen budget, then re-issue the plan command unchanged (same
+  `<run>`: the plan re-reads the knowledge base it moved) and read the summary again. On
+  none, go on; the report's caveats name the gap. The pull itself never fetches a
+  template: this is email-report's own gap-fill (its step 4c, item 5: register, then
+  describe), driven from the files the plan wrote.
+
+The template gap-fill, from `estimate.templates` (three commands, in this order;
+`<templates-domain>` is `estimate.templates.domain`, the manifest's email-templates
+domain as `domains_indexed` names it; `<budget>` is the number chosen above; the files are
+the ones the plan wrote beside `plan.json`):
+
+```
+node .gs-superadmin/plugin/scripts/manifest.mjs upsert-batch --manifest <slug>/_manifest.json --domain <templates-domain> --file <estimate.templates.listFile> --id-field <estimate.templates.idField> --partial
+node .gs-superadmin/plugin/scripts/manifest.mjs mark --manifest <slug>/_manifest.json --keys-file <estimate.templates.staleKeysFile> --status stale
+node .gs-superadmin/plugin/scripts/describe-batch.mjs --manifest <slug>/_manifest.json --domain <templates-domain> --command "gs-admin --json jo email template --id {id}" --doc-mode template --out-dir <slug>/<templates-domain> --keys-file <estimate.templates.keysFile> --limit <budget>
+```
+
+Skip the first when `estimate.templates.listFile` is null (nothing is missing) and the
+second when `staleKeysFile` is null (nothing to read again); the third fetches the named
+templates one at a time, within the budget, and files each in the knowledge base as it
+lands (re-invoke it until `moreRemaining` is false, or the budget is spent). A template
+whose fetch fails stays marked `failed` in the manifest; the report's caveats count it
+among the missing.
+
 ### 3 — Pull the snapshot
 
 ```

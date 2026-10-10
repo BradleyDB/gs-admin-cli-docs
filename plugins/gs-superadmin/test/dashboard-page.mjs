@@ -97,9 +97,14 @@ const lacksIn = (html) => [...html.matchAll(/data-lack="([^"]+)"/g)].map((m) => 
 /** A page's markup without its inlined scripts, and the notices drawn in it. */
 const markupOf = (html) => html.replace(/<script type="module">\n[\s\S]*?<\/script>/g, "");
 const drawn = (html) => lacksIn(markupOf(html));
+// Tags as a page writes them (lower case): a JSDoc type such as Object<string, …> in an inlined comment is not one. The
+// search form (TPL-2) is the one form a page holds, and it posts nowhere: its submit is read in the page.
+const NO_NETWORK = /\b(href|src|action|data|poster|formaction)\s*=\s*["']?\s*[hH][tT][tT][pP][sS]?:\/\/|url\(\s*["']?[hH][tT][tT][pP]|\bfetch\s*\(|XMLHttpRequest|WebSocket|EventSource|sendBeacon|(?<!\{)\bimport\s*\(|^\s*import\s|<link\b|<img\b|<iframe\b|<object\b|<embed\b|<form\b(?![^>]*data-search)|\ssrc=|url\(|@import|<base\b|http-equiv/m;
 /** A string as it sits in a page's embedded data. */
 const inData = (text) => JSON.stringify(text).slice(1, -1).replace(/[<>&]/g, (c) => "\\u00" + c.charCodeAt(0).toString(16));
 /** RFC 4180, written here on its own: the page's CSV builder is the thing under test. */
+/** The lines a templates-view export holds: one per template, then one per program under it, then one per step and variant. */
+const countLines = (rows) => { let n = 0; for (const r of rows) { n += 1; for (const p of r.programs) n += 1 + (p.steps?.length ?? 0); } return n; };
 function parseCsv(text) {
   const rows = [[""]];
   let quoted = false;
@@ -203,8 +208,8 @@ try {
     check("every export of the engine is handed to the page, by name: the list is read from the module, never written by hand", isDeepStrictEqual(handed, Object.keys(engine).sort()) && handed.includes("runQuery") && handed.includes("healthReasonsView"), handed);
     for (const [name, file] of [["runtime", "dashboard-runtime.mjs"], ["builder", "dashboard-page.mjs"]]) {
       const src = readFileSync(join(PLUGIN, "scripts", file), "utf8").replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|\s)\/\/.*$/gm, "$1");
-      const calls = [...src.matchAll(/(\w+)\.(runQuery|kpiView|health\w+View)\(/g)].map((m) => m[1]);
-      check(`the ${name} never aggregates on its own: its source sums nothing, reads no measure list and never walks a fact table's rows; every figure is a cell the engine computed (runQuery, the kpi view, the four health views)`,
+      const calls = [...src.matchAll(/(\w+)\.(runQuery|kpiView|health\w+View|templatesView|searchTemplateContent|templateContent)\(/g)].map((m) => m[1]);
+      check(`the ${name} never aggregates on its own: its source sums nothing, reads no measure list and never walks a fact table's rows; every figure is a cell the engine computed (runQuery, the kpi view, the four health views, the templates view and its search)`,
         !/\.reduce\((?!\(n, s\) => n \+ s\.params\.)/.test(src) && !/SEND_MEASURES/.test(src) && !/facts\.by\w+\.(map|filter|forEach|find|some)/.test(src) && !/\.(sent|delivered|opened|bounced|count|participants)\s*[+\-/*]/.test(src) && calls.every((c) => c === "engine") && (name !== "runtime" || calls.length >= 8),
         [calls, src.match(/\.reduce\(.{0,60}/)?.[0]]);
     }
@@ -236,7 +241,8 @@ try {
       [`sg=${supergroups.indexOf("Internal")}&g=${groups.indexOf("Pilots")}&s=all`, { recipientClass: "all", supergroups: ["Internal"], groups: ["Pilots"] }],
       [`m=2026-07..2026-09&px=p-pilot&rc=external&s=PROCESSING,PAUSE`, { recipientClass: "external", statuses: ["PROCESSING", "PAUSE"], months: ["2026-07", "2026-08", "2026-09"], programs: GOLD.dimensions.programs.map((p) => p.id).filter((id) => id !== "p-pilot") }],
     ];
-    const panels = SPEC_ACCOUNTS.pages[0].panels;
+    // The query panels: the templates view (no query) is held to the engine's templatesView in its own section.
+    const panels = SPEC_ACCOUNTS.pages[0].panels.filter((p) => p.query);
     const differs = [];
     for (const [hash, filters] of states) for (const panel of panels) {
       const inPage = panelRun(admin, panel.id, hash);
@@ -254,7 +260,7 @@ try {
       isDeepStrictEqual(oneAccount, plain(runQuery(GOLD, { recipientClass: "all", accounts: ["co-02"] }, accountPanels[1].query))) && oneAccount.rows.length === 1 && oneAccount.rows[0].label.account === "Acme Customer 02" &&
         isDeepStrictEqual(panelRun(admin, "programs", "a=co-02&s=all"), panelRun(admin, "programs", "s=all")), oneAccount.rows);
     check("a hash someone mangled or wrote for another dashboard never breaks the page: unknown programs, months, statuses, tabs, positions and thresholds are dropped and the rest is kept",
-      isDeepStrictEqual(admin.call(`app.stateFromHash("t=nope&m=1999-01..2026-08&p=ghost,p-nps&sg=99&g=-1&s=PAUSE,BOGUS&rc=maybe&a=nobody&hd=7&he=2&%E0%A4%A=1&junk")`), { tab: "engagement", from: "2026-06", to: "2026-08", programs: ["p-nps"], sg: null, g: null, statuses: ["PAUSE"], external: false, account: null, hd: null, he: false }) &&
+      isDeepStrictEqual(admin.call(`app.stateFromHash("t=nope&m=1999-01..2026-08&p=ghost,p-nps&sg=99&g=-1&s=PAUSE,BOGUS&rc=maybe&a=nobody&hd=7&he=2&ts=bogus&td=up&tpl=ghost&%E0%A4%A=1&junk")`), { tab: "engagement", from: "2026-06", to: "2026-08", programs: ["p-nps"], sg: null, g: null, statuses: ["PAUSE"], external: false, account: null, hd: null, he: false, q: "", qa: false, qw: false, ts: null, td: null, tpl: null }) &&
         // An empty or non-numeric position is no position: never the first group by accident.
         isDeepStrictEqual(admin.call(`[app.stateFromHash("sg=&g=").sg, app.stateFromHash("sg=&g=").g, app.stateFromHash("sg=x&g=1.5").sg, app.stateFromHash("sg=x&g=1.5").g, app.stateFromHash("sg=0").sg]`), [null, null, null, null, 0]),
       admin.call(`app.stateFromHash("t=nope&m=1999-01..2026-08&p=ghost,p-nps&sg=99&g=-1&s=PAUSE,BOGUS&rc=maybe&a=nobody&junk")`));
@@ -448,7 +454,7 @@ try {
   }
   {
     // A tab is on, offered or absent.
-    const healthOff = specWith((s) => { s.pages[0].tabs.find((t) => t.id === "health").enabled = false; s.pages[0].tabs.find((t) => t.id === "templates").enabled = false; s.pages[0].panels = s.pages[0].panels.filter((p) => p.tab !== "health"); });
+    const healthOff = specWith((s) => { s.pages[0].tabs.find((t) => t.id === "health").enabled = false; s.pages[0].tabs.find((t) => t.id === "templates").enabled = false; s.pages[0].panels = s.pages[0].panels.filter((p) => p.tab !== "health" && p.tab !== "templates"); });
     const offered = build(healthOff, PULLED);
     for (const id of drawn(offered.html)) reached.add(id);
     const tabButtons = (html) => [...html.matchAll(/<button type="button" class="gs-tab([^"]*)" data-tab="([a-z]+)"[^>]*>([^<]*)<\/button>/g)].map((m) => `${m[2]}:${m[1].trim()}:${m[3]}`);
@@ -459,15 +465,92 @@ try {
     check("opening an offered tab opens the notice and nothing else: what the tab is for, that it is off for this page, what it would take and the line to copy. The pull holds health data, so for Health it is only a rebuild",
       lacksIn(pane).join() === "tab-off" && pane.includes(`<p class="gs-notice-head">${esc("Health: error rates, error messages, silent programs and schedule failures")}</p>`) && pane.includes(esc(reasonText("tab-off"))) && pane.includes(esc(NEEDS.rebuild)) &&
         pane.includes(`<span class="gs-path">pages[].tabs[].enabled</span>`) && pane.includes("data-copy=") && !/<table|gs-panel/.test(pane) && loadPage(offered.html).call(`app.stateFromHash("t=health").tab`) === "health", pane);
-    check("whether turning a tab on is a rebuild or a new pull is read from the pull: over a snapshot with no health data the Health tab needs a new pull, and Templates needs one over any snapshot yet",
-      paneHtml(build(healthOff, OFF).html, "health").includes(esc(NEEDS.pull)) && !paneHtml(build(healthOff, OFF).html, "health").includes(esc(NEEDS.rebuild)) && paneHtml(offered.html, "templates").includes(esc(NEEDS.pull)));
+    const LEGACY = { ...PULLED, meta: { ...PULLED.meta, templates: undefined } };
+    check("whether turning a tab on is a rebuild or a new pull is read from the pull: over a snapshot with no health data the Health tab needs a new pull; Templates is a rebuild over a pull that holds template content and a new pull over a snapshot made before it existed",
+      paneHtml(build(healthOff, OFF).html, "health").includes(esc(NEEDS.pull)) && !paneHtml(build(healthOff, OFF).html, "health").includes(esc(NEEDS.rebuild)) && paneHtml(offered.html, "templates").includes(esc(NEEDS.rebuild)) && paneHtml(build(healthOff, LEGACY).html, "templates").includes(esc(NEEDS.pull)));
     check("on a leaders' page a tab that is off is ABSENT: no button, no pane, no notice; the fixture's leaders' page has Engagement and About and nothing of Health or Templates",
       isDeepStrictEqual(tabButtons(EXEC.html), ["engagement:is-current:Engagement", "about::About"]) && !EXEC.html.includes(`data-pane="health"`) && !EXEC.html.includes(`data-pane="templates"`) && !drawn(EXEC.html).includes("tab-off") && exec.call(`app.stateFromHash("t=health").tab`) === "engagement");
-    // F-486: an on tab with nothing to draw goes through the lacks plumbing: Templates, on, before template content exists.
-    const templates = paneHtml(ADMIN.html, "templates");
-    check("F-486: the Templates tab, on and with no template content in any snapshot yet, opens to the notice (its not-held lack: a new pull once a plugin reads templates, with the refresh line), never a bare heading; and a spec that lists panels but leaves an on tab with none is refused by the writer, so no on tab stands empty",
-      lacksIn(templates).join() === "templates-not-pulled" && templates.includes(esc(reasonText("templates-not-pulled"))) && templates.includes(`<p class="gs-notice-head">${esc("Templates: each email's performance, content and keyword search")}</p>`) && templates.includes(esc(COPY_LINES.refresh("program-health"))) && !/<table|gs-panel|gs-muted">Templates/.test(templates) &&
-        throwsWith(() => specWith((s) => { s.pages[0].panels = s.pages[0].panels.filter((p) => p.tab !== "health"); }), /lists no panel for the health tab, which is on/) && !templates.includes("gs-path"), templates);
+    // F-486: an on tab with nothing to draw is refused by the writer; over a snapshot made before template content existed the templates panel draws the snapshot's own reason.
+    const legacyAdmin = build(SPEC_ACCOUNTS, LEGACY);
+    for (const id of drawn(legacyAdmin.html)) reached.add(id);
+    const legacyPane = paneHtml(legacyAdmin.html, "templates");
+    check("F-486: a spec that lists panels but leaves an on tab with none is refused by the writer (Templates included since TPL-2), so no on tab stands empty; and over a snapshot made before template content existed the Templates tab's panel draws the notice (a new pull with this plugin, with the refresh line), never an empty table and never a bare heading",
+      lacksIn(legacyPane).join() === "templates-not-pulled" && legacyPane.includes(esc(reasonText("templates-not-pulled"))) && legacyPane.includes(esc(COPY_LINES.refresh("program-health"))) && /data-type="templates"/.test(legacyPane) && !/<table|gs-muted">Templates/.test(legacyPane) && !legacyPane.includes("gs-path") &&
+        throwsWith(() => specWith((s) => { s.pages[0].panels = s.pages[0].panels.filter((p) => p.tab !== "health"); }), /lists no panel for the health tab, which is on/) && throwsWith(() => specWith((s) => { s.pages[0].panels = s.pages[0].panels.filter((p) => p.tab !== "templates"); }), /lists no panel for the templates tab, which is on/), legacyPane);
+
+    // ── The Templates tab (TPL-2): the templates view over the fixture, its search, its drawer, and what a page may withhold ──
+    {
+      const tpanel = (page, hash) => page.call(`app.renderPanel(app.panels.find((p) => p.type === "templates"), app.stateFromHash(${JSON.stringify(hash)}), null)`);
+      const mainRows = (html) => [...(html ?? "").matchAll(/<tr data-template="([^"]+)">([\s\S]*?)<\/tr>/g)].map((m) => ({ id: m[1], cells: [...m[2].matchAll(/<td[^>]*>([\s\S]*?)<\/td>/g)].map((c) => textOf(c[1])) }));
+      const f0 = admin.call(`app.filtersOf(app.defaultState())`);
+      const view = engine.templatesView(GOLD, f0, { snippet: 40 });
+      const pre = panelHtml(ADMIN.html, "templates");
+      check("the Templates tab draws the templates panel (TPL-2): a search form, a sortable table with one row per template the filters keep in the engine's order — the name with its Text button, how many programs send it, its last send month, whether it was edited after its last send with the text's as-of day, and the metrics as the engine formats them — the programs under each row and, with step detail, their steps and variants; the total row; and no drawer, mark or snippet until asked",
+        pre !== null && /data-type="templates"/.test(ADMIN.html) && /<form class="gs-search" data-search>/.test(pre) && isDeepStrictEqual(mainRows(pre).map((r) => r.id), view.rows.map((r) => r.templateId)) && view.rows.length > 0 &&
+          mainRows(pre).every((r, i) => { const v = view.rows[i]; return r.cells[0].startsWith(v.name) && r.cells[1] === String(v.programs.length) && r.cells[2] === (v.lastSendMonth ?? NO_VALUE) && r.cells.slice(4).join("|") === view.metrics.map((id) => formatCell(id, v.cells[id])).join("|"); }) &&
+          (pre.match(/<tr class="gs-sub">/g) ?? []).length === view.rows.flatMap((r) => r.programs).length && (pre.match(/<tr class="gs-sub gs-sub2">/g) ?? []).length === view.rows.flatMap((r) => r.programs).flatMap((p) => p.steps ?? []).length &&
+          /Everything the filters keep/.test(pre) && !/<mark>|gs-drawer|gs-snippet/.test(pre) && mainRows(pre).find((r) => r.id === "tpl-nps").cells[3] === "yes, on 2026-08-10 (text as of 2026-09-01)" && mainRows(tpanel(admin, "t=templates&s=all")).find((r) => r.id === "tpl-unlisted").cells[3] === NO_VALUE,
+        mainRows(pre));
+      const renew = tpanel(admin, "t=templates&s=all&p=p-renew");
+      check("a template reused on two steps aggregates across them and still drills down per step: under the renewal program its row says it is on 2 steps and two step rows follow, each with its own figures; the filters narrow the view to that program's templates, the engine's rows",
+        isDeepStrictEqual(mainRows(renew).map((r) => r.id), engine.templatesView(GOLD, { recipientClass: "all", programs: ["p-renew"] }).rows.map((r) => r.templateId)) && /on 2 steps/.test(renew) && (renew.split('data-template="tpl-renew"')[1].split('data-template="tpl-renew-b"')[0].match(/gs-sub2/g) ?? []).length === 2, mainRows(renew));
+      const searched = tpanel(admin, "t=templates&s=all&q=renewal");
+      const both = tpanel(admin, "t=templates&s=all&q=acme%20survey&qa=1");
+      const whole = tpanel(admin, "t=templates&s=all&q=renew&qw=1");
+      check("the search narrows the rows to the templates whose subject or body holds the words (q= in the hash), marks each hit in a snippet naming the field, and says how many of the searched templates matched; all the words (qa=1) and whole words (qw=1) narrow further; a miss says so; every match set is the engine's own; the state round-trips through the hash",
+        isDeepStrictEqual(mainRows(searched).map((r) => r.id), ["tpl-renew", "tpl-renew-b"]) && /<mark>renewal<\/mark>/.test(searched) && /<mark>Renewal<\/mark>/.test(searched) && /gs-snippet"><span class="gs-muted">subject:<\/span>/.test(searched) && /2 emails of 5 searched hold any of "renewal"/.test(searched) && searched.includes('value="renewal"') &&
+          isDeepStrictEqual(mainRows(both).map((r) => r.id), ["tpl-nps"]) && /hold all of "acme", "survey"/.test(both) && mainRows(whole).length === 0 && /No email matches the search/.test(whole) && /as whole words/.test(whole) &&
+          isDeepStrictEqual(mainRows(searched).map((r) => r.id), engine.templatesView(GOLD, { recipientClass: "all" }, { terms: ["renewal"], snippet: 40 }).rows.map((r) => r.templateId)) &&
+          admin.call(`app.hashOf(app.stateFromHash("t=templates&s=all&q=renewal%20now&qa=1&qw=1&ts=openRate&td=asc&tpl=tpl-nps"))`) === "t=templates&s=all&q=renewal%20now&qa=1&qw=1&ts=openRate&td=asc&tpl=tpl-nps", [mainRows(searched), mainRows(both), mainRows(whole)]);
+      const sorted = tpanel(admin, "t=templates&s=all&ts=name&td=asc");
+      check("the column headings sort (ts= and td= in the hash): by name ascending the rows are in name order and the heading says so; by a metric, the engine's order with nulls last; an unknown key is dropped",
+        isDeepStrictEqual(mainRows(sorted).map((r) => r.id), engine.templatesView(GOLD, { recipientClass: "all" }, { sort: { by: "name", dir: "asc" } }).rows.map((r) => r.templateId)) && /aria-sort="ascending"><button type="button" class="gs-sort is-on" data-tsort="name">Email &#9650;/.test(sorted) &&
+          isDeepStrictEqual(mainRows(tpanel(admin, "t=templates&s=all&ts=openRate")).map((r) => r.id), engine.templatesView(GOLD, { recipientClass: "all" }, { sort: { by: "openRate", dir: "desc" } }).rows.map((r) => r.templateId)) && admin.call(`app.stateFromHash("ts=bogus&td=asc").ts`) === null, mainRows(sorted));
+      const drawer = tpanel(admin, "t=templates&s=all&tpl=tpl-nps");
+      check("Text opens the drawer (tpl= in the hash): the template's name, its subject with tokens as field labels, the day the text is as of, the caveat that it is the current text and not necessarily what was sent, the last-modified day and the edited-after-last-send flag, the body in a pre-wrap block, the variants, and a Close button; an unknown id opens nothing",
+        /<section class="gs-drawer" data-drawer="tpl-nps">/.test(drawer) && drawer.includes("How is {Product Name} working for you?") && /as of 2026-09-01: not necessarily what was sent/.test(drawer) && /edited after it: yes, on 2026-08-10/.test(drawer) && /<pre class="gs-body">Hi there,\n\nTell us how \{Product Name\}/.test(drawer) && /data-act="tpl-close"/.test(drawer) &&
+          !/gs-drawer/.test(tpanel(admin, "t=templates&s=all&tpl=ghost")) && /<h4>Variant: Variant B<\/h4>/.test(tpanel(admin, "t=templates&s=all&tpl=tpl-welcome")), drawer?.slice(0, 600));
+      const presetAdmin = build(SPEC_DEFAULTS, PULLED);
+      const emails = panelHtml(presetAdmin.html, "emails");
+      const withText = (id) => !!GOLD.dimensions.templates.find((t) => t.id === id)?.content;
+      check("the Emails and Steps tables link to a template's text: a template cell carries the Text button that opens its drawer on the Templates tab when the page holds that template's text, and not otherwise; the leaders' page, with no templates panel, carries none",
+        (emails.match(/data-open-template="tpl-/g) ?? []).length === runQuery(GOLD, { recipientClass: "all" }, /** @type {any} */ (PRESETS.admin.panels.find((p) => p.id === "emails")).query).rows.filter((r) => withText(r.key.template)).length && !/data-open-template="tpl-unlisted"/.test(emails) && /data-open-template="tpl-welcome"/.test(emails) &&
+          /data-open-template="tpl-welcome"/.test(panelHtml(presetAdmin.html, "steps")) && !/data-open-template/.test(markupOf(EXEC_P.html)) && !/data-open-template/.test(markupOf(EXEC.html)), emails?.match(/data-open-template="[^"]+"/g));
+      const execTemplates = build(specWith((s) => { s.pages[1].tabs.find((t) => t.id === "templates").enabled = true; }), PULLED, "exec");
+      for (const id of drawn(execTemplates.html)) reached.add(id);
+      const execPane = paneHtml(execTemplates.html, "templates");
+      const adminNoText = build(specWith((s) => { s.pages[0].templateContent = false; }), PULLED);
+      for (const id of drawn(adminNoText.html)) reached.add(id);
+      check("a leaders' page carries no template text unless the spec opts in (TPL-2): with its Templates tab on, the exec page draws the performance table and, where the search would be, says the text is not on the page (the statement alone: no setting, no line), its data holds no subject or body, and nothing opens a drawer; the same lack on an admin page that turned the text off says what it would take: turn on pages[].templateContent, a rebuild",
+        mainRows(execPane).length > 0 && lacksIn(execPane).join() === "templates-not-on-page" && !/data-search|gs-drawer|data-open-template|gs-path/.test(execPane) && !execTemplates.html.includes("How is {Product Name}") && !execTemplates.html.includes(inData("Tell us how")) && ADMIN.html.includes(inData("Tell us how")) &&
+          loadPage(execTemplates.html).call(`app.stateFromHash("t=templates&tpl=tpl-nps").tpl`) === null && mainRows(execPane).find((r) => r.id === "tpl-nps").cells[3] === NO_VALUE &&
+          lacksIn(paneHtml(adminNoText.html, "templates")).join() === "templates-not-on-page" && paneHtml(adminNoText.html, "templates").includes(`<span class="gs-path">pages[].templateContent</span>`) && paneHtml(adminNoText.html, "templates").includes(esc(NEEDS.rebuild)) && !adminNoText.html.includes(inData("Tell us how")),
+        [lacksIn(execPane), execPane?.slice(0, 300)]);
+      const hostile = admin.call(`app.renderApp(app.stateFromHash("t=templates&s=all&tpl=tpl-day7&q=alert"), null)`);
+      check("a hostile template body renders inert: the legacy doc's literal script element and raw token reach the drawer and the search snippet as text only — once the escaped spans are stripped no script, image or handler remains and the no-network rule holds over the rendered view — and the page reads the body back exactly as the snapshot holds it",
+        /gs-drawer" data-drawer="tpl-day7"/.test(hostile) && hostile.includes(esc("<script>alert(1)</script>")) && hostile.includes(esc("${unresolved::token}")) && !/<script|<img|onerror=/.test(hostile.replace(/&lt;[\s\S]*?&gt;/g, "")) && !NO_NETWORK.test(hostile.replace(/&lt;[\s\S]*?&gt;/g, "")) && /<mark>alert<\/mark>/.test(hostile) &&
+          admin.call(`app.snapshot.dimensions.templates.find((t) => t.id === "tpl-day7").content.body`) === GOLD.dimensions.templates.find((t) => t.id === "tpl-day7").content.body);
+      const csv = admin.call(`app.csvOf(app.panels.find((p) => p.type === "templates"), app.stateFromHash("t=templates&s=all"), null)`);
+      const parsed = parseCsv(csv.text);
+      const all = engine.templatesView(GOLD, { recipientClass: "all" }, { snippet: 40 });
+      const csvSearched = admin.call(`app.csvOf(app.panels.find((p) => p.type === "templates"), app.stateFromHash("t=templates&s=all&q=renewal"), null)`).text;
+      check("the templates view's export is its view (R27): one line per template, then one per program under it and one per step and variant with step detail, the search as drawn, every figure the engine's own with its tracking state beside a click figure, and the file named for the dashboard, page, panel and pull",
+        isDeepStrictEqual(parsed[0].slice(0, 9), ["Email", "Template id", "Program", "Status", "Step", "Variant", "Last send", "Edited after last send", "Text as of"]) && parsed.length === 1 + countLines(all.rows) &&
+          parsed[1][0] === all.rows[0].name && parsed[1][1] === all.rows[0].templateId && String(parsed[1][9]) === String(all.rows[0].cells.sent.value) && parsed[0].includes("Clicked tracking") && csv.filename === "program-health-admin-templates-20260915T0900.csv" &&
+          csvSearched.split("\n").some((l) => l.startsWith("Acme Renewal,")) && !csvSearched.includes("Acme Welcome"), [parsed[0], parsed[1]]);
+      // Wired: the form, the Text buttons and the headings, against a stand-in document.
+      const wired = (() => { const listeners = {}; const painted = {}; const replaced = []; const root = { disabled: true, innerHTML: null, addEventListener: (type, fn) => { listeners[type] = fn; }, querySelectorAll: () => [], querySelector: (sel) => { const name = sel.match(/data-region="(\w+)"/)?.[1]; return name ? { set innerHTML(v) { painted[name] = v; } } : null; } }; mount(createDashboard(engine, pageModel(SPEC_ACCOUNTS, GOLD, SPEC_ACCOUNTS.pages[0])), root, { document: {}, localStorage: { getItem: () => null, setItem: () => {} }, location: { hash: "#t=templates&s=all" }, history: { replaceState: (a, b, url) => replaced.push(url) }, addEventListener: () => {} }); return { listeners, painted, replaced }; })();
+      wired.listeners.submit({ preventDefault: () => {}, target: { closest: () => ({ querySelector: (sel) => (sel.includes('"q"') ? { value: " renewal " } : { checked: sel.includes('"qa"') }) }) } });
+      wired.listeners.click({ target: { closest: () => ({ hasAttribute: (n) => n === "data-open-template", getAttribute: (n) => (n === "data-open-template" ? "tpl-nps" : null) }) } });
+      const sortClick = () => wired.listeners.click({ target: { closest: () => ({ hasAttribute: (n) => n === "data-tsort", getAttribute: (n) => (n === "data-tsort" ? "name" : null) }) } });
+      sortClick();
+      const afterFirstSort = wired.replaced.at(-1);
+      sortClick();
+      check("the search form, the Text buttons and the sort headings are wired: a submit reads the words and the two boxes into the state and rewrites the address, a Text click opens the drawer on the Templates tab, a heading click sorts and a second click flips the direction",
+        isDeepStrictEqual(wired.replaced.slice(0, 2), ["#t=templates&s=all&q=renewal&qa=1", "#t=templates&s=all&q=renewal&qa=1&tpl=tpl-nps"]) && afterFirstSort === "#t=templates&s=all&q=renewal&qa=1&ts=name&tpl=tpl-nps" && wired.replaced.at(-1) === "#t=templates&s=all&q=renewal&qa=1&ts=name&td=desc&tpl=tpl-nps" && /data-drawer="tpl-nps"/.test(wired.painted.panes), wired.replaced);
+      check("the About tab's How-to names the Templates tab and the search on a page that has them, and the caveats block carries the template-content caveats there; the leaders' page, with no templates panel, carries neither; a leaders' page with the tab on says it carries no text",
+        /The Templates tab lists each email/.test(markupOf(ADMIN.html)) && /Search finds the emails/.test(markupOf(ADMIN.html)) && ADMIN.html.includes('data-caveat="template-content-current"') && ADMIN.html.includes('data-caveat="template-content-missing"') && !EXEC.html.includes('data-caveat="template-content-current"') && !/The Templates tab lists/.test(markupOf(EXEC.html)) && /This page carries no email text/.test(markupOf(execTemplates.html)));
+    }
     const messages = [...new Set(PULLED.facts.health.bounceReasons.map((r) => r.message))].filter((m) => m != null);
     // A sample text that IS a shipped category's product wording (the params echo carries the pattern) is not tenant text; the rest must reach no page.
     const samples = [...new Set(PULLED.facts.health.failureSamples.map((r) => r.message))].filter((m) => !engine.FAILURE_CATEGORIES.participantFailures.some((c) => m.toLowerCase().includes(c.pattern.toLowerCase())));
@@ -477,8 +560,8 @@ try {
         samples.length > 2 && samples.some((m) => inData(m) !== m) && samples.every((m) => !ADMIN.html.includes(inData(m)) && !offered.html.includes(inData(m)) && !EXEC.html.includes(inData(m)) && !ADMIN_P.html.includes(inData(m))) && admin.call(`app.snapshot.facts.health.failureSamples.length`) === 0 && PULLED.facts.health.failureSamples.length > 2,
       { messages: messages.length, samples: samples.length, adminSamples: admin.call(`app.snapshot.facts.health.failureSamples.length`) });
     const noEngagement = loadPage(build(specWith((s) => { s.pages[0].tabs.find((t) => t.id === "engagement").enabled = false; s.pages[0].panels = []; }), PULLED).html);
-    check("a panel of a tab that is not on is not part of the page: with Engagement off and no panel listed, the preset's engagement panels are not built, the health set is, the page opens on the first tab that is on, and Engagement is offered as a rebuild (every pull holds it)",
-      !noEngagement.prerender.includes(`data-panel="programs"`) && noEngagement.call(`app.panels.map((p) => p.tab)`).every((t) => t === "health") && noEngagement.call(`app.panels.length`) === 6 && noEngagement.call(`app.defaultState().tab`) === "health" && paneHtml(noEngagement.prerender, "engagement").includes(esc(NEEDS.rebuild)) && ADMIN.html.includes(`data-panel="error-rate"`));
+    check("a panel of a tab that is not on is not part of the page: with Engagement off and no panel listed, the preset's engagement panels are not built, the health set and the templates view are, the page opens on the first tab that is on, and Engagement is offered as a rebuild (every pull holds it)",
+      !noEngagement.prerender.includes(`data-panel="programs"`) && noEngagement.call(`app.panels.map((p) => p.tab)`).every((t) => t === "health" || t === "templates") && noEngagement.call(`app.panels.length`) === 7 && noEngagement.call(`app.defaultState().tab`) === "health" && paneHtml(noEngagement.prerender, "engagement").includes(esc(NEEDS.rebuild)) && ADMIN.html.includes(`data-panel="error-rate"`));
   }
   {
     // The recipients toggle with no internal domain.
@@ -705,11 +788,12 @@ try {
 
   // ══ The three tracking states, the notes beside click and response columns, Sent beside every rate ══
   {
-    const spec = specWith((s) => { s.pages[0].panels = [{ id: "emails", tab: "engagement", type: "table", title: "Emails", query: { groupBy: ["template"], metrics: ["sent", "clicked", "clickRate", "openRate"] }, columns: ["clicked", "clickRate", "openRate"] }, SPEC.pages[0].panels[1]]; s.pages[0].statusDefault = null; });
+    const spec = specWith((s) => { s.pages[0].panels = [{ id: "emails", tab: "engagement", type: "table", title: "Emails", query: { groupBy: ["template"], metrics: ["sent", "clicked", "clickRate", "openRate"] }, columns: ["clicked", "clickRate", "openRate"] }, ...SPEC.pages[0].panels.slice(1)]; s.pages[0].statusDefault = null; });
     const page = build(spec, PULLED);
     const html = panelHtml(page.html, "emails");
     const rows = anyRows(html);
-    const byName = Object.fromEntries(rows.slice(1).map((r) => [r[0], r]));
+    // The template cell carries the Text button that opens the template's drawer (TPL-2); its label is not the name.
+    const byName = Object.fromEntries(rows.slice(1).map((r) => [r[0].replace(/ Text$/, ""), r]));
     const states = Object.fromEntries(Object.entries(PULLED.meta.metricAvailability.clicks.templates).map(([k, v]) => [k, v.state]));
     const nameOf = (id) => PULLED.dimensions.templates.find((t) => t.id === id).name;
     check("the three tracking states look different (R1b): a tracked template with no click shows a plain 0 and 0.0%; a not-tracked template shows the words 'Not tracked' in a muted label and no number; an unknown one shows the figure with the '(tracking unknown)' marker whose tooltip explains it",
@@ -913,8 +997,7 @@ try {
   // ══ No network request, no dependency ═════════════════════════════════════
   {
     const pages = { admin: ADMIN.html, exec: EXEC.html, off: OFF_ADMIN.html, adminPreset: ADMIN_P.html, execPreset: EXEC_P.html };
-    // Tags as a page writes them (lower case): a JSDoc type such as Object<string, …> in an inlined comment is not one.
-    const bad = /\b(href|src|action|data|poster|formaction)\s*=\s*["']?\s*[hH][tT][tT][pP][sS]?:\/\/|url\(\s*["']?[hH][tT][tT][pP]|\bfetch\s*\(|XMLHttpRequest|WebSocket|EventSource|sendBeacon|(?<!\{)\bimport\s*\(|^\s*import\s|<link\b|<img\b|<iframe\b|<object\b|<embed\b|<form\b|\ssrc=|url\(|@import|<base\b|http-equiv/m;
+    const bad = NO_NETWORK;
     check("a page asks the network for nothing: no http(s):// source appears anywhere in it (a link named as TEXT on the About tab is not a source), and it holds no call, tag or style that could fetch, load, import or post",
       Object.values(pages).every((h) => !bad.test(h)) && bad.test(`<img src="x">`) && bad.test("fetch (x)") && bad.test(`import("x")`) && bad.test(`href="https://x"`) && bad.test("url(https://x)") && !bad.test("Clicks on https://www.acme.com/x are unsubscribe clicks"), Object.entries(pages).map(([k, h]) => [k, h.match(bad)?.[0]]));
     check("and it ran that way: every page above was loaded and queried in a context that has no fetch, no XMLHttpRequest, no timers and no Node globals, with only its own embedded data to read",
@@ -993,7 +1076,9 @@ try {
     const r = ADMIN.report;
     check("the builder measures every page and reports it: the total is the file's real size in bytes, with what the data, the engine, the runtime and the pre-render each take, and the rows of each embedded table",
       r.bytes.total === Buffer.byteLength(ADMIN.html, "utf8") && r.bytes.engine === Buffer.byteLength(SOURCES.engineSource) && r.bytes.runtime === Buffer.byteLength(SOURCES.runtimeSource) && r.bytes.data === Buffer.byteLength(admin.data) && r.bytes.prerender === Buffer.byteLength(admin.prerender) &&
-        r.rows.byTemplate === 30 && r.rows.byAccount === 67 && r.rows["health.bounceReasons"] === PULLED.facts.health.bounceReasons.length && r.rows["health.schedules"] === PULLED.facts.health.schedules.length && r.rows["health.sources"] === PULLED.facts.health.sources.length && Object.keys(r.tables).length === 16 && r.tables.byAccount.bytes > 0 && r.tables.byAccount.bytes < r.bytes.data && r.megabytes === Number((r.bytes.total / MB).toFixed(2)) && r.warning === null && r.refused === null && r.file === "latest-admin.html" && pageFileName("exec") === "latest-exec.html", r);
+        r.rows.byTemplate === 30 && r.rows.byAccount === 67 && r.rows["health.bounceReasons"] === PULLED.facts.health.bounceReasons.length && r.rows["health.schedules"] === PULLED.facts.health.schedules.length && r.rows["health.sources"] === PULLED.facts.health.sources.length && Object.keys(r.tables).length === 17 && r.tables.byAccount.bytes > 0 && r.tables.byAccount.bytes < r.bytes.data && r.megabytes === Number((r.bytes.total / MB).toFixed(2)) && r.warning === null && r.refused === null && r.file === "latest-admin.html" && pageFileName("exec") === "latest-exec.html" &&
+          // The template text's share (TPL-2): the template dimension is reported like a table, and the exec page's copy, with the text withheld, is smaller.
+          r.rows["dimensions.templates"] === PULLED.dimensions.templates.length && r.tables["dimensions.templates"].bytes > 0 && EXEC.report.tables["dimensions.templates"].bytes < r.tables["dimensions.templates"].bytes, r);
     check("the budget is 5 MB to warn and 15 MB to refuse a leaders' page, under the 16 MB a hosted page may be", PAGE_BUDGET.warnBytes === 5 * MB && PAGE_BUDGET.refuseExecBytes === 15 * MB && PAGE_BUDGET.refuseExecBytes < 16e6);
     // One oversized snapshot, written to disk and built through the real process with the real budget.
     const big = generated({ programs: 400, templates: 30, months: 13, measure: 9 });
@@ -1054,8 +1139,9 @@ try {
       throwsWith(() => build(specWith((s) => { s.pages[0].panels.push({ id: "bad", tab: "engagement", type: "table", title: "Bad", query: { groupBy: ["account", "template"], metrics: ["sent"] } }); }), PULLED), /dashboard page "admin": engagement query: no fact table holds accounts beside templates/) &&
         throwsWith(() => buildPage({ spec: SPEC, snapshot: GOLD, pageId: "ghost", ...SOURCES }), /the spec has no page "ghost"/));
     const bare = build(specWith((s) => { s.pages[0].panels = []; }), PULLED);
-    check("a page whose spec lists no panel shows the preset's panels (every on tab given its own), and the Templates tab, on with nothing to show yet, says what it is for and what it would take rather than standing empty",
-      isDeepStrictEqual(rowsOf(panelHtml(bare.html, "programs"), "thead")[0], ["Program", ...PRESETS.admin.panels.find((p) => p.id === "programs").columns.map((id) => engine.metric(id).label)]) && paneHtml(bare.html, "templates").includes("Templates: each email&#39;s performance, content and keyword search") && lacksIn(paneHtml(bare.html, "templates")).join() === "templates-not-pulled" &&
+    check("a page whose spec lists no panel shows the preset's panels (every on tab given its own), the Templates tab's among them: the preset's templates view draws over the pulled content with the engine's rows",
+      isDeepStrictEqual(rowsOf(panelHtml(bare.html, "programs"), "thead")[0], ["Program", .../** @type {any} */ (PRESETS.admin.panels.find((p) => p.id === "programs")).columns.map((id) => engine.metric(id).label)]) && /data-panel="templates" data-type="templates"/.test(paneHtml(bare.html, "templates")) && lacksIn(paneHtml(bare.html, "templates")).length === 0 &&
+        [...paneHtml(bare.html, "templates").matchAll(/<tr data-template="([^"]+)">/g)].map((m) => m[1]).join() === engine.templatesView(applyGroups(PULLED, SPEC_DEFAULTS.groups).snapshot, loadPage(bare.html).call(`app.filtersOf(app.defaultState())`)).rows.map((r) => r.templateId).join() &&
         loadPage(bare.html).call(`app.panels.length`) === presetPanels(SPEC_DEFAULTS.pages[0]).length);
   }
 } finally {

@@ -43,7 +43,7 @@ import { mkdirSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { makeCliHelpers, readJsonFile, writeFileAtomicSync, isMainModule } from "./doc-lib.mjs";
 import * as engine from "./engagement-query.mjs";
-import { openSpec, SPEC_DESCRIPTIONS, TABS, CADENCES, HEALTH_PANEL_TYPES, presetPanels, pageDateDefault, panelKnobs, describeSpec } from "./dashboard-spec.mjs";
+import { openSpec, SPEC_DESCRIPTIONS, TABS, CADENCES, KNOBBED_PANEL_TYPES, presetPanels, pageDateDefault, pageTemplateContent, panelKnobs, describeSpec } from "./dashboard-spec.mjs";
 import { applyGroups, resolveGroups, programTraits, describeRule } from "./dashboard-groups.mjs";
 import { createDashboard, LACKS, PAGE_MODEL_VERSION } from "./dashboard-runtime.mjs";
 
@@ -59,11 +59,11 @@ const MB = 1024 * 1024;
 export const PAGE_BUDGET = Object.freeze({ warnBytes: 5 * MB, refuseExecBytes: 15 * MB });
 export const pageFileName = (pageId) => `latest-${pageId}.html`;
 // Whether a pull holds what a tab shows: it decides if turning the tab on is a
-// rebuild or a new pull. No snapshot carries template content yet (TPL-1).
+// rebuild or a new pull.
 const TAB_DATA_HELD = {
   engagement: () => true,
   health: (snapshot) => engine.healthAvailability(snapshot).pulled,
-  templates: () => false,
+  templates: (snapshot) => engine.templateAvailability(snapshot).pulled,
   about: () => true,
 };
 
@@ -126,6 +126,14 @@ export function pageSnapshot(snapshot, page) {
     meta.health = { pulled: false, reason: "tab-off", asOf: null, dayWindow: null, parts: {} };
     facts.health = Object.fromEntries(Object.keys(facts.health ?? {}).map((k) => [k, []]));
   }
+  // Template TEXT (TPL-2): a page whose Templates tab is off carries none (its copy says tab-off, as for health); a
+  // page whose tab is on but which withholds the text (pages[].templateContent off: a leaders' page unless opted in)
+  // keeps the performance rows and says the text is not on the page. The content of every template row is stripped
+  // either way, so no subject or body reaches the file.
+  if (engine.templateAvailability(snapshot).pulled && (!tabOn("templates") || !pageTemplateContent(page))) {
+    meta.templates = !tabOn("templates") ? { pulled: false, reason: "tab-off", content: false, source: null } : { ...meta.templates, reason: "templates-not-on-page", content: false };
+    dimensions.templates = (dimensions.templates ?? []).map((t) => ({ ...t, content: null }));
+  }
   // Aggregates only on a page (ruled 2026-10-05): the categorised rows and the counted remainders, never a distinct
   // message and never the failure samples (the masked text behind the "Other" rows is for the terminal).
   if (facts.health) facts.health = engine.healthForPage(facts.health);
@@ -187,8 +195,8 @@ export function pageModel(spec, snapshot, page) {
     title: spec.title,
     page: {
       id: page.id, preset: page.preset, title: page.title, statusDefault: page.statusDefault, dateDefault: pageDateDefault(page), tabs,
-      // The panels, each health view with its knobs resolved against the spec (the page cannot read the spec).
-      panels: presetPanels(page).filter((p) => on.has(p.tab)).map((p) => (p.type in HEALTH_PANEL_TYPES ? { ...p, knobs: panelKnobs(spec, p) } : p)),
+      // The panels, each typed view (the health four, the templates view) with its knobs resolved against the spec (the page cannot read the spec).
+      panels: presetPanels(page).filter((p) => on.has(p.tab)).map((p) => (p.type in KNOBBED_PANEL_TYPES ? { ...p, knobs: panelKnobs(spec, p) } : p)),
     },
     filters: { dateRange: offered("dateRange"), programs: offered("programs"), group: offered("group"), status: offered("status"), recipientClass: { enabled: !!recipients?.enabled, default: recipients?.default ?? "all" } },
     testAccounts: spec.sources.reduce((n, s) => n + s.params.testAccounts.length, 0),
@@ -316,6 +324,17 @@ tfoot td{font-weight:600}
 .gs-badge-error{color:var(--status-error);border-color:var(--status-error)}
 .gs-badge-warn{color:var(--status-warn);border-color:var(--status-warn)}
 .gs-caveats{margin:4px 0;padding-left:18px;font-size:13px;color:var(--muted)}
+.gs-search{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:0 0 8px}
+.gs-search input[type=search]{min-width:200px}
+.gs-snippet{margin:2px 0 0;font-size:12px;color:var(--muted)}
+mark{background:var(--shade);color:inherit;padding:0 2px}
+.gs-sort{border:0;background:none;padding:0;font:inherit;font-weight:600;color:inherit;cursor:pointer;white-space:nowrap}
+.gs-sort.is-on{color:var(--accent)}
+.gs-text{font-size:12px;padding:0 6px;margin-left:4px}
+.gs-drawer{margin:8px 0 16px;padding:12px;border:1px solid var(--line);border-left:4px solid var(--accent);border-radius:var(--radius);background:var(--soft)}
+.gs-drawer h3{margin:0}
+.gs-body{white-space:pre-wrap;overflow-wrap:anywhere;font:13px/1.45 var(--font);margin:0 0 8px;padding:8px;background:var(--bg);border:1px solid var(--line);border-radius:4px}
+.gs-sub2 td:first-child{padding-left:48px}
 .gs-foot{margin-top:24px;border-top:1px solid var(--line);padding-top:8px}
 .gs-foot summary{cursor:pointer;color:var(--muted)}
 h3{font-size:14px;margin:12px 0 6px}
@@ -373,12 +392,15 @@ export function buildPage({ spec, snapshot, pageId, engineSource, runtimeSource,
     }
   };
   walk(model.snapshot.facts, "");
+  // The template dimension carries the template TEXT (TPL-2): its share of the page is reported like a fact table's.
+  walk({ templates: model.snapshot.dimensions.templates }, "dimensions.");
   const rows = Object.fromEntries(Object.entries(tables).map(([k, t]) => [k, t.rows]));
   const largest = Object.entries(tables).sort((a, b) => b[1].bytes - a[1].bytes).slice(0, 2).filter(([, t]) => t.bytes > 0);
   const named = largest.map(([k, t]) => `${k} (${Number((t.bytes / MB).toFixed(2))} MB)`).join(" and ");
   // What would make the page smaller follows from where the bytes are.
   const remedy = largest[0]?.[0].startsWith("health.") ? "The Health tab's data makes the size: turn the tab off for this page, or narrow the programs or the window."
     : largest[0]?.[0] === "byAccount" ? "Customer lists make the size: turn them off, or narrow the programs or the window."
+    : largest[0]?.[0] === "dimensions.templates" ? "Template text makes the size: turn template text off for this page (pages[].templateContent), or narrow the programs."
     : "Narrow the programs or the window.";
   const mostly = named ? ` Most of it is ${named}.` : "";
   const refused = page.preset === "exec" && bytes.total > budget.refuseExecBytes ? `the page is ${megabytes} MB, over the ${budget.refuseExecBytes / MB} MB a leaders' page may be; it was not written.${mostly} ${remedy}` : null;

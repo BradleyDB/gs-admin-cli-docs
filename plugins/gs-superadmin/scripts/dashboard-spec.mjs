@@ -98,22 +98,24 @@
  * @property {T11GroupRule[]} rules                applied in the listed order, each level on its own
  * @property {Object<string, {supergroup?: string, group?: string}>} overrides   per program id; decides before any rule
  *
- * @typedef {object} T11Panel                     a panel is a QUERY for the engine (R2), or one of the typed health views (DSH-4, ruled 2026-10-05)
+ * @typedef {object} T11Panel                     a panel is a QUERY for the engine (R2), or one of the typed views (the health four, DSH-4, ruled 2026-10-05; the templates view, TPL-2)
  * @property {string} id
  * @property {"engagement"|"health"|"templates"} tab
- * @property {"kpi"|"bar"|"line"|"table"|"watchlist"|"health-silent"|"health-reasons"|"health-schedules"|"health-one-time"} type
+ * @property {"kpi"|"bar"|"line"|"table"|"watchlist"|"health-silent"|"health-reasons"|"health-schedules"|"health-one-time"|"templates"} type
  *   kpi, bar, line, table and watchlist take a `query` (the engine's shape, checked per type: a kpi groups by
  *   nothing, a line by month alone, a bar by one dimension, a watchlist by account); the four health-* types take
  *   `knobs` instead, each type its own few (HEALTH_PANEL_TYPES; additive, S4b; absent or empty takes the
- *   defaults), and sit on the health tab
+ *   defaults), and sit on the health tab; the templates type (additive, TPL-2) takes `knobs` too
+ *   (TEMPLATE_PANEL_TYPES) and sits on the templates tab
  * @property {string} title
  * @property {{groupBy?: string[], metrics: string[], sort?: Array<{metric?: string, dim?: string, label?: string, dir?: "asc"|"desc"}>, having?: Array<{metric: string, gte?: number, gt?: number, lte?: number}>, limit?: number}} [query]
- *   required on a query-typed panel, absent on a health-typed one
- * @property {{days?: number, showExpected?: boolean, staleAfterDays?: number, months?: number}} [knobs]
+ *   required on a query-typed panel, absent on a knobbed one
+ * @property {{days?: number, showExpected?: boolean, staleAfterDays?: number, months?: number, snippet?: number}} [knobs]
  *   a health-typed panel's settings (additive, S4b): health-silent {days: the no-send threshold the page starts on;
  *   default the spec's health.silentDays}, health-reasons {showExpected: expected failures shown from the start;
  *   default false}, health-schedules {staleAfterDays: a schedule documented longer ago than this before the pull is
- *   marked stale; default freshness.maxAgeDays}, health-one-time {months: of send history shown per program; default 6}
+ *   marked stale; default freshness.maxAgeDays}, health-one-time {months: of send history shown per program; default 6};
+ *   a templates panel's (additive, TPL-2): {snippet: the characters of context either side of a search hit; default 50}
  * @property {string[]} [columns]                  the metrics shown at first; a viewer can show or hide any (R1)
  *
  * @typedef {object} T11Page                      one per audience
@@ -123,9 +125,10 @@
  * @property {?string[]} statusDefault             the statuses shown at first (R23); null = every status (the admin preset's, ruled 2026-10-05: every program that sent, with its badges)
  * @property {"window"|"closed-months"} [dateDefault]   the months shown at first (additive, S4b; ruled 2026-10-05): the whole window with the current month marked provisional (the admin preset), or the closed months with the current month one click away (the leaders' preset). Absent on a spec written before it existed: the preset's
  * @property {Array<{id: "engagement"|"health"|"templates"|"about", enabled: boolean}>} tabs   all four, in order; About is always on (R26)
- * @property {T11Panel[]} panels                   empty = the preset's panels (PRESETS[preset].panels, filtered to the tabs that are on); a list must give every on tab but Templates at least one panel (F-486)
+ * @property {T11Panel[]} panels                   empty = the preset's panels (PRESETS[preset].panels, filtered to the tabs that are on); a list must give every on tab at least one panel (F-486)
  * @property {boolean} accountNames                whether the page may name accounts (off on an exec page unless opted in)
  * @property {boolean} sourceDetail                whether a definition also shows its object, fields and filters
+ * @property {boolean} [templateContent]           whether the page carries template TEXT (subjects, bodies, the keyword search; additive, TPL-2): on by the admin preset, off by the exec preset unless opted in (a leaders' page carries no content by default). Absent on a spec written before it existed: the preset's. The performance rows of the Templates tab draw either way
  *
  * @typedef {object} T11Spec
  * @property {1} schemaVersion
@@ -187,6 +190,7 @@ export const PANEL_TYPES = Object.freeze({
   "health-reasons": "why sends and participants fail, by category, each against its usual, with expected failures (business rules working) behind a toggle",
   "health-schedules": "each program's schedule as the knowledge base documents it, with the day it is as of and a stale mark",
   "health-one-time": "one-time and ad-hoc programs with their send history",
+  templates: "each email's performance per program and step, its current text, and keyword search over subjects and bodies",
 });
 export const DATE_DEFAULTS = Object.freeze({ window: "the whole window, with the current month marked provisional", "closed-months": "the closed months, with the current month one click away" });
 // The typed health views (DSH-4, ruled 2026-10-05): each type's knobs, how each is checked, its default when the
@@ -198,9 +202,16 @@ export const HEALTH_PANEL_TYPES = Object.freeze({
   "health-schedules": { knobs: { staleAfterDays: { kind: "whole", min: 1, max: 3660, default: (spec) => spec.freshness.maxAgeDays, say: (v) => `a schedule documented more than ${v} days before the pull is marked stale` } } },
   "health-one-time": { knobs: { months: { kind: "whole", min: 1, max: 36, default: () => 6, say: (v) => `each program's sends over the last ${v} months` } } },
 });
+// The templates view (TPL-2): the one knobbed type of the templates tab, checked and described like the health four.
+/** @type {Readonly<Object<string, {tab: string, knobs: Object<string, {kind: "whole"|"boolean", min?: number, max?: number, default: (spec: any) => *, say: (v: *) => string}>}>>} */
+export const TEMPLATE_PANEL_TYPES = Object.freeze({
+  templates: { tab: "templates", knobs: { snippet: { kind: "whole", min: 10, max: 300, default: () => 50, say: (v) => `a search hit shows ${v} characters of context either side` } } },
+});
+// Every knobbed type (a typed view: knobs, no query), with the tab each sits on.
+export const KNOBBED_PANEL_TYPES = Object.freeze({ ...Object.fromEntries(Object.entries(HEALTH_PANEL_TYPES).map(([k, v]) => [k, { tab: "health", ...v }])), ...TEMPLATE_PANEL_TYPES });
 export const QUERY_PANEL_TYPES = Object.freeze(["kpi", "bar", "line", "table", "watchlist"]);
-/** A health-typed panel's knobs with the spec's defaults filled in. */
-export const panelKnobs = (spec, panel) => Object.fromEntries(Object.entries(HEALTH_PANEL_TYPES[panel.type].knobs).map(([k, d]) => [k, panel.knobs?.[k] ?? d.default(spec)]));
+/** A knobbed panel's knobs (a health view's, the templates view's) with the spec's defaults filled in. */
+export const panelKnobs = (spec, panel) => Object.fromEntries(Object.entries(KNOBBED_PANEL_TYPES[panel.type].knobs).map(([k, d]) => [k, panel.knobs?.[k] ?? d.default(spec)]));
 // The default panels (DSH-4, Bradley's choice A of 2026-10-09): what a page shows when its spec lists none. The
 // health set is one list both presets share; a leaders' page draws it only when its Health tab is turned on.
 const HEALTH_PANELS = Object.freeze([
@@ -212,11 +223,13 @@ const HEALTH_PANELS = Object.freeze([
   { id: "error-rate", tab: "health", type: "table", title: "Error rate by program", query: { groupBy: ["program"], metrics: ["sent", "failed", "errorRate", "bounced", "bounceRate", "rejected", "rejectedRate", "unsubscribed", "unsubscribeRate", "spamComplaints", "spamRate"], sort: [{ metric: "errorRate", dir: "desc" }], having: [{ metric: "sent", gte: 1 }] }, columns: ["sent", "failed", "errorRate", "bounceRate", "rejectedRate", "unsubscribeRate", "spamRate"] },
 ]);
 const ACCOUNT_LIST = (id, title, sort, having) => ({ id, tab: "engagement", type: "watchlist", title, query: { groupBy: ["account"], metrics: ["delivered", "opened", "openRate", "bounced"], sort: [sort], having: [having], limit: 25 } });
+// The Templates tab's one panel (TPL-2), on both presets; a leaders' page draws it only when its Templates tab is turned on.
+const TEMPLATES_PANEL = /** @type {T11Panel} */ (Object.freeze({ id: "templates", tab: "templates", type: "templates", title: "Emails: text and search", knobs: {} }));
 // A preset is what a new page of that audience starts as; every value can be changed afterwards.
 export const PRESETS = Object.freeze({
   admin: {
     meaning: "for the people who run the programs: every tab, per-program and per-email detail, account names",
-    page: { statusDefault: null, dateDefault: "window", tabs: { engagement: true, health: true, templates: true, about: true }, accountNames: true, sourceDetail: true },
+    page: { statusDefault: null, dateDefault: "window", tabs: { engagement: true, health: true, templates: true, about: true }, accountNames: true, sourceDetail: true, templateContent: true },
     panels: Object.freeze([
       { id: "headline", tab: "engagement", type: "kpi", title: "This period", query: { metrics: ["sent", "delivered", "opened", "openRate", "clickRate"] } },
       { id: "open-rate-trend", tab: "engagement", type: "line", title: "Open rate by month", query: { groupBy: ["month"], metrics: ["openRate", "clickRate"] } },
@@ -229,11 +242,12 @@ export const PRESETS = Object.freeze({
       ACCOUNT_LIST("least-engaged", "Least engaged customers (possible bad contacts or disengagement)", { metric: "openRate", dir: "asc" }, { metric: "delivered", gte: 10 }),
       ACCOUNT_LIST("most-bounced", "Most bounced customers (possible bad contacts)", { metric: "bounced", dir: "desc" }, { metric: "bounced", gt: 0 }),
       ...HEALTH_PANELS,
+      TEMPLATES_PANEL,
     ]),
   },
   exec: {
     meaning: "for leaders who read the numbers: Engagement and About, every status, no account names",
-    page: { statusDefault: null, dateDefault: "closed-months", tabs: { engagement: true, health: false, templates: false, about: true }, accountNames: false, sourceDetail: false },
+    page: { statusDefault: null, dateDefault: "closed-months", tabs: { engagement: true, health: false, templates: false, about: true }, accountNames: false, sourceDetail: false, templateContent: false },
     panels: Object.freeze([
       { id: "headline", tab: "engagement", type: "kpi", title: "Headline", query: { metrics: ["sent", "delivered", "openRate", "clickRate"] } },
       { id: "open-rate-trend", tab: "engagement", type: "line", title: "Open rate by month", query: { groupBy: ["month"], metrics: ["openRate", "clickRate"] } },
@@ -242,6 +256,7 @@ export const PRESETS = Object.freeze({
       { id: "top-open-rate", tab: "engagement", type: "table", title: "Top programs by open rate", query: { groupBy: ["program"], metrics: ["sent", "openRate"], having: [{ metric: "sent", gte: 10 }], sort: [{ metric: "openRate", dir: "desc" }], limit: 10 } },
       { id: "lowest-open-rate", tab: "engagement", type: "table", title: "Lowest open rates", query: { groupBy: ["program"], metrics: ["sent", "openRate"], having: [{ metric: "sent", gte: 10 }], sort: [{ metric: "openRate", dir: "asc" }], limit: 10 } },
       ...HEALTH_PANELS,
+      TEMPLATES_PANEL,
     ]),
   },
 });
@@ -257,6 +272,8 @@ export function presetPanels(page) {
 }
 /** A page's starting months (T11Page.dateDefault; the preset's on a spec written before the field existed). */
 export const pageDateDefault = (page) => page.dateDefault ?? PRESETS[page.preset].page.dateDefault;
+/** Whether a page carries template text (T11Page.templateContent; the preset's on a spec written before the field existed). */
+export const pageTemplateContent = (page) => page.templateContent ?? PRESETS[page.preset].page.templateContent;
 const STATUSES = Object.keys(STATUS_LABELS);
 const METRIC_IDS = METRICS.map((m) => m.id);
 const metricLabel = (id) => METRICS.find((m) => m.id === id)?.label ?? id;
@@ -264,7 +281,7 @@ const isRateMetric = (id) => { const m = METRICS.find((x) => x.id === id); retur
 
 const pageOf = (id, preset, title) => {
   const p = PRESETS[preset].page;
-  return { id, preset, title, statusDefault: p.statusDefault ? [...p.statusDefault] : null, dateDefault: p.dateDefault, tabs: Object.keys(TABS).map((tab) => ({ id: tab, enabled: p.tabs[tab] })), panels: [], accountNames: p.accountNames, sourceDetail: p.sourceDetail };
+  return { id, preset, title, statusDefault: p.statusDefault ? [...p.statusDefault] : null, dateDefault: p.dateDefault, tabs: Object.keys(TABS).map((tab) => ({ id: tab, enabled: p.tabs[tab] })), panels: [], accountNames: p.accountNames, sourceDetail: p.sourceDetail, templateContent: p.templateContent };
 };
 /**
  * A new spec: every tunable at its default, one admin and one exec page.
@@ -309,9 +326,9 @@ const each = (spec, path) => path(spec) ?? [];
  */
 export function describePanel(spec, panel) {
   const head = `"${panel.title}" on the ${panel.tab} tab: ${PANEL_TYPES[panel.type] ?? panel.type}`;
-  if (panel.type in HEALTH_PANEL_TYPES) {
+  if (panel.type in KNOBBED_PANEL_TYPES) {
     const knobs = panelKnobs(spec, panel);
-    return `${head}; ${Object.entries(HEALTH_PANEL_TYPES[panel.type].knobs).map(([k, d]) => d.say(knobs[k])).join("; ")}.`;
+    return `${head}; ${Object.entries(KNOBBED_PANEL_TYPES[panel.type].knobs).map(([k, d]) => d.say(knobs[k])).join("; ")}.`;
   }
   const q = panel.query ?? { metrics: [] };
   const by = q.groupBy?.length ? ` by ${q.groupBy.join(" and ")}` : "";
@@ -361,12 +378,13 @@ export const SPEC_DESCRIPTIONS = Object.freeze([
   },
   { covers: ["health.silentDays"], label: "Silent programs", say: (s) => [`An Active program with no send in ${plural(s.health.silentDays, "day")} is listed as silent.`] },
   {
-    covers: ["pages[].id", "pages[].preset", "pages[].title", "pages[].statusDefault", "pages[].statusDefault[]", "pages[].dateDefault", "pages[].tabs[].id", "pages[].tabs[].enabled", "pages[].panels[]", "pages[].accountNames", "pages[].sourceDetail"], label: "Pages",
+    covers: ["pages[].id", "pages[].preset", "pages[].title", "pages[].statusDefault", "pages[].statusDefault[]", "pages[].dateDefault", "pages[].tabs[].id", "pages[].tabs[].enabled", "pages[].panels[]", "pages[].accountNames", "pages[].sourceDetail", "pages[].templateContent"], label: "Pages",
     say: (s) => each(s, (x) => x.pages).flatMap((p) => [
       `"${p.title}" (${p.id}): ${PRESETS[p.preset]?.meaning ?? p.preset}. Tabs: ${listed(p.tabs.filter((t) => t.enabled).map((t) => t.id), "none")}. ` +
       `Shows ${p.statusDefault ? `${p.statusDefault.map(statusLabel).join(" and ")} programs` : "programs of every status"} at first; the others are one click away. ` +
       `Starts on ${DATE_DEFAULTS[pageDateDefault(p)] ?? pageDateDefault(p)}. ` +
-      `${p.panels.length ? plural(p.panels.length, "panel") : `No panel of its own: the ${p.preset} preset's ${plural(presetPanels(p).length, "panel")}`}. Account names ${p.accountNames ? "may show" : "never show"}; definitions ${p.sourceDetail ? "show" : "do not show"} the object, fields and filters behind each number.`,
+      `${p.panels.length ? plural(p.panels.length, "panel") : `No panel of its own: the ${p.preset} preset's ${plural(presetPanels(p).length, "panel")}`}. Account names ${p.accountNames ? "may show" : "never show"}; definitions ${p.sourceDetail ? "show" : "do not show"} the object, fields and filters behind each number; ` +
+      `template text (subjects, bodies, the keyword search) ${pageTemplateContent(p) ? "is on the page" : "is not on the page"}.`,
       ...presetPanels(p).map((pn) => `  ${describePanel(s, pn)}`),
     ]),
   },
@@ -528,6 +546,8 @@ export function validateSpec(input) {
     if (tabs.length && on.size < 2) bad(`${at}.tabs`, "a page needs at least one tab besides About");
     bool(pg.accountNames, `${at}.accountNames`);
     bool(pg.sourceDetail, `${at}.sourceDetail`);
+    // Additive (TPL-2): absent takes the preset's; present, a switch.
+    if (pg.templateContent !== undefined) bool(pg.templateContent, `${at}.templateContent`);
     if (!Array.isArray(pg.panels)) { bad(`${at}.panels`, "must be a list (an empty one takes the preset's panels)"); continue; }
     const panelIds = new Set();
     for (const [j, pn] of pg.panels.entries()) {
@@ -541,12 +561,14 @@ export function validateSpec(input) {
       else if (!on.has(pn.tab)) bad(`${pat}.tab`, `is the ${pn.tab} tab, which this page has turned off`);
       if (!(pn.type in PANEL_TYPES)) { bad(`${pat}.type`, `must be one of ${Object.keys(PANEL_TYPES).join(", ")}`); continue; }
       text(pn.title, `${pat}.title`, { max: 120 });
-      // A health-typed panel: its knobs, checked per type, and no query (ruled 2026-10-05: a mistake is caught here, never on the page).
-      if (pn.type in HEALTH_PANEL_TYPES) {
-        if (pn.tab !== "health") bad(`${pat}.tab`, `must be health: a ${pn.type} panel is a health view`);
-        if ("query" in pn) bad(`${pat}.query`, `is not a field of a ${pn.type} panel: a health view takes knobs, not a query`);
+      // A knobbed panel (a health view; the templates view, TPL-2): its knobs, checked per type, and no query (ruled
+      // 2026-10-05: a mistake is caught here, never on the page); each sits on its own tab.
+      if (pn.type in KNOBBED_PANEL_TYPES) {
+        const own = KNOBBED_PANEL_TYPES[pn.type].tab;
+        if (pn.tab !== own) bad(`${pat}.tab`, `must be ${own}: a ${pn.type} panel is ${own === "health" ? "a health view" : "the templates view"}`);
+        if ("query" in pn) bad(`${pat}.query`, `is not a field of a ${pn.type} panel: a typed view takes knobs, not a query`);
         if ("columns" in pn) bad(`${pat}.columns`, `is not a field of a ${pn.type} panel`);
-        const allowed = HEALTH_PANEL_TYPES[pn.type].knobs;
+        const allowed = KNOBBED_PANEL_TYPES[pn.type].knobs;
         // Absent knobs take the defaults (the typedef marks them optional); null is a mistake, not an absence.
         if (pn.knobs === null) { bad(`${pat}.knobs`, `must be an object (an empty one, or none, takes the defaults: ${Object.keys(allowed).join(", ")})`); continue; }
         if (pn.knobs !== undefined && !obj(pn.knobs, `${pat}.knobs`)) continue;
@@ -558,7 +580,7 @@ export function validateSpec(input) {
         }
         continue;
       }
-      if ("knobs" in pn) bad(`${pat}.knobs`, `is not a field of a ${pn.type} panel: knobs belong to the health views (${Object.keys(HEALTH_PANEL_TYPES).join(", ")})`);
+      if ("knobs" in pn) bad(`${pat}.knobs`, `is not a field of a ${pn.type} panel: knobs belong to the typed views (${Object.keys(KNOBBED_PANEL_TYPES).join(", ")})`);
       const q = pn.query;
       if (!obj(q, `${pat}.query`)) continue;
       for (const k of Object.keys(q)) if (!["groupBy", "metrics", "sort", "having", "limit"].includes(k)) bad(`${pat}.query.${k}`, "is not a field of a query (groupBy, metrics, sort, having, limit)");
@@ -589,8 +611,8 @@ export function validateSpec(input) {
       }
     }
     // F-486: a tab that is on draws its panels and nothing else, so a list that leaves an on tab empty is refused
-    // (Templates has no panel type yet: its on state before template content exists is the page's own notice).
-    if (pg.panels.length) for (const tab of ["engagement", "health"]) if (on.has(tab) && !pg.panels.some((p) => p?.tab === tab)) bad(`${at}.panels`, `lists no panel for the ${tab} tab, which is on: list one, or leave the list empty to take the preset's panels`);
+    // (Templates included since TPL-2 gave it its panel type).
+    if (pg.panels.length) for (const tab of ["engagement", "health", "templates"]) if (on.has(tab) && !pg.panels.some((p) => p?.tab === tab)) bad(`${at}.panels`, `lists no panel for the ${tab} tab, which is on: list one, or leave the list empty to take the preset's panels`);
   }
 
   if (obj(s.freshness, "freshness")) whole(s.freshness.maxAgeDays, "freshness.maxAgeDays", 1, 3660);

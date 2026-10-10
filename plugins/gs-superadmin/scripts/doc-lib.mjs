@@ -483,7 +483,7 @@ const dateOf = (t, strField, msField) =>
 export function readLinkTracking(payload, linkRules) {
   if (!Array.isArray(linkRules)) throw new Error("readLinkTracking: linkRules (the engine's NON_CONTENT_LINK_RULES) is required — the link classification has one home");
   const t = payload?.data?.emailTemplate;
-  const out = { reading: "unreadable", entries: 0, present: 0, tracked: 0, system: 0, stale: 0 };
+  const out = /** @type {{reading: "tracked-link-present"|"links-none-tracked"|"unreadable", entries: number, present: number, tracked: number, system: number, stale: number}} */ ({ reading: "unreadable", entries: 0, present: 0, tracked: 0, system: 0, stale: 0 });
   if (!t || typeof t !== "object") return out;
   const entries = [];
   for (const map of [t.builderMetadata?.links, t.builderMetadata?.surveyLinks]) {

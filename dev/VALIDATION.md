@@ -2161,3 +2161,74 @@ S4b opens as it is and takes the presets' months). The browser pane: served from
 - D8 (CSV from a health view). Download CSV on the program-health panel and on the failure-reasons panel; open each in
   a spreadsheet. Pass bar: one row per judged program with its list and why; one row per category with its table; no
   formula evaluated; the file names carry the dashboard, the page, the panel and the pull's time.
+
+## TPL-1 / TPL-2 — the templates line on a real tenant: template text in the snapshot and the gap-fill into the knowledge base, the Templates tab's search against email-report `search`, the drawer, the page size with text, and the click tracking state read from each template's own link settings (banked 2026-10-10, builder, Session S4c; verdict at V2)
+
+Owed by: V2, the batched verdict session after S4c, in the consumer workspace with the plugin loaded from `dev`
+(the PR for `feat/jo-dash-s4c-templates` merges on green CI plus its review round, before V2).
+Token: the one `dev-utils handoff --branch feat/jo-dash-s4c-templates` mints for this branch (the bus's Under test
+line names it; this section is keyed to it). The PR to dev, unmerged at banking.
+Why it is banked: template content, the gap-fill, the Templates tab and its search were built offline against the
+fictional tenant's template payloads and a fixture knowledge base of five docs (one legacy). How a real tenant's
+templates read — a knowledge base that lacks most of the referenced templates (the spike measured ~60% absent), real
+subjects and bodies with real tokens, real link maps with their stale entries, a template Bradley knows was edited
+after it last sent, the size of an admin page carrying a tenant's template text — cannot be measured without a
+tenant. The gap-fill makes `jo email template --id` calls (reads), one at a time, within the budget the skill asks
+for; nothing else in this section calls the tenant beyond the pull itself.
+Tenant data stays in the workspace: snapshots, pages and the knowledge base live under the workspace's ignored
+paths; no subject, body, template name, count beyond an order of magnitude, or link is copied into this file or the
+bus.
+
+THIS LIST IS COMPLETE. It is everything this round judges for TPL-1 and TPL-2; a check that is not here is not
+owed, and a thing the round thinks should be here is a finding. Nothing is "noted on the verdict": anything observed
+beside a pass bar becomes an F-section on the bus, or a GitHub issue, before the round closes.
+
+Inputs: the workspace's knowledge base (templates documented by email-report's gap-fill before S4c carry no
+`- linkTracking:` bullet: that is the "unread" case by construction); a plan and pull of
+`/gs-superadmin:email-engagement report --by-template` with `--kb`; the dashboard spec from DSH-4's inputs with
+the admin page's Templates tab on (the preset's) and the exec page's off (the preset's); the browser pane served
+from localhost, light.
+
+- T0 (the contract, before anything is pulled). Bradley reads the As-shipped (S4c) notes under TPL-1 and TPL-2 and
+  rules on the executor's choices listed there (the month-grain "edited after last send" flag; a doc with no capture
+  date judged behind; the gap-fill driven by the skill from the plan's files rather than by the pull; the Templates
+  tab's columns; the drawer's wording; the title searched only for a template whose text the snapshot holds). Pass
+  bar: each confirmed or overruled; an overrule that changes what a snapshot or page embeds is the builder's change
+  before V2 pulls.
+- T1 (every referenced template resolves, and the gap lands in the knowledge base). Run the skill's plan. Pass bar:
+  `estimate.templates` names the referenced count (sends over the window plus the selected programs' designs), the
+  missing, behind and unread counts, the seconds, the domain and id field the manifest records, and the three files
+  beside plan.json; the skill asks when `planned` is over 50 (or fills without asking at 50 or fewer) with the counts
+  and seconds, and the three commands run as written with placeholders substituted (upsert-batch --partial for the
+  missing, mark --status stale for the rest, describe-batch --keys-file --limit within the budget, re-invoked while
+  `moreRemaining`); each fetched template lands as a doc under the templates domain carrying the `- linkTracking:`
+  bullet, with its manifest entry documented and a fresh capture date; the plan re-issued unchanged reads
+  `planned` 0 (or the remainder past the budget); the run then reports `honesty.templates.missing` 0 for a full fill
+  and the Subject column reads for every row of the report's per-template table. Record the order of magnitude of
+  the referenced count and of the gap.
+- T2 (the "edited after last send" flag). For two templates Bradley knows were edited after their last send, and
+  two he knows were not (one recently sent): the admin page's Templates tab row says yes with the modified day, no,
+  or "within its last send month" as the case is; the drawer agrees. Pass bar: each reads as he knows it, or the row
+  is a finding (note the month grain: an edit inside the last send month reads neither yes nor no, by design).
+- T3 (the in-page search against email-report `search`). For three terms Bradley picks — one plain word, one
+  two-word phrase run as two words with "all the words", one he expects to hit a token's label (a field name such as
+  the product name) — run `/gs-superadmin:email-report search` with the same options over the same knowledge base
+  and search the admin page's Templates tab with the global filters cleared (every status, the whole window, every
+  program). Pass bar: the same templates match in both, except a template the page holds no text for (not in the
+  pull's programs, or missing from the knowledge base) which email-report may list, and except a term inside a raw
+  token key, which email-report sees and the page does not (the documented divergence; the token's label matches on
+  the page and not there); the page's snippets name the field and mark the hit.
+- T4 (the drawer, and the page size with text). Open Text on a template Bradley knows: the subject, the body as the
+  knowledge base holds it with tokens as field labels, the day it is as of, the caveat, the variants. Pass bar: he
+  recognises the text; no HTML, no image, no script reaches the page (view-source: the body sits in a `<pre>` as
+  text). The build's size report: `tables["dimensions.templates"]` bytes and share of `bytes.data` on the admin page;
+  the exec page's entry smaller with the text withheld; `grep -c` of two subjects from the admin page returns 0 on
+  the exec page file. Record both orders of magnitude; a warning naming template text is a finding to size, not a
+  defect.
+- T5 (the click tracking state from the template's own link settings, R19). For a template Bradley knows has link
+  tracking ON in the editor and has never recorded a content click, and one he knows has it OFF: after the
+  gap-fill their docs' `- linkTracking:` bullets read tracked-link-present and links-none-tracked, with the present,
+  tracked, system and stale counts; the snapshot's click availability reads tracked (a real 0%) and not-tracked
+  ("Not tracked" on the page and in the report); the plan's `unread` count dropped by those re-read. Pass bar: both
+  as he knows them; a template whose editor shows one tracked link but whose bullet reads unreadable or stale-only
+  is a finding naming the link map's shape (the reading is defensive on field spellings the spike did not record).

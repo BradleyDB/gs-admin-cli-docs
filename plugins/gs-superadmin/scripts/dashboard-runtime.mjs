@@ -84,8 +84,10 @@ export const LACKS = Object.freeze([
   { reason: "predates-health", needs: "pull", setting: null, line: "refresh" },
   { reason: "not-in-previous", needs: "pull", setting: null, line: "refresh" },
   { reason: "call-failed", needs: "pull", setting: null, line: "refresh" },
-  // Templates (F-486): the tab is on and nothing holds template content yet (TPL-1).
+  // Templates: a snapshot made before template content existed (F-486; a pull with this plugin adds it), and a page
+  // whose Templates tab is on but which withholds the text (TPL-2: the switch is pages[].templateContent, a rebuild).
   { reason: "templates-not-pulled", needs: "pull", setting: null, line: "refresh" },
+  { reason: "templates-not-on-page", needs: "rebuild", setting: { path: "pages[].templateContent", how: "on" }, line: "change" },
 ]);
 // Reasons that are a property of the figure, of the view or of the tenant, not
 // something a setting would supply: the cell or panel says why, and nothing is
@@ -182,6 +184,8 @@ const DIM_LABELS = Object.freeze({
   recipientClass: "Recipients", supergroup: "Supergroup", group: "Group", model: "Model", audience: "Audience",
 });
 const HEALTH_TYPES = Object.freeze(["health-silent", "health-reasons", "health-schedules", "health-one-time"]);
+// The templates view's sort keys (TPL-2): a name, the last send month, or one of its metrics; the hash carries `ts=` and `td=`.
+const TEMPLATE_SORT_KEYS = Object.freeze(["name", "lastSend"]);
 const cmpText = (a, b) => {
   const [x, y] = [String(a).toLowerCase(), String(b).toLowerCase()];
   return x < y ? -1 : x > y ? 1 : a < b ? -1 : a > b ? 1 : 0;
@@ -231,6 +235,12 @@ export function createDashboard(engine, model) {
   const windowDays = health.pulled && health.dayWindow ? Math.round((Date.UTC(...dayParts(health.dayWindow.endExclusive)) - Date.UTC(...dayParts(health.dayWindow.start))) / MS_PER_DAY) : null;
   const silentPanel = panels.find((p) => p.type === "health-silent") ?? null;
   const healthDayChoices = silentPanel ? [...new Set([...HEALTH_DAY_OPTIONS, silentPanel.knobs.days])].filter((d) => windowDays == null || d <= windowDays).sort((a, b) => a - b) : [];
+  // The templates view (TPL-2): the page's templates panel, whether the page holds template TEXT (the pull's marker as
+  // this page's copy carries it), and the ids a drawer may open.
+  const templatesPanel = panels.find((p) => p.type === "templates") ?? null;
+  const templateData = engine.templateAvailability(snapshot);
+  const templateIds = new Set((snapshot.dimensions.templates ?? []).filter((t) => t.content).map((t) => t.id));
+  const templateSorts = [...TEMPLATE_SORT_KEYS, ...engine.TEMPLATE_VIEW_METRICS];
   const isRate = (def) => def.kind === "rate" || def.status === "rate";
   const fmt = (id, value) => engine.formatCell(id, { value });
 
@@ -284,6 +294,12 @@ export function createDashboard(engine, model) {
     account: null,
     hd: null, // the Health tab's no-send threshold; null = the panel's own
     he: false, // the Health tab shows expected failures
+    q: "", // the Templates tab's search: the words, whether all must match, whether whole words only
+    qa: false,
+    qw: false,
+    ts: null, // the Templates tab's sort: a key and its direction; null = most sent first
+    td: null,
+    tpl: null, // the template whose text drawer is open
   });
   /** Whatever a hash or a control gave → a state this page can show. */
   const clean = (s) => {
@@ -304,6 +320,13 @@ export function createDashboard(engine, model) {
       account: accountChoices.some((a) => a.key === s.account) ? s.account : null,
       hd: healthDayChoices.includes(s.hd) && s.hd !== silentPanel?.knobs.days ? s.hd : null,
       he: !!s.he,
+      // A search, a sort or an open drawer means something only where the page has a templates panel; the text itself only where the page carries it.
+      q: templatesPanel && typeof s.q === "string" ? s.q.trim().slice(0, 200) : "",
+      qa: !!templatesPanel && !!s.qa,
+      qw: !!templatesPanel && !!s.qw,
+      ts: templatesPanel && templateSorts.includes(s.ts) ? s.ts : null,
+      td: templatesPanel && templateSorts.includes(s.ts) && ["asc", "desc"].includes(s.td) ? s.td : null,
+      tpl: templatesPanel && templateData.content && templateIds.has(s.tpl) ? s.tpl : null,
     };
   };
   const defaultState = () => clean(firstState());
@@ -326,6 +349,12 @@ export function createDashboard(engine, model) {
     if (state.account) parts.push(`a=${encodeURIComponent(state.account)}`);
     if (state.hd != null) parts.push(`hd=${state.hd}`);
     if (state.he) parts.push("he=1");
+    if (state.q) parts.push(`q=${encodeURIComponent(state.q)}`);
+    if (state.qa) parts.push("qa=1");
+    if (state.qw) parts.push("qw=1");
+    if (state.ts) parts.push(`ts=${state.ts}`);
+    if (state.td) parts.push(`td=${state.td}`);
+    if (state.tpl) parts.push(`tpl=${encodeURIComponent(state.tpl)}`);
     return parts.join("&");
   };
   const stateFromHash = (hash) => {
@@ -350,9 +379,17 @@ export function createDashboard(engine, model) {
       else if (k === "a") s.account = list[0] ?? null;
       else if (k === "hd") s.hd = /^\d+$/.test(raw) ? Number(raw) : null;
       else if (k === "he") s.he = raw === "1";
+      else if (k === "q") s.q = list.join(",");
+      else if (k === "qa") s.qa = raw === "1";
+      else if (k === "qw") s.qw = raw === "1";
+      else if (k === "ts") s.ts = raw;
+      else if (k === "td") s.td = raw;
+      else if (k === "tpl") s.tpl = list[0] ?? null;
     }
     return clean(s);
   };
+  /** The search words of the Templates tab: the hash's `q=`, split on white space. */
+  const searchTerms = (state) => String(state.q ?? "").split(/\s+/).filter(Boolean);
   /** The state as the engine's filters. */
   const filtersOf = (state) => {
     const f = { recipientClass: state.external ? "external" : "all" };
@@ -380,24 +417,38 @@ export function createDashboard(engine, model) {
 
   // ── Cells, marks and the notes every figure may need ───────────────────────
   const colsKey = (panelId) => `gs-dashboard.${model.slug}.${page.id}.${panelId}.columns`;
+  /** The metrics a panel can show: its query's, or the templates view's fixed set. */
+  const metricsOf = (panel) => panel.query?.metrics ?? (panel.type === "templates" ? [...engine.TEMPLATE_VIEW_METRICS] : []);
   /**
    * The metrics shown: the viewer's own choice, else the panel's, else all (R1). Sent is shown beside any rate the
    * query also counts it for (R2b: send-size context next to every open rate).
    */
   const visibleCols = (panel, ui) => {
-    const pick = ui?.cols?.[panel.id] ?? panel.columns ?? panel.query.metrics;
-    const shown = panel.query.metrics.filter((id) => pick.includes(id));
-    const needsSent = shown.some((id) => isRate(engine.metric(id))) && panel.query.metrics.includes("sent") && !shown.includes("sent");
-    return needsSent ? panel.query.metrics.filter((id) => id === "sent" || shown.includes(id)) : shown;
+    const all = metricsOf(panel);
+    const pick = ui?.cols?.[panel.id] ?? panel.columns ?? all;
+    const shown = all.filter((id) => pick.includes(id));
+    const needsSent = shown.some((id) => isRate(engine.metric(id))) && all.includes("sent") && !shown.includes("sent");
+    return needsSent ? all.filter((id) => id === "sent" || shown.includes(id)) : shown;
   };
   const sentForced = (panel, cols) => cols.includes("sent") && cols.some((id) => id !== "sent" && isRate(engine.metric(id)));
+  /** The Columns tool: one box per metric the panel can show, Sent held while a rate shows. */
+  const columnsTool = (panel, cols, colsOpen) => {
+    const forced = sentForced(panel, cols);
+    return `<details class="gs-cols" data-cols="${esc(panel.id)}"${attr("open", colsOpen)}><summary>Columns</summary>` +
+      metricsOf(panel).map((id) => `<label><input type="checkbox" data-col="${esc(panel.id)}" value="${esc(id)}"${attr("checked", cols.includes(id))}${attr(`disabled title="Shown beside every rate"`, forced && id === "sent")}> ${esc(engine.metric(id).label)}</label>`).join("") +
+      `</details>`;
+  };
   const dimText = (dim, row) => row.label[dim] ?? row.key[dim];
   const badges = (statuses) => (statuses ?? []).map((s) => ` <span class="gs-badge">${esc(engine.statusLabel(s))}</span>`).join("");
+  /** The button that opens a template's text drawer on the Templates tab: only where the page has the panel and carries the text. */
+  const openTemplateButton = (id) => (templatesPanel && templateData.content && id != null && templateIds.has(id) ? ` <button type="button" class="gs-chip gs-text" data-open-template="${esc(id)}" title="Open this email's current text on the Templates tab">Text</button>` : "");
   const dimCell = (dim, row) => {
     const name = dimText(dim, row);
     const b = dim === "program" ? badges(row.label.statuses) : "";
     const step = dim === "template" && row.label.stepName ? ` <span class="gs-muted">(step ${esc(row.label.stepOrder ?? "")}: ${esc(row.label.stepName)})</span>` : "";
-    return (name == null ? `<span class="gs-muted">(none)</span>` : esc(name)) + step + b;
+    // The Emails table's template cell, and the Steps table's step cell, link to the template's text (TPL-2).
+    const text = dim === "template" ? openTemplateButton(row.key.template) : dim === "step" ? openTemplateButton(row.label.templateId) : "";
+    return (name == null ? `<span class="gs-muted">(none)</span>` : esc(name)) + step + b + text;
   };
   /** The three tracking states look different (R1b): a tracked 0 is a plain figure, not-tracked is a muted label and no number, unknown is the figure with a marker whose tooltip explains it. */
   const figure = (id, cell) => {
@@ -461,11 +512,7 @@ export function createDashboard(engine, model) {
   const renderTablePanel = (panel, result, cols, colsOpen = false) => {
     if (result.unavailable) return `${open(panel)}${renderNotice(lackFacts(result.unavailable.reason))}${close}`;
     const dims = panel.query.groupBy ?? [];
-    const forced = sentForced(panel, cols);
-    const tools =
-      `<div class="gs-tools"><details class="gs-cols" data-cols="${esc(panel.id)}"${attr("open", colsOpen)}><summary>Columns</summary>` +
-      panel.query.metrics.map((id) => `<label><input type="checkbox" data-col="${esc(panel.id)}" value="${esc(id)}"${attr("checked", cols.includes(id))}${attr(`disabled title="Shown beside every rate"`, forced && id === "sent")}> ${esc(engine.metric(id).label)}</label>`).join("") +
-      `</details>${csvButton(panel)}</div>`;
+    const tools = `<div class="gs-tools">${columnsTool(panel, cols, colsOpen)}${csvButton(panel)}</div>`;
     const shownRows = [...(dims.length ? result.rows : []), ...(result.total ? [result.total] : [])];
     const notes = [...whyNotes(shownRows, cols), ...periodNotes(shownRows), ...metricNotes(cols)];
     const none = dims.length && !result.rows.length ? `<p class="gs-note">Nothing matches the current filters.</p>` : "";
@@ -758,6 +805,64 @@ export function createDashboard(engine, model) {
     return `${open(panel)}<div class="gs-tools">${csvButton(panel)}</div><div class="gs-scroll"><table><thead>${head}</thead><tbody>${rows || `<tr><td colspan="5">None under the current filters.</td></tr>`}</tbody></table></div>${note}${close}`;
   };
 
+  // ── The templates view (TPL-2): the engine's templatesView laid out, never a sum ──
+  /** The ONE templates-view call for a panel and state: the filters, the search words and options, the panel's snippet radius, the viewer's sort. */
+  const templatesViewOf = (panel, state) => engine.templatesView(snapshot, filtersOf(state), { terms: searchTerms(state), wholeWord: !!state.qw, allTerms: !!state.qa, snippet: panel.knobs.snippet, sort: state.ts ? { by: state.ts, dir: state.td ?? (state.ts === "name" ? "asc" : "desc") } : null });
+  /** A search snippet with the hit marked: the engine's snippet and hit text, escaped around the mark. */
+  const marked = (snippet, hit) => {
+    const i = hit ? snippet.toLowerCase().indexOf(String(hit).toLowerCase()) : -1;
+    return i < 0 ? esc(snippet) : `${esc(snippet.slice(0, i))}<mark>${esc(snippet.slice(i, i + hit.length))}</mark>${esc(snippet.slice(i + hit.length))}`;
+  };
+  /** The "edited after last send" flag in words: the engine's three states, with the modified day where it has one. */
+  const editedText = (c) => (c == null ? engine.NO_VALUE : c.editedAfterLastSend === true ? `yes, on ${c.modified}` : c.editedAfterLastSend === false ? "no" : c.modified ? `edited ${c.modified}, within its last send month` : "unknown");
+  const surveyText = (cells) => (cells && cells.surveyParticipants?.value != null ? ` <span class="gs-muted">survey: ${esc(fmt("responseRate", cells.responseRate.value))} response rate (${esc(fmt("anyResponse", cells.anyResponse.value))} of ${esc(fmt("surveyParticipants", cells.surveyParticipants.value))})</span>` : "");
+  const renderTemplatesPanel = (panel, state, ui) => {
+    const view = templatesViewOf(panel, state);
+    if (view.unavailable) return `${open(panel)}${renderNotice(lackFacts(view.unavailable.reason))}${close}`;
+    const cols = visibleCols(panel, ui);
+    // The search, where the page carries the text; where it does not, the reason in its place (the figures still draw).
+    const search = view.content.available
+      ? `<form class="gs-search" data-search><label>Search subjects and bodies <input type="search" data-f="q" value="${esc(state.q)}" placeholder="words to find" aria-label="Search subjects and bodies"></label> <label><input type="checkbox" data-f="qa"${attr("checked", state.qa)}> all the words</label> <label><input type="checkbox" data-f="qw"${attr("checked", state.qw)}> whole words</label> <button type="submit">Search</button>${state.q ? ` <button type="button" data-act="search-clear">Clear</button>` : ""}</form>`
+      : renderNotice(lackFacts(view.content.reason), { compact: true });
+    const found = view.search ? `<p class="gs-note" data-search-result>${plural(view.search.matched.length, "email")} of ${view.search.searched} searched ${view.search.allTerms ? "hold all of" : "hold any of"} ${view.search.terms.map((t) => `"${esc(t)}"`).join(", ")}${view.search.wholeWord ? " as whole words" : ""}. Searched on the current text as the knowledge base holds it, with tokens as their field labels.</p>` : "";
+    const sortBtn = (by, label, num = false) => {
+      const on = state.ts === by;
+      const dir = on ? state.td ?? (by === "name" ? "asc" : "desc") : null;
+      return `<th scope="col"${num ? ` class="gs-num"` : ""} aria-sort="${dir === "asc" ? "ascending" : dir === "desc" ? "descending" : "none"}"><button type="button" class="gs-sort${on ? " is-on" : ""}" data-tsort="${esc(by)}">${esc(label)}${on ? (dir === "asc" ? " &#9650;" : " &#9660;") : ""}</button></th>`;
+    };
+    const head = `<tr>${sortBtn("name", "Email")}<th scope="col" class="gs-num">Programs</th>${sortBtn("lastSend", "Last send")}<th scope="col">Edited after last send</th>${cols.map((id) => sortBtn(id, engine.metric(id).label, true)).join("")}</tr>`;
+    const figures = (cells) => cols.map((id) => metricCell(id, cells[id])).join("");
+    const rowOf = (r) => {
+      const c = r.content;
+      const snippets = (r.matches ?? []).map((m) => `<p class="gs-snippet"><span class="gs-muted">${esc(m.field)}:</span> ${marked(m.snippet, m.hit)}</p>`).join("");
+      const main = `<tr data-template="${esc(r.templateId)}"><td>${esc(r.name ?? r.templateId)}${mark(r)}${openTemplateButton(r.templateId)}${snippets}</td><td class="gs-num">${r.programs.length}</td><td class="gs-nowrap">${esc(r.lastSendMonth ?? engine.NO_VALUE)}</td><td>${esc(editedText(c))}${c?.asOf ? ` <span class="gs-muted">(text as of ${esc(c.asOf)})</span>` : ""}</td>${figures(r.cells)}</tr>`;
+      const programs = r.programs.map((p) => {
+        const where = p.stepName ? ` <span class="gs-muted">(step ${esc(p.stepOrder ?? "")}: ${esc(p.stepName)})</span>` : p.stepCount > 1 ? ` <span class="gs-muted">(on ${p.stepCount} steps)</span>` : "";
+        const steps = (p.steps ?? []).map((s) => `<tr class="gs-sub gs-sub2"><td>${esc(s.step ?? s.stepId ?? "(no step name)")}${s.variant ? ` <span class="gs-muted">${esc(s.variant)}</span>` : ""}${mark(s)}</td><td></td><td></td><td></td>${figures(s.cells)}</tr>`).join("");
+        return `<tr class="gs-sub"><td>${esc(p.name ?? p.programId)}${badges(p.statuses)}${where}${surveyText(p.survey)}${mark(p)}</td><td></td><td></td><td></td>${figures(p.cells)}</tr>${steps}`;
+      }).join("");
+      return main + programs;
+    };
+    const body = view.rows.map(rowOf).join("");
+    const totalRow = view.total ? `<tr><td colspan="4">Everything the filters keep${mark(view.total)}</td>${figures(view.total.cells)}</tr>` : "";
+    const none = view.rows.length ? "" : `<p class="gs-note">${view.search ? "No email matches the search under the current filters." : "Nothing matches the current filters."}</p>`;
+    const noTemplate = view.noTemplate ? `<p class="gs-note">Sends with no template id are counted apart: ${esc(fmt("sent", view.noTemplate.cells.sent.value))} sent.</p>` : "";
+    // The drawer: one template's current text, with when it is as of and the caveat that it is the current text.
+    const drawer = state.tpl && view.content.available ? (() => {
+      const c = engine.templateContent(snapshot, state.tpl);
+      if (!c) return "";
+      const variants = c.variants.map((v) => `<h4>Variant: ${esc(v.name ?? "(unnamed)")}</h4><p>Subject: ${esc(v.subject ?? engine.NO_VALUE)}</p><pre class="gs-body">${esc(v.body)}</pre>`).join("");
+      return `<section class="gs-drawer" data-drawer="${esc(c.templateId)}"><div class="gs-tools"><h3>${esc(c.name ?? c.templateId)}</h3><button type="button" data-act="tpl-close">Close</button></div>` +
+        `<p class="gs-note">This is the template's CURRENT text as the knowledge base holds it, as of ${esc(c.asOf ?? "an unknown day")}: not necessarily what was sent.</p>` +
+        `<dl class="gs-defs"><dt>Subject</dt><dd>${esc(c.subject ?? engine.NO_VALUE)}</dd><dt>Last modified</dt><dd>${esc(c.modified ?? "unknown")}${c.lastSendMonth ? `; last send ${esc(c.lastSendMonth)}; edited after it: ${esc(editedText(c))}` : ""}</dd></dl>` +
+        `<h4>Body</h4><pre class="gs-body">${esc(c.bodyIncluded ? c.body : "(the knowledge base holds this template's details only, not its body)")}</pre>${variants}</section>`;
+    })() : "";
+    const shownRows = [...view.rows, ...(view.total ? [view.total] : [])];
+    const notes = [...whyNotes(shownRows, cols), ...periodNotes(shownRows), ...metricNotes(cols)];
+    const basis = `<p class="gs-note">One row per email the filters keep, most sent first unless sorted; under each, the programs that send it${view.stepDetail ? ", and their steps and variants" : ""}. ${view.content.available ? "Text opens the email's current text." : ""}</p>`;
+    return `${open(panel)}${search}${found}${drawer}<div class="gs-tools">${columnsTool(panel, cols, !!ui?.open?.[panel.id])}${csvButton(panel)}</div><div class="gs-scroll"><table><thead>${head}</thead><tbody>${body}</tbody><tfoot>${totalRow}</tfoot></table></div>${none}${noTemplate}${basis}${notes.join("")}${close}`;
+  };
+
   const renderPanel = (panel, state, ui) => {
     switch (panel.type) {
       case "kpi": return renderKpiPanel(panel, state);
@@ -767,6 +872,7 @@ export function createDashboard(engine, model) {
       case "health-reasons": return renderHealthReasons(panel, state);
       case "health-schedules": return renderHealthSchedules(panel, state);
       case "health-one-time": return renderHealthOneTime(panel, state);
+      case "templates": return renderTemplatesPanel(panel, state, ui);
       default: return renderTablePanel(panel, run(panel, state), visibleCols(panel, ui), !!ui?.open?.[panel.id]);
     }
   };
@@ -783,31 +889,46 @@ export function createDashboard(engine, model) {
     const filename = `${model.slug}-${page.id}-${panel.id}-${pulled}.csv`;
     let headers;
     let rows;
+    const tracked = (id) => !!engine.metric(id).tracking;
+    const figureHeads = (cols) => cols.flatMap((id) => (tracked(id) ? [engine.metric(id).label, `${engine.metric(id).label} tracking`] : [engine.metric(id).label]));
+    const value = (id, cell) => (cell.value == null ? "" : isRate(engine.metric(id)) ? Number(cell.value.toFixed(4)) : cell.value);
+    const figuresOf = (cols, cells) => cols.flatMap((id) => (tracked(id) ? [value(id, cells[id]), cells[id].state ?? ""] : [value(id, cells[id])]));
     if (isHealthPanel(panel)) {
       const t = healthCsvRows(panel, state);
       if (!t) return null;
       ({ headers, rows } = t);
+    } else if (panel.type === "templates") {
+      // The templates view's export is its view (R27): one line per email, then one per program under it (and per
+      // step and variant with step detail), the search and sort as drawn; the text itself stays on the page.
+      const view = templatesViewOf(panel, state);
+      if (view.unavailable) return null;
+      const cols = visibleCols(panel, ui);
+      headers = ["Email", "Template id", "Program", "Status", "Step", "Variant", "Last send", "Edited after last send", "Text as of", ...figureHeads(cols)];
+      rows = view.rows.flatMap((r) => [
+        [r.name ?? r.templateId, r.templateId, "", "", "", "", r.lastSendMonth ?? "", editedText(r.content), r.content?.asOf ?? "", ...figuresOf(cols, r.cells)],
+        ...r.programs.flatMap((p) => [
+          [r.name ?? r.templateId, r.templateId, p.name ?? p.programId, (p.statuses ?? []).map(engine.statusLabel).join(", "), p.stepName ? `${p.stepOrder != null ? `${p.stepOrder}. ` : ""}${p.stepName}` : p.stepCount > 1 ? `on ${p.stepCount} steps` : "", "", "", "", "", ...figuresOf(cols, p.cells)],
+          ...(p.steps ?? []).map((s) => [r.name ?? r.templateId, r.templateId, p.name ?? p.programId, (p.statuses ?? []).map(engine.statusLabel).join(", "), s.step ?? s.stepId ?? "", s.variant ?? s.variantId ?? "", "", "", "", ...figuresOf(cols, s.cells)]),
+        ]),
+      ]);
     } else {
       const result = run(panel, state);
       if (result.unavailable) return null;
       const dims = panel.query.groupBy ?? [];
       const cols = panel.type === "table" ? visibleCols(panel, ui) : panel.query.metrics;
-      const tracked = (id) => !!engine.metric(id).tracking;
-      const figureHeads = cols.flatMap((id) => (tracked(id) ? [engine.metric(id).label, `${engine.metric(id).label} tracking`] : [engine.metric(id).label]));
-      const value = (id, cell) => (cell.value == null ? "" : isRate(engine.metric(id)) ? Number(cell.value.toFixed(4)) : cell.value);
-      const figures = (row) => cols.flatMap((id) => (tracked(id) ? [value(id, row.cells[id]), row.cells[id].state ?? ""] : [value(id, row.cells[id])]));
+      const figures = (row) => figuresOf(cols, row.cells);
       const statusText = (row) => (row.label.statuses ?? []).map(engine.statusLabel).join(", ");
       if (isCrossProgram(panel)) {
         // One line per ranked account (with how many programs touched it), then one per program under it, as drawn.
         const under = watchlistDetail(panel, state, result);
-        headers = ["Account", "Program", "Status", "Programs", ...figureHeads];
+        headers = ["Account", "Program", "Status", "Programs", ...figureHeads(cols)];
         rows = result.rows.flatMap((row) => {
           const own = under.get(row.key.account) ?? [];
           const account = dimText("account", row) ?? "";
           return [[account, "", "", own.length, ...figures(row)], ...own.map((d) => [account, dimText("program", d) ?? "", statusText(d), "", ...figures(d)])];
         });
       } else {
-        headers = [...dims.flatMap((d) => (d === "program" ? [DIM_LABELS[d], "Status"] : [DIM_LABELS[d]])), ...figureHeads];
+        headers = [...dims.flatMap((d) => (d === "program" ? [DIM_LABELS[d], "Status"] : [DIM_LABELS[d]])), ...figureHeads(cols)];
         const line = (row) => [...dims.flatMap((d) => (d === "program" ? [dimText(d, row) ?? "", statusText(row)] : [dimText(d, row) ?? ""])), ...figures(row)];
         rows = dims.length ? result.rows.map(line) : result.total ? [line(result.total)] : [];
       }
@@ -896,13 +1017,14 @@ export function createDashboard(engine, model) {
   const renderTabs = (state) =>
     tabs.map((t) => `<button type="button" class="gs-tab${t.id === state.tab ? " is-current" : ""}${t.state === "offered" ? " is-offered" : ""}" data-tab="${esc(t.id)}" aria-pressed="${t.id === state.tab}"${t.state === "offered" ? ` title="Not part of this page: open it to see what it would take"` : ""}>${esc(t.label)}${t.state === "offered" ? " (off)" : ""}</button>`).join("");
   const metricIds = () => {
-    const ids = [...new Set(panels.flatMap((p) => p.query?.metrics ?? []))];
+    const ids = [...new Set(panels.flatMap((p) => metricsOf(p)))];
     return engine.METRICS.map((m) => m.id).filter((id) => ids.includes(id));
   };
   // The caveats depend on the snapshot and the panels alone, never on the filters: computed once, read on every draw.
+  // The template-content caveats ride a page that has the templates view.
   let caveatList = null;
   const caveats = () => {
-    if (caveatList == null) caveatList = engine.caveatsFor(snapshot, metricIds(), { health: !!model.healthTab });
+    if (caveatList == null) caveatList = engine.caveatsFor(snapshot, metricIds(), { health: !!model.healthTab, templates: !!templatesPanel });
     return caveatList;
   };
   const renderCaveats = () => `<ul class="gs-caveats">${caveats().map((c) => `<li data-caveat="${esc(c.id)}">${esc(c.text)}</li>`).join("")}</ul>`;
@@ -926,6 +1048,9 @@ export function createDashboard(engine, model) {
       `A plain 0% is a real 0%. "${engine.NOT_TRACKED}" means no link in the email is click-tracked, so there is no number. A figure marked "${engine.UNKNOWN_MARK}" is shown, but the data cannot tell whether clicks are tracked.`,
       `* marks a figure that includes the provisional period; † marks one that includes months carried forward from an earlier pull.`,
       ...(panels.some((p) => p.type === "health-silent") ? [`On the Health tab the no-send threshold has buttons (${healthDayChoices.join(", ")} days); expected failures sit behind a toggle.`] : []),
+      ...(templatesPanel ? [templateData.content
+        ? `The Templates tab lists each email with its performance and the programs that send it; the column headings sort it. Search finds the emails whose subject or body holds your words (any of them, or all of them, as whole words or not) and shows where; Text opens an email's current text, which is the text as the knowledge base holds it, not necessarily what was sent, and the table says whether it was edited after its last send.`
+        : `The Templates tab lists each email with its performance and the programs that send it; the column headings sort it. This page carries no email text, so there is no search and no text to open.`] : []),
       ...(panels.some(usesAccounts) ? [`An account's history over days needs a pull of its own: the account timeline command, which needs a gs-admin login. Anyone else sees a company only through this page's account lists.`] : []),
     ];
     parts.push(`<section class="gs-about"><h2>How to use this page</h2><ul>${how.map((h) => `<li>${esc(h)}</li>`).join("")}</ul></section>`);
@@ -955,8 +1080,7 @@ export function createDashboard(engine, model) {
     if (tab.id === "about") return renderAbout();
     const own = panels.filter((p) => p.tab === tab.id).map((p) => renderPanel(p, state, ui)).join("");
     if (own) return own;
-    // An on tab with nothing to draw says so through the same plumbing (F-486): Templates before template content exists.
-    if (tab.id === "templates") return renderNotice(lackFacts("templates-not-pulled"), { heading: tab.meaning });
+    // An on tab with nothing to draw: the writer refuses such a spec (F-486), so this is reached by no built page.
     return `<p class="gs-muted">${esc(tab.meaning)}</p>`;
   };
   const renderPanes = (state, ui) => tabs.map((t) => `<section class="gs-pane" data-pane="${esc(t.id)}"${attr("hidden", t.id !== state.tab)}>${renderPane(t, state, ui)}</section>`).join("");
@@ -1072,12 +1196,29 @@ export function mount(app, root, g) {
       label.hidden = !hits[i];
     });
   });
+  // The Templates tab's search: the form's words and options become the state (and the hash), never a request.
+  root.addEventListener("submit", (ev) => {
+    const form = ev.target?.closest?.("[data-search]");
+    if (!form) return;
+    ev.preventDefault();
+    state = app.clean({ ...state, q: form.querySelector('[data-f="q"]')?.value ?? "", qa: !!form.querySelector('[data-f="qa"]')?.checked, qw: !!form.querySelector('[data-f="qw"]')?.checked });
+    commit(["panes"]);
+  });
   root.addEventListener("click", (ev) => {
-    const t = ev.target?.closest?.("[data-tab],[data-act],[data-csv],[data-copy]");
+    const t = ev.target?.closest?.("[data-tab],[data-act],[data-csv],[data-copy],[data-open-template],[data-tsort]");
     if (!t) return;
     if (t.hasAttribute("data-tab")) {
       state = app.clean({ ...state, tab: t.getAttribute("data-tab") });
       commit(["tabs", "panes"]);
+    } else if (t.hasAttribute("data-open-template")) {
+      // From any table: open the template's text drawer on the Templates tab.
+      state = app.clean({ ...state, tab: "templates", tpl: t.getAttribute("data-open-template") });
+      commit(["tabs", "panes"]);
+    } else if (t.hasAttribute("data-tsort")) {
+      const by = t.getAttribute("data-tsort");
+      const dir = state.ts === by ? ((state.td ?? (by === "name" ? "asc" : "desc")) === "asc" ? "desc" : "asc") : null;
+      state = app.clean({ ...state, ts: by, td: dir });
+      commit(["panes"]);
     } else if (t.hasAttribute("data-act")) {
       const act = t.getAttribute("data-act");
       if (act === "reset") {
@@ -1087,6 +1228,8 @@ export function mount(app, root, g) {
         return;
       }
       if (act === "hd") { state = app.clean({ ...state, hd: Number(t.getAttribute("data-days")) }); commit(["panes"]); return; }
+      if (act === "tpl-close") { state = app.clean({ ...state, tpl: null }); commit(["panes"]); return; }
+      if (act === "search-clear") { state = app.clean({ ...state, q: "", qa: false, qw: false }); commit(["panes"]); return; }
       if (act === "running") { state = app.clean({ ...state, statuses: ["PROCESSING"] }); commit(["filters", "summary", "panes"]); return; }
       if (act === "months-current" || act === "months-closed") {
         const months = app.snapshot.dimensions.months;
