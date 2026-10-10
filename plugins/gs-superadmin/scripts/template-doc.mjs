@@ -29,5 +29,7 @@
 // contract unchanged; the exit code rides process.exitCode so the write
 // flushes before the process ends.
 import { runDocGenerator, renderTemplateDoc } from "./doc-lib.mjs";
+// R18's link classification, the one home, for the doc's link-tracking reading (R19, TPL-1).
+import { NON_CONTENT_LINK_RULES } from "./engagement-query.mjs";
 
-runDocGenerator({ scriptName: "template-doc.mjs", render: renderTemplateDoc, argv: process.argv.slice(2) });
+runDocGenerator({ scriptName: "template-doc.mjs", render: (payload) => renderTemplateDoc(payload, { linkRules: NON_CONTENT_LINK_RULES }), argv: process.argv.slice(2) });

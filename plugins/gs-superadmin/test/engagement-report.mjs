@@ -229,8 +229,13 @@ try {
     const tpl = tableUnder(md, "## Emails by template");
     const cell = (name, h) => tpl.rows.find((r) => r[2] === name)[tpl.headers.indexOf(h)];
     check("per-template rows show the template and the step it sits on: order and name where it is on one step, how many where it is on several, and why not where the KB has no design",
-      isDeepStrictEqual(tpl.headers.slice(0, 3), ["Program", "Step", "Template"]) && cell("Acme Welcome", "Step") === "1. Welcome" && cell("Acme Day 7", "Step") === "2. Day 7 check-in" && cell("Acme Renewal", "Step") === "(on 2 steps)" &&
+      isDeepStrictEqual(tpl.headers.slice(0, 4), ["Program", "Step", "Template", "Subject"]) && cell("Acme Welcome", "Step") === "1. Welcome" && cell("Acme Day 7", "Step") === "2. Day 7 check-in" && cell("Acme Renewal", "Step") === "(on 2 steps)" &&
         /no full KB doc/.test(cell("Acme Unlisted", "Step")) && tpl.rows.some((r) => r[2] === "(no template)"), tpl.rows.map((r) => r.slice(0, 3)));
+    // TPL-2: the subject from the same dimension the engine labels rows with, tokens rendered; a dash where the KB holds no text.
+    check("per-template rows carry the template's subject as the knowledge base holds it, with tokens as their field labels, and a dash where the snapshot holds no text for the template; the per-step rows carry it too; the CSVs carry a subject field; the template-content caveats ride the by-template report and no other",
+      cell("Acme NPS Request", "Subject") === "How is {Product Name} working for you?" && cell("Acme Welcome", "Subject") === "Welcome to Acme" && cell("Acme Unlisted", "Subject") === NO_VALUE && isDeepStrictEqual(tableUnder(md, "## Emails by step").headers.slice(0, 5), ["Program", "Step", "Variant", "Template", "Subject"]) &&
+        tableUnder(md, "## Emails by step").rows.some((r) => r[4] === "Welcome to Acme") && section(md, "## Caveats & data gaps").includes("CURRENT text") && !section(md1, "## Caveats & data gaps").includes("CURRENT text"),
+      [cell("Acme NPS Request", "Subject"), cell("Acme Unlisted", "Subject")]);
     check("R1b: the three click-tracking states read differently — a tracked 0 is 0 and 0.0%, not tracked is words with no number, unknown is the value with its marker",
       cell("Acme NPS Request", "Clicked") === "0" && cell("Acme NPS Request", "Click rate") === "0.0%" && cell("Acme Renewal Thanks", "Clicked") === NOT_TRACKED && cell("Acme Renewal Thanks", "Click rate") === NOT_TRACKED &&
         cell("Acme Day 7", "Clicked") === `0 ${UNKNOWN_MARK}` && cell("Acme Day 7", "Click rate") === `0.0% ${UNKNOWN_MARK}` && /^\d+$/.test(cell("Acme Welcome", "Clicked")));
@@ -297,6 +302,8 @@ try {
       programsCsv.length === 6 && Number(nps[h.indexOf("openRate")]) > 0 && Number(nps[h.indexOf("openRate")]) < 1 && nps[h.indexOf("click_tracking")] === "tracked" && nps[h.indexOf("clicked")] === "0" &&
         renew[th.indexOf("clicked")] === "" && renew[th.indexOf("clickRate")] === "" && renew[th.indexOf("click_tracking")] === "not-tracked" && nps[h.indexOf("response_tracking")] === "tracked" && nps[h.indexOf("includes_incomplete_period")] === "no", [h, nps, renew]);
     check("the watch-list CSV carries both signals", lines("engagement-watch-list.csv").some((l) => l.includes(",low engagement,")) && lines("engagement-watch-list.csv").some((l) => l.includes(",deliverability,")));
+    check("the template and step CSVs carry a subject field (TPL-2), the subject as the knowledge base holds it with tokens rendered",
+      lines("engagement-templates.csv")[0].split(",").includes("subject") && lines("engagement-steps.csv")[0].split(",").includes("subject") && lines("engagement-templates.csv").some((l) => l.includes("How is {Product Name} working for you?")) && lines("engagement-steps.csv").some((l) => l.includes("Welcome to Acme")));
     const none = report(["--snapshot", GOLDEN_SNAPSHOT, "--report", outDir()]);
     check("without --csv-dir no CSV is written", none.json.csvDir === null && none.json.csvFiles.length === 0);
   }

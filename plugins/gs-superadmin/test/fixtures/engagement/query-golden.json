@@ -115,14 +115,16 @@
       "shown": "67.2%"
      },
      "clicked": {
-      "value": 0,
-      "state": "unknown",
-      "shown": "0 (tracking unknown)"
+      "value": null,
+      "state": "not-tracked",
+      "why": "not-tracked",
+      "shown": "Not tracked"
      },
      "clickRate": {
-      "value": 0,
-      "state": "unknown",
-      "shown": "0.0% (tracking unknown)"
+      "value": null,
+      "state": "not-tracked",
+      "why": "not-tracked",
+      "shown": "Not tracked"
      },
      "participantRecords": {
       "value": 6,
@@ -511,7 +513,8 @@
      "template": null,
      "stepName": null,
      "stepOrder": null,
-     "stepCount": null
+     "stepCount": null,
+     "subject": null
     },
     "carried": false,
     "incomplete": true,
@@ -558,7 +561,8 @@
      "template": "Acme NPS Request",
      "stepName": "Survey email",
      "stepOrder": 1,
-     "stepCount": 1
+     "stepCount": 1,
+     "subject": "How is {Product Name} working for you?"
     },
     "carried": false,
     "incomplete": false,
@@ -605,7 +609,8 @@
      "template": "Acme Welcome",
      "stepName": "Welcome",
      "stepOrder": 1,
-     "stepCount": 1
+     "stepCount": 1,
+     "subject": "Welcome to Acme"
     },
     "carried": false,
     "incomplete": true,
@@ -652,7 +657,8 @@
      "template": "Acme Day 7",
      "stepName": "Day 7 check-in",
      "stepOrder": 2,
-     "stepCount": 1
+     "stepCount": 1,
+     "subject": "Day 7: how is it going?"
     },
     "carried": false,
     "incomplete": true,
@@ -700,7 +706,8 @@
      "template": "Acme Renewal Thanks",
      "stepName": "Renewal thanks",
      "stepOrder": 3,
-     "stepCount": 1
+     "stepCount": 1,
+     "subject": "Thanks for renewing"
     },
     "carried": false,
     "incomplete": true,
@@ -750,7 +757,8 @@
      "template": "Acme Renewal",
      "stepName": null,
      "stepOrder": null,
-     "stepCount": 2
+     "stepCount": 2,
+     "subject": "Your Acme renewal is coming up"
     },
     "carried": false,
     "incomplete": true,
@@ -772,14 +780,16 @@
       "shown": "65.9%"
      },
      "clicked": {
-      "value": 0,
-      "state": "unknown",
-      "shown": "0 (tracking unknown)"
+      "value": null,
+      "state": "not-tracked",
+      "why": "not-tracked",
+      "shown": "Not tracked"
      },
      "clickRate": {
-      "value": 0,
-      "state": "unknown",
-      "shown": "0.0% (tracking unknown)"
+      "value": null,
+      "state": "not-tracked",
+      "why": "not-tracked",
+      "shown": "Not tracked"
      }
     }
    },
@@ -797,7 +807,8 @@
      "template": "Acme Unlisted",
      "stepName": null,
      "stepOrder": null,
-     "stepCount": 0
+     "stepCount": 0,
+     "subject": null
     },
     "carried": false,
     "incomplete": false,
@@ -897,6 +908,7 @@
      "stepOrder": null,
      "template": null,
      "templateId": null,
+     "subject": null,
      "variant": null
     },
     "carried": false,
@@ -933,6 +945,7 @@
      "stepOrder": 1,
      "template": "Acme NPS Request",
      "templateId": "tpl-nps",
+     "subject": "How is {Product Name} working for you?",
      "variant": "var-nps name"
     },
     "carried": false,
@@ -969,6 +982,7 @@
      "stepOrder": 2,
      "template": "Acme Day 7",
      "templateId": "tpl-day7",
+     "subject": "Day 7: how is it going?",
      "variant": "var-day7 name"
     },
     "carried": false,
@@ -1005,6 +1019,7 @@
      "stepOrder": 1,
      "template": "Acme Welcome",
      "templateId": "tpl-welcome",
+     "subject": "Welcome to Acme",
      "variant": "var-welcome-a name"
     },
     "carried": false,
@@ -1041,6 +1056,7 @@
      "stepOrder": 1,
      "template": "Acme Welcome",
      "templateId": "tpl-welcome",
+     "subject": "Welcome to Acme",
      "variant": "var-welcome-b name"
     },
     "carried": false,
@@ -1078,6 +1094,7 @@
      "stepOrder": 1,
      "template": "Acme Renewal",
      "templateId": "tpl-renew",
+     "subject": "Your Acme renewal is coming up",
      "variant": "var-renew name"
     },
     "carried": false,
@@ -1092,9 +1109,10 @@
       "shown": "61.9%"
      },
      "clicked": {
-      "value": 0,
-      "state": "unknown",
-      "shown": "0 (tracking unknown)"
+      "value": null,
+      "state": "not-tracked",
+      "why": "not-tracked",
+      "shown": "Not tracked"
      }
     }
    },
@@ -1115,6 +1133,7 @@
      "stepOrder": 2,
      "template": "Acme Renewal",
      "templateId": "tpl-renew",
+     "subject": "Your Acme renewal is coming up",
      "variant": "var-renew name"
     },
     "carried": false,
@@ -1129,9 +1148,10 @@
       "shown": "69.6%"
      },
      "clicked": {
-      "value": 0,
-      "state": "unknown",
-      "shown": "0 (tracking unknown)"
+      "value": null,
+      "state": "not-tracked",
+      "why": "not-tracked",
+      "shown": "Not tracked"
      }
     }
    },
@@ -1152,6 +1172,7 @@
      "stepOrder": 3,
      "template": "Acme Renewal Thanks",
      "templateId": "tpl-renew-b",
+     "subject": "Thanks for renewing",
      "variant": "var-renew-b name"
     },
     "carried": false,
@@ -1189,6 +1210,7 @@
      "stepOrder": null,
      "template": "Acme Unlisted",
      "templateId": "tpl-unlisted",
+     "subject": null,
      "variant": "var-unlisted name"
     },
     "carried": false,
@@ -1837,8 +1859,8 @@
      },
      "clickRate": {
       "value": 0,
-      "state": "unknown",
-      "shown": "0.0% (tracking unknown)"
+      "state": "tracked",
+      "shown": "0.0%"
      }
     }
    },
@@ -1921,9 +1943,10 @@
       "shown": "67.2%"
      },
      "clickRate": {
-      "value": 0,
-      "state": "unknown",
-      "shown": "0.0% (tracking unknown)"
+      "value": null,
+      "state": "not-tracked",
+      "why": "not-tracked",
+      "shown": "Not tracked"
      }
     }
    },
@@ -2006,5 +2029,3040 @@
     }
    }
   }
+ },
+ "templates view": {
+  "metrics": [
+   "sent",
+   "delivered",
+   "opened",
+   "openRate",
+   "clicked",
+   "clickRate",
+   "bounced"
+  ],
+  "programMetrics": [
+   "surveyParticipants",
+   "anyResponse",
+   "responseRate"
+  ],
+  "stepDetail": true,
+  "unavailable": null,
+  "content": {
+   "available": true,
+   "reason": null
+  },
+  "rows": [
+   {
+    "templateId": "tpl-day7",
+    "name": "Acme Day 7",
+    "cells": {
+     "sent": {
+      "value": 88
+     },
+     "delivered": {
+      "value": 78
+     },
+     "opened": {
+      "value": 53
+     },
+     "openRate": {
+      "value": 0.6794871794871795
+     },
+     "clicked": {
+      "value": 0,
+      "state": "unknown"
+     },
+     "clickRate": {
+      "value": 0,
+      "state": "unknown"
+     },
+     "bounced": {
+      "value": 6
+     }
+    },
+    "carried": false,
+    "incomplete": true,
+    "programs": [
+     {
+      "programId": "p-onboard",
+      "name": "Acme Onboarding Chain",
+      "statuses": [
+       "PROCESSING"
+      ],
+      "stepName": "Day 7 check-in",
+      "stepOrder": 2,
+      "stepCount": 1,
+      "cells": {
+       "sent": {
+        "value": 88
+       },
+       "delivered": {
+        "value": 78
+       },
+       "opened": {
+        "value": 53
+       },
+       "openRate": {
+        "value": 0.6794871794871795
+       },
+       "clicked": {
+        "value": 0,
+        "state": "unknown"
+       },
+       "clickRate": {
+        "value": 0,
+        "state": "unknown"
+       },
+       "bounced": {
+        "value": 6
+       }
+      },
+      "survey": {
+       "surveyParticipants": {
+        "value": null,
+        "state": "not-tracked",
+        "why": "no-survey",
+        "basis": "all-time"
+       },
+       "anyResponse": {
+        "value": null,
+        "state": "not-tracked",
+        "why": "no-survey",
+        "basis": "all-time"
+       },
+       "responseRate": {
+        "value": null,
+        "state": "not-tracked",
+        "why": "no-survey",
+        "basis": "all-time"
+       }
+      },
+      "carried": false,
+      "incomplete": true,
+      "steps": [
+       {
+        "stepId": "st-ob-2",
+        "step": "Day 7 check-in",
+        "stepOrder": 2,
+        "variantId": "var-day7",
+        "variant": "var-day7 name",
+        "cells": {
+         "sent": {
+          "value": 88
+         },
+         "delivered": {
+          "value": 78
+         },
+         "opened": {
+          "value": 53
+         },
+         "openRate": {
+          "value": 0.6794871794871795
+         },
+         "clicked": {
+          "value": 0,
+          "state": "unknown"
+         },
+         "clickRate": {
+          "value": 0,
+          "state": "unknown"
+         },
+         "bounced": {
+          "value": 6
+         }
+        },
+        "carried": false,
+        "incomplete": true
+       }
+      ]
+     }
+    ],
+    "lastSendMonth": "2026-09",
+    "content": {
+     "subject": "Day 7: how is it going?",
+     "asOf": "2026-09-02",
+     "modified": "2026-01-20",
+     "editedAfterLastSend": false,
+     "bodyIncluded": true,
+     "variants": 0
+    },
+    "matches": null
+   },
+   {
+    "templateId": "tpl-welcome",
+    "name": "Acme Welcome",
+    "cells": {
+     "sent": {
+      "value": 88
+     },
+     "delivered": {
+      "value": 77
+     },
+     "opened": {
+      "value": 54
+     },
+     "openRate": {
+      "value": 0.7012987012987013
+     },
+     "clicked": {
+      "value": 7,
+      "state": "tracked"
+     },
+     "clickRate": {
+      "value": 0.09090909090909091,
+      "state": "tracked"
+     },
+     "bounced": {
+      "value": 7
+     }
+    },
+    "carried": false,
+    "incomplete": true,
+    "programs": [
+     {
+      "programId": "p-onboard",
+      "name": "Acme Onboarding Chain",
+      "statuses": [
+       "PROCESSING"
+      ],
+      "stepName": "Welcome",
+      "stepOrder": 1,
+      "stepCount": 1,
+      "cells": {
+       "sent": {
+        "value": 88
+       },
+       "delivered": {
+        "value": 77
+       },
+       "opened": {
+        "value": 54
+       },
+       "openRate": {
+        "value": 0.7012987012987013
+       },
+       "clicked": {
+        "value": 7,
+        "state": "tracked"
+       },
+       "clickRate": {
+        "value": 0.09090909090909091,
+        "state": "tracked"
+       },
+       "bounced": {
+        "value": 7
+       }
+      },
+      "survey": {
+       "surveyParticipants": {
+        "value": null,
+        "state": "not-tracked",
+        "why": "no-survey",
+        "basis": "all-time"
+       },
+       "anyResponse": {
+        "value": null,
+        "state": "not-tracked",
+        "why": "no-survey",
+        "basis": "all-time"
+       },
+       "responseRate": {
+        "value": null,
+        "state": "not-tracked",
+        "why": "no-survey",
+        "basis": "all-time"
+       }
+      },
+      "carried": false,
+      "incomplete": true,
+      "steps": [
+       {
+        "stepId": "st-ob-1",
+        "step": "Welcome",
+        "stepOrder": 1,
+        "variantId": "var-welcome-a",
+        "variant": "var-welcome-a name",
+        "cells": {
+         "sent": {
+          "value": 44
+         },
+         "delivered": {
+          "value": 39
+         },
+         "opened": {
+          "value": 27
+         },
+         "openRate": {
+          "value": 0.6923076923076923
+         },
+         "clicked": {
+          "value": 5,
+          "state": "tracked"
+         },
+         "clickRate": {
+          "value": 0.1282051282051282,
+          "state": "tracked"
+         },
+         "bounced": {
+          "value": 5
+         }
+        },
+        "carried": false,
+        "incomplete": true
+       },
+       {
+        "stepId": "st-ob-1",
+        "step": "Welcome",
+        "stepOrder": 1,
+        "variantId": "var-welcome-b",
+        "variant": "var-welcome-b name",
+        "cells": {
+         "sent": {
+          "value": 44
+         },
+         "delivered": {
+          "value": 38
+         },
+         "opened": {
+          "value": 27
+         },
+         "openRate": {
+          "value": 0.7105263157894737
+         },
+         "clicked": {
+          "value": 2,
+          "state": "tracked"
+         },
+         "clickRate": {
+          "value": 0.05263157894736842,
+          "state": "tracked"
+         },
+         "bounced": {
+          "value": 2
+         }
+        },
+        "carried": false,
+        "incomplete": true
+       }
+      ]
+     }
+    ],
+    "lastSendMonth": "2026-09",
+    "content": {
+     "subject": "Welcome to Acme",
+     "asOf": "2026-08-20",
+     "modified": "2026-08-15",
+     "editedAfterLastSend": false,
+     "bodyIncluded": true,
+     "variants": 1
+    },
+    "matches": null
+   },
+   {
+    "templateId": "tpl-renew",
+    "name": "Acme Renewal",
+    "cells": {
+     "sent": {
+      "value": 48
+     },
+     "delivered": {
+      "value": 44
+     },
+     "opened": {
+      "value": 29
+     },
+     "openRate": {
+      "value": 0.6590909090909091
+     },
+     "clicked": {
+      "value": null,
+      "state": "not-tracked",
+      "why": "not-tracked"
+     },
+     "clickRate": {
+      "value": null,
+      "state": "not-tracked",
+      "why": "not-tracked"
+     },
+     "bounced": {
+      "value": 3
+     }
+    },
+    "carried": false,
+    "incomplete": true,
+    "programs": [
+     {
+      "programId": "p-renew",
+      "name": "Acme Renewal Dynamic",
+      "statuses": [
+       "PAUSE",
+       "NEW"
+      ],
+      "stepName": null,
+      "stepOrder": null,
+      "stepCount": 2,
+      "cells": {
+       "sent": {
+        "value": 48
+       },
+       "delivered": {
+        "value": 44
+       },
+       "opened": {
+        "value": 29
+       },
+       "openRate": {
+        "value": 0.6590909090909091
+       },
+       "clicked": {
+        "value": null,
+        "state": "not-tracked",
+        "why": "not-tracked"
+       },
+       "clickRate": {
+        "value": null,
+        "state": "not-tracked",
+        "why": "not-tracked"
+       },
+       "bounced": {
+        "value": 3
+       }
+      },
+      "survey": {
+       "surveyParticipants": {
+        "value": null,
+        "state": "not-tracked",
+        "why": "no-survey",
+        "basis": "all-time"
+       },
+       "anyResponse": {
+        "value": null,
+        "state": "not-tracked",
+        "why": "no-survey",
+        "basis": "all-time"
+       },
+       "responseRate": {
+        "value": null,
+        "state": "not-tracked",
+        "why": "no-survey",
+        "basis": "all-time"
+       }
+      },
+      "carried": false,
+      "incomplete": true,
+      "steps": [
+       {
+        "stepId": "st-rn-1",
+        "step": "Renewal notice",
+        "stepOrder": 1,
+        "variantId": "var-renew",
+        "variant": "var-renew name",
+        "cells": {
+         "sent": {
+          "value": 24
+         },
+         "delivered": {
+          "value": 21
+         },
+         "opened": {
+          "value": 13
+         },
+         "openRate": {
+          "value": 0.6190476190476191
+         },
+         "clicked": {
+          "value": null,
+          "state": "not-tracked",
+          "why": "not-tracked"
+         },
+         "clickRate": {
+          "value": null,
+          "state": "not-tracked",
+          "why": "not-tracked"
+         },
+         "bounced": {
+          "value": 2
+         }
+        },
+        "carried": false,
+        "incomplete": true
+       },
+       {
+        "stepId": "st-rn-2",
+        "step": "Renewal reminder",
+        "stepOrder": 2,
+        "variantId": "var-renew",
+        "variant": "var-renew name",
+        "cells": {
+         "sent": {
+          "value": 24
+         },
+         "delivered": {
+          "value": 23
+         },
+         "opened": {
+          "value": 16
+         },
+         "openRate": {
+          "value": 0.6956521739130435
+         },
+         "clicked": {
+          "value": null,
+          "state": "not-tracked",
+          "why": "not-tracked"
+         },
+         "clickRate": {
+          "value": null,
+          "state": "not-tracked",
+          "why": "not-tracked"
+         },
+         "bounced": {
+          "value": 1
+         }
+        },
+        "carried": false,
+        "incomplete": true
+       }
+      ]
+     }
+    ],
+    "lastSendMonth": "2026-09",
+    "content": {
+     "subject": "Your Acme renewal is coming up",
+     "asOf": "2026-09-01",
+     "modified": "2026-02-01",
+     "editedAfterLastSend": false,
+     "bodyIncluded": true,
+     "variants": 0
+    },
+    "matches": null
+   },
+   {
+    "templateId": "tpl-renew-b",
+    "name": "Acme Renewal Thanks",
+    "cells": {
+     "sent": {
+      "value": 24
+     },
+     "delivered": {
+      "value": 20
+     },
+     "opened": {
+      "value": 14
+     },
+     "openRate": {
+      "value": 0.7
+     },
+     "clicked": {
+      "value": null,
+      "state": "not-tracked",
+      "why": "not-tracked"
+     },
+     "clickRate": {
+      "value": null,
+      "state": "not-tracked",
+      "why": "not-tracked"
+     },
+     "bounced": {
+      "value": 2
+     }
+    },
+    "carried": false,
+    "incomplete": true,
+    "programs": [
+     {
+      "programId": "p-renew",
+      "name": "Acme Renewal Dynamic",
+      "statuses": [
+       "PAUSE",
+       "NEW"
+      ],
+      "stepName": "Renewal thanks",
+      "stepOrder": 3,
+      "stepCount": 1,
+      "cells": {
+       "sent": {
+        "value": 24
+       },
+       "delivered": {
+        "value": 20
+       },
+       "opened": {
+        "value": 14
+       },
+       "openRate": {
+        "value": 0.7
+       },
+       "clicked": {
+        "value": null,
+        "state": "not-tracked",
+        "why": "not-tracked"
+       },
+       "clickRate": {
+        "value": null,
+        "state": "not-tracked",
+        "why": "not-tracked"
+       },
+       "bounced": {
+        "value": 2
+       }
+      },
+      "survey": {
+       "surveyParticipants": {
+        "value": null,
+        "state": "not-tracked",
+        "why": "no-survey",
+        "basis": "all-time"
+       },
+       "anyResponse": {
+        "value": null,
+        "state": "not-tracked",
+        "why": "no-survey",
+        "basis": "all-time"
+       },
+       "responseRate": {
+        "value": null,
+        "state": "not-tracked",
+        "why": "no-survey",
+        "basis": "all-time"
+       }
+      },
+      "carried": false,
+      "incomplete": true,
+      "steps": [
+       {
+        "stepId": "st-rn-3",
+        "step": "Renewal thanks",
+        "stepOrder": 3,
+        "variantId": "var-renew-b",
+        "variant": "var-renew-b name",
+        "cells": {
+         "sent": {
+          "value": 24
+         },
+         "delivered": {
+          "value": 20
+         },
+         "opened": {
+          "value": 14
+         },
+         "openRate": {
+          "value": 0.7
+         },
+         "clicked": {
+          "value": null,
+          "state": "not-tracked",
+          "why": "not-tracked"
+         },
+         "clickRate": {
+          "value": null,
+          "state": "not-tracked",
+          "why": "not-tracked"
+         },
+         "bounced": {
+          "value": 2
+         }
+        },
+        "carried": false,
+        "incomplete": true
+       }
+      ]
+     }
+    ],
+    "lastSendMonth": "2026-09",
+    "content": {
+     "subject": "Thanks for renewing",
+     "asOf": "2026-09-01",
+     "modified": "2026-09-05",
+     "editedAfterLastSend": null,
+     "bodyIncluded": true,
+     "variants": 0
+    },
+    "matches": null
+   },
+   {
+    "templateId": "tpl-nps",
+    "name": "Acme NPS Request",
+    "cells": {
+     "sent": {
+      "value": 12
+     },
+     "delivered": {
+      "value": 11
+     },
+     "opened": {
+      "value": 7
+     },
+     "openRate": {
+      "value": 0.6363636363636364
+     },
+     "clicked": {
+      "value": 0,
+      "state": "tracked"
+     },
+     "clickRate": {
+      "value": 0,
+      "state": "tracked"
+     },
+     "bounced": {
+      "value": 1
+     }
+    },
+    "carried": false,
+    "incomplete": false,
+    "programs": [
+     {
+      "programId": "p-nps",
+      "name": "Acme NPS Survey",
+      "statuses": [
+       "PROCESSING"
+      ],
+      "stepName": "Survey email",
+      "stepOrder": 1,
+      "stepCount": 1,
+      "cells": {
+       "sent": {
+        "value": 12
+       },
+       "delivered": {
+        "value": 11
+       },
+       "opened": {
+        "value": 7
+       },
+       "openRate": {
+        "value": 0.6363636363636364
+       },
+       "clicked": {
+        "value": 0,
+        "state": "tracked"
+       },
+       "clickRate": {
+        "value": 0,
+        "state": "tracked"
+       },
+       "bounced": {
+        "value": 1
+       }
+      },
+      "survey": {
+       "surveyParticipants": {
+        "value": 52,
+        "state": "tracked",
+        "basis": "all-time"
+       },
+       "anyResponse": {
+        "value": 14,
+        "state": "tracked",
+        "basis": "all-time"
+       },
+       "responseRate": {
+        "value": 0.2692307692307692,
+        "state": "tracked",
+        "basis": "all-time"
+       }
+      },
+      "carried": false,
+      "incomplete": false,
+      "steps": [
+       {
+        "stepId": "st-nps-1",
+        "step": "Survey email",
+        "stepOrder": 1,
+        "variantId": "var-nps",
+        "variant": "var-nps name",
+        "cells": {
+         "sent": {
+          "value": 12
+         },
+         "delivered": {
+          "value": 11
+         },
+         "opened": {
+          "value": 7
+         },
+         "openRate": {
+          "value": 0.6363636363636364
+         },
+         "clicked": {
+          "value": 0,
+          "state": "tracked"
+         },
+         "clickRate": {
+          "value": 0,
+          "state": "tracked"
+         },
+         "bounced": {
+          "value": 1
+         }
+        },
+        "carried": false,
+        "incomplete": false
+       }
+      ]
+     }
+    ],
+    "lastSendMonth": "2026-07",
+    "content": {
+     "subject": "How is {Product Name} working for you?",
+     "asOf": "2026-09-01",
+     "modified": "2026-08-10",
+     "editedAfterLastSend": true,
+     "bodyIncluded": true,
+     "variants": 0
+    },
+    "matches": null
+   },
+   {
+    "templateId": "tpl-unlisted",
+    "name": "Acme Unlisted",
+    "cells": {
+     "sent": {
+      "value": 6
+     },
+     "delivered": {
+      "value": 6
+     },
+     "opened": {
+      "value": 4
+     },
+     "openRate": {
+      "value": 0.6666666666666666
+     },
+     "clicked": {
+      "value": 1,
+      "state": "tracked"
+     },
+     "clickRate": {
+      "value": 0.16666666666666666,
+      "state": "tracked"
+     },
+     "bounced": {
+      "value": 0
+     }
+    },
+    "carried": false,
+    "incomplete": false,
+    "programs": [
+     {
+      "programId": "p-unlisted",
+      "name": "Acme Unlisted Program",
+      "statuses": [
+       "PROCESSING"
+      ],
+      "stepName": null,
+      "stepOrder": null,
+      "stepCount": 0,
+      "cells": {
+       "sent": {
+        "value": 6
+       },
+       "delivered": {
+        "value": 6
+       },
+       "opened": {
+        "value": 4
+       },
+       "openRate": {
+        "value": 0.6666666666666666
+       },
+       "clicked": {
+        "value": 1,
+        "state": "tracked"
+       },
+       "clickRate": {
+        "value": 0.16666666666666666,
+        "state": "tracked"
+       },
+       "bounced": {
+        "value": 0
+       }
+      },
+      "survey": {
+       "surveyParticipants": {
+        "value": null,
+        "state": "not-tracked",
+        "why": "no-survey",
+        "basis": "all-time"
+       },
+       "anyResponse": {
+        "value": null,
+        "state": "not-tracked",
+        "why": "no-survey",
+        "basis": "all-time"
+       },
+       "responseRate": {
+        "value": null,
+        "state": "not-tracked",
+        "why": "no-survey",
+        "basis": "all-time"
+       }
+      },
+      "carried": false,
+      "incomplete": false,
+      "steps": [
+       {
+        "stepId": "st-ul-1",
+        "step": null,
+        "stepOrder": null,
+        "variantId": "var-unlisted",
+        "variant": "var-unlisted name",
+        "cells": {
+         "sent": {
+          "value": 6
+         },
+         "delivered": {
+          "value": 6
+         },
+         "opened": {
+          "value": 4
+         },
+         "openRate": {
+          "value": 0.6666666666666666
+         },
+         "clicked": {
+          "value": 1,
+          "state": "tracked"
+         },
+         "clickRate": {
+          "value": 0.16666666666666666,
+          "state": "tracked"
+         },
+         "bounced": {
+          "value": 0
+         }
+        },
+        "carried": false,
+        "incomplete": false
+       }
+      ]
+     }
+    ],
+    "lastSendMonth": "2026-08",
+    "content": null,
+    "matches": null
+   }
+  ],
+  "total": {
+   "key": {},
+   "label": {},
+   "cells": {
+    "sent": {
+     "value": 278
+    },
+    "delivered": {
+     "value": 246
+    },
+    "opened": {
+     "value": 169
+    },
+    "openRate": {
+     "value": 0.6869918699186992
+    },
+    "clicked": {
+     "value": 8,
+     "state": "unknown"
+    },
+    "clickRate": {
+     "value": 0.032520325203252036,
+     "state": "unknown"
+    },
+    "bounced": {
+     "value": 21
+    }
+   },
+   "carried": false,
+   "incomplete": true
+  },
+  "search": null,
+  "noTemplate": {
+   "cells": {
+    "sent": {
+     "value": 12
+    },
+    "delivered": {
+     "value": 10
+    },
+    "opened": {
+     "value": 8
+    },
+    "openRate": {
+     "value": 0.8
+    },
+    "clicked": {
+     "value": 0,
+     "state": "unknown"
+    },
+    "clickRate": {
+     "value": 0,
+     "state": "unknown"
+    },
+    "bounced": {
+     "value": 2
+    }
+   }
+  },
+  "scope": {
+   "months": [
+    "2026-06",
+    "2026-07",
+    "2026-08",
+    "2026-09"
+   ],
+   "fullWindow": true,
+   "programs": 5,
+   "programsHiddenByStatus": 0
+  },
+  "templatesKept": 6
+ },
+ "templates view, search any of two terms": {
+  "metrics": [
+   "sent",
+   "delivered",
+   "opened",
+   "openRate",
+   "clicked",
+   "clickRate",
+   "bounced"
+  ],
+  "programMetrics": [
+   "surveyParticipants",
+   "anyResponse",
+   "responseRate"
+  ],
+  "stepDetail": true,
+  "unavailable": null,
+  "content": {
+   "available": true,
+   "reason": null
+  },
+  "rows": [
+   {
+    "templateId": "tpl-day7",
+    "name": "Acme Day 7",
+    "cells": {
+     "sent": {
+      "value": 88
+     },
+     "delivered": {
+      "value": 78
+     },
+     "opened": {
+      "value": 53
+     },
+     "openRate": {
+      "value": 0.6794871794871795
+     },
+     "clicked": {
+      "value": 0,
+      "state": "unknown"
+     },
+     "clickRate": {
+      "value": 0,
+      "state": "unknown"
+     },
+     "bounced": {
+      "value": 6
+     }
+    },
+    "carried": false,
+    "incomplete": true,
+    "programs": [
+     {
+      "programId": "p-onboard",
+      "name": "Acme Onboarding Chain",
+      "statuses": [
+       "PROCESSING"
+      ],
+      "stepName": "Day 7 check-in",
+      "stepOrder": 2,
+      "stepCount": 1,
+      "cells": {
+       "sent": {
+        "value": 88
+       },
+       "delivered": {
+        "value": 78
+       },
+       "opened": {
+        "value": 53
+       },
+       "openRate": {
+        "value": 0.6794871794871795
+       },
+       "clicked": {
+        "value": 0,
+        "state": "unknown"
+       },
+       "clickRate": {
+        "value": 0,
+        "state": "unknown"
+       },
+       "bounced": {
+        "value": 6
+       }
+      },
+      "survey": {
+       "surveyParticipants": {
+        "value": null,
+        "state": "not-tracked",
+        "why": "no-survey",
+        "basis": "all-time"
+       },
+       "anyResponse": {
+        "value": null,
+        "state": "not-tracked",
+        "why": "no-survey",
+        "basis": "all-time"
+       },
+       "responseRate": {
+        "value": null,
+        "state": "not-tracked",
+        "why": "no-survey",
+        "basis": "all-time"
+       }
+      },
+      "carried": false,
+      "incomplete": true,
+      "steps": [
+       {
+        "stepId": "st-ob-2",
+        "step": "Day 7 check-in",
+        "stepOrder": 2,
+        "variantId": "var-day7",
+        "variant": "var-day7 name",
+        "cells": {
+         "sent": {
+          "value": 88
+         },
+         "delivered": {
+          "value": 78
+         },
+         "opened": {
+          "value": 53
+         },
+         "openRate": {
+          "value": 0.6794871794871795
+         },
+         "clicked": {
+          "value": 0,
+          "state": "unknown"
+         },
+         "clickRate": {
+          "value": 0,
+          "state": "unknown"
+         },
+         "bounced": {
+          "value": 6
+         }
+        },
+        "carried": false,
+        "incomplete": true
+       }
+      ]
+     }
+    ],
+    "lastSendMonth": "2026-09",
+    "content": {
+     "subject": "Day 7: how is it going?",
+     "asOf": "2026-09-02",
+     "modified": "2026-01-20",
+     "editedAfterLastSend": false,
+     "bodyIncluded": true,
+     "variants": 0
+    },
+    "matches": [
+     {
+      "field": "title",
+      "term": "acme",
+      "snippet": "Acme Day 7",
+      "hit": "Acme"
+     },
+     {
+      "field": "body",
+      "term": "acme",
+      "snippet": "...been a week since you joined Acme. <script>alert(1)</script> Ne...",
+      "hit": "Acme"
+     }
+    ]
+   },
+   {
+    "templateId": "tpl-welcome",
+    "name": "Acme Welcome",
+    "cells": {
+     "sent": {
+      "value": 88
+     },
+     "delivered": {
+      "value": 77
+     },
+     "opened": {
+      "value": 54
+     },
+     "openRate": {
+      "value": 0.7012987012987013
+     },
+     "clicked": {
+      "value": 7,
+      "state": "tracked"
+     },
+     "clickRate": {
+      "value": 0.09090909090909091,
+      "state": "tracked"
+     },
+     "bounced": {
+      "value": 7
+     }
+    },
+    "carried": false,
+    "incomplete": true,
+    "programs": [
+     {
+      "programId": "p-onboard",
+      "name": "Acme Onboarding Chain",
+      "statuses": [
+       "PROCESSING"
+      ],
+      "stepName": "Welcome",
+      "stepOrder": 1,
+      "stepCount": 1,
+      "cells": {
+       "sent": {
+        "value": 88
+       },
+       "delivered": {
+        "value": 77
+       },
+       "opened": {
+        "value": 54
+       },
+       "openRate": {
+        "value": 0.7012987012987013
+       },
+       "clicked": {
+        "value": 7,
+        "state": "tracked"
+       },
+       "clickRate": {
+        "value": 0.09090909090909091,
+        "state": "tracked"
+       },
+       "bounced": {
+        "value": 7
+       }
+      },
+      "survey": {
+       "surveyParticipants": {
+        "value": null,
+        "state": "not-tracked",
+        "why": "no-survey",
+        "basis": "all-time"
+       },
+       "anyResponse": {
+        "value": null,
+        "state": "not-tracked",
+        "why": "no-survey",
+        "basis": "all-time"
+       },
+       "responseRate": {
+        "value": null,
+        "state": "not-tracked",
+        "why": "no-survey",
+        "basis": "all-time"
+       }
+      },
+      "carried": false,
+      "incomplete": true,
+      "steps": [
+       {
+        "stepId": "st-ob-1",
+        "step": "Welcome",
+        "stepOrder": 1,
+        "variantId": "var-welcome-a",
+        "variant": "var-welcome-a name",
+        "cells": {
+         "sent": {
+          "value": 44
+         },
+         "delivered": {
+          "value": 39
+         },
+         "opened": {
+          "value": 27
+         },
+         "openRate": {
+          "value": 0.6923076923076923
+         },
+         "clicked": {
+          "value": 5,
+          "state": "tracked"
+         },
+         "clickRate": {
+          "value": 0.1282051282051282,
+          "state": "tracked"
+         },
+         "bounced": {
+          "value": 5
+         }
+        },
+        "carried": false,
+        "incomplete": true
+       },
+       {
+        "stepId": "st-ob-1",
+        "step": "Welcome",
+        "stepOrder": 1,
+        "variantId": "var-welcome-b",
+        "variant": "var-welcome-b name",
+        "cells": {
+         "sent": {
+          "value": 44
+         },
+         "delivered": {
+          "value": 38
+         },
+         "opened": {
+          "value": 27
+         },
+         "openRate": {
+          "value": 0.7105263157894737
+         },
+         "clicked": {
+          "value": 2,
+          "state": "tracked"
+         },
+         "clickRate": {
+          "value": 0.05263157894736842,
+          "state": "tracked"
+         },
+         "bounced": {
+          "value": 2
+         }
+        },
+        "carried": false,
+        "incomplete": true
+       }
+      ]
+     }
+    ],
+    "lastSendMonth": "2026-09",
+    "content": {
+     "subject": "Welcome to Acme",
+     "asOf": "2026-08-20",
+     "modified": "2026-08-15",
+     "editedAfterLastSend": false,
+     "bodyIncluded": true,
+     "variants": 1
+    },
+    "matches": [
+     {
+      "field": "title",
+      "term": "acme",
+      "snippet": "Acme Welcome",
+      "hit": "Acme"
+     },
+     {
+      "field": "subject",
+      "term": "acme",
+      "snippet": "Welcome to Acme",
+      "hit": "Acme"
+     },
+     {
+      "field": "body",
+      "term": "acme",
+      "snippet": "Welcome to Acme! Start here: the getting-star...",
+      "hit": "Acme"
+     },
+     {
+      "field": "variant \"Variant B\" body",
+      "term": "acme",
+      "snippet": "Welcome to Acme, from the B side. Start here:...",
+      "hit": "Acme"
+     }
+    ]
+   },
+   {
+    "templateId": "tpl-renew",
+    "name": "Acme Renewal",
+    "cells": {
+     "sent": {
+      "value": 48
+     },
+     "delivered": {
+      "value": 44
+     },
+     "opened": {
+      "value": 29
+     },
+     "openRate": {
+      "value": 0.6590909090909091
+     },
+     "clicked": {
+      "value": null,
+      "state": "not-tracked",
+      "why": "not-tracked"
+     },
+     "clickRate": {
+      "value": null,
+      "state": "not-tracked",
+      "why": "not-tracked"
+     },
+     "bounced": {
+      "value": 3
+     }
+    },
+    "carried": false,
+    "incomplete": true,
+    "programs": [
+     {
+      "programId": "p-renew",
+      "name": "Acme Renewal Dynamic",
+      "statuses": [
+       "PAUSE",
+       "NEW"
+      ],
+      "stepName": null,
+      "stepOrder": null,
+      "stepCount": 2,
+      "cells": {
+       "sent": {
+        "value": 48
+       },
+       "delivered": {
+        "value": 44
+       },
+       "opened": {
+        "value": 29
+       },
+       "openRate": {
+        "value": 0.6590909090909091
+       },
+       "clicked": {
+        "value": null,
+        "state": "not-tracked",
+        "why": "not-tracked"
+       },
+       "clickRate": {
+        "value": null,
+        "state": "not-tracked",
+        "why": "not-tracked"
+       },
+       "bounced": {
+        "value": 3
+       }
+      },
+      "survey": {
+       "surveyParticipants": {
+        "value": null,
+        "state": "not-tracked",
+        "why": "no-survey",
+        "basis": "all-time"
+       },
+       "anyResponse": {
+        "value": null,
+        "state": "not-tracked",
+        "why": "no-survey",
+        "basis": "all-time"
+       },
+       "responseRate": {
+        "value": null,
+        "state": "not-tracked",
+        "why": "no-survey",
+        "basis": "all-time"
+       }
+      },
+      "carried": false,
+      "incomplete": true,
+      "steps": [
+       {
+        "stepId": "st-rn-1",
+        "step": "Renewal notice",
+        "stepOrder": 1,
+        "variantId": "var-renew",
+        "variant": "var-renew name",
+        "cells": {
+         "sent": {
+          "value": 24
+         },
+         "delivered": {
+          "value": 21
+         },
+         "opened": {
+          "value": 13
+         },
+         "openRate": {
+          "value": 0.6190476190476191
+         },
+         "clicked": {
+          "value": null,
+          "state": "not-tracked",
+          "why": "not-tracked"
+         },
+         "clickRate": {
+          "value": null,
+          "state": "not-tracked",
+          "why": "not-tracked"
+         },
+         "bounced": {
+          "value": 2
+         }
+        },
+        "carried": false,
+        "incomplete": true
+       },
+       {
+        "stepId": "st-rn-2",
+        "step": "Renewal reminder",
+        "stepOrder": 2,
+        "variantId": "var-renew",
+        "variant": "var-renew name",
+        "cells": {
+         "sent": {
+          "value": 24
+         },
+         "delivered": {
+          "value": 23
+         },
+         "opened": {
+          "value": 16
+         },
+         "openRate": {
+          "value": 0.6956521739130435
+         },
+         "clicked": {
+          "value": null,
+          "state": "not-tracked",
+          "why": "not-tracked"
+         },
+         "clickRate": {
+          "value": null,
+          "state": "not-tracked",
+          "why": "not-tracked"
+         },
+         "bounced": {
+          "value": 1
+         }
+        },
+        "carried": false,
+        "incomplete": true
+       }
+      ]
+     }
+    ],
+    "lastSendMonth": "2026-09",
+    "content": {
+     "subject": "Your Acme renewal is coming up",
+     "asOf": "2026-09-01",
+     "modified": "2026-02-01",
+     "editedAfterLastSend": false,
+     "bodyIncluded": true,
+     "variants": 0
+    },
+    "matches": [
+     {
+      "field": "title",
+      "term": "acme",
+      "snippet": "Acme Renewal",
+      "hit": "Acme"
+     },
+     {
+      "field": "subject",
+      "term": "acme",
+      "snippet": "Your Acme renewal is coming up",
+      "hit": "Acme"
+     },
+     {
+      "field": "body",
+      "term": "acme",
+      "snippet": "Hello, Your Acme plan renews soon. Review your...",
+      "hit": "Acme"
+     }
+    ]
+   },
+   {
+    "templateId": "tpl-renew-b",
+    "name": "Acme Renewal Thanks",
+    "cells": {
+     "sent": {
+      "value": 24
+     },
+     "delivered": {
+      "value": 20
+     },
+     "opened": {
+      "value": 14
+     },
+     "openRate": {
+      "value": 0.7
+     },
+     "clicked": {
+      "value": null,
+      "state": "not-tracked",
+      "why": "not-tracked"
+     },
+     "clickRate": {
+      "value": null,
+      "state": "not-tracked",
+      "why": "not-tracked"
+     },
+     "bounced": {
+      "value": 2
+     }
+    },
+    "carried": false,
+    "incomplete": true,
+    "programs": [
+     {
+      "programId": "p-renew",
+      "name": "Acme Renewal Dynamic",
+      "statuses": [
+       "PAUSE",
+       "NEW"
+      ],
+      "stepName": "Renewal thanks",
+      "stepOrder": 3,
+      "stepCount": 1,
+      "cells": {
+       "sent": {
+        "value": 24
+       },
+       "delivered": {
+        "value": 20
+       },
+       "opened": {
+        "value": 14
+       },
+       "openRate": {
+        "value": 0.7
+       },
+       "clicked": {
+        "value": null,
+        "state": "not-tracked",
+        "why": "not-tracked"
+       },
+       "clickRate": {
+        "value": null,
+        "state": "not-tracked",
+        "why": "not-tracked"
+       },
+       "bounced": {
+        "value": 2
+       }
+      },
+      "survey": {
+       "surveyParticipants": {
+        "value": null,
+        "state": "not-tracked",
+        "why": "no-survey",
+        "basis": "all-time"
+       },
+       "anyResponse": {
+        "value": null,
+        "state": "not-tracked",
+        "why": "no-survey",
+        "basis": "all-time"
+       },
+       "responseRate": {
+        "value": null,
+        "state": "not-tracked",
+        "why": "no-survey",
+        "basis": "all-time"
+       }
+      },
+      "carried": false,
+      "incomplete": true,
+      "steps": [
+       {
+        "stepId": "st-rn-3",
+        "step": "Renewal thanks",
+        "stepOrder": 3,
+        "variantId": "var-renew-b",
+        "variant": "var-renew-b name",
+        "cells": {
+         "sent": {
+          "value": 24
+         },
+         "delivered": {
+          "value": 20
+         },
+         "opened": {
+          "value": 14
+         },
+         "openRate": {
+          "value": 0.7
+         },
+         "clicked": {
+          "value": null,
+          "state": "not-tracked",
+          "why": "not-tracked"
+         },
+         "clickRate": {
+          "value": null,
+          "state": "not-tracked",
+          "why": "not-tracked"
+         },
+         "bounced": {
+          "value": 2
+         }
+        },
+        "carried": false,
+        "incomplete": true
+       }
+      ]
+     }
+    ],
+    "lastSendMonth": "2026-09",
+    "content": {
+     "subject": "Thanks for renewing",
+     "asOf": "2026-09-01",
+     "modified": "2026-09-05",
+     "editedAfterLastSend": null,
+     "bodyIncluded": true,
+     "variants": 0
+    },
+    "matches": [
+     {
+      "field": "title",
+      "term": "acme",
+      "snippet": "Acme Renewal Thanks",
+      "hit": "Acme"
+     },
+     {
+      "field": "body",
+      "term": "acme",
+      "snippet": "Thank you for renewing with Acme! Your receipt: https://www.ex...",
+      "hit": "Acme"
+     }
+    ]
+   },
+   {
+    "templateId": "tpl-nps",
+    "name": "Acme NPS Request",
+    "cells": {
+     "sent": {
+      "value": 12
+     },
+     "delivered": {
+      "value": 11
+     },
+     "opened": {
+      "value": 7
+     },
+     "openRate": {
+      "value": 0.6363636363636364
+     },
+     "clicked": {
+      "value": 0,
+      "state": "tracked"
+     },
+     "clickRate": {
+      "value": 0,
+      "state": "tracked"
+     },
+     "bounced": {
+      "value": 1
+     }
+    },
+    "carried": false,
+    "incomplete": false,
+    "programs": [
+     {
+      "programId": "p-nps",
+      "name": "Acme NPS Survey",
+      "statuses": [
+       "PROCESSING"
+      ],
+      "stepName": "Survey email",
+      "stepOrder": 1,
+      "stepCount": 1,
+      "cells": {
+       "sent": {
+        "value": 12
+       },
+       "delivered": {
+        "value": 11
+       },
+       "opened": {
+        "value": 7
+       },
+       "openRate": {
+        "value": 0.6363636363636364
+       },
+       "clicked": {
+        "value": 0,
+        "state": "tracked"
+       },
+       "clickRate": {
+        "value": 0,
+        "state": "tracked"
+       },
+       "bounced": {
+        "value": 1
+       }
+      },
+      "survey": {
+       "surveyParticipants": {
+        "value": 52,
+        "state": "tracked",
+        "basis": "all-time"
+       },
+       "anyResponse": {
+        "value": 14,
+        "state": "tracked",
+        "basis": "all-time"
+       },
+       "responseRate": {
+        "value": 0.2692307692307692,
+        "state": "tracked",
+        "basis": "all-time"
+       }
+      },
+      "carried": false,
+      "incomplete": false,
+      "steps": [
+       {
+        "stepId": "st-nps-1",
+        "step": "Survey email",
+        "stepOrder": 1,
+        "variantId": "var-nps",
+        "variant": "var-nps name",
+        "cells": {
+         "sent": {
+          "value": 12
+         },
+         "delivered": {
+          "value": 11
+         },
+         "opened": {
+          "value": 7
+         },
+         "openRate": {
+          "value": 0.6363636363636364
+         },
+         "clicked": {
+          "value": 0,
+          "state": "tracked"
+         },
+         "clickRate": {
+          "value": 0,
+          "state": "tracked"
+         },
+         "bounced": {
+          "value": 1
+         }
+        },
+        "carried": false,
+        "incomplete": false
+       }
+      ]
+     }
+    ],
+    "lastSendMonth": "2026-07",
+    "content": {
+     "subject": "How is {Product Name} working for you?",
+     "asOf": "2026-09-01",
+     "modified": "2026-08-10",
+     "editedAfterLastSend": true,
+     "bodyIncluded": true,
+     "variants": 0
+    },
+    "matches": [
+     {
+      "field": "title",
+      "term": "acme",
+      "snippet": "Acme NPS Request",
+      "hit": "Acme"
+     },
+     {
+      "field": "body",
+      "term": "acme",
+      "snippet": "...ey.example.com/s/nps Thanks, Acme Unsubscribe: https://mail.ex...",
+      "hit": "Acme"
+     },
+     {
+      "field": "body",
+      "term": "survey",
+      "snippet": "...orking for your team: https://survey.example.com/s/nps Thanks, Ac...",
+      "hit": "survey"
+     }
+    ]
+   }
+  ],
+  "total": {
+   "key": {},
+   "label": {},
+   "cells": {
+    "sent": {
+     "value": 278
+    },
+    "delivered": {
+     "value": 246
+    },
+    "opened": {
+     "value": 169
+    },
+    "openRate": {
+     "value": 0.6869918699186992
+    },
+    "clicked": {
+     "value": 8,
+     "state": "unknown"
+    },
+    "clickRate": {
+     "value": 0.032520325203252036,
+     "state": "unknown"
+    },
+    "bounced": {
+     "value": 21
+    }
+   },
+   "carried": false,
+   "incomplete": true
+  },
+  "search": {
+   "terms": [
+    "acme",
+    "survey"
+   ],
+   "wholeWord": false,
+   "allTerms": false,
+   "snippet": 30,
+   "searched": 5,
+   "matched": [
+    {
+     "templateId": "tpl-day7",
+     "matches": [
+      {
+       "field": "title",
+       "term": "acme",
+       "snippet": "Acme Day 7",
+       "hit": "Acme"
+      },
+      {
+       "field": "body",
+       "term": "acme",
+       "snippet": "...been a week since you joined Acme. <script>alert(1)</script> Ne...",
+       "hit": "Acme"
+      }
+     ]
+    },
+    {
+     "templateId": "tpl-nps",
+     "matches": [
+      {
+       "field": "title",
+       "term": "acme",
+       "snippet": "Acme NPS Request",
+       "hit": "Acme"
+      },
+      {
+       "field": "body",
+       "term": "acme",
+       "snippet": "...ey.example.com/s/nps Thanks, Acme Unsubscribe: https://mail.ex...",
+       "hit": "Acme"
+      },
+      {
+       "field": "body",
+       "term": "survey",
+       "snippet": "...orking for your team: https://survey.example.com/s/nps Thanks, Ac...",
+       "hit": "survey"
+      }
+     ]
+    },
+    {
+     "templateId": "tpl-renew",
+     "matches": [
+      {
+       "field": "title",
+       "term": "acme",
+       "snippet": "Acme Renewal",
+       "hit": "Acme"
+      },
+      {
+       "field": "subject",
+       "term": "acme",
+       "snippet": "Your Acme renewal is coming up",
+       "hit": "Acme"
+      },
+      {
+       "field": "body",
+       "term": "acme",
+       "snippet": "Hello, Your Acme plan renews soon. Review your...",
+       "hit": "Acme"
+      }
+     ]
+    },
+    {
+     "templateId": "tpl-renew-b",
+     "matches": [
+      {
+       "field": "title",
+       "term": "acme",
+       "snippet": "Acme Renewal Thanks",
+       "hit": "Acme"
+      },
+      {
+       "field": "body",
+       "term": "acme",
+       "snippet": "Thank you for renewing with Acme! Your receipt: https://www.ex...",
+       "hit": "Acme"
+      }
+     ]
+    },
+    {
+     "templateId": "tpl-welcome",
+     "matches": [
+      {
+       "field": "title",
+       "term": "acme",
+       "snippet": "Acme Welcome",
+       "hit": "Acme"
+      },
+      {
+       "field": "subject",
+       "term": "acme",
+       "snippet": "Welcome to Acme",
+       "hit": "Acme"
+      },
+      {
+       "field": "body",
+       "term": "acme",
+       "snippet": "Welcome to Acme! Start here: the getting-star...",
+       "hit": "Acme"
+      },
+      {
+       "field": "variant \"Variant B\" body",
+       "term": "acme",
+       "snippet": "Welcome to Acme, from the B side. Start here:...",
+       "hit": "Acme"
+      }
+     ]
+    }
+   ]
+  },
+  "noTemplate": {
+   "cells": {
+    "sent": {
+     "value": 12
+    },
+    "delivered": {
+     "value": 10
+    },
+    "opened": {
+     "value": 8
+    },
+    "openRate": {
+     "value": 0.8
+    },
+    "clicked": {
+     "value": 0,
+     "state": "unknown"
+    },
+    "clickRate": {
+     "value": 0,
+     "state": "unknown"
+    },
+    "bounced": {
+     "value": 2
+    }
+   }
+  },
+  "scope": {
+   "months": [
+    "2026-06",
+    "2026-07",
+    "2026-08",
+    "2026-09"
+   ],
+   "fullWindow": true,
+   "programs": 5,
+   "programsHiddenByStatus": 0
+  },
+  "templatesKept": 6
+ },
+ "templates view, sorted by open rate": {
+  "metrics": [
+   "sent",
+   "delivered",
+   "opened",
+   "openRate",
+   "clicked",
+   "clickRate",
+   "bounced"
+  ],
+  "programMetrics": [
+   "surveyParticipants",
+   "anyResponse",
+   "responseRate"
+  ],
+  "stepDetail": true,
+  "unavailable": null,
+  "content": {
+   "available": true,
+   "reason": null
+  },
+  "rows": [
+   {
+    "templateId": "tpl-welcome",
+    "name": "Acme Welcome",
+    "cells": {
+     "sent": {
+      "value": 44
+     },
+     "delivered": {
+      "value": 38
+     },
+     "opened": {
+      "value": 27
+     },
+     "openRate": {
+      "value": 0.7105263157894737
+     },
+     "clicked": {
+      "value": 4,
+      "state": "tracked"
+     },
+     "clickRate": {
+      "value": 0.10526315789473684,
+      "state": "tracked"
+     },
+     "bounced": {
+      "value": 4
+     }
+    },
+    "carried": false,
+    "incomplete": false,
+    "programs": [
+     {
+      "programId": "p-onboard",
+      "name": "Acme Onboarding Chain",
+      "statuses": [
+       "PROCESSING"
+      ],
+      "stepName": "Welcome",
+      "stepOrder": 1,
+      "stepCount": 1,
+      "cells": {
+       "sent": {
+        "value": 44
+       },
+       "delivered": {
+        "value": 38
+       },
+       "opened": {
+        "value": 27
+       },
+       "openRate": {
+        "value": 0.7105263157894737
+       },
+       "clicked": {
+        "value": 4,
+        "state": "tracked"
+       },
+       "clickRate": {
+        "value": 0.10526315789473684,
+        "state": "tracked"
+       },
+       "bounced": {
+        "value": 4
+       }
+      },
+      "survey": {
+       "surveyParticipants": {
+        "value": null,
+        "state": "not-tracked",
+        "why": "no-survey",
+        "basis": "months"
+       },
+       "anyResponse": {
+        "value": null,
+        "state": "not-tracked",
+        "why": "no-survey",
+        "basis": "months"
+       },
+       "responseRate": {
+        "value": null,
+        "state": "not-tracked",
+        "why": "no-survey",
+        "basis": "months"
+       }
+      },
+      "carried": false,
+      "incomplete": false,
+      "steps": [
+       {
+        "stepId": "st-ob-1",
+        "step": "Welcome",
+        "stepOrder": 1,
+        "variantId": "var-welcome-a",
+        "variant": "var-welcome-a name",
+        "cells": {
+         "sent": {
+          "value": 22
+         },
+         "delivered": {
+          "value": 19
+         },
+         "opened": {
+          "value": 14
+         },
+         "openRate": {
+          "value": 0.7368421052631579
+         },
+         "clicked": {
+          "value": 2,
+          "state": "tracked"
+         },
+         "clickRate": {
+          "value": 0.10526315789473684,
+          "state": "tracked"
+         },
+         "bounced": {
+          "value": 3
+         }
+        },
+        "carried": false,
+        "incomplete": false
+       },
+       {
+        "stepId": "st-ob-1",
+        "step": "Welcome",
+        "stepOrder": 1,
+        "variantId": "var-welcome-b",
+        "variant": "var-welcome-b name",
+        "cells": {
+         "sent": {
+          "value": 22
+         },
+         "delivered": {
+          "value": 19
+         },
+         "opened": {
+          "value": 13
+         },
+         "openRate": {
+          "value": 0.6842105263157895
+         },
+         "clicked": {
+          "value": 2,
+          "state": "tracked"
+         },
+         "clickRate": {
+          "value": 0.10526315789473684,
+          "state": "tracked"
+         },
+         "bounced": {
+          "value": 1
+         }
+        },
+        "carried": false,
+        "incomplete": false
+       }
+      ]
+     }
+    ],
+    "lastSendMonth": "2026-09",
+    "content": {
+     "subject": "Welcome to Acme",
+     "asOf": "2026-08-20",
+     "modified": "2026-08-15",
+     "editedAfterLastSend": false,
+     "bodyIncluded": true,
+     "variants": 1
+    },
+    "matches": null
+   },
+   {
+    "templateId": "tpl-renew-b",
+    "name": "Acme Renewal Thanks",
+    "cells": {
+     "sent": {
+      "value": 12
+     },
+     "delivered": {
+      "value": 10
+     },
+     "opened": {
+      "value": 7
+     },
+     "openRate": {
+      "value": 0.7
+     },
+     "clicked": {
+      "value": null,
+      "state": "not-tracked",
+      "why": "not-tracked"
+     },
+     "clickRate": {
+      "value": null,
+      "state": "not-tracked",
+      "why": "not-tracked"
+     },
+     "bounced": {
+      "value": 1
+     }
+    },
+    "carried": false,
+    "incomplete": false,
+    "programs": [
+     {
+      "programId": "p-renew",
+      "name": "Acme Renewal Dynamic",
+      "statuses": [
+       "PAUSE",
+       "NEW"
+      ],
+      "stepName": "Renewal thanks",
+      "stepOrder": 3,
+      "stepCount": 1,
+      "cells": {
+       "sent": {
+        "value": 12
+       },
+       "delivered": {
+        "value": 10
+       },
+       "opened": {
+        "value": 7
+       },
+       "openRate": {
+        "value": 0.7
+       },
+       "clicked": {
+        "value": null,
+        "state": "not-tracked",
+        "why": "not-tracked"
+       },
+       "clickRate": {
+        "value": null,
+        "state": "not-tracked",
+        "why": "not-tracked"
+       },
+       "bounced": {
+        "value": 1
+       }
+      },
+      "survey": {
+       "surveyParticipants": {
+        "value": null,
+        "state": "not-tracked",
+        "why": "no-survey",
+        "basis": "months"
+       },
+       "anyResponse": {
+        "value": null,
+        "state": "not-tracked",
+        "why": "no-survey",
+        "basis": "months"
+       },
+       "responseRate": {
+        "value": null,
+        "state": "not-tracked",
+        "why": "no-survey",
+        "basis": "months"
+       }
+      },
+      "carried": false,
+      "incomplete": false,
+      "steps": [
+       {
+        "stepId": "st-rn-3",
+        "step": "Renewal thanks",
+        "stepOrder": 3,
+        "variantId": "var-renew-b",
+        "variant": "var-renew-b name",
+        "cells": {
+         "sent": {
+          "value": 12
+         },
+         "delivered": {
+          "value": 10
+         },
+         "opened": {
+          "value": 7
+         },
+         "openRate": {
+          "value": 0.7
+         },
+         "clicked": {
+          "value": null,
+          "state": "not-tracked",
+          "why": "not-tracked"
+         },
+         "clickRate": {
+          "value": null,
+          "state": "not-tracked",
+          "why": "not-tracked"
+         },
+         "bounced": {
+          "value": 1
+         }
+        },
+        "carried": false,
+        "incomplete": false
+       }
+      ]
+     }
+    ],
+    "lastSendMonth": "2026-09",
+    "content": {
+     "subject": "Thanks for renewing",
+     "asOf": "2026-09-01",
+     "modified": "2026-09-05",
+     "editedAfterLastSend": null,
+     "bodyIncluded": true,
+     "variants": 0
+    },
+    "matches": null
+   },
+   {
+    "templateId": "tpl-day7",
+    "name": "Acme Day 7",
+    "cells": {
+     "sent": {
+      "value": 44
+     },
+     "delivered": {
+      "value": 39
+     },
+     "opened": {
+      "value": 27
+     },
+     "openRate": {
+      "value": 0.6923076923076923
+     },
+     "clicked": {
+      "value": 0,
+      "state": "unknown"
+     },
+     "clickRate": {
+      "value": 0,
+      "state": "unknown"
+     },
+     "bounced": {
+      "value": 3
+     }
+    },
+    "carried": false,
+    "incomplete": false,
+    "programs": [
+     {
+      "programId": "p-onboard",
+      "name": "Acme Onboarding Chain",
+      "statuses": [
+       "PROCESSING"
+      ],
+      "stepName": "Day 7 check-in",
+      "stepOrder": 2,
+      "stepCount": 1,
+      "cells": {
+       "sent": {
+        "value": 44
+       },
+       "delivered": {
+        "value": 39
+       },
+       "opened": {
+        "value": 27
+       },
+       "openRate": {
+        "value": 0.6923076923076923
+       },
+       "clicked": {
+        "value": 0,
+        "state": "unknown"
+       },
+       "clickRate": {
+        "value": 0,
+        "state": "unknown"
+       },
+       "bounced": {
+        "value": 3
+       }
+      },
+      "survey": {
+       "surveyParticipants": {
+        "value": null,
+        "state": "not-tracked",
+        "why": "no-survey",
+        "basis": "months"
+       },
+       "anyResponse": {
+        "value": null,
+        "state": "not-tracked",
+        "why": "no-survey",
+        "basis": "months"
+       },
+       "responseRate": {
+        "value": null,
+        "state": "not-tracked",
+        "why": "no-survey",
+        "basis": "months"
+       }
+      },
+      "carried": false,
+      "incomplete": false,
+      "steps": [
+       {
+        "stepId": "st-ob-2",
+        "step": "Day 7 check-in",
+        "stepOrder": 2,
+        "variantId": "var-day7",
+        "variant": "var-day7 name",
+        "cells": {
+         "sent": {
+          "value": 44
+         },
+         "delivered": {
+          "value": 39
+         },
+         "opened": {
+          "value": 27
+         },
+         "openRate": {
+          "value": 0.6923076923076923
+         },
+         "clicked": {
+          "value": 0,
+          "state": "unknown"
+         },
+         "clickRate": {
+          "value": 0,
+          "state": "unknown"
+         },
+         "bounced": {
+          "value": 3
+         }
+        },
+        "carried": false,
+        "incomplete": false
+       }
+      ]
+     }
+    ],
+    "lastSendMonth": "2026-09",
+    "content": {
+     "subject": "Day 7: how is it going?",
+     "asOf": "2026-09-02",
+     "modified": "2026-01-20",
+     "editedAfterLastSend": false,
+     "bodyIncluded": true,
+     "variants": 0
+    },
+    "matches": null
+   },
+   {
+    "templateId": "tpl-renew",
+    "name": "Acme Renewal",
+    "cells": {
+     "sent": {
+      "value": 24
+     },
+     "delivered": {
+      "value": 22
+     },
+     "opened": {
+      "value": 15
+     },
+     "openRate": {
+      "value": 0.6818181818181818
+     },
+     "clicked": {
+      "value": null,
+      "state": "not-tracked",
+      "why": "not-tracked"
+     },
+     "clickRate": {
+      "value": null,
+      "state": "not-tracked",
+      "why": "not-tracked"
+     },
+     "bounced": {
+      "value": 2
+     }
+    },
+    "carried": false,
+    "incomplete": false,
+    "programs": [
+     {
+      "programId": "p-renew",
+      "name": "Acme Renewal Dynamic",
+      "statuses": [
+       "PAUSE",
+       "NEW"
+      ],
+      "stepName": null,
+      "stepOrder": null,
+      "stepCount": 2,
+      "cells": {
+       "sent": {
+        "value": 24
+       },
+       "delivered": {
+        "value": 22
+       },
+       "opened": {
+        "value": 15
+       },
+       "openRate": {
+        "value": 0.6818181818181818
+       },
+       "clicked": {
+        "value": null,
+        "state": "not-tracked",
+        "why": "not-tracked"
+       },
+       "clickRate": {
+        "value": null,
+        "state": "not-tracked",
+        "why": "not-tracked"
+       },
+       "bounced": {
+        "value": 2
+       }
+      },
+      "survey": {
+       "surveyParticipants": {
+        "value": null,
+        "state": "not-tracked",
+        "why": "no-survey",
+        "basis": "months"
+       },
+       "anyResponse": {
+        "value": null,
+        "state": "not-tracked",
+        "why": "no-survey",
+        "basis": "months"
+       },
+       "responseRate": {
+        "value": null,
+        "state": "not-tracked",
+        "why": "no-survey",
+        "basis": "months"
+       }
+      },
+      "carried": false,
+      "incomplete": false,
+      "steps": [
+       {
+        "stepId": "st-rn-1",
+        "step": "Renewal notice",
+        "stepOrder": 1,
+        "variantId": "var-renew",
+        "variant": "var-renew name",
+        "cells": {
+         "sent": {
+          "value": 12
+         },
+         "delivered": {
+          "value": 11
+         },
+         "opened": {
+          "value": 7
+         },
+         "openRate": {
+          "value": 0.6363636363636364
+         },
+         "clicked": {
+          "value": null,
+          "state": "not-tracked",
+          "why": "not-tracked"
+         },
+         "clickRate": {
+          "value": null,
+          "state": "not-tracked",
+          "why": "not-tracked"
+         },
+         "bounced": {
+          "value": 1
+         }
+        },
+        "carried": false,
+        "incomplete": false
+       },
+       {
+        "stepId": "st-rn-2",
+        "step": "Renewal reminder",
+        "stepOrder": 2,
+        "variantId": "var-renew",
+        "variant": "var-renew name",
+        "cells": {
+         "sent": {
+          "value": 12
+         },
+         "delivered": {
+          "value": 11
+         },
+         "opened": {
+          "value": 8
+         },
+         "openRate": {
+          "value": 0.7272727272727273
+         },
+         "clicked": {
+          "value": null,
+          "state": "not-tracked",
+          "why": "not-tracked"
+         },
+         "clickRate": {
+          "value": null,
+          "state": "not-tracked",
+          "why": "not-tracked"
+         },
+         "bounced": {
+          "value": 1
+         }
+        },
+        "carried": false,
+        "incomplete": false
+       }
+      ]
+     }
+    ],
+    "lastSendMonth": "2026-09",
+    "content": {
+     "subject": "Your Acme renewal is coming up",
+     "asOf": "2026-09-01",
+     "modified": "2026-02-01",
+     "editedAfterLastSend": false,
+     "bodyIncluded": true,
+     "variants": 0
+    },
+    "matches": null
+   },
+   {
+    "templateId": "tpl-unlisted",
+    "name": "Acme Unlisted",
+    "cells": {
+     "sent": {
+      "value": 6
+     },
+     "delivered": {
+      "value": 6
+     },
+     "opened": {
+      "value": 4
+     },
+     "openRate": {
+      "value": 0.6666666666666666
+     },
+     "clicked": {
+      "value": 1,
+      "state": "tracked"
+     },
+     "clickRate": {
+      "value": 0.16666666666666666,
+      "state": "tracked"
+     },
+     "bounced": {
+      "value": 0
+     }
+    },
+    "carried": false,
+    "incomplete": false,
+    "programs": [
+     {
+      "programId": "p-unlisted",
+      "name": "Acme Unlisted Program",
+      "statuses": [
+       "PROCESSING"
+      ],
+      "stepName": null,
+      "stepOrder": null,
+      "stepCount": 0,
+      "cells": {
+       "sent": {
+        "value": 6
+       },
+       "delivered": {
+        "value": 6
+       },
+       "opened": {
+        "value": 4
+       },
+       "openRate": {
+        "value": 0.6666666666666666
+       },
+       "clicked": {
+        "value": 1,
+        "state": "tracked"
+       },
+       "clickRate": {
+        "value": 0.16666666666666666,
+        "state": "tracked"
+       },
+       "bounced": {
+        "value": 0
+       }
+      },
+      "survey": {
+       "surveyParticipants": {
+        "value": null,
+        "state": "not-tracked",
+        "why": "no-survey",
+        "basis": "months"
+       },
+       "anyResponse": {
+        "value": null,
+        "state": "not-tracked",
+        "why": "no-survey",
+        "basis": "months"
+       },
+       "responseRate": {
+        "value": null,
+        "state": "not-tracked",
+        "why": "no-survey",
+        "basis": "months"
+       }
+      },
+      "carried": false,
+      "incomplete": false,
+      "steps": [
+       {
+        "stepId": "st-ul-1",
+        "step": null,
+        "stepOrder": null,
+        "variantId": "var-unlisted",
+        "variant": "var-unlisted name",
+        "cells": {
+         "sent": {
+          "value": 6
+         },
+         "delivered": {
+          "value": 6
+         },
+         "opened": {
+          "value": 4
+         },
+         "openRate": {
+          "value": 0.6666666666666666
+         },
+         "clicked": {
+          "value": 1,
+          "state": "tracked"
+         },
+         "clickRate": {
+          "value": 0.16666666666666666,
+          "state": "tracked"
+         },
+         "bounced": {
+          "value": 0
+         }
+        },
+        "carried": false,
+        "incomplete": false
+       }
+      ]
+     }
+    ],
+    "lastSendMonth": "2026-08",
+    "content": null,
+    "matches": null
+   },
+   {
+    "templateId": "tpl-nps",
+    "name": "Acme NPS Request",
+    "cells": {
+     "sent": {
+      "value": 12
+     },
+     "delivered": {
+      "value": 11
+     },
+     "opened": {
+      "value": 7
+     },
+     "openRate": {
+      "value": 0.6363636363636364
+     },
+     "clicked": {
+      "value": 0,
+      "state": "tracked"
+     },
+     "clickRate": {
+      "value": 0,
+      "state": "tracked"
+     },
+     "bounced": {
+      "value": 1
+     }
+    },
+    "carried": false,
+    "incomplete": false,
+    "programs": [
+     {
+      "programId": "p-nps",
+      "name": "Acme NPS Survey",
+      "statuses": [
+       "PROCESSING"
+      ],
+      "stepName": "Survey email",
+      "stepOrder": 1,
+      "stepCount": 1,
+      "cells": {
+       "sent": {
+        "value": 12
+       },
+       "delivered": {
+        "value": 11
+       },
+       "opened": {
+        "value": 7
+       },
+       "openRate": {
+        "value": 0.6363636363636364
+       },
+       "clicked": {
+        "value": 0,
+        "state": "tracked"
+       },
+       "clickRate": {
+        "value": 0,
+        "state": "tracked"
+       },
+       "bounced": {
+        "value": 1
+       }
+      },
+      "survey": {
+       "surveyParticipants": {
+        "value": null,
+        "state": "tracked",
+        "why": "all-time-basis-only",
+        "basis": "months"
+       },
+       "anyResponse": {
+        "value": 3,
+        "state": "tracked",
+        "basis": "months"
+       },
+       "responseRate": {
+        "value": null,
+        "state": "tracked",
+        "why": "all-time-basis-only",
+        "basis": "months"
+       }
+      },
+      "carried": false,
+      "incomplete": false,
+      "steps": [
+       {
+        "stepId": "st-nps-1",
+        "step": "Survey email",
+        "stepOrder": 1,
+        "variantId": "var-nps",
+        "variant": "var-nps name",
+        "cells": {
+         "sent": {
+          "value": 12
+         },
+         "delivered": {
+          "value": 11
+         },
+         "opened": {
+          "value": 7
+         },
+         "openRate": {
+          "value": 0.6363636363636364
+         },
+         "clicked": {
+          "value": 0,
+          "state": "tracked"
+         },
+         "clickRate": {
+          "value": 0,
+          "state": "tracked"
+         },
+         "bounced": {
+          "value": 1
+         }
+        },
+        "carried": false,
+        "incomplete": false
+       }
+      ]
+     }
+    ],
+    "lastSendMonth": "2026-07",
+    "content": {
+     "subject": "How is {Product Name} working for you?",
+     "asOf": "2026-09-01",
+     "modified": "2026-08-10",
+     "editedAfterLastSend": true,
+     "bodyIncluded": true,
+     "variants": 0
+    },
+    "matches": null
+   }
+  ],
+  "total": {
+   "key": {},
+   "label": {},
+   "cells": {
+    "sent": {
+     "value": 148
+    },
+    "delivered": {
+     "value": 131
+    },
+    "opened": {
+     "value": 91
+    },
+    "openRate": {
+     "value": 0.6946564885496184
+    },
+    "clicked": {
+     "value": 5,
+     "state": "unknown"
+    },
+    "clickRate": {
+     "value": 0.03816793893129771,
+     "state": "unknown"
+    },
+    "bounced": {
+     "value": 12
+    }
+   },
+   "carried": false,
+   "incomplete": false
+  },
+  "search": null,
+  "noTemplate": {
+   "cells": {
+    "sent": {
+     "value": 6
+    },
+    "delivered": {
+     "value": 5
+    },
+    "opened": {
+     "value": 4
+    },
+    "openRate": {
+     "value": 0.8
+    },
+    "clicked": {
+     "value": 0,
+     "state": "unknown"
+    },
+    "clickRate": {
+     "value": 0,
+     "state": "unknown"
+    },
+    "bounced": {
+     "value": 1
+    }
+   }
+  },
+  "scope": {
+   "months": [
+    "2026-07",
+    "2026-08"
+   ],
+   "fullWindow": false,
+   "programs": 5,
+   "programsHiddenByStatus": 0
+  },
+  "templatesKept": 6
  }
 }

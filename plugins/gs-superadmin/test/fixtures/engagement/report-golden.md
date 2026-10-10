@@ -3,8 +3,8 @@
 | Status | Programs | Sent | Delivered | Opened | Open rate | Clicked | Click rate |
 |---|---|---|---|---|---|---|---|
 | Active | 4 | 206 | 182 | 126 | 69.2% | 8 (tracking unknown) | 4.4% (tracking unknown) |
-| Paused | 1 | 72 | 64 | 43 | 67.2% | 0 (tracking unknown) | 0.0% (tracking unknown) |
-| Draft | 1 | 72 | 64 | 43 | 67.2% | 0 (tracking unknown) | 0.0% (tracking unknown) |
+| Paused | 1 | 72 | 64 | 43 | 67.2% | Not tracked | Not tracked |
+| Draft | 1 | 72 | 64 | 43 | 67.2% | Not tracked | Not tracked |
 | All programs | 5 | 278 | 246 | 169 | 68.7% | 8 (tracking unknown) | 3.3% (tracking unknown) |
 
 A program that carries two statuses (one edited while live) is counted in both rows, so the status rows can add up to more than the last row.
@@ -16,7 +16,7 @@ Showing every status: 5 program(s).
 | Program | Status | Sent | Unique recipients | Accounts reached | Delivered | Opened | Open rate | Clicked | Click rate | Bounced | Participant records |
 |---|---|---|---|---|---|---|---|---|---|---|---|
 | Acme Onboarding Chain | Active | 176 | 22 | 10 | 155 | 107 | 69.0% | 7 (tracking unknown) | 4.5% (tracking unknown) | 13 | 44 |
-| Acme Renewal Dynamic | Paused, Draft | 72 | 6 | 6 | 64 | 43 | 67.2% | 0 (tracking unknown) | 0.0% (tracking unknown) | 5 | 6 |
+| Acme Renewal Dynamic | Paused, Draft | 72 | 6 | 6 | 64 | 43 | 67.2% | Not tracked | Not tracked | 5 | 6 |
 | Acme Internal Pilot | Active | 12 | 3 | 0 | 10 | 8 | 80.0% | 0 (tracking unknown) | 0.0% (tracking unknown) | 2 | 3 |
 | Acme NPS Survey | Active | 12 | 12 | 12 | 11 | 7 | 63.6% | 0 | 0.0% | 1 | 12 |
 | Acme Unlisted Program | Active | 6 | 6 | 3 | 6 | 4 | 66.7% | 1 | 16.7% | 0 | 6 |
@@ -34,29 +34,29 @@ These figures are all time, not limited to the report's window. Programs that se
 
 ## Emails by template
 
-| Program | Step | Template | Sent | Delivered | Opened | Open rate | Clicked | Click rate | Bounced |
-|---|---|---|---|---|---|---|---|---|---|
-| Acme Internal Pilot | (no step name: the program has no full KB doc) | (no template) | 12 | 10 | 8 | 80.0% | 0 (tracking unknown) | 0.0% (tracking unknown) | 2 |
-| Acme NPS Survey | 1. Survey email | Acme NPS Request | 12 | 11 | 7 | 63.6% | 0 | 0.0% | 1 |
-| Acme Onboarding Chain | 1. Welcome | Acme Welcome | 88 | 77 | 54 | 70.1% | 7 | 9.1% | 7 |
-| Acme Onboarding Chain | 2. Day 7 check-in | Acme Day 7 | 88 | 78 | 53 | 67.9% | 0 (tracking unknown) | 0.0% (tracking unknown) | 6 |
-| Acme Renewal Dynamic | 3. Renewal thanks | Acme Renewal Thanks | 24 | 20 | 14 | 70.0% | Not tracked | Not tracked | 2 |
-| Acme Renewal Dynamic | (on 2 steps) | Acme Renewal | 48 | 44 | 29 | 65.9% | 0 (tracking unknown) | 0.0% (tracking unknown) | 3 |
-| Acme Unlisted Program | (no step name: the program has no full KB doc) | Acme Unlisted | 6 | 6 | 4 | 66.7% | 1 | 16.7% | 0 |
+| Program | Step | Template | Subject | Sent | Delivered | Opened | Open rate | Clicked | Click rate | Bounced |
+|---|---|---|---|---|---|---|---|---|---|---|
+| Acme Internal Pilot | (no step name: the program has no full KB doc) | (no template) | — | 12 | 10 | 8 | 80.0% | 0 (tracking unknown) | 0.0% (tracking unknown) | 2 |
+| Acme NPS Survey | 1. Survey email | Acme NPS Request | How is {Product Name} working for you? | 12 | 11 | 7 | 63.6% | 0 | 0.0% | 1 |
+| Acme Onboarding Chain | 1. Welcome | Acme Welcome | Welcome to Acme | 88 | 77 | 54 | 70.1% | 7 | 9.1% | 7 |
+| Acme Onboarding Chain | 2. Day 7 check-in | Acme Day 7 | Day 7: how is it going? | 88 | 78 | 53 | 67.9% | 0 (tracking unknown) | 0.0% (tracking unknown) | 6 |
+| Acme Renewal Dynamic | 3. Renewal thanks | Acme Renewal Thanks | Thanks for renewing | 24 | 20 | 14 | 70.0% | Not tracked | Not tracked | 2 |
+| Acme Renewal Dynamic | (on 2 steps) | Acme Renewal | Your Acme renewal is coming up | 48 | 44 | 29 | 65.9% | Not tracked | Not tracked | 3 |
+| Acme Unlisted Program | (no step name: the program has no full KB doc) | Acme Unlisted | — | 6 | 6 | 4 | 66.7% | 1 | 16.7% | 0 |
 
 ## Emails by step
 
-| Program | Step | Variant | Template | Sent | Delivered | Opened | Open rate | Clicked | Click rate | Bounced |
-|---|---|---|---|---|---|---|---|---|---|---|
-| Acme Internal Pilot | (no step name in the KB: st-pl-1) |  | (no template) | 12 | 10 | 8 | 80.0% | 0 (tracking unknown) | 0.0% (tracking unknown) | 2 |
-| Acme NPS Survey | 1. Survey email | var-nps name | Acme NPS Request | 12 | 11 | 7 | 63.6% | 0 | 0.0% | 1 |
-| Acme Onboarding Chain | 1. Welcome | var-welcome-a name | Acme Welcome | 44 | 39 | 27 | 69.2% | 5 | 12.8% | 5 |
-| Acme Onboarding Chain | 1. Welcome | var-welcome-b name | Acme Welcome | 44 | 38 | 27 | 71.1% | 2 | 5.3% | 2 |
-| Acme Onboarding Chain | 2. Day 7 check-in | var-day7 name | Acme Day 7 | 88 | 78 | 53 | 67.9% | 0 (tracking unknown) | 0.0% (tracking unknown) | 6 |
-| Acme Renewal Dynamic | 1. Renewal notice | var-renew name | Acme Renewal | 24 | 21 | 13 | 61.9% | 0 (tracking unknown) | 0.0% (tracking unknown) | 2 |
-| Acme Renewal Dynamic | 2. Renewal reminder | var-renew name | Acme Renewal | 24 | 23 | 16 | 69.6% | 0 (tracking unknown) | 0.0% (tracking unknown) | 1 |
-| Acme Renewal Dynamic | 3. Renewal thanks | var-renew-b name | Acme Renewal Thanks | 24 | 20 | 14 | 70.0% | Not tracked | Not tracked | 2 |
-| Acme Unlisted Program | (no step name in the KB: st-ul-1) | var-unlisted name | Acme Unlisted | 6 | 6 | 4 | 66.7% | 1 | 16.7% | 0 |
+| Program | Step | Variant | Template | Subject | Sent | Delivered | Opened | Open rate | Clicked | Click rate | Bounced |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| Acme Internal Pilot | (no step name in the KB: st-pl-1) |  | (no template) | — | 12 | 10 | 8 | 80.0% | 0 (tracking unknown) | 0.0% (tracking unknown) | 2 |
+| Acme NPS Survey | 1. Survey email | var-nps name | Acme NPS Request | How is {Product Name} working for you? | 12 | 11 | 7 | 63.6% | 0 | 0.0% | 1 |
+| Acme Onboarding Chain | 1. Welcome | var-welcome-a name | Acme Welcome | Welcome to Acme | 44 | 39 | 27 | 69.2% | 5 | 12.8% | 5 |
+| Acme Onboarding Chain | 1. Welcome | var-welcome-b name | Acme Welcome | Welcome to Acme | 44 | 38 | 27 | 71.1% | 2 | 5.3% | 2 |
+| Acme Onboarding Chain | 2. Day 7 check-in | var-day7 name | Acme Day 7 | Day 7: how is it going? | 88 | 78 | 53 | 67.9% | 0 (tracking unknown) | 0.0% (tracking unknown) | 6 |
+| Acme Renewal Dynamic | 1. Renewal notice | var-renew name | Acme Renewal | Your Acme renewal is coming up | 24 | 21 | 13 | 61.9% | Not tracked | Not tracked | 2 |
+| Acme Renewal Dynamic | 2. Renewal reminder | var-renew name | Acme Renewal | Your Acme renewal is coming up | 24 | 23 | 16 | 69.6% | Not tracked | Not tracked | 1 |
+| Acme Renewal Dynamic | 3. Renewal thanks | var-renew-b name | Acme Renewal Thanks | Thanks for renewing | 24 | 20 | 14 | 70.0% | Not tracked | Not tracked | 2 |
+| Acme Unlisted Program | (no step name in the KB: st-ul-1) | var-unlisted name | Acme Unlisted | — | 6 | 6 | 4 | 66.7% | 1 | 16.7% | 0 |
 
 ## Account watch list
 
@@ -333,6 +333,14 @@ The share of the program's survey participants with any response, all time.
 - 1 program(s) have no full doc in the knowledge base, so their emails are listed by template name, without step names.
 
 - Step names come from the knowledge base, as of the date each program was last documented (the oldest is 2026-08-20T00:00:00.000Z). A step renamed since then shows its earlier name.
+
+- Template subjects and bodies are each template's CURRENT text as the knowledge base holds it (the oldest doc is as of 2026-08-20), not a copy of what was sent: a template edited after its last send may differ from what recipients got, and the "edited after last send" flag says which. Tokens are shown as their field labels.
+
+- 1 of 6 template(s) the sends reference have no doc in the knowledge base, so their text and link settings are not in this snapshot. The plan lists them; the skill's gap-fill fetches each one by id and files it in the knowledge base.
+
+- 1 template doc(s) were read before the month of the template's last send, so the text may predate what was sent. The next gap-fill reads them again.
+
+- 1 never-clicked template(s) have no link-tracking reading in the knowledge base (their docs predate it), so their click tracking reads unknown. The next gap-fill reads them again.
 
 - Sends on or after 2026-09-01 are provisional: opens keep arriving, so the recent period reads low. Bounces and unsubscribes on sends since 2026-08-01 can still change too: a refresh reads those months again.
 

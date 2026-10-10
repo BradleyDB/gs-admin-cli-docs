@@ -394,6 +394,14 @@ export const NON_CONTENT_LINK_RULES = Object.freeze([
   { kind: "mailto", re: /^mailto:/i },
   { kind: "unsubscribe", re: /unsubscribe|opt[-_]?out|email[-_]?preferences|manage[-_]?preferences/i },
 ]);
+// R19: what a template's own link settings say about click tracking, read from
+// its `jo email template --id` payload at the sanctioned describe by doc-lib's
+// readLinkTracking, written into the KB doc (TPL-1). Only link-map entries
+// present in the current content count, and system links (the rules above)
+// are left out: a tracked content link means a never-clicked template's 0% is
+// real; content links with none tracked means "Not tracked"; no readable
+// content link (an empty map, every entry stale) means the flag cannot be read.
+export const LINK_READINGS = Object.freeze(["tracked-link-present", "links-none-tracked", "unreadable"]);
 
 // ── The metric registry ──────────────────────────────────────────────────────
 // kind "count":    an additive measure of the send tables. `counts` is the flag
@@ -563,6 +571,19 @@ export const accountAvailability = (snapshot) => snapshot.meta.accounts ?? { pul
  * @returns {{pulled: boolean, reason: ?string, asOf: ?string, dayWindow: ?{start: string, endExclusive: string}, parts: Object<string, {pulled: boolean, reason: ?string, basis?: string}>, categories?: Object<string, *>, samples?: Object<string, {cap: number, sampled: number, carried: number, notSampled: Array<{programId: string, reason: string}>, programs?: string[], window?: {start: string, endExclusive: string}, counts?: Object<string, number>}>}}
  */
 export const healthAvailability = (snapshot) => snapshot.meta.health ?? { pulled: false, reason: "predates-health", asOf: null, dayWindow: null, parts: {} };
+/**
+ * Whether the snapshot holds template content (dimensions.templates[].content:
+ * subject, body, the content-as-of date, the link-tracking reading; TPL-1),
+ * and whether a PAGE may show it. A pull made with a knowledge base reads it
+ * (pulled, content); one made without says so (reason "no-kb"); a page that
+ * withholds the text keeps the performance rows and says the text is not on
+ * the page (reason "templates-not-on-page", content false). A snapshot made
+ * before template content existed carries no marker: a reader shows the reason
+ * wherever the Templates tab would be, never an empty table.
+ * @param {T10Snapshot} snapshot
+ * @returns {{pulled: boolean, reason: ?string, content: boolean, source: ?string}}
+ */
+export const templateAvailability = (snapshot) => snapshot.meta.templates ?? { pulled: false, reason: "templates-not-pulled", content: false, source: null };
 /** @returns {{state: TrackingState, templates: {tracked: number, notTracked: number, unknown: number}}} */
 export const programClickAvailability = (snapshot, programId) =>
   snapshot.meta.metricAvailability.clicks.programs[programId] ?? { state: "unknown", templates: { tracked: 0, notTracked: 0, unknown: 0 } };
@@ -620,7 +641,7 @@ export const REASONS = deepFreeze({
   "not-in-previous": "The earlier pull this one continues from read none, so the months carried from it have none. A full pull reads them.",
   "call-failed": "The call that reads this did not return, so there is no figure. Nothing else in the pull is affected.",
   "no-schema": "This tenant does not have the object this is read from.",
-  "no-kb": "Schedules are read from the knowledge base, and this pull ran without one.",
+  "no-kb": "This is read from the knowledge base (schedules, step names, template content), and this pull ran without one.",
   "too-large": "This has more rows than the pull can read within its budget, so it was not read. Narrow the programs or the window, or pull again when the budget allows.",
   "all-time": "This figure is all time: the object it is read from carries no date on every row, so the date filter does not apply to it.",
   "not-filterable": "This tenant's object does not allow a filter on the reason field, so participant failures are counted per program with no breakdown by reason.",
@@ -629,7 +650,8 @@ export const REASONS = deepFreeze({
   "tab-off": "This tab is turned off for this page, so what it shows is not part of the page.",
   "no-internal-domain": "No internal email domain is named for this dashboard, so every recipient counts as external and there is nothing to leave out.",
   "test-accounts-need-accounts": "Accounts named as test accounts are not left out: this filter works by email domain, and the pull holds no account data to subtract them with.",
-  "templates-not-pulled": "Template content is not in this snapshot: no pull reads it yet. A pull made with a plugin version that reads templates adds it.",
+  "templates-not-pulled": "Template content is not in this snapshot: it was made before template content was read from the knowledge base. Pull again to get it.",
+  "templates-not-on-page": "Template text (subjects and bodies) and the keyword search are not part of this page.",
 });
 /** @param {?string} id @returns {string} the reason in words; an id the table lacks is shown as itself */
 export const reasonText = (id) => (id == null ? "" : REASONS[id] ?? `No value (${id}).`);
@@ -894,13 +916,14 @@ export function runQuery(snapshot, filters, query) {
       label.template = templateById.get(k.template)?.name ?? null;
       // Step name and order are set only where the template sits on exactly one step of that program.
       const use = "program" in k ? templateById.get(k.template)?.uses.find((u) => u.programId === k.program) : null;
-      Object.assign(label, { stepName: use?.stepName ?? null, stepOrder: use?.stepOrder ?? null, stepCount: use?.stepCount ?? null });
+      // The subject (TPL-1): the template's current text as the knowledge base holds it; null when the snapshot has none.
+      Object.assign(label, { stepName: use?.stepName ?? null, stepOrder: use?.stepOrder ?? null, stepCount: use?.stepCount ?? null, subject: templateById.get(k.template)?.content?.subject ?? null });
     }
     if ("step" in k) {
       const any = g.rows[0];
       const s = stepByKey.get(JSON.stringify([any.programId, any.stepId, any.variantId]));
       const sameStep = (dims.steps ?? []).find((x) => x.programId === any.programId && x.stepId === any.stepId);
-      Object.assign(label, { step: (s ?? sameStep)?.name ?? null, stepOrder: (s ?? sameStep)?.order ?? null, template: templateById.get(any.templateId)?.name ?? null, templateId: any.templateId ?? null });
+      Object.assign(label, { step: (s ?? sameStep)?.name ?? null, stepOrder: (s ?? sameStep)?.order ?? null, template: templateById.get(any.templateId)?.name ?? null, templateId: any.templateId ?? null, subject: templateById.get(any.templateId)?.content?.subject ?? null });
     }
     if ("variant" in k) {
       const any = g.rows[0];
@@ -1694,6 +1717,178 @@ export function healthOneTimeView(snapshot, filters, { months: n }) {
   return { unavailable: null, rows, historyMonths: history, scheduleUnknown, lastSendBasis: lastSends ? "day" : "month" };
 }
 
+// ── Templates: content, performance per template, in-page search (TPL-1, TPL-2) ──
+// The Templates tab's one engine function per kind (house rule 11): the view
+// (each template the filters keep, its figures from runQuery, the programs and
+// steps that send it with their own figures, its content's dates and flag),
+// the search over the stored text, and the content a drawer shows. The page
+// lays these out and never reads a fact row itself.
+export const TEMPLATE_VIEW_METRICS = Object.freeze(["sent", "delivered", "opened", "openRate", "clicked", "clickRate", "bounced"]);
+// The survey figures beside a program that sends the template: program level, as the registry defines them.
+const TEMPLATE_PROGRAM_METRICS = Object.freeze(["surveyParticipants", "anyResponse", "responseRate"]);
+export const SEARCH_SNIPPET_DEFAULT = 50;
+/** @type {{metric: string, dir: "desc"}} */
+const SENT_DESC = Object.freeze({ metric: "sent", dir: "desc" });
+// The search primitives, mirroring scripts/jo-report-search.mjs (email-report
+// `search`) so the page and the skill find the same templates: the text and
+// the term NFC-folded, one case-insensitive regex per term (whole word =
+// lookarounds on [A-Za-z0-9_], never \b, so "c++" keeps a sane boundary), the
+// FIRST occurrence per field, and ±radius characters of context with white
+// space collapsed. This module imports nothing (a page runs its bytes), so
+// three primitives doc-lib owns — the NFC fold, the regex escape and the
+// surrogate-safe slice — are spelled here again as a sanctioned copy
+// (build/check-doc-drift.mjs SANCTIONED_PORTABILITY_COPIES, doc-lib's
+// sanctioned-duplicates header). The sync mechanism is the differential in
+// test/engagement-query.mjs: the same terms and options through both searches
+// over one fixture knowledge base must give the same matches (A-2, A-6).
+const foldNfc = (s) => String(s).normalize("NFC");
+const escapeForRegExp = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const sliceCodePoints = (s, start, end) => String(s).slice(start, end).replace(/^[\uDC00-\uDFFF]/, "").replace(/[\uD800-\uDBFF]$/, "");
+/** @param {string} term @param {{wholeWord?: boolean}} [opts] */
+export function compileSearchTerm(term, { wholeWord = false } = {}) {
+  const esc = escapeForRegExp(foldNfc(term));
+  return new RegExp(wholeWord ? `(?<![A-Za-z0-9_])${esc}(?![A-Za-z0-9_])` : esc, "i");
+}
+/** ±radius characters around a match of the FOLDED text, one line, ASCII ellipses where cut. */
+export function searchSnippet(text, start, end, radius = SEARCH_SNIPPET_DEFAULT) {
+  const s = Math.max(0, start - radius);
+  const e = Math.min(text.length, end + radius);
+  const body = sliceCodePoints(text, s, e).replace(/\s+/g, " ").trim();
+  return (s > 0 ? "..." : "") + body + (e < text.length ? "..." : "");
+}
+/**
+ * The searchable fields of one template of the snapshot, in report order: the
+ * same fields email-report searches (title, subject, body, each variant's).
+ * A template the snapshot holds no text for has none, as a template with no
+ * doc has none there: its name alone is not searched.
+ */
+export function searchableTemplateFields(t) {
+  const fields = [];
+  const c = t?.content;
+  if (!c) return fields;
+  if (t?.name) fields.push({ field: "title", text: t.name });
+  if (c?.subject) fields.push({ field: "subject", text: c.subject });
+  if (c?.body) fields.push({ field: "body", text: c.body });
+  for (const v of c?.variants ?? []) {
+    const name = v.name ?? "(unnamed)";
+    if (v.subject) fields.push({ field: `variant "${name}" subject`, text: v.subject });
+    if (v.body) fields.push({ field: `variant "${name}" body`, text: v.body });
+  }
+  return fields;
+}
+/**
+ * Keyword search over the templates the filters keep (TPL-2, R14): several
+ * terms, any or all (`allTerms`), substring or whole word, case-insensitive,
+ * a snippet per field and term. Matching runs on the STORED text, which holds
+ * tokens as their field labels (TPL-1): a term inside a raw token key matches
+ * in email-report, which searches the knowledge base's raw text, and not
+ * here; every other term matches alike (the differential test says so).
+ * @param {T10Snapshot} snapshot
+ * @param {EngagementFilters} filters
+ * @param {string[]} terms
+ * @param {{wholeWord?: boolean, allTerms?: boolean, snippet?: number}} [opts]
+ * @returns {{terms: string[], wholeWord: boolean, allTerms: boolean, snippet: number, searched: number, matched: Array<{templateId: string, matches: Array<{field: string, term: string, snippet: string, hit: string}>}>}}
+ */
+export function searchTemplateContent(snapshot, filters, terms, { wholeWord = false, allTerms = false, snippet = SEARCH_SNIPPET_DEFAULT } = {}) {
+  const uniqueTerms = [...new Set((terms ?? []).map((t) => String(t)).filter((t) => t.trim()))];
+  if (!Number.isInteger(snippet) || snippet < 1) throw new Error(`engagement query: the snippet radius must be a whole number >= 1 (got ${snippet})`);
+  const matchers = uniqueTerms.map((term) => ({ term, re: compileSearchTerm(term, { wholeWord }) }));
+  const kept = runQuery(snapshot, filters ?? {}, { groupBy: ["template"], metrics: ["sent"] }).rows.map((r) => r.key.template).filter((id) => id != null);
+  const byId = new Map(snapshot.dimensions.templates.map((t) => [t.id, t]));
+  const matched = [];
+  let searched = 0;
+  for (const id of kept) {
+    const fields = searchableTemplateFields(byId.get(id));
+    if (!fields.length || !uniqueTerms.length) continue;
+    searched++;
+    const matches = [];
+    const matchedTerms = new Set();
+    for (const { field, text } of fields) {
+      const folded = foldNfc(text);
+      for (const { term, re } of matchers) {
+        const m = re.exec(folded);
+        if (!m) continue;
+        matchedTerms.add(term);
+        matches.push({ field, term, snippet: searchSnippet(folded, m.index, m.index + m[0].length, snippet), hit: m[0] });
+      }
+    }
+    if (!matches.length) continue;
+    if (allTerms && matchedTerms.size < uniqueTerms.length) continue;
+    matched.push({ templateId: id, matches });
+  }
+  return { terms: uniqueTerms, wholeWord, allTerms, snippet, searched, matched };
+}
+/**
+ * The content a drawer shows for one template: subject, body and variants as
+ * rendered plain text, the content-as-of date, the last-modified date and the
+ * "edited after last send" flag. Null when the snapshot holds no content for it.
+ * @param {T10Snapshot} snapshot
+ * @param {string} templateId
+ */
+export function templateContent(snapshot, templateId) {
+  const t = snapshot.dimensions.templates.find((x) => x.id === templateId);
+  if (!t?.content) return null;
+  const c = t.content;
+  return { templateId: t.id, name: t.name ?? null, subject: c.subject ?? null, body: c.body ?? null, bodyIncluded: !!c.bodyIncluded, variants: c.variants ?? [], asOf: c.asOf ?? null, modified: c.modified ?? null, editedAfterLastSend: c.editedAfterLastSend ?? null, lastSendMonth: t.lastSendMonth ?? null, source: c.source ?? null };
+}
+/**
+ * The Templates tab (a templates panel): one row per template the filters
+ * keep (a send with no template id is counted apart), most sent first, each
+ * with the view's figures, the programs that send it with their own figures
+ * and the program's survey figures beside them, the steps and variants that
+ * send it when the pull carries step detail (R21), its content's dates and
+ * flag, and, under a search, its matches. `content.available` says whether
+ * the text may be shown here (a leaders' page withholds it unless the spec
+ * opts in); the figures draw either way.
+ * @param {T10Snapshot} snapshot
+ * @param {EngagementFilters} filters
+ * @param {{terms?: string[], wholeWord?: boolean, allTerms?: boolean, snippet?: number, sort?: {by: string, dir?: "asc"|"desc"}}} [opts]
+ */
+export function templatesView(snapshot, filters, opts = {}) {
+  const f = filters ?? {};
+  const avail = templateAvailability(snapshot);
+  const base = { metrics: TEMPLATE_VIEW_METRICS, programMetrics: TEMPLATE_PROGRAM_METRICS, stepDetail: !!snapshot.meta.stepDetail };
+  if (!avail.pulled) return { ...base, unavailable: { reason: avail.reason ?? "templates-not-pulled" }, content: { available: false, reason: avail.reason ?? "templates-not-pulled" }, rows: [], total: null, search: null, noTemplate: null, scope: null, templatesKept: 0 };
+  const content = avail.content ? { available: true, reason: null } : { available: false, reason: avail.reason ?? "templates-not-on-page" };
+  const byTemplate = runQuery(snapshot, f, { groupBy: ["template"], metrics: [...TEMPLATE_VIEW_METRICS], sort: [SENT_DESC] });
+  const perProgram = runQuery(snapshot, f, { groupBy: ["program", "template"], metrics: [...TEMPLATE_VIEW_METRICS], sort: [SENT_DESC] });
+  const perStep = snapshot.meta.stepDetail ? runQuery(snapshot, f, { groupBy: ["program", "step", "variant"], metrics: [...TEMPLATE_VIEW_METRICS], sort: [{ dim: "program" }, { label: "stepOrder" }, SENT_DESC] }) : null;
+  const surveys = runQuery(snapshot, f, { groupBy: ["program"], metrics: [...TEMPLATE_PROGRAM_METRICS] });
+  const surveyOf = new Map(surveys.rows.map((r) => [r.key.program, r.cells]));
+  const search = content.available && opts.terms?.length ? searchTemplateContent(snapshot, f, opts.terms, opts) : null;
+  const matchesOf = search ? new Map(search.matched.map((m) => [m.templateId, m.matches])) : null;
+  const byId = new Map(snapshot.dimensions.templates.map((t) => [t.id, t]));
+  const noTemplate = byTemplate.rows.find((r) => r.key.template == null) ?? null;
+  const rows = byTemplate.rows.filter((r) => r.key.template != null && (!matchesOf || matchesOf.has(r.key.template))).map((r) => {
+    const id = r.key.template;
+    const t = byId.get(id);
+    const programs = perProgram.rows.filter((p) => p.key.template === id).map((p) => ({
+      programId: p.key.program, name: p.label.program ?? null, statuses: p.label.statuses ?? [], stepName: p.label.stepName ?? null, stepOrder: p.label.stepOrder ?? null, stepCount: p.label.stepCount ?? null,
+      cells: p.cells, survey: surveyOf.get(p.key.program) ?? null, carried: p.carried, incomplete: p.incomplete,
+      steps: perStep ? perStep.rows.filter((s) => s.key.program === p.key.program && s.label.templateId === id).map((s) => ({ stepId: s.key.step, step: s.label.step ?? null, stepOrder: s.label.stepOrder ?? null, variantId: s.key.variant, variant: s.label.variant ?? null, cells: s.cells, carried: s.carried, incomplete: s.incomplete })) : null,
+    }));
+    const c = t?.content ?? null;
+    return {
+      templateId: id, name: r.label.template ?? t?.name ?? null, cells: r.cells, carried: r.carried, incomplete: r.incomplete, programs, lastSendMonth: t?.lastSendMonth ?? null,
+      content: c ? { subject: content.available ? c.subject ?? null : null, asOf: c.asOf ?? null, modified: c.modified ?? null, editedAfterLastSend: c.editedAfterLastSend ?? null, bodyIncluded: !!c.bodyIncluded, variants: (c.variants ?? []).length } : null,
+      matches: matchesOf?.get(id) ?? null,
+    };
+  });
+  // The viewer's sort: a metric's value, the name, or the last send month; most sent first by default. Nulls last.
+  const sort = opts.sort ?? null;
+  if (sort?.by) {
+    const dir = sort.dir === "asc" ? 1 : -1;
+    const keyOf = (row) => (sort.by === "name" ? String(row.name ?? row.templateId).toLowerCase() : sort.by === "lastSend" ? row.lastSendMonth : TEMPLATE_VIEW_METRICS.includes(sort.by) ? row.cells[sort.by].value : null);
+    rows.sort((a, b) => {
+      const [x, y] = [keyOf(a), keyOf(b)];
+      if (x == null || y == null) return x == null && y == null ? 0 : x == null ? 1 : -1;
+      const c = typeof x === "number" && typeof y === "number" ? x - y : x < y ? -1 : x > y ? 1 : 0;
+      return c ? c * dir : cmp(a.templateId, b.templateId);
+    });
+  }
+  return { ...base, unavailable: null, content, rows, total: byTemplate.total, search, noTemplate: noTemplate ? { cells: noTemplate.cells } : null, scope: byTemplate.scope, templatesKept: byTemplate.rows.filter((r) => r.key.template != null).length };
+}
+
 // ── What is provisional, stated once (F-493) ─────────────────────────────────
 // Two windows move after a pull: opens keep arriving on sends from the first
 // of the current month, and bounces and unsubscribes keep landing on the months
@@ -1888,6 +2083,11 @@ export const CAVEATS = Object.freeze({
   "participant-failures-no-breakdown": (d) => `Participant failures are counted per program with no breakdown by reason. ${reasonText(d.reason)}${d.expectedReasons ? ` The ${d.expectedReasons} expected reason(s) named for this pull could not be counted apart for the same reason.` : ""}`,
   "failure-categories-overlap": (d) => `The failure category list overlaps: ${d.rows} "Other" row(s) in ${list(d.parts ?? [])} count below zero. Two patterns match the same message, so a message is counted twice; fix the list. Nothing was clamped.`,
   "step-names-as-of": (d) => `Step names come from the knowledge base, as of the date each program was last documented${d.oldest ? ` (the oldest is ${d.oldest})` : ""}. A step renamed since then shows its earlier name.`,
+  // Template content (TPL-1): the knowledge base's text, as of the day each doc was read.
+  "template-content-current": (d) => `Template subjects and bodies are each template's CURRENT text as the knowledge base holds it${d.oldest ? ` (the oldest doc is as of ${d.oldest})` : ""}, not a copy of what was sent: a template edited after its last send may differ from what recipients got, and the "edited after last send" flag says which. Tokens are shown as their field labels.`,
+  "template-content-missing": (d) => `${d.missing} of ${d.referenced} template(s) the sends reference have no doc in the knowledge base, so their text and link settings are not in this snapshot. The plan lists them; the skill's gap-fill fetches each one by id and files it in the knowledge base.`,
+  "template-content-behind": (d) => `${d.behind} template doc(s) were read before the month of the template's last send, so the text may predate what was sent. The next gap-fill reads them again.`,
+  "template-link-readings-missing": (d) => `${d.count} never-clicked template(s) have no link-tracking reading in the knowledge base (their docs predate it), so their click tracking reads unknown. The next gap-fill reads them again.`,
   "test-accounts-not-on-steps": (d) => `${d.accounts} test account(s) are counted as internal recipients in the template and account tables, not in the step table: the step log carries no company link, so its internal figures are by email domain alone.`,
   // From the honesty counts.
   "cc-copies-excluded": (d) => `${d.count} CC copies are left out: only "To" recipients are counted.`,
@@ -1907,22 +2107,24 @@ export const caveatText = (id, detail = {}) => (CAVEATS[id] ? CAVEATS[id](detail
 // The snapshot's own caveats that are about its health tables: an output that
 // shows none of them does not carry these.
 const HEALTH_CAVEATS = Object.freeze(["health-incomplete", "schedules-from-kb", "kb-behind-tenant", "health-all-time", "participant-failures-no-breakdown", "failure-categories-overlap", "failure-samples-capped", "failure-samples-sampled", "unclassified-wordings"]);
+// The snapshot's own caveats that are about template content (TPL-1): an output that shows no template text does not carry these.
+const TEMPLATE_CAVEATS = Object.freeze(["template-content-current", "template-content-missing", "template-content-behind", "template-link-readings-missing"]);
 /**
  * The caveats block of any output over this snapshot: the snapshot's own
  * (failures first), what the pull left out, the incomplete period, and the
  * caveats of the metrics shown.
  * @param {T10Snapshot} snapshot
  * @param {string[]} metricIds the metrics the output shows
- * @param {{health?: boolean}} [shows] health: the output shows health tables (bounce reasons, failures, silent programs, schedules)
+ * @param {{health?: boolean, templates?: boolean}} [shows] health: the output shows health tables (bounce reasons, failures, silent programs, schedules); templates: it shows template text (subjects, bodies, the Templates tab)
  * @returns {Array<{id: string, text: string}>}
  */
-export function caveatsFor(snapshot, metricIds, { health = false } = {}) {
+export function caveatsFor(snapshot, metricIds, { health = false, templates = false } = {}) {
   const out = [];
   const push = (id, detail) => {
     if (!out.some((c) => c.id === id)) out.push({ id, text: caveatText(id, detail) });
   };
   const own = [...snapshot.caveats].sort((a, b) => Number(b.id === "reconciliation-mismatch") - Number(a.id === "reconciliation-mismatch"));
-  for (const c of own) if (health || !HEALTH_CAVEATS.includes(c.id)) push(c.id, c.detail);
+  for (const c of own) if ((health || !HEALTH_CAVEATS.includes(c.id)) && (templates || !TEMPLATE_CAVEATS.includes(c.id))) push(c.id, c.detail);
   push("incomplete-period", provisionalSpan(snapshot.meta));
   for (const id of metricIds) for (const c of metric(id).caveats) push(c, {});
   for (const id of metricIds) {

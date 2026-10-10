@@ -269,8 +269,11 @@ snapshot file, then writes a report from it:
   reached, delivered, opened and open rate side by side, then clicks and bounces.
 - **Survey responses** for programs that sent a survey: submitted, partially submitted,
   any response, and the response rate.
-- **`--by-template`** — one row per program and template, with the step it sits on; and
-  one row per step and variant when the pull ran with `--step-detail`.
+- **`--by-template`** — one row per program and template, with the step it sits on and
+  the template's subject as the knowledge base holds it; and one row per step and variant
+  when the pull ran with `--step-detail`. The pull reads each template's current text from
+  the knowledge base and offers to fetch the templates it lacks, through email-report's own
+  gap-fill, so they land there too.
 - **`--accounts`** — an account watch list per program: the lowest open rates among
   accounts with enough delivered email, and the accounts with the most bounces. Account
   data is off unless you pass the flag, because ranking every account is most of a pull:

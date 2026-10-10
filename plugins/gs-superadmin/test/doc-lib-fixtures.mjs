@@ -42,6 +42,7 @@ import {
 // payload corpus (test/fixtures/reader-payloads.mjs) — the tracer scans the same docs.
 import { INDEXER_PAYLOAD, LIST_PAGE_ROWS, LIST_PAGE_TOTALS, LIST_PAGE_PAGEINFO } from "./fixtures/reader-payloads.mjs";
 import { docJsonBody } from "../scripts/jo-report-deps.mjs";
+import { NON_CONTENT_LINK_RULES } from "../scripts/engagement-query.mjs";
 import { readdirSync } from "node:fs";
 import { isDeepStrictEqual } from "node:util";
 
@@ -737,9 +738,14 @@ check("decode: common entities", decode("&lt;a&gt; &quot;x&quot; &#39;y&#39;&nbs
   check("renderProgramDoc: JO envelope id fallback", jo.id === "ao1" && jo.doc.startsWith("# N"));
 
   threw = false;
-  try { renderTemplateDoc({ data: {} }); } catch { threw = true; }
+  try { renderTemplateDoc({ data: {} }, { linkRules: NON_CONTENT_LINK_RULES }); } catch { threw = true; }
   check("renderTemplateDoc: missing templateId throws", threw);
-  const t = renderTemplateDoc({ data: { emailTemplate: { templateId: "t1", title: "T", subject: "A &amp; B" } } });
+  // The link rules are the engine's (TPL-1): the renderer refuses to run without them, so doc-lib stays the one
+  // place the reading is computed and the engine the one home of the link classification.
+  let threwRules = false;
+  try { renderTemplateDoc({ data: { emailTemplate: { templateId: "t1", title: "T" } } }); } catch (e) { threwRules = /linkRules/.test(e.message); }
+  check("renderTemplateDoc: refuses to run without the engine's link rules", threwRules);
+  const t = renderTemplateDoc({ data: { emailTemplate: { templateId: "t1", title: "T", subject: "A &amp; B" } } }, { linkRules: NON_CONTENT_LINK_RULES });
   check("renderTemplateDoc: subject decoded, standard key bullet", t.doc.includes("- subject: A & B") && t.doc.includes("- key: journey-email-templates/t1"));
   check("renderTemplateDoc: no token metadata → no Tokens section", !t.doc.includes("## Tokens"));
 }

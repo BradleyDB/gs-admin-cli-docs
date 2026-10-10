@@ -30,6 +30,9 @@ import vm from "node:vm";
 import { makeTempDir, removeTempDir, writeFiles, runNode } from "../../../test/rig.mjs";
 import * as Q from "../scripts/engagement-query.mjs";
 import { buildQuery } from "../scripts/engagement.mjs";
+// The differential (TPL-2, A-6): email-report's own search over the same fixture KB.
+import { searchTemplates } from "../scripts/jo-report-search.mjs";
+import { buildIndex } from "../scripts/jo-report.mjs";
 import { buildTenant, kbFiles } from "./fixtures/engagement/acme-tenant.mjs";
 
 const {
@@ -281,18 +284,24 @@ try {
     for (const x of seeded.facts.byTemplate) if (x.templateId === "tpl-renew-b") x.clicked = 5;
     for (const x of seeded.facts.byStep) if (x.templateId === "tpl-renew-b") x.clicked = 5;
     const renew = runQuery(seeded, { programs: ["p-renew"] }, { groupBy: ["program"], metrics: ["clicked"] }).rows[0].cells.clicked;
+    // Both of p-renew's templates read not-tracked from their KB docs (TPL-1), so the program has no figure at all; with
+    // tpl-renew read as unknown instead, the program's figure is tpl-renew's count and leaves tpl-renew-b's seeded 5 out.
+    const unknownRenew = structuredClone(seeded);
+    unknownRenew.meta.metricAvailability.clicks.templates["tpl-renew"].state = "unknown";
+    const renew2 = runQuery(unknownRenew, { programs: ["p-renew"] }, { groupBy: ["program"], metrics: ["clicked"] }).rows[0].cells.clicked;
     check("clicks: a not-tracked template's stored count never stands in — seeded with 5 a row, the template still has no value, in the template and the step table, and its program's figure leaves it out",
       runQuery(seeded, { templates: ["tpl-renew-b"] }, { groupBy: ["template"], metrics: ["clicked"] }).rows[0].cells.clicked.value === null &&
         runQuery(seeded, { programs: ["p-renew"] }, { groupBy: ["step"], metrics: ["clicked"] }).rows.filter((r) => r.label.templateId === "tpl-renew-b").every((r) => r.cells.clicked.value === null) &&
-        renew.state === "unknown" && renew.value === T.filter((r) => r.templateId === "tpl-renew").reduce((s, r) => s + r.clicked, 0), renew);
+        renew.state === "not-tracked" && renew.value === null && renew2.state === "unknown" && renew2.value === T.filter((r) => r.templateId === "tpl-renew").reduce((s, r) => s + r.clicked, 0), [renew, renew2]);
     const acc = runQuery(GOLD, { accountBuckets: ["account"] }, { groupBy: ["program", "account"], metrics: ["clicked"] }).rows;
     check("clicks at the account grain carry the program's roll-up, since an account row names no template",
       acc.length > 0 && acc.every((r) => r.cells.clicked.state === programClickAvailability(GOLD, r.key.program).state));
     const across = runQuery(GOLD, { accountBuckets: ["account"] }, { groupBy: ["account"], metrics: ["clicked"] }).rows;
     const programsOf = (key) => [...new Set(GOLD.facts.byAccount.filter((r) => r.accountKey === key).map((r) => r.programId))];
     const mixed = across.filter((r) => new Set(programsOf(r.key.account).map((p) => programClickAvailability(GOLD, p).state)).size > 1);
-    check("clicks at the account grain, one account across several programs: the state is the roll-up of ALL of them — an account a tracked and an unknown program both send to reads unknown, whichever comes first",
-      mixed.length > 0 && mixed.every((r) => r.cells.clicked.state === "unknown") && across.every((r) => r.cells.clicked.state === rollUpTracking({ tracked: 0, notTracked: 0, unknown: 0, ...Object.fromEntries(["tracked", "unknown"].map((st) => [st, programsOf(r.key.account).filter((p) => programClickAvailability(GOLD, p).state === st).length])) })),
+    check("clicks at the account grain, one account across several programs: the state is the roll-up of ALL of them — an account a tracked and an unknown program both send to reads unknown, whichever comes first; an account only a not-tracked program sends to reads not-tracked",
+      mixed.length > 0 && mixed.every((r) => r.cells.clicked.state === "unknown") && across.some((r) => r.cells.clicked.state === "not-tracked") &&
+        across.every((r) => r.cells.clicked.state === rollUpTracking(/** @type {any} */ (Object.fromEntries([["tracked", "tracked"], ["notTracked", "not-tracked"], ["unknown", "unknown"]].map(([k, st]) => [k, programsOf(r.key.account).filter((p) => programClickAvailability(GOLD, p).state === st).length]))))),
       across.map((r) => [r.key.account, r.cells.clicked.state, programsOf(r.key.account)]));
     check("rollUpTracking: all tracked is tracked, all not-tracked is not-tracked, any mix and nothing at all are unknown",
       rollUpTracking({ tracked: 2, notTracked: 0, unknown: 0 }) === "tracked" && rollUpTracking({ tracked: 0, notTracked: 3, unknown: 0 }) === "not-tracked" && rollUpTracking({ tracked: 1, notTracked: 1, unknown: 0 }) === "unknown" &&
@@ -378,7 +387,7 @@ try {
     const nullsLastDesc = runQuery(GOLD, {}, { groupBy: ["template"], metrics: ["clicked"], sort: [{ metric: "clicked", dir: "desc" }] }).rows.map((r) => r.cells.clicked.value);
     check("sort: by a metric in either direction, by a dimension's name, and a row with no value sorts last whichever the direction",
       isDeepStrictEqual(desc, [...desc].sort((a, b) => b - a)) && isDeepStrictEqual(byName, [...byName].sort((a, b) => (a.toLowerCase() < b.toLowerCase() ? -1 : 1))) && nullsLast[nullsLast.length - 1] === null && nullsLastDesc[nullsLastDesc.length - 1] === null &&
-        nullsLast.indexOf(null) === nullsLast.length - 1, { desc, byName, nullsLast, nullsLastDesc });
+        nullsLast.indexOf(null) > 0 && nullsLast.slice(nullsLast.indexOf(null)).every((v) => v === null) && nullsLastDesc.slice(nullsLastDesc.indexOf(null)).every((v) => v === null) && isDeepStrictEqual(nullsLast.filter((v) => v != null), [...nullsLast.filter((v) => v != null)].sort((a, b) => a - b)), { desc, byName, nullsLast, nullsLastDesc });
     const order = runQuery(GOLD, { programs: ["p-onboard"] }, { groupBy: ["program", "template"], metrics: ["sent"], sort: [{ label: "stepOrder" }] }).rows.map((r) => r.label.stepOrder);
     check("sort: by a label field — templates in the order of the steps they sit on", isDeepStrictEqual(order, [1, 2]), order);
     const having = runQuery(GOLD, { accountBuckets: ["account"] }, { groupBy: ["account"], metrics: ["delivered", "openRate"], having: [{ metric: "delivered", gte: 12 }], sort: [{ metric: "openRate", dir: "asc" }], limit: 3 });
@@ -563,6 +572,66 @@ try {
         ot.rows[0].lastSendDay === "2026-09-09" && Q.healthOneTimeView(GOLD, {}, { months: 2 }).historyMonths.length === 2 && throws(() => Q.healthOneTimeView(GOLD, {}, { months: 0 }), /whole number/), ot.rows);
   }
 
+  // ── The templates view and the in-page search (TPL-1, TPL-2, R14, R19) ──
+  {
+    const { templatesView, searchTemplateContent, templateContent, templateAvailability, compileSearchTerm, searchSnippet, searchableTemplateFields, TEMPLATE_VIEW_METRICS, SEARCH_SNIPPET_DEFAULT, LINK_READINGS } = Q;
+    const byTpl = (filters) => runQuery(GOLD, filters, { groupBy: ["template"], metrics: [...TEMPLATE_VIEW_METRICS], sort: [{ metric: "sent", dir: "desc" }] }).rows.filter((r) => r.key.template != null);
+    const v = templatesView(GOLD, {});
+    const row = (id, view = v) => view.rows.find((r) => r.templateId === id);
+    check("templates view: one row per template the filters keep, most sent first, each row's cells the engine's own by-template cells; under each, the programs that send it with the program × template cells and the program's survey figures; with step detail the steps and variants under each program (a template reused on two steps drills into both); the content's dates and flag; a send with no template id counted apart",
+      v.unavailable === null && v.content.available === true && v.stepDetail === true && v.rows.map((r) => r.templateId).join() === byTpl({}).map((r) => r.key.template).join() && v.rows.every((r, i) => isDeepStrictEqual(r.cells, byTpl({})[i].cells)) &&
+        v.rows.every((r) => r.programs.length > 0 && r.programs.every((p) => isDeepStrictEqual(p.cells, runQuery(GOLD, { programs: [p.programId], templates: [r.templateId] }, { groupBy: ["program", "template"], metrics: [...TEMPLATE_VIEW_METRICS] }).rows[0].cells))) &&
+        row("tpl-renew").programs[0].stepCount === 2 && row("tpl-renew").programs[0].steps.length === 2 && row("tpl-renew").programs[0].steps.every((s) => s.stepId && s.cells.sent.value > 0) && row("tpl-welcome").programs[0].steps.length === 2 && row("tpl-welcome").programs[0].steps.map((s) => s.variantId).sort().join() === "var-welcome-a,var-welcome-b" &&
+        row("tpl-nps").programs[0].survey.surveyParticipants.value > 0 && row("tpl-welcome").programs[0].survey.surveyParticipants.value === null && isDeepStrictEqual(TEMPLATE_VIEW_METRICS, v.metrics) &&
+        row("tpl-nps").content.editedAfterLastSend === true && row("tpl-nps").content.asOf === "2026-09-01" && row("tpl-nps").content.subject === "How is {Product Name} working for you?" && row("tpl-nps").lastSendMonth === "2026-07" && row("tpl-unlisted").content === null &&
+        v.noTemplate !== null && v.noTemplate.cells.sent.value > 0 && v.total.cells.sent.value > 0 && v.templatesKept === v.rows.length, v.rows.map((r) => [r.templateId, r.cells.sent.value, r.programs.map((p) => [p.programId, p.steps?.length])]));
+    check("templates view: the global filters narrow it (programs, months, status, the recipient class) exactly as they narrow the by-template query; a sort by name, by a metric in either direction or by the last send month orders the rows with nulls last",
+      isDeepStrictEqual(templatesView(GOLD, { programs: ["p-renew"] }).rows.map((r) => r.templateId), ["tpl-renew", "tpl-renew-b"]) && isDeepStrictEqual(templatesView(GOLD, { months: ["2026-07"], recipientClass: "external" }).rows.map((r) => r.cells.sent.value), byTpl({ months: ["2026-07"], recipientClass: "external" }).map((r) => r.cells.sent.value)) &&
+        templatesView(GOLD, { statuses: ["STOP"] }).rows.length === 0 && isDeepStrictEqual(templatesView(GOLD, {}, { sort: { by: "name", dir: "asc" } }).rows.map((r) => r.name), [...v.rows.map((r) => r.name)].sort((a, b) => (a.toLowerCase() < b.toLowerCase() ? -1 : 1))) &&
+        (() => { const vals = templatesView(GOLD, {}, { sort: { by: "clickRate", dir: "desc" } }).rows.map((r) => r.cells.clickRate.value); const nums = vals.filter((x) => x != null); return isDeepStrictEqual(nums, [...nums].sort((a, b) => b - a)) && vals.slice(nums.length).every((x) => x == null); })() &&
+        (() => { const m = templatesView(GOLD, {}, { sort: { by: "lastSend", dir: "asc" } }).rows.map((r) => r.lastSendMonth); return isDeepStrictEqual(m, [...m].sort()); })());
+    const kbDir = KB;
+    const index = buildIndex({ kbDir }).index;
+    const CASES_SEARCH = /** @type {Array<[string[], {wholeWord?: boolean, allTerms?: boolean}]>} */ ([[["renewal"], {}], [["renew"], {}], [["renew"], { wholeWord: true }], [["acme", "survey"], {}], [["acme", "survey"], { allTerms: true }], [["week"], { wholeWord: true }], [["ACME"], {}], [["hand?"], {}], [["Product Name"], {}], [["gs-prod"], {}]]);
+    const mine = (terms, o) => searchTemplateContent(GOLD, {}, terms, o);
+    const theirs = (terms, o) => searchTemplates(index, terms, { wholeWord: o.wholeWord, allTerms: o.allTerms, snippetRadius: SEARCH_SNIPPET_DEFAULT });
+    const flat = (hits, idOf, matchesOf) => hits.flatMap((h) => matchesOf(h).map((m) => `${idOf(h)}|${m.field}|${m.term}`)).sort();
+    const differential = CASES_SEARCH.map(([terms, o]) => [terms.join(" "), JSON.stringify(o), flat(mine(terms, o).matched, (h) => h.templateId, (h) => h.matches), flat(theirs(terms, o).hits, (h) => h.template.id, (h) => h.matches)]);
+    const agree = differential.filter(([, , a, b]) => isDeepStrictEqual(a, b)).map(([t, o]) => `${t} ${o}`);
+    const disagree = differential.filter(([, , a, b]) => !isDeepStrictEqual(a, b)).map(([t, o]) => `${t} ${o}`);
+    check("A-6 differential: the in-page search and email-report `search` over the same fixture knowledge base find the same templates, in the same fields, for the same terms — plain terms, several terms any or all, whole word, letter case, a term with a regex character — and the one documented divergence is a term inside a raw token key (the page searches the rendered text, email-report the raw doc text): it matches there and not here, while the token's label matches here and not there",
+      agree.length === CASES_SEARCH.length - 2 && isDeepStrictEqual(disagree, ["Product Name {}", "gs-prod {}"]) && mine(["gs-prod"], {}).matched.length === 0 && theirs(["gs-prod"], {}).hits.map((h) => h.template.id).join() === "tpl-nps" && mine(["Product Name"], {}).matched.map((m) => m.templateId).join() === "tpl-nps" && theirs(["Product Name"], {}).hits.length === 0 &&
+        mine(["renewal"], {}).matched.map((m) => m.templateId).join() === "tpl-renew,tpl-renew-b" && mine(["renew"], {}).matched.map((m) => m.templateId).join() === "tpl-renew,tpl-renew-b" && mine(["renew"], { wholeWord: true }).matched.length === 0 && mine(["acme", "survey"], { allTerms: true }).matched.map((m) => m.templateId).join() === "tpl-nps" && mine(["acme", "survey"], {}).matched.length > 1,
+      differential.filter(([, , a, b]) => !isDeepStrictEqual(a, b)));
+    const renewal = mine(["renewal"], {});
+    const theirRenewal = theirs(["renewal"], {});
+    check("search: a snippet is the FIRST hit per field with the radius of context, white space collapsed, ASCII ellipses where cut, the hit text beside it; over a template without tokens the snippets equal email-report's byte for byte; the radius is the panel's knob, checked; terms are deduplicated; an empty term list searches nothing",
+      isDeepStrictEqual(renewal.matched[0].matches.map((m) => [m.field, m.snippet]), theirRenewal.hits[0].matches.map((m) => [m.field, m.snippet])) && renewal.matched[0].matches.every((m) => m.hit.toLowerCase() === "renewal") && renewal.matched[0].matches.some((m) => m.snippet.endsWith("...")) &&
+        searchTemplateContent(GOLD, {}, ["renewal"], { snippet: 10 }).matched[0].matches.every((m) => m.snippet.length < renewal.matched[0].matches[0].snippet.length + 40) && throws(() => searchTemplateContent(GOLD, {}, ["x"], { snippet: 0 }), /snippet radius/) &&
+        searchTemplateContent(GOLD, {}, ["renew", "renew"], { allTerms: true }).matched.length === 2 && searchTemplateContent(GOLD, {}, [], {}).matched.length === 0 && searchTemplateContent(GOLD, {}, ["  "], {}).searched === 0 &&
+        compileSearchTerm("c++", { wholeWord: true }).test("use c++ now") && !compileSearchTerm("c++", { wholeWord: true }).test("c++x") && searchSnippet("abcdefghij", 4, 6, 2) === "...cdefgh..." && isDeepStrictEqual(searchableTemplateFields({ name: "N", content: { subject: "S", body: "B", variants: [{ name: "V", subject: "vs", body: "" }] } }).map((f) => f.field), ["title", "subject", "body", 'variant "V" subject']) &&
+        renewal.searched === 5 && searchTemplateContent(GOLD, { programs: ["p-onboard"] }, ["renewal"], {}).matched.length === 0 && searchTemplateContent(GOLD, { programs: ["p-onboard"] }, ["renewal"], {}).searched === 2);
+    const searched = templatesView(GOLD, {}, { terms: ["renewal"] });
+    check("templates view under a search: only the matching templates, each with its matches, the search's own summary (terms, options, how many were searched), and the figures of what the filters keep",
+      searched.rows.map((r) => r.templateId).join() === "tpl-renew,tpl-renew-b" && searched.rows[0].matches.length === 3 && searched.rows[1].matches.length === 1 && isDeepStrictEqual(searched.search.terms, ["renewal"]) && searched.search.searched === 5 && searched.rows[0].cells.sent.value === row("tpl-renew").cells.sent.value && templatesView(GOLD, {}, { terms: ["zzz"] }).rows.length === 0, searched.search);
+    const c = templateContent(GOLD, "tpl-nps");
+    check("templateContent: one template's text for the drawer — subject, body and variants as rendered plain text, the content-as-of day, the modified day, the flag, the last send month, the source — and null for a template with no content or none at all",
+      isDeepStrictEqual(Object.keys(c).sort(), ["asOf", "body", "bodyIncluded", "editedAfterLastSend", "lastSendMonth", "modified", "name", "source", "subject", "templateId", "variants"]) && c.templateId === "tpl-nps" && c.name === "Acme NPS Request" && c.subject === "How is {Product Name} working for you?" && c.body.includes("{Product Name}") && !c.body.includes("${") && c.asOf === "2026-09-01" && c.modified === "2026-08-10" && c.editedAfterLastSend === true && c.lastSendMonth === "2026-07" && c.source === "kb" &&
+        templateContent(GOLD, "tpl-welcome").variants.length === 1 && templateContent(GOLD, "tpl-welcome").variants[0].name === "Variant B" && !/<script|<img/.test(templateContent(GOLD, "tpl-welcome").body) && templateContent(GOLD, "tpl-day7").body.includes("<script>alert(1)</script>") && templateContent(GOLD, "tpl-unlisted") === null && templateContent(GOLD, "nope") === null, c);
+    // A page's copy that withholds the text (TPL-2): the figures draw, the text and the search do not; a pull made without a KB; a snapshot made before template content existed.
+    const withheld = { ...GOLD, meta: { ...GOLD.meta, templates: { ...GOLD.meta.templates, reason: "templates-not-on-page", content: false } }, dimensions: { ...GOLD.dimensions, templates: GOLD.dimensions.templates.map((t) => ({ ...t, content: null })) } };
+    const noKb = { ...GOLD, meta: { ...GOLD.meta, templates: { pulled: false, reason: "no-kb", content: false, source: null } } };
+    const legacy = { ...GOLD, meta: { ...GOLD.meta, templates: undefined } };
+    check("templates view: a page that withholds the text keeps every row and figure, says the text is not on the page, ignores a search and shows no subject; a pull made without a knowledge base and a snapshot from before template content existed each say so instead of drawing",
+      (() => { const w = templatesView(withheld, {}, { terms: ["renewal"] }); return w.unavailable === null && isDeepStrictEqual(w.content, { available: false, reason: "templates-not-on-page" }) && w.rows.length === v.rows.length && w.search === null && w.rows.every((r) => r.content === null && r.matches === null) && isDeepStrictEqual(w.rows.map((r) => r.cells), v.rows.map((r) => r.cells)); })() &&
+        templatesView(noKb, {}).unavailable.reason === "no-kb" && templatesView(noKb, {}).rows.length === 0 && templatesView(legacy, {}).unavailable.reason === "templates-not-pulled" && isDeepStrictEqual(templateAvailability(legacy), { pulled: false, reason: "templates-not-pulled", content: false, source: null }) && templateAvailability(GOLD).pulled === true &&
+        ["templates-not-pulled", "templates-not-on-page", "no-kb"].every((r) => REASONS[r]) && isDeepStrictEqual([...LINK_READINGS], ["tracked-link-present", "links-none-tracked", "unreadable"]));
+    check("caveats: the template-content caveats ride an output that shows template text and no other; the by-template and by-step rows carry the subject from the same dimension (null where the snapshot holds no content)",
+      caveatsFor(GOLD, ["sent"], { templates: true }).some((c) => c.id === "template-content-current") && !caveatsFor(GOLD, ["sent"]).some((c) => c.id.startsWith("template-")) && ["template-content-current", "template-content-missing", "template-content-behind", "template-link-readings-missing"].every((id) => typeof CAVEATS[id] === "function") &&
+        runQuery(GOLD, {}, { groupBy: ["program", "template"], metrics: ["sent"] }).rows.find((r) => r.key.template === "tpl-nps").label.subject === "How is {Product Name} working for you?" && runQuery(GOLD, {}, { groupBy: ["program", "template"], metrics: ["sent"] }).rows.find((r) => r.key.template === "tpl-unlisted").label.subject === null &&
+        runQuery(GOLD, {}, { groupBy: ["program", "step", "variant"], metrics: ["sent"] }).rows.find((r) => r.label.templateId === "tpl-welcome").label.subject === "Welcome to Acme");
+  }
+
   // ── The cron calculator (HLT-1 S3b): on which days a schedule fires ──────
   {
     const { readCron, cronLastDue } = Q;
@@ -633,16 +702,24 @@ try {
       ["accounts off", OFF, {}, { groupBy: ["program", "account"], metrics: ["sent"] }],
       ["programs, accounts and step detail off", OFF, {}, { groupBy: ["program"], metrics: ["sent", "uniqueRecipients", "accountsReached", "participantRecords", "openRate", "clickRate"] }],
     ];
+    // The templates view's cases (TPL-2): the view as a page draws it, under a search, and sorted.
+    /** @type {Array<[string, *, *, *]>} */
+    const VIEW_CASES = [
+      ["templates view", GOLD, {}, {}],
+      ["templates view, search any of two terms", GOLD, { statuses: ["PROCESSING", "PAUSE", "NEW"] }, { terms: ["acme", "survey"], snippet: 30 }],
+      ["templates view, sorted by open rate", GOLD, { months: ["2026-07", "2026-08"] }, { sort: { by: "openRate", dir: "desc" } }],
+    ];
     const render = (mod, [, snapshot, filters, query]) => {
       const r = mod.runQuery(snapshot, filters, query);
       const line = (row) => ({ key: row.key, label: row.label, carried: row.carried, incomplete: row.incomplete, cells: Object.fromEntries(query.metrics.map((id) => [id, { ...row.cells[id], shown: mod.formatCell(id, row.cells[id]) }])) });
       return { table: r.table, unavailable: r.unavailable, scope: r.scope, rows: r.rows.map(line), total: r.total ? line(r.total) : null };
     };
-    const produced = Object.fromEntries(CASES.map((c) => [c[0], render(Q, c)]));
+    const renderView = (mod, [, snapshot, filters, opts]) => mod.templatesView(snapshot, filters, opts);
+    const produced = Object.fromEntries([...CASES.map((c) => [c[0], render(Q, c)]), ...VIEW_CASES.map((c) => [c[0], renderView(Q, c)])]);
     if (WRITE_GOLDEN) writeFileSync(GOLDEN, JSON.stringify(produced, null, 1) + "\n");
     const golden = JSON.parse(readFileSync(GOLDEN, "utf8"));
-    for (const [name] of CASES) check(`golden: ${name}`, isDeepStrictEqual(JSON.parse(JSON.stringify(produced[name])), golden[name]));
-    check("golden: the file holds exactly the cases run (a retired case is deleted, never left to rot)", isDeepStrictEqual(Object.keys(golden), CASES.map((c) => c[0])));
+    for (const [name] of [...CASES, ...VIEW_CASES]) check(`golden: ${name}`, isDeepStrictEqual(JSON.parse(JSON.stringify(produced[name])), golden[name]));
+    check("golden: the file holds exactly the cases run (a retired case is deleted, never left to rot)", isDeepStrictEqual(Object.keys(golden), [...CASES, ...VIEW_CASES].map((c) => c[0])));
 
     // The page will carry this file's exact bytes. Load them where there is no
     // Node: no process, no require, no Buffer, no module system.
@@ -659,7 +736,7 @@ try {
     check("browser-safe: the module has no import or require of any kind, and its bytes load in a context with no Node globals",
       !/^\s*import[\s{(]/m.test(source.replace(/\/\*[\s\S]*?\*\//g, "")) && !/\brequire\(/.test(source) && bare !== null && isDeepStrictEqual(names.sort(), Object.keys(Q).sort()), loadError ?? names.filter((n) => !(n in Q)));
     if (bare) {
-      const there = Object.fromEntries(CASES.map((c) => [c[0], JSON.parse(JSON.stringify(render(bare, c)))]));
+      const there = Object.fromEntries([...CASES.map((c) => [c[0], JSON.parse(JSON.stringify(render(bare, c)))]), ...VIEW_CASES.map((c) => [c[0], JSON.parse(JSON.stringify(renderView(bare, c)))])]);
       check("browser-safe: every golden case computed by those bytes, with no Node around them, equals the golden — the page and the report cannot disagree",
         isDeepStrictEqual(there, golden));
       check("browser-safe: the glossary, the caveats and the read floor run there too",

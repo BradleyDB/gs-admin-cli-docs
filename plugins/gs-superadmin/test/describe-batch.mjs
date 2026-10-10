@@ -273,7 +273,7 @@ check("gate: path-prefixed binary refused with --bin pointer", r.code === 1 && /
 const OV_TREE = join(ROOT, "override-tree");
 mkdirSync(join(OV_TREE, "scripts"), { recursive: true });
 mkdirSync(join(OV_TREE, "hooks"), { recursive: true });
-for (const f of ["describe-batch.mjs", "doc-lib.mjs"]) {
+for (const f of ["describe-batch.mjs", "doc-lib.mjs", "engagement-query.mjs"]) {
   writeFileSync(join(OV_TREE, "scripts", f), readFileSync(join(SCRIPTS, f)));
 }
 const SYN_OVERRIDES = JSON.stringify({
@@ -856,7 +856,7 @@ check(
   const TREE = join(ROOT, "bom-tree");
   mkdirSync(join(TREE, "scripts"), { recursive: true });
   mkdirSync(join(TREE, "hooks"), { recursive: true });
-  for (const f of ["describe-batch.mjs", "doc-lib.mjs"]) {
+  for (const f of ["describe-batch.mjs", "doc-lib.mjs", "engagement-query.mjs"]) {
     writeFileSync(join(TREE, "scripts", f), readFileSync(join(SCRIPTS, f)));
   }
   writeFileSync(

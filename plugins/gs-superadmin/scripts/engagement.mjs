@@ -336,15 +336,33 @@
  *   the program was last modified; null when it did not say (a program the
  *   list lacked, described live). A doc written before it is behind the
  *   tenant: honesty.kb names those programs and the undocumented ones.
- * @property {Array<{id: string, name: ?string, uses: Array<{programId: string, stepName: ?string, stepOrder: ?number, stepCount: number, asOf?: ?string}>}>} templates
+ * @property {Array<{id: string, name: ?string, uses: Array<{programId: string, stepName: ?string, stepOrder: ?number, stepCount: number, asOf?: ?string}>, lastSendMonth?: ?string, content?: ?T10TemplateContent}>} templates
  *   stepName and stepOrder are set only when the template sits on exactly ONE
  *   step of that program's design (stepCount 1); 0 = no design in the KB.
  *   asOf (additive, S3b): the date the program's doc was last verified, which
- *   the step name is as of; null with no design
+ *   the step name is as of; null with no design.
+ *   lastSendMonth (additive, TPL-1): the latest month with a send of the
+ *   template in facts.byTemplate, carried rows included; null when none.
+ *   content (additive, TPL-1): the template's CURRENT text as the knowledge
+ *   base holds it, rendered to plain text with tokens as their field labels;
+ *   null when the KB has no doc for it (honesty.templates counts those) and
+ *   on every template of a pull made without a KB. Never HTML. Absent on a
+ *   snapshot made before template content existed: read it through
+ *   templateAvailability (engagement-query.mjs), never directly.
  * @property {Array<{programId: string, stepId: ?string, name: ?string, order: ?number, templateId: ?string, variantId: ?string, variantName: ?string}>} [steps]
  *   only when meta.stepDetail
  * @property {Array<{key: string, name: ?string}>} accounts   the selected accounts; key is opaque. Empty when the account grain was not pulled (meta.accounts)
  * @property {string[]} months
+ *
+ * @typedef {object} T10TemplateContent
+ * @property {?string} subject
+ * @property {string} body                       the plain-text body ("" when the doc is a stub)
+ * @property {boolean} bodyIncluded              false on a metadata-only stub doc
+ * @property {Array<{name: ?string, subject: ?string, body: string}>} variants
+ * @property {?string} asOf                      the day the doc was captured (the manifest's last_verified): what the text is as of
+ * @property {?string} modified                  the template's last-modified day as the doc records it; null when unknown
+ * @property {?boolean} editedAfterLastSend      true: modified after the last send month ended; false: before it began; null: inside it, or unknown
+ * @property {"kb"} source
  *
  * @typedef {object} T10ClickAvailability
  * @property {TrackingState} state
@@ -396,6 +414,13 @@
  *   over with the `counts` (program → failures in it) they were picked from.
  *   ABSENT on a snapshot made before health facts existed: read it
  *   through healthAvailability, never directly.
+ * @property {{pulled: boolean, reason: ?string, content: boolean, source: ?"kb"}} [templates]
+ *   whether template content was read (additive, TPL-1): from the knowledge
+ *   base when the pull was made with one (pulled, content, source "kb"), and
+ *   not otherwise (reason "no-kb"). A PAGE's copy may keep the performance
+ *   rows and withhold the text (reason "templates-not-on-page", content
+ *   false). ABSENT on a snapshot made before template content existed: read
+ *   it through templateAvailability, never directly.
  * @property {{pulled: boolean, reason: ?"step-detail-off"}} participantRecords
  *   why T10UniqueCounts.participantRecords is null when it is (a reader shows
  *   the reason; it never shows a 0)
@@ -452,7 +477,9 @@ import {
   readKbIdentity,
 } from "./doc-lib.mjs";
 import { printable } from "./journal-lib.mjs";
-import { buildIndex } from "./jo-report.mjs";
+// buildIndex: the one parser of the KB's program and template docs; renderTokens: the one token renderer (TPL-1:
+// a template's text reaches the snapshot with its tokens as field labels, through email-report's own rendering).
+import { buildIndex, renderTokens } from "./jo-report.mjs";
 import { classifySchedule } from "./jo-report-audit-active.mjs";
 import {
   SOURCES, NON_CONTENT_LINK_RULES, SEND_MEASURES, T10_SCHEMA_VERSION, measuresCounted, rollUpTracking, openSnapshot, accountAvailability, healthAvailability, maskMessage,
@@ -788,6 +815,8 @@ export const ROW_READERS = Object.freeze({
   // The count-first reads (S3b): clicked and bounced attempts per program × month, which price the click and bounce-count families.
   "count-clicks": (row) => logKey(row),
   "count-bounces": (row) => logKey(row),
+  // The templates the sends reference, per program × month (TPL-1): the plan's template gap and each template's last send month.
+  "template-months": (row) => ({ ...logKey(row), templateId: str(cellValue(row[col.field(LOG, LOG_SRC.templateField)])) }),
   // Health (HLT-1). The two that carry a message are read at FETCH time: what
   // reaches disk is the masked text, never the address or id it named.
   // Bounce reasons are COUNTED by category (S3b): the total and each category
@@ -961,6 +990,10 @@ const FAMILIES = {
   // The count-first read (S3b): clicked sends per program × month, one cheap call, which prices the three click families.
   "count-clicks": { object: LOG, split: ["programs", "day"], query: (d) => ({ group: [logProgram, logMonth], show: [countOf], where: [...logWhere(d), clickedOnly()] }) },
   "count-bounces": { object: LOG, split: ["programs", "day"], query: (d) => ({ group: [logProgram, logMonth], show: [countOf], where: [...logWhere(d), bouncedOnly()] }) },
+  // Which templates the sends reference, and when each last sent (TPL-1): program × template × month, counted,
+  // tenant-wide over the whole window, read with the base calls (order 10^3 rows). The plan reads the template
+  // gap from it before any fact call; no flag and no name ride it (the template family carries those per pulled month).
+  "template-months": { object: LOG, split: ["programs", "day"], query: (d) => ({ group: [logProgram, logTemplate, logMonth], show: [countOf], where: logWhere(d) }) },
   // Health (HLT-1). `health` names the part of facts.health a family fills; a
   // health call that fails marks that part as not read and never fails the pull.
   // Bounced attempts, COUNTED (S3b, F-484): the total per program × template ×
@@ -1931,7 +1964,7 @@ const previousSampledPrograms = (previous, part) => new Set(previous?.meta?.heal
 
 // Seconds per call, by family: medians measured on CLI 1.0.10, rounded up. An
 // estimate, printed as one; the token check before each call is what decides.
-const CALL_SECONDS = { whoami: 1, programs: 2, schema: 2, describe: 3, "uniques-month": 13, "uniques-window": 23, "account-names": 4, "health-states": 16, "health-reasons-total": 9, "health-entry-window": 6, "health-reasons-sample": 12, "health-bounce-sample": 8, "health-admissions": 16, "health-step-total": 10, "health-step-cat": 10, "health-step-state": 10 };
+const CALL_SECONDS = { whoami: 1, programs: 2, schema: 2, describe: 3, template: 3, "template-months": 4, "uniques-month": 13, "uniques-window": 23, "account-names": 4, "health-states": 16, "health-reasons-total": 9, "health-entry-window": 6, "health-reasons-sample": 12, "health-bounce-sample": 8, "health-admissions": 16, "health-step-total": 10, "health-step-cat": 10, "health-step-state": 10 };
 // Rows per program-month a bounce-count unit is expected to hold (templates × bounce types), never more than the bounces.
 const BOUNCE_ROWS_PER_MONTH = 6;
 const monthsOf = (u) => (u.window ? monthsBetween(u.window.start.slice(0, 7), addDays(u.window.end, -1).slice(0, 7)) : []);
@@ -2268,6 +2301,8 @@ export function fetchEngagement(ctx) {
     ...(stop ? [] : rowsOf(runUnit({ family: "uniques-month", cls: "all", of: "accounts", window: whole }))),
     ...(stop ? [] : rowsOf(runUnit({ family: "count-clicks", cls: "all", window: whole }))),
     ...(stop ? [] : rowsOf(runUnit({ family: "count-bounces", cls: "all", window: whole }))),
+    // The templates the sends reference (TPL-1): the plan's template gap is read from this, before any fact call.
+    ...(stop ? [] : rowsOf(runUnit({ family: "template-months", cls: "all", window: whole }))),
   ];
   let sentSinceIds = new Set();
   if (params.selector.sentSince && !stop) {
@@ -2314,9 +2349,14 @@ export function fetchEngagement(ctx) {
   // The step names and schedules from the KB, read once and kept with the run (reduce reads the file) — unless the
   // KB moved since (its manifest's stamp differs: a narrow refresh between a plan and its run, F-491), when it is
   // read again, so a run never judges from the copy a refresh just superseded.
+  // The copy also holds the referenced templates' docs (TPL-1): the templates the selected programs' sends reference
+  // over the window (the template-months base read) and the ones their designs name; it is read again when that
+  // set moves (a different selection over the same run directory is refused earlier, so this is belt and braces).
+  const tplRef = templatesReferenced(baseUnits, decision.selected, monthsBetween(params.window.from, params.window.to));
+  const kbInputs = { templateIds: tplRef.referenced, programIds: [...selectedIds].sort(cmpKey) };
   const kbStamp = kbDir ? kbManifestStamp(kbDir) : null;
   const kbCached = kbDir && existsSync(join(runDir, "kb-steps.json")) ? readJsonFile(join(runDir, "kb-steps.json")) : null;
-  const kbSteps = kbDir ? (kbCached && kbCached.stamp === kbStamp ? kbCached : readKbSteps(kbDir, params.today)) : null;
+  const kbSteps = kbDir ? (kbCached && kbCached.stamp === kbStamp && JSON.stringify(kbCached.inputs ?? null) === JSON.stringify(kbInputs) ? kbCached : readKbSteps(kbDir, params.today, kbInputs)) : null;
   if (kbDir && kbSteps !== kbCached) writeFileAtomicSync(join(runDir, "kb-steps.json"), JSON.stringify(kbSteps));
   // The row budget (S3b): a unit whose count-first read says it exceeds MAX_PAGES pages is not read.
   const rowBudget = params.pageSize * (params.maxPages ?? MAX_PAGES);
@@ -2403,6 +2443,25 @@ export function fetchEngagement(ctx) {
     programs: refreshable, refreshSeconds: refreshable.length * CALL_SECONDS.describe,
     keysFile: refreshable.length ? join(runDir, KB_GAP_KEYS_FILE) : null, listFile: refreshable.length ? join(runDir, KB_GAP_LIST_FILE) : null,
   };
+  // The template gap (TPL-1): the templates the selected programs reference — their sends over the window, and
+  // their designs — against the KB's template docs. A never-clicked template is judged by the PREVIOUS snapshot's
+  // click history here (reduce judges by this pull's): with none, every template is never-clicked.
+  const designIds = selectedIds.flatMap((id) => (kbSteps?.programs?.[id] ?? []).flatMap((s) => s.templateIds));
+  const planReferenced = [...new Set([...tplRef.referenced, ...designIds])].sort(cmpKey);
+  const clickedBefore = new Set(Object.entries(previous?.meta?.metricAvailability?.clicks?.templates ?? {}).filter(([, t]) => t?.evidence?.clickHistory?.everClicked === true).map(([id]) => id));
+  const tplGap = kbSteps ? templateGap({ referenced: planReferenced, lastSend: tplRef.lastSend, templates: kbSteps.templates, clicked: clickedBefore }) : { missing: [], behind: [], unread: [] };
+  const tplKeys = [...tplGap.missing, ...tplGap.behind, ...tplGap.unread];
+  // `referenced` here counts the sends' templates AND the selected programs' design templates; the snapshot's
+  // honesty.templates.referenced counts the sends' alone (the dimension), so `designOnly` is the difference.
+  const templatesPlan = {
+    source: kbSteps ? "kb" : "none", referenced: planReferenced.length, designOnly: planReferenced.length - tplRef.referenced.length, inKb: kbSteps ? planReferenced.length - tplGap.missing.length : 0,
+    missing: tplGap.missing.length, behind: tplGap.behind.length, unread: tplGap.unread.length,
+    planned: tplKeys.length, seconds: tplKeys.length * CALL_SECONDS.template,
+    domain: kbSteps?.templatesDomain?.folder ?? null, idField: kbSteps?.templatesDomain?.idField ?? null,
+    listFile: tplGap.missing.length ? join(runDir, TEMPLATE_GAP_LIST_FILE) : null,
+    staleKeysFile: tplGap.behind.length + tplGap.unread.length ? join(runDir, TEMPLATE_GAP_STALE_FILE) : null,
+    keysFile: tplKeys.length ? join(runDir, TEMPLATE_GAP_KEYS_FILE) : null,
+  };
   const estimate = {
     mode: refresh.mode, why: refresh.why,
     thisRun: { calls: calls(units) + ownReads, seconds: seconds(units) + describeSeconds(ownReads), units: units.length, byFamily: { ...familyCounts(units, base, params.pageSize), ...(ownReads ? sampleFamilies : {}) } },
@@ -2425,8 +2484,18 @@ export function fetchEngagement(ctx) {
     // manifest keys of every such program, and the list rows of the undocumented ones (what registers them).
     // A program the list itself lacks (described live) has no row to register and is counted apart.
     kb: kbPlan,
+    // The template gap (TPL-1), priced as the gap-fill that closes it (one fetch per template), with its inputs
+    // written beside this plan. The pull itself fetches no template: the email-engagement skill runs email-report's
+    // sanctioned gap-fill commands over these files, so what it fetches lands in the KB (house rule 17).
+    templates: templatesPlan,
   };
   const programs = { listed: listed.size, selected: selectedIds.length, deleted: decision.deleted.size, unselected: decision.unselected.size };
+  if (tplKeys.length) {
+    const tplKey = (id) => `${templatesPlan.domain}/${id}`;
+    if (tplGap.missing.length) writeFileAtomicSync(join(runDir, TEMPLATE_GAP_LIST_FILE), JSON.stringify(tplGap.missing.map((id) => ({ [templatesPlan.idField]: id })), null, 2));
+    if (tplGap.behind.length + tplGap.unread.length) writeFileAtomicSync(join(runDir, TEMPLATE_GAP_STALE_FILE), JSON.stringify([...tplGap.behind, ...tplGap.unread].map(tplKey), null, 2));
+    writeFileAtomicSync(join(runDir, TEMPLATE_GAP_KEYS_FILE), JSON.stringify(tplKeys.map(tplKey), null, 2));
+  }
   if (kbPlan.undocumented + kbPlan.behind) {
     const listRows = pages.flatMap((pg) => (Array.isArray(pg?.data?.advancedOutreaches) ? pg.data.advancedOutreaches : [])).filter((r) => gap.undocumented.includes(str(r?.advancedOutreachId)));
     writeFileAtomicSync(join(runDir, KB_GAP_KEYS_FILE), JSON.stringify(kbPlan.programs.map((id) => `journey/${id}`), null, 2));
@@ -2525,7 +2594,89 @@ function kbManifestStamp(kbDir) {
 // describe-batch --keys-file) takes as its inputs (F-491, redesigned 2026-10-08).
 export const KB_GAP_KEYS_FILE = "kb-gap-keys.json";
 export const KB_GAP_LIST_FILE = "kb-gap-list.json";
-function readKbSteps(kbDir, today = null) {
+// The template gap's inputs (TPL-1), written by plan beside plan.json in the shapes email-report's gap-fill
+// commands take: the missing templates as `[{<idField>: id}]` (manifest upsert-batch --partial), the keys to
+// mark stale (manifest mark --keys-file), and every key in fetch order (describe-batch --keys-file).
+export const TEMPLATE_GAP_LIST_FILE = "template-gap-list.json";
+export const TEMPLATE_GAP_STALE_FILE = "template-gap-stale-keys.json";
+export const TEMPLATE_GAP_KEYS_FILE = "template-gap-keys.json";
+/** A date text's day, or null: "2026-09-01T00:00:00.000Z" and "2023-06-12 18:26:31 UTC" both read as their day. */
+const asDay = (v) => (typeof v === "string" && /^\d{4}-\d{2}-\d{2}/.test(v) ? v.slice(0, 10) : null);
+/**
+ * The templates the selected programs' sends reference over the window, from
+ * the template-months base read (TPL-1), with each one's last send month
+ * there. Pure: fetch reads the plan's gap from it.
+ * @param {Array<*>} units the run's units, rows loaded
+ * @param {Map<string, *>} selected the selected programs
+ * @param {string[]} windowMonths
+ * @returns {{referenced: string[], lastSend: Map<string, ?string>}}
+ */
+export function templatesReferenced(units, selected, windowMonths) {
+  const inWindow = new Set(windowMonths);
+  const lastSend = new Map();
+  for (const u of units) {
+    if (u.family !== "template-months" || u.cls !== "all") continue;
+    for (const row of u.rows) {
+      const { programId, month, n, templateId } = ROW_READERS["template-months"](row);
+      if (programId == null || month == null || templateId == null || !selected.has(programId) || !inWindow.has(month)) continue;
+      if ((n ?? 0) > 0 && (lastSend.get(templateId) ?? "") < month) lastSend.set(templateId, month);
+    }
+  }
+  return { referenced: [...lastSend.keys()].sort(cmpKey), lastSend };
+}
+/**
+ * What the knowledge base lacks for the referenced templates (TPL-1), in the
+ * order the gap-fill fetches them: missing (no doc, or a doc the manifest
+ * holds no capture date for — an orphan doc with no inventory entry, which
+ * the register-then-describe path takes; `mark --keys-file` would refuse its
+ * key), behind (the doc was captured before the month of the template's last
+ * send), unread (a template no click is known for whose doc carries no
+ * link-tracking reading: its click tracking reads unknown until the doc is
+ * read again). A behind doc is not also unread: the re-read brings the
+ * reading. Pure: the plan judges "clicked" by the previous snapshot's click
+ * history, reduce by this pull's.
+ * @param {{referenced: string[], lastSend: Map<string, ?string>, templates: ?Object<string, *>, clicked: Set<string>}} args
+ * @returns {{missing: string[], behind: string[], unread: string[]}}
+ */
+export function templateGap({ referenced, lastSend, templates, clicked }) {
+  const out = { missing: [], behind: [], unread: [] };
+  for (const id of referenced) {
+    const doc = templates?.[id];
+    const asOf = doc ? asDay(doc.lastVerified) : null;
+    if (!doc || asOf == null) { out.missing.push(id); continue; }
+    const last = lastSend.get(id) ?? null;
+    if (last && asOf < `${last}-01`) out.behind.push(id);
+    else if (!clicked.has(id) && doc.linkTracking == null) out.unread.push(id);
+  }
+  return out;
+}
+/**
+ * One template's content for the snapshot (T10TemplateContent; TPL-1): the
+ * doc's subject, body and variants rendered through jo-report's token
+ * renderer with the doc's own token metadata (an unresolvable token stays
+ * raw), the capture day, the last-modified day, and the "edited after last
+ * send" flag at month grain. Null without a doc.
+ * @param {?*} doc a readKbSteps template entry
+ * @param {?string} lastSendMonth
+ * @returns {?T10TemplateContent}
+ */
+export function templateContentOf(doc, lastSendMonth) {
+  if (!doc) return null;
+  const render = (text) => (text == null ? null : renderTokens(text, { templateTokens: doc.tokens ?? null }));
+  const modified = asDay(doc.modified);
+  const editedAfterLastSend = modified == null || lastSendMonth == null ? null : modified >= `${addMonths(lastSendMonth, 1)}-01` ? true : modified < `${lastSendMonth}-01` ? false : null;
+  return {
+    subject: render(doc.subject),
+    body: render(doc.body ?? "") ?? "",
+    bodyIncluded: !!doc.bodyIncluded,
+    variants: (doc.variants ?? []).map((v) => ({ name: v.name ?? null, subject: render(v.subject), body: render(v.body ?? "") ?? "" })),
+    asOf: asDay(doc.lastVerified),
+    modified,
+    editedAfterLastSend,
+    source: "kb",
+  };
+}
+function readKbSteps(kbDir, today = null, inputs = { templateIds: [], programIds: [] }) {
   const { index, warnings } = buildIndex({ kbDir });
   const programs = {};
   // Each program's schedules as the same parser normalizes them for the
@@ -2539,7 +2690,34 @@ function readKbSteps(kbDir, today = null) {
       .filter((s) => s.emailTemplateId != null || s.variantTemplateIds.length)
       .map((s) => ({ stepId: str(s.stepId), stepName: s.stepName ?? null, order: typeof s.order === "number" ? s.order : null, templateIds: [...new Set([s.emailTemplateId, ...s.variantTemplateIds].filter(Boolean))] }));
   }
-  return { source: "kb", programs, schedules, warnings: warnings.length, today, stamp: kbManifestStamp(kbDir) };
+  // The referenced templates' docs (TPL-1): the ids the sends reference plus the ones the selected programs' designs
+  // name, through the same parser (jo-report's C1 template entry) — subject, body and variants as the doc holds them
+  // (raw tokens: reduce renders them), the token metadata, the capture date, the last-modified date and the
+  // link-tracking reading. Only those ids, so the run's copy stays small on a KB that documents every template.
+  const wanted = new Set(inputs.templateIds ?? []);
+  for (const id of inputs.programIds ?? []) for (const s of programs[id] ?? []) for (const t of s.templateIds) wanted.add(t);
+  const templates = {};
+  for (const id of [...wanted].sort(cmpKey)) {
+    const t = index.templates?.[id];
+    if (!t) continue;
+    templates[id] = {
+      title: t.title ?? null, subject: t.subject ?? null, body: t.body ?? "", bodyIncluded: !!t.bodyIncluded,
+      variants: (t.variants ?? []).map((v) => ({ name: v.name ?? null, subject: v.subject ?? null, body: v.body ?? "" })),
+      tokens: t.tokens ?? null, lastVerified: t.lastVerified ?? null, modified: t.modified ?? null, linkTracking: t.linkTracking ?? null, docPath: t.docPath ?? null,
+    };
+  }
+  // The templates domain as this KB records it: the folder its docs sit in (jo-report resolved it from the manifest's
+  // recording) and the id field its list was indexed with (what a gap registration passes); the defaults otherwise.
+  const folder = index.domains?.dirs?.templates ?? "journey-email-templates";
+  let idField = "templateId";
+  try {
+    idField = readJsonFile(join(kbDir, "_manifest.json")).domains_indexed?.[folder]?.idField ?? idField;
+  } catch { /* no readable manifest: the default id field */ }
+  return {
+    source: "kb", programs, schedules, templates, templatesDomain: { folder, idField },
+    inputs: { templateIds: [...(inputs.templateIds ?? [])].sort(cmpKey), programIds: [...(inputs.programIds ?? [])].sort(cmpKey) },
+    warnings: warnings.length, today, stamp: kbManifestStamp(kbDir),
+  };
 }
 /**
  * A program's ONE schedule for the program dimension (S3b): with several, the
@@ -2977,6 +3155,12 @@ export function reduceEngagement(input) {
     }
   }
   const clickTemplates = {};
+  // The link-settings reading (R19): the KB's template doc carries it since TPL-1 (as of the doc's capture day),
+  // and a --link-settings file overrides it per template; neither for a template the KB has no reading for.
+  const kbReading = (t) => {
+    const doc = kbSteps?.templates?.[t];
+    return doc?.linkTracking?.reading ? { reading: doc.linkTracking.reading, asOf: asDay(doc.lastVerified) } : null;
+  };
   for (const [t, h] of [...history].sort((a, b) => cmpKey(a[0], b[0]))) {
     // A click the previous snapshot saw still counts after its month has left the window.
     const was = prevClick[t]?.evidence?.clickHistory;
@@ -2985,7 +3169,7 @@ export function reduceEngagement(input) {
       h.firstMonth = [h.firstMonth, was.firstMonth].filter(Boolean).sort()[0] ?? null;
       h.lastMonth = [h.lastMonth, was.lastMonth].filter(Boolean).sort().pop() ?? null;
     }
-    const ls = linkSettings?.[t] ?? null;
+    const ls = linkSettings?.[t] ?? kbReading(t);
     const reading = ["tracked-link-present", "links-none-tracked", "unreadable"].includes(ls?.reading) ? ls.reading : null;
     clickTemplates[t] = { state: decideClickState({ everClicked: h.everClicked, reading }), evidence: { clickHistory: h, linkSettings: reading ? { reading, asOf: ls.asOf ?? null } : null } };
   }
@@ -3342,6 +3526,9 @@ export function reduceEngagement(input) {
   const templateIds = [...new Set(byTemplate.map((r) => r.templateId).filter((t) => t != null))].sort(cmpKey);
   // The date a program's doc was last verified: what its step names and schedule are as of.
   const docAsOf = (programId) => kbSteps?.schedules?.[programId]?.asOf ?? null;
+  // Each template's last send month over the send table, carried rows included (TPL-1).
+  const lastSendOf = new Map();
+  for (const r of byTemplate) if (r.templateId != null && r.sent > 0 && (lastSendOf.get(r.templateId) ?? "") < r.month) lastSendOf.set(r.templateId, r.month);
   const templates = templateIds.map((id) => ({
     id,
     name: pickName(tplNames.get(id)) ?? prevTemplates.get(id)?.name ?? null,
@@ -3350,7 +3537,13 @@ export function reduceEngagement(input) {
       const one = steps.length === 1 ? steps[0] : null;
       return { programId, stepName: one?.stepName ?? null, stepOrder: one?.order ?? null, stepCount: steps.length, asOf: design[programId] ? docAsOf(programId) : null };
     }),
+    lastSendMonth: lastSendOf.get(id) ?? null,
+    // The template's current text from the KB doc (TPL-1), tokens rendered; null without a doc, and without a KB.
+    content: kbSteps ? templateContentOf(kbSteps.templates?.[id], lastSendOf.get(id) ?? null) : null,
   }));
+  // What the KB lacks for the templates the sends reference, by THIS pull's click history (the plan judged by the previous snapshot's).
+  const tplGap = kbSteps ? templateGap({ referenced: templateIds, lastSend: lastSendOf, templates: kbSteps.templates, clicked: new Set([...history].filter(([, h]) => h.everClicked).map(([t]) => t)) }) : null;
+  const withContent = templates.filter((t) => t.content).length;
   const names = new Map((previous?.dimensions?.accounts ?? []).map((a) => [a.key, a.name]));
   let namesResolved = 0;
   for (const u of of("account-names")) {
@@ -3405,6 +3598,10 @@ export function reduceEngagement(input) {
     health: healthStats,
     // The test accounts' sends over the pulled months (they are counted in the internal class).
     testAccounts: { accounts: (params.testAccounts ?? []).length, sent: testSent },
+    // Template content (TPL-1): of the templates the sends reference, how many have text from the KB, how many the KB
+    // has no doc for, how many have a doc captured before their last send month, and how many never-clicked ones
+    // have a doc with no link-tracking reading (their click tracking reads unknown). The plan's gap-fill closes all three.
+    templates: { referenced: templateIds.length, withContent, missing: tplGap ? tplGap.missing.length : templateIds.length, behind: tplGap?.behind.length ?? 0, unreadLinks: tplGap?.unread.length ?? 0, source: kbSteps ? "kb" : "none" },
   };
   const caveats = [];
   if (refresh.mode === "selective") caveats.push({ id: "carried-forward-months", detail: { months: refresh.carriedMonths, repullMonths: params.repullMonths, previousPulledAt: refresh.previousPulledAt } });
@@ -3421,6 +3618,11 @@ export function reduceEngagement(input) {
   if (healthMissing.length) caveats.push({ id: "health-incomplete", detail: { parts: healthMissing } });
   if (healthFacts.schedules.length) caveats.push({ id: "schedules-from-kb", detail: { oldest: healthFacts.schedules.map((r) => r.asOf).filter(Boolean).sort()[0] ?? null } });
   if (gap.source === "kb" && gap.undocumented.length + gap.behind.length) caveats.push({ id: "kb-behind-tenant", detail: { undocumented: gap.undocumented.length, behind: gap.behind.length, programs: [...gap.undocumented, ...gap.behind.map((b) => b.programId)], keysFile: KB_GAP_KEYS_FILE, refreshSeconds: (gap.undocumented.length + gap.behind.length) * CALL_SECONDS.describe } });
+  // Template content (TPL-1): what the text is, as of when; and what the KB lacks for the referenced templates.
+  if (withContent) caveats.push({ id: "template-content-current", detail: { templates: withContent, oldest: templates.map((t) => t.content?.asOf).filter(Boolean).sort()[0] ?? null } });
+  if (tplGap?.missing.length) caveats.push({ id: "template-content-missing", detail: { missing: tplGap.missing.length, referenced: templateIds.length, keysFile: TEMPLATE_GAP_KEYS_FILE, seconds: tplGap.missing.length * CALL_SECONDS.template } });
+  if (tplGap?.behind.length) caveats.push({ id: "template-content-behind", detail: { behind: tplGap.behind.length, seconds: tplGap.behind.length * CALL_SECONDS.template } });
+  if (tplGap?.unread.length) caveats.push({ id: "template-link-readings-missing", detail: { count: tplGap.unread.length, seconds: tplGap.unread.length * CALL_SECONDS.template } });
   {
     // Wordings no category knows (F-484, redesigned 2026-10-08): the unclassified entry sample texts and the step
     // remainder (product wordings the shipped list can learn), counted apart from the bounce text the tenant's own
@@ -3460,6 +3662,8 @@ export function reduceEngagement(input) {
       accounts: { pulled: params.accounts.pull, reason: params.accounts.pull ? null : "accounts-off" },
       participantRecords: { pulled: params.stepDetail, reason: params.stepDetail ? null : "step-detail-off" },
       health: healthMeta,
+      // Template content (TPL-1) comes from the KB: a pull made without one holds none and says so.
+      templates: kbSteps ? { pulled: true, reason: null, content: true, source: "kb" } : { pulled: false, reason: "no-kb", content: false, source: null },
       refresh: {
         mode: refresh.mode, why: refresh.why, repullMonths: params.repullMonths, pulledMonths: refresh.pulledMonths, carriedMonths: refresh.carriedMonths,
         carriedPrograms: refresh.carriedPrograms.size, fullPrograms: selected.size - refresh.carriedPrograms.size, previousPulledAt: refresh.previousPulledAt,

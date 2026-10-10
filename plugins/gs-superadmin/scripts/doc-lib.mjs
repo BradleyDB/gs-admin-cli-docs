@@ -450,6 +450,64 @@ function bodyOf(node) {
 const dateOf = (t, strField, msField) =>
   t[strField] ?? (Number.isFinite(t[msField]) ? new Date(t[msField]).toISOString() : "unknown");
 
+// ── template link tracking (R19, TPL-1) ──────────────────────────────────────
+// What a template's own link settings say about click tracking, read from the
+// `jo email template --id` payload at the sanctioned fetch (describe-batch's
+// template doc-mode writes it into the doc as the `- linkTracking:` bullet;
+// jo-report's parseTemplateDoc reads it back; the engagement adapter decides a
+// never-clicked template's tracking state from it). Not a second content
+// parser: it reads builderMetadata.links (and surveyLinks) and whether each
+// entry appears in the CURRENT content — the map keeps stale entries (measured
+// 2026-10-02: most of a tracking-on template's entries appeared nowhere in its
+// content, and the one present content link was the editor's one tracked
+// link). The content is stored entity-escaped, so it is decoded first. An
+// entry is present when its map key, its uniqueId or its href is in the text;
+// system links (unsubscribe, preferences, mailto) are left out of the
+// decision, by the rules the CALLER passes: R18's NON_CONTENT_LINK_RULES in
+// engagement-query.mjs, the one home of the link classification, which this
+// file does not import (it is a leaf of the import graph: scratch rigs copy
+// it alone beside the script under test). The readings are the engine's
+// LINK_READINGS, spelled here as the three literals (the engagement suite pins
+// that this function returns only those): a tracked content link present;
+// content links present, none tracked; unreadable (no entry, or none present
+// — an empty map means the flag cannot be read, not that tracking is off).
+// Entry field names (href/url, uniqueId/id, enableClickTracking, linkType) are
+// read defensively: the spike recorded the keys and the enableClickTracking
+// boolean, not every spelling; the live verdict arm measures the reading
+// against templates whose tracking is known in the editor.
+/**
+ * @param {*} payload a `jo email template --id` describe payload
+ * @param {ReadonlyArray<{kind: string, re: RegExp}>} linkRules the engine's NON_CONTENT_LINK_RULES (a link one matches is a system link)
+ * @returns {{reading: "tracked-link-present"|"links-none-tracked"|"unreadable", entries: number, present: number, tracked: number, system: number, stale: number}}
+ */
+export function readLinkTracking(payload, linkRules) {
+  if (!Array.isArray(linkRules)) throw new Error("readLinkTracking: linkRules (the engine's NON_CONTENT_LINK_RULES) is required — the link classification has one home");
+  const t = payload?.data?.emailTemplate;
+  const out = /** @type {{reading: "tracked-link-present"|"links-none-tracked"|"unreadable", entries: number, present: number, tracked: number, system: number, stale: number}} */ ({ reading: "unreadable", entries: 0, present: 0, tracked: 0, system: 0, stale: 0 });
+  if (!t || typeof t !== "object") return out;
+  const entries = [];
+  for (const map of [t.builderMetadata?.links, t.builderMetadata?.surveyLinks]) {
+    if (!map || typeof map !== "object" || Array.isArray(map)) continue;
+    for (const [key, e] of Object.entries(map)) if (e && typeof e === "object" && !Array.isArray(e)) entries.push({ key, e });
+  }
+  out.entries = entries.length;
+  if (!entries.length) return out;
+  const content = [t.htmlContent, t.editorContent, t.plainTextContent].filter((v) => typeof v === "string" && v).map((v) => decode(v)).join("\n");
+  for (const { key, e } of entries) {
+    const url = [e.href, e.url, e.link].find((v) => typeof v === "string" && v) ?? "";
+    const needles = [key, e.uniqueId, e.id, url].filter((v) => typeof v === "string" && v.length > 0);
+    if (!needles.some((n) => content.includes(n))) { out.stale++; continue; }
+    const kind = String(e.linkType ?? e.type ?? "");
+    if (linkRules.some((r) => r.re.test(url)) || /unsubscribe|opt[-_]?out|preference/i.test(kind)) { out.system++; continue; }
+    out.present++;
+    if (e.enableClickTracking === true) out.tracked++;
+  }
+  out.reading = out.present === 0 ? "unreadable" : out.tracked > 0 ? "tracked-link-present" : "links-none-tracked";
+  return out;
+}
+/** The doc bullet the reading is written as, and read back from (jo-report parseTemplateDoc). */
+export const linkTrackingBullet = (lt) => `${lt.reading} · entries: ${lt.entries} · present: ${lt.present} · tracked: ${lt.tracked} · system: ${lt.system} · stale: ${lt.stale}`;
+
 // ── template token metadata (ER-15, C1 v2) ───────────────────────────────────
 // C1 v2 template token entries from a describe payload: the CLI-synthesized
 // per-variant `_tokens[]` (per the P-2 ruling — never the raw `tokens` map or
@@ -508,12 +566,15 @@ export function templateTokens(payload) {
 // compact doc. Returns { id, doc }; throws when the payload carries no
 // data.emailTemplate.templateId. `key` overrides the manifest-key bullet
 // (batch runs pass the entry's real key; standalone defaults to the standard
-// journey-email-templates/<id>).
-/** @param {*} payload  @param {{key?: string}} [opts] */
-export function renderTemplateDoc(payload, { key } = {}) {
+// journey-email-templates/<id>). `linkRules` (required) is the engine's
+// NON_CONTENT_LINK_RULES, which the link-tracking reading (R19, TPL-1) leaves
+// system links out with — passed in because this file imports nothing local.
+/** @param {*} payload  @param {{key?: string, linkRules: ReadonlyArray<{kind: string, re: RegExp}>}} opts */
+export function renderTemplateDoc(payload, { key, linkRules } = /** @type {*} */ ({})) {
   const t = payload?.data?.emailTemplate;
   if (!t || t.templateId == null) throw new Error("no data.emailTemplate.templateId in payload");
   const id = String(t.templateId);
+  const linkTracking = readLinkTracking(payload, linkRules);
 
   const body = bodyOf(t);
   const variants = Array.isArray(payload.data.variants) ? payload.data.variants : [];
@@ -527,6 +588,8 @@ export function renderTemplateDoc(payload, { key } = {}) {
     `- variants: ${t.variantCount ?? variants.length} · builderVersion: ${t.builderVersion ?? "unknown"} · system: ${t.system ?? "unknown"} · published: ${t.published ?? "unknown"}`,
     `- created: ${dateOf(t, "createdDateStr", "createdDate")} by ${t.createdByName ?? "unknown"}`,
     `- modified: ${dateOf(t, "modifiedDateStr", "modifiedDate")} by ${t.modifiedByName ?? "unknown"}`,
+    // R19 (TPL-1): the link-tracking reading, as of this fetch; the payload's link map never lands in the doc.
+    `- linkTracking: ${linkTrackingBullet(linkTracking)}`,
     "",
     "> Full HTML body not stored (~50 KB/template) — re-fetch:",
     `> \`gs-admin --json jo email template --id ${id}\``,
@@ -2192,6 +2255,12 @@ export function listMdFiles(dir) {
 //     (F-157/F-158), because that file must import NOTHING: the guard hook
 //     imports it lazily as a unit, so a syntax error here would otherwise take
 //     the guard's journaling lane down;
+//   - plugins/gs-superadmin/scripts/engagement-query.mjs's search primitives
+//     (TPL-2): the NFC fold, the regex escape and the surrogate-safe slice
+//     behind its in-page keyword search, because that file imports NOTHING
+//     either (every dashboard page runs its exact bytes in a browser); the
+//     differential in test/engagement-query.mjs holds that search to
+//     jo-report-search.mjs's, which imports the primitives from here;
 //   - plugins/gs-superadmin/scripts/plugin-link.mjs's lstat is-a-link gate
 //     (GP-B5 DS-43): the workspace plugin-link writer is builtins-only by
 //     declaration (it runs at every plugin session start), so it spells the

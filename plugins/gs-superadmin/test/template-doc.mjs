@@ -74,8 +74,14 @@ check("doc: plain body verbatim", mainDoc.includes("this is the plain searchable
 check("doc: HTML/editor content dropped", !mainDoc.includes("HTML ONLY MARKER") && !mainDoc.includes("EDITOR ONLY MARKER") && !mainDoc.includes("&lt;"), mainDoc);
 check("doc: re-fetch note carries the real id", mainDoc.includes("jo email template --id tpl 1/weird"), mainDoc);
 check("doc: metadata bullets (created/modified with names)", mainDoc.includes("- created: 2023-04-14 03:04:53 UTC by Jordan") && mainDoc.includes("by Leah"), mainDoc);
+// R19 (TPL-1): the link-tracking reading as of the fetch, as one bullet; the payload's link map itself never lands
+// in the doc. TEMPLATE_MAIN's three entries appear nowhere in its content, so every one is stale and the reading is
+// unreadable; a payload with no link map reads the same, with zero entries.
+check("doc: the linkTracking bullet carries the reading and its five counts, after the modified bullet and before the re-fetch note; the link map's keys, ids and hrefs never land in the doc",
+  /- modified: [^\n]+\n- linkTracking: unreadable · entries: 3 · present: 0 · tracked: 0 · system: 0 · stale: 3\n\n> Full HTML body not stored/.test(mainDoc) && !mainDoc.includes("u-link-1") && !mainDoc.includes("example.com/guide") && !mainDoc.includes("enableClickTracking"), mainDoc);
 
 const fbDoc = readFileSync(join(OUT, "tpl-2.md"), "utf8");
+check("doc: a payload with no link map reads unreadable with zero entries", fbDoc.includes("- linkTracking: unreadable · entries: 0 · present: 0 · tracked: 0 · system: 0 · stale: 0"), fbDoc);
 check("fallback: derived-from-HTML note present", fbDoc.includes("derived from HTML"), fbDoc);
 check("fallback: tags/styles stripped, entities decoded", fbDoc.includes("Milestone deadline is approaching & near") && !fbDoc.includes("<p>") && !fbDoc.includes("color:red"), fbDoc);
 

@@ -61,7 +61,7 @@ import { makeTempDir, removeTempDir, writeFiles, runNode } from "../../../test/r
 import { parseJourneyDoc } from "../scripts/jo-report.mjs";
 import { STUB_MARKER } from "../scripts/doc-lib.mjs";
 import { isDeepStrictEqual } from "node:util";
-import { openSnapshot, accountAvailability, healthAvailability, T10_SCHEMA_VERSION } from "../scripts/engagement-query.mjs";
+import { openSnapshot, accountAvailability, healthAvailability, templateAvailability, T10_SCHEMA_VERSION } from "../scripts/engagement-query.mjs";
 import { kbFiles, FIXTURE_BOUNCE_CATEGORIES } from "./fixtures/engagement/acme-tenant.mjs";
 import { openSpec, T11_SCHEMA_VERSION } from "../scripts/dashboard-spec.mjs";
 
@@ -614,7 +614,7 @@ try {
       check(at("top level is exactly {schemaVersion 1, kind engagement, meta, dimensions, facts, honesty, reconciliation, caveats}"),
         keys(s) === list("schemaVersion", "kind", "meta", "dimensions", "facts", "honesty", "reconciliation", "caveats") && s.schemaVersion === 1 && s.kind === "engagement", keys(s));
       check(at("meta carries exactly the typedef keys; source jo-engagement; pulledAt has a UTC offset"),
-        keys(s.meta) === list("source", "params", "pulledAt", "timeZone", "tenantHost", "cliVersion", "pluginVersion", "window", "incompleteFrom", "dateBasis", "stepDetail", "accounts", "participantRecords", "health", "refresh", "metricAvailability") &&
+        keys(s.meta) === list("source", "params", "pulledAt", "timeZone", "tenantHost", "cliVersion", "pluginVersion", "window", "incompleteFrom", "dateBasis", "stepDetail", "accounts", "participantRecords", "health", "templates", "refresh", "metricAvailability") &&
           s.meta.source === "jo-engagement" && /T\d\d:\d\d:\d\d[+-]\d\d:\d\d$/.test(s.meta.pulledAt) && s.meta.stepDetail === steps, keys(s.meta));
       check(at("window is {from, to, start, endExclusive}; incompleteFrom is a day"), keys(s.meta.window) === list("from", "to", "start", "endExclusive") && MONTH.test(s.meta.window.from) && /^\d{4}-\d\d-\d\d$/.test(s.meta.incompleteFrom), s.meta.window);
       check(at("dateBasis names ExecutedDate months, and ao_emails' CreatedAt only with step detail"),
@@ -636,8 +636,13 @@ try {
       check(at("program rows: id, name, a statuses LIST, model, modelName, audienceType, supergroup, group, folderId, syncScheduleDisabled (F-491: boolean or null), modifiedAt (F-491 redesigned 2026-10-08: ISO text or null), and (S3b) schedule {classification, cronExpression, timeZoneName, startTime, endTime, asOf} or null"),
         d.programs.length > 0 && d.programs.every((p) => keys(p) === list("id", "name", "statuses", "model", "modelName", "audienceType", "supergroup", "group", "folderId", "syncScheduleDisabled", "modifiedAt", "schedule") && Array.isArray(p.statuses) && [true, false, null].includes(p.syncScheduleDisabled) && (p.modifiedAt === null || /^d{4}-dd-ddT/.test(p.modifiedAt)) && (p.schedule === null || (keys(p.schedule) === list("classification", "cronExpression", "timeZoneName", "startTime", "endTime", "asOf") && typeof p.schedule.classification === "string" && [null, "number"].includes(p.schedule.endTime === null ? null : typeof p.schedule.endTime)))) &&
           d.programs.some((p) => p.schedule?.classification === "recurring" && typeof p.schedule.endTime === "number") && d.programs.some((p) => p.schedule === null), d.programs[0]);
-      check(at("template rows: id, name, uses[{programId, stepName, stepOrder, stepCount, asOf}] — asOf (S3b) the doc's date the step name is as of, null with no design"),
-        d.templates.length > 0 && d.templates.every((t) => keys(t) === "id,name,uses" && t.uses.length > 0 && t.uses.every((u) => keys(u) === list("programId", "stepName", "stepOrder", "stepCount", "asOf") && count(u.stepCount) && (u.stepCount === 1 || (u.stepName === null && u.stepOrder === null)) && (u.stepCount > 0 ? typeof u.asOf === "string" : u.asOf === null))), d.templates[0]);
+      check(at("template rows: id, name, uses[{programId, stepName, stepOrder, stepCount, asOf}] — asOf (S3b) the doc's date the step name is as of, null with no design — and (TPL-1, additive) lastSendMonth, a month or null, and content: null, or exactly {subject, body, bodyIncluded, variants[{name, subject, body}], asOf, modified, editedAfterLastSend, source kb}, its days as days, its flag a boolean or null, never HTML"),
+        d.templates.length > 0 && d.templates.every((t) => keys(t) === list("id", "name", "uses", "lastSendMonth", "content") && t.uses.length > 0 && t.uses.every((u) => keys(u) === list("programId", "stepName", "stepOrder", "stepCount", "asOf") && count(u.stepCount) && (u.stepCount === 1 || (u.stepName === null && u.stepOrder === null)) && (u.stepCount > 0 ? typeof u.asOf === "string" : u.asOf === null)) &&
+          (t.lastSendMonth === null || MONTH.test(t.lastSendMonth)) && (t.content === null || (keys(t.content) === list("subject", "body", "bodyIncluded", "variants", "asOf", "modified", "editedAfterLastSend", "source") && typeof t.content.body === "string" && typeof t.content.bodyIncluded === "boolean" && t.content.source === "kb" &&
+            [t.content.asOf, t.content.modified].every((v) => v === null || /^\d{4}-\d\d-\d\d$/.test(v)) && [true, false, null].includes(t.content.editedAfterLastSend) && t.content.variants.every((v) => keys(v) === "body,name,subject") && !/&lt;[a-z]+|<img\b|<a href/i.test(t.content.body)))) &&
+          d.templates.some((t) => t.content !== null) && d.templates.some((t) => t.content === null), d.templates[0]);
+      check(at("templateAvailability reads the marker {pulled, reason, content, source}, and reads a snapshot made before template content existed (no marker) as templates-not-pulled"),
+        keys(s.meta.templates) === list("pulled", "reason", "content", "source") && s.meta.templates.pulled === true && s.meta.templates.source === "kb" && isDeepStrictEqual(templateAvailability(s), s.meta.templates) && isDeepStrictEqual(templateAvailability({ ...s, meta: { ...s.meta, templates: undefined } }), { pulled: false, reason: "templates-not-pulled", content: false, source: null }), s.meta.templates);
       check(at("account rows: an opaque key and a name; months are YYYY-MM"), (d.accounts.length > 0 || !accounts) && d.accounts.every((a) => keys(a) === "key,name" && typeof a.key === "string") && d.months.every((m) => MONTH.test(m)), d.accounts[0]);
       if (steps) check(at("step rows: programId, stepId, name, order, templateId, variantId, variantName"), d.steps.length > 0 && d.steps.every((x) => keys(x) === list("programId", "stepId", "name", "order", "templateId", "variantId", "variantName")), d.steps[0]);
 
@@ -774,8 +779,9 @@ try {
       ["sources.0.params.internalDomains", ["acme.com"]], ["accounts.pull", true], ["sources.0.params.stepDetail", true],
       ["groups.rules", [{ kind: "characteristic", level: "supergroup", characteristic: "sendsSurveys", is: true, label: "Surveys" }, { kind: "folder", level: "group", folders: [{ id: "202", label: "Renewals" }] }]],
       ["groups.overrides.p-pilot", { supergroup: "Internal" }],
-      // A list of panels gives every on tab one (F-486): the engagement table and a typed health view.
-      ["pages.0.panels", [{ id: "programs", tab: "engagement", type: "table", title: "Programs", query: { groupBy: ["program"], metrics: ["sent", "openRate"] } }, { id: "schedules", tab: "health", type: "health-schedules", title: "Schedules", knobs: { staleAfterDays: 30 } }]],
+      // A list of panels gives every on tab one (F-486): the engagement table, a typed health view and the templates view.
+      ["pages.0.panels", [{ id: "programs", tab: "engagement", type: "table", title: "Programs", query: { groupBy: ["program"], metrics: ["sent", "openRate"] } }, { id: "schedules", tab: "health", type: "health-schedules", title: "Schedules", knobs: { staleAfterDays: 30 } }, { id: "templates", tab: "templates", type: "templates", title: "Emails", knobs: { snippet: 30 } }]],
+      ["pages.1.templateContent", true],
     ]);
     const fixture = JSON.parse(readFileSync(join(HERE, "fixtures", "engagement", "spec-acme.json"), "utf8"));
 
@@ -806,17 +812,18 @@ try {
       check(at("health is {silentDays}, freshness {maxAgeDays}, refresh {cadence, ownerNote}, publish {target none, config {}}, native {reports[]}"),
         keys(s.health) === "silentDays" && whole(s.health.silentDays, 1) && keys(s.freshness) === "maxAgeDays" && whole(s.freshness.maxAgeDays, 1) && keys(s.refresh) === "cadence,ownerNote" && ["weekly", "monthly", "quarterly", "manual"].includes(s.refresh.cadence) &&
           keys(s.publish) === "config,target" && s.publish.target === "none" && keys(s.publish.config) === "" && keys(s.native) === "reports" && Array.isArray(s.native.reports), [s.health, s.freshness, s.refresh, s.publish, s.native]);
-      check(at("a page is exactly {id, preset admin|exec, title, statusDefault, dateDefault window|closed-months, tabs, panels, accountNames, sourceDetail}; statusDefault is a list of statuses or null for every status; tabs are the four, in order, each {id, enabled}, About on"),
-        s.pages.length >= 1 && s.pages.every((p) => keys(p) === list("id", "preset", "title", "statusDefault", "dateDefault", "tabs", "panels", "accountNames", "sourceDetail") && ["admin", "exec"].includes(p.preset) &&
+      check(at("a page is exactly {id, preset admin|exec, title, statusDefault, dateDefault window|closed-months, tabs, panels, accountNames, sourceDetail, templateContent}; statusDefault is a list of statuses or null for every status; tabs are the four, in order, each {id, enabled}, About on; templateContent (TPL-2, additive) a switch"),
+        s.pages.length >= 1 && s.pages.every((p) => keys(p) === list("id", "preset", "title", "statusDefault", "dateDefault", "tabs", "panels", "accountNames", "sourceDetail", "templateContent") && ["admin", "exec"].includes(p.preset) &&
           (p.statusDefault === null || (Array.isArray(p.statusDefault) && p.statusDefault.length > 0 && p.statusDefault.every((x) => STATUSES.includes(x)))) && ["window", "closed-months"].includes(p.dateDefault) &&
           p.tabs.map((t) => t.id).join() === TAB_IDS.join() && p.tabs.every((t) => keys(t) === "enabled,id" && typeof t.enabled === "boolean") && p.tabs.find((t) => t.id === "about").enabled === true &&
-          typeof p.accountNames === "boolean" && typeof p.sourceDetail === "boolean" && Array.isArray(p.panels)), s.pages[0]);
-      // Additive on T-11 (S4b, ruled 2026-10-05): a spec written before dateDefault existed still opens; the page takes its preset's.
-      check(at("dateDefault is additive: the same spec with the field removed from a page still opens"), s.pages.every((p) => { const { dateDefault: _d, ...rest } = p; return openSpec({ ...s, pages: s.pages.map((x) => (x === p ? rest : x)) }) !== null; }));
+          typeof p.accountNames === "boolean" && typeof p.sourceDetail === "boolean" && typeof p.templateContent === "boolean" && Array.isArray(p.panels)), s.pages[0]);
+      // Additive on T-11 (S4b, ruled 2026-10-05): a spec written before dateDefault existed still opens; the page takes its preset's. The same for templateContent (TPL-2).
+      check(at("dateDefault and templateContent are additive: the same spec with either field removed from a page still opens"), s.pages.every((p) => { const { dateDefault: _d, templateContent: _t, ...rest } = p; return openSpec({ ...s, pages: s.pages.map((x) => (x === p ? rest : x)) }) !== null && openSpec({ ...s, pages: s.pages.map((x) => (x === p ? { ...rest, dateDefault: p.dateDefault } : x)) }) !== null; }));
       const HEALTH_TYPES = ["health-silent", "health-reasons", "health-schedules", "health-one-time"];
-      check(at("a panel is {id, tab, type, title, query{metrics, groupBy?, sort?, having?, limit?}, columns?} — a query for the engine, never a widget of its own — or, for the four health types, {id, tab health, type, title, knobs} with the knobs of its type alone (S4b, additive)"),
-        s.pages.flatMap((p) => p.panels).every((pn) => ["id", "tab", "type", "title"].every((k) => k in pn) && (HEALTH_TYPES.includes(pn.type)
-          ? pn.tab === "health" && "knobs" in pn && !("query" in pn) && Object.keys(pn).every((k) => ["id", "tab", "type", "title", "knobs"].includes(k)) && Object.keys(pn.knobs).every((k) => ({ "health-silent": ["days"], "health-reasons": ["showExpected"], "health-schedules": ["staleAfterDays"], "health-one-time": ["months"] })[pn.type].includes(k))
+      const KNOB_NAMES = { "health-silent": ["days"], "health-reasons": ["showExpected"], "health-schedules": ["staleAfterDays"], "health-one-time": ["months"], templates: ["snippet"] };
+      check(at("a panel is {id, tab, type, title, query{metrics, groupBy?, sort?, having?, limit?}, columns?} — a query for the engine, never a widget of its own — or, for the four health types and the templates type, {id, tab (health, or templates), type, title, knobs} with the knobs of its type alone (S4b, additive; TPL-2, additive)"),
+        s.pages.flatMap((p) => p.panels).every((pn) => ["id", "tab", "type", "title"].every((k) => k in pn) && (HEALTH_TYPES.includes(pn.type) || pn.type === "templates"
+          ? pn.tab === (pn.type === "templates" ? "templates" : "health") && "knobs" in pn && !("query" in pn) && Object.keys(pn).every((k) => ["id", "tab", "type", "title", "knobs"].includes(k)) && Object.keys(pn.knobs).every((k) => KNOB_NAMES[pn.type].includes(k))
           : "query" in pn && !("knobs" in pn) && Object.keys(pn).every((k) => ["id", "tab", "type", "title", "query", "columns"].includes(k)) && ["kpi", "bar", "line", "table", "watchlist"].includes(pn.type) &&
             Array.isArray(pn.query.metrics) && pn.query.metrics.length > 0 && Object.keys(pn.query).every((k) => ["groupBy", "metrics", "sort", "having", "limit"].includes(k)))), s.pages[0].panels[0]);
       check(at("openSpec admits it"), openSpec(s) === s);
@@ -827,17 +834,18 @@ try {
           defaults.accounts.pull === false && isDeepStrictEqual([defaults.accounts.busiest, defaults.accounts.lowEngagement, defaults.accounts.mostBounces, defaults.accounts.lowEngagementMinDelivered], [20, 15, 15, 10]) &&
           defaults.sources[0].params.stepDetail === false && defaults.refresh.cadence === "monthly" && isDeepStrictEqual(defaults.groups, { rules: [], overrides: {} }), defaults.pages);
       // A typed health panel through the real writer: the knobs land as given, a knob the type lacks is refused before anything is written.
-      const typed = write("t11-health", [["pages.0.panels", [{ id: "e", tab: "engagement", type: "kpi", title: "E", query: { metrics: ["sent"] } }, { id: "h", tab: "health", type: "health-silent", title: "H", knobs: { days: 60 } }]]]);
-      check("T-11: a typed health panel is written with its knobs through the one writer, and a knob its type lacks is refused at set",
-        !!typed && isDeepStrictEqual(typed.pages[0].panels[1], { id: "h", tab: "health", type: "health-silent", title: "H", knobs: { days: 60 } }) &&
-          runNode(WRITER, ["draft", "--kb", KB, "--slug", "t11-health"]).status === 0 && /knobs\.weeks is not a knob of a health-silent panel/.test(runNode(WRITER, ["set", "--kb", KB, "--slug", "t11-health", "--set", "pages.0.panels.1.knobs=" + JSON.stringify({ weeks: 2 })]).stderr));
+      const typed = write("t11-health", [["pages.0.panels", [{ id: "e", tab: "engagement", type: "kpi", title: "E", query: { metrics: ["sent"] } }, { id: "h", tab: "health", type: "health-silent", title: "H", knobs: { days: 60 } }, { id: "t", tab: "templates", type: "templates", title: "T", knobs: {} }]]]);
+      check("T-11: a typed health panel and the templates panel are written with their knobs through the one writer, and a knob the type lacks is refused at set",
+        !!typed && isDeepStrictEqual(typed.pages[0].panels[1], { id: "h", tab: "health", type: "health-silent", title: "H", knobs: { days: 60 } }) && isDeepStrictEqual(typed.pages[0].panels[2], { id: "t", tab: "templates", type: "templates", title: "T", knobs: {} }) &&
+          runNode(WRITER, ["draft", "--kb", KB, "--slug", "t11-health"]).status === 0 && /knobs\.weeks is not a knob of a health-silent panel/.test(runNode(WRITER, ["set", "--kb", KB, "--slug", "t11-health", "--set", "pages.0.panels.1.knobs=" + JSON.stringify({ weeks: 2 })]).stderr) &&
+          /knobs\.radius is not a knob of a templates panel/.test(runNode(WRITER, ["set", "--kb", KB, "--slug", "t11-health", "--set", "pages.0.panels.2.knobs=" + JSON.stringify({ radius: 2 })]).stderr));
     }
     check("T-11: schemaVersion is 1 and any other value is refused loudly", T11_SCHEMA_VERSION === 1 && [2, 0, "1", null].every((v) => { try { openSpec({ ...fixture, schemaVersion: v }); return false; } catch (e) { return /refusing to read it \(T-11\)/.test(e.message); } }));
     const src = readFileSync(WRITER, "utf8");
     const header = src.slice(src.indexOf("// ── T-11 ·"), src.indexOf("import { existsSync"));
     const named = (k) => new RegExp("@property \\{[^\\n]*\\} \\[?(params\\.)?" + k + "\\]?( |$)", "m").test(header);
     const PINNED = ["schemaVersion", "kind", "slug", "title", "owner", "purpose", "tenantHost", "sources", "globalFilters", "accounts", "groups", "health", "pages", "freshness", "refresh", "publish", "native",
-      "adapter", "params", "windowMonths", "selector", "internalDomains", "unsubscribeLinks", "testAccounts", "pinnedAccounts", "stepDetail", "repullMonths", "rules", "overrides", "level", "preset", "statusDefault", "dateDefault", "tabs", "panels", "accountNames", "sourceDetail", "query", "knobs", "columns"];
+      "adapter", "params", "windowMonths", "selector", "internalDomains", "unsubscribeLinks", "testAccounts", "pinnedAccounts", "stepDetail", "repullMonths", "rules", "overrides", "level", "preset", "statusDefault", "dateDefault", "tabs", "panels", "accountNames", "sourceDetail", "templateContent", "query", "knobs", "columns"];
     check("T-11: the writer's header is marked FROZEN and names every pinned field", /FROZEN \(DSH-1, 2026-10-04\)/.test(header) && PINNED.every(named), PINNED.filter((k) => !named(k)));
   } finally {
     removeTempDir(t11);

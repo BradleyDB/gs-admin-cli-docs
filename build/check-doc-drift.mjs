@@ -539,6 +539,10 @@ const SANCTIONED_PORTABILITY_COPIES = {
   "plugins/gs-superadmin/hooks/gs-admin-guard.mjs":
     ["single-leading-BOM strip", "reparse-point dirent follow", "launcher-suffix strip"],
   "plugins/gs-superadmin/scripts/journal-lib.mjs": ["surrogate-safe slice (codePointSlice)"],
+  // TPL-2: the import-free query engine (every dashboard page inlines its
+  // bytes) spells the three primitives its in-page keyword search needs; the
+  // differential test against jo-report-search.mjs is the sync mechanism.
+  "plugins/gs-superadmin/scripts/engagement-query.mjs": ["NFC fold", "regex-escape character class (escapeRe)", "surrogate-safe slice (codePointSlice)"],
   // GP-B5 DS-43: the workspace plugin-link writer is builtins-only by
   // declaration (RESTRICTED — it runs at every session start), so its lstat
   // is-a-link gate spells the reparse-point test itself. It never FOLLOWS a

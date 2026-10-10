@@ -2156,7 +2156,7 @@
         ]
       },
       "readers": [
-        "doc-lib.mjs renderTemplateDoc (→ bodyOf, templateTokens, dateOf; template-doc.mjs and describe-batch.mjs call it)"
+        "doc-lib.mjs renderTemplateDoc (→ bodyOf, templateTokens, dateOf, readLinkTracking; template-doc.mjs and describe-batch.mjs call it)"
       ],
       "modules": [
         "scripts/doc-lib.mjs"
@@ -2171,6 +2171,21 @@
         "data.emailTemplate._tokens[].tokenType",
         "data.emailTemplate._tokens[].variant",
         "data.emailTemplate.active",
+        "data.emailTemplate.builderMetadata",
+        "data.emailTemplate.builderMetadata.links",
+        "data.emailTemplate.builderMetadata.links.*",
+        "data.emailTemplate.builderMetadata.links.*.href",
+        "data.emailTemplate.builderMetadata.links.*.id",
+        "data.emailTemplate.builderMetadata.links.*.link",
+        "data.emailTemplate.builderMetadata.links.*.uniqueId",
+        "data.emailTemplate.builderMetadata.links.*.url",
+        "data.emailTemplate.builderMetadata.surveyLinks",
+        "data.emailTemplate.builderMetadata.surveyLinks.*",
+        "data.emailTemplate.builderMetadata.surveyLinks.*.href",
+        "data.emailTemplate.builderMetadata.surveyLinks.*.id",
+        "data.emailTemplate.builderMetadata.surveyLinks.*.link",
+        "data.emailTemplate.builderMetadata.surveyLinks.*.uniqueId",
+        "data.emailTemplate.builderMetadata.surveyLinks.*.url",
         "data.emailTemplate.builderVersion",
         "data.emailTemplate.createdByName",
         "data.emailTemplate.createdDate",
@@ -2205,10 +2220,19 @@
         "data.variants[].variantName"
       ],
       "walks": [
+        "data.emailTemplate.builderMetadata.links.*",
+        "data.emailTemplate.builderMetadata.surveyLinks.*",
         "data.emailTemplate.tokenMappings.*",
         "data.emailTemplate.tokenMappings.*.*"
       ],
       "enumerated": {
+        "data.emailTemplate.builderMetadata.links.*": [
+          "link-1",
+          "link-2"
+        ],
+        "data.emailTemplate.builderMetadata.surveyLinks.*": [
+          "svy-1"
+        ],
         "data.emailTemplate.tokenMappings.*": [
           "MDA"
         ],
@@ -2244,6 +2268,12 @@
         ]
       },
       "alternatesUnmeasured": [
+        "data.emailTemplate.builderMetadata.links.*.id",
+        "data.emailTemplate.builderMetadata.links.*.link",
+        "data.emailTemplate.builderMetadata.links.*.url",
+        "data.emailTemplate.builderMetadata.surveyLinks.*.id",
+        "data.emailTemplate.builderMetadata.surveyLinks.*.link",
+        "data.emailTemplate.builderMetadata.surveyLinks.*.url",
         "data.emailTemplate.modifiedDate",
         "data.tokenMappings",
         "data.variants[].name"
@@ -2260,7 +2290,7 @@
       "floorMissing": [],
       "probes": {
         "fixtures": 4,
-        "runs": 166,
+        "runs": 142,
         "unprobed": 0
       }
     },
@@ -2820,8 +2850,8 @@
       "floorMissing": [],
       "note": "The output is a bare array of rows whose keys are the CLI's column aliases: <object>_<Field> for a group or plain column, summarize_month_of_<object>_<Field> for a month bucket (read by its sortable k), count_of_<object>_Gsid, <target>_<lookup>__gr_<leaf> for a fieldPath group and count_distinct_of_<target>_<leaf> for a fieldPath distinct count. A null group value has no v key, which is why every cell is read with an `in` test. Every reader runs over every family's rows, so a column one family lacks is recorded as named-while-absent rather than missed.",
       "probes": {
-        "fixtures": 36,
-        "runs": 6337,
+        "fixtures": 37,
+        "runs": 6868,
         "unprobed": 0
       }
     },

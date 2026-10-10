@@ -5,6 +5,44 @@ marketplace doesn't pin versions — users get main — so entries describe what
 user who updates, not internal refactors. Entries before 0.8.0 were reconstructed from git
 history when this file was introduced.
 
+## 0.49.0 — 2026-10-10
+
+The engagement dashboard's templates line (TPL-1, TPL-2): what each email says, beside how
+it performed. `/gs-superadmin:email-engagement report` gains one ask and one column; the
+pages gain a tab.
+
+- **The pull reads each template's current text from the knowledge base** — the subject,
+  the plain-text body and the variants, with tokens rendered as their field labels — and
+  records when the text is as of, when the template was last modified, and whether it was
+  edited after its last send. No template HTML ever reaches a snapshot or a page. The pull
+  also reads each template's link-tracking setting from its doc (the doc now carries it, as
+  of the fetch), so a never-clicked template whose tracked link is present reads a real 0%
+  and one with links but none tracked reads "Not tracked"; a `--link-settings` file still
+  overrides per template.
+- **The plan prices the template gap and the skill offers to close it**: templates the
+  knowledge base has no doc for, docs older than the template's last send, and docs with no
+  link-tracking reading for a never-clicked template. Fifty or fewer are filled without
+  asking; more draws the same ask as email-report's gap-fill. The fill IS email-report's
+  gap-fill (register, mark, describe-batch within a budget, resumable), driven from files
+  the plan writes, so every template fetched lands in the knowledge base for both skills.
+  The pull itself never fetches a template.
+- **A Templates tab on the pages**: one row per email the filters keep, most sent first,
+  with how many programs send it, its last send month, whether it was edited after that,
+  and its sent, delivered, opened, open rate, clicked, click rate and bounced (the three
+  tracking states as everywhere); under each, the programs that send it with their own
+  figures and survey responses, and, with step detail, each step and variant. Sortable by
+  its headings; Columns and Download CSV like every table. Keyword search over subjects
+  and bodies mirrors email-report `search` (several words, any or all, whole words,
+  case-insensitive, a marked snippet per hit) and narrows with the global filters: the
+  same words find the same templates in both, except a word inside a raw token key, which
+  email-report sees and the page does not. Text opens a drawer with the email's current
+  text, the day it is as of and the caveat that it is not necessarily what was sent; the
+  Emails and Steps tables link to it. A leaders' page carries no template text unless the
+  spec opts in (`pages[].templateContent`, new on the spec): it keeps the performance rows
+  and says the text is not on the page. The page size report counts the text's share.
+- **The report's per-template and per-step rows gain a Subject column** (and the CSVs a
+  `subject` field): a dash where the knowledge base holds no text for the template.
+
 ## 0.48.0 — 2026-10-09
 
 The engagement dashboard's views (DSH-4): what each page shows, and how. Still no skill

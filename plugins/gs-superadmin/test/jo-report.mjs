@@ -374,7 +374,9 @@ const idx = loadIndex(OUT1);
   const condKeys = Object.keys(p1?.sources?.[0]?.conditions?.[0] ?? {}).sort();
   check("C1: condition entry field list", JSON.stringify(condKeys) === JSON.stringify(["comparisonOperator", "fieldLabel", "fieldName", "filterAlias", "objectName"]), condKeys);
   const tKeys = Object.keys(idx.templates["tpl-aaa"] ?? {}).sort();
-  check("C1 v2: template entry field list (+tokens)", JSON.stringify(tKeys) === JSON.stringify(["active", "body", "bodyIncluded", "docPath", "folderId", "id", "subject", "title", "tokens", "variants"]), tKeys);
+  check("C1 v3: template entry field list (+tokens; +modified, +linkTracking, +lastVerified — TPL-1, additive)", JSON.stringify(tKeys) === JSON.stringify(["active", "body", "bodyIncluded", "docPath", "folderId", "id", "lastVerified", "linkTracking", "modified", "subject", "title", "tokens", "variants"]), tKeys);
+  check("C1 v3: the template's modified date and the link-tracking reading come through the doc (renderer → parser), and lastVerified is overlaid from the manifest inventory like a program's",
+    idx.templates["tpl-aaa"]?.modified === "2023-06-12 18:26:31 UTC" && idx.templates["tpl-aaa"]?.linkTracking?.reading === "unreadable" && idx.templates["tpl-aaa"].linkTracking.entries === 0 && "lastVerified" in idx.templates["tpl-aaa"], idx.templates["tpl-aaa"]);
   check("C1: lastVerified overlaid from manifest inventory", p1?.lastVerified === "2026-07-01T00:00:00.000Z" && idx.programs["prog-2"]?.lastVerified === null, p1?.lastVerified);
   check("C1: cross-links union of step + variant template ids", JSON.stringify(idx.links.programToTemplates["prog-1"]) === JSON.stringify(["tpl-aaa", "tpl-bbb"]) && JSON.stringify(idx.links.templateToPrograms["tpl-aaa"]) === JSON.stringify(["prog-1"]), idx.links);
   check("C1: gaps.referencedTemplatesMissing (bbb + missing, not aaa)", JSON.stringify(idx.gaps.referencedTemplatesMissing) === JSON.stringify(["tpl-bbb", "tpl-missing"]), idx.gaps.referencedTemplatesMissing);

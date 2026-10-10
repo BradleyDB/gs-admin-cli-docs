@@ -191,6 +191,10 @@ import {
   parseDocJson, normalizeText, writeFileAtomicSync,
   readJsonFile, makeCliHelpers, findWorkspaceCatalog, makeCommandResolver,
   assertReadOnlyCommand, assertPlainGsAdminCommand, resolveCliArgv, isDescribeRead, isAuthDeath, docPathFor, DESCRIBE_NONE, RECORDED_LANES } from "./doc-lib.mjs";
+// R18's link classification, the one home: the template doc's link-tracking
+// reading (R19, TPL-1) leaves system links out with it; doc-lib takes it as an
+// argument because it imports nothing local.
+import { NON_CONTENT_LINK_RULES } from "./engagement-query.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const MANIFEST_SCRIPT = join(here, "manifest.mjs");
@@ -841,7 +845,7 @@ for (const entry of batch.entries) {
       continue;
     }
     try {
-      doc = renderTemplateDoc(payload, { key: entry.key }).doc;
+      doc = renderTemplateDoc(payload, { key: entry.key, linkRules: NON_CONTENT_LINK_RULES }).doc;
     } catch (e) {
       markFailed(e?.message ?? String(e));
       continue;

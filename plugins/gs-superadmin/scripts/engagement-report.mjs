@@ -183,16 +183,18 @@ export function buildReport(snapshot, opts = {}) {
   let templates = null;
   if (opts.byTemplate) {
     templates = q({}, { groupBy: ["program", "template"], metrics: use(EMAIL_METRICS), sort: [{ dim: "program" }, { label: "stepOrder" }, { metric: "sent", dir: "desc" }] });
+    // The subject (TPL-2): the template's current text as the knowledge base holds it, from the engine's own label; a
+    // dash where the snapshot holds no content for it (the caveats say why).
     sections.push(
       [
         "## Emails by template",
         "",
-        mdTable(["Program", "Step", "Template", ...labels(EMAIL_METRICS)], templates.rows.map((r) => [r.label.program ?? r.key.program, stepOf(r.label), r.label.template ?? r.key.template ?? "(no template)", ...shown(r, EMAIL_METRICS)])),
+        mdTable(["Program", "Step", "Template", "Subject", ...labels(EMAIL_METRICS)], templates.rows.map((r) => [r.label.program ?? r.key.program, stepOf(r.label), r.label.template ?? r.key.template ?? "(no template)", r.label.subject ?? NO_VALUE, ...shown(r, EMAIL_METRICS)])),
       ].join("\n"),
     );
     csv["engagement-templates"] = {
-      headers: ["program_id", "program", "template_id", "template", "step_name", "step_order", "steps_using_template", ...EMAIL_METRICS, "click_tracking"],
-      rows: templates.rows.map((r) => [r.key.program, r.label.program, r.key.template, r.label.template, r.label.stepName, r.label.stepOrder, r.label.stepCount, ...csvValues(r, EMAIL_METRICS), r.cells.clicked.state]),
+      headers: ["program_id", "program", "template_id", "template", "subject", "step_name", "step_order", "steps_using_template", ...EMAIL_METRICS, "click_tracking"],
+      rows: templates.rows.map((r) => [r.key.program, r.label.program, r.key.template, r.label.template, r.label.subject, r.label.stepName, r.label.stepOrder, r.label.stepCount, ...csvValues(r, EMAIL_METRICS), r.cells.clicked.state]),
     };
   }
   let steps = null;
@@ -202,18 +204,19 @@ export function buildReport(snapshot, opts = {}) {
       [
         "## Emails by step",
         "",
-        mdTable(["Program", "Step", "Variant", "Template", ...labels(EMAIL_METRICS)], steps.rows.map((r) => [
+        mdTable(["Program", "Step", "Variant", "Template", "Subject", ...labels(EMAIL_METRICS)], steps.rows.map((r) => [
           r.label.program ?? r.key.program,
           r.label.step != null ? `${r.label.stepOrder != null ? `${r.label.stepOrder}. ` : ""}${r.label.step}` : `(no step name in the KB: ${r.key.step ?? "no step id"})`,
           r.label.variant ?? r.key.variant ?? "",
           r.label.template ?? r.label.templateId ?? "(no template)",
+          r.label.subject ?? NO_VALUE,
           ...shown(r, EMAIL_METRICS),
         ])),
       ].join("\n"),
     );
     csv["engagement-steps"] = {
-      headers: ["program_id", "program", "step_id", "step", "step_order", "variant_id", "variant", "template_id", "template", ...EMAIL_METRICS, "click_tracking"],
-      rows: steps.rows.map((r) => [r.key.program, r.label.program, r.key.step, r.label.step, r.label.stepOrder, r.key.variant, r.label.variant, r.label.templateId, r.label.template, ...csvValues(r, EMAIL_METRICS), r.cells.clicked.state]),
+      headers: ["program_id", "program", "step_id", "step", "step_order", "variant_id", "variant", "template_id", "template", "subject", ...EMAIL_METRICS, "click_tracking"],
+      rows: steps.rows.map((r) => [r.key.program, r.label.program, r.key.step, r.label.step, r.label.stepOrder, r.key.variant, r.label.variant, r.label.templateId, r.label.template, r.label.subject, ...csvValues(r, EMAIL_METRICS), r.cells.clicked.state]),
     };
   }
 
@@ -282,7 +285,8 @@ export function buildReport(snapshot, opts = {}) {
     rows: entries.map((e) => [e.label, e.definition, e.object, e.fields, e.filters.join("; "), e.dateField, e.calculation, e.zeroDenominator ?? "", e.afterRead.join(" "), e.perStep ?? "", e.uiParity ?? ""]),
   };
 
-  const caveats = caveatsFor(snapshot, ids).map((c) => c.text);
+  // The template-content caveats ride the report that shows subjects (--by-template).
+  const caveats = caveatsFor(snapshot, ids, { templates: !!opts.byTemplate }).map((c) => c.text);
   // A --name that matched nothing is said, never passed over: the pull holds only what matched.
   const known = new Set(snapshot.dimensions.programs.flatMap((p) => [termKey(p.id), ...(p.name != null ? [termKey(p.name)] : [])]));
   const unmatchedNames = (selector.names ?? []).filter((n) => !known.has(termKey(n)));

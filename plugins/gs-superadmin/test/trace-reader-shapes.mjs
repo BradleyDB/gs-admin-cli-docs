@@ -74,6 +74,7 @@ import {
   findItemsArray, extractIds, decideEntryArray, renderProgramDoc, designerTaskFieldLabels,
 } from "../scripts/doc-lib.mjs";
 import { ROW_READERS, buildQuery, rpRunArgv, schemaTypes, listedPrograms, listHasMore, describedProgram } from "../scripts/engagement.mjs";
+import { NON_CONTENT_LINK_RULES } from "../scripts/engagement-query.mjs";
 import { buildTenant, answer } from "./fixtures/engagement/acme-tenant.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -141,6 +142,7 @@ const ENG_UNITS = {
   "participants-window": { cls: "all", window: ENG_SPAN, programs: ENG_PROGRAMS },
   "count-clicks": { cls: "all", window: ENG_SPAN },
   "count-bounces": { cls: "all", window: ENG_SPAN },
+  "template-months": { cls: "all", window: ENG_SPAN },
   "health-bounce-total": { cls: "all", window: ENG_SPAN },
   "health-bounce-cat": { cls: "all", window: ENG_SPAN, category: { id: "user-unknown", pattern: "User unknown in virtual mailbox table" } },
   "health-bounce-sample": { cls: "all", window: ENG_SPAN, programs: ENG_PROGRAMS.slice(0, 1), excludePatterns: ["User unknown in virtual mailbox table"] },
@@ -321,9 +323,9 @@ readers: ["jo-report.mjs parseJourneyDoc (→ embedded, classicStep / nodeStep, 
   },
   {
     command: "jo e template",
-    readers: ["doc-lib.mjs renderTemplateDoc (→ bodyOf, templateTokens, dateOf; template-doc.mjs and describe-batch.mjs call it)"],
+    readers: ["doc-lib.mjs renderTemplateDoc (→ bodyOf, templateTokens, dateOf, readLinkTracking; template-doc.mjs and describe-batch.mjs call it)"],
     modules: ["scripts/doc-lib.mjs"],
-    calls: [{ reader: "renderTemplateDoc", mode: "object", fn: (p) => renderTemplateDoc(p) }],
+    calls: [{ reader: "renderTemplateDoc", mode: "object", fn: (p) => renderTemplateDoc(p, { linkRules: NON_CONTENT_LINK_RULES }) }],
     fixtures: [
       templatePayload(FX.TEMPLATE_MAIN), templatePayload(FX.TEMPLATE_FALLBACK),
       templatePayload(FX.TEMPLATE_VARIANTS, [FX.TEMPLATE_VARIANT_B]), templatePayload(FX.TEMPLATE_TOKENS),

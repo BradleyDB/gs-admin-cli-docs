@@ -35,14 +35,17 @@ import { STEP_REMAINDER,
   expectedCalls, classifyFailure, classifyLink, readLinkClicks, parseUnsubscribeLink, validateQuery, buildQuery, splitUnit, selectAccounts, decideClickState,
   monthsBetween, ENGAGEMENT_READ_PATHS, joEngagementAdapter, readFailureReasons, healthDayWindow, HEALTH_PARTS, pickSchedule, schemaFlags, NO_SCHEDULE,
   SAMPLES_PER_PROGRAM, SAMPLE_PROGRAM_CAP, SAMPLE_PAGE, MAX_PAGES, sampleTargets, matchCategory,
+  templatesReferenced, templateGap, templateContentOf, TEMPLATE_GAP_LIST_FILE, TEMPLATE_GAP_STALE_FILE, TEMPLATE_GAP_KEYS_FILE,
 } from "../scripts/engagement.mjs";
+import { readLinkTracking } from "../scripts/doc-lib.mjs";
 // The T-10 read floor and the tables the adapter counts with live in the query
 // module (ENG-4); the adapter imports them, and so does this suite.
 import {
   openSnapshot, readClicked, clickAvailability, programClickAvailability, accountAvailability, readResponses,
   NON_CONTENT_LINK_RULES, SEND_MEASURES, T10_SCHEMA_VERSION, MASK_RULES, MASK_PROTECTED, MASK_MAX_LENGTH, maskMessage, healthAvailability, programHealth, HEALTH_LISTS, judgeHealth, dueDaysBefore, cronLastDue, validateCategories, FAILURE_CATEGORIES, STEP_FAILURE_CATEGORIES, QUIET_DUE_DAYS_DEFAULT, caveatText, FAILURE_KINDS, kindOf,
+  LINK_READINGS, templateAvailability,
 } from "../scripts/engagement-query.mjs";
-import { buildTenant, answer, applyFaults, kbFiles, FAULT_TEXT, OWN_SITE_UNSUBSCRIBE, BOUNCE_REASONS, FAILURE_REASONS, NULL_EMAIL_REASON, NULL_EMAIL_REASONS, UNKNOWN_REASON, UNKNOWN_STEP_REASON, FIXTURE_BOUNCE_CATEGORIES, FIXTURE_BOUNCE_KIND_CATEGORY } from "./fixtures/engagement/acme-tenant.mjs";
+import { buildTenant, answer, applyFaults, kbFiles, templatePayload, TEMPLATES_DOMAIN, FAULT_TEXT, OWN_SITE_UNSUBSCRIBE, BOUNCE_REASONS, FAILURE_REASONS, NULL_EMAIL_REASON, NULL_EMAIL_REASONS, UNKNOWN_REASON, UNKNOWN_STEP_REASON, FIXTURE_BOUNCE_CATEGORIES, FIXTURE_BOUNCE_KIND_CATEGORY } from "./fixtures/engagement/acme-tenant.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const PLUGIN = join(HERE, "..");
@@ -372,8 +375,8 @@ try {
     const p = pull({ phase: "plan" });
     let refused = "";
     try { loadRun(p.runDir); } catch (e) { refused = e.message; }
-    check("plan makes only the cheap tenant-wide calls (sends, accounts reached, the count-first reads of clicked sends, bounced attempts, failed participants, refusals per month and refusals still happening in the day window), writes the estimate, and leaves a run reduce refuses",
-      p.summary.status === "ok" && rpRuns(p.argv).length === 7 && isDeepStrictEqual(rpRuns(p.argv).map((a) => flag(a, "--object")), ["email_log_v2", "email_log_v2", "email_log_v2", "email_log_v2", "ao_failed_participants", "ao_failed_participants", "ao_failed_participants"]) && rpRuns(pull({ raw: { health: {} }, phase: "plan" }).argv).length === 4 && existsSync(join(p.runDir, "plan.json")) && /not complete/.test(refused), [rpRuns(p.argv).length, refused]);
+    check("plan makes only the cheap tenant-wide calls (sends, accounts reached, the count-first reads of clicked sends, bounced attempts, the templates the sends reference, failed participants, refusals per month and refusals still happening in the day window), writes the estimate, and leaves a run reduce refuses",
+      p.summary.status === "ok" && rpRuns(p.argv).length === 8 && isDeepStrictEqual(rpRuns(p.argv).map((a) => flag(a, "--object")), ["email_log_v2", "email_log_v2", "email_log_v2", "email_log_v2", "email_log_v2", "ao_failed_participants", "ao_failed_participants", "ao_failed_participants"]) && rpRuns(pull({ raw: { health: {} }, phase: "plan" }).argv).length === 5 && existsSync(join(p.runDir, "plan.json")) && /not complete/.test(refused), [rpRuns(p.argv).length, refused]);
   }
 
   // ── Step detail (R21) ─────────────────────────────────────────────────────
@@ -553,8 +556,10 @@ try {
     check("R19 fixture 4: never clicked, and the reading shows links but none tracked → not-tracked, with no value at all", isDeepStrictEqual(readClicked(R, row("tpl-renew-b")), { state: "not-tracked", value: null }));
     check("R19 fixture 5: never clicked, and no reading → unknown, the value shown beside its marker", isDeepStrictEqual(readClicked(R, row("tpl-day7")), { state: "unknown", value: 0 }) && clickAvailability(R, "tpl-day7").evidence.linkSettings === null);
     check("detection never guesses: an unreadable reading is unknown, and a template the snapshot does not list is unknown", clickAvailability(R, "tpl-unlisted").state === "tracked" && decideClickState({ everClicked: false, reading: "unreadable" }) === "unknown" && decideClickState({ everClicked: false, reading: null }) === "unknown" && clickAvailability(R, "tpl-never-seen").state === "unknown" && readClicked(R, { templateId: null, clicked: 0 }).state === "unknown");
-    check("unsubscribe-link clicks never count as evidence: a template whose only recorded clicks are on the unsubscribe link has no click history, and its sends count 0 clicked",
-      base.tenant.tables.email_log_v2.some((r) => r.EmailTemplateId === "tpl-renew" && r.LinkClickedCount > 0) && clickAvailability(S, "tpl-renew").state === "unknown" && clickAvailability(S, "tpl-renew").evidence.clickHistory.everClicked === false && S.facts.byTemplate.filter((r) => r.templateId === "tpl-renew").every((r) => r.clicked === 0));
+    // Since TPL-1 the KB doc's own reading decides a never-clicked template: tpl-renew's doc says links, none tracked.
+    check("unsubscribe-link clicks never count as evidence: a template whose only recorded clicks are on the unsubscribe link has no click history, and its sends count 0 clicked; its state is then the KB doc's reading (links, none tracked: not-tracked), never tracked",
+      base.tenant.tables.email_log_v2.some((r) => r.EmailTemplateId === "tpl-renew" && r.LinkClickedCount > 0) && clickAvailability(S, "tpl-renew").state === "not-tracked" && clickAvailability(S, "tpl-renew").evidence.clickHistory.everClicked === false && clickAvailability(S, "tpl-renew").evidence.linkSettings.reading === "links-none-tracked" &&
+        clickAvailability(pull({}).snapshot, "tpl-renew").state === "unknown" && S.facts.byTemplate.filter((r) => r.templateId === "tpl-renew").every((r) => r.clicked === 0));
     check("click history decides before the link settings: a clicked template stays tracked whatever the reading says", clickAvailability(R, "tpl-welcome").state === "tracked" && clickAvailability(R, "tpl-welcome").evidence.linkSettings.reading === "links-none-tracked");
     // ENG-1's accessor floor.
     const states = new Set(Object.values(R.meta.metricAvailability.clicks.templates).map((t) => t.state));
@@ -577,8 +582,9 @@ try {
         isDeepStrictEqual(rolled(null, "p-promo"), { state: "tracked", templates: { tracked: 1, notTracked: 0, unknown: 0 } }), rolled(null, "p-promo"));
     check("roll-up, all not-tracked: a program reads not-tracked only when every one of its templates is",
       isDeepStrictEqual(rolled({ ...none("tpl-renew"), ...none("tpl-renew-b") }, "p-renew"), { state: "not-tracked", templates: { tracked: 0, notTracked: 2, unknown: 0 } }), rolled({ ...none("tpl-renew"), ...none("tpl-renew-b") }, "p-renew"));
+    // tpl-renew's not-tracked comes from its KB doc's reading (TPL-1); the file's unreadable reading on tpl-renew-b overrides its doc's.
     check("roll-up, not-tracked + unknown reads unknown; so does a program whose sends name no template, and one the snapshot does not list",
-      isDeepStrictEqual(rolled(none("tpl-renew-b"), "p-renew"), { state: "unknown", templates: { tracked: 0, notTracked: 1, unknown: 1 } }) &&
+      isDeepStrictEqual(rolled({ "tpl-renew-b": { reading: "unreadable", asOf: "2026-09-01" } }, "p-renew"), { state: "unknown", templates: { tracked: 0, notTracked: 1, unknown: 1 } }) &&
         isDeepStrictEqual(programClickAvailability(R, "p-pilot"), { state: "unknown", templates: { tracked: 0, notTracked: 0, unknown: 1 } }) && programClickAvailability(R, "p-nobody").state === "unknown");
     check("responses: a program with survey participants is tracked, one with none on a readable object is not-tracked", R.meta.metricAvailability.responses.programs["p-nps"].state === "tracked" && R.meta.metricAvailability.responses.programs["p-onboard"].state === "not-tracked" && R.meta.metricAvailability.responses.programs["p-onboard"].evidence.surveyParticipants === 0);
     for (const bad of [{ ...R, schemaVersion: 2 }, { ...R, schemaVersion: "1" }, { ...R, schemaVersion: undefined }, { ...R, kind: "accountTimeline" }, null, []]) {
@@ -943,9 +949,12 @@ try {
 
   // ── Privacy (house rule 9) ────────────────────────────────────────────────
   {
-    const text = JSON.stringify(SS);
+    // A template's own text (TPL-1) names the links the template carries: that is the template, not a click, and the KB
+    // doc already holds it; it is judged apart (no address, no ip in it) and the rest of the snapshot holds no URL at all.
+    const content = SS.dimensions.templates.map((t) => t.content).filter(Boolean);
+    const text = JSON.stringify({ ...SS, dimensions: { ...SS.dimensions, templates: SS.dimensions.templates.map(({ content: _c, ...t }) => t) } });
     const leaks = ["@", "pe-0", "pe-int", "pe-orphan", "log-0", "jo-0", "par-p", "sp-0", "203.0.113", "https://", "mailto:"].filter((needle) => text.includes(needle));
-    check("account is the finest detail: the snapshot holds no address, no person, participant or send id, no ip and no URL", leaks.length === 0 && text.includes("co-01"), leaks);
+    check("account is the finest detail: the snapshot holds no address, no person, participant or send id, no ip and no URL outside the templates' own text; that text holds no address and no ip", leaks.length === 0 && text.includes("co-01") && content.length > 0 && !["@", "203.0.113", "pe-0"].some((n) => JSON.stringify(content).includes(n)), leaks);
     check("no call asks for an address or a person as a column: they appear only inside filters and distinct counts",
       every.every((a) => { const q = parsed(a); return [...q.group, ...q.show.filter((s) => !s.aggregation)].every((e) => !["LowerCaseEmailId", "EmailId", "ToAddress", "GsPersonId"].includes(e.name) && e.fieldPath?.hops[0].to !== "person"); }));
   }
@@ -1080,7 +1089,7 @@ try {
     check("resume skips calls already done: the second invocation of the same --run makes only what was left, exits 0, and writes the snapshot",
       resumed.code === 0 && resumed.json?.ok === true && resumed.json.calls.reused >= 15 && lines.length - before === resumed.json.calls.made && existsSync(out) && resumed.json.reconciled === true, resumed.json ?? resumed.stderr);
     check("gs-admin calls run one at a time: across both invocations no call started while another was in flight", lines.length >= 30 && lines.every((l) => l.overlap === false), [lines.length, lines.filter((l) => l.overlap).length]);
-    check("the summary a caller sees carries counts and verdicts, never rows: bulk JSON does not reach stdout", JSON.stringify(resumed.json).length < 6000 && resumed.json.rows.byTemplate > 0 && !("facts" in resumed.json));
+    check("the summary a caller sees carries counts and verdicts, never rows: bulk JSON does not reach stdout", JSON.stringify(resumed.json).length < 7500 && resumed.json.rows.byTemplate > 0 && !("facts" in resumed.json) && !JSON.stringify(resumed.json).includes("Welcome to Acme"), JSON.stringify(resumed.json).length);
     const snap = JSON.parse(readFileSync(out, "utf8"));
     const golden = { ...snap, meta: { ...snap.meta, cliVersion: "fixture", pluginVersion: "fixture" } };
     check("the snapshot records the CLI and plugin versions it was pulled with", snap.meta.cliVersion === CATALOG.meta.cliVersion && snap.meta.pluginVersion === JSON.parse(readFileSync(join(PLUGIN, ".claude-plugin", "plugin.json"), "utf8")).version);
@@ -1786,6 +1795,114 @@ try {
     check("a change to the test accounts forces a full refresh and says so (they are a different class split); with step detail the step table is by domain alone and a caveat says why; without domains or test accounts nobody is internal",
       changed.mode === "full" && /test accounts changed/.test(changed.why) && stepsToo.caveats.some((c) => c.id === "test-accounts-not-on-steps" && c.detail.accounts === 2) && stepsToo.facts.byStep.length > 0 &&
         !T.caveats.some((c) => c.id === "test-accounts-not-on-steps") && pull({ raw: { internalDomains: [], testAccounts: TEST } }).snapshot.facts.byTemplate.some((r) => r.recipientClass === "internal"), changed.why);
+  }
+
+  // ══ Template content and the gap-fill (TPL-1, R14, R19) ═══════════════════
+  {
+    const MANIFEST = join(PLUGIN, "scripts", "manifest.mjs");
+    const DESCRIBE_BATCH = join(PLUGIN, "scripts", "describe-batch.mjs");
+    // A KB of its own: the gap-fill below writes into it.
+    writeFiles(join(ROOT, "kb-gap"), kbFiles("acme-prod"));
+    const KB_GAP = join(ROOT, "kb-gap", "acme-prod");
+    const manifestPath = join(KB_GAP, "_manifest.json");
+    const readManifest = () => JSON.parse(readFileSync(manifestPath, "utf8"));
+    const tplKey = (id) => `${TEMPLATES_DOMAIN}/${id}`;
+    const planned = pull({ kb: KB_GAP, phase: "plan" });
+    const est = planned.summary.estimate.templates;
+    const readJson = (p) => JSON.parse(readFileSync(p, "utf8"));
+    check("TPL-1 plan: the templates the selected programs reference (their sends over the window, and their designs) are read from one cheap tenant-wide call with the base reads, and judged against the KB: missing (no doc), behind (the doc predates the template's last send month), unread (a never-clicked template whose doc carries no link-tracking reading) — priced at one fetch each, and the pull makes no template call of its own",
+      isDeepStrictEqual({ ...est, listFile: null, staleKeysFile: null, keysFile: null }, { source: "kb", referenced: 8, designOnly: 1, inKb: 5, missing: 3, behind: 1, unread: 1, planned: 5, seconds: 15, domain: TEMPLATES_DOMAIN, idField: "templateId", listFile: null, staleKeysFile: null, keysFile: null }) &&
+        planned.argv.filter((a) => a.includes("rp") && a.includes("run")).some((a) => a.join(" ").includes('"EmailTemplateId"')) && planned.argv.every((a) => !a.join(" ").includes("email template")), est);
+    check("TPL-1 plan: its inputs are written beside plan.json in the shapes email-report's gap-fill commands take — the missing ids as [{<idField>: id}] for manifest upsert-batch --partial, the keys to mark stale (the behind docs and the unread ones), and every key in fetch order (missing first) for describe-batch --keys-file; nothing is written to the KB",
+      est.listFile.endsWith(TEMPLATE_GAP_LIST_FILE) && est.staleKeysFile.endsWith(TEMPLATE_GAP_STALE_FILE) && est.keysFile.endsWith(TEMPLATE_GAP_KEYS_FILE) &&
+        isDeepStrictEqual(readJson(est.listFile), [{ templateId: "tpl-nps-reminder" }, { templateId: "tpl-promo" }, { templateId: "tpl-unlisted" }]) && isDeepStrictEqual(readJson(est.staleKeysFile), [tplKey("tpl-welcome"), tplKey("tpl-day7")]) &&
+        isDeepStrictEqual(readJson(est.keysFile), ["tpl-nps-reminder", "tpl-promo", "tpl-unlisted", "tpl-welcome", "tpl-day7"].map(tplKey)) && !existsSync(join(KB_GAP, TEMPLATES_DOMAIN, "tpl-promo.md")) && readManifest().inventory[tplKey("tpl-promo")] === undefined,
+      [readJson(est.listFile), readJson(est.staleKeysFile), readJson(est.keysFile)]);
+    const kbCopy = readJson(join(planned.runDir, "kb-steps.json"));
+    check("TPL-1: the run's KB copy holds the referenced templates' docs only (subject, body, variants, tokens, the capture and modified dates, the reading), the templates domain's folder and id field as the manifest records them, and the inputs it was read for",
+      isDeepStrictEqual(Object.keys(kbCopy.templates).sort(), ["tpl-day7", "tpl-nps", "tpl-renew", "tpl-renew-b", "tpl-welcome"]) && isDeepStrictEqual(kbCopy.templatesDomain, { folder: TEMPLATES_DOMAIN, idField: "templateId" }) &&
+        isDeepStrictEqual(Object.keys(kbCopy.templates["tpl-nps"]).sort(), ["body", "bodyIncluded", "docPath", "lastVerified", "linkTracking", "modified", "subject", "title", "tokens", "variants"]) && kbCopy.templates["tpl-nps"].subject === "How is ${subj::gs-prod} working for you?" &&
+        kbCopy.templates["tpl-day7"].linkTracking === null && kbCopy.templates["tpl-nps"].linkTracking.reading === "tracked-link-present" && isDeepStrictEqual(kbCopy.inputs.templateIds, ["tpl-day7", "tpl-nps", "tpl-promo", "tpl-renew", "tpl-renew-b", "tpl-unlisted", "tpl-welcome"]), [Object.keys(kbCopy.templates), kbCopy.templatesDomain, kbCopy.inputs]);
+    // The sanctioned path, through the real scripts: register the missing ones, mark the stale ones, describe-batch
+    // --keys-file within a budget, twice.
+    const run = (script, args) => {
+      const r = runNode(script, args, { env: { ...process.env, FAKE_STATE: join(ROOT, "fake-state-gap") } });
+      let json = null;
+      try { json = JSON.parse(r.stdout); } catch { /* asserted below */ }
+      return { code: r.status, json, stderr: r.stderr };
+    };
+    mkdirSync(join(ROOT, "fake-state-gap"), { recursive: true });
+    const reg = run(MANIFEST, ["upsert-batch", "--manifest", manifestPath, "--domain", TEMPLATES_DOMAIN, "--file", est.listFile, "--id-field", est.idField, "--partial"]);
+    const marked = run(MANIFEST, ["mark", "--manifest", manifestPath, "--keys-file", est.staleKeysFile, "--status", "stale"]);
+    const GAP_IDS = ["tpl-nps-reminder", "tpl-promo", "tpl-unlisted", "tpl-welcome", "tpl-day7"];
+    const batchArgs = ["--manifest", manifestPath, "--domain", TEMPLATES_DOMAIN, "--command", "gs-admin --json jo email template --id {id}", "--doc-mode", "template", "--out-dir", join(KB_GAP, TEMPLATES_DOMAIN), "--keys-file", est.keysFile, "--limit", "3", "--bin", FAKE];
+    const first = run(DESCRIBE_BATCH, batchArgs);
+    const docsAfterFirst = GAP_IDS.filter((id) => readManifest().inventory[tplKey(id)]?.status === "documented" && readManifest().inventory[tplKey(id)].last_verified > "2026-09-15");
+    const second = run(DESCRIBE_BATCH, batchArgs);
+    const inv = readManifest().inventory;
+    check("TPL-1 gap-fill: the sanctioned commands over the plan's files — upsert-batch --partial registers the missing templates (the design-only one included), mark --keys-file marks the behind and unread docs stale, describe-batch --keys-file --limit 3 lands three docs and reports more remaining, and a second invocation lands the rest — so every gap-filled template is in the KB with a fresh capture date; the template call is describe-batch's, through the stand-in CLI",
+      reg.code === 0 && marked.code === 0 && first.code === 0 && first.json?.moreRemaining === true && docsAfterFirst.length === 3 && second.code === 0 && second.json?.moreRemaining === false &&
+        GAP_IDS.every((id) => inv[tplKey(id)]?.status === "documented" && inv[tplKey(id)].last_verified > "2026-09-15" && existsSync(join(KB_GAP, TEMPLATES_DOMAIN, `${id}.md`))) &&
+        readFileSync(join(KB_GAP, TEMPLATES_DOMAIN, "tpl-day7.md"), "utf8").includes("- linkTracking: unreadable") && readFileSync(join(KB_GAP, TEMPLATES_DOMAIN, "tpl-promo.md"), "utf8").includes("- linkTracking: tracked-link-present") &&
+        readFileSync(join(ROOT, "fake-state-gap", "argv.jsonl"), "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l).argv.join(" ")).filter((a) => a.includes("jo email template --id")).length === 5,
+      [reg.stderr?.slice(-300), marked.stderr?.slice(-300), first.json ?? first.stderr?.slice(-400), second.json ?? second.stderr?.slice(-400), docsAfterFirst]);
+    // The plan re-issued unchanged over the same run directory reads the moved KB again; the gap is closed.
+    const replanned = pull({ kb: KB_GAP, phase: "plan", runDir: planned.runDir });
+    const est2 = replanned.summary.estimate.templates;
+    check("TPL-1: the plan re-issued over the same run directory after the gap-fill reads the moved KB again (its stamp moved): no template missing, behind or unread, nothing planned, no file path",
+      isDeepStrictEqual(est2, { source: "kb", referenced: 8, designOnly: 1, inKb: 8, missing: 0, behind: 0, unread: 0, planned: 0, seconds: 0, domain: TEMPLATES_DOMAIN, idField: "templateId", listFile: null, staleKeysFile: null, keysFile: null }), est2);
+    const filled = pull({ kb: KB_GAP, runDir: planned.runDir });
+    const F = filled.snapshot;
+    const tpl = (id) => F.dimensions.templates.find((t) => t.id === id);
+    check("TPL-1: the run then carries content for every referenced template — the gap-filled ones included — with the link-tracking reading from the KB doc deciding each never-clicked template (tpl-day7's re-read reads unreadable: unknown; tpl-nps tracked at 0), a clicked template tracked whatever its doc says, and the marker and honesty counts say the KB is the source with nothing missing",
+      F.dimensions.templates.every((t) => t.content && t.content.source === "kb") && isDeepStrictEqual(templateAvailability(F), { pulled: true, reason: null, content: true, source: "kb" }) && isDeepStrictEqual(F.honesty.templates, { referenced: 7, withContent: 7, missing: 0, behind: 0, unreadLinks: 0, source: "kb" }) &&
+        clickAvailability(F, "tpl-day7").state === "unknown" && clickAvailability(F, "tpl-day7").evidence.linkSettings.reading === "unreadable" && isDeepStrictEqual(readClicked(F, F.facts.byTemplate.find((r) => r.templateId === "tpl-nps")), { state: "tracked", value: 0 }) &&
+        clickAvailability(F, "tpl-welcome").state === "tracked" && clickAvailability(F, "tpl-welcome").evidence.linkSettings.reading === "links-none-tracked" && clickAvailability(F, "tpl-promo").state === "tracked" && clickAvailability(F, "tpl-unlisted").state === "tracked" &&
+        !F.caveats.some((c) => ["template-content-missing", "template-content-behind", "template-link-readings-missing"].includes(c.id)) && F.caveats.some((c) => c.id === "template-content-current" && c.detail.templates === 7) && filled.argv.every((a) => !a.join(" ").includes("email template")),
+      [F.honesty.templates, F.caveats.map((c) => c.id), Object.fromEntries(F.dimensions.templates.map((t) => [t.id, clickAvailability(F, t.id).state]))]);
+    check("TPL-1: only rendered plain text reaches the snapshot, never a template's HTML: the welcome template's empty plain text was derived from its HTML with the script and the remote image stripped, and no page-breaking tag, script text or image host is anywhere in the snapshot",
+      tpl("tpl-welcome").content.body === "Welcome to Acme!\nStart here: the getting-started guide" && tpl("tpl-welcome").content.variants.length === 1 && tpl("tpl-welcome").content.variants[0].name === "Variant B" && tpl("tpl-welcome").content.variants[0].subject === "Welcome aboard" &&
+        !/<script|<img|cdn\.example\.com|alert\(1\)|&lt;p&gt;/.test(JSON.stringify({ ...F, dimensions: { ...F.dimensions, templates: F.dimensions.templates.filter((t) => t.id !== "tpl-day7") } })), tpl("tpl-welcome").content);
+    // Over the static KB (base pull): the gap stands, and the content of the documented templates is as the docs hold it.
+    const base = pull({ kb: true });
+    const B = base.snapshot;
+    const tb = (id) => B.dimensions.templates.find((t) => t.id === id);
+    check("TPL-1 reduce over a KB with gaps: the templates the sends reference carry their last send month and, where the KB has a doc, the content — subject and body with tokens rendered as their field labels (the template's own metadata), the capture day, the modified day and the \"edited after last send\" flag at month grain: after (true), before (false), inside the month or unknown (null) — null content where the KB has no doc",
+      tb("tpl-nps").lastSendMonth === "2026-07" && tb("tpl-nps").content.subject === "How is {Product Name} working for you?" && tb("tpl-nps").content.body.includes("Tell us how {Product Name} is working") && tb("tpl-nps").content.asOf === "2026-09-01" && tb("tpl-nps").content.modified === "2026-08-10" && tb("tpl-nps").content.editedAfterLastSend === true &&
+        tb("tpl-renew").content.editedAfterLastSend === false && tb("tpl-renew").content.modified === "2026-02-01" && tb("tpl-renew-b").content.editedAfterLastSend === null && tb("tpl-renew-b").content.modified === "2026-09-05" && tb("tpl-welcome").content.editedAfterLastSend === false && tb("tpl-welcome").content.asOf === "2026-08-20" && tb("tpl-welcome").lastSendMonth === "2026-09" &&
+        tb("tpl-promo").content === null && tb("tpl-promo").lastSendMonth === "2025-12" && tb("tpl-unlisted").content === null && tb("tpl-day7").content.body.includes("<script>alert(1)</script>") && tb("tpl-day7").content.body.includes("${unresolved::token}") && tb("tpl-day7").content.bodyIncluded === true &&
+        isDeepStrictEqual(Object.keys(tb("tpl-nps").content).sort(), ["asOf", "body", "bodyIncluded", "editedAfterLastSend", "modified", "source", "subject", "variants"]) && isDeepStrictEqual(Object.keys(tb("tpl-nps")).sort(), ["content", "id", "lastSendMonth", "name", "uses"]),
+      B.dimensions.templates.map((t) => [t.id, t.lastSendMonth, t.content && { subject: t.content.subject, asOf: t.content.asOf, modified: t.content.modified, flag: t.content.editedAfterLastSend }]));
+    check("TPL-1 reduce over a KB with gaps: honesty counts the gap by THIS pull's click history, the marker says the KB is the source, and the four caveats ride: the text is current as of the oldest doc, the missing templates with the keys file the plan wrote, the behind doc, the never-clicked doc with no reading",
+      isDeepStrictEqual(B.honesty.templates, { referenced: 7, withContent: 5, missing: 2, behind: 1, unreadLinks: 1, source: "kb" }) && isDeepStrictEqual(templateAvailability(B), { pulled: true, reason: null, content: true, source: "kb" }) &&
+        isDeepStrictEqual(B.caveats.find((c) => c.id === "template-content-current").detail, { templates: 5, oldest: "2026-08-20" }) && isDeepStrictEqual(B.caveats.find((c) => c.id === "template-content-missing").detail, { missing: 2, referenced: 7, keysFile: TEMPLATE_GAP_KEYS_FILE, seconds: 6 }) &&
+        B.caveats.find((c) => c.id === "template-content-behind").detail.behind === 1 && B.caveats.find((c) => c.id === "template-link-readings-missing").detail.count === 1 && /gap-fill/.test(caveatText("template-content-missing", { missing: 2, referenced: 7 })) && /CURRENT text/.test(caveatText("template-content-current", { oldest: "2026-08-20" })),
+      [B.honesty.templates, B.caveats.filter((c) => c.id.startsWith("template-"))]);
+    const noKb = pull({}).snapshot;
+    check("TPL-1: a pull made without a KB holds no content and says so (no-kb); the content, the marker and the honesty counts are additive on T-10 (a snapshot made before them reads as templates-not-pulled through the read floor); the --link-settings file still overrides the KB's reading per template",
+      noKb.dimensions.templates.every((t) => t.content === null && "lastSendMonth" in t) && isDeepStrictEqual(templateAvailability(noKb), { pulled: false, reason: "no-kb", content: false, source: null }) && isDeepStrictEqual(noKb.honesty.templates, { referenced: 7, withContent: 0, missing: 7, behind: 0, unreadLinks: 0, source: "none" }) &&
+        !noKb.caveats.some((c) => c.id.startsWith("template-")) && isDeepStrictEqual(templateAvailability(/** @type {*} */ ({ meta: {} })), { pulled: false, reason: "templates-not-pulled", content: false, source: null }) &&
+        clickAvailability(reduceEngagement(loadRun(base.runDir, { linkSettings: { "tpl-renew": { reading: "tracked-link-present", asOf: "2026-09-10" } } })), "tpl-renew").state === "tracked" && clickAvailability(reduceEngagement(loadRun(base.runDir, { linkSettings: { "tpl-renew": { reading: "tracked-link-present", asOf: "2026-09-10" } } })), "tpl-renew").evidence.linkSettings.asOf === "2026-09-10",
+      [noKb.honesty.templates, templateAvailability(noKb)]);
+    // R19: the reading, read from the payload by doc-lib with the engine's link rules — the three readings, and nothing else.
+    const readings = Object.fromEntries(Object.keys(templatePayload("tpl-nps") ? { "tpl-nps": 1, "tpl-renew": 1, "tpl-renew-b": 1, "tpl-welcome": 1, "tpl-day7": 1, "tpl-promo": 1, "tpl-unlisted": 1, "tpl-blast": 1 } : {}).map((id) => [id, readLinkTracking(templatePayload(id), NON_CONTENT_LINK_RULES)]));
+    check("R19 readings: only a link-map entry present in the current content counts (a stale flagged entry is ignored), the unsubscribe link is left out, a tracked content link reads tracked-link-present, content links with none tracked read links-none-tracked, no entry or none present reads unreadable; the HTML is decoded before the links are looked for; the rules are the engine's, passed in, and the readings are exactly the engine's three",
+      isDeepStrictEqual(readings["tpl-nps"], { reading: "tracked-link-present", entries: 3, present: 1, tracked: 1, system: 1, stale: 1 }) && isDeepStrictEqual(readings["tpl-renew"], { reading: "links-none-tracked", entries: 2, present: 2, tracked: 0, system: 0, stale: 0 }) && readings["tpl-renew-b"].reading === "links-none-tracked" &&
+        isDeepStrictEqual(readings["tpl-welcome"], { reading: "links-none-tracked", entries: 1, present: 1, tracked: 0, system: 0, stale: 0 }) && isDeepStrictEqual(readings["tpl-day7"], { reading: "unreadable", entries: 0, present: 0, tracked: 0, system: 0, stale: 0 }) && readings["tpl-promo"].reading === "tracked-link-present" && readings["tpl-blast"].reading === "unreadable" &&
+        Object.values(readings).every((r) => LINK_READINGS.includes(r.reading)) && (() => { try { /** @type {any} */ (readLinkTracking)(templatePayload("tpl-nps")); return false; } catch (e) { return /linkRules/.test(e.message); } })() && isDeepStrictEqual([...LINK_READINGS], ["tracked-link-present", "links-none-tracked", "unreadable"]),
+      readings);
+    // The pure pieces, on their own.
+    const lastSend = new Map([["a", "2026-07"], ["b", "2026-09"], ["c", null]]);
+    const docs = { a: { lastVerified: "2026-08-01T00:00:00.000Z", linkTracking: null }, b: { lastVerified: "2026-08-20T00:00:00.000Z", linkTracking: { reading: "unreadable" } }, c: { lastVerified: null, linkTracking: null }, d: { lastVerified: "2026-09-10T00:00:00.000Z", linkTracking: null } };
+    check("templateGap: missing before behind before unread; a doc captured before the last send month's first day is behind; a doc with no capture date (an orphan, no inventory entry) is missing, so it is registered and described rather than marked (mark refuses a key with no entry); a behind doc is not also unread; a never-clicked template with a reading is neither; a clicked one is never unread",
+      isDeepStrictEqual(templateGap({ referenced: ["a", "b", "c", "d", "e"], lastSend, templates: docs, clicked: new Set(["a"]) }), { missing: ["c", "e"], behind: ["b"], unread: ["d"] }) &&
+        isDeepStrictEqual(templateGap({ referenced: ["a", "b"], lastSend, templates: docs, clicked: new Set() }), { missing: [], behind: ["b"], unread: ["a"] }) && isDeepStrictEqual(templateGap({ referenced: ["c"], lastSend: new Map([["c", "2026-09"]]), templates: docs, clicked: new Set() }), { missing: ["c"], behind: [], unread: [] }) &&
+        isDeepStrictEqual(templateGap({ referenced: ["x"], lastSend: new Map(), templates: null, clicked: new Set() }), { missing: ["x"], behind: [], unread: [] }));
+    check("templateContentOf: tokens render through jo-report's renderer with the doc's own metadata (an unresolvable one stays raw), the days come from the doc's dates, and the flag is null with no modified date or no last send",
+      isDeepStrictEqual(templateContentOf({ subject: "Hi ${subj::k}", body: "Body ${subj::k} and ${other::z}", bodyIncluded: true, variants: [{ name: "V", subject: null, body: "v ${subj::k}" }], tokens: [{ tokenKey: "subj::k", displayName: "Name" }], lastVerified: "2026-09-01T00:00:00.000Z", modified: "2026-09-20 10:00:00 UTC" }, "2026-08"), { subject: "Hi {Name}", body: "Body {Name} and ${other::z}", bodyIncluded: true, variants: [{ name: "V", subject: null, body: "v {Name}" }], asOf: "2026-09-01", modified: "2026-09-20", editedAfterLastSend: true, source: "kb" }) &&
+        templateContentOf({ subject: "s", body: "", bodyIncluded: false, variants: [], tokens: null, lastVerified: null, modified: null }, "2026-08").editedAfterLastSend === null && templateContentOf({ subject: "s", body: "b", bodyIncluded: true, variants: [], tokens: null, lastVerified: null, modified: "2026-01-01 00:00:00 UTC" }, null).editedAfterLastSend === null && templateContentOf(null, "2026-08") === null);
+    const ref = templatesReferenced([{ family: "template-months", cls: "all", rows: [{ email_log_v2_SourceId: { v: "p-onboard" }, email_log_v2_EmailTemplateId: { v: "tpl-welcome" }, summarize_month_of_email_log_v2_ExecutedDate: { k: "2026-05-01" }, count_of_email_log_v2_Gsid: { v: 3 } }, { email_log_v2_SourceId: { v: "p-onboard" }, email_log_v2_EmailTemplateId: { v: "tpl-welcome" }, summarize_month_of_email_log_v2_ExecutedDate: { k: "2026-07-01" }, count_of_email_log_v2_Gsid: { v: 1 } }, { email_log_v2_SourceId: { v: "p-gone" }, email_log_v2_EmailTemplateId: { v: "tpl-gone" }, summarize_month_of_email_log_v2_ExecutedDate: { k: "2026-07-01" }, count_of_email_log_v2_Gsid: { v: 1 } }, { email_log_v2_SourceId: { v: "p-onboard" }, summarize_month_of_email_log_v2_ExecutedDate: { k: "2026-07-01" }, count_of_email_log_v2_Gsid: { v: 2 } }, { email_log_v2_SourceId: { v: "p-onboard" }, email_log_v2_EmailTemplateId: { v: "tpl-old" }, summarize_month_of_email_log_v2_ExecutedDate: { k: "2024-01-01" }, count_of_email_log_v2_Gsid: { v: 2 } }] }], new Map([["p-onboard", {}]]), ["2026-05", "2026-06", "2026-07"]);
+    check("templatesReferenced: the selected programs' rows over the window only, a send with no template id left out, and the latest month with a send per template", isDeepStrictEqual(ref.referenced, ["tpl-welcome"]) && ref.lastSend.get("tpl-welcome") === "2026-07", [ref.referenced, [...ref.lastSend]]);
   }
 
   // ── The ledger: every pitfall and every spike fact names its check ────────
