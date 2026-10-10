@@ -2166,8 +2166,8 @@ S4b opens as it is and takes the presets' months). The browser pane: served from
 
 Owed by: V2, the batched verdict session after S4c, in the consumer workspace with the plugin loaded from `dev`
 (the PR for `feat/jo-dash-s4c-templates` merges on green CI plus its review round, before V2).
-Token: the one `dev-utils handoff --branch feat/jo-dash-s4c-templates` mints for this branch (the bus's Under test
-line names it; this section is keyed to it). The PR to dev, unmerged at banking.
+Token: hb-20261010-01 (minted by `dev-utils handoff --branch feat/jo-dash-s4c-templates` on 2026-10-10; the bus's
+Under test line names it; this section is keyed to it). PR #45 to dev, unmerged at banking.
 Why it is banked: template content, the gap-fill, the Templates tab and its search were built offline against the
 fictional tenant's template payloads and a fixture knowledge base of five docs (one legacy). How a real tenant's
 templates read — a knowledge base that lacks most of the referenced templates (the spike measured ~60% absent), real
