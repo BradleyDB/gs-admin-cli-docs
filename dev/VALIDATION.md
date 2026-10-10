@@ -2232,3 +2232,18 @@ from localhost, light.
   ("Not tracked" on the page and in the report); the plan's `unread` count dropped by those re-read. Pass bar: both
   as he knows them; a template whose editor shows one tracked link but whose bullet reads unreadable or stale-only
   is a finding naming the link map's shape (the reading is defensive on field spellings the spike did not record).
+- T6 (completeness after the split, before T1). S4c ran as two sittings: the first stopped early with ONE unreviewed
+  WIP commit (761958c) and a local carry-over file listing what was left; the second finished from that list. Before
+  pulling anything, V2 confirms the branch holds every part the carry-over named, from the tree alone (on `dev` once
+  PR #45 is merged, else on the branch):
+  - the adapter: `grep -c "template-months\|templatesReferenced\|templateGap\|templateContentOf\|TEMPLATE_GAP_" plugins/gs-superadmin/scripts/engagement.mjs` reads at least 20; `estimate.templates` and `meta.templates` both named in it;
+  - the engine: `grep -c "templatesView\|searchTemplateContent\|templateContent\|templateAvailability\|LINK_READINGS" plugins/gs-superadmin/scripts/engagement-query.mjs` reads at least 12;
+  - the spec: `TEMPLATE_PANEL_TYPES`, `KNOBBED_PANEL_TYPES`, `pageTemplateContent` and the templates panel in BOTH presets in `dashboard-spec.mjs`; the F-486 loop names `"templates"`;
+  - the builder and runtime: `templates-not-on-page` in `dashboard-runtime.mjs`'s LACKS and in `dashboard-page.mjs`'s `pageSnapshot`; `renderTemplatesPanel`, `data-search`, `data-open-template`, `data-tsort`, `tpl-close` in the runtime; `dimensions.templates` in the builder's size walk;
+  - the report: `"Subject"` in both tables of `engagement-report.mjs` and `subject` in both CSV headers;
+  - the doc path: `readLinkTracking` and `linkTrackingBullet` in `doc-lib.mjs`; `renderTemplateDoc` taking `linkRules`; `NON_CONTENT_LINK_RULES` imported by `template-doc.mjs` and `describe-batch.mjs`; `modified`, `linkTracking`, `lastVerified` on jo-report's template entry;
+  - the fixtures and goldens: `templatePayload`, `TEMPLATES_DOMAIN`, a `noSends` step and the legacy `tpl-day7` doc in `acme-tenant.mjs`; `jo email template` answered by `answer()`; the snapshot golden's template rows carry `content` and `lastSendMonth`; the query golden holds the three "templates view" cases; the fixture spec lists a templates panel; the two page goldens embed `data-type="templates"`;
+  - the suites: `node plugins/gs-superadmin/test/engagement.mjs` names "TPL-1" in at least 8 PASS lines; `engagement-query.mjs` prints "A-6 differential"; `dashboard-page.mjs` prints "the Templates tab draws"; `contract-conformance.mjs` prints "templateAvailability reads the marker"; `template-doc.mjs` prints "linkTracking bullet"; the tracer passes with `template-months` in its unit table and `data/reader-shapes.json` naming `builderMetadata.links`;
+  - the prose: SKILL.md step 2 carries the `estimate.templates.planned` ask and the three `<templates-domain>` lines; the README's `--by-template` bullet names the knowledge base; CHANGELOG 0.49.0 and plugin.json 0.49.0 agree;
+  - the ceremony: the bus's Under test line reads hb-20261010-01 with its Blind spots line; the builder comment of 2026-10-10 is on the bus; this section is keyed to the token; the plan's ledger carries the 2026-10-10 S4c line and both As-shipped (S4c) notes.
+  Pass bar: every item present; an absent one is a finding (a "part 2" that never landed), fixed before T1 runs.
