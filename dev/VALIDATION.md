@@ -1299,7 +1299,7 @@ Picks and inputs: as for X0, from `.gs-superadmin/tmp/s1v-picks.md`. One walk fe
 
 ### Result — V2 first sitting @ hb-20261010-01 (tester, 2026-10-10; dev clean and level at c758021, the S4c branch merged; canary matched; production tenant, reads only, one call at a time; paused by Bradley to finish in V2.5, which continues from this block)
 
-Section status: OPEN — X4, X7, X8, X9 owed to V2.5. Inputs as banked, except the pull's program set: Bradley chose the FULL set
+Section status: CLEARED (second sitting, 2026-10-11 @ hb-20261010-01: X4, X7, X8, X9 PASSED; results below the first sitting's). Inputs as banked, except the pull's program set: Bradley chose the FULL set
 (every program with sends in the window, 195) over the three picks for the skill walk, so T1's gap-fill ran over the real referenced
 set and the dashboard's snapshot has text for every template.
 - X0 PASSED (deviation: the full set; the workbook written with openpyxl rather than the xlsx skill, five sheets). The skill planned first
@@ -1324,6 +1324,30 @@ set and the dashboard's snapshot has text for every template.
 - X8 NOT RUN (V2.5): the plain question in a fresh session.
 - X9 NOT RUN (V2.5): the ask before a long pull, plan only.
 - Also measured: the plan's `token.fits` judges the pull alone, not the gap-fill it quotes beside it (F-507).
+
+Second sitting (2026-10-11, the same token; the session resumed in a terminal with --plugin-dir, cwd the repo; two re-logins):
+- X9 PASSED on its bar: with no selector and --accounts the plan read 195 programs / 299 calls / 2115 s; the skill stated it in one line
+  and asked before pulling, offering the pull as planned, --sent-since 90d, or stop. Deviation of record: Bradley chose the pull over
+  the banked stop; it ran in the background as the skill says (315 made + 11 reused, 76 split, 0 retried, 2080 s wall against 2115
+  planned, exit 0, four reconciliation checks ok, pulled-at one second after the run began; 65 shown of 195; a watch list for 55
+  programs). Every call a read; no guard drawn (see the Walk line: unguarded by cwd).
+- X7 PASSED: `estimate.mode` selective ("months before 2026-09 are carried from the snapshot pulled <X0's time>"); the report header
+  says selective and names that time; the caveats block lists the eleven carried months and the time; for one closed carried month
+  Sent, Unique recipients, Delivered, Opened and Open rate are equal on every cell for the three picks across the two snapshots, the
+  new rows marked carried; the two re-read months equal as well. 25 made + 10 reused, 0 retried, 188 s, exit 0. Bar defect: the
+  comparison names --from/--to reports via --snapshot, but the report script takes no month window (those are pull flags); the month
+  was compared through the engine's runQuery over both snapshot files, Z3's method.
+- X8 PASSED, in a fresh workspace session Bradley opened, the question typed with no slash command: this skill ran (not email-report),
+  report mode, 1 of 573 programs selected, "Plan: 1 program, 25 calls, ~3 minutes. Pulling now." stated before the pull (Bradley's
+  report), and the answer quoted the report's Programs row as written (the row read from the file).
+- X4 PASSED (invoked by the tester session, as X0 was; not a fresh session in the strict sense): the estimate stated before the pull
+  (3 programs, 75 calls, 547 s, background); the watch list present for all three programs with a low-engagement and a deliverability
+  table each; the minimum delivered (10) stated; every low-engagement row at 40 delivered or more; no "All other accounts" or "No
+  company link" row (the one hit is the glossary's sentence); the pick, fixed before reading as the first row of P-busy's low-engagement
+  table, equal to three direct counts through the spike's runner filtered on the company over the window (Sent, Delivered, Opened);
+  Emails by step present with step and variant names (10 rows); Participant records numbers on all three rows; the workbook holds
+  seven sheets (openpyxl under the xlsx skill; the first sitting's script). 77 made + 12 reused, 0 retried, 480 s, exit 0, five
+  reconciliation checks ok; the pulled-at one second after the run began (X6's clause on X4's report holds).
 
 
 ## HLT-1 / DSH-1 / DSH-5 — health facts on a real tenant with masking holding on real messages, grouping by program characteristics and by folder or name, and a spec export / import round trip (banked 2026-10-04, builder, Session S3; verdict at V2)
@@ -2275,10 +2299,15 @@ S4b opens as it is and takes the presets' months). The browser pane: served from
 
 ### Result — V2 first sitting @ hb-20261010-01 (tester, 2026-10-10; dev clean and level at c758021, the S4c branch merged; canary matched; production tenant, reads only, one call at a time; paused by Bradley to finish in V2.5, which continues from this block)
 
-Section status: OPEN on D0's remaining choices only (V2.5); D1 to D8 CLEARED.
+Section status: CLEARED (second sitting, 2026-10-11: D0's six remaining choices ruled with the pages open; D1 to D8 CLEARED at the first).
 - D0: the leaders' About naming the host CONFIRMED; the kpi "usual" (the window's finished months) CONFIRMED with a backlog note.
   Bradley asked for visuals before the rest; owed to V2.5 with the page open: the three customer-list panels, the one-time view's
   months, the health notices' refresh-only line, the About "How to use" prose, Sent not hideable beside a rate, the 5% threshold.
+  Second sitting, with the round's admin page and the accounts-on scratch build open: (2) three panels CONFIRMED, the parenthetical
+  dropped from all three titles; (3) the months knob CONFIRMED as a display width (the Health tab ignores the month filter by design;
+  the layout ruling, tabs above a per-tab filter bar, goes to UX-1); (4) refresh-only notices CONFIRMED; (5) generated prose CONFIRMED as
+  the mechanism, wording to UX-1; (7) Sent locked beside a rate CONFIRMED, the Columns control's presentation a UX-1 discussion item;
+  (8) 5% fixed CONFIRMED. Backlog from (2): a confidence-adjusted engagement score column (LTR-17).
 - D1 CLEARED: both pages built; the admin page's health tables hold no sample table (failureSamples absent) and every bounce row carries
   a category (2705 rows, 0 null; "other" never negative); health bytes 0.21 MB, 20% of the data share; no warning on either page.
 - D2 CLEARED (headless Chrome, light): the page opens on every program with status badges on every row; "Running now" narrows to
@@ -2396,14 +2425,16 @@ from localhost, light.
 
 ### Result — V2 first sitting @ hb-20261010-01 (tester, 2026-10-10; dev clean and level at c758021, the S4c branch merged; canary matched; production tenant, reads only, one call at a time; paused by Bradley to finish in V2.5, which continues from this block)
 
-Section status: OPEN on T0's one remaining choice only (V2.5); T1 to T6 CLEARED.
+Section status: CLEARED (second sitting, 2026-10-11: T0's last choice ruled with the scratch build open; T1 to T6 CLEARED at the first).
 - T0: TPL-1's six choices CONFIRMED (the month grain with a backlog note on a later day-grain option; the orphan doc as missing; the
   orchestrator drives the gap-fill, after three rounds of scenarios, with the S5 runner's template branch recorded under PUB-1; the
   sends-referenced set; unreadable not re-read; 3 s a template). TPL-2 with the page open: the columns OVERRULED (an edited-after-last-
   send state column yes / no / unclear / unknown beside a separate last-modified column, both sortable, a filter as a maybe; the flag
   words fold into it), the drawer wording KEPT, the Text button in the Emails and Steps tables KEPT (open in place noted for S4d), the
   search OVERRULED to cover a template's name whether or not its text is on the page; the text-less leaders' Templates tab owed to
-  V2.5 (a scratch build is ready for it).
+  V2.5 (a scratch build is ready for it). Second sitting: (5) the tab KEPT on a text-less leaders' page, its notice REMOVED (names and
+  figures only; naming an absent search invites a request for it); subjects shown but not searchable on a leaders' page is backlog
+  (LTR-16); the About tab's text-less sentence drops its "no search" clause with it (UX-1 wording).
 - T1 CLEARED: `estimate.templates` named the referenced count (278: 259 from sends plus 19 design-only), missing 164, behind 10,
   unread 104, 834 s, the domain and id field the manifest records, and the three files beside plan.json; the skill asked (planned over
   50) with the counts and seconds; the three commands ran as written with the placeholders substituted (register 164: 153 added, 11
