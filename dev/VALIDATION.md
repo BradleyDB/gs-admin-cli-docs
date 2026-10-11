@@ -1297,6 +1297,35 @@ Picks and inputs: as for X0, from `.gs-superadmin/tmp/s1v-picks.md`. One walk fe
     `caveatCount` (compared by script). Walk: plan 8 calls / 43 s, pull 36 calls / 269 s wall against an estimate of
     35 calls / 327 s; no step made the walk stop or guess. F-481 VERIFIED.
 
+### Result — V2 first sitting @ hb-20261010-01 (tester, 2026-10-10; dev clean and level at c758021, the S4c branch merged; canary matched; production tenant, reads only, one call at a time; paused by Bradley to finish in V2.5, which continues from this block)
+
+Section status: OPEN — X4, X7, X8, X9 owed to V2.5. Inputs as banked, except the pull's program set: Bradley chose the FULL set
+(every program with sends in the window, 195) over the three picks for the skill walk, so T1's gap-fill ran over the real referenced
+set and the dashboard's snapshot has text for every template.
+- X0 PASSED (deviation: the full set; the workbook written with openpyxl rather than the xlsx skill, five sheets). The skill planned first
+  (35 calls / 267 s, stated in one line), raised the template gap-fill ask (278 planned, 834 s), ran email-report's three commands on
+  Bradley's "fill all" (278 documented, 0 failed, 556 s), re-issued the plan (planned 0), pulled with the same run (36 made + 10 reused,
+  exit 0, reconciled), wrote the report and the final block in the literal shape; every call a read; no payload read into the session.
+- X1 PASSED: "Not included", the accounts-off reason in words, `--accounts` named; no table, list or zero; Accounts reached on every
+  row; Participant records a dash on 65 of 65 rows with the note and `--step-detail`; both caveats present.
+- X2 PASSED: four direct counts through the spike's runner from the glossary alone (object, standing filters, date field, the flag values,
+  the distinct person path) equal the one-program one-month report row on Sent, Delivered, Opened and Unique recipients; the open rate
+  equals Opened ÷ Delivered to one decimal.
+- X3 PASSED: Bradley's UI read of the program's four email steps (survey, reminder, send, send 4) against the report's three template
+  rows: the two named steps match by name and order and the third template reads "(on 2 steps)", the two send steps.
+- X4 NOT RUN (V2.5): the account-level walk with `--accounts --step-detail --xlsx` (about 40 minutes of token).
+- X5 PASSED: Survey participants, Submitted and Partially submitted equal the program's analytics page as Bradley read it today
+  (548 / 67 / 36); the page's 2 extra submissions are internal test responses, which the rule leaves out; the section says all time.
+- X6 PASSED: the report's Data pulled time sits inside the run step's wall clock (one second after the step began; the plan ran 20
+  minutes earlier), so the F-482 clause holds; every click cell equals the snapshot's state (65 program rows, 119 template rows: a
+  number when tracked, "Not tracked", a number with "(tracking unknown)"); the caveats name the incomplete period, opens, content links,
+  CC copies, other sources and the deleted program with counts.
+- X7 NOT RUN (V2.5): `--previous` over this sitting's report snapshot.
+- X8 NOT RUN (V2.5): the plain question in a fresh session.
+- X9 NOT RUN (V2.5): the ask before a long pull, plan only.
+- Also measured: the plan's `token.fits` judges the pull alone, not the gap-fill it quotes beside it (F-507).
+
+
 ## HLT-1 / DSH-1 / DSH-5 — health facts on a real tenant with masking holding on real messages, grouping by program characteristics and by folder or name, and a spec export / import round trip (banked 2026-10-04, builder, Session S3; verdict at V2)
 
 Owed by: V2, the batched verdict session after S4c, in the consumer workspace with the plugin loaded from `dev`
@@ -1843,6 +1872,52 @@ other check of this section stands as last re-banked.
   unlisted 0; `kb-steps.json`'s stamp moved. The token expired before the refresh and Bradley logged in again; no call
   reached the tenant on the expired token. Guard-wiring for the round: see the Walk line.
 
+### Result — V2 first sitting @ hb-20261010-01 (tester, 2026-10-10; dev clean and level at c758021, the S4c branch merged; canary matched; production tenant, reads only, one call at a time; paused by Bradley to finish in V2.5, which continues from this block)
+
+Section status: CLEARED. Every check judged; Y2's payload clause logged (F-510), Y12's wording logged (F-508); the spike arm answered.
+- Y1 stands CLEARED (S3b rounds). This sitting's full pull with health, the KB, the tenant's 55-pattern category file and two test
+  accounts: plan 449 calls / 3473 s (95 s inside the token), run 443 made + 19 reused, 0 split, 0 retried, exit 0, reconciled, all
+  eleven parts read with their basis, 1757 s wall; health calls 404 against 408 planned (within 2x; the seconds 2x high); the bounce
+  categories 330 of the calls (55 x 6 classes: F-504).
+- Y2 re-read on this pull: the snapshot's 2740 health texts carry 0 addresses, 0 five-digit runs, 0 IPv4, 0 local addresses, 0 values
+  after "Invalid value"; distinct masked bounce texts to bounced attempts order 10^-4. The sample PAYLOAD files' message fields (3148
+  messages, 50 files): 5 messages carry an address whose domain the server wrote with a space (the email rule misses it) plus its bare
+  local part, 2 carry a bare `@domain`, 3 carry five-digit URL paths (protected by design); none of the 5 reached the snapshot. Payload
+  clause FAILED on those 5: F-510 (polish, proposed WONTFIX under ruling 5 with the category remedy; Bradley's call at V2.5).
+- Y4 CLEARED: `bounce-reasons-sum-to-bounced` ok with 0 closed-month mismatches; for the pick and the closed month one direct count of
+  bounced attempts equals the program-month's bounceReasons rows summed (16 category rows) and the send table's bounced.
+- Y5 CLEARED: direct bounced, rejected and both-flags counts for the pick's month give bounced + rejected - both = the snapshot's `failed`;
+  no attempt on that program-month carries both flags (0), so the union is unexercised here; the report's error rate is failed over Sent.
+- Y7 CLEARED: the survey program's direct group-by of participant state equals the snapshot's three state rows exactly; the direct
+  COUNT of its refused rows and SUM of occurrences equal its per-program `participantFailures` row (one row per program since S3b).
+  No `health-states` batch timed out (4 calls).
+- Y8 CLEARED on its as-of and caveat clauses: every documented program has a schedules row with `asOf` the doc's `last_verified` and
+  the `schedules-from-kb` caveat is present (195 with a doc, 0 without). The `lastRunSuccess` clause is moot since F-491: the run-state
+  fields are unset on this tenant and the live-read was retired; schedules are read as configuration.
+- Y9 CLEARED: the spec's rules (surveys; internal users; recurring; one-off; the survey models inside Surveys) resolved with counts
+  only on stdout (0 ungrouped at supergroup level; the group level 157 Ungrouped before the folder and name rules); `recurring`
+  unknown for 0 programs = 0 without a full doc; the suggestion file is order 60 KB with no address. Bradley checked ten assignments:
+  8 read right (a Dynamic Program that sends a survey among them), the 2 "Recurring" he first disputed he then read as recurring by
+  hand / unsure (a daily cron boxed into one day, re-run through repeated windows). Not a wrong assignment; the one-run-window
+  classification is F-502's.
+- Y10 CLEARED: two folders labelled by Bradley hold exactly their programs (28 and 16; the UI folder holds more, the others sent
+  nothing in the window), a third unlabelled folder reads "Folder <id>" (11); names follow a deliberate prefix convention (84 programs,
+  tenant-specific), kept as a startsWith rule for one family (25) after a generic segment rule produced a tail of one-program groups;
+  with `--previous` an earlier snapshot of the same programs the line reads "0 new programs ungrouped"; 85 programs Ungrouped at
+  group level.
+- Y11 CLEARED: the export holds no machine path (order 5 KB, keys kind / exportVersion / exportedAt / tenantHost / spec); the import
+  into a scratch copy of the KB is byte-identical (`cmp`); a second import is refused without `--replace`; the sandbox import is refused
+  naming both tenants and writes nothing.
+- Y12 CLEARED: every setting reads as a sentence; the group rules in order with labels; the pages' panels described. One wording
+  logged (F-508: a lowest-N sort described as "the top N").
+- Y13 to Y20 stand as CLEARED in the earlier rounds.
+- Spike arm (p1) ANSWERED (SPIKE-NOTES): the history object exists (5 fields: a reason STRING that is filterable, groupable and
+  sortable; source name and type; a created-at DATETIME; the Gsid), with no failed-participant id and no lookup to the program, so
+  program-level history is impossible and tenant-wide counts by month, source type and reason are what it supports; order 10^6 rows
+  over the dashboard's window (10^4 to 10^6 a month; one source type carries nearly all), retention back to 2022-05. (p2) stands as
+  measured at S3b (`ModifiedAt` moves per refusal); (p3) stays the shipped basis.
+
+
 ## DSH-2 — the dashboard page built over a real snapshot: filtered in a browser, its size measured, a CSV export opened in a spreadsheet (banked 2026-10-04, builder, Session S4a; verdict at V2)
 
 Owed by: V2, the batched verdict session after S4c, in the consumer workspace with the plugin loaded from `dev`
@@ -1962,6 +2037,42 @@ either serve the page's folder on localhost or open the file in a desktop browse
   the summary line with the status default, the first tab's table; the controls show as disabled.
 - Z10 (column choices are remembered). Hide two columns on the program table, reload: still hidden; open the
   leaders' page: its own columns, untouched; a private window: the panel's own columns.
+
+### Result — V2 first sitting @ hb-20261010-01 (tester, 2026-10-10; dev clean and level at c758021, the S4c branch merged; canary matched; production tenant, reads only, one call at a time; paused by Bradley to finish in V2.5, which continues from this block)
+
+Section status: CLEARED. Every check judged; F-503 and F-505 logged from it.
+- Z0 stands RULED (spot check).
+- Z1 CLEARED, both halves: over this sitting's dashboard snapshot both pages written (admin 2.33 MB, data 1.05 MB of it; exec 0.70
+  MB), the size report per page with the four shares and every non-empty packed table's rows and bytes, `ungrouped` the same line
+  `resolve` printed, no warning; over the kept accounts-on pre-failure snapshot (1.84 MB / 0.65 MB) the Health tab's error-rate tile
+  reads a dash with the predates tooltip, the error-rate table draws, and the `measure-not-in-snapshot` notices carry the refresh line;
+  no zero anywhere.
+- Z2 stands CLEARED (spot check) and re-read: the unpacked `gs-data` of both pages is `isDeepStrictEqual` to `pageSnapshot` of the
+  grouped snapshot; with every status the Programs table equals the report written over the same snapshot on 5 of 5 picked programs.
+- Z3 CLEARED (headless Chrome over localhost, then Bradley by hand): one closed month removes the incomplete marks (26 -> 0); a
+  search word narrows the list to 50 of 195 by partial match; Select none reads 0 of 195, two ticked "2 of 195 selected"; a
+  supergroup narrows to 64 and a group inside it to 22; removing one status hides 123 "(showing Active, Draft, Stopped)" and
+  restoring it returns; external recipients only lowers the pick's sends and the total row and never raises; Reset returns the
+  default. Two recorded states (one month; external) re-run through `runQuery` over the snapshot file: equal on every figure. No
+  console error.
+- Z4 CLEARED: the hash holds months, codes, ids and positions only (`#m=…`, `#rc=external`, `#p=…`), reloads to the same view in a
+  fresh tab.
+- Z5 CLEARED: Health on draws; a build with the Templates tab off shows "Templates (off)" and opens to the tab-off notice with needs
+  rebuild and a copy line; the recipients toggle is enabled (internal domains named); the three customer-list panels and the account
+  filter show the accounts-off notice over this snapshot, and over the accounts-on snapshot the account control lists order 10^3
+  accounts and the most-engaged list draws; the leaders' page has no Health or Templates tab, no account names (none pulled: the grain
+  was off on every pull this round), and the account panels are absent by preset.
+- Z6 CLEARED: the Programs CSV under one month and external recipients with two columns hidden: 39 rows = the table's rows, the
+  header Status plus the visible metrics, rates as fractions, opened in Excel with 0 formula cells; no name starts with an operator, so
+  the neutralisation is unexercised here; the filename carries the dashboard, page, panel and the pull's time; no request after the
+  click.
+- Z7 CLEARED: admin 2.33 MB, exec 0.70 MB (both under 5 MB with accounts off); DOMContentLoaded 211 ms; a status change redraws
+  sub-second by the driver and by Bradley's feel.
+- Z8 CLEARED: three names with an ampersand, bars and commas show literally in the list, the table and the badges; 0 stray tags.
+- Z9 CLEARED: with scripts disabled the default view is readable (the data-pulled line, the summary, 195 rows) and the controls are
+  disabled.
+- Z10 CLEARED: two hidden columns survive a reload (the panel's localStorage key); the leaders' page's own columns untouched.
+
 
 ## F-487 — Power List sources on a real tenant: the refresh capture and both deps surfaces (banked 2026-10-06, builder, feat/f487-power-list-sources; verdict at the branch's handoff token — CLEARED 2026-10-06 @ hb-20261006-03, by Bradley's ruling on P13; shipped as plugin 0.43.4)
 
@@ -2162,6 +2273,41 @@ S4b opens as it is and takes the presets' months). The browser pane: served from
   a spreadsheet. Pass bar: one row per judged program with its list and why; one row per category with its table; no
   formula evaluated; the file names carry the dashboard, the page, the panel and the pull's time.
 
+### Result — V2 first sitting @ hb-20261010-01 (tester, 2026-10-10; dev clean and level at c758021, the S4c branch merged; canary matched; production tenant, reads only, one call at a time; paused by Bradley to finish in V2.5, which continues from this block)
+
+Section status: OPEN on D0's remaining choices only (V2.5); D1 to D8 CLEARED.
+- D0: the leaders' About naming the host CONFIRMED; the kpi "usual" (the window's finished months) CONFIRMED with a backlog note.
+  Bradley asked for visuals before the rest; owed to V2.5 with the page open: the three customer-list panels, the one-time view's
+  months, the health notices' refresh-only line, the About "How to use" prose, Sent not hideable beside a rate, the 5% threshold.
+- D1 CLEARED: both pages built; the admin page's health tables hold no sample table (failureSamples absent) and every bounce row carries
+  a category (2705 rows, 0 null; "other" never negative); health bytes 0.21 MB, 20% of the data share; no warning on either page.
+- D2 CLEARED (headless Chrome, light): the page opens on every program with status badges on every row; "Running now" narrows to
+  Active; the headline tiles show the usual ("Usual a month: …") and the no-previous-pull line; the trend and the bars draw with the
+  current month shaded and a table under each; Programs, Emails, Steps (the step-detail-off notice) and Survey responses draw; the
+  three customer lists show the accounts-off notice; the Health tab's six panels draw: send health against the usual, program health
+  with the alarms first and the chips 14 / 30* / 60 / 90 moving the lists (one program to Working as expected at 90), the failure
+  reasons with the expected toggle, the "Other" signal (8% of bounces, over a few percent) with the terminal line, the schedules
+  (225 rows), the one-time programs (68), the error rate by program (195); the About tab's seven parts; the caveats footer.
+- D3 CLEARED on Bradley's read (dark: "seems ok to me right now with a cursory overview"); the designer's pass is S4d.
+- D4 CLEARED: the leaders' page opens on the closed months with "Include <month> (provisional)" one click away (the click shows the
+  current month); headline, two charts, By group (14), the ten highest and ten lowest with Sent beside the rate; no Health or Templates
+  tab; 0 occurrences of either internal domain, either unsubscribe link or any template subject in the file; the recipients sentences
+  read with counts ("the company's own 2 email domains"); definitions carry no source detail.
+- D5 CLEARED: 5 of 5 picked programs equal the report over the same snapshot on sent, unique recipients, delivered, opened and open
+  rate; the Sent tile equals the total row; the Program health rows equal `programHealth(snapshot, {days: 30})` over the file
+  (schedule-ended 29, admitting-nobody 5, no-recent-sends 2, finished 5, cannot-judge 3, ok 21).
+- D6 CLEARED with a finding: the lists "in general seem right" to Bradley; his question why identical one-and-done campaigns sit on
+  Finished (no schedule documented) and on Schedule ended (a daily cron boxed into one day) is F-502, ruled normal by him after the
+  two-day case was named; the category definitions read as product wording; the "Other" share and its terminal line match the
+  snapshot (8%).
+- D7 CLEARED: a build over the Oct-3 snapshot with a 3-day freshness shows the stale banner (age, cadence, threshold) with the refresh
+  line on the admin page and without it on the leaders'; a build over the spot snapshot whose participant-failures part read
+  call-failed shows the admin banner naming the part and none on the leaders' page.
+- D8 CLEARED: the Program health CSV (65 rows: Program, Status, List, Last send, Days silent, Why) and the failure-reasons CSV (70 rows:
+  Table, Reason, Kind, Expected, Count, Usual a month, Change) open in Excel with 0 formula cells; names carry the dashboard, page, panel
+  and the pull's time.
+
+
 ## TPL-1 / TPL-2 — the templates line on a real tenant: template text in the snapshot and the gap-fill into the knowledge base, the Templates tab's search against email-report `search`, the drawer, the page size with text, and the click tracking state read from each template's own link settings (banked 2026-10-10, builder, Session S4c; verdict at V2)
 
 Owed by: V2, the batched verdict session after S4c, in the consumer workspace with the plugin loaded from `dev`
@@ -2247,3 +2393,40 @@ from localhost, light.
   - the prose: SKILL.md step 2 carries the `estimate.templates.planned` ask and the three `<templates-domain>` lines; the README's `--by-template` bullet names the knowledge base; CHANGELOG 0.49.0 and plugin.json 0.49.0 agree;
   - the ceremony: the bus's Under test line reads hb-20261010-01 with its Blind spots line; the builder comment of 2026-10-10 is on the bus; this section is keyed to the token; the plan's ledger carries the 2026-10-10 S4c line and both As-shipped (S4c) notes.
   Pass bar: every item present; an absent one is a finding (a "part 2" that never landed), fixed before T1 runs.
+
+### Result — V2 first sitting @ hb-20261010-01 (tester, 2026-10-10; dev clean and level at c758021, the S4c branch merged; canary matched; production tenant, reads only, one call at a time; paused by Bradley to finish in V2.5, which continues from this block)
+
+Section status: OPEN on T0's one remaining choice only (V2.5); T1 to T6 CLEARED.
+- T0: TPL-1's six choices CONFIRMED (the month grain with a backlog note on a later day-grain option; the orphan doc as missing; the
+  orchestrator drives the gap-fill, after three rounds of scenarios, with the S5 runner's template branch recorded under PUB-1; the
+  sends-referenced set; unreadable not re-read; 3 s a template). TPL-2 with the page open: the columns OVERRULED (an edited-after-last-
+  send state column yes / no / unclear / unknown beside a separate last-modified column, both sortable, a filter as a maybe; the flag
+  words fold into it), the drawer wording KEPT, the Text button in the Emails and Steps tables KEPT (open in place noted for S4d), the
+  search OVERRULED to cover a template's name whether or not its text is on the page; the text-less leaders' Templates tab owed to
+  V2.5 (a scratch build is ready for it).
+- T1 CLEARED: `estimate.templates` named the referenced count (278: 259 from sends plus 19 design-only), missing 164, behind 10,
+  unread 104, 834 s, the domain and id field the manifest records, and the three files beside plan.json; the skill asked (planned over
+  50) with the counts and seconds; the three commands ran as written with the placeholders substituted (register 164: 153 added, 11
+  matched existing; mark 114 stale; describe-batch 278 selected, 278 documented, 0 failed, `moreRemaining` false), each doc carrying the
+  `- linkTracking:` bullet (220 links-none-tracked, 24 tracked-link-present, 34 unreadable); the plan re-issued unchanged read planned
+  0; the run reports `honesty.templates.missing` 0 and the Subject column reads on 119 of 119 template rows. Orders of magnitude: the
+  referenced set 10^2, the gap about 59% (the spike measured ~60%). Wall time 556 s against 834 estimated.
+- T2 CLEARED: two templates Bradley knows were edited after their last send read "yes, on <day>" (one confirmed, one "mostly true");
+  two he knows were not read "no (text as of <day>)", one of them sent this month; the drawer agrees with the rows.
+- T3 CLEARED: three terms against `/gs-superadmin:email-report search` typed by Bradley over the same KB (its sweep reconciled on 3
+  pages; its gap-fill skipped on his word, 738 gaps across the whole KB): a plain word 20 = 20 in scope (7 more out of scope); two
+  words with all the words 56 = 56 (5 out of scope); the token-label term 35 on the page against 1 in scope from email-report, the 34
+  extra every one a merge-field label (both words only inside `{…}` labels in the rendered text), the documented divergence; the
+  page's snippets name the field and mark the hits.
+- T4 CLEARED: the drawer's subject, body with tokens as field labels, the as-of day, the caveat and the modified / last-send line
+  recognised by Bradley; the body sits in a `<pre>`; 0 images, scripts or anchors in it; the leaders' page carries none of the text.
+  The admin page's template text is 0.53 MB, 51% of its data share; the exec entry 0.07 MB with the text withheld; a warning did not
+  fire. Bradley's readability note on the plain-text rendering goes to the backlog.
+- T5 CLEARED: a never-clicked template whose editor shows tracked links reads tracked-link-present in its doc and a real 0% on the page
+  and in the report; a template whose three content links are all untracked reads links-none-tracked and "Not tracked"; a template
+  with no readable link list reads "(tracking unknown)"; the plan's unread count fell from 104 to 0 after the fill.
+- T6 CLEARED, first, from the tree: every item present; six suites green (engagement 338, query 134, page 159, contract 293,
+  template-doc, the tracer); two bank proxies read differently than written with nothing absent behind them (the engine identifier
+  line count 7 against "at least 12", all five names defined once each; the exec golden carries no Templates panel because the fixture's
+  exec tab is off; the contract and tracer checks live in the suites' source, which prints summaries).
+
