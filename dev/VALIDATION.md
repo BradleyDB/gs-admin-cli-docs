@@ -142,7 +142,7 @@ scorecard domain holds only 4 selectable entries, so rules-engine-chains (19) to
 
 Owed by: the same tester round @ hb-20260914-01 (Session B-V; branch round-b-describe-loop, PR #19).
 Tenant: the sandbox. Reads only against the tenant; the writes are the local manifest and docs.
-Rig: the binding deadline must be the TOKEN, not the harness — run the batch from a terminal
+Rig: the binding deadline must be the hb-20261011-02, not the harness — run the batch from a terminal
 (not the tool shell's ~2-minute timeout) on a domain with more undocumented or
 `--upgrade`-eligible assets than the token's usable life covers at the observed rate (setup
 Phase 1's pre-flight formula; at ~3 s/asset a fresh token's usable life covers roughly 600
@@ -568,7 +568,7 @@ exit 1 (Git Bash), and `whoami` immediately after still printed `Token:        v
 Owed by: a tester session on a machine whose `gs-admin --version` prints 1.0.10, with a live tenant, before the next
 release (named on the round's Blind spots line). Plan item: gs-fortress build-kickoffs-1.0.10.md CP-6 (a).
 Tenant: the sandbox. Reads only.
-Rig: the binding deadline is the TOKEN, not the harness — this check spans most of one token lifetime (~60 min), so
+Rig: the binding deadline is the hb-20261011-02, not the harness — this check spans most of one token lifetime (~60 min), so
 run the reads from a terminal or a background loop, not the tool shell's ~2-minute timeout (the F-458 / #13 rig).
 Checks (b) and (c) below ride the same token; plan them into this run.
 
@@ -2462,12 +2462,12 @@ Section status: CLEARED (second sitting, 2026-10-11: T0's last choice ruled with
   exec tab is off; the contract and tracer checks live in the suites' source, which prints summaries).
 
 
-## DSH-3 — the dashboard interview walked by Bradley on a real tenant (banked 2026-10-12, builder, Session S5 @ TOKEN; verdict at S5-V)
+## DSH-3 — the dashboard interview walked by Bradley on a real tenant (banked 2026-10-12, builder, Session S5 @ hb-20261011-02; verdict at S5-V)
 
 Owed by: S5-V, the verdict session for S5, in the consumer workspace with the plugin loaded from the working tree
 (`claude --plugin-dir <repo>\plugins\gs-superadmin`, started FROM the workspace so the guard is armed; LTR-19), on
 the production tenant, reads only.
-Token: TOKEN (minted by `dev-utils handoff --branch feat/jo-dash-s5-entry-command`; the bus's Under test line names
+Token: hb-20261011-02 (minted by `dev-utils handoff --branch feat/jo-dash-s5-entry-command`; the bus's Under test line names
 it; this section is keyed to it). PR to dev, unmerged at banking.
 Why it is banked: the interview was built and walked offline against the fictional tenant and the stand-in CLI
 (test/dashboard.mjs, 55 checks). How its questions READ to the person they are for, whether the proposed groups make
@@ -2529,12 +2529,12 @@ and a local PNG or JPEG logo.
   another user name (`--by other`), asks for `next`. Pass bar: refused naming the holder and the time; `--take-over`
   continues it and records whom it was taken from; `list` shows the draft with its holder.
 
-## PUB-1 — the refresh runner on a real tenant: twice for the delta, the lock, the tenant refusal, the expired token, health-only, re-documentation (banked 2026-10-12, builder, Session S5 @ TOKEN; verdict at S5-V)
+## PUB-1 — the refresh runner on a real tenant: twice for the delta, the lock, the tenant refusal, the expired token, health-only, re-documentation (banked 2026-10-12, builder, Session S5 @ hb-20261011-02; verdict at S5-V)
 
 Owed by: S5-V, as above; the production tenant, reads only (the refresh issues only the adapter's reads and
 describe-batch's `jo p describe` / `jo email template` reads: every one catalogued non-mutating; the guard should ask
 on none of them).
-Token: TOKEN. Why it is banked: the refresh was built against the stand-in CLI. The lock, the tenant refusal, the
+Token: hb-20261011-02. Why it is banked: the refresh was built against the stand-in CLI. The lock, the tenant refusal, the
 token stop and resume, the health-only timing and the re-documentation of a program Bradley edits need a real tenant,
 a real login that expires, and a second tenant on the CLI. No tenant data leaves the workspace.
 
@@ -2583,9 +2583,9 @@ Bradley can edit harmlessly in the UI (a description change is enough: it moves 
   (or a copy) `… import --file <file>` and `… refresh <dash>`. Pass bar: the import lands the spec and the snapshot;
   the refresh is selective with a delta against the exported pull.
 
-## UX-2 — the brand walk with Bradley's real brand input (banked 2026-10-12, builder, Session S5 @ TOKEN; verdict at S5-V)
+## UX-2 — the brand walk with Bradley's real brand input (banked 2026-10-12, builder, Session S5 @ hb-20261011-02; verdict at S5-V)
 
-Owed by: S5-V, in the same sitting as DSH-3 I9. Token: TOKEN. Why it is banked: the brand step was exercised only
+Owed by: S5-V, in the same sitting as DSH-3 I9. Token: hb-20261011-02. Why it is banked: the brand step was exercised only
 over hand-written tokens and a 1x1 fixture PNG (test/dashboard.mjs). A real guidelines file, a real logo and Bradley's
 eye on the themed page cannot be had offline. The brand file stays in the workspace; only the extracted values and the
 encoded logo enter the spec; nothing of it is copied here.
