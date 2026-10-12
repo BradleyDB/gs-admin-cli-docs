@@ -1,0 +1,4 @@
+{
+  "colors": { "fg": "#102a43", "muted": "#486581", "bg": "#f7fbff", "soft": "#e6f0fa", "line": "#c5d5e6", "control": "#5a7390", "accent": "#0b57d0", "note": "#e3edf9", "shade": "#d9e6f4" },
+  "series": ["#0b57d0", "#c2410c", "#047857"]
+}

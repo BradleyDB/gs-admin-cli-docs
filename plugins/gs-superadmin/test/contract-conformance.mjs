@@ -841,11 +841,18 @@ try {
           /knobs\.radius is not a knob of a templates panel/.test(runNode(WRITER, ["set", "--kb", KB, "--slug", "t11-health", "--set", "pages.0.panels.2.knobs=" + JSON.stringify({ radius: 2 })]).stderr));
     }
     check("T-11: schemaVersion is 1 and any other value is refused loudly", T11_SCHEMA_VERSION === 1 && [2, 0, "1", null].every((v) => { try { openSpec({ ...fixture, schemaVersion: v }); return false; } catch (e) { return /refusing to read it \(T-11\)/.test(e.message); } }));
+    // Additive on T-11 (UX-1, S4d): `theme` is optional; present, its members are exactly these, each optional, the
+    // colours as #rrggbb, the logo a PNG or JPEG data URI; a spec written before it existed still opens (the fixture).
+    const themed = { ...fixture, theme: { colors: { fg: "#102a43" }, dark: { bg: "#0f1a26" }, series: ["#0b57d0"], seriesDark: ["#4d8ef0"], font: "Georgia, serif", radius: 4, logo: null, notes: [{ token: "font", given: "X", replacedWith: "Y", reason: "z" }] } };
+    const themeKeys = (t) => Object.keys(t).sort().join(",");
+    check("T-11: theme (additive, UX-1) is optional and, when present, exactly {colors?, dark?, series?, seriesDark?, font?, radius?, logo?, notes?}: the committed fixture carries none and opens; a spec with every member opens; an unknown member, a colour not as #rrggbb and an SVG logo are each refused by field",
+      !("theme" in fixture) && openSpec(themed) !== null && themeKeys(themed.theme) === "colors,dark,font,logo,notes,radius,series,seriesDark" &&
+        [[{ nope: 1 }, "theme.nope"], [{ colors: { fg: "blue" } }, "theme.colors.fg"], [{ logo: "data:image/svg+xml;base64,PHN2Zz4=" }, "theme.logo"], [{ series: [] }, "theme.series"]].every(([t, path]) => { try { openSpec({ ...fixture, theme: t }); return false; } catch (e) { return e.message.includes(path); } }));
     const src = readFileSync(WRITER, "utf8");
     const header = src.slice(src.indexOf("// ── T-11 ·"), src.indexOf("import { existsSync"));
     const named = (k) => new RegExp("@property \\{[^\\n]*\\} \\[?(params\\.)?" + k + "\\]?( |$)", "m").test(header);
     const PINNED = ["schemaVersion", "kind", "slug", "title", "owner", "purpose", "tenantHost", "sources", "globalFilters", "accounts", "groups", "health", "pages", "freshness", "refresh", "publish", "native",
-      "adapter", "params", "windowMonths", "selector", "internalDomains", "unsubscribeLinks", "testAccounts", "pinnedAccounts", "stepDetail", "repullMonths", "rules", "overrides", "level", "preset", "statusDefault", "dateDefault", "tabs", "panels", "accountNames", "sourceDetail", "templateContent", "query", "knobs", "columns"];
+      "adapter", "params", "windowMonths", "selector", "internalDomains", "unsubscribeLinks", "testAccounts", "pinnedAccounts", "stepDetail", "repullMonths", "rules", "overrides", "level", "preset", "statusDefault", "dateDefault", "tabs", "panels", "accountNames", "sourceDetail", "templateContent", "query", "knobs", "columns", "theme"];
     check("T-11: the writer's header is marked FROZEN and names every pinned field", /FROZEN \(DSH-1, 2026-10-04\)/.test(header) && PINNED.every(named), PINNED.filter((k) => !named(k)));
   } finally {
     removeTempDir(t11);

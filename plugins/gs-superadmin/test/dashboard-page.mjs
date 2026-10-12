@@ -32,7 +32,7 @@ import { isDeepStrictEqual } from "node:util";
 import vm from "node:vm";
 import { makeTempDir, removeTempDir, writeFiles, runNode } from "../../../test/rig.mjs";
 import { buildPage, pageModel, pageSnapshot, packTable, inlinedSources, pageFileName, aboutSettings, PAGE_BUDGET, TOKENS } from "../scripts/dashboard-page.mjs";
-import { createDashboard, mount, unpackSnapshot, unpackTable, csvCell, csvText, esc, LACKS, NOT_LACKS, NEEDS, COPY_LINES, ENTRY_COMMAND, HEALTH_DAY_OPTIONS, PAGE_MODEL_VERSION } from "../scripts/dashboard-runtime.mjs";
+import { createDashboard, mount, unpackSnapshot, unpackTable, csvCell, csvText, esc, LACKS, NOT_LACKS, NEEDS, COPY_LINES, ENTRY_COMMAND, HEALTH_DAY_OPTIONS, PAGE_MODEL_VERSION, cronWords } from "../scripts/dashboard-runtime.mjs";
 import * as engine from "../scripts/engagement-query.mjs";
 import { openSpec, SPEC_DESCRIPTIONS, PRESETS, presetPanels, describeSpec } from "../scripts/dashboard-spec.mjs";
 import { applyGroups } from "../scripts/dashboard-groups.mjs";
@@ -89,7 +89,7 @@ const paneHtml = (html, id) => {
   const after = html.split(`<section class="gs-pane" data-pane="${id}"`)[1];
   return after ? after.split(/<section class="gs-pane"|<footer class="gs-foot">/)[0] : null;
 };
-const filterHtml = (html, title) => (html.split(`<div class="gs-f"><span class="gs-f-title">${title}</span>`)[1] ?? "").split(`<div class="gs-f">`)[0] || null;
+const filterHtml = (html, title) => (html.split(`<div class="gs-f"><span class="gs-f-title">${title}</span>`)[1] ?? "").split(/<div class="gs-f[ "]|<p class="gs-bar-summary"/)[0] || null;
 const rowsOf = (section, part = "tbody") => [...(section.match(new RegExp(`<${part}>([\\s\\S]*?)</${part}>`))?.[1] ?? "").matchAll(/<tr>([\s\S]*?)<\/tr>/g)].map((m) => [...m[1].matchAll(/<t[dh][^>]*>([\s\S]*?)<\/t[dh]>/g)].map((c) => textOf(c[1])));
 /** Every row of a section's tables, attributes allowed on the row. */
 const anyRows = (section) => [...section.matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/g)].map((m) => [...m[1].matchAll(/<t[dh][^>]*>([\s\S]*?)<\/t[dh]>/g)].map((c) => textOf(c[1])));
@@ -260,7 +260,7 @@ try {
       isDeepStrictEqual(oneAccount, plain(runQuery(GOLD, { recipientClass: "all", accounts: ["co-02"] }, accountPanels[1].query))) && oneAccount.rows.length === 1 && oneAccount.rows[0].label.account === "Acme Customer 02" &&
         isDeepStrictEqual(panelRun(admin, "programs", "a=co-02&s=all"), panelRun(admin, "programs", "s=all")), oneAccount.rows);
     check("a hash someone mangled or wrote for another dashboard never breaks the page: unknown programs, months, statuses, tabs, positions and thresholds are dropped and the rest is kept",
-      isDeepStrictEqual(admin.call(`app.stateFromHash("t=nope&m=1999-01..2026-08&p=ghost,p-nps&sg=99&g=-1&s=PAUSE,BOGUS&rc=maybe&a=nobody&hd=7&he=2&ts=bogus&td=up&tpl=ghost&%E0%A4%A=1&junk")`), { tab: "engagement", from: "2026-06", to: "2026-08", programs: ["p-nps"], sg: null, g: null, statuses: ["PAUSE"], external: false, account: null, hd: null, he: false, q: "", qa: false, qw: false, ts: null, td: null, tpl: null }) &&
+      isDeepStrictEqual(admin.call(`app.stateFromHash("t=nope&m=1999-01..2026-08&p=ghost,p-nps&sg=99&g=-1&s=PAUSE,BOGUS&rc=maybe&a=nobody&hd=7&he=2&ts=bogus&td=up&tpl=ghost&%E0%A4%A=1&junk")`), { tab: "engagement", from: "2026-06", to: "2026-08", programs: ["p-nps"], sg: null, g: null, statuses: ["PAUSE"], external: false, account: null, hd: null, he: false, q: "", qa: false, qw: false, ts: null, td: null, tpl: null, tplAt: null, so: {} }) &&
         // An empty or non-numeric position is no position: never the first group by accident.
         isDeepStrictEqual(admin.call(`[app.stateFromHash("sg=&g=").sg, app.stateFromHash("sg=&g=").g, app.stateFromHash("sg=x&g=1.5").sg, app.stateFromHash("sg=x&g=1.5").g, app.stateFromHash("sg=0").sg]`), [null, null, null, null, 0]),
       admin.call(`app.stateFromHash("t=nope&m=1999-01..2026-08&p=ghost,p-nps&sg=99&g=-1&s=PAUSE,BOGUS&rc=maybe&a=nobody&junk")`));
@@ -292,7 +292,7 @@ try {
       [ADMIN, EXEC, ADMIN_P, EXEC_P].every((b) => { const pre = loadPage(b.html).prerender; const line = esc(engine.dataPulledLine(applyGroups(b === ADMIN_P || b === EXEC_P ? SIGNALS : PULLED, SPEC.groups).snapshot)); return pre.includes(line) && pre.indexOf(line) < pre.indexOf("gs-filters") && /<p class="gs-pulled">Data pulled /.test(pre); }));
     const closed = admin.call(`app.renderPanel(app.panels.find((p) => p.id === "programs"), app.stateFromHash("m=2026-06..2026-08"), null)`);
     check("the incomplete period is marked (R4): a row that includes the provisional month carries a mark and the table says from when; a view of closed months alone carries neither",
-      (panelHtml(ADMIN.html, "programs").match(/<sup title="Includes the provisional period">\*<\/sup>/g) ?? []).length === [...expected.rows, expected.total].filter((r) => r.incomplete).length && expected.rows.some((r) => r.incomplete) && expected.rows.some((r) => !r.incomplete) && panelHtml(ADMIN.html, "programs").includes(`* Includes the provisional period: sends on or after ${GOLD.meta.incompleteFrom} are provisional (opens keep arriving), and bounces and unsubscribes on sends since 2026-08-01 can still change`) &&
+      (panelHtml(ADMIN.html, "programs").match(/<sup><span class="gs-mark" data-tip="Includes the provisional period[^>]*>\*<\/span><\/sup>/g) ?? []).length === [...expected.rows, expected.total].filter((r) => r.incomplete).length && expected.rows.some((r) => r.incomplete) && expected.rows.some((r) => !r.incomplete) && /<sup><span class="gs-mark" data-tip="Includes the provisional period: sends on or after 2026-09-01[^"]*" title="[^"]*" tabindex="0" role="button" aria-label="[^"]*">\*<\/span><\/sup>/.test(panelHtml(ADMIN.html, "programs")) && !panelHtml(ADMIN.html, "programs").includes("gs-note\">* includes") && paneHtml(ADMIN.html, "engagement").includes(`* Provisional period: sends on or after ${GOLD.meta.incompleteFrom} are provisional (opens keep arriving), and bounces and unsubscribes on sends since 2026-08-01 can still change`) &&
         rowsOf(closed).length > 0 && !closed.includes("<sup") && !closed.includes("provisional"), closed.slice(-300));
     check("a page is byte-stable: the same spec and snapshot build the same bytes, with no clock in them, both presets", build(SPEC_ACCOUNTS, PULLED).html === ADMIN.html && build(SPEC_DEFAULTS, SIGNALS, "exec").html === EXEC_P.html);
     // The golden pages: the pre-rendered default view of each preset over the FIXTURE snapshot (the presets' own panels).
@@ -312,10 +312,10 @@ try {
     const noVars = (s) => s.replace(/var\(--[\w-]+\)/g, "");
     const literalColour = /#[0-9a-fA-F]{3,8}\b|\b(rgba?|hsla?)\(|:\s*(red|blue|green|black|white|gray|grey|orange|yellow|purple|silver|navy|teal|aqua|maroon|olive|lime|fuchsia|crimson|gold)\b/;
     check("the page's style sheet declares every colour, font and radius once in the token block, with a dark set beside it, and no rule outside it holds a literal colour or font: the whole sheet after the token block references tokens only",
-      style.startsWith(TOKENS) && tokenBlocks.length === 4 && !literalColour.test(noVars(rest)) && !/font(-family)?\s*:(?![^;]*(var\(--font\)|var\(--mono\)|inherit))/.test(rest.replace(/font-size/g, "").replace(/font-weight/g, "").replace(/font-style/g, "").replace(/font-variant[^;]*/g, "")) && /--series-1:#/.test(TOKENS) && /--font:/.test(TOKENS) && /@media \(prefers-color-scheme:dark\)\{:root\{--fg:/.test(TOKENS),
+      style.startsWith(TOKENS) && tokenBlocks.length === 6 && !literalColour.test(noVars(rest)) && !/font(-family)?\s*:(?![^;]*(var\(--font\)|var\(--mono\)|inherit))/.test(rest.replace(/font-size/g, "").replace(/font-weight/g, "").replace(/font-style/g, "").replace(/font-variant[^;]*/g, "")) && /--series-1:#/.test(TOKENS) && /--font:/.test(TOKENS) && /@media \(prefers-color-scheme:dark\)\{:root\{--font:[^}]*--fg:/.test(TOKENS) && /@media print\{:root\{color-scheme:light;/.test(TOKENS),
       noVars(rest).match(literalColour)?.[0]);
     check("the status tokens (stale, error, warning, ok, the two tracking states) sit in their own block apart from the brand-facing ones, light and dark, so a brand theme never touches them",
-      tokenBlocks.filter((b) => /--status-/.test(b)).length === 2 && tokenBlocks.filter((b) => /--status-/.test(b)).every((b) => b.split(";").filter(Boolean).every((d) => d.trim().startsWith("--status-"))) && tokenBlocks.filter((b) => !/--status-/.test(b)).length === 2 &&
+      tokenBlocks.filter((b) => /--status-/.test(b)).length === 3 && tokenBlocks.filter((b) => /--status-/.test(b)).every((b) => b.split(";").filter(Boolean).every((d) => d.trim().startsWith("--status-"))) && tokenBlocks.filter((b) => !/--status-/.test(b)).length === 3 &&
         ["stale", "error", "warn", "ok", "not-tracked", "unknown"].every((k) => tokenBlocks.filter((b) => /--status-/.test(b)).every((b) => b.includes(`--status-${k}:`))));
     // The runtime's SVG and inline-style emitters: every fill, stroke and style value is a token or a keyword.
     const src = SOURCES.runtimeSource;
@@ -336,10 +336,10 @@ try {
       statusBoxes(preA.prerender));
     const preE = loadPage(build(SPEC_DEFAULTS, PULLED, "exec").html);
     check("the leaders' preset opens on the closed months with the current month one click away (pages[].dateDefault, ruled 2026-10-05): the default state ends on August, the Months filter offers 'Include 2026-09 (provisional)', clicking it is the state ending on September, which then offers 'Closed months only'; the admin preset opens on the whole window with the mark",
-      isDeepStrictEqual([preE.call(`app.defaultState().from`), preE.call(`app.defaultState().to`)], ["2026-06", "2026-08"]) && /data-act="months-current">Include 2026-09 \(provisional\)</.test(preE.prerender) && !preE.prerender.includes("Closed months only") &&
-        /data-act="months-closed">Closed months only</.test(preE.call(`app.regions.filters(app.clean({ ...app.defaultState(), to: "2026-09" }))`)) && preE.call(`app.hashOf(app.clean({ ...app.defaultState(), to: "2026-09" }))`) === "m=2026-06..2026-09" && isDeepStrictEqual(preE.call(`app.filtersOf(app.defaultState()).months`), ["2026-06", "2026-07", "2026-08"]) &&
-        preA.call(`app.defaultState().to`) === "2026-09" && preA.prerender.includes("Includes the provisional period") && /data-act="months-closed">Closed months only</.test(preA.prerender) && preE.call(`app.model.page.dateDefault`) === "closed-months" && preA.call(`app.model.page.dateDefault`) === "window",
-      [preE.call(`app.defaultState()`), preE.prerender.match(/data-act="months-[a-z]+">[^<]*</g)]);
+      isDeepStrictEqual([preE.call(`app.defaultState().from`), preE.call(`app.defaultState().to`)], ["2026-06", "2026-08"]) && /<input type="checkbox" role="switch" data-f="current" aria-checked="false"> <span>Include 2026-09 \(provisional\)<\/span>/.test(preE.prerender) &&
+        /data-f="current" checked aria-checked="true"> <span>Include 2026-09 \(provisional\)</.test(preE.call(`app.regions.filters(app.clean({ ...app.defaultState(), to: "2026-09" }))`)) && preE.call(`app.hashOf(app.clean({ ...app.defaultState(), to: "2026-09" }))`) === "m=2026-06..2026-09" && isDeepStrictEqual(preE.call(`app.filtersOf(app.defaultState()).months`), ["2026-06", "2026-07", "2026-08"]) &&
+        preA.call(`app.defaultState().to`) === "2026-09" && preA.prerender.includes("Includes the provisional period") && /data-f="current" checked aria-checked="true">/.test(preA.prerender) && preE.call(`app.model.page.dateDefault`) === "closed-months" && preA.call(`app.model.page.dateDefault`) === "window",
+      [preE.call(`app.defaultState()`), preE.prerender.match(/data-f="current"[^>]*>/g)]);
     const old = structuredClone(SPEC_DEFAULTS);
     for (const p of old.pages) delete p.dateDefault;
     check("dateDefault is additive on T-11: a spec written before it existed opens and each page takes its preset's months", openSpec(old) !== null && loadPage(build(openSpec(old), PULLED, "exec").html).call(`app.defaultState().to`) === "2026-08" && loadPage(build(openSpec(old), PULLED).html).call(`app.defaultState().to`) === "2026-09");
@@ -355,8 +355,8 @@ try {
         /<input type="search" data-f="search"/.test(pre) && /data-act="all">Select all</.test(pre) && /data-act="none">Select none</.test(pre) && pre.includes(`data-region="count">5 of 5 selected<`) && /\.gs-proglist\{max-height:\d+px;overflow:auto/.test(ADMIN.html),
       listed);
     check("the date filter is month-granular: a from and a to, each offering exactly the snapshot's months, starting on the whole window on an admin page",
-      isDeepStrictEqual([...pre.split(`data-f="from">`)[1].split("</select>")[0].matchAll(/<option value="([^"]+)"( selected)?>/g)].map((m) => m[1] + (m[2] ?? "")), ["2026-06 selected", "2026-07", "2026-08", "2026-09"]) &&
-        isDeepStrictEqual([...pre.split(`data-f="to">`)[1].split("</select>")[0].matchAll(/<option value="([^"]+)"( selected)?>/g)].map((m) => m[1] + (m[2] ?? "")), ["2026-06", "2026-07", "2026-08", "2026-09 selected"]));
+      isDeepStrictEqual([...pre.split(`data-f="from" aria-label="From month">`)[1].split("</select>")[0].matchAll(/<option value="([^"]+)"( selected)?>/g)].map((m) => m[1] + (m[2] ?? "")), ["2026-06 selected", "2026-07", "2026-08", "2026-09"]) &&
+        isDeepStrictEqual([...pre.split(`data-f="to" aria-label="To month">`)[1].split("</select>")[0].matchAll(/<option value="([^"]+)"( selected)?>/g)].map((m) => m[1] + (m[2] ?? "")), ["2026-06", "2026-07", "2026-08", "2026-09 selected"]));
     const hidden = GOLD.dimensions.programs.filter((p) => !p.statuses.includes("PROCESSING")).length;
     const statusBoxes = (html) => [...html.matchAll(/data-f="status" value="([A-Z]+)"( checked)?>/g)].map((m) => m[1] + (m[2] ?? ""));
     check("the status filter starts from each page's default in the spec: the fixture's admin page on Active only, its leaders' page on every status (R23), and each page says how many programs the status filter hides",
@@ -366,13 +366,13 @@ try {
     check("the 'hidden by status' line follows the filters: with Paused added nothing is hidden, and with only Draft four programs are",
       admin.call(`app.regions.summary(app.stateFromHash("s=PROCESSING,PAUSE"))`).includes("0 programs hidden by status (showing Active, Paused)") && admin.call(`app.regions.summary(app.stateFromHash("s=NEW"))`).includes("4 programs hidden by status (showing Draft)"));
     check("the group filter offers the dashboard's own supergroups, and once one is chosen only the groups inside it",
-      /<select data-f="sg"><option value="" selected>Every supergroup<\/option>/.test(pre) && admin.call(`app.supergroups`).length >= 3 &&
+      /<select data-f="sg" aria-label="Supergroup"><option value="" selected>Every supergroup<\/option>/.test(pre) && admin.call(`app.supergroups`).length >= 3 &&
         isDeepStrictEqual([...admin.call(`app.regions.groupOptions(app.stateFromHash("sg=" + app.supergroups.indexOf("Surveys")))`).matchAll(/>([^<]+)<\/option>/g)].map((m) => m[1]), ["Every group", "CSAT"]));
     check("the recipients toggle is offered, starts where the spec says and can be used: the pull named an internal domain",
-      /<input type="checkbox" data-f="external"> Leave out internal recipients \(by email domain\)<\/label>/.test(pre) && admin.call(`app.stateFromHash("rc=external").external`) === true);
+      /<label class="gs-switch"><input type="checkbox" role="switch" data-f="internal" checked aria-checked="true"> <span>Include internal recipients<\/span><\/label>/.test(pre) && admin.call(`app.stateFromHash("rc=external").external`) === true);
     const noStatus = build(specWith((s) => { s.globalFilters.find((f) => f.id === "status").enabled = false; s.globalFilters.find((f) => f.id === "recipientClass").default = "external"; }), PULLED);
     check("which filters a page offers is the spec's choice: a filter the spec turns off is not drawn, the page's status default still applies and is still stated, and the recipients filter starts where the spec says",
-      !loadPage(noStatus.html).prerender.includes(`data-f="status"`) && loadPage(noStatus.html).prerender.includes("1 program hidden by status (showing Active)") && /data-f="external" checked>/.test(loadPage(noStatus.html).prerender) && loadPage(noStatus.html).call(`app.filtersOf(app.defaultState()).recipientClass`) === "external");
+      !loadPage(noStatus.html).prerender.includes(`data-f="status"`) && loadPage(noStatus.html).prerender.includes("1 program hidden by status (showing Active)") && /data-f="internal" aria-checked="false">/.test(loadPage(noStatus.html).prerender) && loadPage(noStatus.html).call(`app.filtersOf(app.defaultState()).recipientClass`) === "external");
   }
 
   // ══ What a page can lack: one table, one function, one renderer ═══════════
@@ -383,12 +383,12 @@ try {
     const text = reasonText("accounts-off");
     const [watch, view, filter] = [panelHtml(off, "watch"), panelHtml(off, "accounts"), filterHtml(off, "Account")];
     check("accounts off: where the watch list would be, the page shows the snapshot's own reason and nothing else: no table, no zero, no download button",
-      !!watch && lacksIn(watch).join() === "accounts-off" && watch.includes(esc(text)) && !/<table|data-csv|<td/.test(watch) && watch.startsWith("<h2>Low engagement</h2><div class=\"gs-notice\""), watch);
+      !!watch && lacksIn(watch).join() === "accounts-off" && watch.includes(esc(text)) && !/<table|data-csv|<td/.test(watch) && watch.startsWith("<div class=\"gs-panel-head\"><h2>Low engagement</h2></div><div class=\"gs-notice\""), watch);
     check("accounts off: the account view shows the same reason in its place, never an empty table",
       !!view && lacksIn(view).join() === "accounts-off" && view.includes(esc(text)) && !/<table|data-csv|<td/.test(view), view);
-    check("accounts off: where the account filter would be there is the reason and no control, and on the same pages with accounts pulled there is the control and no notice",
-      !!filter && lacksIn(filter).join() === "accounts-off" && filter.includes(esc(text)) && !/<select|<input/.test(filter) &&
-        /<select data-f="account"><option value="" selected>Every account on this page<\/option><option value="co-01">Acme Customer 01<\/option>/.test(filterHtml(ADMIN.html, "Account")) && lacksIn(filterHtml(ADMIN.html, "Account")).length === 0 && /<table>/.test(panelHtml(ADMIN.html, "watch")),
+    check("accounts off: where the account filter would be there is a one-line pointer to the customer lists (the full notice stands there, ruled 2026-10-10) and no control; on the same pages with accounts pulled there is the control and no pointer",
+      !!filter && /data-pointer="accounts-off"/.test(filter) && lacksIn(filter).length === 0 && filter.includes("the customer lists say why") && !/<select|<input/.test(filter) &&
+        /<select data-f="account" aria-label="Account"><option value="" selected>Every account on this page<\/option><option value="co-01">Acme Customer 01<\/option>/.test(filterHtml(ADMIN.html, "Account")) && !/data-pointer/.test(filterHtml(ADMIN.html, "Account")) && /<table>/.test(panelHtml(ADMIN.html, "watch")),
       filter);
     const changeLine = COPY_LINES.change("program-health", "accounts.pull", "true");
     check("the notice says what it would take, on an admin page: a new pull, the setting to turn on by its name in the spec's own descriptions and by its path, and the deterministic entry command's line to copy (ruled 2026-10-05, Z0 choice 2): `change <slug> <path>=<json>` built from the setting's path, true for a switch",
@@ -398,8 +398,9 @@ try {
     check("it reads as information, not as an error: a note, with no error role, no alert and no error wording",
       /<div class="gs-notice" role="note"/.test(watch) && !/role="alert"|error|Error|failed|warning/.test(watch) && /\.gs-notice\{[^}]*background:var\(--note\)/.test(off));
     const toggle = filterHtml(off, "Recipients");
-    check("accounts off with test accounts named in the spec: beside the recipients toggle the page says they are not left out, since the filter works by email domain; with accounts pulled, or with no test account named, it says nothing there",
-      lacksIn(toggle).join() === "test-accounts-need-accounts" && toggle.includes(esc(reasonText("test-accounts-need-accounts"))) && lacksIn(filterHtml(ADMIN.html, "Recipients")).length === 0 && lacksIn(filterHtml(build(SPEC, OFF).html, "Recipients")).length === 0, toggle);
+    check("accounts off with test accounts named in the spec: beside the recipients toggle a one-line pointer says they are not left out and where the full notice is (the About tab's settings, where it stands with its how-to; ruled 2026-10-10); with accounts pulled, or with no test account named, there is no pointer and no notice",
+      /data-pointer="test-accounts-need-accounts"/.test(toggle) && lacksIn(toggle).length === 0 && lacksIn(paneHtml(off, "about")).includes("test-accounts-need-accounts") && paneHtml(off, "about").includes(esc(reasonText("test-accounts-need-accounts"))) &&
+        !/data-pointer/.test(filterHtml(ADMIN.html, "Recipients")) && !lacksIn(paneHtml(ADMIN.html, "about")).includes("test-accounts-need-accounts") && !/data-pointer/.test(filterHtml(build(SPEC, OFF).html, "Recipients")), toggle);
     check("with accounts off the page embeds no account row and no account name, and its other panels are untouched: the program table equals the engine's over the same snapshot",
       OFF_ADMIN.report.rows.byAccount === undefined && isDeepStrictEqual(panelRun(loadPage(off), "programs", "s=all"), plain(runQuery(applyGroups(OFF, SPEC.groups).snapshot, { recipientClass: "all" }, SPEC.pages[0].panels[0].query))));
   }
@@ -443,7 +444,7 @@ try {
         !execPinned.html.includes("co-01") && loadPage(execPinned.html).call(`app.snapshot.meta.params.accounts.pinned`).length === 0 && loadPage(build(SPEC, pinned).html).call(`app.snapshot.meta.params.accounts.pinned`).join() === "co-01");
     const namesOffTest = build(specWith((s) => { s.pages[0].accountNames = false; s.pages[0].panels.push({ ...accountPanels[1] }); s.sources[0].params.testAccounts = ["co-09"]; }), PULLED);
     check("a page that merely leaves accounts off is not short of a pull: with test accounts named and the pull holding accounts, the recipients toggle carries no 'needs a new pull' notice, and the account slot says the page left them off",
-      lacksIn(filterHtml(namesOffTest.html, "Recipients")).length === 0 && lacksIn(filterHtml(namesOffTest.html, "Account")).join() === "accounts-not-on-page", filterHtml(namesOffTest.html, "Recipients"));
+      lacksIn(filterHtml(namesOffTest.html, "Recipients")).length === 0 && !/data-pointer/.test(filterHtml(namesOffTest.html, "Recipients")) && /data-pointer="accounts-not-on-page"/.test(filterHtml(namesOffTest.html, "Account")) && lacksIn(filterHtml(namesOffTest.html, "Account")).length === 0, filterHtml(namesOffTest.html, "Recipients"));
     const adminNoNames = build(specWith((s) => { s.pages[0].panels.push({ ...accountPanels[1] }); s.pages[0].accountNames = false; }), PULLED);
     for (const id of drawn(adminNoNames.html)) reached.add(id);
     const how = panelHtml(adminNoNames.html, "accounts");
@@ -459,7 +460,7 @@ try {
     for (const id of drawn(offered.html)) reached.add(id);
     const tabButtons = (html) => [...html.matchAll(/<button type="button" class="gs-tab([^"]*)" data-tab="([a-z]+)"[^>]*>([^<]*)<\/button>/g)].map((m) => `${m[2]}:${m[1].trim()}:${m[3]}`);
     check("a tab has three states. On an admin page a tab the spec turns off is OFFERED: still in the tab row, dimmed and marked off; the tabs that are on are plain",
-      isDeepStrictEqual(tabButtons(offered.html), ["engagement:is-current:Engagement", "health:is-offered:Health (off)", "templates:is-offered:Templates (off)", "about::About"]) && /\.gs-tab\.is-offered\{opacity:\.6/.test(offered.html) &&
+      isDeepStrictEqual(tabButtons(offered.html), ["engagement:is-current:Engagement", "health:is-offered:Health (off)", "templates:is-offered:Templates (off)", "about::About"]) && /\.gs-tab\.is-offered\{opacity:\.\d/.test(offered.html) &&
         isDeepStrictEqual(tabButtons(ADMIN.html), ["engagement:is-current:Engagement", "health::Health", "templates::Templates", "about::About"]), tabButtons(offered.html));
     const pane = paneHtml(offered.html, "health");
     check("opening an offered tab opens the notice and nothing else: what the tab is for, that it is off for this page, what it would take and the line to copy. The pull holds health data, so for Health it is only a rebuild",
@@ -485,13 +486,16 @@ try {
       const f0 = admin.call(`app.filtersOf(app.defaultState())`);
       const view = engine.templatesView(GOLD, f0, { snippet: 40 });
       const pre = panelHtml(ADMIN.html, "templates");
-      check("the Templates tab draws the templates panel (TPL-2): a search form, a sortable table with one row per template the filters keep in the engine's order — the name with its Text button, how many programs send it, its last send month, whether it was edited after its last send with the text's as-of day, and the metrics as the engine formats them — the programs under each row and, with step detail, their steps and variants; the total row; and no drawer, mark or snippet until asked",
+      // Every email unfolded (the viewer's choice, a ui key per template), to count what folds.
+      const expandAll = (page, hash) => page.call(`app.renderPanel(app.panels.find((p) => p.type === "templates"), app.stateFromHash(${JSON.stringify(hash)}), { open: Object.fromEntries(app.snapshot.dimensions.templates.map((t) => ["tpl:" + t.id, true])) })`);
+      const expandedPre = expandAll(admin, "");
+      check("the Templates tab draws the templates panel (TPL-2): a search form, a sortable table with one row per template the filters keep in the engine's order — the name with its Text button, how many programs send it, its last send month, whether it was edited after its last send with the text's as-of day, and the metrics as the engine formats them — the programs FOLDED under each row (ruled 2026-10-11: an expander per email, no program row until opened; opened, each program row says Program and, with step detail, each step row says Step; the heading names the hierarchy); the total row; and no drawer, mark or snippet until asked",
         pre !== null && /data-type="templates"/.test(ADMIN.html) && /<form class="gs-search" data-search>/.test(pre) && isDeepStrictEqual(mainRows(pre).map((r) => r.id), view.rows.map((r) => r.templateId)) && view.rows.length > 0 &&
           mainRows(pre).every((r, i) => { const v = view.rows[i]; return r.cells[0].startsWith(v.name) && r.cells[1] === String(v.programs.length) && r.cells[2] === (v.lastSendMonth ?? NO_VALUE) && r.cells.slice(4).join("|") === view.metrics.map((id) => formatCell(id, v.cells[id])).join("|"); }) &&
-          (pre.match(/<tr class="gs-sub">/g) ?? []).length === view.rows.flatMap((r) => r.programs).length && (pre.match(/<tr class="gs-sub gs-sub2">/g) ?? []).length === view.rows.flatMap((r) => r.programs).flatMap((p) => p.steps ?? []).length &&
+          (pre.match(/<tr class="gs-sub">/g) ?? []).length === 0 && (pre.match(/data-expand="tpl-[^"]+" aria-expanded="false"/g) ?? []).length === view.rows.filter((r) => r.programs.length).length && (expandedPre.match(/<tr class="gs-sub">/g) ?? []).length === view.rows.flatMap((r) => r.programs).length && (expandedPre.match(/<tr class="gs-sub gs-sub2">/g) ?? []).length === view.rows.flatMap((r) => r.programs).flatMap((p) => p.steps ?? []).length && (expandedPre.match(/<span class="gs-kind">Program<\/span>/g) ?? []).length === view.rows.flatMap((r) => r.programs).length && /<span class="gs-kind">Step<\/span>/.test(expandedPre) && /Email \u203a program \u203a step/.test(pre) &&
           /Everything the filters keep/.test(pre) && !/<mark>|gs-drawer|gs-snippet/.test(pre) && mainRows(pre).find((r) => r.id === "tpl-nps").cells[3] === "yes, on 2026-08-10 (text as of 2026-09-01)" && mainRows(tpanel(admin, "t=templates&s=all")).find((r) => r.id === "tpl-unlisted").cells[3] === NO_VALUE,
         mainRows(pre));
-      const renew = tpanel(admin, "t=templates&s=all&p=p-renew");
+      const renew = expandAll(admin, "t=templates&s=all&p=p-renew");
       check("a template reused on two steps aggregates across them and still drills down per step: under the renewal program its row says it is on 2 steps and two step rows follow, each with its own figures; the filters narrow the view to that program's templates, the engine's rows",
         isDeepStrictEqual(mainRows(renew).map((r) => r.id), engine.templatesView(GOLD, { recipientClass: "all", programs: ["p-renew"] }).rows.map((r) => r.templateId)) && /on 2 steps/.test(renew) && (renew.split('data-template="tpl-renew"')[1].split('data-template="tpl-renew-b"')[0].match(/gs-sub2/g) ?? []).length === 2, mainRows(renew));
       const searched = tpanel(admin, "t=templates&s=all&q=renewal");
@@ -504,7 +508,7 @@ try {
           admin.call(`app.hashOf(app.stateFromHash("t=templates&s=all&q=renewal%20now&qa=1&qw=1&ts=openRate&td=asc&tpl=tpl-nps"))`) === "t=templates&s=all&q=renewal%20now&qa=1&qw=1&ts=openRate&td=asc&tpl=tpl-nps", [mainRows(searched), mainRows(both), mainRows(whole)]);
       const sorted = tpanel(admin, "t=templates&s=all&ts=name&td=asc");
       check("the column headings sort (ts= and td= in the hash): by name ascending the rows are in name order and the heading says so; by a metric, the engine's order with nulls last; an unknown key is dropped",
-        isDeepStrictEqual(mainRows(sorted).map((r) => r.id), engine.templatesView(GOLD, { recipientClass: "all" }, { sort: { by: "name", dir: "asc" } }).rows.map((r) => r.templateId)) && /aria-sort="ascending"><button type="button" class="gs-sort is-on" data-tsort="name">Email &#9650;/.test(sorted) &&
+        isDeepStrictEqual(mainRows(sorted).map((r) => r.id), engine.templatesView(GOLD, { recipientClass: "all" }, { sort: { by: "name", dir: "asc" } }).rows.map((r) => r.templateId)) && /aria-sort="ascending"><button type="button" class="gs-sort is-on" data-tsort="name">Email \u203a program \u203a step &#9650;/.test(sorted) &&
           isDeepStrictEqual(mainRows(tpanel(admin, "t=templates&s=all&ts=openRate")).map((r) => r.id), engine.templatesView(GOLD, { recipientClass: "all" }, { sort: { by: "openRate", dir: "desc" } }).rows.map((r) => r.templateId)) && admin.call(`app.stateFromHash("ts=bogus&td=asc").ts`) === null, mainRows(sorted));
       const drawer = tpanel(admin, "t=templates&s=all&tpl=tpl-nps");
       check("Text opens the drawer (tpl= in the hash): the template's name, its subject with tokens as field labels, the day the text is as of, the caveat that it is the current text and not necessarily what was sent, the last-modified day and the edited-after-last-send flag, the body in a pre-wrap block, the variants, and a Close button; an unknown id opens nothing",
@@ -568,10 +572,11 @@ try {
     const page = build(SPEC, NO_DOMAIN);
     for (const id of drawn(page.html)) reached.add(id);
     const toggle = filterHtml(page.html, "Recipients");
+    const aboutNotice = paneHtml(page.html, "about");
     const loaded = loadPage(page.html);
-    check("no internal domain configured: the recipients toggle is drawn switched off with the reason beside it, never a control that does nothing; what it would take is a new pull with the domains filled in, and the line to copy ends at the = sign with the notice saying what to put there",
-      /<input type="checkbox" data-f="external" disabled>/.test(toggle) && lacksIn(toggle).join() === "no-internal-domain" && toggle.includes(esc(reasonText("no-internal-domain"))) && toggle.includes(esc(NEEDS.pull)) && toggle.includes(`Fill in &quot;Internal recipients&quot;`) && toggle.includes(`<span class="gs-path">sources[].params.internalDomains[]</span>`) &&
-        toggle.includes("sources[].params.internalDomains[]=</code>") && toggle.includes("ends at the = sign: put the value there"), toggle);
+    check("no internal domain configured: the recipients toggle is drawn switched off with a one-line pointer beside it, never a control that does nothing; the full notice stands on the About tab beside the setting it names (ruled 2026-10-10): what it would take is a new pull with the domains filled in, and the line to copy ends at the = sign with the notice saying what to put there",
+      /<input type="checkbox" role="switch" data-f="internal" checked disabled aria-checked="true">/.test(toggle) && /data-pointer="no-internal-domain"/.test(toggle) && lacksIn(toggle).length === 0 && toggle.includes("see About") && lacksIn(aboutNotice).includes("no-internal-domain") && aboutNotice.includes(esc(reasonText("no-internal-domain"))) && aboutNotice.includes(esc(NEEDS.pull)) && aboutNotice.includes(`Fill in &quot;Internal recipients&quot;`) && aboutNotice.includes(`<span class="gs-path">sources[].params.internalDomains[]</span>`) &&
+        aboutNotice.includes("sources[].params.internalDomains[]=</code>") && aboutNotice.includes("ends at the = sign: put the value there"), toggle);
     check("and it cannot be switched on from outside either: a hash asking for external recipients is read as everyone, and a spec whose toggle starts on external starts on everyone here",
       loaded.call(`app.stateFromHash("rc=external").external`) === false && loaded.call(`app.filtersOf(app.stateFromHash("rc=external")).recipientClass`) === "all" &&
         loadPage(build(specWith((s) => { s.globalFilters.find((f) => f.id === "recipientClass").default = "external"; }), NO_DOMAIN).html).call(`app.defaultState().external`) === false);
@@ -656,9 +661,9 @@ try {
     const view = engine.kpiView(gold, filters, kpiPanel.query);
     const tiles = [...panelHtml(ADMIN_P.html, "headline").matchAll(/<div class="gs-kpi" data-metric="(\w+)">([\s\S]*?)<\/div>/g)].map((m) => ({ id: m[1], text: textOf(m[2]), html: m[2] }));
     check("the kpi panel draws one tile per metric with the engine's own figure, the usual beside it (per month for a count, as itself for a rate) with the change against it, the denominator's count beside every rate as send-size context (R2b), and the 'since last pull' line in its no-previous-pull state (S5 fills the numbers)",
-      tiles.map((t) => t.id).join() === kpiPanel.query.metrics.join() && tiles.every((t, i) => t.text.includes(formatCell(t.id, { ...view.tiles[i].cell, state: "tracked" }).replace(/ \(tracking unknown\)$/, "")) && t.text.includes("Usual") && t.text.includes("Since last pull: no previous pull to compare with.")) &&
+      tiles.map((t) => t.id).join() === kpiPanel.query.metrics.join() && tiles.every((t, i) => t.text.includes(formatCell(t.id, { ...view.tiles[i].cell, state: "tracked" }).replace(/ \(tracking unknown\)$/, "")) && t.text.includes("Usual") && !t.text.includes("Since last pull")) && (panelHtml(ADMIN_P.html, "headline").match(/<span class="gs-panel-sub"><span class="gs-kpi-since">Change since the last refresh: none yet, this is the first pull\.<\/span><\/span>/g) ?? []).length === 1 &&
         tiles.find((t) => t.id === "openRate").text.includes(`Delivered ${formatCell("delivered", view.tiles.find((t) => t.id === "openRate").denominator.cell)}`) && /pts against the usual|level with the usual/.test(tiles.find((t) => t.id === "openRate").text) && /the usual/.test(tiles.find((t) => t.id === "sent").text) && tiles.find((t) => t.id === "sent").text.includes("Usual a month:") &&
-        /gs-kpi-value"><sup|<sup title="Includes the provisional period">\*<\/sup>/.test(tiles[0].html) && panelHtml(ADMIN_P.html, "headline").includes("gs-note-clicks") && panelHtml(ADMIN_P.html, "headline").includes(`data-csv="headline"`),
+        /<sup><span class="gs-mark" data-tip="Includes the provisional period[^>]*>\*<\/span><\/sup>/.test(tiles[0].html) && paneHtml(ADMIN_P.html, "engagement").includes("gs-note-clicks") && !panelHtml(ADMIN_P.html, "headline").includes("gs-note-clicks") && panelHtml(ADMIN_P.html, "headline").includes(`data-csv="headline"`),
       tiles.map((t) => t.text));
     // The charts: hand-drawn SVG, tokens only, the provisional month shaded, a table underneath.
     const line = panelHtml(ADMIN_P.html, "open-rate-trend");
@@ -667,14 +672,14 @@ try {
     check("the line panel is one SVG with a polyline per drawn series, a dot per month with the figure in its tooltip, the provisional month shaded, four month labels, a direct label on each series' last point, a legend naming the tracking state of a series that is unknown, and the same rows as a table underneath (the fallback) with the download button",
       /<svg class="gs-chart" viewBox="0 0 640 260" role="img" aria-label="Open rate by month">/.test(line) && (line.match(/<polyline class="gs-svg-line"/g) ?? []).length === 2 && (line.match(/<circle class="gs-svg-dot/g) ?? []).length === trend.rows.length * 2 &&
         (line.match(/<rect class="gs-svg-provisional"/g) ?? []).length === trend.rows.filter((r) => r.incomplete).length && trend.rows.some((r) => r.incomplete) && trend.rows.every((r) => line.includes(`>${r.key.month}${r.incomplete ? "*" : ""}</text>`)) &&
-        line.includes(`<title>${esc(`${trend.rows[0].key.month}: Open rate ${formatCell("openRate", { value: trend.rows[0].cells.openRate.value })}`)}</title>`) && (line.match(/class="gs-svg-label"/g) ?? []).length === 2 && /<ul class="gs-legend">.*Open rate.*Click rate.*\(tracking unknown\)/.test(line) &&
-        /<details class="gs-fallback" data-fallback="open-rate-trend"><summary>As a table<\/summary>/.test(line) && isDeepStrictEqual(rowsOf(line, "thead")[0], ["Month", "Open rate", "Click rate"]) && rowsOf(line).length === trend.rows.length && line.includes(`data-csv="open-rate-trend"`) && line.includes("gs-note-clicks"),
+        line.includes(`<title>${esc(`${trend.rows[0].key.month}: Open rate ${formatCell("openRate", { value: trend.rows[0].cells.openRate.value })}`)}</title>`) && (line.match(/class="gs-svg-value"/g) ?? []).length === trend.rows.length * 2 && !/gs-svg-label/.test(line) && /<ul class="gs-legend">.*Open rate.*Click rate.*\(tracking unknown\)/.test(line) &&
+        /<details class="gs-fallback" data-fallback="open-rate-trend"><summary>As a table<\/summary>/.test(line) && isDeepStrictEqual(rowsOf(line, "thead")[0], ["Month", "Open rate", "Click rate"]) && rowsOf(line).length === trend.rows.length && line.includes(`data-csv="open-rate-trend"`) && line.indexOf("<ul class=\"gs-legend\">") < line.indexOf("<svg") && (line.match(/<circle class="gs-svg-ring"/g) ?? []).length === trend.rows.length * 2 && /class="gs-svg-tick" text-anchor="middle">provisional<\/text>/.test(line),
       [(line.match(/<polyline/g) ?? []).length, (line.match(/<circle/g) ?? []).length, line.match(/<ul class="gs-legend">[\s\S]*?<\/ul>/)?.[0]]);
     const sends = runQuery(gold, filters, presetPanels(SPEC_DEFAULTS.pages[0]).find((p) => p.id === "sends-by-month").query);
     check("the bar panel draws one bar per metric per month, each from a token with the figure in its tooltip, a y axis in whole numbers, the provisional month shaded, and the same rows as a table",
-      (bar.match(/<rect class="gs-svg-bar" style="fill:var\(--series-[123]\)"/g) ?? []).length === sends.rows.length * 3 && bar.includes(`<title>${esc(`${sends.rows[0].key.month}: Sent ${sends.rows[0].cells.sent.value}`)}</title>`) && (bar.match(/class="gs-svg-tick"/g) ?? []).length === 5 + sends.rows.length && (bar.match(/<rect class="gs-svg-provisional"/g) ?? []).length === 1 &&
+      (bar.match(/<path class="gs-svg-bar" style="fill:var\(--series-[123]\)" d="M[\d.]+,[\d.]+a4,4 0 0 1 4,-4h[\d.]+a4,4 0 0 1 4,4V[\d.]+H[\d.]+Z"/g) ?? []).length === sends.rows.length * 3 && bar.includes(`<title>${esc(`${sends.rows[0].key.month}: Sent ${sends.rows[0].cells.sent.value}`)}</title>`) && (bar.match(/class="gs-svg-tick"/g) ?? []).length === 6 + sends.rows.length && (bar.match(/<rect class="gs-svg-provisional"/g) ?? []).length === 1 && [...bar.matchAll(/h([\d.]+)a4/g)].every((m) => Number(m[1]) + 8 <= 24) &&
         isDeepStrictEqual(rowsOf(bar, "thead")[0], ["Month", "Sent", "Delivered", "Opened"]) && rowsOf(bar).length === sends.rows.length && !/%</.test(bar.match(/<text[^>]*class="gs-svg-tick"[^>]*>[^<]*<\/text>/)?.[0] ?? ""),
-      (bar.match(/<rect class="gs-svg-bar"[^>]*>/g) ?? []).slice(0, 2));
+      (bar.match(/<path class="gs-svg-bar"[^>]*>/g) ?? []).slice(0, 2));
     // A trend across a definition boundary is labelled; a carried-forward month is marked.
     const boundary = structuredClone(PULLED);
     for (const r of boundary.facts.byTemplate) if (r.month === "2026-06") delete r.failed;
@@ -682,8 +687,8 @@ try {
     const bPage = build(specWith((s) => { s.pages[0].panels.push({ id: "errors", tab: "engagement", type: "line", title: "Error rate", query: { groupBy: ["month"], metrics: ["errorRate"] } }); }), boundary);
     const bLine = panelHtml(bPage.html, "errors");
     check("a trend across a boundary is labelled: where the first month was pulled before the figure was counted, the line starts at the first month that has it, the gap is never bridged, and a note says from when the figure is counted; a carried-forward month's dot is drawn hollow with the dagger note",
-      /gs-note-boundary">Error rate is counted from 2026-07: the months before were pulled before this figure existed/.test(bLine) && (bLine.match(/<circle/g) ?? []).length === 3 && (bLine.match(/<polyline/g) ?? []).length === 1 && !bLine.includes('points="') === false &&
-        (bLine.match(/gs-svg-carried/g) ?? []).length === 1 && bLine.includes("&dagger; Includes months carried forward") && bLine.includes(">2026-07†</text>") && lacksIn(bLine).join() === "measure-not-in-snapshot", bLine.match(/<p class="gs-note[^"]*">[^<]*/g));
+      /gs-note-boundary">Error rate is counted from 2026-07: the months before were pulled before this figure existed/.test(bLine) && (bLine.match(/<circle class="gs-svg-dot/g) ?? []).length === 3 && (bLine.match(/<polyline/g) ?? []).length === 1 && !bLine.includes('points="') === false &&
+        (bLine.match(/gs-svg-carried/g) ?? []).length === 1 && /data-tip="Includes months carried forward from an earlier pull[^"]*"[^>]*>&dagger;<\/span>/.test(bLine) && bLine.includes(">2026-07†</text>") && lacksIn(bLine).join() === "measure-not-in-snapshot", bLine.match(/<p class="gs-note[^"]*">[^<]*/g));
     // The watch list: accounts ranked across programs, each account's programs underneath.
     const most = presetPanels(SPEC_DEFAULTS.pages[0]).find((p) => p.id === "most-engaged");
     const wl = build(specWith((s) => { s.pages[0].panels = []; s.pages[0].statusDefault = null; }), PULLED);
@@ -695,7 +700,7 @@ try {
       ranked.rows.length > 0 && ranked.rows.every((r) => !["other", "no-company-link"].includes(r.key.account)) && wlRows.filter((r) => !r[1] === false || r[1] !== "").length >= ranked.rows.length &&
         ranked.rows.every((r, i) => { const top = wlRows.find((row) => row[0].startsWith(r.label.account) && row[1] === String(detail.rows.filter((d) => d.key.account === r.key.account).length)); return !!top && top[2] === formatCell("delivered", r.cells.delivered) && top[4] === formatCell("openRate", { ...r.cells.openRate, state: "tracked" }).replace(/ \(tracking unknown\)$/, "") && i >= 0; }) &&
         detail.rows.every((d) => wlRows.some((row) => row[0].startsWith(d.label.program) && row[2] === formatCell("delivered", d.cells.delivered))) && (wlHtml.match(/<tr class="gs-sub">/g) ?? []).length === detail.rows.length && !/All other accounts|No company link/.test(wlHtml) && !/churn/i.test(wlHtml) &&
-        wlHtml.includes("Ranked over the whole window") && panelHtml(wl.html, "least-engaged").includes("possible bad contacts or disengagement") && panelHtml(wl.html, "most-bounced") !== null,
+        wlHtml.includes("Ranked over the whole window") && panelHtml(wl.html, "least-engaged").includes("<h2>Least engaged customers</h2>") && !/\(possible/.test(wl.html) && panelHtml(wl.html, "most-bounced") !== null,
       [wlRows.slice(0, 4), ranked.rows.map((r) => [r.key.account, r.cells.delivered.value])]);
     check("the watch list over a narrower month range says it re-ranks the embedded rows (the pull selected the accounts over the whole window), and over a pull with accounts off each of the three lists shows the accounts-off notice",
       loadPage(wl.html).call(`app.renderPanel(app.panels.find((p) => p.id === "most-engaged"), app.stateFromHash("m=2026-07..2026-08"), null)`).includes("the pull selected these accounts over the whole window, so this is a re-ranking of the embedded rows") &&
@@ -709,9 +714,9 @@ try {
     // Every panel of both presets renders, with no empty section and no unknown type.
     const sections = (html) => [...html.matchAll(/<section class="gs-panel" data-panel="([\w-]+)" data-type="([\w-]+)">([\s\S]*?)<\/section>/g)].map((m) => ({ id: m[1], type: m[2], body: m[3] }));
     check("every panel of the admin preset and of the leaders' preset renders over the signals pull, under its own type, each with a table, a chart or a notice (never a bare heading), and the download button on every panel that has rows",
-      sections(ADMIN_P.html).map((s) => s.id).join() === presetPanels(SPEC_DEFAULTS.pages[0]).map((p) => p.id).join() && sections(EXEC_P.html).map((s) => s.id).join() === presetPanels(SPEC_DEFAULTS.pages[1]).map((p) => p.id).join() &&
+      sections(ADMIN_P.html).map((s) => s.id).sort().join() === presetPanels(SPEC_DEFAULTS.pages[0]).map((p) => p.id).sort().join() && sections(EXEC_P.html).map((s) => s.id).sort().join() === presetPanels(SPEC_DEFAULTS.pages[1]).map((p) => p.id).sort().join() &&
         [...sections(ADMIN_P.html), ...sections(EXEC_P.html)].every((s) => /<table|<svg|gs-notice|gs-kpis/.test(s.body) && textOf(s.body).length > 20 && (/gs-notice/.test(s.body) && !/<table/.test(s.body) ? !s.body.includes("data-csv") : s.body.includes(`data-csv="${s.id}"`))),
-      [sections(ADMIN_P.html).map((s) => s.id), sections(EXEC_P.html).map((s) => s.id)]);
+      [...sections(ADMIN_P.html), ...sections(EXEC_P.html)].filter((s) => !(/<table|<svg|gs-notice|gs-kpis/.test(s.body) && textOf(s.body).length > 20 && (/gs-notice/.test(s.body) && !/<table/.test(s.body) ? !s.body.includes("data-csv") : s.body.includes(`data-csv="${s.id}"`)))).map((s) => [s.id, s.body.slice(0, 160)]));
     check("the leaders' preset over the signals pull: By group is the engine's rows by supergroup and group, the top and lowest ten carry Sent beside every rate (send-size context), and the page holds neither customer lists nor health panels",
       isDeepStrictEqual(rowsOf(panelHtml(EXEC_P.html, "by-group"), "thead")[0], ["Supergroup", "Group", "Sent", "Delivered", "Open rate"]) && rowsOf(panelHtml(EXEC_P.html, "by-group")).length === runQuery(gold, { recipientClass: "all", months: ["2026-06", "2026-07", "2026-08"] }, presetPanels(SPEC_DEFAULTS.pages[1]).find((p) => p.id === "by-group").query).rows.length &&
         isDeepStrictEqual(rowsOf(panelHtml(EXEC_P.html, "top-open-rate"), "thead")[0], ["Program", "Sent", "Open rate"]) && !EXEC_P.html.includes(`data-panel="most-engaged"`) && !EXEC_P.html.includes(`data-type="health-`));
@@ -747,14 +752,14 @@ try {
     const reasons = engine.healthReasonsView(gold, { recipientClass: "all" });
     const defOf = (id) => [...FIXTURE_BOUNCE_CATEGORIES, ...engine.FAILURE_CATEGORIES.participantFailures, ...engine.STEP_FAILURE_CATEGORIES].find((c) => c.id === id)?.definition;
     check("failure reasons (health-reasons): bounce categories each with its count this period, the usual a month and the change, the Other line with its share; every category's tooltip is its DEFINITION from the category table (never tenant text); expected failures (business rules) are behind a toggle, named on one line with their counts; refusals at entry as exact totals with the all-time figure's tooltip and the split labelled a sample; step failures by category",
-      reasons.bounces.categories.every((c) => fr.includes(`${esc(c.label)} <span class="gs-mark gs-info" title="${esc(c.definition)}">`) && c.definition === defOf(c.id)) && fr.includes(`${Math.round(reasons.bounces.other.share * 100)}% of bounces`) && /<th scope="col" class="gs-num">Usual a month<\/th><th scope="col" class="gs-num">Change<\/th>/.test(fr) &&
-        !fr.includes(`<td>${esc("Already in the participant list")}`) && /gs-note-expected">\d+ expected failure kinds? behind the toggle: .*Already in the participant list \d+/.test(fr) && /<input type="checkbox" data-f="he"> Show expected failures/.test(fr) &&
-        fr.includes(`${reasons.entry.window.participants} participants refused in the 4 months shown (${reasons.entry.window.occurrences} refusals); all time ${reasons.entry.allTime.participants} <span class="gs-mark gs-info" title="${esc(reasonText("all-time"))}">`) && /<h4>By reason, a sample /.test(fr) && fr.includes("the totals above are exact, the split is not") &&
-        reasons.steps.categories.filter((c) => !c.expected).every((c) => fr.includes(`${esc(c.label)} <span class="gs-mark gs-info" title="${esc(c.definition)}">`)) && fr.includes("needs investigation") && fr.includes(`data-csv="failure-reasons"`),
+      reasons.bounces.categories.every((c) => fr.includes(`${esc(c.label)} <span class="gs-mark gs-info" data-tip="${esc(c.definition)}" title="${esc(c.definition)}"`) && c.definition === defOf(c.id)) && fr.includes(`${Math.round(reasons.bounces.other.share * 100)}% of bounces`) && /<th scope="col" class="gs-num">Usual a month<\/th><th scope="col" class="gs-num">Change<\/th>/.test(fr) &&
+        !fr.includes(`<td>${esc("Already in the participant list")}`) && /gs-note-expected">\d+ expected failure kinds? behind the toggle: .*Already in the participant list \d+/.test(fr) && /<input type="checkbox" role="switch" data-f="he" aria-checked="false"> <span>Show expected failures/.test(fr) &&
+        fr.includes(`${reasons.entry.window.participants} participants refused in the 4 months shown (${reasons.entry.window.occurrences} refusals); all time ${reasons.entry.allTime.participants} <span class="gs-mark gs-info" data-tip="${esc(reasonText("all-time"))}" title="${esc(reasonText("all-time"))}"`) && /<h4>By reason, a sample /.test(fr) && fr.includes("the totals above are exact, the split is not") &&
+        reasons.steps.categories.filter((c) => !c.expected).every((c) => fr.includes(`${esc(c.label)} <span class="gs-mark gs-info" data-tip="${esc(c.definition)}" title="${esc(c.definition)}"`)) && fr.includes("needs investigation") && fr.includes(`data-csv="failure-reasons"`),
       [reasons.bounces.categories.map((c) => c.id), fr.match(/gs-note-expected">[^<]*/)?.[0]]);
     const shownExpected = adminP.call(`app.renderPanel(app.panels.find((p) => p.id === "failure-reasons"), app.stateFromHash("he=1"), null)`);
     check("the toggle shows the expected failures as their own rows (he=1 in the hash), kind 'business rule', and the hidden-line disappears",
-      shownExpected.includes(`<td>${esc("Already in the participant list")} <span class="gs-mark gs-info"`) && /<td>business rule<\/td>/.test(shownExpected) && !shownExpected.includes("gs-note-expected") && /data-f="he" checked>/.test(shownExpected) && adminP.call(`app.hashOf(app.stateFromHash("he=1"))`) === "he=1");
+      shownExpected.includes(`<td>${esc("Already in the participant list")} <span class="gs-mark gs-info"`) && /<td>business rule<\/td>/.test(shownExpected) && !shownExpected.includes("gs-note-expected") && /data-f="he" checked aria-checked="true">/.test(shownExpected) && adminP.call(`app.hashOf(app.stateFromHash("he=1"))`) === "he=1");
     check("the 'Other' line is a SIGNAL (ruled 2026-10-05): when uncategorised bounces exceed a few percent the panel says so and names the terminal line that shows the masked samples (`health <slug> --program <id>`), with the copy button; when they do not, there is no signal",
       reasons.bounces.other.overThreshold === true && /data-signal="other"><p>Uncategorised bounce text is \d+% of bounces, over a few percent: the masked samples are in the terminal, never on a page\.<\/p>/.test(fr) && fr.includes(`<code>${esc(COPY_LINES.health("program-health", "<program id>"))}</code>`) && COPY_LINES.health("x", "p-1") === "node .gs-superadmin/plugin/scripts/dashboard.mjs health x --program p-1" &&
         (() => {
@@ -791,6 +796,7 @@ try {
     const spec = specWith((s) => { s.pages[0].panels = [{ id: "emails", tab: "engagement", type: "table", title: "Emails", query: { groupBy: ["template"], metrics: ["sent", "clicked", "clickRate", "openRate"] }, columns: ["clicked", "clickRate", "openRate"] }, ...SPEC.pages[0].panels.slice(1)]; s.pages[0].statusDefault = null; });
     const page = build(spec, PULLED);
     const html = panelHtml(page.html, "emails");
+    const pane = paneHtml(page.html, "engagement");
     const rows = anyRows(html);
     // The template cell carries the Text button that opens the template's drawer (TPL-2); its label is not the name.
     const byName = Object.fromEntries(rows.slice(1).map((r) => [r[0].replace(/ Text$/, ""), r]));
@@ -798,17 +804,17 @@ try {
     const nameOf = (id) => PULLED.dimensions.templates.find((t) => t.id === id).name;
     check("the three tracking states look different (R1b): a tracked template with no click shows a plain 0 and 0.0%; a not-tracked template shows the words 'Not tracked' in a muted label and no number; an unknown one shows the figure with the '(tracking unknown)' marker whose tooltip explains it",
       states["tpl-nps"] === "tracked" && byName[nameOf("tpl-nps")][2] === "0" && byName[nameOf("tpl-nps")][3] === "0.0%" && states["tpl-renew-b"] === "not-tracked" && byName[nameOf("tpl-renew-b")][2] === "Not tracked" && byName[nameOf("tpl-renew-b")][3] === "Not tracked" &&
-        html.includes(`<span class="gs-not-tracked">Not tracked</span>`) && states["tpl-day7"] === "unknown" && /^\d+ \(tracking unknown\)$/.test(byName[nameOf("tpl-day7")][2]) && html.includes(`<span class="gs-mark gs-unknown" title="${esc(engine.caveatText("click-tracking-states"))}">(tracking unknown)</span>`),
+        html.includes(`<span class="gs-not-tracked">Not tracked</span>`) && states["tpl-day7"] === "unknown" && /^\d+ \(tracking unknown\)$/.test(byName[nameOf("tpl-day7")][2]) && html.includes(`<span class="gs-mark gs-unknown" data-tip="${esc(engine.caveatText("click-tracking-states"))}" title="${esc(engine.caveatText("click-tracking-states"))}" tabindex="0" role="button" aria-label="${esc(engine.caveatText("click-tracking-states"))}">(tracking unknown)</span>`),
       byName);
     check("Sent stands beside every rate (R2b): a panel that starts without it shows it anyway once a rate is shown, its column box is ticked and disabled with the reason, and a view that hides every rate may hide it",
       isDeepStrictEqual(rows[0], ["Email", "Sent", "Clicked", "Click rate", "Open rate"]) && /data-col="emails" value="sent" checked disabled title="Shown beside every rate">/.test(html) &&
         loadPage(page.html).call(`app.visibleCols(app.panels.find((p) => p.id === "emails"), { cols: { emails: ["clicked"] } })`).join() === "clicked" && loadPage(page.html).call(`app.visibleCols(app.panels.find((p) => p.id === "emails"), { cols: { emails: ["openRate"] } })`).join() === "sent,openRate", [rows[0], html.match(/data-col="emails" value="sent"[^>]*>/)?.[0]]);
     check("wherever a click column shows, the note that click tracking may not be enabled and that clicks count content links only (will not match the Gainsight UI, R18) stands under the table; wherever a response column shows, the survey-analytics caveat does (R20); a table with neither carries neither",
-      html.includes(`<p class="gs-note gs-note-clicks">${esc(engine.caveatText("clicks-content-only"))} ${esc(engine.caveatText("click-tracking-states"))}</p>`) && panelHtml(ADMIN_P.html, "survey-responses").includes(`<p class="gs-note gs-note-responses">${esc(engine.caveatText("responses-program-level"))} ${esc(engine.caveatText("responses-all-time"))}</p>`) &&
+      pane.includes(`<p class="gs-note gs-note-clicks">${esc(engine.caveatText("clicks-content-only"))} ${esc(engine.caveatText("click-tracking-states"))}</p>`) && !html.includes("gs-note-clicks") && paneHtml(ADMIN_P.html, "engagement").includes(`<p class="gs-note gs-note-responses">${esc(engine.caveatText("responses-program-level"))} ${esc(engine.caveatText("responses-all-time"))}</p>`) && (paneHtml(ADMIN_P.html, "engagement").match(/gs-note-clicks/g) ?? []).length === 1 &&
         !panelHtml(ADMIN.html, "programs").includes("gs-note-clicks") && !panelHtml(ADMIN.html, "programs").includes("gs-note-responses") && !panelHtml(ADMIN_P.html, "survey-responses").includes("gs-note-clicks"));
     const survey = panelHtml(ADMIN_P.html, "survey-responses");
     check("an all-time figure carries a tooltip saying what all time means and why (ruled 2026-10-04): the survey participants and response rate cells on their all-time basis are marked; the program with a survey is the only row",
-      /\(all time\)<\/span>/.test(survey) && survey.includes(`<span class="gs-mark" title="${esc(engine.caveatText("responses-all-time"))}">(all time)</span>`) && rowsOf(survey).length === 1 && rowsOf(survey)[0][0].startsWith("Acme NPS Survey"), rowsOf(survey));
+      /\(all time\)<\/span>/.test(survey) && survey.includes(`<span class="gs-mark" data-tip="${esc(engine.caveatText("responses-all-time"))}" title="${esc(engine.caveatText("responses-all-time"))}" tabindex="0" role="button" aria-label="${esc(engine.caveatText("responses-all-time"))}">(all time)</span>`) && rowsOf(survey).length === 1 && rowsOf(survey)[0][0].startsWith("Acme NPS Survey"), rowsOf(survey));
   }
 
   // ══ The About tab (R26): generated from the registry, the spec and the snapshot ══
@@ -865,7 +871,7 @@ try {
     app.setClock(() => Date.parse("2026-12-01T00:00:00Z"));
     const stale = app.renderStale();
     check("a stale banner shows once the data is past the spec's freshness (45 days), read from a clock the page gets at mount: in Node, with no clock, the pre-render carries an empty region; 16 days after the pull nothing; 77 days after, the banner with the age, the cadence and the threshold, and the refresh line on an admin page",
-      fresh === "" && ADMIN_P.html.includes(`<div data-region="stale"></div>`) && within === "" && /<div class="gs-banner gs-banner-stale" role="status" data-banner="stale">Stale: this data was pulled 76 days ago\. The dashboard is refreshed every month and is stale after 45 days\. <code>node \.gs-superadmin\/plugin\/scripts\/dashboard\.mjs refresh program-health<\/code><\/div>/.test(stale) &&
+      fresh === "" && ADMIN_P.html.includes(`<div data-region="stale"></div>`) && within === "" && /<div class="gs-banner gs-banner-stale" role="status" data-banner="stale"><p>Stale: this data was pulled 76 days ago\. The dashboard is refreshed every month and is stale after 45 days\.<\/p><p class="gs-notice-line"><code>node \.gs-superadmin\/plugin\/scripts\/dashboard\.mjs refresh program-health<\/code> <button type="button" data-copy="[^"]*">Copy<\/button><\/p><\/div>/.test(stale) &&
         !createDashboard(engine, { ...pageModel(SPEC_DEFAULTS, GOLD, SPEC_DEFAULTS.pages[1]), actions: null }).renderStale().includes("gs-banner"), stale);
     const execApp = createDashboard(engine, pageModel(SPEC_DEFAULTS, GOLD, SPEC_DEFAULTS.pages[1]));
     execApp.setClock(() => Date.parse("2026-12-01T00:00:00Z"));
@@ -900,20 +906,20 @@ try {
     const blocked = { getItem: () => { throw new Error("storage is blocked"); }, setItem: () => { throw new Error("storage is blocked"); } };
     const a = drive(blocked);
     check("a browser that blocks storage still gets a working page: reading and writing the column choice are both wrapped, nothing throws, the pre-render is left as it is and the controls are switched on; the stale region is painted from the browser's clock (fresh here)",
-      a.root.disabled === false && a.root.innerHTML === null && a.painted.stale === "" && (a.listeners.change({ target: { getAttribute: (n) => (n === "data-col" ? "programs" : null) } }), /<th scope="col" class="gs-num">Opened<\/th>/.test(panelHtml(a.painted.panes, "programs")) && !/class="gs-num">Sent<\/th>/.test(panelHtml(a.painted.panes, "programs"))), a.painted.panes?.slice(0, 200));
+      a.root.disabled === false && a.root.innerHTML === null && a.painted.stale === "" && (a.listeners.change({ target: { getAttribute: (n) => (n === "data-col" ? "programs" : null) } }), /data-sort="programs:opened">Opened<\/button><\/th>/.test(panelHtml(a.painted.panes, "programs")) && !/class="gs-num">Sent<\/th>/.test(panelHtml(a.painted.panes, "programs"))), a.painted.panes?.slice(0, 200));
     const kept = new Map();
     const b = drive({ getItem: (k) => kept.get(k) ?? null, setItem: (k, v) => kept.set(k, v) });
     b.listeners.change({ target: { getAttribute: (n) => (n === "data-col" ? "programs" : null) } });
     const c = drive({ getItem: (k) => kept.get(k) ?? null, setItem: () => {} });
     check("the column choice is remembered per viewer, per dashboard, page and table, and is drawn when the page is opened again; a stored value that is not a list is ignored",
-      isDeepStrictEqual([...kept], [[`gs-dashboard.program-health.admin.programs.columns`, `["opened"]`]]) && /class="gs-num">Opened<\/th>/.test(panelHtml(c.root.innerHTML, "programs")) && !/class="gs-num">Sent<\/th>/.test(panelHtml(c.root.innerHTML, "programs")) &&
+      isDeepStrictEqual([...kept], [[`gs-dashboard.program-health.admin.programs.columns`, `["opened"]`]]) && /data-sort="programs:opened">Opened<\/button><\/th>/.test(panelHtml(c.root.innerHTML, "programs")) && !/data-sort="programs:sent">Sent<\/button><\/th>/.test(panelHtml(c.root.innerHTML, "programs")) &&
         drive({ getItem: () => `{"not":"a list"}`, setItem: () => {} }).root.innerHTML === null, [...kept]);
     b.listeners.change({ target: { getAttribute: (n) => (n === "data-f" ? "status" : null) } });
     check("changing a filter redraws the views and the summary and rewrites the address in place, with no navigation: two status boxes ticked become that state's hash",
       isDeepStrictEqual(b.replaced, ["#s=PROCESSING,PAUSE"]) && b.painted.summary.includes("0 programs hidden by status") && rowsOf(panelHtml(b.painted.panes, "programs")).length === 5, [b.replaced, b.painted.summary]);
-    const d = drive({ getItem: () => null, setItem: () => {} }, "#s=all&t=about");
-    check("a page opened on a hash draws that state at once, in place of the pre-render",
-      typeof d.root.innerHTML === "string" && d.root.innerHTML.includes("showing every status") && /data-pane="about">/.test(d.root.innerHTML) && /data-pane="engagement" hidden>/.test(d.root.innerHTML));
+    const d = drive({ getItem: () => null, setItem: () => {} }, "#s=all&t=health");
+    check("a page opened on a hash draws that state at once, in place of the pre-render (the bar under the tabs showing that tab's controls and the summary of the view)",
+      typeof d.root.innerHTML === "string" && d.root.innerHTML.includes("showing every status") && /data-pane="health">/.test(d.root.innerHTML) && /data-pane="engagement" hidden>/.test(d.root.innerHTML) && /<nav class="gs-tabs"[\s\S]*<section class="gs-filters"/.test(d.root.innerHTML));
     const appAll = createDashboard(engine, pageModel(SPEC_DEFAULTS, GOLD, SPEC_DEFAULTS.pages[0]));
     const e = (() => { const listeners = {}; const painted = {}; const replaced = []; const root = { disabled: true, innerHTML: null, addEventListener: (type, fn) => { listeners[type] = fn; }, querySelectorAll: () => [], querySelector: (sel) => { const name = sel.match(/data-region="(\w+)"/)?.[1]; return name ? { set innerHTML(v) { painted[name] = v; } } : null; } }; mount(appAll, root, { document: {}, localStorage: { getItem: () => null, setItem: () => {} }, location: { hash: "" }, history: { replaceState: (a, b, url) => replaced.push(url) }, addEventListener: () => {} }); return { listeners, painted, replaced }; })();
     e.listeners.click({ target: { closest: () => ({ hasAttribute: (n) => n === "data-act", getAttribute: (n) => (n === "data-act" ? "running" : null) }) } });
@@ -949,7 +955,150 @@ try {
       isDeepStrictEqual(["=1+1", "+1", "-1", "@x", "\tx", "\rx", "safe=1", " =1"].map(csvCell), ["'=1+1", "'+1", "'-1", "'@x", "'\tx", `"'\rx"`, "safe=1", " =1"]) && csvCell(-5) === "-5" && csvCell(0.6667) === "0.6667" && csvCell(null) === "" && csvCell(NaN) === "" &&
         csvCell(`=HYPERLINK("x","y")`) === `"'=HYPERLINK(""x"",""y"")"` && csvText(["a", "b"], [["1,2", "x\ny"]]) === `a,b\r\n"1,2","x\ny"\r\n`);
     check("every panel with rows has the button and there is one builder behind them all: each drawn panel has exactly one Download CSV button when it has a table or a chart and none when it is a notice, and the runtime joins cells with a comma in one place",
-      [...ADMIN_P.html.matchAll(/<section class="gs-panel" data-panel="([\w-]+)"[^>]*>[\s\S]*?<\/section>/g)].every((m) => (m[0].match(/data-csv="/g) ?? []).length === (/<table|<svg class="gs-chart"|gs-kpis/.test(m[0]) ? 1 : 0)) && (ADMIN_P.html.match(/>Download CSV</g) ?? []).length >= 10 && SOURCES.runtimeSource.split("csvText(").length === 2 && SOURCES.runtimeSource.split("new g.Blob(").length === 2 && SOURCES.runtimeSource.includes("text: csvText(headers, rows)"));
+      [...ADMIN_P.html.matchAll(/<section class="gs-panel" data-panel="([\w-]+)"[^>]*>[\s\S]*?<\/section>/g)].every((m) => (m[0].match(/data-csv="/g) ?? []).length === (/<table|<svg class="gs-chart"|gs-kpis/.test(m[0]) ? 1 : 0)) && (ADMIN_P.html.match(/>Download current view \(CSV\)</g) ?? []).length >= 10 && !/>Download CSV</.test(ADMIN_P.html) && SOURCES.runtimeSource.split("csvText(").length === 2 && SOURCES.runtimeSource.split("new g.Blob(").length === 2 && SOURCES.runtimeSource.includes("text: csvText(headers, rows)"));
+  }
+
+  // ══ The look and the layout (UX-1, S4d): what the design round ruled, held in the markup ══
+  {
+    const pre = adminP.prerender;
+    const order = (html, ...marks) => marks.map((m) => html.indexOf(m));
+    check("the tab strip sits above a per-tab filter bar (ruled 2026-10-11): tabs, then the bar, then the panes; the headline is the first panel, so the figures the page exists for come right after one row of controls",
+      order(pre, `<nav class="gs-tabs"`, `<section class="gs-filters"`, `<div class="gs-panes"`, `data-panel="headline"`).every((i, k, a) => i > 0 && (k === 0 || i > a[k - 1])) && !/<p class="gs-summary"/.test(pre) && /<p class="gs-bar-summary" data-region="summary">/.test(pre));
+    const barOn = (tab) => adminP.call(`app.regions.filters(app.stateFromHash(${JSON.stringify(`t=${tab}`)}))`);
+    check("the bar shows the controls that act on the current tab: Engagement and Templates get months, programs, group, status and recipients; Health gets the same (three of its panels follow the months); the account control only where a tab has an account panel; About has no bar at all; an offered tab none",
+      ["engagement", "health", "templates"].every((t) => /gs-f-title">Months</.test(barOn(t)) && /data-picker/.test(barOn(t)) && /data-f="sg"/.test(barOn(t)) && /data-f="status"/.test(barOn(t)) && /data-f="internal"/.test(barOn(t))) && barOn("about") === "" &&
+        /gs-f-title">Account</.test(loadPage(ADMIN.html).call(`app.regions.filters(app.stateFromHash(""))`)) && !/gs-f-title">Account</.test(loadPage(ADMIN.html).call(`app.regions.filters(app.stateFromHash("t=templates"))`)) && loadPage(build(specWith((s) => { s.pages[0].tabs.find((t) => t.id === "health").enabled = false; s.pages[0].panels = s.pages[0].panels.filter((p) => p.tab !== "health"); }), PULLED).html).call(`app.regions.filters(app.stateFromHash("t=health"))`) === "",
+      [barOn("about"), barOn("health").slice(0, 200)]);
+    const health = paneHtml(ADMIN_P.html, "health");
+    const groups = [...health.matchAll(/<div class="gs-group-title" role="heading" aria-level="2" data-group="(\w+)">([^<]*)<\/div>/g)].map((m) => [m[1], m[2]]);
+    const panelOrder = [...health.matchAll(/data-panel="([\w-]+)" data-type="([\w-]+)"/g)].map((m) => m[2]);
+    const firstUnbound = health.indexOf('data-group="unbound"');
+    check("the Health tab's panels are grouped by what the months reach (ruled 2026-10-11): 'Over the filtered time period' heads the panels that follow the months and recipients, 'Not bound by the filtered time period' heads Program health, Schedules and One-time, with the note that the other filters still apply; each of those three says its own basis under its title; a page whose Health tab holds only one kind draws one heading",
+      isDeepStrictEqual(groups, [["bound", "Over the filtered time period"], ["unbound", "Not bound by the filtered time period"]]) && health.includes(`<p class="gs-note gs-group-note">The program, status, group and recipients filters still apply; each panel says the basis it judges on.</p>`) &&
+        panelOrder.slice(0, 3).every((t) => !["health-silent", "health-schedules", "health-one-time"].includes(t)) && panelOrder.slice(3).every((t) => ["health-silent", "health-schedules", "health-one-time"].includes(t)) && panelOrder.length === 6 &&
+        ["program-health", "schedules", "one-time"].every((id) => health.indexOf(`data-panel="${id}"`) > firstUnbound && /<p class="gs-basis">[^<]*not (over|the filtered time period)/.test(panelHtml(ADMIN_P.html, id))) && /class="gs-basis">Judged as of 2026-09-15 over the last 90 days of sends the pull holds by day, not over the filtered time period/.test(panelHtml(ADMIN_P.html, "program-health")) &&
+        (() => { const one = paneHtml(build(specWith((s) => { s.pages[0].panels = /** @type {any[]} */ ([...PRESETS.admin.panels]).filter((p) => p.tab !== "health" || p.type === "health-schedules"); s.pages[0].statusDefault = null; }), SIGNALS).html, "health"); return (one.match(/gs-group-title/g) ?? []).length === 1 && one.includes('data-group="unbound"'); })(),
+      [groups, panelOrder]);
+    // A keyboard-only walk of the bar: every control reachable in order, the program list only once the picker is opened.
+    const bar = pre.match(/<section class="gs-filters"[^>]*>([\s\S]*?)<\/section>/)?.[1] ?? "";
+    const focusables = [...bar.matchAll(/<(select|input|button|summary)\b([^>]*)>/g)].map((m) => `${m[1]}${m[2].match(/data-(f|act)="([\w-]*)"/) ? ":" + m[2].match(/data-(f|act)="([\w-]*)"/)[2] : ""}`);
+    const pickerClosed = /<details class="gs-picker gs-pop-host" data-picker>/.test(bar) && !/<details class="gs-picker gs-pop-host" data-picker open>/.test(bar);
+    const inPicker = (bar.match(/<details class="gs-picker[\s\S]*?<\/details>/)?.[0] ?? "");
+    const outside = bar.replace(/<details class="gs-picker[\s\S]*?<\/details>/, "");
+    check("a keyboard-only walk of the filter bar works: the controls are native (selects, checkboxes, buttons, a summary) in reading order — months, the program picker's button, group, status, the quick picks, recipients, reset — and the program list's search, buttons and checkboxes sit inside the picker's closed disclosure, so Tab skips them until it is opened; every control has an accessible name",
+      pickerClosed && /^select:from,select:to,input:current,summary/.test(focusables.join(",")) && focusables.join(",").includes("select:sg,select:g,summary,button:running,button:every-status,input:status,input:status,input:status,input:internal") && focusables.at(-1) === "button:reset" && /<details class="gs-picker gs-pop-host" data-status-picker>/.test(bar) && /<label class="gs-switch"><input type="checkbox" role="switch" data-f="internal"/.test(bar) &&
+        !/data-f="program"|data-f="search"|data-act="all"/.test(outside) && (inPicker.match(/data-f="program"/g) ?? []).length === SIGNALS.dimensions.programs.length && /aria-label="Search programs"/.test(inPicker) && /aria-label="From month"/.test(bar) && /aria-label="Supergroup"/.test(bar) && /:focus-visible\{outline:2px solid var\(--accent\)/.test(ADMIN_P.html),
+      focusables);
+    // Escape and a click outside close an open popover; the picker's summary takes focus back.
+    const app = createDashboard(engine, pageModel(SPEC_DEFAULTS, GOLD, SPEC_DEFAULTS.pages[0]));
+    const popover = { open: /** @type {boolean} */ (true), focused: false, querySelector: () => ({ focus: () => { popover.focused = true; } }) };
+    const listeners = {};
+    const docListeners = {};
+    const root = { disabled: true, innerHTML: null, addEventListener: (t, fn) => { listeners[t] = fn; }, querySelectorAll: (sel) => (sel === "details.gs-pop-host[open]" ? [popover] : []), querySelector: () => null };
+    mount(app, root, { document: { addEventListener: (t, fn) => { docListeners[t] = fn; } }, localStorage: { getItem: () => null, setItem: () => {} }, location: { hash: "" }, history: { replaceState: () => {} }, addEventListener: () => {}, Date: { now: () => Date.parse("2026-09-20T00:00:00Z") } });
+    const isOpen = () => popover.open; // read through a call: the listeners mutate it, which a straight read would not see
+    listeners.keydown({ key: "a", target: { closest: () => popover } });
+    const stillOpen = isOpen() === true;
+    listeners.keydown({ key: "Escape", target: { closest: () => popover } });
+    const closedByEscape = isOpen() === false && popover.focused === true;
+    popover.open = true;
+    docListeners.click({ target: { closest: () => null } });
+    const closedByClickAway = isOpen() === false;
+    popover.open = true;
+    docListeners.click({ target: { closest: () => popover } });
+    check("a popover (the program picker, a Show columns menu) closes on Escape, with focus returned to its button, and on a click outside it; another key and a click inside leave it open",
+      stillOpen && closedByEscape && closedByClickAway && isOpen() === true);
+    // The quick picks and the summary in words.
+    const every = adminP.call(`app.regions.filters(app.clean({ ...app.defaultState(), statuses: ["PROCESSING"] }))`);
+    check("beside 'Running now' there is one click back to every status, each pressed when it is the state; the bar's summary says the view in words: how many programs, hidden by status, the months and whether internal recipients count",
+      /data-act="every-status">Every status</.test(every) && !/data-act="every-status" aria-pressed="true"/.test(every) && /data-act="every-status" aria-pressed="true"/.test(pre) && adminP.call(`app.regions.summary(app.stateFromHash("m=2026-07..2026-08&rc=external"))`).endsWith("Months 2026-07 to 2026-08; external recipients only.") && pre.includes("Months 2026-06 to 2026-09; every recipient."));
+    // Columns: a popover whose heading says the choice reaches the CSV; the download names the current view.
+    const programs = panelHtml(ADMIN_P.html, "programs");
+    check("the columns tool is a popover from a 'Show columns' button whose heading says the choice reaches the CSV, with the note that Sent stays beside a rate; every download button reads 'Download current view (CSV)'; both sit to the right of the panel's title, never before its content (ruled 2026-10-11)",
+      /<div class="gs-panel-head"><h2>Programs<\/h2><div class="gs-tools"><details class="gs-cols gs-pop-host" data-cols="programs"><summary class="gs-btn">Show columns &#9662;<\/summary><div class="gs-pop"><p class="gs-pop-head">Columns shown here and in the CSV<\/p>/.test(programs) && programs.includes(`<p class="gs-note">Sent stays while a rate is shown. Your choice is remembered in this browser.</p></div></details><button type="button" data-csv="programs">Download current view (CSV)</button></div></div>`) &&
+        programs.indexOf("gs-panel-head") < programs.indexOf("<table") && !/Download CSV</.test(ADMIN_P.html), programs.slice(0, 400));
+    // The text drawer opens in place (ruled 2026-10-10): under the table whose Text button was pressed, the tab unchanged.
+    const inPlace = createDashboard(engine, pageModel(SPEC_DEFAULTS, GOLD, SPEC_DEFAULTS.pages[0]));
+    const l2 = {};
+    const painted = {};
+    mount(inPlace, { disabled: true, innerHTML: null, addEventListener: (t, fn) => { l2[t] = fn; }, querySelectorAll: () => [], querySelector: (sel) => { const name = sel.match(/data-region="(\w+)"/)?.[1]; return name ? { set innerHTML(v) { painted[name] = v; } } : null; } }, { document: {}, localStorage: { getItem: () => null, setItem: () => {} }, location: { hash: "" }, history: { replaceState: (a, b, url) => { painted.url = url; } }, addEventListener: () => {}, Date: { now: () => 0 } });
+    l2.click({ target: { closest: (sel) => (sel.includes("data-open-template") ? { hasAttribute: (n) => n === "data-open-template", getAttribute: (n) => (n === "data-open-template" ? "tpl-welcome" : null), closest: () => ({ getAttribute: () => "emails" }) } : null) } });
+    check("Text on the Emails table opens the email's text under that table, on the same tab: the Emails panel carries the drawer, the Templates panel does not, the tabs are not repainted, and the address carries the template alone (the panel it opened from is a view choice)",
+      painted.tabs === undefined && /data-panel="emails"[\s\S]*?<section class="gs-drawer" data-drawer="tpl-welcome">/.test(panelHtml(`<section class="gs-pane">${painted.panes}`, "emails") ? painted.panes : "") && !/gs-drawer/.test(panelHtml(painted.panes, "templates") ?? "") && painted.url === "#tpl=tpl-welcome" &&
+        isDeepStrictEqual([inPlace.stateFromHash("tpl=tpl-welcome").tpl, inPlace.stateFromHash("tpl=tpl-welcome").tplAt], ["tpl-welcome", null]), [painted.url, Object.keys(painted)]);
+    // The About tab: a contents line, How to use first, then the rest; the wording the round corrected.
+    const about = paneHtml(ADMIN_P.html, "about");
+    const headings = [...about.matchAll(/<h2>([^<]*)<\/h2>/g)].map((m) => m[1]);
+    check("the About tab opens with a contents line and puts How to use before the definitions (ruled 2026-10-11); its How-to says the bar narrows the current tab's panels (not every panel at once), names the Health panels the months do not bind, says which tables have Show columns and what Download current view exports, and on a text-less leaders' page says only that the page carries no email text",
+      isDeepStrictEqual(headings, ["About this page", "How to use this page", "Definitions", "This dashboard&#39;s settings", "Where the data came from", "Caveats", "How to refresh"]) && /<ul class="gs-toc"><li><a href="#about-how">How to use this page<\/a><\/li>/.test(about) && about.includes('<section class="gs-about" id="about-definitions"><h2>Definitions</h2>') &&
+        about.includes("The filter bar under the tabs narrows the panels of the current tab") && !about.includes("narrow every panel at once") && about.includes(`under &quot;Not bound by the filtered time period&quot; (Program health, Schedules, One-time and ad-hoc programs) judge on their own basis`) && about.includes("A table with Show columns lets you pick the figures it shows and exports") && !about.includes("Every table has Columns") &&
+        (() => { const execT = paneHtml(build(specWith((s) => { s.pages[1].tabs.find((t) => t.id === "templates").enabled = true; }), PULLED, "exec").html, "about"); return execT.includes("This page carries no email text.") && !execT.includes("no search"); })(),
+      headings);
+    // Text contrast at AA in both schemes, measured from the committed token block (the theme suite measures the theme module; this holds the PAGE).
+    const blocks = [...TOKENS.matchAll(/:root\{([^}]*)\}/g)].map((m) => Object.fromEntries(m[1].split(";").filter((d) => d.includes(":")).map((d) => [d.slice(0, d.indexOf(":")), d.slice(d.indexOf(":") + 1)])));
+    const rgb = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16) / 255);
+    const lum = (h) => { const [r, g, b] = rgb(h).map((v) => (v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4)); return 0.2126 * r + 0.7152 * g + 0.0722 * b; };
+    const contrast = (a, b) => { const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p); return (x + 0.05) / (y + 0.05); };
+    const light = { ...blocks[0], ...blocks[1] };
+    const dark = { ...light, ...blocks[2], ...blocks[3] };
+    const textTokens = ["--fg", "--muted", "--accent", "--status-stale", "--status-error", "--status-warn", "--status-ok", "--status-not-tracked", "--status-unknown"];
+    const low = [["light", light], ["dark", dark]].flatMap(([m, t]) => textTokens.flatMap((tk) => ["--bg", "--soft", "--note", "--shade"].map((s) => [m, tk, s, Math.round(contrast(t[tk], t[s]) * 100) / 100]).filter(([, , , c]) => Number(c) < 4.5)));
+    check("every text token of the page, the status tokens included, reads at WCAG AA (4.5:1) on every surface it is drawn on, in the light scheme and in the dark one; the control border reads at 3:1 on the page", low.length === 0 && contrast(light["--control"], light["--bg"]) >= 3 && contrast(dark["--control"], dark["--bg"]) >= 3, low);
+    check("print keeps the view and drops the controls: the print block forces the light tokens, hides the tab strip, the controls, the tools and the chips, and leaves the bar's summary line (what was filtered) and every panel",
+      /@media print\{:root\{color-scheme:light;/.test(ADMIN_P.html) && /@media print\{\.gs-tabs,\.gs-f,\.gs-tools,\.gs-chips,[^}]*\{display:none\}/.test(ADMIN_P.html) && !/@media print\{[^@]*\.gs-filters\{display:none/.test(ADMIN_P.html) && !/@media print\{[^@]*\.gs-bar-summary\{display:none/.test(ADMIN_P.html));
+    // Round 2 (ruled 2026-10-11): the filter shape, the status picker, the switches, sorting, the tips, the cron words.
+    const bar2 = adminP.call(`app.regions.filters(app.stateFromHash(""))`);
+    check("every filter has one shape: its name on top and the control under it; Status is a picker like Programs with Running now and Every status inside and its button saying the statuses in force; the recipients filter is a switch labelled 'Include internal recipients', on where the spec starts on everyone; the search's two options and the expected-failures toggle are switches too",
+      [...bar2.matchAll(/<div class="gs-f"><span class="gs-f-title">([^<]*)<\/span><div class="gs-f-control">/g)].map((m) => m[1]).join() === "Months,Programs,Group,Status,Recipients,Account" &&
+        /<details class="gs-picker gs-pop-host" data-status-picker><summary class="gs-btn"><span data-region="statusSummary">Every status<\/span> &#9662;<\/summary><div class="gs-pop"><div class="gs-picker-tools"><button type="button" class="gs-btn" data-act="running">Running now<\/button> <button type="button" class="gs-btn" data-act="every-status" aria-pressed="true">Every status<\/button><\/div><label class="gs-status"><input type="checkbox" data-f="status"/.test(bar2) &&
+        adminP.call(`app.regions.statusSummary(app.stateFromHash("s=PROCESSING"))`) === "Running now" && adminP.call(`app.regions.statusSummary(app.stateFromHash("s=PAUSE,NEW"))`) === "Paused, Draft" && !/class="gs-prog"[^>]*>[^<]*<input type="checkbox" data-f="status"/.test(bar2) &&
+        /<label class="gs-switch"><input type="checkbox" role="switch" data-f="internal" checked aria-checked="true"> <span>Include internal recipients<\/span><\/label>/.test(bar2) && /role="switch" data-f="qa"/.test(panelHtml(ADMIN.html, "templates")) && /role="switch" data-f="he"/.test(panelHtml(ADMIN_P.html, "failure-reasons")),
+      bar2.slice(0, 600));
+    // Sorting (ruled 2026-10-11): every heading of a table panel, the state in the hash, Default order, and the sort dropped with its column.
+    const sortedHash = "so=programs:openRate:asc"; // the admin preset starts on every status, so the hash carries the sort alone
+    const sortedRows = panelRun(adminP, "programs", sortedHash).rows.map((r) => r.cells.openRate.value);
+    const sortedHtml = adminP.call(`app.renderPanel(app.panels.find((p) => p.id === "programs"), app.stateFromHash(${JSON.stringify(sortedHash)}), null)`);
+    check("every heading of a table panel sorts (so=<panel>:<key>:<dir> in the hash): sorted by open rate ascending the rows are the engine's rows in that order (a dimension sorts too), the heading says the direction, a Default order button appears in the tools and is absent without a sort; a sort on a key the panel lacks is dropped",
+      sortedRows.length > 1 && sortedRows.every((v, i) => i === 0 || v == null || sortedRows[i - 1] == null || sortedRows[i - 1] <= v) && isDeepStrictEqual(panelRun(adminP, "programs", sortedHash), plain(runQuery(applyGroups(SIGNALS, SPEC.groups).snapshot, { recipientClass: "all" }, { ...PRESETS.admin.panels.find((p) => p.id === "programs").query, sort: [{ metric: "openRate", dir: "asc" }] }))) &&
+        /aria-sort="ascending"><button type="button" class="gs-sort is-on" data-sort="programs:openRate">Open rate &#9650;<\/button>/.test(sortedHtml) && /<button type="button" data-act="sort-default" data-panel="programs">Default order<\/button>/.test(sortedHtml) && !/sort-default/.test(panelHtml(ADMIN_P.html, "programs")) &&
+        /aria-sort="none"><button type="button" class="gs-sort" data-sort="programs:program">Program<\/button>/.test(panelHtml(ADMIN_P.html, "programs")) && adminP.call(`app.hashOf(app.stateFromHash(${JSON.stringify(sortedHash)}))`) === sortedHash && isDeepStrictEqual(adminP.call(`app.stateFromHash("so=programs:bogus:asc,ghost:sent:desc,emails:sent:up").so`), {}) &&
+        panelRun(adminP, "programs", "so=programs:program:desc").rows.map((r) => r.label.program).join() === [...panelRun(adminP, "programs", "so=programs:program:asc").rows.map((r) => r.label.program)].reverse().join(),
+      [sortedRows, sortedHtml.match(/<thead>[\s\S]*?<\/thead>/)?.[0]]);
+    const sortApp = createDashboard(engine, pageModel(SPEC_DEFAULTS, GOLD, SPEC_DEFAULTS.pages[0]));
+    const l3 = {};
+    const painted3 = {};
+    const urls = [];
+    const boxes3 = [{ value: "sent", checked: true, getAttribute: () => "programs" }, { value: "openRate", checked: false, getAttribute: () => "programs" }];
+    mount(sortApp, { disabled: true, innerHTML: null, addEventListener: (t, fn) => { l3[t] = fn; }, querySelectorAll: (sel) => (sel === "[data-col]" ? boxes3 : []), querySelector: (sel) => { const name = sel.match(/data-region="(\w+)"/)?.[1]; return name ? { set innerHTML(v) { painted3[name] = v; } } : null; } }, { document: {}, localStorage: { getItem: () => null, setItem: () => {} }, location: { hash: "#so=programs:openRate:desc" }, history: { replaceState: (a, b, url) => urls.push(url) }, addEventListener: () => {}, Date: { now: () => 0 } });
+    l3.click({ target: { closest: (sel) => (sel.includes("data-sort") ? { hasAttribute: (n) => n === "data-sort", getAttribute: (n) => (n === "data-sort" ? "programs:openRate" : null), classList: { toggle() {} } } : null) } });
+    const flipped = urls.at(-1);
+    l3.change({ target: { getAttribute: (n) => (n === "data-col" ? "programs" : null) } });
+    const dropped = urls.at(-1);
+    check("in a browser: a click on a sorted heading flips its direction and rewrites the address; hiding the sorted column (open rate unticked in Show columns) drops the sort and the address loses it",
+      flipped === "#so=programs:openRate:asc" && dropped === "#" && !/sort-default/.test(panelHtml(painted3.panes, "programs")), [urls]);
+    check("a long table scrolls inside its panel with the heading and the total row pinned (about ten rows tall), so a summary stays in view", /\.gs-scroll\{overflow:auto;max-height:400px/.test(ADMIN_P.html) && /th\{[^}]*position:sticky;top:0/.test(ADMIN_P.html) && /tfoot td\{position:sticky;bottom:0/.test(ADMIN_P.html));
+    // Tips (ruled 2026-10-11): hover, focus, click or tap; the marks, the markers and every ⓘ carry the text themselves.
+    const tipApp = createDashboard(engine, pageModel(SPEC_DEFAULTS, GOLD, SPEC_DEFAULTS.pages[0]));
+    const l4 = {};
+    const tipEl = { opened: false, classList: { toggle() { tipEl.opened = !tipEl.opened; }, remove() { tipEl.opened = false; } } };
+    mount(tipApp, { disabled: true, innerHTML: null, addEventListener: (t, fn) => { l4[t] = fn; }, querySelectorAll: (sel) => (sel === "[data-tip].is-open" && tipEl.opened ? [tipEl] : []), querySelector: () => null }, { document: {}, localStorage: { getItem: () => null, setItem: () => {} }, location: { hash: "" }, history: { replaceState: () => {} }, addEventListener: () => {}, Date: { now: () => 0 } });
+    l4.click({ target: { closest: (sel) => (sel.includes("data-tip") ? { hasAttribute: (n) => n === "data-tip", classList: tipEl.classList } : null) } });
+    const openedByClick = tipEl.opened === true;
+    l4.keydown({ key: "Escape", target: { closest: () => null } });
+    const closedByEscape2 = tipEl.opened === false;
+    l4.keydown({ key: "Enter", target: { closest: (sel) => (sel.includes("data-tip") ? { classList: tipEl.classList } : null) }, preventDefault() {} });
+    check("a mark or an ⓘ opens its text on a click or tap and on Enter, closes on Escape, and shows it on hover and focus through the style sheet (no native tooltip is relied on); every such element is reachable by keyboard and carries the text as its accessible name",
+      openedByClick && closedByEscape2 && tipEl.opened === true && /\[data-tip\]:hover::after,\[data-tip\]:focus-visible::after,\[data-tip\]\.is-open::after\{content:attr\(data-tip\)/.test(ADMIN_P.html) && [...ADMIN_P.html.replace(/<script[\s\S]*?<\/script>/g, "").matchAll(/<span class="gs-mark[^"]*" data-tip="[^"]*" title="[^"]*" tabindex="0" role="button" aria-label="[^"]*">/g)].length > 20 && !/<sup title=/.test(markupOf(ADMIN_P.html)));
+    // The cron in words (ruled 2026-10-11): beside the expression on the Schedules view; a shape the describer cannot read shows alone.
+    const sched = panelHtml(ADMIN_P.html, "schedules");
+    check("the Schedules view says each cron in words beside the expression, and an expression it cannot read shows alone",
+      /On Mondays, at 08:00 <code class="gs-cron">0 0 8 \? \* MON \*<\/code>/.test(sched) && (sched.match(/<code class="gs-cron">/g) ?? []).length === engine.healthSchedulesView(applyGroups(SIGNALS, SPEC.groups).snapshot, { recipientClass: "all" }, { staleAfterDays: 45 }).rows.filter((r) => r.cronExpression).length &&
+        isDeepStrictEqual(["0 0 9 ? * MON-FRI *", "0 30 7 ? * MON *", "0 0 8 L * ? *", "0 0 8 ? * 2#1 *", "0 0 8 * * ? *", "0 0/15 * * * ? *", "0 0 8 1 1/3 ? *", "0 0 8 15 JAN,JUL ? *", "nonsense", "* * * * *"].map(cronWords),
+          ["On weekdays, at 09:00", "On Mondays, at 07:30", "On the last day of the month, at 08:00", "On the 1st Monday of the month, at 08:00", "Every day, at 08:00", "Every day, every 15 minutes", "On the 1st of the month every 3 months, at 08:00", "On the 15th of the month in January and July, at 08:00", null, null]),
+      [sched.match(/<td>[^<]*<code class="gs-cron">[^<]*<\/code><\/td>/g), ["0 0 9 ? * MON-FRI *"].map(cronWords)]);
+    check("the three customer-list titles carry no parenthetical (ruled 2026-10-11), and a program in no group at either level carries no group badge while a program grouped at one level still does",
+      ["Most engaged customers", "Least engaged customers", "Most bounced customers"].every((t) => PRESETS.admin.panels.some((p) => p.title === t)) && !PRESETS.admin.panels.some((p) => /\(/.test(p.title)) &&
+        !/gs-badge-group/.test(loadPage(build(specWith((s) => { s.groups = { rules: [], overrides: {} }; }), PULLED).html).prerender.match(/<details class="gs-picker[\s\S]*?<\/details>/)?.[0] ?? "x") && /gs-badge-group">Ungrouped \/ Unlisted</.test(admin.prerender));
   }
 
   // ══ Hostile names render inert ════════════════════════════════════════════
@@ -974,7 +1123,7 @@ try {
     check("a hostile name cannot end the page's script or start another: the file still has exactly its three script elements, and the embedded data holds no angle bracket, ampersand or line separator at all",
       (html.match(/<script/g) ?? []).length === 3 && (html.match(/<\/script>/g) ?? []).length === 3 && !/[<>&]/.test(loaded.data) && !loaded.data.includes(LS) && loaded.scripts.length === 2);
     check("a hostile name renders inert: outside the page's own scripts no tag, attribute or comment a tenant string asked for exists; each is there as text (the chart titles, the About tab and the health views included)",
-      !/<script|<img|<b>|<i>|<u>|<em>|<h1>Programs|<a href|<!--|onerror=alert\(1\)>|onload=/.test(markup.replace(/&lt;[\s\S]*?&gt;/g, "")) && !/<(img|b|i|u|em|a|script)[\s>]/.test(markup) && !/<svg[^>]*onload/.test(markup) &&
+      !/<script|<img|<b>|<i>|<u>|<em>|<h1>Programs|<a href|<!--|onerror=alert\(1\)>|onload=/.test(markup.replace(/&lt;[\s\S]*?&gt;/g, "").replace(/<a href="#about-[a-z]+">/g, "")) && !/<(img|b|i|u|em|a|script)[\s>]/.test(markup.replace(/<a href="#about-[a-z]+">/g, "")) && !/<svg[^>]*onload/.test(markup) &&
         evil.every((name) => markup.includes(esc(name))) && markup.includes(esc(`<h1>Programs</h1>`)) && markup.includes(esc(`<script>g</script>`)) && html.includes(`<title>Acme &lt;u&gt;title&lt;/u&gt; &amp; "more" · &lt;em&gt;Admin&lt;/em&gt;</title>`),
       markup.match(/<(img|b|i|u|em|a|script)[\s>].{0,40}/)?.[0]);
     check("and nothing is lost to the escaping: the page reads every hostile name back exactly as the snapshot holds it",

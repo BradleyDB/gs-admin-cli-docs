@@ -5,7 +5,72 @@ marketplace doesn't pin versions — users get main — so entries describe what
 user who updates, not internal refactors. Entries before 0.8.0 were reconstructed from git
 history when this file was introduced.
 
-## 0.49.0 — 2026-10-10
+## 0.50.0 — 2026-10-11
+
+The engagement dashboard's look (UX-1): a design round over the finished pages, on
+fictional fixtures, and the mechanism a brand theme will fill (UX-2). Presentation only:
+no figure, filter or export changed meaning.
+
+- **The tab strip sits above a one-row filter bar for the current tab.** The headline
+  figures are the first thing on the page. The bar shows the controls that act on the tab
+  you are on (About has none; the account control only on a tab with an account panel),
+  with Reset and a one-line summary of the view (programs, status, months, recipients)
+  inside it. Every filter has one shape: its name on top, the control under it. Programs
+  and Status are pickers that open on click ("Running now" and "Every status" sit inside
+  the status picker), so a keyboard user tabs past their lists unless one is open; Escape
+  and a click outside close them. Binary filters are switches: "Include internal
+  recipients" (on when the spec starts on everyone), "Show expected failures", and the
+  search's "All the words" and "Whole words".
+- **Tables sort and scroll.** Every heading of a table panel sorts its rows (a second
+  click flips; a "Default order" button returns the panel's own order and hiding the
+  sorted column drops the sort); the sort travels in the address with the filters. A long
+  table scrolls inside its panel with the heading and the total row pinned.
+- **Charts carry their values:** a number above every point and on top of every bar (the
+  last point of a line keeps the series name), falling back to the last point and the
+  hover past 16 points per series or on bars too thin to carry one.
+- **Marks and ⓘ explain themselves on hover, focus, click or tap** (the native tooltip
+  was slow and touch never showed it): the `*` and `†` marks, the "(tracking unknown)"
+  and "(all time)" markers and every ⓘ on the Health tab. No panel repeats what a mark
+  means; the foot of the tab says it once. The headline's "Change since the last
+  refresh: none yet, this is the first pull" sits beside its title.
+- **Schedules read in words beside the cron** ("On the 1st of the month, at 08:00";
+  "On weekdays, at 09:00"); an expression the describer cannot read shows alone.
+- **The Health tab is grouped by what the months reach:** "Over the filtered time period"
+  (Send health, Why sends and participants fail, Error rate by program) and "Not bound by
+  the filtered time period" (Program health, Schedules, One-time and ad-hoc programs), the
+  second with a note that the program, status, group and recipients filters still apply
+  and each panel's own basis under its title.
+- **Show columns ▾ and Download current view (CSV).** The columns tool is a popover whose
+  heading says the choice reaches the CSV too; the download button says what it exports.
+  Both sit to the right of a panel's title. The headline tiles say "no previous pull" once,
+  and what every figure on a tab shares (the provisional period, the click and response
+  caveats) is said once at the foot of the tab.
+- **Templates tab:** an email's programs are folded under it until opened (a search hit or
+  an open drawer unfolds its email); each row under an email says what it is (Program,
+  Step), and the heading reads "Email › program › step". Text opens an email's text in
+  place, under the table the button is in, on the same tab.
+- **Where a page lacks something:** the filter bar carries a one-line pointer; the full
+  notice with its how-to stands where the data would be (the customer lists; the About
+  tab's settings for the recipients toggle).
+- **Charts:** the legend reads before the plot, the provisional band is labelled, bars are
+  thin (at most 24 px) with square bases, dots sit on a ring of the surface colour. The
+  customer-list titles lose their parentheticals.
+- **About:** a contents line, How to use first, and the wording corrected (the bar narrows
+  the current tab; which tables have Show columns; a text-less leaders' page says only that
+  it carries no email text).
+- **Readable in both schemes and on paper:** every text colour, the status colours
+  included, reads at WCAG AA on every surface in light and dark; control borders at 3:1; a
+  visible focus ring; print uses the light colours whatever the OS setting and keeps the
+  summary line; the stale banner's refresh line has a Copy button.
+- **T-11 `theme` (additive) and a theme validator.** A spec may carry a brand theme: text
+  and surface colours (light; dark, or derived), chart series colours, a system font stack,
+  a corner radius, a logo as a PNG or JPEG data URI of at most 200 KB. `dashboard-theme.mjs`
+  holds the default theme as data and the one validator: text contrast at AA in both
+  schemes, chart colours distinguishable from each other and the background under normal
+  and simulated colour-blind vision, a dark set derived when none is given; a token that
+  fails is replaced by the default's with a note the About tab shows. Fonts are system
+  stacks only; the page still makes no network request. The interview step that fills it
+  is UX-2 (S5).
 
 The engagement dashboard's templates line (TPL-1, TPL-2): what each email says, beside how
 it performed. `/gs-superadmin:email-engagement report` gains one ask and one column; the

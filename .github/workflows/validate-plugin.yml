@@ -226,6 +226,10 @@ jobs:
       # original snapshot, filter state by filter state.
       - name: Dashboard page fixtures (dashboard-page.mjs, dashboard-runtime.mjs)
         run: node plugins/gs-superadmin/test/dashboard-page.mjs
+      # The page's look (UX-1): the default theme as data, the theme validator
+      # over its four fixtures, and a themed page through the real builder.
+      - name: Dashboard theme fixtures (dashboard-theme.mjs)
+        run: node plugins/gs-superadmin/test/dashboard-theme.mjs
       # Executes the frozen T-1/T-2 contracts against produced artifacts
       # (GP-B5 DS-18): manifest verbs in a temp workspace, bundled catalog
       # key sets.
