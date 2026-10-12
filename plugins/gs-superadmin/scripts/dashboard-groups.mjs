@@ -237,7 +237,10 @@ export function describeRule(rule) {
  * @returns {ProgramTraits[]} one per program of the snapshot, by id
  */
 export function programTraits(snapshot) {
-  return programTraitsOf(snapshot.dimensions.programs, snapshot.meta.metricAvailability.responses.programs);
+  // The months each program sent in (F-502's hand-fed read: a one-run window re-run month after month recurs by hand).
+  const sentMonths = {};
+  for (const r of snapshot.facts.byTemplate ?? []) if (r.sent > 0) (sentMonths[r.programId] ??= new Set()).add(r.month);
+  return programTraitsOf(snapshot.dimensions.programs, snapshot.meta.metricAvailability.responses.programs, Object.fromEntries(Object.entries(sentMonths).map(([id, m]) => [id, m.size])));
 }
 /**
  * The same traits from program rows alone (the program dimension's shape, as `jo p list` plus the KB's schedule
@@ -245,9 +248,10 @@ export function programTraits(snapshot) {
  * still says it sends one). The interview reads the plan's program list through this before any fact is pulled (S5).
  * @param {Array<*>} programs rows shaped like T10Dimensions.programs
  * @param {Object<string, {state: string}>} [responses] metricAvailability.responses.programs, or none
+ * @param {Object<string, number>} [monthsWithSends] per program id, how many months it sent in (none known: {})
  * @returns {ProgramTraits[]}
  */
-export function programTraitsOf(programs, responses = {}) {
+export function programTraitsOf(programs, responses = {}, monthsWithSends = {}) {
   return programs
     .map((p) => {
       const survey = responses[p.id]?.state;
@@ -261,7 +265,9 @@ export function programTraitsOf(programs, responses = {}) {
         sendsSurveys: SURVEY_MODELS.includes(p.model) || survey === "tracked" ? true : survey === "not-tracked" ? false : null,
         // A classification the audit could settle decides; a pass-through label (a CRON-type schedule whose cron the KB
         // did not capture, "unknown") is a kind that could not be read, so the trait is unknown, never false (F-494).
-        recurring: !schedule ? null : schedule.classification === "recurring" ? true : schedule.classification === "one-time" || schedule.classification === NO_SCHEDULE_LABEL ? false : null,
+        // A one-run window (F-502) is one-time by its data — unless the program was RE-RUN through such windows, sending
+        // in two or more months: that is the hand-fed class (F-491's taxonomy), which recurs by hand and stays out of One-off.
+        recurring: !schedule ? null : schedule.classification === "recurring" ? true : schedule.oneRunWindow === true && (monthsWithSends[p.id] ?? 0) >= 2 ? true : schedule.classification === "one-time" || schedule.classification === NO_SCHEDULE_LABEL ? false : null,
       };
     })
     .sort((a, b) => cmpKey(a.id, b.id));

@@ -92,6 +92,15 @@ try {
     check("the questions table: one row per question with its id, wording, kind, options, path, skip rule and judgment flag; ids unique; the three judgment nodes are purpose, grouping and look; every answerable question has an apply; the fast path's two questions are the estimate and the save",
       new Set(ids).size === ids.length && isDeepStrictEqual(QUESTIONS.filter((q) => q.judgment).map((q) => q.id), ["purpose", "grouping", "look"]) && QUESTIONS.every((q) => typeof q.ask === "string" && q.ask.length > 20 && typeof q.options === "function" && typeof q.kind === "string") &&
         QUESTIONS.filter((q) => !["preflight", "action"].includes(q.kind)).every((q) => typeof q.apply === "function") && isDeepStrictEqual(QUESTIONS.filter((q) => q.kind === "action").map((q) => q.id), ["dry-run", "estimate", "save"]) && ids[0] === "tenant" && ids.at(-1) === "save" && ids.length >= 20, ids);
+    check("F-504 the interview says what the bounce categories cost before a category file, a domain or a test account is added: the failure-settings and tabs questions quote the plan's categories × recipient classes = counted calls with the minutes; the internal-domains and test-accounts asks say each adds a class",
+      (() => {
+        const health = { on: false, addsSeconds: 600, addsCalls: 20, samples: null, categoryCalls: { bounce: { categories: 55, classes: 6, calls: 330, seconds: 990, secondsEach: 3 } } };
+        const fs = QUESTIONS.find((q) => q.id === "failure-settings").options({ plan: { estimate: { health } }, spec: defaultSpec({ slug: "x", tenantHost: "acme.gainsightcloud.com" }) });
+        const tabs = QUESTIONS.find((q) => q.id === "tabs").options({ plan: { estimate: { health } }, spec: defaultSpec({ slug: "x", tenantHost: "acme.gainsightcloud.com" }) });
+        const none = QUESTIONS.find((q) => q.id === "tabs").options({ plan: { estimate: { health: { ...health, categoryCalls: { bounce: { categories: 0, classes: 1, calls: 0, seconds: 0, secondsEach: 3 } } } } }, spec: defaultSpec({ slug: "x", tenantHost: "acme.gainsightcloud.com" }) });
+        return /55 bounce categories .* cost 330 counted calls a refresh \(55 × 6 recipient classes: all, each internal domain, the test accounts, and the test accounts on each domain; about 17 minutes\)/.test(fs[0].text) && /330 counted calls/.test(tabs[0].text) && !/counted call/.test(none[0].text) &&
+          /adds one counted call per bounce category/.test(QUESTIONS.find((q) => q.id === "internal-domains").ask) && /one counted call per bounce category, and one more per internal domain/.test(QUESTIONS.find((q) => q.id === "test-accounts").ask);
+      })());
     check("the wording holds the rulings: test accounts as company records (ids or names, never addresses), the unsubscribe link's reason (F-470), freshness from the cadence, the customer-lists question in Bradley's words with how to add them later and who can look a company up, the window kinds with the first pull's cost, the leaders' names default no, the look's logo from a local file never a URL",
       /company records|company ids/.test(QUESTIONS.find((q) => q.id === "test-accounts").ask) && /Never email addresses/.test(QUESTIONS.find((q) => q.id === "test-accounts").ask) && /counted as content clicks/.test(QUESTIONS.find((q) => q.id === "unsubscribe-links").ask) &&
         QUESTIONS.find((q) => q.id === "cadence").options({}).every((o) => /stale after \d+ days, from your cadence/.test(o.text)) && /top customers that aren't opening or are bouncing, or only how each program is doing/.test(QUESTIONS.find((q) => q.id === "customer-lists").ask) &&
@@ -278,6 +287,26 @@ try {
   const theirs = run("next", [SLUG], { flags: [...asBen, "--by", "ben"] });
   const taken = run("next", [SLUG], { flags: [...asBen, "--by", "ben", "--take-over"] });
   check("the draft's holder: an edit started by ana is refused to ben at next, naming ana and the time, and continues for ben with --take-over", edit.json?.state === "editing-saved" && theirs.code === 1 && /held by ana \(last changed /.test(theirs.json?.error ?? "") && taken.code === 0 && readJson(draftFile()).by === "ben", [theirs.json, taken.json?.question?.id]);
+  // The metrics question on an EDIT (the S5 review's "default keeps the panels" fix, completed): a page whose panels are
+  // the preset, or the preset with optional metrics left off by an earlier answer, is preset-derived, so "default" puts a
+  // metric left off earlier back; a page whose panels were changed by hand keeps them and the answer says how to start again.
+  const ben = { flags: [...asBen, "--by", "ben"] };
+  const noClicks = run("answer", [SLUG, "metrics", '{"clicks": false}'], ben);
+  const afterDrop = readJson(draftFile()).spec.pages.map((pg) => pg.panels);
+  const restored = run("answer", [SLUG, "metrics", "default"], ben);
+  const afterRestore = readJson(draftFile()).spec.pages.map((pg) => pg.panels);
+  const byHand = readJson(draftFile());
+  byHand.spec.pages[0].panels = presetPanels({ ...byHand.spec.pages[0], panels: [] }).map((p, i) => (i === 0 ? { ...p, title: "Hand-edited headline" } : p));
+  writeFileSync(draftFile(), JSON.stringify(byHand, null, 2));
+  run("answer", [SLUG, "metrics", '{"responses": false}'], ben);
+  const mixed = run("answer", [SLUG, "metrics", "default"], ben);
+  const afterMixed = readJson(draftFile()).spec.pages.map((pg) => pg.panels);
+  check("metrics on an edit: leaving clicks off writes every page's panels from the preset without them; answering default afterwards restores the preset (panels empty again, so the page reads the preset's); a page whose panels were changed by hand keeps them with a note naming the change that starts again from the preset, while the other page is restored",
+    noClicks.code === 0 && afterDrop.every((panels) => panels.length > 0 && !panels.some((p) => p.query?.metrics.includes("clicked") || p.query?.metrics.includes("clickRate"))) &&
+      restored.code === 0 && afterRestore.every((panels) => panels.length === 0) && restored.json.notes.some((n) => /every optional metric shown/.test(n)) &&
+      mixed.code === 0 && afterMixed[0][0].title === "Hand-edited headline" && afterMixed[0].some((p) => p.query?.metrics.includes("responseRate")) === true && afterMixed[1].length === 0 &&
+      mixed.json.notes.some((n) => /page admin keeps its own panels \(changed by hand\); to start again from the preset: change <slug> pages\.0\.panels=\[\]/.test(n)),
+    [noClicks.json, restored.json, mixed.json, afterMixed.map((p) => p.length)]);
   rmSync(draftFile(), { force: true });
   const listed = run("list", []);
   check("list: the saved dashboard with its last pull and the pages on disk; a draft would show with its holder and date", listed.code === 0 && listed.json.dashboards.some((d) => d.slug === SLUG && d.saved && d.lastPull && d.pages.length === 2), listed.json);

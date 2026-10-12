@@ -173,8 +173,9 @@ export function aboutSettings(spec, page) {
  */
 export function pageModel(spec, snapshot, page, { delta = null } = {}) {
   const admin = page.preset === "admin";
-  const tabs = page.tabs.flatMap((t) => {
-    const about = { id: t.id, label: TABS[t.id].split(":")[0], meaning: TABS[t.id] };
+  const tabs = page.tabs.flatMap((t, index) => {
+    // `index` is the tab's place in the SPEC's list (the copy line names it: `pages.N.tabs.M.enabled`, F-503).
+    const about = { id: t.id, index, label: TABS[t.id].split(":")[0], meaning: TABS[t.id] };
     if (t.enabled) return [{ ...about, state: "on" }];
     // Off: an invitation on an admin page, absent on a leaders' page.
     return admin ? [{ ...about, state: "offered", held: TAB_DATA_HELD[t.id](snapshot) }] : [];
@@ -204,7 +205,8 @@ export function pageModel(spec, snapshot, page, { delta = null } = {}) {
     look: { custom: !!spec.theme, logo: look.theme.logo, notes: look.notes, derivedDark: !!spec.theme && look.derivedDark },
     ungrouped: UNGROUPED,
     page: {
-      id: page.id, preset: page.preset, title: page.title, statusDefault: page.statusDefault, dateDefault: pageDateDefault(page), tabs,
+      // `index`: the page's place in the spec's list, so a copy line can name it (`pages.N…`, F-503).
+      id: page.id, index: spec.pages.findIndex((p) => p.id === page.id), preset: page.preset, title: page.title, statusDefault: page.statusDefault, dateDefault: pageDateDefault(page), tabs,
       // The panels, each typed view (the health four, the templates view) with its knobs resolved against the spec (the page cannot read the spec).
       panels: presetPanels(page).filter((p) => on.has(p.tab)).map((p) => (p.type in KNOBBED_PANEL_TYPES ? { ...p, knobs: panelKnobs(spec, p) } : p)),
     },

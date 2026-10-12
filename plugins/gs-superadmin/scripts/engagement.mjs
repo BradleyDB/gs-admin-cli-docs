@@ -319,7 +319,7 @@
  *   never clamped).
  *
  * @typedef {object} T10Dimensions
- * @property {Array<{id: string, name: ?string, statuses: string[], model: ?string, modelName: ?string, audienceType: ?string, supergroup: ?string, group: ?string, folderId: ?string, schedule?: ?{classification: string, cronExpression: ?string, timeZoneName: ?string, startTime?: ?number, endTime?: ?number, asOf: ?string}, syncScheduleDisabled?: ?boolean, modifiedAt?: ?string}>} programs
+ * @property {Array<{id: string, name: ?string, statuses: string[], model: ?string, modelName: ?string, audienceType: ?string, supergroup: ?string, group: ?string, folderId: ?string, schedule?: ?{classification: string, cronExpression: ?string, timeZoneName: ?string, startTime?: ?number, endTime?: ?number, asOf: ?string, oneRunWindow?: boolean}, syncScheduleDisabled?: ?boolean, modifiedAt?: ?string}>} programs
  *   statuses is a LIST (a Dynamic Program edited while live carries two);
  *   supergroup and group are null until the grouping resolver fills them (DSH-5).
  *   schedule (additive, S3b) rides every pull made with a KB, whether or not
@@ -329,6 +329,10 @@
  *   epoch milliseconds), as of the doc's last verified date; "no schedule
  *   captured" for a documented program with none; null for a program the KB
  *   has no full doc for, and on every program of a pull made without a KB.
+ *   oneRunWindow (additive, F-502): true when the schedule read is a recurring
+ *   cron whose window admits exactly one run (end minus start shorter than one
+ *   period), which classifies one-time; such a program that ended with nobody
+ *   in flight is a finished campaign, never "Schedule ended".
  *   The grouping resolver's `recurring` and the health signals read it here.
  *   syncScheduleDisabled (additive, F-491): what `jo p list` says of the
  *   program's participant sync; null when the list did not say.
@@ -2051,7 +2055,9 @@ const previousSampledPrograms = (previous, part) => new Set(previous?.meta?.heal
 
 // Seconds per call, by family: medians measured on CLI 1.0.10, rounded up. An
 // estimate, printed as one; the token check before each call is what decides.
-const CALL_SECONDS = { whoami: 1, programs: 2, schema: 2, describe: 3, template: 3, "template-months": 4, "uniques-month": 13, "uniques-window": 23, "account-names": 4, "health-states": 16, "health-reasons-total": 9, "health-entry-window": 6, "health-reasons-sample": 12, "health-bounce-sample": 8, "health-admissions": 16, "health-step-total": 10, "health-step-cat": 10, "health-step-state": 10 };
+// health-bounce-cat: measured at V2 (F-504) — about 2.5 s a call over a 55-category file (330 calls), against the
+// 7 s default that priced the run twice too high and turned token.fits false long before the pull would fail.
+const CALL_SECONDS = { whoami: 1, programs: 2, schema: 2, describe: 3, template: 3, "template-months": 4, "uniques-month": 13, "uniques-window": 23, "account-names": 4, "health-states": 16, "health-reasons-total": 9, "health-entry-window": 6, "health-reasons-sample": 12, "health-bounce-sample": 8, "health-bounce-cat": 3, "health-admissions": 16, "health-step-total": 10, "health-step-cat": 10, "health-step-state": 10 };
 // Rows per program-month a bounce-count unit is expected to hold (templates × bounce types), never more than the bounces.
 const BOUNCE_ROWS_PER_MONTH = 6;
 const monthsOf = (u) => (u.window ? monthsBetween(u.window.start.slice(0, 7), addDays(u.window.end, -1).slice(0, 7)) : []);
@@ -2562,6 +2568,16 @@ export function fetchEngagement(ctx) {
       on: params.health.pull, addsCalls: calls(healthOn) - calls(healthOff) + plannedSamples, addsSeconds: seconds(healthOn) - seconds(healthOff) + sampleSeconds(plannedSamples),
       samples, lookback, failedParticipantRows: failedRows,
       categories: { bounceReasons: (params.health.categories?.bounceReasons ?? []).length, participantFailures: (params.health.categories?.participantFailures ?? []).length },
+      // What the bounce categories cost, said plainly (F-504): one COUNTED call per category per recipient class
+      // (all, each internal domain, the test accounts, and the test accounts on each internal domain), over the
+      // pulled span and, on a selective refresh, the old months of the programs the previous snapshot did not hold.
+      // The interview shows this before a category file, a domain or a test account is added.
+      categoryCalls: (() => {
+        const units = healthOn.filter((u) => u.family === "health-bounce-cat");
+        const domains = params.internalDomains.length;
+        const classes = 1 + domains + (params.testAccounts?.length ? 1 + domains : 0);
+        return { bounce: { categories: (params.health.categories?.bounceReasons ?? []).length, classes, calls: calls(units), seconds: seconds(units), secondsEach: CALL_SECONDS["health-bounce-cat"] } };
+      })(),
     },
     // The row budget and what exceeds it (a health part over it is not read; the click detail refused above).
     rowBudget: { rows: rowBudget, pages: params.maxPages ?? MAX_PAGES, overBudget },
@@ -2807,34 +2823,57 @@ function readKbSteps(kbDir, today = null, inputs = { templateIds: [], programIds
   };
 }
 /**
+ * A recurring schedule whose window admits exactly ONE run (F-502, ruled by
+ * Bradley at V2): its end minus its start is shorter than one cron period, so
+ * the cron can fire once at most. The measured tenant schedules one-off sends
+ * as a daily cron boxed into one day (68 of its 127 "recurring" programs), and
+ * such a program is one-time by its data, whatever its builder clicked. A
+ * window at least one period long can hold two runs and stays recurring
+ * (Bradley's hard-to-spot case: meant recurring, set for about two days). An
+ * unreadable cron, or a window without both ends, decides nothing.
+ * @param {{classification?: string, cronExpression?: ?string, startTime?: ?number, endTime?: ?number}} s
+ * @param {string} today
+ * @returns {boolean}
+ */
+export function isOneRunWindow(s, today) {
+  if (s?.classification !== "recurring") return false;
+  if (!(typeof s.startTime === "number" && s.startTime > 0 && typeof s.endTime === "number" && s.endTime > 0 && s.endTime >= s.startTime)) return false;
+  const period = cronLastDue(s.cronExpression, today).periodDays;
+  return period != null && s.endTime - s.startTime < period * DAY_MS;
+}
+/**
  * A program's ONE schedule for the program dimension (S3b): with several, the
  * recurring one with the shortest period (the most frequent decides what "due"
  * means); the classification is recurring when any is, else one-time when any
- * is, else the first's. A documented program with none says so.
+ * is, else the first's. A documented program with none says so. A recurring
+ * schedule whose window admits one run reads one-time (F-502), marked
+ * `oneRunWindow` so a reader can say so; among such the latest end decides.
  * @param {?{asOf: ?string, schedules: Array<*>}} doc
  * @param {string} today
- * @returns {?{classification: string, cronExpression: ?string, timeZoneName: ?string, startTime: ?number, endTime: ?number, asOf: ?string}}
+ * @returns {?{classification: string, cronExpression: ?string, timeZoneName: ?string, startTime: ?number, endTime: ?number, asOf: ?string, oneRunWindow: boolean}}
  */
 export function pickSchedule(doc, today) {
   if (!doc) return null;
   const list = doc.schedules ?? [];
-  if (!list.length) return { classification: NO_SCHEDULE, cronExpression: null, timeZoneName: null, startTime: null, endTime: null, asOf: doc.asOf ?? null };
-  const recurring = list.filter((s) => s.classification === "recurring");
+  if (!list.length) return { classification: NO_SCHEDULE, cronExpression: null, timeZoneName: null, startTime: null, endTime: null, asOf: doc.asOf ?? null, oneRunWindow: false };
+  const endDay = (s) => (typeof s.endTime === "number" && s.endTime > 0 ? new Date(s.endTime).toISOString().slice(0, 10) : null);
+  const byLatestEnd = (a, b) => (endDay(a) ?? "") < (endDay(b) ?? "") ? 1 : (endDay(a) ?? "") > (endDay(b) ?? "") ? -1 : 0;
+  const oneRun = list.filter((s) => isOneRunWindow(s, today));
+  const recurring = list.filter((s) => s.classification === "recurring" && !oneRun.includes(s));
   let chosen = list[0];
   if (recurring.length) {
     // A LIVE schedule (no end, or an end not yet passed) decides before an ended one, whatever its position:
     // the measured tenant's programs carry an ended job schedule BESIDE their live participant sync, and the
     // ended one read as the program's (F-491, 2026-10-08: 15 of 35 "Schedule ended" reads). Among live ones the
     // shortest period decides; among ended ones (none live) the latest end.
-    const endDay = (s) => (typeof s.endTime === "number" && s.endTime > 0 ? new Date(s.endTime).toISOString().slice(0, 10) : null);
     const live = recurring.filter((s) => endDay(s) == null || endDay(s) >= today);
     chosen = live.length
       ? live.map((s) => ({ s, period: cronLastDue(s.cronExpression, today).periodDays ?? Infinity })).sort((a, b) => a.period - b.period)[0].s
-      : recurring.map((s) => ({ s, end: endDay(s) ?? "" })).sort((a, b) => (a.end < b.end ? 1 : a.end > b.end ? -1 : 0))[0].s;
-  }
-  const classification = recurring.length ? "recurring" : list.some((s) => s.classification === "one-time") ? "one-time" : String(chosen.classification ?? "unknown");
+      : [...recurring].sort(byLatestEnd)[0];
+  } else if (oneRun.length) chosen = [...oneRun].sort(byLatestEnd)[0];
+  const classification = recurring.length ? "recurring" : oneRun.length || list.some((s) => s.classification === "one-time") ? "one-time" : String(chosen.classification ?? "unknown");
   const time = (t) => (typeof t === "number" && t > 0 ? t : null);
-  return { classification, cronExpression: chosen.cronExpression ?? null, timeZoneName: chosen.timeZoneName ?? null, startTime: time(chosen.startTime), endTime: time(chosen.endTime), asOf: doc.asOf ?? null };
+  return { classification, cronExpression: chosen.cronExpression ?? null, timeZoneName: chosen.timeZoneName ?? null, startTime: time(chosen.startTime), endTime: time(chosen.endTime), asOf: doc.asOf ?? null, oneRunWindow: !recurring.length && oneRun.includes(chosen) };
 }
 /** Each program's last send from the day buckets and the base call: the lastSends table. */
 function lastSendsFrom({ dayUnits, base, listed, selected, params, inWindow }) {

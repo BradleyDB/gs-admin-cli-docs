@@ -246,8 +246,17 @@ export function createDashboard(engine, model) {
 
   // ── Lacks: the facts, then the one renderer ────────────────────────────────
   /**
+   * The LACKS row's setting path names a KIND of setting (`pages[].tabs[].enabled`, the spec descriptions' grammar);
+   * the line to copy must name THIS page, THIS tab and the dashboard's source in the writer's own grammar
+   * (`pages.0.tabs.2.enabled`), or it cannot be run as written (F-503). A trailing `[]` is the list itself.
+   * @param {string} path
+   * @param {{tab?: number}} ctx the tab the notice stands on, by its index in the spec's list
+   */
+  const concretePath = (path, ctx) =>
+    path.replace(/\[\]$/, "").replace(/pages\[\]/, `pages.${model.page.index}`).replace(/tabs\[\]/, `tabs.${ctx.tab ?? model.page.tabs.find((t) => t.state === "offered")?.index ?? 0}`).replace(/sources\[\]/, "sources.0");
+  /**
    * @param {string} reason an id of the engine's REASONS
-   * @param {{held?: boolean}} [ctx] for a "by-data" lack: whether the pull holds the data
+   * @param {{held?: boolean, tab?: number}} [ctx] for a "by-data" lack: whether the pull holds the data; for a tab's: its index
    */
   const lackFacts = (reason, ctx = {}) => {
     const row = LACKS.find((r) => r.reason === reason);
@@ -255,7 +264,7 @@ export function createDashboard(engine, model) {
     if (!row) return { reason, text, known: false, needs: null, needsText: null, setting: null, line: null };
     const needs = row.needs === "by-data" ? (ctx.held ? "rebuild" : "pull") : row.needs;
     const setting = row.setting ? { ...row.setting, label: model.settingLabels[row.setting.path] ?? row.setting.path } : null;
-    const line = row.line === "refresh" || !setting ? COPY_LINES.refresh(model.slug) : COPY_LINES.change(model.slug, setting.path, setting.how === "on" ? "true" : "");
+    const line = row.line === "refresh" || !setting ? COPY_LINES.refresh(model.slug) : COPY_LINES.change(model.slug, concretePath(setting.path, ctx), setting.how === "on" ? "true" : "");
     return { reason, text, known: true, needs, needsText: NEEDS[needs], setting, line };
   };
   /** The line to copy, or the button that runs it when the page has a local app behind it (the `actions` seam, LTR-10). */
@@ -789,7 +798,7 @@ export function createDashboard(engine, model) {
       case "admitting-nobody": return `Admitting nobody: ${s.admissions.admitted ?? 0} participants over the last ${plural(s.admissions.dueDays ?? 0, "due day")}`;
       case "step-errors": return `Step errors this period: ${plural(s.steps.participants ?? 0, "participant")} (${Object.entries(s.steps.byCategory ?? {}).map(([k, v]) => `${k} ${v}`).join(", ")})`;
       case "no-recent-sends": return s.sends.rule === "history" && s.sends.allowedDays != null ? `No send in ${s.sends.daysSince ?? "?"} days; it usually sends every ${s.sends.longestGapMonths} months at most (${s.sends.allowedDays} days)` : `No send in ${s.sends.daysSince ?? "?"} days (threshold ${s.sends.threshold ?? view.days} days)`;
-      case "finished": return `Every participant has finished or dropped; nothing recurs`;
+      case "finished": return `Every participant has finished or dropped; nothing recurs${s.schedule?.oneRunWindow ? ` (one-day schedule${s.schedule.endDay ? `, ended ${s.schedule.endDay}` : ""})` : ""}`;
       case "no-sends-in-window": return `Active, with no send in the ${plural(s.sends.windowMonths ?? 0, "month")} the pull covers`;
       case "cannot-judge": return `Cannot judge yet: ${view.cannotJudgeReasons[s.why] ?? s.why ?? "its data was not read"}`;
       default: return "Working as expected";
@@ -1217,7 +1226,7 @@ export function createDashboard(engine, model) {
   };
   const renderPane = (tab, state, ui) => {
     // An offered tab is an invitation: its pane is the notice, and nothing else.
-    if (tab.state === "offered") return renderNotice(lackFacts("tab-off", { held: !!tab.held }), { heading: tab.meaning });
+    if (tab.state === "offered") return renderNotice(lackFacts("tab-off", { held: !!tab.held, tab: tab.index }), { heading: tab.meaning });
     if (tab.id === "about") return renderAbout();
     const own = panels.filter((p) => p.tab === tab.id);
     if (!own.length) return `<p class="gs-muted">${esc(tab.meaning)}</p>`; // the writer refuses such a spec (F-486): reached by no built page

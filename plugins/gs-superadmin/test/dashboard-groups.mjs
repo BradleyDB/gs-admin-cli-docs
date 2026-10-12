@@ -17,7 +17,7 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { isDeepStrictEqual } from "node:util";
 import { makeTempDir, removeTempDir, runNode } from "../../../test/rig.mjs";
-import { resolveGroups, applyGroups, validateGroups, describeRule, programTraits, suggestionInput, UNGROUPED, RULE_KINDS, CHARACTERISTICS, GROUP_LEVELS } from "../scripts/dashboard-groups.mjs";
+import { resolveGroups, applyGroups, validateGroups, describeRule, programTraits, programTraitsOf, suggestionInput, UNGROUPED, RULE_KINDS, CHARACTERISTICS, GROUP_LEVELS } from "../scripts/dashboard-groups.mjs";
 import { openSnapshot, runQuery } from "../scripts/engagement-query.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -54,6 +54,15 @@ check("traits: sendsSurveys is true for a survey model, false for a program with
       .map((p) => p.sendsSurveys).join() === "true,,,," );
 check("traits: recurring is true for a program with a recurring schedule, false for a documented program with none, and null for a program the KB has no doc for (never false)",
   trait("p-onboard").recurring === true && trait("p-nps").recurring === true && trait("p-renew").recurring === false && trait("p-pilot").recurring === false && trait("p-unlisted").recurring === null);
+check("traits (F-502): a one-run window reads not recurring (one-time by its data) when the program sent in one month, and RECURRING when it was re-run through such windows, sending in two or more months (the hand-fed class stays out of One-off); programTraits reads the months from the snapshot's sends",
+  (() => {
+    const oneRun = { id: "p-x", name: "X", statuses: ["PROCESSING"], model: "DRIPV2", modelName: "Email Chain", audienceType: "CUSTOMER", supergroup: null, group: null, folderId: "1", schedule: { classification: "one-time", cronExpression: "0 0 8 * * ? *", timeZoneName: null, startTime: 1, endTime: 2, asOf: "d", oneRunWindow: true } };
+    const plainOneTime = { ...oneRun, id: "p-y", schedule: { ...oneRun.schedule, oneRunWindow: false } };
+    const of = (months) => programTraitsOf([oneRun, plainOneTime], {}, months);
+    const sends = /** @type {any[]} */ ([{ programId: "p-x", templateId: "t", month: "2026-04", recipientClass: "external", sent: 3 }, { programId: "p-x", templateId: "t", month: "2026-06", recipientClass: "external", sent: 2 }]);
+    const rerun = programTraits({ ...S, dimensions: { ...S.dimensions, programs: [...S.dimensions.programs, oneRun] }, facts: { ...S.facts, byTemplate: [...S.facts.byTemplate, ...sends] } }).find((p) => p.id === "p-x");
+    return of({})[0].recurring === false && of({ "p-x": 1 })[0].recurring === false && of({ "p-x": 2 })[0].recurring === true && of({ "p-x": 2, "p-y": 2 })[1].recurring === false && rerun.recurring === true;
+  })());
 check("traits: a pass-through classification is NOT a boolean (F-494): a CRON-type schedule whose cron the KB did not capture reads classification CRON, and the trait is null (unknown), never false; a one-time schedule reads false",
   (() => {
     const withLabel = (label) => programTraits({ ...S, dimensions: { ...S.dimensions, programs: S.dimensions.programs.map((p) => (p.id === "p-onboard" ? { ...p, schedule: { ...p.schedule, classification: label, cronExpression: null } } : p)) } }).find((p) => p.id === "p-onboard").recurring;

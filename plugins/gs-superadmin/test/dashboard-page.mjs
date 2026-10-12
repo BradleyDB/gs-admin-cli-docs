@@ -34,7 +34,8 @@ import { makeTempDir, removeTempDir, writeFiles, runNode } from "../../../test/r
 import { buildPage, pageModel, pageSnapshot, packTable, inlinedSources, pageFileName, aboutSettings, PAGE_BUDGET, TOKENS } from "../scripts/dashboard-page.mjs";
 import { createDashboard, mount, unpackSnapshot, unpackTable, csvCell, csvText, esc, LACKS, NOT_LACKS, NEEDS, COPY_LINES, ENTRY_COMMAND, HEALTH_DAY_OPTIONS, PAGE_MODEL_VERSION, cronWords } from "../scripts/dashboard-runtime.mjs";
 import * as engine from "../scripts/engagement-query.mjs";
-import { openSpec, SPEC_DESCRIPTIONS, PRESETS, presetPanels, describeSpec } from "../scripts/dashboard-spec.mjs";
+import { openSpec, SPEC_DESCRIPTIONS, PRESETS, presetPanels, describeSpec, setPath, validateSpec } from "../scripts/dashboard-spec.mjs";
+import { coveredPath } from "../scripts/dashboard.mjs";
 import { applyGroups } from "../scripts/dashboard-groups.mjs";
 import { kbFiles, FIXTURE_BOUNCE_CATEGORIES } from "./fixtures/engagement/acme-tenant.mjs";
 
@@ -181,9 +182,9 @@ try {
   const OFF = pull("page-off", ["--internal-domain", "acme.com"]);
   const NO_DOMAIN = pull("page-nodomain", []);
   const SIGNALS = pull("page-signals", ["--internal-domain", "acme.com", "--health", "--failure-categories", CATS], { kb: join(ROOT, "kb-signals", "acme-prod"), variant: { silent: true, cadence: true, signals: true } });
-  check("the fixtures are what they are named for: the default pull holds no account data, no step detail and no health data and says so itself; the other pull was given no internal domain and carries the marker for it; the signals pull holds health with every part read and one program on each alarm list",
+  check("the fixtures are what they are named for: the default pull holds no account data, no step detail and no health data and says so itself; the other pull was given no internal domain and carries the marker for it; the signals pull holds health with every part read and one program on each alarm list (two on Schedule ended since F-502's two-day chain joined)",
     engine.accountAvailability(OFF).reason === "accounts-off" && OFF.meta.stepDetail === false && engine.healthAvailability(OFF).pulled === false && engine.healthAvailability(OFF).reason === "health-off" && !OFF.caveats.some((c) => c.id === "recipient-class-not-configured") && NO_DOMAIN.caveats.some((c) => c.id === "recipient-class-not-configured") &&
-      engine.healthAvailability(SIGNALS).pulled === true && Object.values(engine.healthAvailability(SIGNALS).parts).every((p) => p.pulled) && engine.healthSilentView(SIGNALS, {}, { days: 30 }).rows.length === 6,
+      engine.healthAvailability(SIGNALS).pulled === true && Object.values(engine.healthAvailability(SIGNALS).parts).every((p) => p.pulled) && engine.healthSilentView(SIGNALS, {}, { days: 30 }).rows.length === 7,
     [OFF.meta.accounts, NO_DOMAIN.caveats, engine.healthSilentView(SIGNALS, {}, { days: 30 }).counts]);
 
   const ADMIN = build(SPEC_ACCOUNTS, PULLED);
@@ -418,7 +419,7 @@ try {
     check("the facts come from one function: reason, the engine's wording, pull or rebuild, the setting and the line; a lack that depends on the data asks the caller which it is; a figure the snapshot predates and a health part the pull lost each get the refresh line",
       isDeepStrictEqual(app.lackFacts("accounts-off"), { reason: "accounts-off", text: reasonText("accounts-off"), known: true, needs: "pull", needsText: NEEDS.pull, setting: { path: "accounts.pull", how: "on", label: "Accounts" }, line: COPY_LINES.change("program-health", "accounts.pull", "true") }) &&
         app.lackFacts("tab-off", { held: true }).needs === "rebuild" && app.lackFacts("tab-off", { held: false }).needs === "pull" && app.lackFacts("measure-not-in-snapshot").line === COPY_LINES.refresh("program-health") && app.lackFacts("measure-not-in-snapshot").setting === null &&
-        app.lackFacts("call-failed").line === "node .gs-superadmin/plugin/scripts/dashboard.mjs refresh program-health" && app.lackFacts("no-internal-domain").line === "node .gs-superadmin/plugin/scripts/dashboard.mjs change program-health sources[].params.internalDomains[]=");
+        app.lackFacts("call-failed").line === "node .gs-superadmin/plugin/scripts/dashboard.mjs refresh program-health" && app.lackFacts("no-internal-domain").line === "node .gs-superadmin/plugin/scripts/dashboard.mjs change program-health sources.0.params.internalDomains=");
     // The actions seam (ruled 2026-10-05; the local app is LTR-10): a button when the page has one behind it, the copy line when it does not.
     const withActions = createDashboard(engine, { ...pageModel(SPEC_ACCOUNTS, GOLD, SPEC_ACCOUNTS.pages[0]), actions: { base: "http://127.0.0.1:1/", token: "never-in-markup" } });
     const button = withActions.renderNotice(withActions.lackFacts("accounts-off"));
@@ -466,6 +467,26 @@ try {
     check("opening an offered tab opens the notice and nothing else: what the tab is for, that it is off for this page, what it would take and the line to copy. The pull holds health data, so for Health it is only a rebuild",
       lacksIn(pane).join() === "tab-off" && pane.includes(`<p class="gs-notice-head">${esc("Health: error rates, error messages, silent programs and schedule failures")}</p>`) && pane.includes(esc(reasonText("tab-off"))) && pane.includes(esc(NEEDS.rebuild)) &&
         pane.includes(`<span class="gs-path">pages[].tabs[].enabled</span>`) && pane.includes("data-copy=") && !/<table|gs-panel/.test(pane) && loadPage(offered.html).call(`app.stateFromHash("t=health").tab`) === "health", pane);
+    // F-503 (V2, 2026-10-10): the line a page tells an admin to copy names THIS page, THIS tab and the source in the
+    // writer's own grammar (dotted, with indexes), never the descriptions' kind path with empty brackets, so it runs as
+    // written: every emitted copy line's path is one setPath takes and validate accepts, and one the entry command's
+    // cost table covers (the kind path is derived back from it).
+    const copyLines = (html, spec) => [...html.matchAll(/data-copy="[^"]*? change ([^ "]+) ([^="]+)=([^"]*)"/g)].map((m) => ({ slug: m[1], path: m[2], value: m[3], spec }));
+    // The pre-rendered pages' lines, plus the About tab's internal-domain line, which the runtime draws (its facts are checked above).
+    const emitted = [...copyLines(offered.html, healthOff), ...copyLines(ADMIN.html, SPEC_ACCOUNTS), ...copyLines(ADMIN_P.html, SPEC_DEFAULTS), ...copyLines(build(specWith((s) => { s.sources[0].params.stepDetail = false; s.pages[0].panels = []; }), PULLED).html, specWith((s) => { s.sources[0].params.stepDetail = false; s.pages[0].panels = []; })),
+      { slug: "program-health", path: createDashboard(engine, pageModel(SPEC_ACCOUNTS, GOLD, SPEC_ACCOUNTS.pages[0])).lackFacts("no-internal-domain").line.replace(/^.* change program-health /, "").replace(/=.*$/, ""), value: "", spec: SPEC_ACCOUNTS }];
+    // "Runs as written": the writer takes the path and the value, and no validation problem is ABOUT that field (a page
+    // whose hand-listed panels lack the tab's is the writer's own refusal, naming the panels, and says what to do).
+    const runsAsWritten = (l) => {
+      const spec = JSON.parse(JSON.stringify(l.spec));
+      try { setPath(spec, l.path, l.value === "true" ? true : l.value === "" ? ["example.com"] : JSON.parse(l.value)); } catch (e) { return { ok: false, why: e.message }; }
+      const about = validateSpec(spec).problems.filter((p) => p.path.replace(/\[(\d+)\]/g, ".$1") === l.path);
+      return { ok: about.length === 0 && coveredPath(l.path) != null, why: about, covered: coveredPath(l.path), path: l.path };
+    };
+    check("F-503 every copy line runs as written: the health tab's line names the page and the tab (pages.0.tabs.1.enabled=true), the step-detail and internal-domain lines name the source (sources.0.params.…), no emitted path carries empty brackets, and each one is a path the writer sets and validates and the entry command's cost table covers",
+      emitted.length >= 4 && emitted.some((l) => l.path === "pages.0.tabs.1.enabled" && l.value === "true") && emitted.some((l) => l.path === "pages.0.tabs.2.enabled") && emitted.some((l) => l.path === "sources.0.params.stepDetail" && l.value === "true") &&
+        emitted.some((l) => l.path === "sources.0.params.internalDomains" && l.value === "") && emitted.every((l) => !l.path.includes("[]") && runsAsWritten(l).ok),
+      emitted.map((l) => [l.path, l.value, runsAsWritten(l)]));
     const LEGACY = { ...PULLED, meta: { ...PULLED.meta, templates: undefined } };
     check("whether turning a tab on is a rebuild or a new pull is read from the pull: over a snapshot with no health data the Health tab needs a new pull; Templates is a rebuild over a pull that holds template content and a new pull over a snapshot made before it existed",
       paneHtml(build(healthOff, OFF).html, "health").includes(esc(NEEDS.pull)) && !paneHtml(build(healthOff, OFF).html, "health").includes(esc(NEEDS.rebuild)) && paneHtml(offered.html, "templates").includes(esc(NEEDS.rebuild)) && paneHtml(build(healthOff, LEGACY).html, "templates").includes(esc(NEEDS.pull)));
@@ -576,7 +597,7 @@ try {
     const loaded = loadPage(page.html);
     check("no internal domain configured: the recipients toggle is drawn switched off with a one-line pointer beside it, never a control that does nothing; the full notice stands on the About tab beside the setting it names (ruled 2026-10-10): what it would take is a new pull with the domains filled in, and the line to copy ends at the = sign with the notice saying what to put there",
       /<input type="checkbox" role="switch" data-f="internal" checked disabled aria-checked="true">/.test(toggle) && /data-pointer="no-internal-domain"/.test(toggle) && lacksIn(toggle).length === 0 && toggle.includes("see About") && lacksIn(aboutNotice).includes("no-internal-domain") && aboutNotice.includes(esc(reasonText("no-internal-domain"))) && aboutNotice.includes(esc(NEEDS.pull)) && aboutNotice.includes(`Fill in &quot;Internal recipients&quot;`) && aboutNotice.includes(`<span class="gs-path">sources[].params.internalDomains[]</span>`) &&
-        aboutNotice.includes("sources[].params.internalDomains[]=</code>") && aboutNotice.includes("ends at the = sign: put the value there"), toggle);
+        aboutNotice.includes("sources.0.params.internalDomains=</code>") && aboutNotice.includes("ends at the = sign: put the value there"), toggle);
     check("and it cannot be switched on from outside either: a hash asking for external recipients is read as everyone, and a spec whose toggle starts on external starts on everyone here",
       loaded.call(`app.stateFromHash("rc=external").external`) === false && loaded.call(`app.filtersOf(app.stateFromHash("rc=external")).recipientClass`) === "all" &&
         loadPage(build(specWith((s) => { s.globalFilters.find((f) => f.id === "recipientClass").default = "external"; }), NO_DOMAIN).html).call(`app.defaultState().external`) === false);
@@ -729,10 +750,10 @@ try {
     const view = engine.healthSilentView(gold, { recipientClass: "all" }, { days: 45 });
     const alarmRows = anyRows(ph.split("<details")[0]).slice(1);
     check("program health (health-silent): the alarms the engine lists, longest silent first, each with its last send, days silent and the signal that put it there in words; the other lists collapsed with their counts (Active with no sends in this window, Finished, Cannot judge yet with why, Working as expected); the threshold chips 14 / 30 / 60 / 90 with the spec's own value (45) among them and on; judged as of the pull's day over the day window",
-      view.rows.length === 6 && alarmRows.length === 6 && alarmRows.every((r, i) => r[0].startsWith(view.rows[i].name) && r[2] === String(view.rows[i].daysSilent)) && /Participant sync overdue: last synced 2026-08-20, due 2026-09-14/.test(ph) && /Admitting nobody: 0 participants over the last 5 due days/.test(ph) && /Only refused participants arriving/.test(ph) && /Schedule ended 2026-08-01/.test(ph) && /Participant sync disabled/.test(ph) && /Step errors this period: \d+ participants \(/.test(ph) &&
+      view.rows.length === 7 && alarmRows.length === 7 && alarmRows.every((r, i) => r[0].startsWith(view.rows[i].name) && r[2] === (view.rows[i].daysSilent == null ? "—" : String(view.rows[i].daysSilent))) && /Participant sync overdue: last synced 2026-08-20, due 2026-09-14/.test(ph) && /Admitting nobody: 0 participants over the last 5 due days/.test(ph) && /Only refused participants arriving/.test(ph) && /Schedule ended 2026-08-01/.test(ph) && /Schedule ended 2026-06-12/.test(ph) && /one-day schedule, ended 2026-07-14/.test(ph) && /Participant sync disabled/.test(ph) && /Step errors this period: \d+ participants \(/.test(ph) &&
         ph.includes(`<summary>Active, no sends in this window (${view.counts["no-sends-in-window"]})</summary>`) && ph.includes(`<summary>Cannot judge yet (${view.counts["cannot-judge"]})</summary>`) && /Cannot judge yet: (fewer than three months|the knowledge base has no doc|the documented schedule ended)/.test(ph) && ph.includes(`<summary>Working as expected (${view.counts.ok})</summary>`) &&
         isDeepStrictEqual([...ph.matchAll(/data-act="hd" data-days="(\d+)" aria-pressed="(true|false)">/g)].map((m) => `${m[1]}:${m[2]}`), ["14:false", "30:false", "45:true", "60:false", "90:false"]) && ph.includes("Judged as of 2026-09-15 over the last 90 days of sends") && ph.includes(`data-csv="program-health"`) && /<tr title="schedule: [a-z-]+ · ingest: /.test(ph),
-      [alarmRows, view.counts]);
+      [alarmRows, view.counts, view.lists.finished?.map((r) => [r.programId, r.signals.schedule]), ph.match(/Every participant has finished[^<]*/g)]);
     const at60 = adminP.call(`app.renderPanel(app.panels.find((p) => p.id === "program-health"), app.stateFromHash("hd=60"), null)`);
     check("the threshold is adjustable in the page (ruled 2026-10-04): the hash carries hd=60, the 60 chip is on, the view is the engine's at 60 days (fewer late sends than at 30), the spec's own value is the default and leaves the hash, a value not offered is dropped, and a value over the day window is never asked of the engine",
       /data-days="60" aria-pressed="true"/.test(at60) && adminP.call(`app.stateFromHash("hd=60").hd`) === 60 && adminP.call(`app.hashOf(app.stateFromHash("hd=60"))`) === "hd=60" && adminP.call(`app.hashOf(app.stateFromHash("hd=45"))`) === "" && adminP.call(`app.stateFromHash("hd=50").hd`) === null && adminP.call(`app.healthDayChoices`).join() === "14,30,45,60,90" &&

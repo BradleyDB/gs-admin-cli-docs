@@ -1180,7 +1180,7 @@ export function dueDaysBefore(expr, asOf, n, floor) {
  * means "not read": its signal says so and never alarms.
  * @param {{asOf: string, dayWindow: {start: string, endExclusive: string}, days: number, quietDueDays?: number, incompleteMonth: string, months: string[],
  *   programs: Array<{programId: string, name: ?string, statuses: string[], selected: boolean, lastSendDay: ?string, lastSendMonth: ?string,
- *     schedule: ?{classification: string, cronExpression: ?string, startTime?: ?number, endTime?: ?number, asOf?: ?string}, syncDisabled?: ?boolean,
+ *     schedule: ?{classification: string, cronExpression: ?string, startTime?: ?number, endTime?: ?number, asOf?: ?string, oneRunWindow?: boolean}, syncDisabled?: ?boolean,
  *     kbSource?: string, docModifiedAt?: ?string,
  *     sources: ?Array<{type: ?string, lastSyncedOn: ?string}>, admissionDays: ?Array<{day: string, participants: number}>,
  *     entryFailures: ?{window: {participants: number, occurrences: number}, recent?: ?number, sample: ?{rows: number, expected: number, unexpected: number, uncategorised: number, byKind?: Object<string, number>}},
@@ -1221,7 +1221,9 @@ export function judgeHealth({ asOf, dayWindow, days, quietDueDays = QUIET_DUE_DA
       p.syncDisabled === true ? { state: "disabled" }
         : cls === "recurring" ? (ended && lastSync != null && lastSync > endDay ? { state: "doc-stale", endDay, lastSync } : ended ? { state: "ended", endDay } : startDay && startDay > asOf ? { state: "not-started", startDay }
           : { state: "recurring", readable: due.readable, lastDue: due.lastDue, periodDays: due.periodDays, endDay })
-          : cls === "one-time" ? { state: "one-time" } : cls == null ? (p.kbSource === "kb" ? { state: "undocumented" } : { state: "unknown" }) : { state: "none", classification: cls };
+          // A one-run window (F-502: a recurring cron boxed into less than one period) is one-time by its data; its
+          // end rides along so a reader can say "one-day schedule, ended <day>" where the program lands.
+          : cls === "one-time" ? (p.schedule?.oneRunWindow ? { state: "one-time", oneRunWindow: true, endDay, ended } : { state: "one-time" }) : cls == null ? (p.kbSource === "kb" ? { state: "undocumented" } : { state: "unknown" }) : { state: "none", classification: cls };
     if (docBehind) Object.assign(schedule, { docBehind: true, asOf: p.schedule.asOf, modifiedAt: p.docModifiedAt });
 
     // (1, continued) The heartbeat against the cron's last due day. A schedule the pull does not have decides nothing.
@@ -1708,7 +1710,7 @@ export function healthOneTimeView(snapshot, filters, { months: n }) {
     const monthsWithSends = [...m].filter(([, v]) => v > 0).map(([k]) => k).sort();
     const ls = lastSends?.get(p.id) ?? null;
     rows.push({
-      programId: p.id, name: p.name, statuses: p.statuses, classification: c,
+      programId: p.id, name: p.name, statuses: p.statuses, classification: c, oneRunWindow: p.schedule?.oneRunWindow === true,
       lastSendDay: ls?.lastSendDay ?? null, lastSendMonth: ls ? ls.lastSendMonth : monthsWithSends[monthsWithSends.length - 1] ?? null,
       monthsWithSends: monthsWithSends.length, templates: templates.get(p.id) ?? 0, history: history.map((month) => ({ month, sent: m.get(month) ?? 0 })),
     });

@@ -84,6 +84,7 @@ import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
+import { isDeepStrictEqual } from "node:util";
 import { makeCliHelpers, findWorkspaceDir, findWorkspaceCatalog, makeCommandResolver, resolveCliArgv, readJsonFile, writeFileAtomicSync, isMainModule, readKbIdentity, cmpKey, RECORDED_LANES } from "./doc-lib.mjs";
 import { printable } from "./journal-lib.mjs";
 import {
@@ -212,7 +213,9 @@ export const COSTS = Object.freeze(Object.fromEntries(SPEC_DESCRIPTIONS.flatMap(
 const COST_RANK = { identity: 0, "in-page": 1, rebuild: 2, reselect: 3, pull: 4 };
 /** A real path of a spec (`sources[0].params.internalDomains[1]`) → the SPEC_DESCRIPTIONS path that covers it. */
 export function coveredPath(realPath) {
-  const norm = String(realPath).replace(/\[\d+\]/g, "[]").replace(/^groups\.overrides\..*$/, "groups.overrides{}");
+  // A real path in either grammar: the leaves' (`pages[0].title`) or the writer's dotted one (`pages.0.title`, what
+  // `change` takes and a page's copy line names, F-503).
+  const norm = String(realPath).replace(/\[\d+\]/g, "[]").replace(/\.\d+(?=\.|$)/g, "[]").replace(/^groups\.overrides\..*$/, "groups.overrides{}");
   const covers = SPEC_DESCRIPTIONS.flatMap((d) => d.covers);
   if (covers.includes(norm)) return norm;
   // An emptied or filled list or map is the whole container's path: the description covers its items.
@@ -267,6 +270,16 @@ const listValue = (v) => (Array.isArray(v) ? v : typeof v === "string" && v.trim
 const boolValue = (v) => { const s = String(v).trim().toLowerCase(); if (["yes", "y", "true", "on"].includes(s)) return true; if (["no", "n", "false", "off"].includes(s)) return false; refuse(`"${printable(String(v), 40)}" is not yes or no`); };
 const jsonValue = (v) => { if (typeof v !== "string") return v; try { return JSON.parse(v); } catch { return refuse(`the value is not JSON: ${printable(v, 80)}`); } };
 const secondsText = (s) => (s == null ? "an unknown time (no plan yet)" : `about ${plural(minutesOf(s), "minute")}`);
+/**
+ * What the bounce categories cost a refresh with Health on, said plainly from the plan (F-504: calls multiply by the
+ * recipient classes — all, each internal domain, the test accounts, the test accounts on each domain).
+ * @param {?{categoryCalls?: {bounce: {categories: number, classes: number, calls: number, seconds: number}}}} health estimate.health
+ */
+const categoryCostText = (health) => {
+  const b = health?.categoryCalls?.bounce;
+  if (!b || !b.categories) return "";
+  return ` The ${plural(b.categories, "bounce category", "bounce categories")} in the workspace's category file cost ${plural(b.calls, "counted call")} a refresh (${b.categories} × ${plural(b.classes, "recipient class", "recipient classes")}: all, each internal domain, the test accounts, and the test accounts on each domain; ${secondsText(b.seconds)}).`;
+};
 const execPage = (spec) => spec.pages.findIndex((p) => p.preset === "exec");
 const tabsOf = (spec) => spec.pages.map((pg) => ({ page: pg.id, preset: pg.preset, health: pg.tabs.find((t) => t.id === "health").enabled, templates: pg.tabs.find((t) => t.id === "templates").enabled }));
 export const QUESTIONS = Object.freeze([
@@ -329,13 +342,13 @@ export const QUESTIONS = Object.freeze([
   },
   {
     id: "internal-domains", kind: "list", path: "sources[].params.internalDomains[]", judgment: false,
-    ask: "Which email domains are the company's own? Recipients on them are internal, and the pages can leave them out. Give a comma-separated list, or none.",
+    ask: "Which email domains are the company's own? Recipients on them are internal, and the pages can leave them out. Give a comma-separated list, or none. Each domain adds one counted call per bounce category to a refresh with Health on (the estimate says how many).",
     options: () => [{ id: "<domains>", text: "acme.com, acme.co.uk" }, { id: "none", text: "No internal domain: every recipient counts as external (a caveat says so)" }],
     apply: (v) => ({ sets: [["sources.0.params.internalDomains", String(v).trim().toLowerCase() === "none" ? [] : listValue(v)]] }),
   },
   {
     id: "test-accounts", kind: "list", path: "sources[].params.testAccounts[]", judgment: false,
-    ask: "Are there test accounts: company records (an \"Acme Test\" account whose contacts are employees' alternate addresses) whose sends should count as internal? Give company ids, or names as name:<the account's name> (looked up once; several matches are shown, never guessed). Never email addresses.",
+    ask: "Are there test accounts: company records (an \"Acme Test\" account whose contacts are employees' alternate addresses) whose sends should count as internal? Give company ids, or names as name:<the account's name> (looked up once; several matches are shown, never guessed). Never email addresses. Test accounts add one counted call per bounce category, and one more per internal domain, to a refresh with Health on.",
     options: () => [{ id: "<ids or name:...>", text: "co-123, name:Acme Test" }, { id: "none", text: "No test account" }],
     apply: (v, ctx) => {
       if (String(v).trim().toLowerCase() === "none") return { sets: [["sources.0.params.testAccounts", []]] };
@@ -362,8 +375,9 @@ export const QUESTIONS = Object.freeze([
     ask: "Two health settings. Due days: how many due days may an ingest run admitting nobody before the program is listed as \"Admitting nobody\" (default 5)? Sample programs: how many programs may a pull sample for failure text, most failures first (default 25)?",
     options: (ctx) => {
       const s = ctx.plan?.estimate?.health?.samples;
+      const categories = categoryCostText(ctx.plan?.estimate?.health);
       const context = s ? `This selection has ${s.participantFailures?.withFailures ?? "an unknown number of"} programs with refused participants and ${s.bounceReasons?.withFailures ?? "an unknown number of"} with bounce text; the cap of ${s.cap} leaves ${(s.participantFailures?.beyondCap ?? 0) + (s.bounceReasons?.beyondCap ?? 0)} unsampled, about ${plural(minutesOf((s.participantFailures?.secondsBeyondCap ?? 0) + (s.bounceReasons?.secondsBeyondCap ?? 0)), "minute")} to read them all.` : "The plan has not priced the samples yet.";
-      return [{ id: "<JSON {quietDueDays, samplePrograms}>", text: `{"quietDueDays": 5, "samplePrograms": 25}. ${context}` }, { id: "default", text: "5 due days, 25 programs" }];
+      return [{ id: "<JSON {quietDueDays, samplePrograms}>", text: `{"quietDueDays": 5, "samplePrograms": 25}. ${context}${categories}` }, { id: "default", text: "5 due days, 25 programs" }];
     },
     apply: (v) => {
       if (String(v).trim() === "default") return { sets: [["sources.0.params.quietDueDays", 5], ["sources.0.params.samplePrograms", 25]] };
@@ -409,11 +423,23 @@ export const QUESTIONS = Object.freeze([
     },
     apply: (v, ctx) => {
       const want = String(v).trim() === "default" ? { clicks: true, responses: true } : jsonValue(v);
-      const drop = [...(want.clicks === false ? ["clicked", "clickRate"] : []), ...(want.responses === false ? ["surveyParticipants", "submitted", "partiallySubmitted", "anyResponse", "responseRate"] : [])];
-      // Nothing left off: the pages keep the panels they have (the preset's when they list none; their own on an edit).
-      if (!drop.length) return { sets: [], notes: ["every optional metric shown; the pages keep their panels"] };
-      const sets = ctx.spec.pages.map((pg, i) => [`pages.${i}.panels`, panelsWithout(presetPanels(pg), drop)]);
-      return { sets, notes: [`left off every page: ${drop.join(", ")}`] };
+      const drop = [...(want.clicks === false ? OPTIONAL_METRICS.clicks : []), ...(want.responses === false ? OPTIONAL_METRICS.responses : [])];
+      const sets = [];
+      const notes = [];
+      for (const [i, pg] of ctx.spec.pages.entries()) {
+        const preset = presetPanels({ ...pg, panels: [] });
+        // A page whose panels are the preset, or the preset with optional metrics left off by an earlier answer, is
+        // PRESET-DERIVED: this answer rewrites it from the preset, so a metric left off earlier comes back. A page
+        // whose panels were changed by hand (`change pages.N.panels=…`) keeps them: the answer cannot tell which of
+        // its panels to put back, and says how to start again from the preset.
+        const derived = !pg.panels.length || OPTIONAL_METRIC_DROPS.some((d) => isDeepStrictEqual(pg.panels, panelsWithout(preset, d)));
+        if (!derived) { notes.push(`page ${pg.id} keeps its own panels (changed by hand); to start again from the preset: change <slug> pages.${i}.panels=[]`); continue; }
+        // The preset itself is written as no panels (the page reads the preset's); a drop is written out.
+        const next = drop.length ? panelsWithout(preset, drop) : [];
+        if (!isDeepStrictEqual(pg.panels, next)) sets.push([`pages.${i}.panels`, next]);
+      }
+      notes.unshift(drop.length ? `left off every page: ${drop.join(", ")}` : "every optional metric shown");
+      return { sets, notes };
     },
   },
   {
@@ -438,7 +464,7 @@ export const QUESTIONS = Object.freeze([
     ask: "Which tabs does each page carry? Engagement and About are always on. Health (error rates, failure reasons, silent programs, schedules) and Templates (each email's performance, text and keyword search) are on for admins and off for leaders by default. Turning Health on later makes the next refresh a full one.",
     options: (ctx) => {
       const h = ctx.plan?.estimate?.health;
-      const cost = h ? (h.on ? `Health is in this plan already.` : `Turning Health on adds ${secondsText(h.addsSeconds)} to each refresh (${h.addsCalls} calls).`) : "The minutes Health adds are priced once a plan exists.";
+      const cost = h ? `${h.on ? `Health is in this plan already.` : `Turning Health on adds ${secondsText(h.addsSeconds)} to each refresh (${h.addsCalls} calls).`}${categoryCostText(h)}` : "The minutes Health adds are priced once a plan exists.";
       return [{ id: "default", text: `The presets: admins every tab, leaders Engagement and About. ${cost}` }, { id: "<JSON per page>", text: JSON.stringify(Object.fromEntries(tabsOf(ctx.spec).map((t) => [t.page, { health: t.health, templates: t.templates }]))) }];
     },
     apply: (v, ctx) => {
@@ -517,6 +543,10 @@ export const QUESTIONS = Object.freeze([
 ]);
 const questionById = (id) => QUESTIONS.find((q) => q.id === id) ?? refuse(`no question is called "${printable(String(id), 40)}" (${QUESTIONS.map((q) => q.id).join(", ")})`);
 /** The preset's panels with some metrics left off every query (the metrics question): a panel left with no metric is dropped. */
+/** The optional metric groups the metrics question can leave off, by the answer's key. */
+export const OPTIONAL_METRICS = Object.freeze({ clicks: Object.freeze(["clicked", "clickRate"]), responses: Object.freeze(["surveyParticipants", "submitted", "partiallySubmitted", "anyResponse", "responseRate"]) });
+/** Every drop an earlier metrics answer could have written (the empty one, each group, both): what a preset-derived panel list equals. */
+const OPTIONAL_METRIC_DROPS = Object.freeze([[], [...OPTIONAL_METRICS.clicks], [...OPTIONAL_METRICS.responses], [...OPTIONAL_METRICS.clicks, ...OPTIONAL_METRICS.responses]]);
 export function panelsWithout(panels, drop) {
   const gone = new Set(drop);
   return panels.flatMap((p) => {

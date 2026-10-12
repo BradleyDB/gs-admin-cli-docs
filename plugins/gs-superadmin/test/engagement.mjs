@@ -33,7 +33,7 @@ import { makeTempDir, removeTempDir, writeFiles, runNode } from "../../../test/r
 import { STEP_REMAINDER,
   fetchEngagement, reduceEngagement, loadRun, resolveParams, makeGate, parseWhoami, parseSentSince, parseIdList,
   expectedCalls, classifyFailure, classifyLink, readLinkClicks, parseUnsubscribeLink, validateQuery, buildQuery, splitUnit, selectAccounts, selectAccountsAcross, parseAccountListFlag, LOW_CADENCE_MAX_RATIO, LOW_CADENCE_MIN_DELIVERED, decideClickState,
-  monthsBetween, ENGAGEMENT_READ_PATHS, joEngagementAdapter, readFailureReasons, healthDayWindow, HEALTH_PARTS, pickSchedule, schemaFlags, NO_SCHEDULE,
+  monthsBetween, ENGAGEMENT_READ_PATHS, joEngagementAdapter, readFailureReasons, healthDayWindow, HEALTH_PARTS, pickSchedule, isOneRunWindow, schemaFlags, NO_SCHEDULE,
   SAMPLES_PER_PROGRAM, SAMPLE_PROGRAM_CAP, SAMPLE_PAGE, MAX_PAGES, sampleTargets, matchCategory,
   templatesReferenced, templateGap, templateContentOf, TEMPLATE_GAP_LIST_FILE, TEMPLATE_GAP_STALE_FILE, TEMPLATE_GAP_KEYS_FILE,
 } from "../scripts/engagement.mjs";
@@ -1508,8 +1508,8 @@ try {
     // The schedule rides the program dimension on every pull with a KB (ruled 2026-10-05).
     const sched = (snap, id) => snap.dimensions.programs.find((p) => p.id === id)?.schedule;
     check("HLT-1 the program dimension carries each program's schedule from the KB (classification as the audit classifies it, cron, zone, as of the doc's date): the weekly chain, the monthly survey, a documented program with none, null for one the KB has no doc for, and null on every program of a pull made without a KB — whether or not health is pulled",
-      isDeepStrictEqual(sched(S, "p-onboard"), { classification: "recurring", cronExpression: "0 0 8 ? * MON *", timeZoneName: "America/Los_Angeles", startTime: 1767225600000, endTime: 1830297600000, asOf: "2026-09-01T00:00:00.000Z" }) && sched(S, "p-nps").classification === "recurring" &&
-        isDeepStrictEqual(sched(S, "p-renew"), { classification: NO_SCHEDULE, cronExpression: null, timeZoneName: null, startTime: null, endTime: null, asOf: "2026-08-20T00:00:00.000Z" }) && sched(S, "p-unlisted") === null &&
+      isDeepStrictEqual(sched(S, "p-onboard"), { classification: "recurring", cronExpression: "0 0 8 ? * MON *", timeZoneName: "America/Los_Angeles", startTime: 1767225600000, endTime: 1830297600000, asOf: "2026-09-01T00:00:00.000Z", oneRunWindow: false }) && sched(S, "p-nps").classification === "recurring" &&
+        isDeepStrictEqual(sched(S, "p-renew"), { classification: NO_SCHEDULE, cronExpression: null, timeZoneName: null, startTime: null, endTime: null, asOf: "2026-08-20T00:00:00.000Z", oneRunWindow: false }) && sched(S, "p-unlisted") === null &&
         pull({}).snapshot.dimensions.programs.every((p) => p.schedule === null) && isDeepStrictEqual(pull({ kb: true, raw: { health: {} } }).snapshot.dimensions.programs.map((p) => p.schedule), S.dimensions.programs.map((p) => p.schedule)), S.dimensions.programs.map((p) => [p.id, p.schedule]));
     check("pickSchedule: with several schedules the most frequent recurring one decides; recurring when any is, one-time when any is and none recurs; a documented program with none says so",
       pickSchedule({ asOf: "d", schedules: [{ classification: "recurring", cronExpression: "0 0 9 1 * ? *", timeZoneName: "UTC" }, { classification: "recurring", cronExpression: "0 0 8 ? * MON *", timeZoneName: "UTC" }] }, TODAY).cronExpression === "0 0 8 ? * MON *" &&
@@ -1591,6 +1591,27 @@ try {
         SEND_DROPS.every((c) => sf.some((r) => r.category === c)) && !sf.some((r) => r.category === "other") && sf.every((r) => r.expected === (r.kind === "business-rule")) &&
         list("p-oldshort") === "no-recent-sends" && row("p-oldshort").signals.sends.rule === "flat" && row("p-oldshort").signals.finished === false && sh.rows.some((r) => r.programId === "p-oldshort"),
       Object.fromEntries(["p-twosched", "p-staledoc", "p-newcohort", "p-sendfail", "p-oldshort"].map((id) => [id, [list(id), row(id)?.signals.why, row(id)?.signals.schedule.state, row(id)?.signals.sends.state, row(id)?.signals.steps.byKind]])));
+    // F-502 (Bradley's ruling at V2, 2026-10-10): a recurring cron whose window admits exactly one run is one-time by its
+    // data; ended with nobody in flight it is a Finished campaign with the one-day note, never Schedule ended; a window
+    // that admits two runs keeps alarming; a program re-run through one-day windows is the hand-fed class (recurring by
+    // hand), which the grouping trait keeps out of One-off.
+    const ONE_DAY = { classification: "recurring", cronExpression: "0 0 8 * * ? *", startTime: 1778544000000, endTime: 1778630340000 };
+    const TWO_DAYS = { classification: "recurring", cronExpression: "0 0 8 * * ? *", startTime: 1781049600000, endTime: 1781222400000 };
+    const LIVE_WEEKLY = { classification: "recurring", cronExpression: "0 0 8 ? * MON *", startTime: 1767225600000, endTime: 1830297600000 };
+    check("F-502 pickSchedule: a recurring cron whose window is shorter than one period admits one run and reads one-time, marked oneRunWindow; a two-day window on a daily cron stays recurring; a one-run window beside a live recurring schedule leaves the program recurring; among one-run windows the latest end decides; an unreadable cron or a window without both ends decides nothing",
+      isOneRunWindow(ONE_DAY, TODAY) === true && isOneRunWindow(TWO_DAYS, TODAY) === false && isOneRunWindow({ ...ONE_DAY, cronExpression: "not a cron" }, TODAY) === false && isOneRunWindow({ ...ONE_DAY, endTime: null }, TODAY) === false &&
+        isDeepStrictEqual(pickSchedule({ asOf: "d", schedules: [ONE_DAY] }, TODAY), { classification: "one-time", cronExpression: ONE_DAY.cronExpression, timeZoneName: null, startTime: ONE_DAY.startTime, endTime: ONE_DAY.endTime, asOf: "d", oneRunWindow: true }) &&
+        pickSchedule({ asOf: "d", schedules: [TWO_DAYS] }, TODAY).classification === "recurring" && pickSchedule({ asOf: "d", schedules: [TWO_DAYS] }, TODAY).oneRunWindow === false &&
+        pickSchedule({ asOf: "d", schedules: [ONE_DAY, LIVE_WEEKLY] }, TODAY).classification === "recurring" && pickSchedule({ asOf: "d", schedules: [ONE_DAY, LIVE_WEEKLY] }, TODAY).cronExpression === LIVE_WEEKLY.cronExpression &&
+        pickSchedule({ asOf: "d", schedules: [ONE_DAY, { ...ONE_DAY, startTime: 1781568000000, endTime: 1781654340000 }] }, TODAY).endTime === 1781654340000 &&
+        pickSchedule({ asOf: "d", schedules: [{ classification: "one-time", cronExpression: null }] }, TODAY).oneRunWindow === false && pickSchedule({ asOf: "d", schedules: [] }, TODAY).oneRunWindow === false,
+      pickSchedule({ asOf: "d", schedules: [ONE_DAY] }, TODAY));
+    check("F-502 the lists: the one-day blast (everyone completed) is a Finished campaign whose schedule signal carries the one-day window and its end day, never Schedule ended; the two-day chain alarms Schedule ended; the re-run blast is finished on the list, and its program dimension reads one-time with the one-run mark",
+      list("p-oneday") === "finished" && isDeepStrictEqual(row("p-oneday").signals.schedule, { state: "one-time", oneRunWindow: true, endDay: "2026-07-14", ended: true }) && row("p-oneday").signals.finished === true &&
+        list("p-twoday") === "schedule-ended" && row("p-twoday").signals.schedule.endDay === "2026-06-12" && list("p-rerun") === "finished" && row("p-rerun").signals.schedule.oneRunWindow === true &&
+        sig.snapshot.dimensions.programs.find((p) => p.id === "p-oneday").schedule.oneRunWindow === true && sig.snapshot.dimensions.programs.find((p) => p.id === "p-oneday").schedule.classification === "one-time" &&
+        sig.snapshot.dimensions.programs.find((p) => p.id === "p-twoday").schedule.oneRunWindow === false && sig.snapshot.dimensions.programs.find((p) => p.id === "p-ended").schedule.oneRunWindow === false,
+      Object.fromEntries(["p-oneday", "p-twoday", "p-rerun"].map((id) => [id, [list(id), row(id)?.signals.schedule]])));
     // F-491, REDESIGNED (2026-10-08, second reopen since the first redesign): the KB is the ONE source of schedules, and
     // what it lacks is named, never guessed — an undocumented program is Cannot judge yet (no-doc) and never a one-off; a
     // documented program the list says was modified after its doc is judged from the doc and flagged; the plan prices the
@@ -1703,6 +1724,15 @@ try {
       refused.summary?.status === "ok" && refused.summary.health.unread.bounceReasons?.every((f) => f.kind === "refused") && isDeepStrictEqual(healthAvailability(refused.snapshot).parts.bounceReasons, { pulled: false, reason: "call-failed", basis: "window" }) &&
         refused.snapshot.facts.health.bounceReasons.length === 0 && !refused.snapshot.reconciliation.checks.some((c) => c.id === "bounce-reasons-sum-to-bounced") && isDeepStrictEqual(refused.snapshot.facts.byTemplate, S.facts.byTemplate) &&
         !rpRuns(refused.argv).some((a) => a.join(" ").includes("BouncedReason")), refused.summary?.health);
+    // F-504 (V2, 2026-10-10): what the bounce categories cost is said plainly in the plan — one counted call per category
+    // per recipient class (all, each internal domain, the test accounts, the test accounts on each domain) — and the
+    // category call is priced at its measured 2.5 s (3), not the 7 s default that priced a 55-category refresh twice too high.
+    const priced = pull({ kb: true, raw: { health: HEALTH, internalDomains: ["acme.com", "acme.co.uk"], testAccounts: ["co-03"] }, phase: "plan" });
+    const cc = priced.summary?.estimate?.health?.categoryCalls?.bounce;
+    check("F-504 the plan says what the bounce categories cost: the category count, the recipient classes (1 + 2 domains + 1 test + 2 test-on-domain = 6), the calls as categories × classes on a first pull, and the seconds at 3 a call",
+      cc != null && cc.categories === FIXTURE_BOUNCE_CATEGORIES.length && cc.classes === 6 && cc.calls === cc.categories * 6 && cc.secondsEach === 3 && cc.seconds === cc.calls * 3 &&
+        pull({ kb: true, raw: { health: HEALTH, internalDomains: [] }, phase: "plan" }).summary.estimate.health.categoryCalls.bounce.classes === 1 && pull({ kb: true, raw: { health: { pull: true } }, phase: "plan" }).summary.estimate.health.categoryCalls.bounce.calls === 0,
+      cc);
     const bare = pull({ kb: true, variant: { noHealthObjects: true } });
     check("HLT-1 health never fails a pull: a tenant without the failed-participant or participant object has those two parts not read (no-schema), no call is made on them, and the other parts are read",
       bare.summary?.status === "ok" && isDeepStrictEqual([healthAvailability(bare.snapshot).parts.participantFailures, healthAvailability(bare.snapshot).parts.participantStates], [{ pulled: false, reason: "no-schema", basis: "all-time" }, { pulled: false, reason: "no-schema", basis: "all-time" }]) &&

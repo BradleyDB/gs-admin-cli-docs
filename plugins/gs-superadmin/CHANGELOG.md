@@ -71,6 +71,22 @@ dashboard with no model in the loop, and `/gs-superadmin:email-engagement` gains
   and may need more than one login, later ones are selective), the hand-over to a backup
   refresher (export with the snapshot, import), and the leaders' copy as a file copy to a
   shared folder (SharePoint and OneDrive download an HTML file rather than show it).
+- **Three V2 findings fixed with the batch (F-502, F-503, F-504), and one interview edge:**
+  a program whose recurring cron is boxed into a window shorter than one period (the
+  tenant's one-day sends) is one-time by its data: ended with nobody in flight it reads
+  Finished campaign with "one-day schedule, ended <day>", never Schedule ended, and the
+  Recurring / One-off grouping follows, except a program re-run through such windows month
+  after month, which recurs by hand (F-502; the snapshot's program schedule gains
+  `oneRunWindow`). The line a page tells an admin to copy names the page, the tab and the
+  source in the entry command's own grammar (`pages.0.tabs.1.enabled=true`), so it runs
+  as written (F-503). The plan and the interview say what the bounce categories cost (one
+  counted call per category per recipient class: all, each internal domain, the test
+  accounts, the test accounts on each domain) before a category file, a domain or a test
+  account is added, and the category call is priced at its measured 2.5 s instead of a 7 s
+  default (F-504; the calls are not fewer yet). On an edit, the metrics question puts a
+  metric left off earlier back when the page's panels are the preset's (or the preset's
+  minus a metric); a page whose panels were changed by hand keeps them and the answer names
+  the change that starts again from the preset.
 
 ## 0.50.0 — 2026-10-11
 

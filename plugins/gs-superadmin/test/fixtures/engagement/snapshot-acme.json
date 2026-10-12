@@ -524,7 +524,8 @@
      "timeZoneName": "America/Los_Angeles",
      "startTime": 1767225600000,
      "endTime": 1830297600000,
-     "asOf": "2026-08-20T00:00:00.000Z"
+     "asOf": "2026-08-20T00:00:00.000Z",
+     "oneRunWindow": false
     }
    },
    {
@@ -547,7 +548,8 @@
      "timeZoneName": "America/Los_Angeles",
      "startTime": 1767225600000,
      "endTime": 1830297600000,
-     "asOf": "2026-09-01T00:00:00.000Z"
+     "asOf": "2026-09-01T00:00:00.000Z",
+     "oneRunWindow": false
     }
    },
    {
@@ -570,7 +572,8 @@
      "timeZoneName": null,
      "startTime": null,
      "endTime": null,
-     "asOf": "2026-08-20T00:00:00.000Z"
+     "asOf": "2026-08-20T00:00:00.000Z",
+     "oneRunWindow": false
     }
    },
    {
@@ -594,7 +597,8 @@
      "timeZoneName": null,
      "startTime": null,
      "endTime": null,
-     "asOf": "2026-08-20T00:00:00.000Z"
+     "asOf": "2026-08-20T00:00:00.000Z",
+     "oneRunWindow": false
     }
    },
    {
