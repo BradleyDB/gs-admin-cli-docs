@@ -212,7 +212,12 @@ Walk (hb-20261010-01): 2026-10-11 (tester) — V2 SECOND SITTING ("V2.5") @ hb-2
        (pre-existing); F-507 untouched in the adapter (the runner budgets the gap-fill itself); the page has no
        per-segment customer-list view yet (the selection is in the snapshot for one); on an edit the metrics question
        cannot restore a metric left off earlier (that is `change pages.N.panels=[]`).
-     Carried: F-502..F-504 (normal) and F-505..F-509 (polish) stay OPEN for the next builder round.
+     Carried: F-505..F-509 (polish) stay OPEN for the next builder round. AMENDED 2026-10-11, the same session: F-502, F-503
+       and F-504 FIXED on the branch on Bradley's call (the kickoff prompt had scoped them out; the plan's ruling that they
+       ride S5 stood), with a check each (the F-502 fixture programs p-oneday, p-twoday, p-rerun on the signals tenant;
+       the T-10 program dimension gains schedule.oneRunWindow, additive), plus the metrics question restoring a metric
+       left off earlier on a preset-derived page; the goldens regenerated; banked as VALIDATION § F-502 / F-503 / F-504
+       K1–K5 for S5-V. The three sections carry Fix and Judge lines (on the branch's bus until the merge).
      CI on PR #47's head f9a64a1, per job: GitGuardian Security Checks pass; validate-plugin run 38205208768 — changes
        success, manifests success, validate (ubuntu-latest) success; docs-drift run 38205208777 — drift (full) success.
        The S4d-owed validate-plugin dispatch on the merged tip (run 38191969253): changes, manifests, validate
