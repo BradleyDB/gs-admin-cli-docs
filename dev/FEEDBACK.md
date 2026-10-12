@@ -167,6 +167,59 @@ Walk (hb-20261008-02): 2026-10-09 (tester) — S3b FIX ROUND 3 verdict @ hb-2026
 Walk (hb-20261010-01): 2026-10-10 (tester) — V2 FIRST SITTING @ hb-20261010-01 (dev, clean and level with origin at c758021, the S4c branch merged into it; canary matched), the batched ACCEPTANCE round for ENG-4, ENG-3, HLT-1, DSH-1, DSH-5, DSH-2, DSH-4, TPL-1, TPL-2 and a RE-VERIFICATION of the ten FIXED findings (F-485, F-486, F-492, F-495 to F-501) on Bradley's call, on the production tenant, reads only, one call at a time, paused by Bradley to finish in a second sitting (V2.5). T6 first, from the tree: every part present, six suites green. One zz-test spec (admin and exec pages, Health and Templates on for admin) over the full program set; the changed SKILL.md (email-engagement, model-invocable) walked by Bradley's typed slash command over every program with sends (plan 35 calls; the template gap-fill ask raised and answered: 278 filled through email-report's three commands, 0 failed; re-plan 0; pull 36 made + 10 reused, exit 0); one adapter refresh with health, the KB, the tenant's 55-pattern category file and two test accounts (443 made + 19 reused, 0 split, 0 retried, exit 0, all eleven parts read; 29 minutes against 58 estimated; 330 of its calls the bounce categories); both pages built (admin 2.33 MB, exec 0.70 MB, no warning); 12 direct reads through the spike's catalog-checked runner; three email-report searches typed by Bradley (its sweep died once on an expired token; re-login, redone; gap-fill skipped on his word). The prose made neither walk stop or guess; one tester slip: the index step was chained after the failed sweep instead of stopping at the ask (redone). Results: X0, X1, X2, X3, X5, X6 PASSED (X4, X7, X8, X9 owed to V2.5); Y4, Y5, Y7, Y9, Y10, Y11, Y12 CLEARED, Y2 re-read clean on the snapshot (payload shape F-510), Y8's run-state clause moot since F-491 (as-of and caveat clauses CLEARED), the section's spike arm (p1) ANSWERED; Z1 (second half), Z3 to Z10 CLEARED; D1 to D8 CLEARED (D0 ruled on two choices, the rest owed to V2.5 with the page in front of Bradley); T1 to T6 CLEARED (T0: TPL-1's six ruled, TPL-2 five of seven ruled). The ten FIXED findings VERIFIED. Logged: F-502, F-503, F-504 (normal), F-505 to F-510 (polish). Rulings and page notes recorded in the maintainer's plan. Guard-wiring: NOT probed this sitting (owed to V2.5). Detail in the tester comment below and in the five VALIDATION sections.
 Walk (hb-20261010-01): 2026-10-11 (tester) — V2 SECOND SITTING ("V2.5") @ hb-20261010-01 (dev, clean and level with origin at 2a6ff17, the first sitting's bus commit; canary matched after a relaunch: the desktop-app session was resumed in a terminal with --plugin-dir, its cwd the repo), the continuation of the batched ACCEPTANCE round: ENG-3's four owed arms, the owed T0 / D0 rulings, F-510's remedy and the guard-wiring line, on the production tenant, reads only, one call at a time, two re-logins. The changed SKILL.md (email-engagement, model-invocable) was invoked by the tester session three times (X9 over the full set with --accounts: the over-ten-minutes ask raised and, on Bradley's call over the banked stop, the pull made, 315 made + 11 reused, 2080 s against 2115 planned, exit 0, four reconciliation checks ok; X7 on the three picks with --previous: mode selective, 25 made + 10 reused, 188 s; X4 on the picks with --accounts --step-detail --by-template --xlsx: 77 made + 12 reused, 480 s, five checks ok, a seven-sheet workbook) and once by Bradley typing a plain question in a fresh workspace session (X8: this skill ran, report mode, one program selected, the estimate stated in one line, the answer quoted from the Programs row). Three direct counts through the spike's runner for X4's pick; X7's carried month compared through the engine over both snapshots (the bar's --from/--to-via---snapshot method does not exist on the report script: a bar wording defect). The prose made no walk stop or guess. X4, X7, X8, X9 PASSED; ENG-3 / ENG-4 CLEARED; DSH-4 CLEARED (D0's six ruled, two with notes); TPL-1 / TPL-2 CLEARED (T0's last ruled: the text-less leaders' tab kept, its notice dropped). F-510 WONTFIX on Bradley's ruling (the tenant category appended to the workspace file and validated; the cross-tenant mask residue a backlog item). Nothing logged; next free F-511. Guard-wiring: `gs-admin jo p pause --help` in the fresh workspace session drew the guard's ask (mutating command named, both tenants, production flagged; Bradley pasted the rendered text) and he declined it. In THIS session the same probe ran twice with no ask and no journal row: its cwd is the repo, not a workspace, and the guard is inert there by design (its header; the decision object run by hand with a workspace cwd reads "ask"), so every gs-admin call this sitting made from here was unguarded, all reads: a tester launch fault, recorded as a blind spot and a backlog question, no finding (Bradley: an artifact of how the session was resumed). CLEANUP § V2: the repo side done (no jo-dash branch survives, no open PR to dev, no stale pointer, validate-plugin dispatched on 2a6ff17: run 38176231687); the workspace deletions DEFERRED to § S4d on Bradley's say-so (S4d wants the real pages; the workspace is not a git repository and sits outside this one). Detail in the tester comment below and in the three VALIDATION sections.
 
+<!-- builder 2026-10-11 (JO-dashboards S5 HANDED OFF — UNMERGED; PUB-1, DSH-3 and UX-2 built on feat/jo-dash-s5-entry-command → PR #47 to dev; token hb-20261011-02; no bus section rode this session; three VALIDATION sections banked for S5-V, where Bradley walks the interview himself; F-502..F-509 carried; next free F-511):
+     Branch feat/jo-dash-s5-entry-command, cut from dev at 386dc36; the feature commit cddc02e (one squash), the handoff
+       commit f78eda2 (bus + canary), the validation commit f9a64a1 (the three sections keyed to the token). PR #47 is
+       left open: it merges after S5-V's verdict on green CI plus the session's /code-review round. Plugin 0.51.0 on the
+       branch, unreleased (0.50.0, 0.49.0 and 0.48.0 unreleased beneath it; the release is the maintainer's).
+     What shipped (the plan's As-shipped (S5) notes under PUB-1, DSH-3, UX-2, DSH-1, DSH-2, ENG-3 and ENG-2 have the
+       detail): PUB-1, the ONE deterministic entry command scripts/dashboard.mjs — verbs new / next / answer / change /
+       save / list / status / refresh / rebuild / report / export / import / health / costs / questions; it imports the
+       five scripts (the spec writer's verbs became specStore() functions, the report's writeReport, the adapter's
+       prepareRun; A-10 holds: dashboard.mjs never writes a spec file) and spawns only manifest.mjs and
+       describe-batch.mjs for re-documentation; refresh = whoami pre-flight (exit 5 wrong-tenant before any tenant call,
+       exit 3 token-expired, resumable), a workspace lock stale after two hours, the plan with the lookback derived
+       from the longest schedule period, the budget against the token, re-documentation under kb.redocument.cap (50,
+       off-switchable; ONE predicate, the adapter's kbGap; ONE re-documenter, the existing manifest/describe-batch
+       scripts, so /gs-superadmin:refresh is untouched), the pull, applyGroups, retention 13, the delta to the exec
+       strip, pages all-or-nothing (a partial or failed run leaves every last good page), exit 4 partial. DSH-3, the
+       QUESTIONS table as data (22 rows; about 20 asked on the main path, the fast path answers all but the estimate
+       and the save) with next / answer as the interview's two verbs and the skill as the thin front door (three
+       judgment nodes the only deciding prose; house rule 18 holds). UX-2, the look question: brand input as data the
+       prose reads, tokens through S4d's validator with replacements noted, a logo from a local PNG/JPEG only, skip the
+       fast-path default and never asked twice. DSH-2 ruling 4 in the adapter (accounts.lists[] / fields[], the
+       low-cadence rule, cross-program selection in reduce, R24 off by default) with the snapshot, query, report and
+       page goldens regenerated; T-11 additive (window kind, quietDueDays / samplePrograms / expectedReasons,
+       kb.redocument, the draft holder with --take-over, spec.json.previous); README recipes (on demand, --health-only,
+       an OS scheduler or a Claude desktop local task — never a cloud routine — with the hour-long login stated, the
+       hand-over export/import, the leaders' copy as a file copy with the SharePoint/OneDrive download note).
+     Deviations, recorded in the plan: the grouping node's input comes from the cheap plan, not a dry-run snapshot;
+       expected-QUIET programs not asked (nothing reads such a field; the expected failure reasons are); the question
+       count is ~20, not the plan's "about 12" (every ruled addition is its own row); F-502..F-504 (normal) NOT taken
+       (the kickoff scoped the session to the three items; the ledger's "ride S5" line is superseded for this session).
+     Verified offline only, by the kickoff: the verbatim CI battery 48 of 51 on the checkpoint (the three reds: the
+       tracer's enumeration of the new script, fixed with a rule-out row; the emitter, re-emitted; the known
+       git-ignored handoffs tools file under tsc), re-run green where touched; suites dashboard 57 (new: the whole
+       interview and refresh as a real process over the fictional tenant and the stand-in CLI), dashboard-spec 46,
+       engagement 345, engagement-query 134, engagement-report 55, dashboard-page 177, contract 300; plugin validate
+       clean; the build reproduces committed output (stamps only); typecheck clean but the known file.
+     Review: /code-review medium, eight findings — seven FIXED with a check each where a check fits (the metrics
+       "default" answer keeps the panels; the silent-threshold change cost refined by the longest period; the
+       cross-program lists not status-filtered in the report; the preview snapshot read lazily; the change verb's
+       JSON-quoting rule documented; a resume with other flags refused naming the run; lastPlan's ordering), one
+       SKIPPED and recorded (the hand-listed boolean flags in the argv split).
+     Noticed, not changed: the adapter writes KB-gap keys as journey/<id> whatever the domain folder is called
+       (pre-existing); F-507 untouched in the adapter (the runner budgets the gap-fill itself); the page has no
+       per-segment customer-list view yet (the selection is in the snapshot for one); on an edit the metrics question
+       cannot restore a metric left off earlier (that is `change pages.N.panels=[]`).
+     Carried: F-502..F-504 (normal) and F-505..F-509 (polish) stay OPEN for the next builder round.
+     CI on PR #47's head f9a64a1 was running at close (GitGuardian and changes green; manifests, validate and drift
+       pending): owed as a per-job quote here. Also owed from S4d's close: the per-job result of validate-plugin
+       dispatch run 38191969253 on the merged tip.
+     Next: S5-V (Bradley walks the interview: § DSH-3 I0–I12, § PUB-1 R1–R9, § UX-2 B1–B4), then PR #47 merges; UX-3
+       waits for his confirmation in the plan.
+-->
+
 <!-- builder 2026-10-11 (JO-dashboards S4d MERGED — PR #46 merged to dev (c6bf65b) on green CI plus the session's review round plus Bradley's sign-off on the final screenshots; nothing logged; next free F-511):
      Merged on Bradley's go-ahead, as a merge commit (as #36 to #45 were); the branch deleted, local and remote; no PR
        open to dev at close. CI on the head 7ce1db3, per job: GitGuardian Security Checks pass; validate-plugin run
