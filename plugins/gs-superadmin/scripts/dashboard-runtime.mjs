@@ -587,21 +587,37 @@ export function createDashboard(engine, model) {
     const ratio = Math.round(change.value * 100) / 100;
     return ratio === 1 ? "level with the usual" : `${ratio > 1 ? "&#9650;" : "&#9660;"} ${ratio}&times; the usual`;
   };
+  // The change since the last pull (PUB-1, S5): the refresh computes it over the closed months both pulls hold and
+  // the page carries it (model.delta); a tile's figure reads "level with", "up" or "down" against that pull's.
+  const sinceText = (d) => {
+    if (!d || d.change == null || d.change.value == null) return null;
+    if (d.change.kind === "points") {
+      const pts = Math.round(d.change.value * 10) / 10;
+      return pts === 0 ? "level with the last pull" : `${pts > 0 ? "&#9650;" : "&#9660;"} ${Math.abs(pts)} pts since the last pull`;
+    }
+    const ratio = Math.round(d.change.value * 100) / 100;
+    return ratio === 1 ? "level with the last pull" : `${ratio > 1 ? "&#9650;" : "&#9660;"} ${ratio}&times; the last pull's`;
+  };
   const renderKpiPanel = (panel, state) => {
     const view = engine.kpiView(snapshot, filtersOf(state), panel.query);
+    const delta = model.delta ?? null;
     // "No previous pull" is one fact about the page, said once under the tiles, not once per tile.
-    const noPrevious = view.tiles.every((t) => t.sinceLastPull == null);
+    const noPrevious = !delta;
     const tiles = view.tiles.map((t) => {
       const usual = t.usual ? `<p class="gs-kpi-usual">Usual${t.usual.perMonth ? " a month" : ""}: ${fmt(t.id, t.usual.perMonth ? Math.round(t.usual.value) : t.usual.value)} <span class="gs-muted">(${plural(t.usual.closedMonths, "closed month")})</span>${t.change ? ` &middot; ${changeText(t.change)}` : ""}</p>` : `<p class="gs-kpi-usual gs-muted">No closed month to compare with.</p>`;
       const den = t.denominator ? `<p class="gs-kpi-context">${esc(t.denominator.label)} ${figure(t.denominator.id, t.denominator.cell)}</p>` : "";
-      const since = noPrevious ? "" : `<p class="gs-kpi-since gs-muted">Since last pull: ${t.sinceLastPull == null ? "no previous pull to compare with." : esc(String(t.sinceLastPull))}</p>`;
+      const d = delta?.metrics?.[t.id] ?? null;
+      const since = noPrevious ? "" : `<p class="gs-kpi-since gs-muted">Since last pull: ${sinceText(d) ?? "no figure to compare with."}</p>`;
       const whyAttr = t.cell.value == null && t.cell.why ? ` title="${esc(engine.reasonText(t.cell.why))}"` : "";
       return `<div class="gs-kpi" data-metric="${esc(t.id)}"><p class="gs-kpi-label">${esc(t.label)}</p><p class="gs-kpi-value"${whyAttr}>${figure(t.id, t.cell)}${view.incomplete ? `<sup>${tip(provisionalTip(), "*")}</sup>` : ""}</p>${usual}${den}${since}</div>`;
     });
     const total = { incomplete: view.incomplete, carried: view.carried, cells: Object.fromEntries(view.tiles.map((t) => [t.id, t.cell])) };
     const notes = whyNotes([total], panel.query.metrics);
-    // The change strip (DSH-4; S5 fills it): until a second pull exists it is one muted line beside the title (ruled 2026-10-11).
-    const since = noPrevious ? `<span class="gs-kpi-since">Change since the last refresh: none yet, this is the first pull.</span>` : "";
+    // The change strip (DSH-4; S5 fills it): until a second pull exists it is one muted line beside the title (ruled
+    // 2026-10-11); with one, the line names the pull compared with and the closed months the comparison covers.
+    const since = noPrevious
+      ? `<span class="gs-kpi-since">Change since the last refresh: none yet, this is the first pull.</span>`
+      : `<span class="gs-kpi-since">Change since the last refresh (pulled ${esc(String(delta.previousPulledAt ?? "earlier"))}), over ${plural(delta.closedMonths?.length ?? 0, "closed month")} both pulls hold.</span>`;
     return `${open(panel, csvButton(panel), since)}<div class="gs-kpis">${tiles.join("")}</div>${notesBlock(notes)}${close}`;
   };
 

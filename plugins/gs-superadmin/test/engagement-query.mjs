@@ -300,7 +300,9 @@ try {
     const programsOf = (key) => [...new Set(GOLD.facts.byAccount.filter((r) => r.accountKey === key).map((r) => r.programId))];
     const mixed = across.filter((r) => new Set(programsOf(r.key.account).map((p) => programClickAvailability(GOLD, p).state)).size > 1);
     check("clicks at the account grain, one account across several programs: the state is the roll-up of ALL of them — an account a tracked and an unknown program both send to reads unknown, whichever comes first; an account only a not-tracked program sends to reads not-tracked",
-      mixed.length > 0 && mixed.every((r) => r.cells.clicked.state === "unknown") && across.some((r) => r.cells.clicked.state === "not-tracked") &&
+      mixed.length > 0 && mixed.every((r) => r.cells.clicked.state === "unknown") &&
+        // Seen through one not-tracked program alone (the program filter), every account reads not-tracked (since S5 every kept account has rows on every program it is on, so no account is on a not-tracked program only).
+        (() => { const only = runQuery(GOLD, { accountBuckets: ["account"], programs: ["p-renew"] }, { groupBy: ["account"], metrics: ["clicked"] }).rows; return only.length > 0 && only.every((r) => r.cells.clicked.state === "not-tracked"); })() &&
         across.every((r) => r.cells.clicked.state === rollUpTracking(/** @type {any} */ (Object.fromEntries([["tracked", "tracked"], ["notTracked", "not-tracked"], ["unknown", "unknown"]].map(([k, st]) => [k, programsOf(r.key.account).filter((p) => programClickAvailability(GOLD, p).state === st).length]))))),
       across.map((r) => [r.key.account, r.cells.clicked.state, programsOf(r.key.account)]));
     check("rollUpTracking: all tracked is tracked, all not-tracked is not-tracked, any mix and nothing at all are unknown",

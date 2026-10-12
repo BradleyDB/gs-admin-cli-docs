@@ -477,6 +477,7 @@ const RULE_OUTS = [
   { file: "scripts/dashboard-spec.mjs", why: "the dashboard spec writer — parses the JSON values of its own --set flags; the files it reads are specs it wrote, never tenant output" },
   { file: "scripts/dashboard-page.mjs", why: "the dashboard page builder — reads a spec and a snapshot the plugin's own scripts wrote, through their loud readers (openSpec, openSnapshot); never tenant output" },
   { file: "scripts/dashboard-runtime.mjs", why: "the dashboard page's runtime — parses the page's own embedded data and the viewer's stored column choice; never tenant output" },
+  { file: "scripts/dashboard.mjs", why: "the entry command — parses its own files (the lock, the state, the plan the adapter wrote, the describe-batch and manifest summaries) and the JSON values of its answers; the ONE tenant payload it reads, the company lookup's rp run rows, goes through the adapter's traced account-names reader (ROW_READERS), never a key of its own" },
   { file: "hooks/gs-admin-guard.mjs", why: "hook stdin + the catalog — never tenant output" },
 ];
 const ENUM_RE = /JSON\.parse|parseDocJson|extractFencedJson|parseLiveDepsAreas/;

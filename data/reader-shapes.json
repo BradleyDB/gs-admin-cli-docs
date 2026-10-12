@@ -3017,6 +3017,10 @@
       "why": "the dashboard page's runtime — parses the page's own embedded data and the viewer's stored column choice; never tenant output"
     },
     {
+      "file": "scripts/dashboard.mjs",
+      "why": "the entry command — parses its own files (the lock, the state, the plan the adapter wrote, the describe-batch and manifest summaries) and the JSON values of its answers; the ONE tenant payload it reads, the company lookup's rp run rows, goes through the adapter's traced account-names reader (ROW_READERS), never a key of its own"
+    },
+    {
       "file": "hooks/gs-admin-guard.mjs",
       "why": "hook stdin + the catalog — never tenant output"
     }
@@ -3033,6 +3037,7 @@
       "scripts/dashboard-page.mjs",
       "scripts/dashboard-runtime.mjs",
       "scripts/dashboard-spec.mjs",
+      "scripts/dashboard.mjs",
       "scripts/describe-batch.mjs",
       "scripts/doc-lib.mjs",
       "scripts/engagement.mjs",

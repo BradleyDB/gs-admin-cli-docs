@@ -60,6 +60,52 @@ These figures are all time, not limited to the report's window. Programs that se
 
 ## Account watch list
 
+Across programs over the whole window, the accounts this pull kept: the 25 most engaged (at least 10 delivered); the 25 least engaged (at least 10 delivered); the 25 most bounced. Possible advocates, possible bad contacts or disengagement, possible bad contacts: never a verdict on a customer. On 2 program(s) that send about once per contact, the least-engaged signal is at least 3 delivered and no open.
+
+### Most engaged customers
+
+| Account | Programs | Delivered | Opened | Open rate | Bounced |
+|---|---|---|---|---|---|
+| Acme Customer 05 | 3 | 25 | 22 | 88.0% | 1 |
+| Acme Customer 08 | 3 | 28 | 23 | 82.1% | 1 |
+| Acme Customer 07 | 3 | 26 | 20 | 76.9% | 0 |
+| Acme Customer 02 | 3 | 17 | 13 | 76.5% | 2 |
+| Acme Customer 04 | 3 | 25 | 19 | 76.0% | 2 |
+| Acme Customer 09 | 2 | 14 | 10 | 71.4% | 3 |
+| Acme Customer 01 | 3 | 24 | 16 | 66.7% | 3 |
+| Acme Customer 10 | 2 | 15 | 9 | 60.0% | 2 |
+| Acme Customer 03 | 4 | 29 | 13 | 44.8% | 1 |
+| Acme Customer 06 | 3 | 25 | 10 | 40.0% | 2 |
+
+### Least engaged customers
+
+| Account | Programs | Delivered | Opened | Open rate | Bounced |
+|---|---|---|---|---|---|
+| Acme Customer 06 | 3 | 25 | 10 | 40.0% | 2 |
+| Acme Customer 03 | 4 | 29 | 13 | 44.8% | 1 |
+| Acme Customer 10 | 2 | 15 | 9 | 60.0% | 2 |
+| Acme Customer 01 | 3 | 24 | 16 | 66.7% | 3 |
+| Acme Customer 09 | 2 | 14 | 10 | 71.4% | 3 |
+| Acme Customer 04 | 3 | 25 | 19 | 76.0% | 2 |
+| Acme Customer 02 | 3 | 17 | 13 | 76.5% | 2 |
+| Acme Customer 07 | 3 | 26 | 20 | 76.9% | 0 |
+| Acme Customer 08 | 3 | 28 | 23 | 82.1% | 1 |
+| Acme Customer 05 | 3 | 25 | 22 | 88.0% | 1 |
+
+### Most bounced customers
+
+| Account | Programs | Delivered | Opened | Open rate | Bounced |
+|---|---|---|---|---|---|
+| Acme Customer 01 | 3 | 24 | 16 | 66.7% | 3 |
+| Acme Customer 09 | 2 | 14 | 10 | 71.4% | 3 |
+| Acme Customer 02 | 3 | 17 | 13 | 76.5% | 2 |
+| Acme Customer 04 | 3 | 25 | 19 | 76.0% | 2 |
+| Acme Customer 06 | 3 | 25 | 10 | 40.0% | 2 |
+| Acme Customer 10 | 2 | 15 | 9 | 60.0% | 2 |
+| Acme Customer 03 | 4 | 29 | 13 | 44.8% | 1 |
+| Acme Customer 05 | 3 | 25 | 22 | 88.0% | 1 |
+| Acme Customer 08 | 3 | 28 | 23 | 82.1% | 1 |
+
 Per program, among the accounts this snapshot kept: the 2 lowest open rates among accounts with at least 4 delivered, and the 2 accounts with the most bounce events.
 
 ### Acme Onboarding Chain

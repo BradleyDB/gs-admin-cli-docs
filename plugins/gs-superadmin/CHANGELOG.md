@@ -5,6 +5,73 @@ marketplace doesn't pin versions — users get main — so entries describe what
 user who updates, not internal refactors. Entries before 0.8.0 were reconstructed from git
 history when this file was introduced.
 
+## 0.51.0 — 2026-10-12
+
+The engagement dashboard's entry command and the interview that builds a dashboard (PUB-1,
+DSH-3, UX-2): one deterministic command, `dashboard.mjs`, does everything mechanical about a
+dashboard with no model in the loop, and `/gs-superadmin:email-engagement` gains the
+`dashboard new | edit | list` and `refresh <slug>` modes as a thin front door over it.
+
+- **One entry command, `node .gs-superadmin/plugin/scripts/dashboard.mjs <verb>`.** `new`
+  starts a draft (or `--fast-path`, the standard program-health dashboard); `next` and
+  `answer` walk the questions table; `change <slug> <path>=<json>` sets a setting through
+  the spec writer, says what it costs (in-page, rebuild only, or the next pull with its
+  minutes), saves, and does it (`--dry-run` stops before); `save`, `list` (drafts with their
+  holder and date), `status` (last pull, age, next due by cadence, the lock), `refresh
+  <slug> [--full] [--health-only]`, `rebuild`, `report` (the open-rate report over the latest
+  snapshot, no pull), `export [--with-snapshot]` / `import`, and `health <slug> --program
+  <id>` (a program's masked messages and the "Other" samples, to the terminal only).
+- **The refresh, with no model:** the tenant is checked before any call (a dashboard is
+  never refreshed from another tenant: its own exit code), the login's remaining life is
+  held against the pull plus the re-documentation, a workspace lock refuses a second refresh
+  naming its holder (stale after two hours), the knowledge base is brought up to date for the
+  dashboard's programs (modified since documented, or never documented) and the email
+  templates it lacks, up to a cap per refresh, the spec's settings become the pull's
+  (customer lists, test accounts, the window kind, the health lookback derived from the
+  longest schedule period), the groups are applied, thirteen snapshots are kept, both pages
+  are rebuilt, and the headline tiles show the change since the last pull over the closed
+  months both pulls hold. A refresh that stops (the login, a failed call) leaves the last
+  good pages untouched and resumes on the next run. `--health-only` reads the current month
+  and the health families again and carries the rest.
+- **The questions table, as data in the command:** the tenant (checked), the purpose,
+  audiences, programs (sent-since first), grouping (proposed from the plan's program list,
+  written as rules), internal domains, test accounts as company records (ids, or names
+  looked up once), the unsubscribe link, two health settings, the window kind (rolling,
+  fixed, since a month) with the first pull's cost, the cadence with its freshness, the
+  optional metrics with their tracking states, the look, tabs and panels per page with the
+  Health tab's minutes, whether the leaders' copy may name customers, the customer lists
+  (off by default, with their cost and the three default lists), step detail with its
+  minutes, expected failure reasons, a dry run rendered as preview pages, the estimate, and
+  the save with the first refresh. The fast path takes every default and asks for the
+  estimate and the save.
+- **Brand theming in the interview (UX-2):** brand input arrives as data (a file, pasted
+  values, or the output of the user's own brand skill); the candidate tokens are stored as
+  the spec's theme; the theme validator runs and the interview shows every token it
+  replaced with the reason; the dry-run preview renders in the theme; a logo is read from a
+  local PNG or JPEG, never a URL. Skipping is the fast path's default and is never asked
+  twice.
+- **The customer watch list redesigned around the customer (DSH-2 ruling 4):** the pull's
+  default selection is three cross-program lists over the whole window — 25 most engaged,
+  25 least engaged (a delivered floor of 10; on a program that sends about once per contact
+  the signal is at least 3 delivered and no open), 25 most bounced — each kept account
+  getting its own rows on every program it is on; R24's per-program numbers stay available
+  and are off by default (`--accounts-busiest`, `--accounts-low`, `--accounts-bounce`). Lists
+  are data (`--account-list <kind>[:<n>[:<floor>[:<per field>]]]`, `--no-account-lists`),
+  company fields ride the names call (`--account-field`) for "per segment" lists, and the
+  selection is recorded in the snapshot. The open-rate report's account section shows the
+  cross-program lists, and the per-program lists only when their numbers are set.
+- **The spec (T-11, additive):** the window kind, the two health settings and the expected
+  reasons under the source's params; the customer lists and company fields under accounts;
+  `kb.redocument {enabled, cap}`; freshness defaulted from the cadence; a draft records its
+  holder, and another holder's draft is refused without `--take-over`. The spec writer's
+  verbs are importable functions, so the entry command never spawns it.
+- **README recipes:** the on-demand refresh, `--health-only`, a scheduled refresh through the
+  OS scheduler or a Claude desktop local task (never a cloud routine: the login lasts about
+  an hour, so a scheduled run succeeds only after a login within it; the first pull is full
+  and may need more than one login, later ones are selective), the hand-over to a backup
+  refresher (export with the snapshot, import), and the leaders' copy as a file copy to a
+  shared folder (SharePoint and OneDrive download an HTML file rather than show it).
+
 ## 0.50.0 — 2026-10-11
 
 The engagement dashboard's look (UX-1): a design round over the finished pages, on

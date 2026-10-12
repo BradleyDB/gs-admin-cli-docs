@@ -1271,42 +1271,6 @@
   "rows": [
    {
     "key": {
-     "account": "other"
-    },
-    "label": {
-     "account": "All other accounts"
-    },
-    "carried": false,
-    "incomplete": true,
-    "cells": {
-     "sent": {
-      "value": 64,
-      "shown": "64"
-     },
-     "delivered": {
-      "value": 56,
-      "shown": "56"
-     },
-     "opened": {
-      "value": 39,
-      "shown": "39"
-     },
-     "openRate": {
-      "value": 0.6964285714285714,
-      "shown": "69.6%"
-     },
-     "bounced": {
-      "value": 4,
-      "shown": "4"
-     },
-     "bounceRate": {
-      "value": 0.0625,
-      "shown": "6.3%"
-     }
-    }
-   },
-   {
-    "key": {
      "account": "co-01"
     },
     "label": {
@@ -1451,6 +1415,78 @@
    },
    {
     "key": {
+     "account": "co-05"
+    },
+    "label": {
+     "account": "Acme Customer 05"
+    },
+    "carried": false,
+    "incomplete": true,
+    "cells": {
+     "sent": {
+      "value": 16,
+      "shown": "16"
+     },
+     "delivered": {
+      "value": 13,
+      "shown": "13"
+     },
+     "opened": {
+      "value": 10,
+      "shown": "10"
+     },
+     "openRate": {
+      "value": 0.7692307692307693,
+      "shown": "76.9%"
+     },
+     "bounced": {
+      "value": 1,
+      "shown": "1"
+     },
+     "bounceRate": {
+      "value": 0.0625,
+      "shown": "6.3%"
+     }
+    }
+   },
+   {
+    "key": {
+     "account": "co-06"
+    },
+    "label": {
+     "account": "Acme Customer 06"
+    },
+    "carried": false,
+    "incomplete": true,
+    "cells": {
+     "sent": {
+      "value": 16,
+      "shown": "16"
+     },
+     "delivered": {
+      "value": 13,
+      "shown": "13"
+     },
+     "opened": {
+      "value": 9,
+      "shown": "9"
+     },
+     "openRate": {
+      "value": 0.6923076923076923,
+      "shown": "69.2%"
+     },
+     "bounced": {
+      "value": 1,
+      "shown": "1"
+     },
+     "bounceRate": {
+      "value": 0.0625,
+      "shown": "6.3%"
+     }
+    }
+   },
+   {
+    "key": {
      "account": "co-07"
     },
     "label": {
@@ -1474,6 +1510,42 @@
      "openRate": {
       "value": 0.6428571428571429,
       "shown": "64.3%"
+     },
+     "bounced": {
+      "value": 0,
+      "shown": "0"
+     },
+     "bounceRate": {
+      "value": 0,
+      "shown": "0.0%"
+     }
+    }
+   },
+   {
+    "key": {
+     "account": "co-08"
+    },
+    "label": {
+     "account": "Acme Customer 08"
+    },
+    "carried": false,
+    "incomplete": true,
+    "cells": {
+     "sent": {
+      "value": 16,
+      "shown": "16"
+     },
+     "delivered": {
+      "value": 16,
+      "shown": "16"
+     },
+     "opened": {
+      "value": 11,
+      "shown": "11"
+     },
+     "openRate": {
+      "value": 0.6875,
+      "shown": "68.8%"
      },
      "bounced": {
       "value": 0,
@@ -1518,6 +1590,42 @@
      "bounceRate": {
       "value": 0.1875,
       "shown": "18.8%"
+     }
+    }
+   },
+   {
+    "key": {
+     "account": "co-10"
+    },
+    "label": {
+     "account": "Acme Customer 10"
+    },
+    "carried": false,
+    "incomplete": true,
+    "cells": {
+     "sent": {
+      "value": 16,
+      "shown": "16"
+     },
+     "delivered": {
+      "value": 14,
+      "shown": "14"
+     },
+     "opened": {
+      "value": 9,
+      "shown": "9"
+     },
+     "openRate": {
+      "value": 0.6428571428571429,
+      "shown": "64.3%"
+     },
+     "bounced": {
+      "value": 2,
+      "shown": "2"
+     },
+     "bounceRate": {
+      "value": 0.125,
+      "shown": "12.5%"
      }
     }
    },

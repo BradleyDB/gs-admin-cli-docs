@@ -32,7 +32,7 @@ import { isDeepStrictEqual } from "node:util";
 import { makeTempDir, removeTempDir, writeFiles, runNode } from "../../../test/rig.mjs";
 import { STEP_REMAINDER,
   fetchEngagement, reduceEngagement, loadRun, resolveParams, makeGate, parseWhoami, parseSentSince, parseIdList,
-  expectedCalls, classifyFailure, classifyLink, readLinkClicks, parseUnsubscribeLink, validateQuery, buildQuery, splitUnit, selectAccounts, decideClickState,
+  expectedCalls, classifyFailure, classifyLink, readLinkClicks, parseUnsubscribeLink, validateQuery, buildQuery, splitUnit, selectAccounts, selectAccountsAcross, parseAccountListFlag, LOW_CADENCE_MAX_RATIO, LOW_CADENCE_MIN_DELIVERED, decideClickState,
   monthsBetween, ENGAGEMENT_READ_PATHS, joEngagementAdapter, readFailureReasons, healthDayWindow, HEALTH_PARTS, pickSchedule, schemaFlags, NO_SCHEDULE,
   SAMPLES_PER_PROGRAM, SAMPLE_PROGRAM_CAP, SAMPLE_PAGE, MAX_PAGES, sampleTargets, matchCategory,
   templatesReferenced, templateGap, templateContentOf, TEMPLATE_GAP_LIST_FILE, TEMPLATE_GAP_STALE_FILE, TEMPLATE_GAP_KEYS_FILE,
@@ -45,7 +45,7 @@ import {
   NON_CONTENT_LINK_RULES, SEND_MEASURES, T10_SCHEMA_VERSION, MASK_RULES, MASK_PROTECTED, MASK_MAX_LENGTH, maskMessage, healthAvailability, programHealth, HEALTH_LISTS, judgeHealth, dueDaysBefore, cronLastDue, validateCategories, FAILURE_CATEGORIES, STEP_FAILURE_CATEGORIES, QUIET_DUE_DAYS_DEFAULT, caveatText, FAILURE_KINDS, kindOf,
   LINK_READINGS, templateAvailability,
 } from "../scripts/engagement-query.mjs";
-import { buildTenant, answer, applyFaults, kbFiles, templatePayload, TEMPLATES_DOMAIN, FAULT_TEXT, OWN_SITE_UNSUBSCRIBE, BOUNCE_REASONS, FAILURE_REASONS, NULL_EMAIL_REASON, NULL_EMAIL_REASONS, UNKNOWN_REASON, UNKNOWN_STEP_REASON, FIXTURE_BOUNCE_CATEGORIES, FIXTURE_BOUNCE_KIND_CATEGORY } from "./fixtures/engagement/acme-tenant.mjs";
+import { buildTenant, answer, applyFaults, kbFiles, templatePayload, TEMPLATES_DOMAIN, FAULT_TEXT, OWN_SITE_UNSUBSCRIBE, BOUNCE_REASONS, FAILURE_REASONS, NULL_EMAIL_REASON, NULL_EMAIL_REASONS, UNKNOWN_REASON, UNKNOWN_STEP_REASON, FIXTURE_BOUNCE_CATEGORIES, FIXTURE_BOUNCE_KIND_CATEGORY, ACCOUNT_INDUSTRIES } from "./fixtures/engagement/acme-tenant.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const PLUGIN = join(HERE, "..");
@@ -173,6 +173,8 @@ function oracle(tenant, snapshot) {
     byAccount: tally((r) => [r.SourceId, r.GsCompanyId, r.ExecutedDate.slice(0, 7), cls(r)]),
     byProgramMonth: tally((r) => [r.SourceId, r.ExecutedDate.slice(0, 7)]),
     uniques,
+    // The programs an account has in-scope sends on, straight from the rows (S5: a kept account has rows on every one).
+    accountPrograms: (key) => [...new Set(rows.filter((r) => r.GsCompanyId === key).map((r) => r.SourceId))],
   };
 }
 const factMap = (rows, keyOf) => {
@@ -230,8 +232,46 @@ try {
       selected.length > 0 && sameMap(factMap(selected, (r) => [r.programId, r.accountKey, r.month, r.recipientClass]), want));
     const perProgram = new Map();
     for (const r of selected) perProgram.set(r.programId, (perProgram.get(r.programId) ?? new Set()).add(r.accountKey));
-    check("R24: a program carries at most busiest + low-engagement + most-bounces accounts, and an account picked twice takes one slot",
-      [...perProgram.values()].every((s) => s.size <= ACC.busiest + ACC.lowEngagement + ACC.mostBounces) && [...perProgram.values()].some((s) => s.size >= ACC.busiest));
+    // The cross-program lists (S5, DSH-2 ruling 4): the three defaults rank every account over its measures summed across
+    // programs; a kept account has its own rows on every program it is on, so a program carries at most R24's picks
+    // plus the cross-program picks that are on it.
+    const sel = S.honesty.accountSelection;
+    const crossKept = new Set(sel.lists.flatMap((l) => l.kept));
+    check("R24 + the cross-program lists: a program carries at most busiest + low-engagement + most-bounces accounts plus the cross-program picks on it, an account picked twice takes one slot, and the selection is recorded (the three default lists of 25 with their floors, the low-cadence rule, the per-program numbers)",
+      [...perProgram.values()].every((s) => s.size <= ACC.busiest + ACC.lowEngagement + ACC.mostBounces + crossKept.size) && [...perProgram.values()].some((s) => s.size >= ACC.busiest) &&
+        isDeepStrictEqual(sel.lists.map((l) => [l.kind, l.n, l.floor, l.per, l.segment]), [["most-engaged", 25, 10, null, null], ["least-engaged", 25, 10, null, null], ["most-bounced", 25, 0, null, null]]) && sel.lists.every((l) => l.selectedFrom === "every program") &&
+        isDeepStrictEqual(sel.lowCadenceRule, { maxRatio: 1.5, minDelivered: 3 }) && isDeepStrictEqual(sel.perProgram, { busiest: 3, lowEngagement: 2, mostBounces: 2, lowEngagementMinDelivered: 4 }) && Array.isArray(sel.lowCadencePrograms), sel);
+    {
+      // Each cross-program pick is independently derived: the account's measures summed across every program's account rows
+      // (its own rows, which it has on every program it is on), ranked as the list says.
+      const acrossOf = new Map();
+      for (const r of selected) { const m = acrossOf.get(r.accountKey) ?? { sent: 0, delivered: 0, opened: 0, bounced: 0 }; for (const k of Object.keys(m)) m[k] += r[k]; acrossOf.set(r.accountKey, m); }
+      const rate = (k) => acrossOf.get(k).opened / acrossOf.get(k).delivered;
+      const most = sel.lists.find((l) => l.kind === "most-engaged").kept;
+      const least = sel.lists.find((l) => l.kind === "least-engaged").kept;
+      const bounced = sel.lists.find((l) => l.kind === "most-bounced").kept;
+      const programsOf = (k) => new Set(S.facts.byAccount.filter((r) => r.bucket === "account" && r.accountKey === k).map((r) => r.programId));
+      const onEveryProgram = [...crossKept].every((k) => [...programsOf(k)].length > 0 && O.accountPrograms(k).every((p) => programsOf(k).has(p)));
+      check("the cross-program picks: every most-engaged pick has at least the floor delivered and the open rates fall from first to last; the least-engaged rates rise; every most-bounced pick bounced, falling; and each kept account has its own rows on every program it is on (the oracle's set)",
+        most.length > 0 && most.every((k) => acrossOf.get(k).delivered >= 10) && most.every((k, i) => i === 0 || rate(most[i - 1]) >= rate(k)) && least.every((k, i) => i === 0 || !(acrossOf.get(least[i - 1]).delivered >= 10 && acrossOf.get(k).delivered >= 10) || rate(least[i - 1]) <= rate(k)) &&
+          bounced.length > 0 && bounced.every((k) => acrossOf.get(k).bounced > 0) && bounced.every((k, i) => i === 0 || acrossOf.get(bounced[i - 1]).bounced >= acrossOf.get(k).bounced) && onEveryProgram, [most, least, bounced]);
+      const r24Only = pull({ raw: { accounts: { ...ACC, lists: [] } } }).snapshot;
+      const per24 = new Map();
+      for (const r of r24Only.facts.byAccount.filter((x) => x.bucket === "account")) per24.set(r.programId, (per24.get(r.programId) ?? new Set()).add(r.accountKey));
+      check("R24 alone (--no-account-lists): with no cross-program list a program carries at most busiest + low-engagement + most-bounces accounts, as before the redesign, and the selection records no list",
+        [...per24.values()].every((s) => s.size <= ACC.busiest + ACC.lowEngagement + ACC.mostBounces) && r24Only.honesty.accountSelection.lists.length === 0);
+      const segmented = pull({ raw: { accounts: { ...ACC, fields: ["Industry"], lists: [{ kind: "most-engaged", n: 2, floor: 1 }, { kind: "least-engaged", n: 2, floor: 1, per: "Industry" }] } } });
+      const seg = segmented.snapshot;
+      const segLists = seg.honesty.accountSelection.lists.filter((l) => l.per === "Industry");
+      check("a company field the spec names rides the names call (one show field more, checked against the company schema) and lands as attrs on every kept account; a per-segment list is one list per value of that field over the kept accounts, ranked within the segment",
+        seg.dimensions.accounts.length > 0 && seg.dimensions.accounts.every((a) => a.attrs && ACCOUNT_INDUSTRIES.includes(a.attrs.Industry)) && rpRuns(segmented.argv).filter((a) => flag(a, "--object") === "company").every((a) => a.join(" ").includes("Industry")) &&
+          segLists.length >= 2 && segLists.every((l) => l.kind === "least-engaged" && ACCOUNT_INDUSTRIES.includes(l.segment) && l.kept.length <= 2 && l.kept.every((k) => seg.dimensions.accounts.find((a) => a.key === k)?.attrs.Industry === l.segment)) &&
+          seg.honesty.accountSelection.lists.find((l) => l.kind === "most-engaged" && l.per === null).kept.length <= 2, [seg.dimensions.accounts.slice(0, 2), segLists]);
+      check("a company field the schema lacks is refused before any names call is made (never read as a blank), and a per-segment list naming a field the pull does not read is refused at the parameters",
+        (() => { const r = pull({ raw: { accounts: { ...ACC, fields: ["Region"] } } }); return r.error != null && /Region/.test(String(r.error?.message ?? r.error)) && !rpRuns(r.argv).some((a) => flag(a, "--object") === "company"); })() &&
+          (() => { try { resolveParams({ today: TODAY, accounts: { ...ACC, lists: [{ kind: "least-engaged", n: 2, floor: 1, per: "Industry" }] } }); return false; } catch (e) { return /per Industry/.test(e.message); } })() &&
+          (() => { try { resolveParams({ today: TODAY, accounts: { ...ACC, lists: [{ kind: "churn", n: 2, floor: 1 }] } }); return false; } catch (e) { return /the kind must be one of most-engaged, least-engaged, most-bounced/.test(e.message); } })());
+    }
     check("R24: the 'all other accounts' row exists where the selection left accounts out", S.facts.byAccount.some((r) => r.bucket === "other" && r.accountKey === null && r.sent > 0));
     const orphan = O.rows.filter((r) => r.GsCompanyId == null && r.SourceId === "p-onboard").length;
     check("a row with no company link gets its own bucket, never lost (null group values come back with no v key)",
@@ -850,7 +890,7 @@ try {
     const sansAccounts = (snap) => {
       const c = JSON.parse(JSON.stringify(snap));
       c.facts.byAccount = []; c.dimensions.accounts = []; c.meta.accounts = null; c.meta.params.accounts = null;
-      c.honesty.noCompanyLink = null; c.honesty.accountNames = null; c.honesty.calls = null; c.honesty.rows = null;
+      c.honesty.noCompanyLink = null; c.honesty.accountNames = null; c.honesty.accountSelection = null; c.honesty.calls = null; c.honesty.rows = null;
       c.reconciliation.checks = c.reconciliation.checks.filter((k) => k.id !== "accounts-sum-to-program").map((k) => (k.id === "internal-within-all" ? { ...k, compared: null } : k));
       c.caveats = c.caveats.filter((k) => k.id !== "accounts-not-pulled");
       return c;
@@ -1039,6 +1079,18 @@ try {
     const acc = new Map([["a", { sent: 9, delivered: 9, opened: 9, bounced: 0 }], ["b", { sent: 8, delivered: 8, opened: 1, bounced: 0 }], ["c", { sent: 2, delivered: 1, opened: 0, bounced: 1 }], ["d", { sent: 1, delivered: 1, opened: 1, bounced: 0 }]]);
     check("selectAccounts: busiest by sends, lowest open rate among accounts with enough delivered, most bounces, and pinned always — an account below the delivered minimum is never 'low engagement'",
       isDeepStrictEqual([...selectAccounts(acc, { busiest: 1, lowEngagement: 1, mostBounces: 1, lowEngagementMinDelivered: 5, pinned: ["d", "zz"] })].sort(), ["a", "b", "c", "d"]) && isDeepStrictEqual([...selectAccounts(acc, { busiest: 0, lowEngagement: 1, mostBounces: 0, lowEngagementMinDelivered: 5, pinned: [] })], ["b"]));
+    // The low-cadence rule (DSH-2 ruling 4): on a program that sends about once per contact the low-engagement pick is
+    // "delivered at least 3 and opened 0", not the lowest rate; the cross-program lists rank summed measures.
+    const quiet = new Map([["q", { sent: 3, delivered: 3, opened: 0, bounced: 0 }], ["r", { sent: 9, delivered: 9, opened: 1, bounced: 0 }], ["s", { sent: 2, delivered: 2, opened: 0, bounced: 0 }]]);
+    check("the low-cadence rule: with lowCadence the low-engagement pick is the account with 3+ delivered and 0 opened (q, not r's lowest rate; s has too few); without it the lowest open rate wins",
+      isDeepStrictEqual([...selectAccounts(quiet, { busiest: 0, lowEngagement: 1, mostBounces: 0, lowEngagementMinDelivered: 1, pinned: [] }, { lowCadence: true })], ["q"]) && isDeepStrictEqual([...selectAccounts(quiet, { busiest: 0, lowEngagement: 1, mostBounces: 0, lowEngagementMinDelivered: 1, pinned: [] })], ["q"]) &&
+        isDeepStrictEqual([...selectAccounts(new Map([...quiet].filter(([k]) => k !== "q")), { busiest: 0, lowEngagement: 1, mostBounces: 0, lowEngagementMinDelivered: 1, pinned: [] }, { lowCadence: true })], []) && LOW_CADENCE_MAX_RATIO === 1.5 && LOW_CADENCE_MIN_DELIVERED === 3);
+    const across = new Map([["a", { sent: 20, delivered: 20, opened: 18, bounced: 0 }], ["b", { sent: 12, delivered: 12, opened: 2, bounced: 1 }], ["c", { sent: 4, delivered: 4, opened: 0, bounced: 3 }], ["d", { sent: 1, delivered: 1, opened: 1, bounced: 0 }]]);
+    const lists = selectAccountsAcross(across, [{ kind: "most-engaged", n: 2, floor: 10 }, { kind: "least-engaged", n: 2, floor: 10 }, { kind: "most-bounced", n: 5, floor: 0 }], { quietOnLowCadence: new Set(["c"]) });
+    check("selectAccountsAcross: most-engaged ranks the highest open rates among accounts at the floor (d, at 100%, is below it), least-engaged the lowest (c joins through the low-cadence rule though below the floor), most-bounced the most bounce events, each capped at n; a per-segment list is one list per value of the field",
+      isDeepStrictEqual(lists.map((l) => [l.kind, l.segment, l.keys]), [["most-engaged", null, ["a", "b"]], ["least-engaged", null, ["c", "b"]], ["most-bounced", null, ["c", "b"]]]) &&
+        isDeepStrictEqual(selectAccountsAcross(across, [{ kind: "most-bounced", n: 1, floor: 0, per: "Tier" }], { attrs: new Map([["b", { Tier: "Gold" }], ["c", { Tier: "Silver" }]]) }).map((l) => [l.segment, l.keys]), [["(none)", []], ["Gold", ["b"]], ["Silver", ["c"]]]), lists);
+    check("--account-list parses <kind>[:<n>[:<floor>[:<per>]]]", isDeepStrictEqual(parseAccountListFlag("least-engaged:10:5:Industry"), { kind: "least-engaged", n: 10, floor: 5, per: "Industry" }) && isDeepStrictEqual(parseAccountListFlag("most-bounced"), { kind: "most-bounced", n: undefined, floor: undefined }));
     const pinned = pull({ raw: { accounts: { ...ACC, busiest: 1, lowEngagement: 0, mostBounces: 0, pinned: ["co-10"] } } }).snapshot;
     check("accounts named in the spec are always kept as their own rows, whatever their rank", pinned.facts.byAccount.some((r) => r.programId === "p-onboard" && r.accountKey === "co-10" && r.bucket === "account"));
     const noNames = pull({ raw: { accounts: { ...ACC, names: false } } });

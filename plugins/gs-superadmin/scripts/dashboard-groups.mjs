@@ -237,8 +237,18 @@ export function describeRule(rule) {
  * @returns {ProgramTraits[]} one per program of the snapshot, by id
  */
 export function programTraits(snapshot) {
-  const responses = snapshot.meta.metricAvailability.responses.programs;
-  return snapshot.dimensions.programs
+  return programTraitsOf(snapshot.dimensions.programs, snapshot.meta.metricAvailability.responses.programs);
+}
+/**
+ * The same traits from program rows alone (the program dimension's shape, as `jo p list` plus the KB's schedule
+ * give it) and the response availability per program (empty when no pull has read surveys yet: a survey model
+ * still says it sends one). The interview reads the plan's program list through this before any fact is pulled (S5).
+ * @param {Array<*>} programs rows shaped like T10Dimensions.programs
+ * @param {Object<string, {state: string}>} [responses] metricAvailability.responses.programs, or none
+ * @returns {ProgramTraits[]}
+ */
+export function programTraitsOf(programs, responses = {}) {
+  return programs
     .map((p) => {
       const survey = responses[p.id]?.state;
       // The schedule rides the program dimension on every pull made with a KB (ruled 2026-10-05, S3b): a
@@ -320,8 +330,15 @@ const NAME_DELIMITERS = Object.freeze(["|", " - ", ":", "_", "/", " "]);
  * @param {T10Snapshot} snapshot
  */
 export function suggestionInput(snapshot) {
-  const traits = programTraits(snapshot);
   const sent = new Map(runQuery(snapshot, {}, { groupBy: ["program"], metrics: ["sent"] }).rows.map((r) => [r.key.program, r.cells.sent.value]));
+  return suggestionTable({ traits: programTraits(snapshot), sent, tenantHost: snapshot.meta.tenantHost, pulledAt: snapshot.meta.pulledAt, window: { from: snapshot.meta.window.from, to: snapshot.meta.window.to } });
+}
+/**
+ * The same table from traits and sends already in hand: what the interview builds from the plan's program list
+ * (programTraitsOf over the listed programs, sends from the plan's base read) before any fact call is made (S5).
+ * @param {{traits: ProgramTraits[], sent: Map<string, number>, tenantHost: string, pulledAt: ?string, window: {from: string, to: string}}} args
+ */
+export function suggestionTable({ traits, sent, tenantHost, pulledAt, window }) {
   const tally = (keyOf) => {
     const out = new Map();
     for (const p of traits) for (const k of [keyOf(p)].flat()) out.set(k, (out.get(k) ?? 0) + 1);
@@ -339,9 +356,9 @@ export function suggestionInput(snapshot) {
   }).filter((d) => d.programs > 0);
   return {
     kind: "dashboard-group-suggestion-input",
-    tenantHost: snapshot.meta.tenantHost,
-    pulledAt: snapshot.meta.pulledAt,
-    window: { from: snapshot.meta.window.from, to: snapshot.meta.window.to },
+    tenantHost,
+    pulledAt,
+    window: { from: window.from, to: window.to },
     notes: [
       "Folder NAMES are not available from Gainsight: a folder shows as its id, and a folder group needs a label from the person.",
       "sendsSurveys and recurring are null where they could not be determined (survey data unreadable; no knowledge-base doc for the program; a schedule whose kind the doc does not settle).",

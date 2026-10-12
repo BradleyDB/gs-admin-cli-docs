@@ -123,6 +123,8 @@ export function pageSnapshot(snapshot, page) {
     facts.byAccount = [];
     dimensions.accounts = [];
   }
+  // The test accounts are company ids too (S5): a page that may not name accounts carries none of them.
+  if (!page.accountNames && meta.params?.testAccounts?.length) meta.params = { ...meta.params, testAccounts: [], redactedOnPage: [...(meta.params.redactedOnPage ?? []), "testAccounts"] };
   if (engine.healthAvailability(snapshot).pulled && !tabOn("health")) {
     meta.health = { pulled: false, reason: "tab-off", asOf: null, dayWindow: null, parts: {} };
     facts.health = Object.fromEntries(Object.keys(facts.health ?? {}).map((k) => [k, []]));
@@ -140,8 +142,10 @@ export function pageSnapshot(snapshot, page) {
   if (facts.health) facts.health = engine.healthForPage(facts.health);
   // A page whose definitions show no source detail names no internal domain and no unsubscribe link (ruled
   // 2026-10-05): the values leave the page's copy of the pull's parameters; the recipient class on every row stays.
-  if (!page.sourceDetail && meta.params) meta.params = { ...meta.params, internalDomains: [], unsubscribeLinks: [], redactedOnPage: ["internalDomains", "unsubscribeLinks"] };
-  return { ...snapshot, meta, dimensions, facts };
+  if (!page.sourceDetail && meta.params) meta.params = { ...meta.params, internalDomains: [], unsubscribeLinks: [], redactedOnPage: [...(meta.params.redactedOnPage ?? []), "internalDomains", "unsubscribeLinks"] };
+  // The selection record names accounts by key (S5): it leaves a page that may not name accounts with the rows.
+  const honesty = !page.accountNames && snapshot.honesty?.accountSelection ? { ...snapshot.honesty, accountSelection: null } : snapshot.honesty;
+  return { ...snapshot, meta, dimensions, facts, honesty };
 }
 const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 /**
@@ -167,7 +171,7 @@ export function aboutSettings(spec, page) {
  * Everything a page embeds (the runtime's model).
  * @param {T11Spec} spec @param {T10Snapshot} snapshot @param {T11Page} page
  */
-export function pageModel(spec, snapshot, page) {
+export function pageModel(spec, snapshot, page, { delta = null } = {}) {
   const admin = page.preset === "admin";
   const tabs = page.tabs.flatMap((t) => {
     const about = { id: t.id, label: TABS[t.id].split(":")[0], meaning: TABS[t.id] };
@@ -213,6 +217,9 @@ export function pageModel(spec, snapshot, page) {
     healthTab: on.has("health"),
     // The actions seam (ruled 2026-10-05, LTR-10): null on every page built here; a local app would set {base, token}.
     actions: null,
+    // The change since the last pull (PUB-1, S5): the refresh computes it and passes it in; null on a first pull and
+    // on a page built by hand. {previousPulledAt, closedMonths, metrics: {id: {previous, current, change}}}.
+    delta,
     about: {
       sourceDetail: page.sourceDetail,
       settings: aboutSettings(spec, page),
@@ -407,9 +414,11 @@ const STYLE = TOKENS + STYLE_RULES;
  * @param {string} args.engineSource  engagement-query.mjs, as on disk
  * @param {string} args.runtimeSource dashboard-runtime.mjs, as on disk
  * @param {{warnBytes: number, refuseExecBytes: number}} [args.budget]
+ * @param {?{previousPulledAt: string, closedMonths: string[], metrics: Object<string, {previous: ?number, current: ?number, change: ?{kind: "points"|"ratio", value: ?number}}>}} [args.delta]
+ *   the change since the last pull (PUB-1): computed by the refresh over the closed months both snapshots hold; null on a first pull
  * @returns {{html: ?string, report: {page: string, preset: string, file: string, written: boolean, bytes: Object<string, number>, megabytes: number, rows: Object<string, number>, tables: Object<string, {rows: number, bytes: number}>, programs: number, warning: ?string, refused: ?string}}}
  */
-export function buildPage({ spec, snapshot, pageId, engineSource, runtimeSource, budget = PAGE_BUDGET }) {
+export function buildPage({ spec, snapshot, pageId, engineSource, runtimeSource, budget = PAGE_BUDGET, delta = null }) {
   const page = spec.pages.find((p) => p.id === pageId);
   if (!page) throw new Error(`dashboard page: the spec has no page "${pageId}" (it has ${spec.pages.map((p) => p.id).join(", ")})`);
   if (spec.tenantHost !== snapshot.meta.tenantHost) throw new Error(`dashboard page: the spec belongs to ${spec.tenantHost} and the snapshot was pulled from ${snapshot.meta.tenantHost} — a dashboard is never built from another tenant's data`);
@@ -417,7 +426,7 @@ export function buildPage({ spec, snapshot, pageId, engineSource, runtimeSource,
     // Inlined as they are, so neither may hold what would end a script element early.
     if (/<\/script|<!--/i.test(source)) throw new Error(`dashboard page: ${name} holds text that would end the page's script element; it cannot be inlined as it is`);
   }
-  const model = pageModel(spec, snapshot, page);
+  const model = pageModel(spec, snapshot, page, { delta });
   let prerender;
   try {
     const app = createDashboard(engine, model);

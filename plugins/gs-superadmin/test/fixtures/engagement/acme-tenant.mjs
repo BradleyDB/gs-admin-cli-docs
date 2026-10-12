@@ -390,7 +390,9 @@ export function templatePayload(id) {
 const TEMPLATE_DOCS = { "tpl-nps": "2026-09-01", "tpl-renew": "2026-09-01", "tpl-renew-b": "2026-09-01", "tpl-welcome": "2026-08-20" };
 export const TEMPLATES_DOMAIN = "journey-email-templates";
 
-const ACCOUNTS = Array.from({ length: 12 }, (_, i) => ({ Gsid: `co-${pad(i + 1)}`, Name: `Acme Customer ${pad(i + 1)}` }));
+// Industry: the fictional tenant's own company field (S5: a spec may name company fields to read beside the name).
+export const ACCOUNT_INDUSTRIES = ["Software", "Retail", "Finance"];
+const ACCOUNTS = Array.from({ length: 12 }, (_, i) => ({ Gsid: `co-${pad(i + 1)}`, Name: `Acme Customer ${pad(i + 1)}`, Industry: ACCOUNT_INDUSTRIES[i % 3] }));
 const INTERNAL_PEOPLE = [
   { id: "pe-int-1", email: `ann@${INTERNAL_DOMAIN}` },
   { id: "pe-int-2", email: `raj@${INTERNAL_DOMAIN}` },
@@ -706,7 +708,7 @@ export function buildTenant(variant = {}) {
       ["Gsid", "AOParticipantId", "Responded", "RespondedDate", "ResponseStatus", "SurveyOpened", "TestParticipant"],
       { Gsid: "GSID", AOParticipantId: "LOOKUP", Responded: "BOOLEAN", RespondedDate: "DATETIME", SurveyOpened: "BOOLEAN", TestParticipant: "BOOLEAN" }
     ),
-    company: fields(["Gsid", "Name"], { Gsid: "GSID" }),
+    company: fields(["Gsid", "Name", "Industry"], { Gsid: "GSID" }),
     ao_failed_participants: fields(["Gsid", "AdvancedOutreachId", "FailureReasons", "OccurrenceCount", "ModifiedAt"], { Gsid: "GSID", FailureReasons: "JSONSTRING", OccurrenceCount: "NUMBER", ModifiedAt: "DATETIME" }),
     // FailureReasons is a plain STRING here (filterable: CONTAINS works), unlike the refusal object's JSON-path field (measured 2026-10-07).
     ao_participants: fields(["Gsid", "AdvancedOutreachId", "ParticipantState", "ParticipantSourceType", "CreatedAt", "ModifiedAt", "FailureReasons"], { Gsid: "GSID", CreatedAt: "DATETIME", ModifiedAt: "DATETIME" }),
@@ -724,7 +726,8 @@ export function buildTenant(variant = {}) {
   const token = variant.token ?? { state: "valid", seconds: 3200 };
   return {
     variant, tables, schemas, byGsid, token,
-    baseUrl: "https://acme.gainsightcloud.com",
+    // baseUrl (S5): the tenant whoami names; a variant moves it so the wrong-tenant refusal can be driven.
+    baseUrl: variant.baseUrl ?? "https://acme.gainsightcloud.com",
     listed,
     describable: new Map([...listed, UNLISTED].map((p) => [p.id, p])),
     serverMax: variant.serverMax ?? 5000,
@@ -772,7 +775,8 @@ export function kbFiles(slug = "acme-prod", variant = {}) {
       "```json", JSON.stringify(programPayload(p), null, 2), "```", "",
     ].join("\n");
     // When the doc was last checked against the tenant: what a schedule result read from it is "as of".
-    inventory[`journey/${p.id}`] = { last_verified: p.id === "p-onboard" ? "2026-09-01T00:00:00.000Z" : "2026-08-20T00:00:00.000Z" };
+    // A full inventory entry (S5: the entry command's re-documentation selects by domain and status through the manifest script).
+    inventory[`journey/${p.id}`] = { id: p.id, domain: "journey", status: "documented", depth: "full", last_verified: p.id === "p-onboard" ? "2026-09-01T00:00:00.000Z" : "2026-08-20T00:00:00.000Z", doc_path: `${slug}/journey/${p.id}.md` };
   }
   // The template docs (TPL-1), through the plugin's own renderer from the same payloads the stand-in CLI answers, each
   // with a full inventory entry (the gap-fill's manifest verbs select by status and domain) under the templates

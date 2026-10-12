@@ -98,7 +98,7 @@ skill from the catalog below, e.g.:
 | [`/gs-superadmin:deprecate`](#deprecate-an-asset) | Walk an asset through the deprecation checklist | slash only |
 | [`/gs-superadmin:change-request`](#plan--execute-a-config-change) | Turn a ticket or request into a reviewable, KB-cited implementation plan | slash only |
 | [`/gs-superadmin:email-report`](#report-on-jo-emails--schedules) | Read-only Journey Orchestrator email & schedule reports (4 modes) | slash + natural language |
-| [`/gs-superadmin:email-engagement`](#report-on-email-engagement) | Read-only open-rate and engagement report per JO program, from the tenant's send log | slash + natural language |
+| [`/gs-superadmin:email-engagement`](#report-on-email-engagement) | Read-only open-rate and engagement report across JO programs from the tenant's send log, and an engagement dashboard built once and pulled again on a cadence | slash + natural language |
 | [`/gs-superadmin:deps-report`](#tenant-wide-dependency-search) | Tenant-wide "what depends on this object/field/connection?" impact analysis | slash + natural language |
 | [`/gs-superadmin:report-bug`](#report-a-cli-bug-upstream) | Capture a `gs-admin` CLI misbehavior as a vendor-ready bug report | slash only |
 
@@ -274,11 +274,13 @@ snapshot file, then writes a report from it:
   when the pull ran with `--step-detail`. The pull reads each template's current text from
   the knowledge base and offers to fetch the templates it lacks, through email-report's own
   gap-fill, so they land there too.
-- **`--accounts`** — an account watch list per program: the lowest open rates among
-  accounts with enough delivered email, and the accounts with the most bounces. Account
+- **`--accounts`** — the customer lists across programs: the 25 most engaged, the 25
+  least engaged (among accounts with at least 10 delivered; on a program that sends about
+  once per contact, at least 3 delivered and no open) and the 25 most bounced, each with
+  the programs it is on. Per-program lists are off unless you set their numbers. Account
   data is off unless you pass the flag, because ranking every account is most of a pull:
   on a large tenant it turned a pull of a few minutes into about half an hour. Without it
-  the report says so where the watch list would be; it never shows an empty list.
+  the report says so where the lists would be; it never shows an empty list.
 - **How each number is calculated** — for every metric shown: the Gainsight object it is
   read from, the fields and the value that counts, the filters every count carries, the
   date field, and the calculation. You can rebuild any figure in a Gainsight report and
@@ -308,7 +310,93 @@ Reports land in `<slug>/reports-adhoc/` beside the snapshot they were written fr
 a snapshot you already have without pulling again. Program status never limits what is
 pulled: the tables show Active programs unless you named programs, `--include-paused`
 adds Paused ones, `--all` shows every status, and the report states how many it hides.
-Never mutates the tenant.
+Never mutates the tenant. For one program's own numbers, Gainsight's analytics page for
+that program is the place; this skill is for the comparisons the UI cannot make.
+
+### The engagement dashboard
+
+```
+/gs-superadmin:email-engagement dashboard new program-health
+/gs-superadmin:email-engagement dashboard new program-health --fast-path
+/gs-superadmin:email-engagement dashboard edit program-health
+/gs-superadmin:email-engagement dashboard list
+/gs-superadmin:email-engagement refresh program-health
+```
+
+Set a dashboard up once and pull it again when needed, instead of calling a skill for every
+question. `dashboard new` is an interview, one question at a time: the decision the
+dashboard supports, who reads it (admins get every tab and per-email detail; leaders get the
+headline figures, charts and programs by group), which programs (those that sent since a
+date first), how to group them (proposed from the programs' characteristics, or by folder,
+or a naming convention), the company's own domains and test accounts (company records, by
+id or name, never addresses), the unsubscribe link, the reporting window (rolling, fixed, or
+since a month) with the first pull's cost, the cadence, the optional metrics with their
+tracking states, the look (brand guidelines as a file or pasted values, or the output of
+your own brand skill; a logo from a local PNG or JPEG), the tabs per page with the minutes
+the Health tab adds, whether the leaders' copy may name customers, the customer lists (off by
+default, with their cost), step detail, a dry run rendered as preview pages, the estimate
+against your login, and the save with the first pull. `--fast-path` takes every default and
+asks only for the estimate and the save. Everything mechanical runs through one command,
+`node .gs-superadmin/plugin/scripts/dashboard.mjs`, with no model in the loop: the skill is
+its front door, and the command works on its own.
+
+The pages are self-contained HTML files under `<slug>/dashboards/<name>/` (`latest-admin.html`,
+`latest-exec.html`), with global filters (months, a searchable program list, groups, status,
+internal recipients), tabs (Engagement, Health, Templates, About), charts, sortable tables
+with a CSV download, and an About tab generated from the dashboard's own settings. Thirteen
+snapshots are kept beside them.
+
+**Pulling again.** A refresh checks that the CLI is on the dashboard's tenant before any
+call (a production dashboard is never refreshed from a sandbox), holds your login's
+remaining life against the pull, takes a lock so a second refresh is refused by name,
+brings the knowledge base up to date for the dashboard's programs (the ones modified since
+they were documented, and the never-documented, plus the email templates it lacks, up to 50
+per pull with no model), pulls, keeps the snapshots, rebuilds the pages, and shows the change
+since the last pull on the headline figures. The first pull is full and takes minutes to
+tens of minutes on a large tenant; later ones are selective (the recent months only) and
+much shorter. A pull that stops (the login expired, a call failed) leaves the last good
+pages untouched and resumes on the next run.
+
+- **On demand:** `/gs-superadmin:email-engagement refresh program-health`, or from the
+  workspace with no session at all:
+
+  ```bash
+  node .gs-superadmin/plugin/scripts/dashboard.mjs refresh program-health
+  ```
+
+- **Health only, between cadences** (a few minutes: the current month and the health
+  families are read again, the rest carried):
+
+  ```bash
+  node .gs-superadmin/plugin/scripts/dashboard.mjs refresh program-health --health-only
+  ```
+
+- **Scheduled.** A refresh can run from the OS scheduler (Task Scheduler on Windows,
+  launchd or cron elsewhere) or as a Claude desktop local task, with the workspace as the
+  working directory — never as a cloud routine, which cannot reach the keychain token. It
+  is semi-attended: the `gs-admin` login lasts about an hour and the CLI never refreshes it
+  (see the operating model and `reference/auth.md`), so a scheduled run succeeds only after
+  a login within the hour. Log in, then let the task run. The first pull is full and may
+  need more than one login; later ones are selective and fit in one. A run the login
+  expires under stops cleanly, with its exit code (3), and the next run resumes it.
+- **Changing one setting:** `node .gs-superadmin/plugin/scripts/dashboard.mjs change
+  program-health accounts.pull=true --dry-run` says what the change costs (a rebuild with no
+  pull, a re-selection of the customer lists, or the next pull with its minutes); without
+  `--dry-run` it saves and does it. The value is JSON: a text setting goes in JSON quotes
+  inside the shell's (`'pages.1.title="Leadership"'`). The lines the pages offer to copy
+  are these.
+- **Handing over to a backup refresher:** `… export program-health --out handover.json
+  --with-snapshot`, then on their machine `… import --file handover.json`: their first pull
+  is selective, with a change against yours. No lock is shared across machines.
+- **The leaders' copy** is `latest-exec.html`: copy the file into a shared folder. SharePoint,
+  OneDrive and Teams download an HTML file rather than show it, so a leader opens it in two
+  clicks (download, open); it is current each time. It holds no account rows unless the
+  dashboard opted in, and no internal domain or unsubscribe link values.
+- **A program's failure text** (the masked messages and the "Other" samples) is shown by
+  `… health program-health --program <id>` in the terminal, never on a page.
+
+Everything the dashboard shows is in the workspace: the spec, the snapshots and the pages
+are tenant data under `<slug>/`, git-ignored like the rest of the knowledge base.
 
 ## Tenant-wide dependency search
 

@@ -2461,3 +2461,147 @@ Section status: CLEARED (second sitting, 2026-10-11: T0's last choice ruled with
   line count 7 against "at least 12", all five names defined once each; the exec golden carries no Templates panel because the fixture's
   exec tab is off; the contract and tracer checks live in the suites' source, which prints summaries).
 
+
+## DSH-3 — the dashboard interview walked by Bradley on a real tenant (banked 2026-10-12, builder, Session S5 @ TOKEN; verdict at S5-V)
+
+Owed by: S5-V, the verdict session for S5, in the consumer workspace with the plugin loaded from the working tree
+(`claude --plugin-dir <repo>\plugins\gs-superadmin`, started FROM the workspace so the guard is armed; LTR-19), on
+the production tenant, reads only.
+Token: TOKEN (minted by `dev-utils handoff --branch feat/jo-dash-s5-entry-command`; the bus's Under test line names
+it; this section is keyed to it). PR to dev, unmerged at banking.
+Why it is banked: the interview was built and walked offline against the fictional tenant and the stand-in CLI
+(test/dashboard.mjs, 55 checks). How its questions READ to the person they are for, whether the proposed groups make
+sense on a tenant with hundreds of programs, whether the estimate's minutes hold, and whether the skill's prose makes
+the model stop or guess anywhere, can only be judged by Bradley walking it himself. Tenant data stays in the workspace:
+the spec, the preview, the snapshots and the pages live under `<slug>/dashboards/` (git-ignored); no program, account
+or message text is copied into this file or the bus.
+
+THIS LIST IS COMPLETE. It is everything this round judges for DSH-3; a check that is not here is not owed, and a
+thing the round thinks should be here is a finding. Nothing is "noted on the verdict": anything observed beside a
+pass bar becomes an F-section on the bus, or a GitHub issue, before the round closes.
+
+Inputs: a workspace with the tenant's KB (every program documented as far as V2 left it); a valid login; Bradley at
+the keyboard; a dashboard name he chooses (`<dash>`); for I9, a file with the company's brand values (or pasted values)
+and a local PNG or JPEG logo.
+
+- I0 (the questions table, before anything runs). `node .gs-superadmin/plugin/scripts/dashboard.mjs questions` and
+  `… costs`. Pass bar: 22 questions in the order the plan lists (tenant, purpose, audiences, programs, grouping, the
+  recipients three, the failure settings, the window, the cadence, the metrics, the look, the tabs, the leaders'
+  names, the customer lists and their detail, step detail, the expected reasons, the dry run, the estimate, the save);
+  exactly three judgment nodes (purpose, grouping, look); every setting the spec writer describes has one cost.
+  Bradley reads the `ask` wordings and rules on any that is not in his terms (a finding each, polish).
+- I1 (the skill as the front door). Bradley types `/gs-superadmin:email-engagement dashboard new <dash>` in the
+  workspace session (the skill is model-invocable, so the tester may also invoke it). Pass bar: the model runs
+  `dashboard.mjs new`, then `next`, and asks the FIRST question with AskUserQuestion using the summary's `ask` and
+  `options` verbatim; the tenant pre-flight was automatic (stderr names the host); no question the script did not
+  return is asked, none it returned is skipped.
+- I2 (the purpose, a judgment node). Pass bar: the prose pushes back on a vague answer once, then passes the agreed
+  sentence through `answer <dash> purpose`; the About tab of the built page shows it.
+- I3 (programs, sent-since first). Pass bar: the sent-since options come first; Bradley's pick lands in the spec
+  (`show`/the About tab's Programs line).
+- I4 (grouping, a judgment node). Pass bar: `next` makes the plan (cheap calls; seconds to a minute) and hands over
+  the suggestion file; the prose FIRST asks whether a structure exists (folders, a naming convention, a field), then
+  proposes a two-level TABLE from the characteristics with the count each rule would match; folders offered with the
+  plain statement that names are unavailable; Bradley edits or confirms; the rules are written and the About tab's
+  Groups part shows each rule with its match count; "N new programs ungrouped" in the refresh summary.
+- I5 (internal domains, test accounts as company records, the unsubscribe link). Pass bar: the test-account question
+  speaks of company records by id or name, never addresses; a name Bradley gives is looked up ONCE (one `rp run` on
+  the company object in the fake-state-free session: the guard shows no ask, a read) and its id lands; the unsubscribe
+  question explains F-470 and that a bare host names every page.
+- I6 (the window and the cadence). Pass bar: the window question quotes the first pull's minutes for the current
+  months and says it scales; the cadence question shows "stale after N days, from your cadence" per option; the
+  chosen cadence's freshness is in the spec.
+- I7 (the Health tab's minutes, customer lists in Bradley's wording with their cost, step detail with its minutes).
+  Pass bar: each quotes minutes read from the plan (`estimate.health.addsSeconds`, `estimate.accounts.addsSeconds`,
+  `estimate.stepDetail.addsSeconds`), the customer-lists option text is the plan's wording ("Do you want this dashboard
+  to tell you the top customers that aren't opening or are bouncing, or only how each program is doing?"), with how to
+  add them later and who can look a company up; "May the leaders' copy name customers? Default no" is asked.
+- I8 (the dry run). Pass bar: `answer <dash> dry-run yes` makes a pull with customer lists, health and step detail off
+  (minutes; the summary's calls), writes preview pages under `<dash>/preview/`, and Bradley opens the admin preview in a
+  browser: real program names, the filters working, the About tab's purpose and groups.
+- I9 (the look): see § UX-2 below (the brand walk is banked there and judged in the same sitting).
+- I10 (the estimate and the save). Pass bar: the estimate names the full refresh's calls and minutes against the
+  token's remaining life and the knowledge-base gap priced; `answer <dash> save yes` saves and runs the first refresh
+  (§ PUB-1 R1 judges the refresh itself); `dashboard list` shows the dashboard saved with its last pull.
+- I11 (the fast path). On a second name: `… dashboard new <dash2> --fast-path`. Pass bar: `next` goes straight to the
+  estimate after the tenant check; the look was not asked; the resulting spec is the defaults.
+- I12 (the draft holder). Bradley starts an edit (`… new <dash>` over the saved spec) and, in a second terminal as
+  another user name (`--by other`), asks for `next`. Pass bar: refused naming the holder and the time; `--take-over`
+  continues it and records whom it was taken from; `list` shows the draft with its holder.
+
+## PUB-1 — the refresh runner on a real tenant: twice for the delta, the lock, the tenant refusal, the expired token, health-only, re-documentation (banked 2026-10-12, builder, Session S5 @ TOKEN; verdict at S5-V)
+
+Owed by: S5-V, as above; the production tenant, reads only (the refresh issues only the adapter's reads and
+describe-batch's `jo p describe` / `jo email template` reads: every one catalogued non-mutating; the guard should ask
+on none of them).
+Token: TOKEN. Why it is banked: the refresh was built against the stand-in CLI. The lock, the tenant refusal, the
+token stop and resume, the health-only timing and the re-documentation of a program Bradley edits need a real tenant,
+a real login that expires, and a second tenant on the CLI. No tenant data leaves the workspace.
+
+THIS LIST IS COMPLETE (the same rule as above).
+
+Inputs: the dashboard I10 saved; a sandbox login beside the production one (the two-tenant workspace); a program
+Bradley can edit harmlessly in the UI (a description change is enough: it moves modified_date).
+
+- R1 (the first refresh, from I10 or `… refresh <dash>`). Pass bar: exit 0; the summary's `pull.mode` full with its
+  why; `pull.lookbackDays` at least the spec's silentDays and `lookbackDerivedFrom` the longest schedule period when
+  one exists; `redocumented` names how many programs and templates the knowledge base gained and what is left for
+  next time (cap 50); a snapshot under `<dash>/snapshots/`; both pages built; the admin page's headline says "none
+  yet, this is the first pull"; wall time within 2x of the estimate's seconds.
+- R2 (the second refresh, for the delta; the next day or after a change). Pass bar: `pull.mode` selective (or full
+  with a stated why); `delta.previousPulledAt` names R1's pull and `delta.closedMonths` the months both hold; the
+  admin and leaders' pages show "Change since the last refresh (pulled <R1's time>) over N closed months" and each
+  headline tile a "Since last pull" line; the figures on one tile agree with a direct comparison of the two snapshots
+  through the engine (`runQuery` over the common closed months in a node one-liner).
+- R3 (the lock). While R2 (or a third refresh) runs, a second `… refresh <dash>` from another terminal. Pass bar:
+  refused, exit 1, naming the holder and the time; no second run directory; the running refresh unaffected. After
+  it ends, the lock file is gone. Then a hand-written stale lock (an `at` three hours old): the next refresh takes it
+  over and the summary's `lockTakenOver` names the earlier holder.
+- R4 (the tenant refusal). `gs-admin config --base-url <the sandbox>`, then `… refresh <dash>`. Pass bar: exit 5,
+  status wrong-tenant, both tenants named; `whoami` alone was called (no run directory created, no snapshot, no page
+  touched: compare the pages' bytes before and after); switch back.
+- R5 (the expired token). Start a `… refresh <dash> --full` with a login near its end, or let one run past the hour.
+  Pass bar: exit 3, status token-expired; no snapshot written; both pages byte-identical to before; `status` shows
+  the resumable run; after `gs-admin login`, the same command resumes it (`resumed: true`, `pull.calls.reused` above
+  0) and finishes with exit 0.
+- R6 (`--health-only`, timed). `… refresh <dash> --health-only` over the latest snapshot. Pass bar: `pull.mode`
+  selective, carrying every month but the current one (and the previous pull's month); the health families read
+  again; wall time recorded (the plan's expectation on the S1-V tenant: about three minutes with customer lists off);
+  the pages rebuilt.
+- R7 (re-documentation of a program Bradley edits). Bradley edits one of the dashboard's programs in the UI (a
+  description), waits for the list to show the new modified_date, then `… refresh <dash>` (or `--health-only`). Pass
+  bar: `redocumented.programs.documented` counts it; the program's manifest entry carries a fresh last_verified and its
+  doc the edit; `kbBehind.behind` is empty after the pull; the describe was ONE `jo p describe` for that program
+  (the guard shows no ask). Then set `kb.redocument.enabled` false (`… change <dash> kb.redocument.enabled=false
+  --dry-run`, then without): the consequence reads rebuild, and a later refresh after another edit leaves the KB alone
+  and names the program in `kbBehind.behind` and the page's caveat.
+- R8 (the scheduled run, semi-attended). Bradley creates an OS-scheduler task (or a Claude desktop local task) that
+  runs `node .gs-superadmin/plugin/scripts/dashboard.mjs refresh <dash>` from the workspace, logs in, and lets it fire
+  within the hour. Pass bar: the task's run exits 0 and the pages move; a second firing after the login expired exits
+  3 and leaves the pages; the README recipe matched what he had to do (a finding otherwise).
+- R9 (the hand-over). `… export <dash> --out <file> --with-snapshot`, then in a second workspace of the same tenant
+  (or a copy) `… import --file <file>` and `… refresh <dash>`. Pass bar: the import lands the spec and the snapshot;
+  the refresh is selective with a delta against the exported pull.
+
+## UX-2 — the brand walk with Bradley's real brand input (banked 2026-10-12, builder, Session S5 @ TOKEN; verdict at S5-V)
+
+Owed by: S5-V, in the same sitting as DSH-3 I9. Token: TOKEN. Why it is banked: the brand step was exercised only
+over hand-written tokens and a 1x1 fixture PNG (test/dashboard.mjs). A real guidelines file, a real logo and Bradley's
+eye on the themed page cannot be had offline. The brand file stays in the workspace; only the extracted values and the
+encoded logo enter the spec; nothing of it is copied here.
+
+THIS LIST IS COMPLETE (the same rule as above).
+
+- B1 (the input is data). At the `look` question Bradley names a brand guidelines file (markdown, JSON, CSS or a PDF
+  the session can read), or pastes values, or runs his own brand skill himself and pastes its output. Pass bar: the
+  prose reads the material and proposes the candidate tokens (colours as #rrggbb, series, a system font stack, a
+  radius, the logo as a local PNG or JPEG path) before storing anything; it never invokes another plugin's skill and
+  never fetches a URL.
+- B2 (the validator's notes shown). Pass bar: `answer <dash> look <json>` returns `replaced` for every token the
+  validator replaced (contrast, two series colours too alike, a font the page cannot rely on) and the prose shows each
+  with its reason; a token that passed is stored as given; the About tab's Look part lists the replacements.
+- B3 (the themed preview). `answer <dash> dry-run yes` (or the first refresh). Pass bar: the admin and leaders' pages
+  carry the brand colours and the logo (one image element, a data URI; no network request), the status colours
+  unchanged; Bradley judges it reads along the company's lines (a presentation finding goes to UX-3, not here).
+- B4 (clear and skip). `answer <dash> look clear` returns the default look; on the fast-path dashboard the look was
+  never asked. Pass bar: both as stated.
