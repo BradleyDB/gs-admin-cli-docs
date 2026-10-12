@@ -44,8 +44,9 @@ import { join, resolve } from "node:path";
 import { makeCliHelpers, readJsonFile, writeFileAtomicSync, isMainModule } from "./doc-lib.mjs";
 import * as engine from "./engagement-query.mjs";
 import { openSpec, SPEC_DESCRIPTIONS, TABS, CADENCES, KNOBBED_PANEL_TYPES, presetPanels, pageDateDefault, pageTemplateContent, panelKnobs, describeSpec } from "./dashboard-spec.mjs";
-import { applyGroups, resolveGroups, programTraits, describeRule } from "./dashboard-groups.mjs";
+import { applyGroups, resolveGroups, programTraits, describeRule, UNGROUPED } from "./dashboard-groups.mjs";
 import { createDashboard, LACKS, PAGE_MODEL_VERSION } from "./dashboard-runtime.mjs";
+import { DEFAULT_THEME, validateTheme, tokensCss } from "./dashboard-theme.mjs";
 
 /**
  * @typedef {import("./engagement.mjs").T10Snapshot} T10Snapshot
@@ -189,10 +190,15 @@ export function pageModel(spec, snapshot, page) {
   const resolution = resolveGroups({ programs: programTraits(snapshot), groups: spec.groups });
   const matched = spec.groups.rules.map((_, i) => resolution.assignments.filter((a) => a.by.supergroup === `rule ${i + 1}` || a.by.group === `rule ${i + 1}`).length);
   const names = new Map(snapshot.dimensions.programs.map((p) => [p.id, p.name]));
+  // The look (UX-1): the spec's theme through the validator, or the default; the page carries what it needs to SAY
+  // about it (the logo, and the notes on replaced tokens), never the colours themselves, which are the style sheet's.
+  const look = validateTheme(spec.theme ?? null);
   return {
     v: PAGE_MODEL_VERSION,
     slug: spec.slug,
     title: spec.title,
+    look: { custom: !!spec.theme, logo: look.theme.logo, notes: look.notes, derivedDark: !!spec.theme && look.derivedDark },
+    ungrouped: UNGROUPED,
     page: {
       id: page.id, preset: page.preset, title: page.title, statusDefault: page.statusDefault, dateDefault: pageDateDefault(page), tabs,
       // The panels, each typed view (the health four, the templates view) with its knobs resolved against the spec (the page cannot read the spec).
@@ -224,53 +230,95 @@ const UNSAFE_IN_SCRIPT = new RegExp(`[<>&${String.fromCharCode(0x2028, 0x2029)}]
 const jsonForScript = (value) => JSON.stringify(value).replace(UNSAFE_IN_SCRIPT, (c) => "\\u" + c.charCodeAt(0).toString(16).padStart(4, "0"));
 const bytesOf = (text) => Buffer.byteLength(text, "utf8");
 // Tokens only (R28): every colour, font and radius a page uses is declared ONCE
-// here, with a dark set beside it, and every rule and every SVG mark references
-// a token. The BRAND-FACING tokens (what UX-1's default theme and UX-2's brand
-// theme replace) sit in the first block of each pair; the STATUS tokens (stale,
-// error, warning, ok, the two tracking states) sit in their own block and are
-// not part of a theme. The suite greps the rest of this sheet and the runtime's
-// SVG emitters for a literal colour or font. The series colours are the
-// validated reference palette's first four categorical slots (light and dark).
-export const TOKENS = `
-:root{color-scheme:light dark;--font:system-ui,-apple-system,"Segoe UI",sans-serif;--mono:ui-monospace,Consolas,monospace;--radius:6px;--fg:#1c2330;--muted:#5b6575;--bg:#fff;--soft:#f3f5f8;--line:#d5dae2;--accent:#1f5fbf;--note:#eef3fb;--shade:#e9edf3;--series-1:#2a78d6;--series-2:#eb6834;--series-3:#1baf7a;--series-4:#eda100}
-:root{--status-stale:#b35c00;--status-error:#d03b3b;--status-warn:#8a6d00;--status-ok:#0a7a0a;--status-not-tracked:#5b6575;--status-unknown:#6e5fb3}
-@media (prefers-color-scheme:dark){:root{--fg:#e6e9ee;--muted:#9aa4b2;--bg:#14181f;--soft:#1c222c;--line:#333c49;--accent:#7fb0ff;--note:#1a2534;--shade:#222a36;--series-1:#3987e5;--series-2:#d95926;--series-3:#199e70;--series-4:#c98500}}
-@media (prefers-color-scheme:dark){:root{--status-stale:#f0a850;--status-error:#f07070;--status-warn:#e0c060;--status-ok:#5fcf5f;--status-not-tracked:#9aa4b2;--status-unknown:#b3a6f0}}
-`;
-const STYLE = TOKENS + `
+// in the token block, with a dark set beside it, and every rule and every SVG
+// mark references a token. The block is EMITTED from a theme (dashboard-
+// theme.mjs, UX-1): the default theme for a spec that names none, the spec's
+// brand theme through the validator otherwise. The BRAND-FACING tokens sit in
+// the first block of each pair; the STATUS tokens (stale, error, warning, ok,
+// the two tracking states) sit in their own block and are not part of a
+// theme. The suite greps the rest of this sheet and the runtime's SVG emitters
+// for a literal colour or font.
+export const TOKENS = tokensCss(DEFAULT_THEME);
+// The rules: every colour, font and radius through a token; sizes and spacing
+// on a small scale (4, 8, 12, 16, 24); one focus ring for every control.
+export const STYLE_RULES = `
 *{box-sizing:border-box}
 body{margin:0;padding:16px;background:var(--bg);color:var(--fg);font:14px/1.45 var(--font)}
 .gs-root{border:0;margin:0 auto;padding:0;min-width:0;max-width:1200px}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 h1{font-size:20px;margin:0}
-h2{font-size:16px;margin:0 0 8px}
-.gs-sub,.gs-pulled,.gs-muted,.gs-note,.gs-count{color:var(--muted)}
-.gs-sub,.gs-pulled{margin:2px 0}
-.gs-filters{display:flex;flex-wrap:wrap;gap:12px;margin:14px 0;padding:12px;background:var(--soft);border:1px solid var(--line);border-radius:6px}
-.gs-f{display:flex;flex-direction:column;gap:6px;min-width:0;max-width:100%}
-.gs-f-title{font-weight:600}
+h2{font-size:16px;margin:0}
+h3{font-size:14px;margin:12px 0 6px}
+h4{font-size:13px;margin:8px 0 4px}
+.gs-head{display:flex;flex-wrap:wrap;align-items:center;gap:4px 12px;margin-bottom:4px}
+.gs-head h1{flex:0 1 auto}
+.gs-logo{height:28px;width:auto;max-width:160px;display:block}
+.gs-sub{flex:1 0 100%;margin:0}
+.gs-pulled{flex:1 0 100%;margin:0 0 8px;font-size:13px}
+.gs-sub,.gs-pulled,.gs-muted,.gs-note,.gs-count,.gs-basis,.gs-pointer{color:var(--muted)}
+.gs-note,.gs-basis,.gs-pointer{font-size:13px;margin:4px 0}
+.gs-tabs{display:flex;flex-wrap:wrap;gap:4px;border-bottom:1px solid var(--line);margin:8px 0 0}
+.gs-tab{border:1px solid transparent;border-bottom:0;border-radius:var(--radius) var(--radius) 0 0;padding:8px 14px;background:none;color:var(--muted);font-weight:600}
+.gs-tab.is-current{border-color:var(--line);border-bottom:1px solid var(--bg);margin-bottom:-1px;color:var(--accent);background:var(--bg)}
+.gs-tab.is-offered{opacity:.7;border-style:dashed;font-weight:400}
+.gs-filters{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center;margin:0 0 16px;padding:8px 12px;background:var(--soft);border:1px solid var(--line);border-top:0;border-radius:0 0 var(--radius) var(--radius)}
+.gs-filters:empty{display:none}
+.gs-f{display:flex;flex-direction:column;align-items:flex-start;gap:4px;min-width:0;max-width:100%}
+.gs-f-title{font-size:12px;font-weight:600;letter-spacing:.02em;color:var(--muted)}
+.gs-f-control{display:flex;flex-wrap:wrap;align-items:center;gap:4px 6px;min-height:28px}
+.gs-f-reset{margin-left:auto;justify-content:flex-end;padding-top:18px}
+.gs-switch{display:inline-flex;align-items:center;gap:8px;cursor:pointer}
+.gs-switch input[role=switch]{appearance:none;-webkit-appearance:none;width:34px;height:18px;margin:0;padding:0;min-height:0;border:1px solid var(--control);border-radius:9px;background:var(--soft);position:relative;cursor:pointer;flex:none}
+.gs-switch input[role=switch]::before{content:"";position:absolute;top:2px;left:2px;width:12px;height:12px;border-radius:50%;background:var(--control);transition:left .12s}
+.gs-switch input[role=switch]:checked{background:var(--accent);border-color:var(--accent)}
+.gs-switch input[role=switch]:checked::before{left:18px;background:var(--bg)}
+.gs-switch input[role=switch]:disabled{opacity:.5;cursor:default}
+.gs-bar-summary{flex:1 0 100%;margin:0;font-size:13px;color:var(--muted)}
 .gs-count{font-weight:400}
-.gs-programs{flex:1 1 320px}
-.gs-proglist{max-height:220px;overflow:auto;border:1px solid var(--line);border-radius:4px;background:var(--bg);padding:4px}
-.gs-prog{display:block;padding:2px 4px;overflow-wrap:anywhere}
-.gs-badge{display:inline-block;margin-left:4px;padding:0 6px;border:1px solid var(--line);border-radius:9px;font-size:12px;color:var(--muted)}
-select,input,button{font:inherit;color:inherit;background:var(--bg);border:1px solid var(--line);border-radius:4px;padding:3px 6px;max-width:100%}
+select,input,button{font:inherit;color:inherit;background:var(--bg);border:1px solid var(--control);border-radius:4px;padding:4px 8px;max-width:100%;min-height:28px}
+input[type=checkbox]{min-height:0;accent-color:var(--accent)}
 button{cursor:pointer}
+button:hover{border-color:var(--accent)}
 :disabled{opacity:.6;cursor:default}
-.gs-summary{margin:0 0 12px}
-.gs-tabs{display:flex;flex-wrap:wrap;gap:4px;border-bottom:1px solid var(--line);margin-bottom:14px}
-.gs-tab{border-bottom:0;border-radius:4px 4px 0 0;padding:6px 12px}
-.gs-tab.is-current{border-color:var(--accent);color:var(--accent);font-weight:600}
-.gs-tab.is-offered{opacity:.6;border-style:dashed}
-.gs-panel{margin:0 0 24px}
-.gs-tools{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-start;margin-bottom:8px}
-.gs-cols label{display:block}
-.gs-scroll{overflow-x:auto}
-table{border-collapse:collapse;width:100%}
-th,td{text-align:left;padding:5px 8px;border-bottom:1px solid var(--line);vertical-align:top}
-th{background:var(--soft);white-space:nowrap}
+.gs-btn[aria-pressed=true],.gs-chip.is-on{border-color:var(--accent);color:var(--accent);font-weight:600}
+.gs-pop-host{position:relative;display:inline-block}
+.gs-pop-host>summary{list-style:none;cursor:pointer;display:inline-block;padding:4px 8px;min-height:28px;border:1px solid var(--control);border-radius:4px;background:var(--bg)}
+.gs-pop-host>summary::-webkit-details-marker{display:none}
+.gs-pop-host[open]>summary{border-color:var(--accent)}
+.gs-pop{position:absolute;z-index:5;top:calc(100% + 4px);left:0;min-width:260px;max-width:min(420px,calc(100vw - 32px));padding:8px;background:var(--bg);border:1px solid var(--control);border-radius:var(--radius);box-shadow:0 4px 16px var(--shade)}
+.gs-pop-head{margin:0 0 6px;font-weight:600}
+.gs-pop label{display:block;padding:2px 0}
+.gs-picker-tools{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0}
+.gs-picker-tools input[type=search]{flex:1 1 140px}
+.gs-proglist{max-height:260px;overflow:auto;border:1px solid var(--line);border-radius:4px;background:var(--bg);padding:4px}
+.gs-prog,.gs-status{display:block;padding:2px 4px;overflow-wrap:anywhere}
+.gs-badge{display:inline-block;margin-left:4px;padding:0 6px;border:1px solid var(--line);border-radius:9px;font-size:12px;color:var(--muted)}
+.gs-badge-stale{color:var(--status-stale);border-color:var(--status-stale)}
+.gs-badge-error{color:var(--status-error);border-color:var(--status-error)}
+.gs-badge-warn{color:var(--status-warn);border-color:var(--status-warn)}
+.gs-panel{margin:0 0 28px}
+.gs-panel-head{display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px;margin:0 0 8px}
+.gs-panel-head h2{flex:1 1 auto}
+.gs-tools{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-left:auto}
+.gs-chips{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:0 0 8px}
+.gs-group-title{font-size:12px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);margin:24px 0 4px;padding-bottom:4px;border-bottom:1px solid var(--line)}
+.gs-group-title:first-child{margin-top:0}
+.gs-group-note{margin:0 0 12px}
+.gs-scroll{overflow:auto;max-height:400px;border-bottom:1px solid var(--line)}
+table{border-collapse:separate;border-spacing:0;width:100%}
+th,td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--line);vertical-align:top}
+th{background:var(--soft);white-space:nowrap;font-size:13px;position:sticky;top:0;z-index:1}
+tfoot td{position:sticky;bottom:0;background:var(--soft);border-top:1px solid var(--line)}
+.gs-panel-sub{font-size:12px;color:var(--muted)}
+[data-tip]{position:relative;cursor:help}
+[data-tip]:hover::after,[data-tip]:focus-visible::after,[data-tip].is-open::after{content:attr(data-tip);position:absolute;left:0;top:calc(100% + 4px);z-index:6;width:max-content;max-width:300px;padding:6px 8px;background:var(--fg);color:var(--bg);border-radius:4px;font:12px/1.4 var(--font);font-style:normal;font-weight:400;white-space:normal;text-align:left;box-shadow:0 2px 8px var(--shade)}
+sup [data-tip]{font-size:12px}
+.gs-svg-value{fill:var(--muted);font-size:10px;font-family:var(--font)}
+.gs-cron{font-size:11px;color:var(--muted)}
 .gs-num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
 .gs-nowrap{white-space:nowrap}
 tfoot td{font-weight:600}
+.gs-sort{border:0;background:none;padding:0;min-height:0;font:inherit;font-weight:600;color:inherit;cursor:pointer;white-space:nowrap;font-size:13px}
 .gs-notice{margin:8px 0;padding:10px 12px;background:var(--note);border:1px solid var(--line);border-left:4px solid var(--accent);border-radius:4px;max-width:720px}
 .gs-notice p{margin:0 0 6px}
 .gs-notice p:last-child{margin-bottom:0}
@@ -279,69 +327,75 @@ tfoot td{font-weight:600}
 .gs-notice code{overflow-wrap:anywhere}
 .gs-path,code{font-family:var(--mono);font-size:12px}
 .gs-path{color:var(--muted)}
+.gs-notes{margin:16px 0 0;padding:8px 12px;border-left:3px solid var(--line);font-size:13px;color:var(--muted)}
+.gs-notes p{margin:0 0 4px}
+.gs-notes p:last-child{margin:0}
 .gs-defs dt,.gs-settings dt,.gs-prov dt{font-weight:600;margin-top:8px}
 .gs-defs dd,.gs-settings dd,.gs-prov dd{margin:0}
 .gs-formula{margin:4px 0 0;padding-left:18px;color:var(--muted);font-size:13px}
-.gs-about{margin:0 0 20px}
-.gs-about h2{margin-top:8px}
+.gs-about{margin:0 0 24px}
+.gs-about h2{margin:0 0 8px;padding-top:8px}
+.gs-toc{margin:8px 0 16px;padding:0;list-style:none;display:flex;flex-wrap:wrap;gap:4px 16px;font-size:13px}
+.gs-toc a{color:var(--accent)}
 .gs-ungrouped.is-prominent{padding:8px 10px;border:1px solid var(--line);border-left:4px solid var(--status-warn);border-radius:4px}
 .gs-no-match{color:var(--status-warn)}
 .gs-banner{margin:8px 0;padding:8px 12px;background:var(--note);border:1px solid var(--line);border-left:4px solid var(--accent);border-radius:4px}
 .gs-banner-stale{border-left-color:var(--status-stale)}
 .gs-banner-health{border-left-color:var(--status-error)}
+.gs-banner p{margin:0}
+.gs-banner .gs-notice-line{margin-top:4px}
 .gs-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:8px}
-.gs-kpi{padding:8px 10px;background:var(--soft);border:1px solid var(--line);border-radius:var(--radius)}
+.gs-kpi{padding:10px 12px;background:var(--soft);border:1px solid var(--line);border-radius:var(--radius)}
 .gs-kpi p{margin:0}
 .gs-kpi-label{color:var(--muted);font-size:12px}
-.gs-kpi-value{font-size:22px;font-weight:600;font-variant-numeric:tabular-nums}
+.gs-kpi-value{font-size:26px;font-weight:600;line-height:1.2;margin:2px 0 4px}
 .gs-kpi-usual,.gs-kpi-context,.gs-kpi-since{font-size:12px;color:var(--muted)}
 .gs-chart{width:100%;height:auto;display:block;max-width:900px}
 .gs-mini{height:14px;width:auto;display:inline-block;vertical-align:middle}
 .gs-svg-grid{stroke:var(--line);stroke-width:1}
-.gs-svg-axis{stroke:var(--muted);stroke-width:1}
+.gs-svg-axis{stroke:var(--line);stroke-width:1}
 .gs-svg-provisional{fill:var(--shade)}
 .gs-svg-tick{fill:var(--muted);font-size:11px;font-family:var(--font)}
 .gs-svg-label{fill:var(--fg);font-size:11px;font-family:var(--font)}
-.gs-svg-line{fill:none;stroke-width:2;stroke-linejoin:round}
+.gs-svg-line{fill:none;stroke-width:2;stroke-linejoin:round;stroke-linecap:round}
+.gs-svg-ring{fill:var(--bg)}
 .gs-svg-dot{stroke-width:2}
 .gs-svg-carried{fill:var(--bg);stroke-dasharray:2 2}
-.gs-legend{list-style:none;display:flex;flex-wrap:wrap;gap:12px;margin:4px 0 8px;padding:0;font-size:13px;color:var(--muted)}
+.gs-legend{list-style:none;display:flex;flex-wrap:wrap;gap:4px 16px;margin:0 0 6px;padding:0;font-size:13px;color:var(--muted)}
 .gs-swatch{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;vertical-align:middle}
 .gs-fallback{margin:6px 0}
 .gs-fallback summary{cursor:pointer;color:var(--muted)}
-.gs-chip{border-radius:12px}
-.gs-chip.is-on{border-color:var(--accent);color:var(--accent);font-weight:600}
+.gs-chip{border-radius:12px;padding:2px 10px;min-height:24px}
 .gs-list{margin:8px 0}
 .gs-list summary{cursor:pointer;font-weight:600}
-.gs-sub td{color:var(--muted);font-size:13px}
-.gs-sub td:first-child{padding-left:28px}
+.gs-sub td{color:var(--muted);font-size:13px;background:var(--soft)}
+.gs-sub td:first-child{padding-left:24px;border-left:3px solid var(--line)}
+.gs-sub2 td:first-child{padding-left:44px}
+.gs-kind{display:inline-block;margin-right:6px;font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}
+.gs-expand{font-size:12px;padding:0 6px;min-height:22px;margin-left:4px}
 .gs-other td{font-style:italic}
 .gs-not-tracked{color:var(--status-not-tracked);font-style:italic}
 .gs-unknown{color:var(--status-unknown);font-size:12px}
 .gs-mark{font-size:12px;cursor:help}
 .gs-info{color:var(--accent)}
-.gs-badge-stale{color:var(--status-stale);border-color:var(--status-stale)}
-.gs-badge-error{color:var(--status-error);border-color:var(--status-error)}
-.gs-badge-warn{color:var(--status-warn);border-color:var(--status-warn)}
 .gs-caveats{margin:4px 0;padding-left:18px;font-size:13px;color:var(--muted)}
 .gs-search{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:0 0 8px}
 .gs-search input[type=search]{min-width:200px}
 .gs-snippet{margin:2px 0 0;font-size:12px;color:var(--muted)}
 mark{background:var(--shade);color:inherit;padding:0 2px}
-.gs-sort{border:0;background:none;padding:0;font:inherit;font-weight:600;color:inherit;cursor:pointer;white-space:nowrap}
+.gs-sort{border:0;background:none;padding:0;min-height:0;font:inherit;font-weight:600;color:inherit;cursor:pointer;white-space:nowrap}
 .gs-sort.is-on{color:var(--accent)}
-.gs-text{font-size:12px;padding:0 6px;margin-left:4px}
+.gs-text{font-size:12px;padding:0 6px;margin-left:4px;min-height:22px}
 .gs-drawer{margin:8px 0 16px;padding:12px;border:1px solid var(--line);border-left:4px solid var(--accent);border-radius:var(--radius);background:var(--soft)}
 .gs-drawer h3{margin:0}
 .gs-body{white-space:pre-wrap;overflow-wrap:anywhere;font:13px/1.45 var(--font);margin:0 0 8px;padding:8px;background:var(--bg);border:1px solid var(--line);border-radius:4px}
-.gs-sub2 td:first-child{padding-left:48px}
 .gs-foot{margin-top:24px;border-top:1px solid var(--line);padding-top:8px}
 .gs-foot summary{cursor:pointer;color:var(--muted)}
-h3{font-size:14px;margin:12px 0 6px}
-h4{font-size:13px;margin:8px 0 4px}
 [hidden]{display:none!important}
-@media print{.gs-filters,.gs-tabs,.gs-tools{display:none}}
+@media (max-width:600px){body{padding:12px}.gs-kpi-value{font-size:22px}.gs-pop{position:fixed;left:12px;right:12px;top:auto;max-width:none;max-height:70vh;overflow:auto}.gs-f-reset{margin-left:0;padding-top:0}}
+@media print{.gs-tabs,.gs-f,.gs-tools,.gs-chips,.gs-fallback summary,.gs-notice-line{display:none}.gs-filters{border:0;background:none;padding:0}.gs-panel{break-inside:avoid}.gs-pane[hidden]{display:none!important}}
 `;
+const STYLE = TOKENS + STYLE_RULES;
 
 /**
  * Build one page. Pure: the two inlined sources are passed in, and nothing is
@@ -372,7 +426,9 @@ export function buildPage({ spec, snapshot, pageId, engineSource, runtimeSource,
     throw new Error(`dashboard page "${pageId}": ${e instanceof Error ? e.message : e}`);
   }
   const data = jsonForScript(model);
-  const head = `<!doctype html>\n<html lang="en">\n<head>\n<meta charset="utf-8">\n<meta name="viewport" content="width=device-width, initial-scale=1">\n<title>${escTitle(spec.title)} · ${escTitle(page.title)}</title>\n<style>${STYLE}</style>\n</head>\n<body>\n`;
+  // The style sheet: the spec's theme (validated; a failing token already replaced) or the default, then the rules.
+  const style = spec.theme ? tokensCss(validateTheme(spec.theme).theme) + STYLE_RULES : STYLE;
+  const head = `<!doctype html>\n<html lang="en">\n<head>\n<meta charset="utf-8">\n<meta name="viewport" content="width=device-width, initial-scale=1">\n<title>${escTitle(spec.title)} · ${escTitle(page.title)}</title>\n<style>${style}</style>\n</head>\n<body>\n`;
   const html =
     head +
     `<noscript><p>This is the default view. Filters, tabs and downloads need JavaScript.</p></noscript>\n` +
@@ -380,7 +436,7 @@ export function buildPage({ spec, snapshot, pageId, engineSource, runtimeSource,
     `<script type="application/json" id="gs-data">${data}</script>\n` +
     `<script type="module">\n${engineSource}\n;globalThis.__gsEngine = { ${Object.keys(engine).sort().join(", ")} };\n</script>\n` +
     `<script type="module">\n${runtimeSource}\n;boot(globalThis);\n</script>\n</body>\n</html>\n`;
-  const bytes = { total: bytesOf(html), data: bytesOf(data), engine: bytesOf(engineSource), runtime: bytesOf(runtimeSource), prerender: bytesOf(prerender), style: bytesOf(STYLE) };
+  const bytes = { total: bytesOf(html), data: bytesOf(data), engine: bytesOf(engineSource), runtime: bytesOf(runtimeSource), prerender: bytesOf(prerender), style: bytesOf(style) };
   const megabytes = Number((bytes.total / MB).toFixed(2));
   // Every packed table the page embeds, at any depth (the health five sit under facts.health), with its rows and
   // its bytes, so the warning can name what is actually large (F-485).

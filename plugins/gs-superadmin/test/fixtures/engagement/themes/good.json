@@ -1,0 +1,8 @@
+{
+  "colors": { "fg": "#102a43", "muted": "#486581", "bg": "#f7fbff", "soft": "#e6f0fa", "line": "#c5d5e6", "control": "#5a7390", "accent": "#0b57d0", "note": "#e3edf9", "shade": "#d9e6f4" },
+  "dark": { "fg": "#e8eef5", "muted": "#a9b8c9", "bg": "#0f1a26", "soft": "#162433", "line": "#2b3d52", "control": "#6a7f99", "accent": "#8ab4f8", "note": "#172a3d", "shade": "#1c3147" },
+  "series": ["#0b57d0", "#c2410c", "#047857"],
+  "seriesDark": ["#4d8ef0", "#f0702e", "#1aa37a"],
+  "font": "\"Segoe UI\", Roboto, sans-serif",
+  "radius": 8
+}

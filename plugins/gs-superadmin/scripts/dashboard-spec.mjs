@@ -150,6 +150,12 @@
  * @property {{cadence: "weekly"|"monthly"|"quarterly"|"manual", ownerNote: ?string}} refresh
  * @property {{target: "none", config: Object<string, never>}} publish   "none" until a publishing path exists
  * @property {{reports: Array<{panel: string, reportId: string, name?: string}>}} native   reports created in Gainsight from this spec
+ * @property {import("./dashboard-theme.mjs").Theme} [theme]   the pages' look (additive, UX-1, S4d): brand-facing token
+ *   values only — text and surface colours (light, and dark or derived), chart series colours, a system font stack, a
+ *   radius, an optional logo as a PNG or JPEG data URI of at most 200 KB — plus the validator's notes on any token it
+ *   replaced. Absent means the default theme. The status colours are never part of it. Shape is checked here
+ *   (dashboard-theme.mjs themeShapeProblems); contrast and distinguishability by validateTheme at build, which replaces
+ *   a failing token with the default's and says so on the About tab
  */
 import { existsSync, readdirSync, rmSync } from "node:fs";
 import { join, resolve } from "node:path";
@@ -158,6 +164,7 @@ import { printable } from "./journal-lib.mjs";
 import { parseUnsubscribeLink, parseSentSince } from "./engagement.mjs";
 import { METRICS, DIMENSIONS, STATUS_LABELS, statusLabel, SILENT_DAYS_DEFAULT } from "./engagement-query.mjs";
 import { validateGroups, describeRule, UNGROUPED } from "./dashboard-groups.mjs";
+import { themeShapeProblems, validateTheme, COLOR_KEYS, LOGO_MAX_BYTES } from "./dashboard-theme.mjs";
 
 export const T11_SCHEMA_VERSION = 1;
 export const SPEC_FILE = "spec.json";
@@ -238,9 +245,10 @@ export const PRESETS = Object.freeze({
       { id: "emails", tab: "engagement", type: "table", title: "Emails", query: { groupBy: ["program", "template"], metrics: ["sent", "delivered", "opened", "openRate", "clickRate"], sort: [{ metric: "sent", dir: "desc" }] } },
       { id: "steps", tab: "engagement", type: "table", title: "Steps", query: { groupBy: ["program", "step", "variant"], metrics: ["sent", "delivered", "opened", "openRate", "clickRate"], sort: [{ metric: "sent", dir: "desc" }] } },
       { id: "survey-responses", tab: "engagement", type: "table", title: "Survey responses", query: { groupBy: ["program"], metrics: ["surveyParticipants", "submitted", "partiallySubmitted", "anyResponse", "responseRate"], having: [{ metric: "anyResponse", gte: 0 }], sort: [{ metric: "responseRate", dir: "desc" }] } },
-      ACCOUNT_LIST("most-engaged", "Most engaged customers (possible advocates)", { metric: "openRate", dir: "desc" }, { metric: "delivered", gte: 10 }),
-      ACCOUNT_LIST("least-engaged", "Least engaged customers (possible bad contacts or disengagement)", { metric: "openRate", dir: "asc" }, { metric: "delivered", gte: 10 }),
-      ACCOUNT_LIST("most-bounced", "Most bounced customers (possible bad contacts)", { metric: "bounced", dir: "desc" }, { metric: "bounced", gt: 0 }),
+      // The parentheticals dropped from the three titles (ruled 2026-10-11, D0 choice 2).
+      ACCOUNT_LIST("most-engaged", "Most engaged customers", { metric: "openRate", dir: "desc" }, { metric: "delivered", gte: 10 }),
+      ACCOUNT_LIST("least-engaged", "Least engaged customers", { metric: "openRate", dir: "asc" }, { metric: "delivered", gte: 10 }),
+      ACCOUNT_LIST("most-bounced", "Most bounced customers", { metric: "bounced", dir: "desc" }, { metric: "bounced", gt: 0 }),
       ...HEALTH_PANELS,
       TEMPLATES_PANEL,
     ]),
@@ -392,6 +400,21 @@ export const SPEC_DESCRIPTIONS = Object.freeze([
   { covers: ["refresh.cadence", "refresh.ownerNote"], label: "Refresh", say: (s) => [`Refreshed ${CADENCES[s.refresh.cadence] ?? s.refresh.cadence}; a refresh can also be run at any time.${s.refresh.ownerNote ? ` ${s.refresh.ownerNote}` : ""}`] },
   { covers: ["publish.target", "publish.config"], label: "Publishing", say: (s) => [s.publish.target === "none" ? "Not published anywhere: the pages are files in the workspace." : `Published to ${s.publish.target}.`] },
   { covers: ["native.reports[]"], label: "Gainsight reports", say: (s) => [`${plural(s.native.reports.length, "report")} created in Gainsight from this dashboard.`] },
+  // The look (UX-1, additive): what the theme sets and what the validator replaced, in words; the About tab shows it.
+  {
+    covers: ["theme.colors." + COLOR_KEYS.join(",theme.colors."), "theme.dark." + COLOR_KEYS.join(",theme.dark."), "theme.series[]", "theme.seriesDark[]", "theme.font", "theme.radius", "theme.logo", "theme.notes[]"].flatMap((c) => c.split(",")), label: "Look",
+    say: (s) => {
+      if (!s.theme) return ["The default look: neutral text and surfaces, the standard chart colours, the system font."];
+      const t = s.theme;
+      const { notes, derivedDark } = validateTheme(t);
+      const set = [t.colors && `${plural(Object.keys(t.colors).length, "colour")} set for light`, t.dark ? `${plural(Object.keys(t.dark).length, "colour")} set for dark` : derivedDark && t.colors ? "dark derived from the light colours" : null, t.series && `${plural(t.series.length, "chart colour")}`, t.font && `the font stack "${t.font}"`, t.radius != null && `a ${t.radius}px corner radius`, t.logo && "a logo"].filter(Boolean);
+      return [
+        `A brand theme: ${set.length ? set.join(", ") : "nothing set"}; every token it leaves out takes the default.`,
+        ...(notes.length ? [`${plural(notes.length, "token")} replaced by the default because it would not read: ${notes.map((n) => `${n.token} (${n.reason})`).join("; ")}.`] : ["Every token it sets passed the readability checks."]),
+        ...(Array.isArray(t.notes) && t.notes.length ? [`${plural(t.notes.length, "note")} recorded when the theme was stored.`] : []),
+      ];
+    },
+  },
 ]);
 // `x[]` in a table covers the whole item, whatever it holds; `x{}` every keyed entry.
 const COVERED = SPEC_DESCRIPTIONS.flatMap((d) => d.covers);
@@ -628,6 +651,10 @@ export function validateSpec(input) {
     if (!Array.isArray(s.native.reports)) bad("native.reports", "must be a list");
     else s.native.reports.forEach((r, i) => { if (!isObj(r) || !isText(r.panel) || !isText(r.reportId) || Object.keys(r).some((k) => !["panel", "reportId", "name"].includes(k))) bad(`native.reports[${i}]`, "must be {panel, reportId, name?}: the panel a Gainsight report was created from, and the report's id"); });
   }
+  // The look (UX-1, additive): absent is the default theme; present, its shape is checked here (a colour as #rrggbb,
+  // a font stack, a PNG or JPEG logo under the cap); whether a colour READS is the theme validator's, at build.
+  if (s.theme !== undefined) for (const p of themeShapeProblems(s.theme, "theme")) bad(p.path, p.problem);
+  if (s.theme?.logo) notes.push(`theme.logo is embedded in every page as it is (at most ${LOGO_MAX_BYTES / 1024} KB before encoding).`);
   // One problem per field is enough to act on.
   const seenPaths = new Set();
   return { problems: problems.filter((p) => !seenPaths.has(p.path) && seenPaths.add(p.path)), notes };
