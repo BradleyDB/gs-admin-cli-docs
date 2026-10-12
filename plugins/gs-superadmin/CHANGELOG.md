@@ -17,7 +17,7 @@ dashboard with no model in the loop, and `/gs-superadmin:email-engagement` gains
   `answer` walk the questions table; `change <slug> <path>=<json>` sets a setting through
   the spec writer, says what it costs (in-page, rebuild only, or the next pull with its
   minutes), saves, and does it (`--dry-run` stops before); `save`, `list` (drafts with their
-  holder and date), `status` (last pull, age, next due by cadence, the lock), `refresh
+  holder and date), `status` (last pull, age, the lock), `refresh
   <slug> [--full] [--health-only]`, `rebuild`, `report` (the open-rate report over the latest
   snapshot, no pull), `export [--with-snapshot]` / `import`, and `health <slug> --program
   <id>` (a program's masked messages and the "Other" samples, to the terminal only).
@@ -33,23 +33,43 @@ dashboard with no model in the loop, and `/gs-superadmin:email-engagement` gains
   months both pulls hold. A refresh that stops (the login, a failed call) leaves the last
   good pages untouched and resumes on the next run. `--health-only` reads the current month
   and the health families again and carries the rest.
-- **The questions table, as data in the command:** the tenant (checked), the purpose,
-  audiences, programs (sent-since first), grouping (proposed from the plan's program list,
-  written as rules), internal domains, test accounts as company records (ids, or names
-  looked up once), the unsubscribe link, two health settings, the window kind (rolling,
-  fixed, since a month) with the first pull's cost, the cadence with its freshness, the
-  optional metrics with their tracking states, the look, tabs and panels per page with the
-  Health tab's minutes, whether the leaders' copy may name customers, the customer lists
-  (off by default, with their cost and the three default lists), step detail with its
-  minutes, expected failure reasons, a dry run rendered as preview pages, the estimate, and
-  the save with the first refresh. The fast path takes every default and asks for the
-  estimate and the save.
-- **Brand theming in the interview (UX-2):** brand input arrives as data (a file, pasted
-  values, or the output of the user's own brand skill); the candidate tokens are stored as
-  the spec's theme; the theme validator runs and the interview shows every token it
-  replaced with the reason; the dry-run preview renders in the theme; a logo is read from a
-  local PNG or JPEG, never a URL. Skipping is the fast path's default and is never asked
-  twice.
+- **The questions table, as data in the command, in an admin's terms** (the wordings
+  ruled by the maintainer at the first verdict sitting, 2026-10-12): the interview opens by
+  saying which tenant the dashboard is for, then asks which programs (those that sent in
+  the last 90 days by default), which months the pages cover (rolling, fixed, or since a
+  month, with this tenant's minutes per month), the grouping (proposed from the plan's
+  program list, written as rules), internal domains, test accounts as company records
+  (names looked up once, or GSIDs), the unsubscribe link (the standard one is recognised on
+  its own), two health settings, the look, the tabs per page (one bullet per tab, with the
+  minutes Health adds and the bounce categories' share), the customer lists (off by default,
+  with the first pull's minutes with and without them) and, when they are on, whether the
+  leaders' page may carry them with names and how the lists are built, step detail with its
+  minutes, and the tenant's own expected failure reasons (the six shipped ones named). An
+  option that needs a value (a date, a number of months, a list of names) asks for it on
+  its own; the admin never sees an input grammar. It closes with one step: the full
+  refresh's calls and minutes against the login, and save and refresh now, a dry run first
+  (preview pages on real data), save only, or go back. The fast path takes every question's
+  own default through the same apply (the standard dashboard is the programs that sent in
+  the last 90 days, grouped Recurring / One-off with each model beneath) and goes straight
+  to the closing step. No purpose, audiences, cadence or metrics question: both pages are
+  always built, both optional metrics always shown, and the About tab opens with a fixed
+  statement of what the dashboard is (an admin's own sentence can be set with `change`).
+- **The pages say when the data was pulled and how many days ago, and that they are not
+  live.** No stale banner and no cadence: refreshes are manual, and the About tab's "How to
+  refresh" says how to run or schedule one. `refresh.cadence` and `freshness.maxAgeDays`
+  stay in the spec, read by nothing; `status` and the dashboard's `report` no longer compute
+  a next due date or a staleness.
+- **Brand theming in the interview (UX-2):** brand input arrives as data (a guidelines file
+  the user names, or pasted values; a brand skill's output is not a path); the candidate
+  tokens are stored as the spec's theme; the theme validator runs and the interview shows
+  every token it replaced with the reason; the dry-run preview renders in the theme; a logo
+  is read from a local PNG or JPEG, never a URL. Skipping is the fast path's default and is
+  never asked twice.
+- **Smaller:** the save's first refresh continues the closing step's plan instead of
+  planning again; a stale refresh lock taken over by a run the budget then refuses is
+  recorded in the refusal; the derived health lookback says what it came from on a tie;
+  the generic unsubscribe-link rule reads the singular `preference` as well (Gainsight's
+  own preference-page token is singular).
 - **The customer watch list redesigned around the customer (DSH-2 ruling 4):** the pull's
   default selection is three cross-program lists over the whole window — 25 most engaged,
   25 least engaged (a delivered floor of 10; on a program that sends about once per contact

@@ -125,7 +125,7 @@
  *   a health-typed panel's settings (additive, S4b): health-silent {days: the no-send threshold the page starts on;
  *   default the spec's health.silentDays}, health-reasons {showExpected: expected failures shown from the start;
  *   default false}, health-schedules {staleAfterDays: a schedule documented longer ago than this before the pull is
- *   marked stale; default freshness.maxAgeDays}, health-one-time {months: of send history shown per program; default 6};
+ *   marked stale; default 45}, health-one-time {months: of send history shown per program; default 6};
  *   a templates panel's (additive, TPL-2): {snippet: the characters of context either side of a search hit; default 50}
  * @property {string[]} [columns]                  the metrics shown at first; a viewer can show or hide any (R1)
  *
@@ -220,6 +220,8 @@ export const CADENCES = Object.freeze({ weekly: "every week", monthly: "every mo
 // value wins; the entry command's cadence question fills freshness from this unless freshness was answered.
 // "manual" never goes stale on its own: the validator's upper bound stands in for never.
 export const FRESHNESS_BY_CADENCE = Object.freeze({ weekly: 10, monthly: 45, quarterly: 120, manual: 3660 });
+// The health-schedules panel's doc-age mark: a schedule documented more than this many days before the pull is marked (not frozen).
+export const SCHEDULE_DOC_AGE_DAYS = 45;
 // The reporting window's kinds (ruled 2026-10-04, DSH-1 item 4), each with its meaning.
 export const WINDOW_KINDS = Object.freeze({ rolling: "the last N months, counted back from each refresh", fixed: "a fixed start and end month, the same every refresh", since: "every month from a start month to the current one" });
 // The cross-program customer lists (DSH-2 ruling 4, 2026-10-05) are the adapter's data (engagement.mjs owns the
@@ -253,7 +255,8 @@ export const DATE_DEFAULTS = Object.freeze({ window: "the whole window, with the
 export const HEALTH_PANEL_TYPES = Object.freeze({
   "health-silent": { knobs: { days: { kind: "whole", min: 1, max: 366, default: (spec) => spec.health.silentDays, say: (v) => `the no-send threshold starts at ${v} days (14, 30, 60 and 90 are one click away)` } } },
   "health-reasons": { knobs: { showExpected: { kind: "boolean", default: () => false, say: (v) => (v ? "expected failures are shown from the start" : "expected failures are behind a toggle") } } },
-  "health-schedules": { knobs: { staleAfterDays: { kind: "whole", min: 1, max: 3660, default: (spec) => spec.freshness.maxAgeDays, say: (v) => `a schedule documented more than ${v} days before the pull is marked stale` } } },
+  // The doc-age mark's default is its own number (45), not the spec's freshness, which the pages no longer read (ruled 2026-10-12).
+  "health-schedules": { knobs: { staleAfterDays: { kind: "whole", min: 1, max: 3660, default: () => SCHEDULE_DOC_AGE_DAYS, say: (v) => `a schedule documented more than ${v} days before the pull is marked stale` } } },
   "health-one-time": { knobs: { months: { kind: "whole", min: 1, max: 36, default: () => 6, say: (v) => `each program's sends over the last ${v} months` } } },
 });
 // The templates view (TPL-2): the one knobbed type of the templates tab, checked and described like the health four.
@@ -470,8 +473,10 @@ export const SPEC_DESCRIPTIONS = Object.freeze([
       ...presetPanels(p).map((pn) => `  ${describePanel(s, pn)}`),
     ]),
   },
-  { covers: ["freshness.maxAgeDays"], label: "Freshness", say: (s) => [`A page shows a stale banner once its data is more than ${plural(s.freshness.maxAgeDays, "day")} old.`] },
-  { covers: ["refresh.cadence", "refresh.ownerNote"], label: "Refresh", say: (s) => [`Refreshed ${CADENCES[s.refresh.cadence] ?? s.refresh.cadence}; a refresh can also be run at any time.${s.refresh.ownerNote ? ` ${s.refresh.ownerNote}` : ""}`] },
+  // Kept in the contract, read by nothing (ruled 2026-10-12, F-511 ruling 11): refreshes are manual, and the pages say
+  // when the data was pulled instead of showing a staleness banner. The About tab does not list these two.
+  { covers: ["freshness.maxAgeDays"], label: "Freshness", say: (s) => [`${plural(s.freshness.maxAgeDays, "day")}; not read by the pages, which say when their data was pulled instead.`] },
+  { covers: ["refresh.cadence", "refresh.ownerNote"], label: "Refresh", say: (s) => [`${CADENCES[s.refresh.cadence] ?? s.refresh.cadence}; not read: refreshes are run by hand, whenever new numbers are wanted.${s.refresh.ownerNote ? ` ${s.refresh.ownerNote}` : ""}`] },
   { covers: ["publish.target", "publish.config"], label: "Publishing", say: (s) => [s.publish.target === "none" ? "Not published anywhere: the pages are files in the workspace." : `Published to ${s.publish.target}.`] },
   { covers: ["native.reports[]"], label: "Gainsight reports", say: (s) => [`${plural(s.native.reports.length, "report")} created in Gainsight from this dashboard.`] },
   // The look (UX-1, additive): what the theme sets and what the validator replaced, in words; the About tab shows it.

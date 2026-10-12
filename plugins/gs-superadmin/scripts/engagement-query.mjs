@@ -392,7 +392,8 @@ export function categoryTable(part, extra = []) {
 /** @type {ReadonlyArray<{kind: "mailto"|"unsubscribe", re: RegExp}>} */
 export const NON_CONTENT_LINK_RULES = Object.freeze([
   { kind: "mailto", re: /^mailto:/i },
-  { kind: "unsubscribe", re: /unsubscribe|opt[-_]?out|email[-_]?preferences|manage[-_]?preferences/i },
+  // The singular as well (2026-10-12, measured at S5-V: Gainsight's own preference-page token is MANAGE_PREFERENCE_PAGE).
+  { kind: "unsubscribe", re: /unsubscribe|opt[-_]?out|email[-_]?preferences?|manage[-_]?preferences?/i },
 ]);
 // R19: what a template's own link settings say about click tracking, read from
 // its `jo email template --id` payload at the sanctioned describe by doc-lib's

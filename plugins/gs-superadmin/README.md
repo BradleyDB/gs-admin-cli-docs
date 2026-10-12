@@ -98,7 +98,7 @@ skill from the catalog below, e.g.:
 | [`/gs-superadmin:deprecate`](#deprecate-an-asset) | Walk an asset through the deprecation checklist | slash only |
 | [`/gs-superadmin:change-request`](#plan--execute-a-config-change) | Turn a ticket or request into a reviewable, KB-cited implementation plan | slash only |
 | [`/gs-superadmin:email-report`](#report-on-jo-emails--schedules) | Read-only Journey Orchestrator email & schedule reports (4 modes) | slash + natural language |
-| [`/gs-superadmin:email-engagement`](#report-on-email-engagement) | Read-only open-rate and engagement report across JO programs from the tenant's send log, and an engagement dashboard built once and pulled again on a cadence | slash + natural language |
+| [`/gs-superadmin:email-engagement`](#report-on-email-engagement) | Read-only open-rate and engagement report across JO programs from the tenant's send log, and an engagement dashboard built once and pulled again by hand whenever new numbers are wanted | slash + natural language |
 | [`/gs-superadmin:deps-report`](#tenant-wide-dependency-search) | Tenant-wide "what depends on this object/field/connection?" impact analysis | slash + natural language |
 | [`/gs-superadmin:report-bug`](#report-a-cli-bug-upstream) | Capture a `gs-admin` CLI misbehavior as a vendor-ready bug report | slash only |
 
@@ -324,27 +324,32 @@ that program is the place; this skill is for the comparisons the UI cannot make.
 ```
 
 Set a dashboard up once and pull it again when needed, instead of calling a skill for every
-question. `dashboard new` is an interview, one question at a time: the decision the
-dashboard supports, who reads it (admins get every tab and per-email detail; leaders get the
-headline figures, charts and programs by group), which programs (those that sent since a
-date first), how to group them (proposed from the programs' characteristics, or by folder,
-or a naming convention), the company's own domains and test accounts (company records, by
-id or name, never addresses), the unsubscribe link, the reporting window (rolling, fixed, or
-since a month) with the first pull's cost, the cadence, the optional metrics with their
-tracking states, the look (brand guidelines as a file or pasted values, or the output of
-your own brand skill; a logo from a local PNG or JPEG), the tabs per page with the minutes
-the Health tab adds, whether the leaders' copy may name customers, the customer lists (off by
-default, with their cost), step detail, a dry run rendered as preview pages, the estimate
-against your login, and the save with the first pull. `--fast-path` takes every default and
-asks only for the estimate and the save. Everything mechanical runs through one command,
+question. `dashboard new` is an interview, one question at a time, in an admin's terms: it
+opens by saying which tenant the dashboard is for, then asks which programs (those that sent
+in the last 90 days by default), which months the pages cover (rolling, fixed, or since a
+month, with this tenant's minutes per month), how to group the programs (proposed from
+their characteristics, or by folder, or a naming convention), the company's own domains and
+test accounts (company records, by name or GSID, never addresses), the unsubscribe link, two
+health settings, the look (brand guidelines as a file or pasted values; a logo from a local
+PNG or JPEG), the tabs per page with the minutes the Health tab adds, the customer lists
+(off by default, with their cost) and, when they are on, whether the leaders' page may carry
+them with names and how the lists are built, step detail with its minutes, and the
+tenant's own expected failure reasons. It closes with one step: the full refresh's calls
+and minutes against your login, and the choice to save and refresh now, run a dry run
+first (preview pages on real data), save only, or go back. Every option is a plain choice;
+a value an option needs (a date, a number of months, a list of names) is asked for on its
+own. `--fast-path` takes every question's default and goes straight to the closing step.
+Everything mechanical runs through one command,
 `node .gs-superadmin/plugin/scripts/dashboard.mjs`, with no model in the loop: the skill is
 its front door, and the command works on its own.
 
 The pages are self-contained HTML files under `<slug>/dashboards/<name>/` (`latest-admin.html`,
 `latest-exec.html`), with global filters (months, a searchable program list, groups, status,
 internal recipients), tabs (Engagement, Health, Templates, About), charts, sortable tables
-with a CSV download, and an About tab generated from the dashboard's own settings. Thirteen
-snapshots are kept beside them.
+with a CSV download, and an About tab that opens with what the dashboard is and is generated
+from the dashboard's own settings. The header says when the data was pulled and how many
+days ago, and that the pages are not live: they change only when the dashboard is refreshed,
+by hand. Thirteen snapshots are kept beside them.
 
 **Pulling again.** A refresh checks that the CLI is on the dashboard's tenant before any
 call (a production dashboard is never refreshed from a sandbox), holds your login's
@@ -364,8 +369,9 @@ pages untouched and resumes on the next run.
   node .gs-superadmin/plugin/scripts/dashboard.mjs refresh program-health
   ```
 
-- **Health only, between cadences** (a few minutes: the current month and the health
-  families are read again, the rest carried):
+- **Health only, between full refreshes** (the current month and the health families are
+  read again, the rest carried; on a tenant with many bounce categories the health calls
+  are most of the time, so this is shorter than a full refresh but not by much):
 
   ```bash
   node .gs-superadmin/plugin/scripts/dashboard.mjs refresh program-health --health-only

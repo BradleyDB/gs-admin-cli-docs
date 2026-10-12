@@ -362,7 +362,8 @@ try {
         const other = structuredClone(base);
         other.freshness.maxAgeDays = 7;
         const diff = describeSpec(other).filter((d, i) => !isDeepStrictEqual(d.text, said[i].text)).map((d) => d.label);
-        return isDeepStrictEqual(diff, ["Freshness"]) && /more than 7 days old/.test(describeSpec(other).find((d) => d.label === "Freshness").text[0]);
+        // Freshness is kept in the contract and read by nothing (ruled 2026-10-12): its sentence says so, with the value.
+        return isDeepStrictEqual(diff, ["Freshness"]) && /^7 days; not read by the pages/.test(describeSpec(other).find((d) => d.label === "Freshness").text[0]) && /not read: refreshes are run by hand/.test(said.find((d) => d.label === "Refresh").text[0]);
       })(), said.filter((d) => !d.text.length));
     check("every value of an enum has its meaning as data: adapters, filters, tabs, cadences, panel types, presets — and a panel's metrics are the engine's own registry",
       [ADAPTERS, FILTERS, TABS, CADENCES, PANEL_TYPES].every((e) => Object.values(e).every((m) => typeof m === "string" && m.length > 5)) && Object.values(PRESETS).every((p) => p.meaning.length > 10 && isDeepStrictEqual(Object.keys(p.page.tabs), Object.keys(TABS))) &&

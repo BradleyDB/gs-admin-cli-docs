@@ -244,7 +244,7 @@ Attempts with at least one click on a content link. Unsubscribe and mailto links
 - Filters on every count: Source = "Advanced Outreach"; AddressType = "To"
 - Date field: ExecutedDate
 - Calculation: COUNT of rows
-- After the read: Each clicked link is classified after the read. A link is not content when it matches /^mailto:/ (mailto) or /unsubscribe|opt[-_]?out|email[-_]?preferences|manage[-_]?preferences/ (unsubscribe); every other link is content.
+- After the read: Each clicked link is classified after the read. A link is not content when it matches /^mailto:/ (mailto) or /unsubscribe|opt[-_]?out|email[-_]?preferences?|manage[-_]?preferences?/ (unsubscribe); every other link is content.
 - After the read: This pull also treated links on www.acme.com/mail-settings as unsubscribe links (the --unsubscribe-link input).
 - Per-step rows are read from: ao_emails: EmailClicked = true, kept only where the same send has a content-link click in email_log_v2; filter AddressType = "To"; date field CreatedAt
 - Against the Gainsight UI: Will rarely match Gainsight, whose clicked figure also counts unsubscribe and mailto clicks.

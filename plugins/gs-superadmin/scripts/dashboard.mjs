@@ -15,11 +15,18 @@
 //
 // Verbs (each prints ONE JSON summary; exit codes below):
 //   new <slug> [--fast-path] [--title <t>] [--owner <o>]
-//                        a draft from the defaults; the fast path answers every
-//                        question but the estimate with the defaults
-//   next <slug>          the next unanswered question of the QUESTIONS table,
-//                        with its options and what it needs handed over (a
-//                        judgment node's input file, the minutes a switch costs)
+//                        a draft from the defaults; the fast path has `next`
+//                        answer every question but the closing step with the
+//                        question's own default, through its own apply (F-512)
+//   next <slug> [--question <id>]
+//                        the next unanswered question of the QUESTIONS table,
+//                        with its options (a placeholder option with its
+//                        follow-ups) and what it needs handed over (a judgment
+//                        node's input file, the minutes a switch costs); the
+//                        tenant statement the first time; the closing step's
+//                        block once every setting is answered; --question <id>
+//                        one settled question again (the closing step's "go
+//                        back"), changing nothing
 //   answer <slug> <id> <value>
 //                        validates through the spec writer, writes, marks the
 //                        ask-once key; an action question acts (the dry run, the
@@ -32,7 +39,8 @@
 //                        --dry-run prints and stops
 //   save <slug>          the draft becomes the saved spec
 //   list                 saved dashboards and drafts (a draft with its holder and date)
-//   status <slug>        the last pull, its age, the next due by cadence, the lock
+//   status <slug>        the last pull and its age, the lock, a stopped run (no
+//                        "next due": refreshes are manual, ruled 2026-10-12)
 //   refresh <slug> [--full] [--health-only]
 //                        the pull (token pre-flight, the tenant check, the lock,
 //                        re-documentation, the adapter, groups, retention, pages,
@@ -46,7 +54,9 @@
 //   health <slug> --program <id>
 //                        a program's masked messages and the "Other" samples,
 //                        to the terminal (never a page)
-//   costs | questions    the two tables, as data, for a reader
+//   costs | questions    the two tables, as data, for a reader (the asks and
+//                        options with the ruled placeholder letters where a
+//                        figure comes from the plan)
 //
 // Common flags: --kb <tenant KB folder> (else the one KB of the workspace),
 // --workspace <dir>, --bin <gs-admin entry>, --by <holder>, --take-over,
@@ -84,11 +94,10 @@ import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { isDeepStrictEqual } from "node:util";
 import { makeCliHelpers, findWorkspaceDir, findWorkspaceCatalog, makeCommandResolver, resolveCliArgv, readJsonFile, writeFileAtomicSync, isMainModule, readKbIdentity, cmpKey, RECORDED_LANES } from "./doc-lib.mjs";
 import { printable } from "./journal-lib.mjs";
 import {
-  specStore, SpecRefusal, holderName, openSpec, SPEC_DESCRIPTIONS, PRESETS, TABS, CADENCES, FRESHNESS_BY_CADENCE, DEFAULT_ACCOUNT_LISTS,
+  specStore, SpecRefusal, holderName, openSpec, SPEC_DESCRIPTIONS, PRESETS, TABS, DEFAULT_ACCOUNT_LISTS, defaultSpec,
   accountLists, accountFields, kbSettings, windowOf, presetPanels,
 } from "./dashboard-spec.mjs";
 import { resolveParams, prepareRun, fetchEngagement, reduceEngagement, loadRun, cliTransport, makeGate, parseWhoami, addMonths, monthsBetween, EngagementRefusal, ROW_READERS, rpRunArgv } from "./engagement.mjs";
@@ -115,12 +124,13 @@ export const KEEP_SNAPSHOTS = 13;
 export const LOCK_STALE_MS = 2 * 60 * 60 * 1000;
 // The tenant's own failure-category file, beside the KB's manifest (a spec holds no path): passed to the adapter when present.
 export const CATEGORIES_FILE = "failure-categories.json";
-// The cadence in days, for "next due" and the freshness line.
-export const CADENCE_DAYS = Object.freeze({ weekly: 7, monthly: 30, quarterly: 91, manual: null });
+// Refreshes are manual (ruled 2026-10-12, F-511 ruling 11): no cadence is read here, no "next due" is computed, and
+// the spec's refresh.cadence and freshness.maxAgeDays stay in T-11 unread.
 export class DashboardRefusal extends Error {
-  constructor(message, code = "failed") { super(message); this.code = code; }
+  /** @param {string} message @param {string} [code] @param {Record<string, *>} [details] fields the failure summary carries beside the error */
+  constructor(message, code = "failed", details = {}) { super(message); this.code = code; this.details = details; }
 }
-const refuse = (msg, code = "failed") => { throw new DashboardRefusal(msg, code); };
+const refuse = (msg, code = "failed", details = {}) => { throw new DashboardRefusal(msg, code, details); };
 const isText = (v) => typeof v === "string" && v.trim() !== "";
 const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 const minutesOf = (seconds) => (seconds == null ? null : Math.max(1, Math.round(seconds / 60)));
@@ -260,55 +270,108 @@ export function changeCost(before, after, { longestPeriodDays = null } = {}) {
   return { changed, consequence };
 }
 
-// ── The questions table (DSH-3, ruled 2026-10-05) ────────────────────────────
-// One row per question, as DATA: its id (the ask-once key), its wording in the user's terms, its kind, its options
-// (static, or from the context), the spec path it fills, a skip rule, and whether it is a JUDGMENT node (prose
-// decides; the script hands over the input and takes the answer back). The script decides order, validation,
-// skipping and ask-once; the skill reads the question aloud and passes the answer back. `apply(value, ctx)` returns
-// the sets for the spec writer (which validates the whole draft) and anything to say back.
-const listValue = (v) => (Array.isArray(v) ? v : typeof v === "string" && v.trim().startsWith("[") ? JSON.parse(v) : String(v ?? "").split(",").map((s) => s.trim()).filter(Boolean));
+// ── The questions table (DSH-3, ruled 2026-10-05; every wording ruled 2026-10-12 at S5-V's I0, F-511) ──
+// One row per question, as DATA: its id (the ask-once key), its wording in the user's terms (a string, or a function
+// of the context when the ask quotes the plan's minutes), its kind, its options (from the context), the spec path it
+// fills, a skip rule, whether it is a JUDGMENT node (prose decides; the script hands over the input and takes the
+// answer back), and its DEFAULT: the option the ask names as the default, which the fast path applies through the
+// same `apply` the interview uses (F-512: one source for a default, never two). The script decides order,
+// validation, skipping and ask-once; the skill reads the question aloud and passes the answer back. `apply(value,
+// ctx)` returns the sets for the spec writer (which validates the whole draft) and anything to say back.
+//
+// Placeholder options (F-511 ruling 6): an option whose id holds `<key>` carries `followUps`, one per value it needs
+// ({key, kind, ask}); the skill asks each in turn and COMPOSES the value by replacing every `<key>` in the id with the
+// answer (a `list` follow-up's lines as a JSON list, a `boolean` as true or false), so the admin never sees the id
+// grammar. `composeAnswer` is that rule, as code, for the suite and for a reader.
+const listValue = (v) => (Array.isArray(v) ? v : typeof v === "string" && v.trim().startsWith("[") ? JSON.parse(v) : String(v ?? "").split(/[,\n]/).map((s) => s.trim()).filter(Boolean));
+const noneValue = (v) => (Array.isArray(v) ? v.length === 0 : ["none", "", "[]"].includes(String(v ?? "").trim().toLowerCase()));
 const boolValue = (v) => { const s = String(v).trim().toLowerCase(); if (["yes", "y", "true", "on"].includes(s)) return true; if (["no", "n", "false", "off"].includes(s)) return false; refuse(`"${printable(String(v), 40)}" is not yes or no`); };
 const jsonValue = (v) => { if (typeof v !== "string") return v; try { return JSON.parse(v); } catch { return refuse(`the value is not JSON: ${printable(v, 80)}`); } };
+const wholeValue = (v, what, min = 0) => { const n = Number(String(v).trim()); if (!Number.isInteger(n) || n < min) refuse(`${what} must be a whole number${min ? ` of at least ${min}` : ""} (got "${printable(String(v), 20)}")`); return n; };
 const secondsText = (s) => (s == null ? "an unknown time (no plan yet)" : `about ${plural(minutesOf(s), "minute")}`);
+/** Minutes with one decimal under ten (a per-month rate on a small tenant is often under a minute). */
+const minutesFine = (seconds) => { const m = seconds / 60; return m >= 10 ? String(Math.round(m)) : String(Math.max(0.1, Math.round(m * 10) / 10)); };
 /**
  * What the bounce categories cost a refresh with Health on, said plainly from the plan (F-504: calls multiply by the
- * recipient classes — all, each internal domain, the test accounts, the test accounts on each domain).
+ * recipient classes — all, each internal domain, the test accounts, the test accounts on each domain). Quoted on the
+ * tabs question (ruled 2026-10-12: K4's quote lives there).
  * @param {?{categoryCalls?: {bounce: {categories: number, classes: number, calls: number, seconds: number}}}} health estimate.health
  */
-const categoryCostText = (health) => {
+export const categoryCostText = (health) => {
   const b = health?.categoryCalls?.bounce;
   if (!b || !b.categories) return "";
   return ` The ${plural(b.categories, "bounce category", "bounce categories")} in the workspace's category file cost ${plural(b.calls, "counted call")} a refresh (${b.categories} × ${plural(b.classes, "recipient class", "recipient classes")}: all, each internal domain, the test accounts, and the test accounts on each domain; ${secondsText(b.seconds)}).`;
 };
 const execPage = (spec) => spec.pages.findIndex((p) => p.preset === "exec");
-const tabsOf = (spec) => spec.pages.map((pg) => ({ page: pg.id, preset: pg.preset, health: pg.tabs.find((t) => t.id === "health").enabled, templates: pg.tabs.find((t) => t.id === "templates").enabled }));
+const pageTitle = (pg) => (pg.preset === "exec" ? "leaders'" : "admin");
+/** The ruled placeholder letter when the plan has not priced a figure yet (the `questions` verb; never at `next`, which plans first). */
+const N = (plan, pick, letter) => { const v = plan ? pick(plan) : null; return v == null ? letter : v; };
+const mins = (plan, pick, letter) => { const v = plan ? pick(plan) : null; return v == null ? `about ${letter} minutes` : `about ${plural(minutesOf(v), "minute")}`; };
+/** The characteristic rules the group proposal leads with, from the plan's program list (F-512: the fast path's grouping). */
+export function defaultGroupRules(programs) {
+  const models = new Map();
+  for (const p of programs ?? []) if (p.model) models.set(p.model, p.modelName ?? p.model);
+  return {
+    rules: [
+      { kind: "characteristic", level: "supergroup", characteristic: "recurring", is: true, label: "Recurring" },
+      { kind: "characteristic", level: "supergroup", characteristic: "recurring", is: false, label: "One-off" },
+      ...[...models.entries()].sort((a, b) => cmpKey(a[0], b[0])).map(([model, label]) => ({ kind: "characteristic", level: "group", characteristic: "model", is: model, label })),
+    ],
+    overrides: {},
+  };
+}
+/**
+ * The follow-up rule as code: every `<key>` in the option's id replaced by its answer (a list as a JSON list, a
+ * boolean as true or false, a number or text as written). A list answered "none" is the empty list.
+ * @param {{id: string, followUps?: Array<{key: string, kind: string}>}} option
+ * @param {Record<string, *>} answers by key
+ */
+export function composeAnswer(option, answers) {
+  let out = option.id;
+  for (const f of option.followUps ?? []) {
+    if (!(f.key in answers)) refuse(`the follow-up "${f.key}" of ${option.id} has no answer`);
+    const a = answers[f.key];
+    const text = f.kind === "list" ? JSON.stringify(noneValue(a) ? [] : listValue(a)) : f.kind === "boolean" ? String(boolValue(a)) : String(a).trim();
+    out = out.split(`<${f.key}>`).join(text);
+  }
+  return out;
+}
+/** The closing step (ruling 19): the three action rows read as ONE step, with the estimate, the login and the manual-refresh statement. */
+export const CLOSING_ASK = (ctx) => {
+  const e = ctx?.plan?.estimate ?? null;
+  const left = ctx?.tokenSecondsLeft ?? e?.token?.expiresInSeconds ?? null;
+  const fits = e && left != null ? e.full.seconds + 30 <= left : null;
+  const login = left == null ? "your login has about T minutes left" : fits ? `your login has about ${plural(minutesOf(left), "minute")} left` : `your login has about ${plural(minutesOf(left), "minute")} left: not enough for the full refresh, so log in again before it runs`;
+  return `Ready to save. A full refresh with these settings is about ${N(e, (x) => x.full.calls, "N")} calls and ${mins(e, (x) => x.full.seconds, "M")} on this tenant; ${login}. Refreshes are manual: you run the refresh command whenever you want new numbers, or schedule it yourself on your own machine (the README has the recipe; it needs a login within the hour). The pages always show when the data was pulled.`;
+};
+/** A dry run's minutes: the full pull less what customer lists, health and step detail add (the preview pulls none of them). */
+const dryRunSeconds = (e) => (e ? Math.max(60, e.full.seconds - (e.accounts?.on ? e.accounts.addsSeconds : 0) - (e.health?.on ? e.health.addsSeconds : 0) - (e.stepDetail?.on ? e.stepDetail.addsSeconds : 0)) : null);
+export const CLOSING_OPTIONS = (ctx) => {
+  const e = ctx?.plan?.estimate ?? null;
+  const dryDone = (ctx?.answered ?? []).includes("dry-run");
+  return [
+    { id: "save-now", text: `Save and run the first refresh now (${mins(e, (x) => x.full.seconds, "M")})`, answers: [["dry-run", "no"], ["estimate", "yes"], ["save", "yes"]] },
+    ...(dryDone ? [] : [{ id: "dry-run", text: `Run a dry run first (a quick program-level pull, ${mins(e, dryRunSeconds, "D")}, rendered as preview pages)`, answers: [["dry-run", "yes"]] }]),
+    { id: "save-only", text: "Save only, refresh later", answers: [["dry-run", "no"], ["estimate", "yes"], ["save", "later"]] },
+    { id: "go-back", text: "Go back and change a setting", answers: [] },
+  ];
+};
 export const QUESTIONS = Object.freeze([
   {
     id: "tenant", kind: "preflight", path: "tenantHost", judgment: false,
-    ask: "Which tenant is this dashboard for? The CLI's active tenant must be the one the knowledge base belongs to.",
+    // A statement, said to the user at the start of `dashboard new` (ruling 1): `next` confirms the host and returns it filled in.
+    ask: "This dashboard is for <tenant>, the CLI's active tenant, whose knowledge base it reads.",
     options: () => [],
+    say: (host) => `This dashboard is for ${host}, the CLI's active tenant, whose knowledge base it reads.`,
   },
   {
-    id: "purpose", kind: "text", path: "purpose", judgment: true,
-    ask: "What decision should this dashboard support? Say it in a sentence or two, in your own words (it is shown on the About tab).",
-    options: () => [],
-    apply: (v) => ({ sets: [["purpose", String(v).trim()]] }),
-  },
-  {
-    id: "audiences", kind: "choice", path: "pages[]", judgment: false,
-    ask: "Who reads it? Admins get a page with every tab and per-email detail; leaders get a page with the headline figures, charts and the programs by group.",
-    options: () => [{ id: "both", text: "Admins and leaders: one page each (the default)" }, { id: "admins", text: "Admins only" }, { id: "leaders", text: "Leaders only" }],
-    apply: (v, ctx) => {
-      const keep = v === "both" ? ["admin", "exec"] : v === "admins" ? ["admin"] : v === "leaders" ? ["exec"] : refuse(`"${v}" is not one of both, admins, leaders`);
-      return { sets: [["pages", ctx.spec.pages.filter((pg) => keep.includes(pg.preset))]] };
-    },
-  },
-  {
-    id: "programs", kind: "choice", path: "sources[].params.selector", judgment: false,
-    ask: "Which programs? The cheapest way to cut a big tenant down is programs that have sent since a date; otherwise every program that sent in the window, or named programs.",
+    id: "programs", kind: "choice", path: "sources[].params.selector", judgment: false, default: "sent-90d",
+    ask: "Which programs go on the dashboard? By default, every program that sent in the last 90 days. You can widen that to 180 days or a year, take every program that sent in the reporting period, start from a date, or name the programs. This chooses the programs; the next question chooses the months the pages cover.",
     options: () => [
-      { id: "sent-90d", text: "Programs that sent in the last 90 days (the default)" }, { id: "sent-180d", text: "Programs that sent in the last 180 days" }, { id: "sent-365d", text: "Programs that sent in the last year" },
-      { id: "window", text: "Every program with a send in the reporting window" }, { id: "since:<YYYY-MM-DD>", text: "Programs that sent since a date you give" }, { id: "names:<JSON list>", text: "Named programs (exact names or ids, as a JSON list)" },
+      { id: "sent-90d", text: "The last 90 days (the default)" }, { id: "sent-180d", text: "180 days" }, { id: "sent-365d", text: "The last year" },
+      { id: "window", text: "Every program that sent in the reporting period" },
+      { id: "since:<date>", text: "Since a date you give", followUps: [{ key: "date", kind: "text", ask: "Which date? Programs that sent on or after it are included (YYYY-MM-DD)." }] },
+      { id: "names:<programs>", text: "Named programs (names or ids, one per line)", followUps: [{ key: "programs", kind: "list", ask: "Which programs? Give their names or ids, one per line." }] },
     ],
     apply: (v) => {
       const s = String(v).trim();
@@ -317,11 +380,43 @@ export const QUESTIONS = Object.freeze([
       if (/^sent-\d+d$/.test(s)) return sel(s.slice(5));
       if (s.startsWith("since:")) return sel(s.slice(6).trim());
       if (s.startsWith("names:")) return sel(null, listValue(s.slice(6).trim()));
-      return refuse(`"${printable(s, 40)}" is not one of the options (sent-90d, sent-180d, sent-365d, window, since:<date>, names:<list>)`);
+      return refuse(`"${printable(s, 40)}" is not one of the options (sent-90d, sent-180d, sent-365d, window, since:<date>, names:<programs>)`);
     },
   },
   {
-    id: "grouping", kind: "json", path: "groups", judgment: true, needsPlan: true,
+    // Directly after the programs (ruling 5); the plan it needs is the one the grouping proposal reads too.
+    id: "window", kind: "choice", path: "sources[].params.window.kind", judgment: false, needsPlan: true, default: "rolling:13",
+    ask: (ctx) => {
+      const e = ctx?.plan?.estimate ?? null;
+      const months = ctx?.params ? monthsBetween(ctx.params.from, ctx.params.to).length : 13;
+      const perMonth = e && months ? e.full.seconds / months : null;
+      const M = perMonth == null ? "M" : minutesFine(perMonth);
+      const N13 = perMonth == null ? "N" : String(minutesOf(perMonth * 13));
+      const two = perMonth == null ? "24 × M" : String(minutesOf(perMonth * 24));
+      return `Which months should the pages cover? By default the last 12 full months plus the current one, moving forward with each refresh. You can cover a set number of months instead, fix a start and end month that never move, or take everything from a start month up to now. On this tenant a first pull takes about ${M} minutes for each month covered, so the default's 13 months is about ${N13} minutes and two years would be about ${two} minutes. Later refreshes re-pull only recent months, so they are much shorter whatever you choose.`;
+    },
+    options: (ctx) => {
+      const e = ctx?.plan?.estimate ?? null;
+      const months = ctx?.params ? monthsBetween(ctx.params.from, ctx.params.to).length : 13;
+      const n13 = e && months ? `about ${plural(minutesOf((e.full.seconds / months) * 13), "minute")}` : "about N minutes";
+      return [
+        { id: "rolling:13", text: `The last 12 full months plus this one, moving with each refresh (the default, ${n13})` },
+        { id: "rolling:<months>", text: "The last N months, moving with each refresh", followUps: [{ key: "months", kind: "number", ask: "How many months, counting the current one?" }] },
+        { id: "fixed:<from>:<to>", text: "A fixed start month and end month", followUps: [{ key: "from", kind: "text", ask: "The start month? (YYYY-MM)" }, { key: "to", kind: "text", ask: "The end month? (YYYY-MM)" }] },
+        { id: "since:<from>", text: "Everything from a start month up to now", followUps: [{ key: "from", kind: "text", ask: "The start month? (YYYY-MM)" }] },
+      ];
+    },
+    apply: (v) => {
+      const s = String(v).trim();
+      const m = s.match(/^(rolling):(\d+)$/) ?? s.match(/^(fixed):(\d{4}-\d{2}):(\d{4}-\d{2})$/) ?? s.match(/^(since):(\d{4}-\d{2})$/);
+      if (!m) refuse(`"${printable(s, 40)}" is not rolling:<months>, fixed:<from>:<to> or since:<from> (months as YYYY-MM)`);
+      if (m[1] === "rolling") return { sets: [["sources.0.params.window", { kind: "rolling" }], ["sources.0.params.windowMonths", Number(m[2])]] };
+      if (m[1] === "fixed") return { sets: [["sources.0.params.window", { kind: "fixed", from: m[2], to: m[3] }]] };
+      return { sets: [["sources.0.params.window", { kind: "since", from: m[2] }]] };
+    },
+  },
+  {
+    id: "grouping", kind: "json", path: "groups", judgment: true, needsPlan: true, default: (ctx) => JSON.stringify(defaultGroupRules(ctx.programs)),
     ask: "Is there an organizational structure to follow: folders, a naming convention, a program field? If not, groups are proposed from the programs' characteristics (surveys, recurring or one-off, model, audience) in two levels, for you to confirm or edit as a table. Folder names are not available from Gainsight: a folder group shows its id until you label it.",
     options: () => [{ id: "<JSON {rules, overrides?}>", text: "The group rules as proposed or edited (the script writes them)" }, { id: "none", text: "No grouping: every program in one group" }, { id: "folders:<JSON {id: label}>", text: "Group by folder, with the labels you give (names are unavailable)" }],
     input: (ctx) => ({ suggestionFile: ctx.suggestionFile }),
@@ -341,115 +436,79 @@ export const QUESTIONS = Object.freeze([
     },
   },
   {
-    id: "internal-domains", kind: "list", path: "sources[].params.internalDomains[]", judgment: false,
-    ask: "Which email domains are the company's own? Recipients on them are internal, and the pages can leave them out. Give a comma-separated list, or none. Each domain adds one counted call per bounce category to a refresh with Health on (the estimate says how many).",
-    options: () => [{ id: "<domains>", text: "acme.com, acme.co.uk" }, { id: "none", text: "No internal domain: every recipient counts as external (a caveat says so)" }],
-    apply: (v) => ({ sets: [["sources.0.params.internalDomains", String(v).trim().toLowerCase() === "none" ? [] : listValue(v)]] }),
+    id: "internal-domains", kind: "list", path: "sources[].params.internalDomains[]", judgment: false, default: "none",
+    ask: "Which email domains are the company's own? Recipients on them are internal, and the pages can leave them out. List them, or say none. Each domain you list adds a few minutes to every refresh with Health on once this tenant has bounce categories (about 3 minutes per domain where this was measured).",
+    options: () => [{ id: "<domains>", text: "List the company's domains", followUps: [{ key: "domains", kind: "list", ask: "Which domains? One per line (acme.com)." }] }, { id: "none", text: "None: every recipient counts as external (a caveat says so)" }],
+    apply: (v) => ({ sets: [["sources.0.params.internalDomains", noneValue(v) ? [] : listValue(v)]] }),
   },
   {
-    id: "test-accounts", kind: "list", path: "sources[].params.testAccounts[]", judgment: false,
-    ask: "Are there test accounts: company records (an \"Acme Test\" account whose contacts are employees' alternate addresses) whose sends should count as internal? Give company ids, or names as name:<the account's name> (looked up once; several matches are shown, never guessed). Never email addresses. Test accounts add one counted call per bounce category, and one more per internal domain, to a refresh with Health on.",
-    options: () => [{ id: "<ids or name:...>", text: "co-123, name:Acme Test" }, { id: "none", text: "No test account" }],
+    id: "test-accounts", kind: "list", path: "sources[].params.testAccounts[]", judgment: false, default: "none",
+    ask: "Are there test accounts whose sends should count as internal? A test account is a company record in Gainsight (an \"Acme Test\" account whose contacts are employees' alternate addresses), not an email address. Name the accounts or give their company GSIDs, or say none; a name is looked up once, and if it matches more than one account you pick. Test accounts add a few minutes to every refresh with Health on once this tenant has bounce categories, a little more for each internal domain.",
+    options: () => [
+      { id: '{"ids": <ids>, "names": <names>}', text: "Name the accounts, or give their company GSIDs", followUps: [{ key: "ids", kind: "list", ask: "The company GSIDs of the test accounts, one per line (or none)." }, { key: "names", kind: "list", ask: "The names of test accounts to look up, one per line (or none)." }] },
+      { id: "none", text: "None" },
+    ],
     apply: (v, ctx) => {
-      if (String(v).trim().toLowerCase() === "none") return { sets: [["sources.0.params.testAccounts", []]] };
-      const given = listValue(v);
+      if (noneValue(v)) return { sets: [["sources.0.params.testAccounts", []]] };
+      const s = typeof v === "string" ? v.trim() : v;
+      // The composed form ({ids, names}); the written form (ids and name:<name>, comma-separated) is still read.
+      const j = typeof s === "string" && s.startsWith("{") ? jsonValue(s) : typeof s === "object" ? s : null;
+      const given = j ? [...listValue(j.ids ?? []), ...listValue(j.names ?? []).map((n) => `name:${n}`)] : listValue(s);
       const ids = [];
       const notes = [];
       for (const g of given) {
         if (!g.startsWith("name:")) { ids.push(g); continue; }
-        const found = ctx.lookupCompany(g.slice(5).trim());
-        if (found.length === 1) { ids.push(found[0].key); notes.push(`"${g.slice(5).trim()}" is ${found[0].key}`); }
-        else refuse(found.length ? `"${g.slice(5).trim()}" matches ${found.length} accounts: ${found.map((f) => `${f.name} (${f.key})`).join("; ")} — give the id` : `no account is named "${g.slice(5).trim()}"`);
+        const name = g.slice(5).trim();
+        const found = ctx.lookupCompany(name);
+        if (found.length === 1) { ids.push(found[0].key); notes.push(`"${name}" is ${found[0].key}`); }
+        else refuse(found.length ? `"${name}" matches ${found.length} accounts: ${found.map((f) => `${f.name} (${f.key})`).join("; ")} — pick one and give its GSID` : `no account is named "${name}"`);
       }
+      if (!ids.length) return { sets: [["sources.0.params.testAccounts", []]] };
       return { sets: [["sources.0.params.testAccounts", [...new Set(ids)].sort(cmpKey)]], notes };
     },
   },
   {
-    id: "unsubscribe-links", kind: "list", path: "sources[].params.unsubscribeLinks[]", judgment: false,
-    ask: "Is an outside domain or a page on the company's own site used for unsubscribes? Without it, a tenant whose unsubscribe link lacks the usual wording has those clicks counted as content clicks. Give the page's link as the emails print it (a bare host names every page on it, so never the company's own domain alone). Changing this later forces a full refresh.",
-    options: () => [{ id: "<links>", text: "https://www.acme.com/mail-settings" }, { id: "none", text: "The usual unsubscribe wordings are enough" }],
-    apply: (v) => ({ sets: [["sources.0.params.unsubscribeLinks", String(v).trim().toLowerCase() === "none" ? [] : listValue(v)]] }),
+    id: "unsubscribe-links", kind: "list", path: "sources[].params.unsubscribeLinks[]", judgment: false, default: "none",
+    ask: "Does the company use a page of its own, or an outside service, for unsubscribe links? Click rate counts clicks on content links only, so the unsubscribe link has to be told apart. Any link whose address contains \"unsubscribe\", \"opt-out\" or \"preferences\" is recognised on its own, which covers Gainsight's standard link; you only need to add a page whose address has none of those words, such as `https://www.acme.com/email-settings`. Give the link as it appears in the emails, or say none. Give the page, not the bare domain: `acme.com` alone would exclude every link to the company's site. Changing this later means the next refresh pulls everything again.",
+    options: () => [{ id: "<links>", text: "Give the link as it appears in the emails", followUps: [{ key: "links", kind: "list", ask: "The unsubscribe page's link, as it appears in the emails; one per line if there are several." }] }, { id: "none", text: "None: the standard link is recognised on its own" }],
+    apply: (v) => ({ sets: [["sources.0.params.unsubscribeLinks", noneValue(v) ? [] : listValue(v)]] }),
   },
   {
-    id: "failure-settings", kind: "json", path: "sources[].params.quietDueDays", judgment: false, needsPlan: true,
-    ask: "Two health settings. Due days: how many due days may an ingest run admitting nobody before the program is listed as \"Admitting nobody\" (default 5)? Sample programs: how many programs may a pull sample for failure text, most failures first (default 25)?",
-    options: (ctx) => {
-      const s = ctx.plan?.estimate?.health?.samples;
-      const categories = categoryCostText(ctx.plan?.estimate?.health);
-      const context = s ? `This selection has ${s.participantFailures?.withFailures ?? "an unknown number of"} programs with refused participants and ${s.bounceReasons?.withFailures ?? "an unknown number of"} with bounce text; the cap of ${s.cap} leaves ${(s.participantFailures?.beyondCap ?? 0) + (s.bounceReasons?.beyondCap ?? 0)} unsampled, about ${plural(minutesOf((s.participantFailures?.secondsBeyondCap ?? 0) + (s.bounceReasons?.secondsBeyondCap ?? 0)), "minute")} to read them all.` : "The plan has not priced the samples yet.";
-      return [{ id: "<JSON {quietDueDays, samplePrograms}>", text: `{"quietDueDays": 5, "samplePrograms": 25}. ${context}${categories}` }, { id: "default", text: "5 due days, 25 programs" }];
+    id: "failure-settings", kind: "json", path: "sources[].params.quietDueDays", judgment: false, needsPlan: true, default: "default",
+    ask: (ctx) => {
+      const s = ctx?.plan?.estimate?.health?.samples ?? null;
+      // "Programs with failures": the programs whose refusals or bounce text a pull would read; the two parts are
+      // counted apart by the plan, so the larger part is quoted, never their sum (a program can be in both).
+      const n = s ? Math.max(s.participantFailures?.withFailures ?? 0, s.bounceReasons?.withFailures ?? 0) : null;
+      const sec = s ? (s.participantFailures?.secondsBeyondCap ?? 0) + (s.bounceReasons?.secondsBeyondCap ?? 0) : null;
+      return `Two health settings. How many days may a scheduled program run without admitting anyone before it is listed as "Admitting nobody"? The default is 5 days. Do you want to change that threshold? How many programs should each refresh read failure messages from? The refresh reads a page of the actual failure wordings from the programs with the most failures, so a new wording can be spotted and added to the categories; only programs whose failures changed since the last pull are read again. The default is 25 programs. On this tenant ${n ?? "N"} programs have failures; reading all of them would add ${sec == null ? "about M minutes" : sec === 0 ? "no time" : `about ${plural(minutesOf(sec), "minute")}`} to a first pull. Do you want to change that number?`;
     },
+    options: () => [
+      { id: "default", text: "Keep both defaults: 5 due days, 25 programs (the default)" },
+      { id: "set:<quietDueDays>:<samplePrograms>", text: "Change one or both", followUps: [{ key: "quietDueDays", kind: "text", ask: "How many due days before a program is listed as \"Admitting nobody\"? (a number, or keep)" }, { key: "samplePrograms", kind: "text", ask: "How many programs should each refresh read failure messages from? (a number, or keep)" }] },
+    ],
     apply: (v) => {
-      if (String(v).trim() === "default") return { sets: [["sources.0.params.quietDueDays", 5], ["sources.0.params.samplePrograms", 25]] };
-      const j = jsonValue(v);
+      const s = String(v).trim();
+      if (s === "default") return { sets: [["sources.0.params.quietDueDays", 5], ["sources.0.params.samplePrograms", 25]] };
+      const m = s.match(/^set:([^:]*):([^:]*)$/);
+      if (m) {
+        const keep = (x) => ["", "keep"].includes(x.trim().toLowerCase());
+        return { sets: [["sources.0.params.quietDueDays", keep(m[1]) ? 5 : wholeValue(m[1], "the due days", 1)], ["sources.0.params.samplePrograms", keep(m[2]) ? 25 : wholeValue(m[2], "the number of programs", 0)]] };
+      }
+      const j = jsonValue(s);
       return { sets: [["sources.0.params.quietDueDays", j.quietDueDays ?? 5], ["sources.0.params.samplePrograms", j.samplePrograms ?? 25]] };
     },
   },
   {
-    id: "window", kind: "choice", path: "sources[].params.window.kind", judgment: false, needsPlan: true,
-    ask: "What period should the pages cover? Rolling: the last N months counted back from each refresh. Fixed: a start and end month, the same every refresh. Since: every month from a start month to the current one. A first pull scales with the months covered.",
-    options: (ctx) => {
-      const months = monthsBetween(ctx.params.from, ctx.params.to).length;
-      const sec = ctx.plan?.estimate?.full?.seconds ?? null;
-      const per = sec != null && months ? ` (${secondsText(sec)} for ${plural(months, "month")} on this tenant, about ${plural(minutesOf(sec / months), "minute")} a month)` : "";
-      return [{ id: "rolling:13", text: `Rolling: the last 12 full months plus this one (the default)${per}` }, { id: "rolling:<N>", text: "Rolling: the last N months" }, { id: "fixed:<YYYY-MM>:<YYYY-MM>", text: "Fixed: from a month to a month" }, { id: "since:<YYYY-MM>", text: "Since a month, to the current one (all time from then)" }];
-    },
-    apply: (v) => {
-      const s = String(v).trim();
-      const m = s.match(/^(rolling):(\d+)$/) ?? s.match(/^(fixed):(\d{4}-\d{2}):(\d{4}-\d{2})$/) ?? s.match(/^(since):(\d{4}-\d{2})$/);
-      if (!m) refuse(`"${printable(s, 40)}" is not rolling:<N>, fixed:<YYYY-MM>:<YYYY-MM> or since:<YYYY-MM>`);
-      if (m[1] === "rolling") return { sets: [["sources.0.params.window", { kind: "rolling" }], ["sources.0.params.windowMonths", Number(m[2])]] };
-      if (m[1] === "fixed") return { sets: [["sources.0.params.window", { kind: "fixed", from: m[2], to: m[3] }]] };
-      return { sets: [["sources.0.params.window", { kind: "since", from: m[2] }]] };
-    },
-  },
-  {
-    id: "cadence", kind: "choice", path: "refresh.cadence", judgment: false,
-    ask: "How often is it refreshed? Monthly is the default; a refresh can also be run at any time. The pages show a stale banner after the freshness that follows from the cadence.",
-    options: () => Object.entries(CADENCES).map(([id, text]) => ({ id, text: `${id}: ${text}; stale after ${plural(FRESHNESS_BY_CADENCE[id], "day")}, from your cadence` })),
-    apply: (v, ctx) => {
-      if (!(v in CADENCES)) refuse(`"${v}" is not one of ${Object.keys(CADENCES).join(", ")}`);
-      // Freshness follows the cadence unless it was typed (ruled 2026-10-05).
-      return { sets: [["refresh.cadence", v], ...(ctx.answered.includes("freshness") ? [] : [["freshness.maxAgeDays", FRESHNESS_BY_CADENCE[v]]])], notes: [`stale after ${plural(FRESHNESS_BY_CADENCE[v], "day")}, from your cadence`] };
-    },
-  },
-  {
-    id: "metrics", kind: "json", path: "pages[].panels[]", judgment: false,
-    ask: "Which optional metrics should the pages show? Click rate counts content-link clicks only (never unsubscribe or mailto links), so it rarely matches the Gainsight UI, and click tracking is often off: a tracked 0% is a real 0%, \"Not tracked\" is never shown as 0%, and an unknown state is shown with a marker. Survey responses are per program on the all-time basis. Each can be left off every page.",
-    options: (ctx) => {
-      const avail = ctx.preview?.meta?.metricAvailability;
-      const states = avail ? `From the dry run: click tracking reads ${Object.entries(avail.clicks.programs).reduce((acc, [, p]) => { acc[p.state] = (acc[p.state] ?? 0) + 1; return acc; }, {})["tracked"] ?? 0} program(s) tracked, ${Object.values(avail.clicks.programs).filter((p) => p.state === "not-tracked").length} not tracked, ${Object.values(avail.clicks.programs).filter((p) => p.state === "unknown").length} unknown; surveys on ${Object.values(avail.responses.programs).filter((p) => p.state === "tracked").length} program(s).` : "The tracking states are read from the first pull (or the dry run).";
-      return [{ id: "default", text: `Show both, each with its tracking state (the default). ${states}` }, { id: "<JSON {clicks, responses}>", text: '{"clicks": false, "responses": true} leaves click columns off every page' }];
-    },
-    apply: (v, ctx) => {
-      const want = String(v).trim() === "default" ? { clicks: true, responses: true } : jsonValue(v);
-      const drop = [...(want.clicks === false ? OPTIONAL_METRICS.clicks : []), ...(want.responses === false ? OPTIONAL_METRICS.responses : [])];
-      const sets = [];
-      const notes = [];
-      for (const [i, pg] of ctx.spec.pages.entries()) {
-        const preset = presetPanels({ ...pg, panels: [] });
-        // A page whose panels are the preset, or the preset with optional metrics left off by an earlier answer, is
-        // PRESET-DERIVED: this answer rewrites it from the preset, so a metric left off earlier comes back. A page
-        // whose panels were changed by hand (`change pages.N.panels=…`) keeps them: the answer cannot tell which of
-        // its panels to put back, and says how to start again from the preset.
-        const derived = !pg.panels.length || OPTIONAL_METRIC_DROPS.some((d) => isDeepStrictEqual(pg.panels, panelsWithout(preset, d)));
-        if (!derived) { notes.push(`page ${pg.id} keeps its own panels (changed by hand); to start again from the preset: change <slug> pages.${i}.panels=[]`); continue; }
-        // The preset itself is written as no panels (the page reads the preset's); a drop is written out.
-        const next = drop.length ? panelsWithout(preset, drop) : [];
-        if (!isDeepStrictEqual(pg.panels, next)) sets.push([`pages.${i}.panels`, next]);
-      }
-      notes.unshift(drop.length ? `left off every page: ${drop.join(", ")}` : "every optional metric shown");
-      return { sets, notes };
-    },
-  },
-  {
-    id: "look", kind: "json", path: "theme", judgment: true,
-    ask: "Do you have brand guidelines, or a brand design skill? If not, the default look is used. Brand input arrives as data (a file you name, pasted values, or the output of your own brand skill, which you run); the candidate tokens are extracted from it and stored as the theme; a token that would not read is replaced by the default and shown with the reason; the dry-run preview renders in the theme. A logo comes from a local PNG or JPEG you name, never a URL.",
-    options: () => [{ id: "skip", text: "The default look (the fast path's default; never asked twice)" }, { id: "<JSON theme>", text: '{"colors": {"accent": "#0b57d0", ...}, "series": ["#0b57d0", ...], "font": "Georgia, serif", "radius": 4, "logoFile": "brand/logo.png"}' }, { id: "clear", text: "Back to the default look" }],
+    id: "look", kind: "json", path: "theme", judgment: true, default: "skip",
+    ask: "Do you have brand guidelines to apply to the pages? If not, the default look is used. You can name a guidelines file (markdown, JSON, CSS or a PDF) or paste the values. What a brand can change: the page colours, the chart colours, a system font stack (no web fonts, since the pages make no network request), the corner radius, and a logo from a local PNG or JPEG file. Layout, spacing and the status colours stay as they are. A colour that would not read is replaced by the default and shown with the reason, and the dry-run preview renders in the theme.",
+    // The two brand paths are the prose's: it reads the file or the pasted values, extracts the tokens and answers with the JSON theme; `skip` is the answer as it is; `clear` (an edit) returns the default look.
+    options: () => [{ id: "skip", text: "Skip: use the default look (the default)" }, { id: "file", text: "Name a guidelines file (markdown, JSON, CSS or a PDF)" }, { id: "values", text: "Paste the values" }],
     apply: (v, ctx) => {
       const s = typeof v === "string" ? v.trim() : v;
       if (s === "skip") return { sets: [], notes: ["the default look"] };
       if (s === "clear") return { sets: [["theme", undefined]], notes: ["the default look"] };
+      if (s === "file" || s === "values") refuse(`"${s}" names the brand path, not the brand: read the ${s === "file" ? "file" : "pasted values"}, extract the tokens and answer with the JSON theme (or skip)`);
       const theme = jsonValue(s);
       if (!theme || typeof theme !== "object" || Array.isArray(theme)) refuse("the look answer must be a JSON object of theme tokens, skip, or clear");
       const { logoFile, ...rest } = theme;
@@ -460,12 +519,21 @@ export const QUESTIONS = Object.freeze([
     },
   },
   {
-    id: "tabs", kind: "json", path: "pages[].tabs[].enabled", judgment: false, needsPlan: true,
-    ask: "Which tabs does each page carry? Engagement and About are always on. Health (error rates, failure reasons, silent programs, schedules) and Templates (each email's performance, text and keyword search) are on for admins and off for leaders by default. Turning Health on later makes the next refresh a full one.",
+    id: "tabs", kind: "json", path: "pages[].tabs[].enabled", judgment: false, needsPlan: true, default: "default",
+    ask: (ctx) => {
+      const h = ctx?.plan?.estimate?.health ?? null;
+      const n = h ? `about ${plural(minutesOf(h.addsSeconds), "minute")}` : "about N minutes";
+      const b = h?.categoryCalls?.bounce ?? null;
+      const m = !h ? "M of that for the bounce categories" : b?.categories ? `about ${plural(minutesOf(b.seconds), "minute")} of that for the bounce categories` : "none of it for bounce categories yet: this tenant has no category file";
+      return `Which tabs should the admin and leader pages carry? — Engagement and About are always on. — Health shows error rates, failure reasons, silent programs and schedules, and is on the admin page by default. Health adds ${n} to each refresh on this tenant (${m}); it is one pull shared by both pages, so turning it on for leaders as well costs no extra time, and only turning it off on both pages saves it.${categoryCostText(h)} Turning Health on later means the next refresh pulls everything again. — Templates shows each email's performance, its text and a keyword search. On for the admin page only, by default. Templates adds no time to the pull. Do you want to change any of these?`;
+    },
     options: (ctx) => {
-      const h = ctx.plan?.estimate?.health;
-      const cost = h ? `${h.on ? `Health is in this plan already.` : `Turning Health on adds ${secondsText(h.addsSeconds)} to each refresh (${h.addsCalls} calls).`}${categoryCostText(h)}` : "The minutes Health adds are priced once a plan exists.";
-      return [{ id: "default", text: `The presets: admins every tab, leaders Engagement and About. ${cost}` }, { id: "<JSON per page>", text: JSON.stringify(Object.fromEntries(tabsOf(ctx.spec).map((t) => [t.page, { health: t.health, templates: t.templates }]))) }];
+      const pages = ctx?.spec?.pages ?? [];
+      const template = `{${pages.map((pg) => `"${pg.id}": {"health": <${pg.id}.health>, "templates": <${pg.id}.templates>}`).join(", ")}}`;
+      return [
+        { id: "default", text: "Keep the defaults: admins Health and Templates, leaders neither (the default)" },
+        { id: template, text: "Change them", followUps: pages.flatMap((pg) => [{ key: `${pg.id}.health`, kind: "boolean", ask: `Health on the ${pageTitle(pg)} page?` }, { key: `${pg.id}.templates`, kind: "boolean", ask: `Templates on the ${pageTitle(pg)} page?` }]) },
+      ];
     },
     apply: (v, ctx) => {
       if (String(v).trim() === "default") return { sets: ctx.spec.pages.map((pg, i) => [`pages.${i}.tabs`, Object.keys(TABS).map((tab) => ({ id: tab, enabled: PRESETS[pg.preset].page.tabs[tab] }))]) };
@@ -478,88 +546,113 @@ export const QUESTIONS = Object.freeze([
     },
   },
   {
-    id: "leader-names", kind: "boolean", path: "pages[].accountNames", judgment: false, skip: (ctx) => execPage(ctx.spec) < 0,
-    ask: "May the leaders' copy name customers? Default no: the leaders' page then holds program and template names, counts, rates and the About text, and no account rows at all.",
-    options: () => [{ id: "no", text: "No (the default)" }, { id: "yes", text: "Yes: the leaders' page may carry the customer lists with account names" }],
-    apply: (v, ctx) => ({ sets: [[`pages.${execPage(ctx.spec)}.accountNames`, boolValue(v)]] }),
-  },
-  {
-    id: "customer-lists", kind: "boolean", path: "accounts.pull", judgment: false, needsPlan: true,
-    ask: "Do you want this dashboard to tell you the top customers that aren't opening or are bouncing, or only how each program is doing? You can add them later.",
-    options: (ctx) => {
-      const a = ctx.plan?.estimate?.accounts;
-      const base = ctx.plan?.estimate?.full?.seconds ?? null;
-      const cost = a ? `Adding the customer lists makes the first pull ${secondsText((base ?? 0) + (a.on ? 0 : a.addsSeconds))} instead of ${secondsText(a.on ? (base ?? 0) - a.addsSeconds : base)} on a tenant this size.` : "The cost is priced once a plan exists.";
-      return [
-        { id: "no", text: `Only how each program is doing (the default). Kept without the lists: every program, template and step number, and how many accounts each program reached. ${cost}` },
-        { id: "yes", text: `The customer lists too: across programs, the most engaged, the least engaged and the most bounced accounts, with each account's programs underneath and an in-page account view. ${cost} To add them later: edit the dashboard, turn customer lists on, refresh (that refresh pulls every table again). Looking a company up needs a gs-admin login, so only an admin can run the account command; anyone else sees a company only through the page's account view, which exists only when accounts were pulled, and only for the accounts kept.` },
-      ];
+    id: "customer-lists", kind: "boolean", path: "accounts.pull", judgment: false, needsPlan: true, default: "no",
+    ask: (ctx) => {
+      const a = ctx?.plan?.estimate?.accounts ?? null;
+      const base = ctx?.plan?.estimate?.full?.seconds ?? null;
+      const withLists = a && base != null ? secondsText(base + (a.on ? 0 : a.addsSeconds)) : "about N minutes";
+      const without = a && base != null ? secondsText(a.on ? base - a.addsSeconds : base) : "about M minutes";
+      return `Do you want this dashboard to tell you the top customers that aren't opening or are bouncing, or only how each program is doing? The customer lists are three lists across programs: the most engaged, the least engaged and the most bounced accounts, each account with its programs underneath, plus an in-page account view. Without them the dashboard still has every program, template and step figure, and how many accounts each program reached. Adding the lists makes the first pull ${withLists} instead of ${without} on a tenant this size. You can add them later by editing the dashboard and refreshing; that refresh pulls everything again. Looking a company up outside the page needs a gs-admin login, so a leader sees a customer only through the page's account view.`;
     },
+    options: () => [{ id: "no", text: "Only how each program is doing (the default)" }, { id: "yes", text: "The customer lists too" }],
     apply: (v) => ({ sets: [["accounts.pull", boolValue(v)]] }),
   },
   {
-    id: "customer-list-detail", kind: "json", path: "accounts.lists[]", judgment: false, skip: (ctx) => !ctx.spec.accounts.pull,
-    ask: "The three customer lists are 25 most engaged, 25 least engaged and 25 most bounced, each with a delivered floor of 10 across programs (so one unopened email is not a risk); on a program that sends about once per contact the least-engaged signal is at least 3 delivered and no open. Keep them, or give your own lists and any company fields for \"per segment\" lists.",
-    options: () => [{ id: "default", text: `The three defaults: ${DEFAULT_ACCOUNT_LISTS.map((l) => `${l.n} ${l.kind.replace("-", " ")} (floor ${l.floor})`).join(", ")}` }, { id: "<JSON {lists, fields}>", text: '{"lists": [{"kind": "least-engaged", "n": 10, "floor": 5, "per": "Industry"}], "fields": ["Industry"]}' }],
-    apply: (v) => {
-      if (String(v).trim() === "default") return { sets: [["accounts.lists", DEFAULT_ACCOUNT_LISTS.map((l) => ({ ...l }))], ["accounts.fields", []]] };
-      const j = jsonValue(v);
-      return { sets: [["accounts.fields", Array.isArray(j.fields) ? j.fields : []], ["accounts.lists", Array.isArray(j.lists) ? j.lists : DEFAULT_ACCOUNT_LISTS.map((l) => ({ ...l }))]] };
+    // After the customer lists and skipped while they are off (ruling 15).
+    id: "leader-names", kind: "boolean", path: "pages[].accountNames", judgment: false, default: "no", skip: (ctx) => execPage(ctx.spec) < 0 || !ctx.spec.accounts.pull,
+    ask: "May the leaders' page carry the customer lists, with account names? The leaders' page is the copy that travels: a shared folder, an attachment, a hosted page. With names off it holds program and template names, counts, rates and the About text, and no account rows. With names on it carries the customer lists as the admin page does, which is a question for whoever decides where customer names may be hosted. This adds no time to the refresh; the leaders' page simply keeps the rows the admin page already has. You can change this later with a rebuild, no pull. Default no.",
+    options: () => [{ id: "no", text: "No, keep customer names off the leaders' page (the default)" }, { id: "yes", text: "Yes" }],
+    apply: (v, ctx) => ({ sets: [[`pages.${execPage(ctx.spec)}.accountNames`, boolValue(v)]] }),
+  },
+  {
+    id: "customer-list-detail", kind: "json", path: "accounts.lists[]", judgment: false, default: "default", skip: (ctx) => !ctx.spec.accounts.pull,
+    ask: (() => {
+      const by = Object.fromEntries(DEFAULT_ACCOUNT_LISTS.map((l) => [l.kind, l]));
+      return `How should the customer lists be built? Three lists are made across programs: the ${by["most-engaged"].n} most engaged, the ${by["least-engaged"].n} least engaged and the ${by["most-bounced"].n} most bounced accounts. Each needs at least ${by["most-engaged"].floor} delivered emails across programs before an account can appear, so one unopened email is not a risk; on a program that sends about once per contact, the least-engaged list uses at least 3 delivered and no open instead. You can change the size and the floor of each list, and you can add "per segment" lists, which rank the same lists within each value of a company field you name, such as Industry or Segment. Do you want to change the defaults?`;
+    })(),
+    options: () => [
+      { id: "default", text: "Keep the three lists as described (the default)" },
+      { id: `sizes:${DEFAULT_ACCOUNT_LISTS.map((l) => `<${l.kind}>`).join("|")}`, text: "Change a list's size or floor", followUps: DEFAULT_ACCOUNT_LISTS.map((l) => ({ key: l.kind, kind: "text", ask: `The ${l.n} ${l.kind.replace("-", " ")} accounts, with at least ${l.floor} delivered: give a new size and floor as two numbers (size floor), or keep.` })) },
+      { id: "segments:<field>|<lists>", text: "Add per-segment lists", followUps: [{ key: "field", kind: "text", ask: "Which company field? (Industry, Segment, …)" }, { key: "lists", kind: "text", ask: "Which lists per segment: most engaged, least engaged, most bounced, or all?" }] },
+    ],
+    apply: (v, ctx) => {
+      const s = String(v).trim();
+      const defaults = () => DEFAULT_ACCOUNT_LISTS.map((l) => ({ ...l }));
+      if (s === "default") return { sets: [["accounts.lists", defaults()], ["accounts.fields", []]] };
+      if (s.startsWith("sizes:")) {
+        const parts = s.slice(6).split("|");
+        if (parts.length !== DEFAULT_ACCOUNT_LISTS.length) refuse(`sizes: takes one answer per list (${DEFAULT_ACCOUNT_LISTS.map((l) => l.kind).join(", ")}), separated by |`);
+        const lists = DEFAULT_ACCOUNT_LISTS.map((l, i) => {
+          const a = parts[i].trim();
+          if (["", "keep"].includes(a.toLowerCase())) return { ...l };
+          const m = a.match(/^(\d+)\s+(?:floor\s+)?(\d+)$/);
+          if (!m) refuse(`the ${l.kind.replace("-", " ")} list: give a size and a floor as two numbers (25 10), or keep (got "${printable(a, 20)}")`);
+          return { ...l, n: Number(m[1]), floor: Number(m[2]) };
+        });
+        return { sets: [["accounts.lists", lists], ["accounts.fields", accountFields(ctx.spec)]] };
+      }
+      if (s.startsWith("segments:")) {
+        const cut = s.indexOf("|");
+        const field = (cut < 0 ? s.slice(9) : s.slice(9, cut)).trim();
+        const which = cut < 0 ? "all" : s.slice(cut + 1).trim().toLowerCase();
+        if (!field) refuse("segments: needs the company field to rank within");
+        const kinds = which === "all" || which === "" ? DEFAULT_ACCOUNT_LISTS.map((l) => l.kind) : DEFAULT_ACCOUNT_LISTS.map((l) => l.kind).filter((k) => which.includes(k.replace("-", " ")) || which.includes(k));
+        if (!kinds.length) refuse(`segments: names no list (most engaged, least engaged, most bounced, or all; got "${printable(which, 40)}")`);
+        const current = accountLists(ctx.spec).filter((l) => !l.per || l.per !== field);
+        return { sets: [["accounts.lists", [...current, ...kinds.map((k) => ({ ...DEFAULT_ACCOUNT_LISTS.find((l) => l.kind === k), per: field }))]], ["accounts.fields", [...new Set([...accountFields(ctx.spec), field])]]], notes: [`${plural(kinds.length, "per-segment list")} added, ranked within each ${field}`] };
+      }
+      const j = jsonValue(s);
+      return { sets: [["accounts.fields", Array.isArray(j.fields) ? j.fields : []], ["accounts.lists", Array.isArray(j.lists) ? j.lists : defaults()]] };
     },
   },
   {
-    id: "step-detail", kind: "boolean", path: "sources[].params.stepDetail", judgment: false, needsPlan: true,
-    ask: "Step detail: one dashboard-wide switch that adds per-step and per-variant rows and participant records, from a second send log. Off by default.",
+    id: "step-detail", kind: "boolean", path: "sources[].params.stepDetail", judgment: false, needsPlan: true, default: "no",
+    ask: (ctx) => {
+      const s = ctx?.plan?.estimate?.stepDetail ?? null;
+      return `Do you want step detail? By default the figures are per program and per email, read from the delivery log. Step detail reads a second log that records which step of a program and which A/B variant each send came from, so the pages also show rows per step and per variant, and the participant-records count. It is one switch for the whole dashboard. On this tenant it adds ${s ? `about ${plural(minutesOf(s.addsSeconds), "minute")}` : "about N minutes"} to each refresh. Off by default; turning it on later means the next refresh pulls everything again.`;
+    },
     options: (ctx) => {
-      const s = ctx.plan?.estimate?.stepDetail;
-      return [{ id: "no", text: "Off (the default): emails per template, with the step's name where a template sits on one step" }, { id: "yes", text: `On: ${s ? `adds ${secondsText(s.addsSeconds)} to each refresh (${s.addsCalls} calls)` : "the minutes it adds are priced once a plan exists"}` }];
+      const s = ctx?.plan?.estimate?.stepDetail ?? null;
+      return [{ id: "no", text: "No step detail (the default)" }, { id: "yes", text: `Add step detail (${s ? `about ${plural(minutesOf(s.addsSeconds), "minute")}` : "about N minutes"} per refresh)` }];
     },
     apply: (v) => ({ sets: [["sources.0.params.stepDetail", boolValue(v)]] }),
   },
   {
-    id: "expected-reasons", kind: "list", path: "sources[].params.expectedReasons[]", judgment: false,
-    ask: "Are there participant-failure wordings that are expected by design on this tenant (a business rule working as configured)? They are counted apart, never hidden. Give the wording's invariant core, or none.",
-    options: () => [{ id: "none", text: "None beyond the shipped list (the default)" }, { id: "<wordings>", text: "A comma-separated list, or a JSON list" }],
-    apply: (v) => ({ sets: [["sources.0.params.expectedReasons", String(v).trim().toLowerCase() === "none" ? [] : listValue(v)]] }),
+    id: "expected-reasons", kind: "list", path: "sources[].params.expectedReasons[]", judgment: false, default: "none",
+    ask: "Are there participant-failure reasons that are expected by design on this tenant? Some reasons a participant is refused are a business rule doing its job. These six are recognised already and counted apart from real failures, never hidden: Already in the participant list; Unique criteria already met; Met the advanced criteria; Unsubscribed from a category; On the global opt-out; Opted out at the send step. If this tenant has a wording of its own that should count the same way, give the fixed part of its text. Most people say none here and add one later, when the Health tab's \"Other\" line shows it. Marking a reason expected changes only how it is labelled: a program that admits nobody for the due days you set earlier is still flagged as \"Admitting nobody\", whatever the reasons were.",
+    options: () => [{ id: "none", text: "None (the default)" }, { id: "add:<wordings>", text: "Add a wording", followUps: [{ key: "wordings", kind: "list", ask: "The fixed part of each wording, one per line." }] }],
+    apply: (v) => {
+      const s = typeof v === "string" ? v.trim() : v;
+      if (noneValue(s)) return { sets: [["sources.0.params.expectedReasons", []]] };
+      return { sets: [["sources.0.params.expectedReasons", listValue(typeof s === "string" && s.startsWith("add:") ? s.slice(4).trim() : s)]] };
+    },
   },
+  // The closing step (ruling 19): three action rows the script keeps, which the skill presents as ONE step from the
+  // `closing` block `next` returns beside them (the ruled ask, the four options and the answers each one stands for).
   {
-    id: "dry-run", kind: "action", path: null, judgment: false,
-    ask: "Dry run: a cheap program-level pull (no customer lists, no health, no step detail) rendered as preview pages in the theme, so you can see the result on real data before the first full refresh.",
-    options: () => [{ id: "yes", text: "Run it now (minutes, with the login)" }, { id: "no", text: "Skip the preview" }],
+    id: "dry-run", kind: "action", path: null, judgment: false, needsPlan: true,
+    ask: CLOSING_ASK,
+    options: () => [{ id: "yes", text: "Run the dry run now (a quick program-level pull, rendered as preview pages)" }, { id: "no", text: "Skip the preview" }],
   },
   {
     id: "estimate", kind: "action", path: null, judgment: false, needsPlan: true,
-    ask: "The cost of a full refresh with these settings, against the login: confirm, or go back and change a setting.",
+    ask: CLOSING_ASK,
     options: (ctx) => {
-      const e = ctx.plan?.estimate;
+      const e = ctx?.plan?.estimate ?? null;
       return [{ id: "yes", text: e ? `Confirm: ${e.full.calls} calls, ${secondsText(e.full.seconds)}; the login ${e.token.fits ? "covers it" : "does NOT cover it (log in again first)"}${e.kb ? `; the knowledge base is behind on ${e.kb.undocumented + e.kb.behind} program(s) (${secondsText(e.kb.refreshSeconds)} to re-document)` : ""}${e.templates?.planned ? `; ${e.templates.planned} template(s) to fetch (${secondsText(e.templates.seconds)})` : ""}` : "Confirm (no plan could be made)" }, { id: "no", text: "Not yet: change a setting first (answer it again)" }];
     },
   },
   {
-    id: "save", kind: "action", path: null, judgment: false,
-    ask: "Save the dashboard and run its first refresh?",
-    options: () => [{ id: "yes", text: "Save and refresh now" }, { id: "later", text: "Save only; refresh later with: refresh <slug>" }],
+    id: "save", kind: "action", path: null, judgment: false, needsPlan: true,
+    ask: CLOSING_ASK,
+    options: (ctx) => [{ id: "yes", text: "Save and run the first refresh now" }, { id: "later", text: `Save only; refresh later with: refresh ${ctx?.spec?.slug ?? "<slug>"}` }],
   },
 ]);
 const questionById = (id) => QUESTIONS.find((q) => q.id === id) ?? refuse(`no question is called "${printable(String(id), 40)}" (${QUESTIONS.map((q) => q.id).join(", ")})`);
-/** The preset's panels with some metrics left off every query (the metrics question): a panel left with no metric is dropped. */
-/** The optional metric groups the metrics question can leave off, by the answer's key. */
-export const OPTIONAL_METRICS = Object.freeze({ clicks: Object.freeze(["clicked", "clickRate"]), responses: Object.freeze(["surveyParticipants", "submitted", "partiallySubmitted", "anyResponse", "responseRate"]) });
-/** Every drop an earlier metrics answer could have written (the empty one, each group, both): what a preset-derived panel list equals. */
-const OPTIONAL_METRIC_DROPS = Object.freeze([[], [...OPTIONAL_METRICS.clicks], [...OPTIONAL_METRICS.responses], [...OPTIONAL_METRICS.clicks, ...OPTIONAL_METRICS.responses]]);
-export function panelsWithout(panels, drop) {
-  const gone = new Set(drop);
-  return panels.flatMap((p) => {
-    if (!p.query) return [p];
-    const metrics = p.query.metrics.filter((m) => !gone.has(m));
-    if (!metrics.length) return [];
-    const q = { ...p.query, metrics };
-    if (q.sort) q.sort = q.sort.filter((s) => !s.metric || metrics.includes(s.metric));
-    if (q.having) q.having = q.having.filter((h) => metrics.includes(h.metric));
-    const columns = p.columns ? p.columns.filter((c) => metrics.includes(c)) : undefined;
-    return [{ ...p, query: q, ...(columns ? { columns } : {}) }];
-  }).map((p) => (p.columns && !p.columns.length ? (({ columns: _c, ...rest }) => rest)(p) : p));
-}
+/** A question's wording for a context (a function of the plan's figures, or a plain string). */
+export const askText = (q, ctx) => (typeof q.ask === "function" ? q.ask(ctx) : q.ask);
+/** A question's default answer for a context (the option the ask names as the default). */
+export const defaultAnswer = (q, ctx) => (typeof q.default === "function" ? q.default(ctx) : q.default);
 
 // ── The context every verb works in ──────────────────────────────────────────
 function openContext(argv, opt) {
@@ -624,6 +717,8 @@ function takeLock(ctx, slug, run) {
     const age = ctx.nowMs - Date.parse(held.at ?? 0);
     if (Number.isFinite(age) && age < LOCK_STALE_MS) refuse(`a refresh of "${slug}" is already running: started by ${held.by ?? "unknown"} at ${held.at} (${plural(Math.round(age / 60000), "minute")} ago) — wait for it, or remove ${path} if you know it died`);
     takenOver = held;
+    // Said at the takeover, so a run refused later (the budget) still leaves a record of whose lock it took.
+    ctx.log(`took over a stale refresh lock of "${slug}" held by ${held.by ?? "unknown"} since ${held.at}`);
   }
   writeJson(path, { by: ctx.by, at: new Date(ctx.nowMs).toISOString(), pid: process.pid, run });
   return { path, release: () => rmSync(path, { force: true }), takenOver };
@@ -668,9 +763,13 @@ function planWithLookback(ctx, args) {
   if (first.summary.status !== "ok") return first;
   const longest = first.summary.estimate?.health?.lookback?.longestPeriodDays ?? null;
   const derived = Math.max(args.spec.health.silentDays, longest ?? 0);
-  if (!first.params.health.pull || derived === first.params.health.lookbackDays) return { ...first, lookbackDays: first.params.health.lookbackDays };
+  // What the lookback came from, said on a tie as well (the longest period equal to the spec's threshold reads as
+  // derived from it, not as "nothing derived"; the first sitting's note of 2026-10-12): the longest schedule period when
+  // it reached the floor, else null (the spec's silentDays stands on its own).
+  const derivedFrom = longest != null && longest >= args.spec.health.silentDays ? longest : null;
+  if (!first.params.health.pull || derived === first.params.health.lookbackDays) return { ...first, lookbackDays: first.params.health.lookbackDays, lookbackDerivedFrom: first.params.health.pull ? derivedFrom : null };
   const second = runAdapter(ctx, { ...args, phase: "plan", lookbackDays: derived, runId: `${args.runId}-lb${derived}` });
-  return { ...second, lookbackDays: second.params.health.lookbackDays, lookbackDerivedFrom: longest };
+  return { ...second, lookbackDays: second.params.health.lookbackDays, lookbackDerivedFrom: derivedFrom };
 }
 const stableRunId = (ctx, spec, what) => `dash-${spec.slug}-${what}-${sha(adapterParams(spec, { today: ctx.today }))}`;
 // ── Re-documentation, with no model (PUB-1 ruling; TPL-1 choice 3) ───────────
@@ -796,28 +895,42 @@ function rebuildFrom(ctx, { spec, snapshotPath, previousPath, outDir }) {
 // ── The verbs ────────────────────────────────────────────────────────────────
 function verbNew(ctx, slug, opt, argv) {
   const r = ctx.store.startDraft(slug, { title: opt("--title") ?? null, owner: opt("--owner") ?? null, by: ctx.by, takeOver: ctx.takeOver });
-  let answered = r.answered;
-  if (argv.includes("--fast-path") && r.state !== "resumed") {
-    // The standard program-health dashboard: every question but the estimate and the save takes its default (the look
-    // skipped, never asked twice); the tenant is still checked at next.
-    const skip = QUESTIONS.filter((q) => !["tenant", "estimate", "save"].includes(q.id)).map((q) => q.id);
-    answered = ctx.store.setDraft(slug, { answered: skip, by: ctx.by, takeOver: ctx.takeOver }).answered;
+  const fastPath = argv.includes("--fast-path");
+  if (fastPath && r.state !== "resumed") {
+    // The standard program-health dashboard (F-512): `next` answers every question but the closing step with the
+    // question's own default, through its own apply, in order (so the plan the defaults need is made on the way, and a
+    // skip rule reads the answers before it); the look is skipped, never asked twice; the tenant is still checked.
+    saveInterviewState(ctx, slug, { ...interviewState(ctx, slug), fastPath: true });
   }
-  return { ok: true, mode: "new", slug, state: r.state, fastPath: argv.includes("--fast-path"), by: r.by, answered, next: nextQuestionId(ctx, slug) };
+  return { ok: true, mode: "new", slug, state: r.state, fastPath, by: r.by, answered: r.answered, next: nextQuestionId(ctx, slug) };
 }
 function interviewState(ctx, slug) { return readJsonOr(join(dirOf(ctx, slug), INTERVIEW_FILE), { plan: null, preview: null }); }
 function saveInterviewState(ctx, slug, state) { mkdirSync(dirOf(ctx, slug), { recursive: true }); writeJson(join(dirOf(ctx, slug), INTERVIEW_FILE), state); }
+/**
+ * The interview's plan keys. ONE plan serves the window question and the grouping proposal (ruled 2026-10-12): the
+ * LOOSE key leaves the reporting window out, so the window answer does not force a second plan before the proposal;
+ * the questions quote their minutes from that plan (a figure per month, or a switch's cost, scales with the window).
+ * The EXACT key is the adapter's parameters as they are: the closing step is priced on it, and re-plans when needed.
+ */
+const planKeys = (ctx, spec) => {
+  const p = adapterParams(spec, { today: ctx.today });
+  const { from: _f, to: _t, ...loose } = p;
+  return { exact: sha(p), loose: sha(loose) };
+};
 /** The interview's context: the draft's spec, what is answered, and the plan and preview snapshot when they exist. */
 function interviewContext(ctx, slug, { draft }) {
   const spec = draft.spec;
   const state = interviewState(ctx, slug);
+  const keys = planKeys(ctx, spec);
   const planRun = state.plan?.run ? join(ctx.wsDir, ".gs-superadmin", "tmp", "engagement", state.plan.run) : null;
-  const plan = planRun && existsSync(join(planRun, "plan.json")) && state.plan.hash === sha(adapterParams(spec, { today: ctx.today })) ? readJsonFile(join(planRun, "plan.json")) : null;
+  const planThere = planRun && existsSync(join(planRun, "plan.json"));
+  const exact = planThere && state.plan.hash === keys.exact;
+  const plan = planThere && (exact || state.plan.loose === keys.loose) ? readJsonFile(join(planRun, "plan.json")) : null;
   const previewPath = state.preview?.snapshot && existsSync(state.preview.snapshot) ? state.preview.snapshot : null;
-  // The preview snapshot is megabytes on a real tenant: parsed once, and only by the question that reads it (metrics).
+  // The preview snapshot is megabytes on a real tenant: parsed once, and only by a reader that asks for it.
   let preview;
   return {
-    spec, answered: draft.answered, plan, planRun, previewPath, get preview() { return previewPath ? (preview ??= openSnapshotFile(previewPath)) : null; },
+    spec, answered: draft.answered, plan, planExact: exact ? plan : null, planRun, previewPath, fastPath: !!state.fastPath, get preview() { return previewPath ? (preview ??= openSnapshotFile(previewPath)) : null; },
     params: adapterParams(spec, { today: ctx.today }), programs: plan ? readJsonOr(join(planRun, "programs.json"), []) : [],
     suggestionFile: join(dirOf(ctx, slug), SUGGESTION_FILE),
     lookupCompany: (name) => lookupCompany(ctx, spec, name),
@@ -825,8 +938,8 @@ function interviewContext(ctx, slug, { draft }) {
   };
 }
 /** The plan for the interview (cheap calls only), kept until the pull-affecting answers move; writes the programs list and the group-suggestion input. */
-function ensurePlan(ctx, slug, ictx) {
-  if (ictx.plan) return ictx;
+function ensurePlan(ctx, slug, ictx, { exact = false } = {}) {
+  if (exact ? ictx.planExact : ictx.plan) return ictx;
   const spec = ictx.spec;
   preflight(ctx, spec);
   const runId = stableRunId(ctx, spec, "plan");
@@ -840,8 +953,10 @@ function ensurePlan(ctx, slug, ictx) {
   writeJson(join(r.runDir, "programs.json"), programs);
   mkdirSync(dirOf(ctx, slug), { recursive: true });
   writeJson(join(dirOf(ctx, slug), SUGGESTION_FILE), table);
-  saveInterviewState(ctx, slug, { ...interviewState(ctx, slug), plan: { run: runId, hash: sha(adapterParams(spec, { today: ctx.today })), at: new Date(ctx.nowMs).toISOString() } });
-  return { ...ictx, plan: readJsonFile(join(r.runDir, "plan.json")), planRun: r.runDir, programs };
+  const keys = planKeys(ctx, spec);
+  saveInterviewState(ctx, slug, { ...interviewState(ctx, slug), plan: { run: runId, hash: keys.exact, loose: keys.loose, at: new Date(ctx.nowMs).toISOString() } });
+  const plan = readJsonFile(join(r.runDir, "plan.json"));
+  return { ...ictx, plan, planExact: plan, planRun: r.runDir, programs };
 }
 /** The plan's program list and sends per program, read from the run directory's payloads through the adapter's own readers (no fact call). */
 function loadRunLightly(runDir) {
@@ -894,42 +1009,57 @@ function nextQuestionId(ctx, slug) {
   // The tenant pre-flight is never asked: next makes it on its way to the first question.
   return QUESTIONS.find((q) => q.kind !== "preflight" && !draft.answered.includes(q.id) && !(q.skip && q.skip(ictx)))?.id ?? null;
 }
-function verbNext(ctx, slug) {
+function verbNext(ctx, slug, { questionId = null } = {}) {
   const draft = ctx.store.readDraft(slug);
   if (!draft) refuse(ctx.store.readSaved(slug) ? `"${slug}" is saved; to change it use change, or start an edit with new ${slug}` : `no draft "${slug}" — start one with new ${slug}`);
   // Another holder's draft is refused here too (ruled 2026-10-05, DSH-1 item 8): startDraft claims it or refuses.
   ctx.store.startDraft(slug, { by: ctx.by, takeOver: ctx.takeOver });
   let ictx = interviewContext(ctx, slug, { draft: ctx.store.readDraft(slug) });
+  if (questionId) {
+    // One settled question again, with its options as they stand (the closing step's "go back"): nothing is changed.
+    const q = questionById(questionId);
+    if (q.kind === "preflight" || q.kind === "action") refuse(`"${q.id}" is not a question to go back to (${QUESTIONS.filter((x) => !["preflight", "action"].includes(x.kind)).map((x) => x.id).join(", ")})`);
+    if (q.needsPlan) ictx = ensurePlan(ctx, slug, ictx);
+    return { ok: true, mode: "next", slug, question: { id: q.id, ask: askText(q, ictx), kind: q.kind, judgment: q.judgment, path: q.path, options: q.options(ictx), ...(q.input ? { input: q.input(ictx) } : {}) }, again: true };
+  }
   const skipped = [];
+  const defaulted = [];
+  let said = null;
   for (const q of QUESTIONS) {
-    if (draft.answered.includes(q.id)) continue;
+    if (ictx.answered.includes(q.id)) continue;
     if (q.skip && q.skip(ictx)) { skipped.push(q.id); continue; }
     if (q.id === "tenant") {
       const who = preflight(ctx, ictx.spec);
       ctx.store.setDraft(slug, { answered: ["tenant"], by: ctx.by, takeOver: ctx.takeOver });
       ictx = { ...ictx, answered: [...ictx.answered, "tenant"] };
+      said = q.say(who.host);
       ctx.log(`tenant ${who.host} confirmed; token valid for ${who.expiresInSeconds} s`);
       continue;
     }
-    if (q.needsPlan) ictx = ensurePlan(ctx, slug, ictx);
+    // The closing step is priced on the exact settings; every other question reads the one loose plan.
+    if (q.needsPlan) ictx = ensurePlan(ctx, slug, ictx, { exact: q.kind === "action" });
+    if (ictx.fastPath && q.kind !== "action") {
+      // The fast path: this question's own default, through its own apply (F-512).
+      applyAnswer(ctx, slug, q, defaultAnswer(q, ictx), ictx);
+      defaulted.push(q.id);
+      ictx = interviewContext(ctx, slug, { draft: ctx.store.readDraft(slug) });
+      continue;
+    }
     const done = ictx.answered.filter((id) => QUESTIONS.some((x) => x.id === id));
+    // The closing step reads the login's remaining life now (a local token read), not the plan's reading from earlier.
+    if (q.kind === "action") ictx = { ...ictx, tokenSecondsLeft: preflight(ctx, ictx.spec).expiresInSeconds };
     return {
-      ok: true, mode: "next", slug, question: { id: q.id, ask: q.ask, kind: q.kind, judgment: q.judgment, path: q.path, options: q.options(ictx), ...(q.input ? { input: q.input(ictx) } : {}) },
+      ok: true, mode: "next", slug, ...(said ? { said } : {}), ...(defaulted.length ? { defaulted } : {}),
+      question: { id: q.id, ask: askText(q, ictx), kind: q.kind, judgment: q.judgment, path: q.path, options: q.options(ictx), ...(q.input ? { input: q.input(ictx) } : {}) },
+      ...(q.kind === "action" ? { closing: { ask: CLOSING_ASK(ictx), options: CLOSING_OPTIONS(ictx) } } : {}),
       progress: { answered: done.length, skipped, remaining: QUESTIONS.filter((x) => !done.includes(x.id) && !skipped.includes(x.id)).length },
       ...(ictx.plan ? { estimate: { full: ictx.plan.estimate.full, thisRun: ictx.plan.estimate.thisRun, token: ictx.plan.estimate.token, programs: ictx.plan.programs } } : {}),
     };
   }
-  return { ok: true, mode: "next", slug, question: null, progress: { answered: ictx.answered.length, skipped, remaining: 0 }, done: true, hint: `every question is answered: save ${slug}` };
+  return { ok: true, mode: "next", slug, ...(said ? { said } : {}), ...(defaulted.length ? { defaulted } : {}), question: null, progress: { answered: ictx.answered.length, skipped, remaining: 0 }, done: true, hint: `every question is answered: save ${slug}` };
 }
-function verbAnswer(ctx, slug, id, value) {
-  const q = questionById(id);
-  if (q.kind === "preflight") refuse("the tenant is checked by next, not answered");
-  const draft = ctx.store.readDraft(slug);
-  if (!draft) refuse(`no draft "${slug}" — start one with new ${slug}`);
-  ctx.store.startDraft(slug, { by: ctx.by, takeOver: ctx.takeOver });
-  let ictx = interviewContext(ctx, slug, { draft: ctx.store.readDraft(slug) });
-  if (q.kind === "action") return verbAction(ctx, slug, q, value, ictx);
-  if (q.id === "grouping" && !ictx.plan) ictx = ensurePlan(ctx, slug, ictx);
+/** One answer, as the interview and the fast path both apply it: validated, through the writer, the ask-once key marked. */
+function applyAnswer(ctx, slug, q, value, ictx) {
   const choices = q.options(ictx);
   if (q.kind === "choice" && !choices.some((o) => o.id === String(value).trim()) && !choices.some((o) => o.id.includes("<") && String(value).trim().startsWith(o.id.split("<")[0].replace(/:$/, "")))) refuse(`"${printable(String(value), 40)}" is not one of the options: ${choices.map((o) => o.id).join(", ")}`);
   const r = q.apply(value, ictx);
@@ -943,7 +1073,19 @@ function verbAnswer(ctx, slug, id, value) {
     if (e instanceof SpecRefusal) refuse(`${q.id}: ${e.message}`);
     throw e;
   }
-  return { ok: true, mode: "answer", slug, question: q.id, set: sets.map(([p]) => p), notes: [...(r.notes ?? []), ...(d.notes ?? [])], ...(r.replaced ? { replaced: r.replaced } : {}), next: nextQuestionId(ctx, slug) };
+  return { set: sets.map(([p]) => p), notes: [...(r.notes ?? []), ...(d.notes ?? [])], ...(r.replaced ? { replaced: r.replaced } : {}) };
+}
+function verbAnswer(ctx, slug, id, value) {
+  const q = questionById(id);
+  if (q.kind === "preflight") refuse("the tenant is checked by next, not answered");
+  const draft = ctx.store.readDraft(slug);
+  if (!draft) refuse(`no draft "${slug}" — start one with new ${slug}`);
+  ctx.store.startDraft(slug, { by: ctx.by, takeOver: ctx.takeOver });
+  let ictx = interviewContext(ctx, slug, { draft: ctx.store.readDraft(slug) });
+  if (q.kind === "action") return verbAction(ctx, slug, q, value, ictx);
+  if (q.id === "grouping" && !ictx.plan) ictx = ensurePlan(ctx, slug, ictx);
+  const r = applyAnswer(ctx, slug, q, value, ictx);
+  return { ok: true, mode: "answer", slug, question: q.id, ...r, next: nextQuestionId(ctx, slug) };
 }
 function verbAction(ctx, slug, q, value, ictx) {
   const yes = String(value).trim().toLowerCase();
@@ -966,15 +1108,17 @@ function verbAction(ctx, slug, q, value, ictx) {
     return mark({ preview: { snapshot: snapshotPath, pages: pages.map((p) => ({ page: p.page, path: p.path, megabytes: p.megabytes, warning: p.warning })), pulledAt: snapshot.meta.pulledAt, programs: snapshot.dimensions.programs.length, ungrouped: resolution.line, calls: r.summary.calls, themed: !!spec.theme } });
   }
   if (q.id === "estimate") {
-    const withPlan = ensurePlan(ctx, slug, ictx);
+    const withPlan = ensurePlan(ctx, slug, ictx, { exact: true });
     if (yes !== "yes") return { ok: true, mode: "answer", slug, question: q.id, confirmed: false, estimate: withPlan.plan.estimate, next: nextQuestionId(ctx, slug), hint: "answer the setting to change, then estimate again" };
     return mark({ confirmed: true, estimate: { full: withPlan.plan.estimate.full, token: withPlan.plan.estimate.token, kb: withPlan.plan.estimate.kb, templates: withPlan.plan.estimate.templates } });
   }
-  // save
+  // save: the first refresh continues the closing step's plan (its cheap calls are not made again) when that plan was
+  // made on the exact settings and the dashboard has no snapshot yet (the first sitting's note of 2026-10-12).
+  const planRun = ictx.planExact && ictx.planRun && !latestSnapshotPath(ctx, slug) ? basename(ictx.planRun) : null;
   const saved = verbSave(ctx, slug);
   if (yes !== "yes") return { ...saved, mode: "answer", question: q.id, refresh: null, hint: `refresh ${slug} when ready` };
   try {
-    return { ...saved, mode: "answer", question: q.id, refresh: verbRefresh(ctx, slug, { full: false, healthOnly: false }) };
+    return { ...saved, mode: "answer", question: q.id, refresh: verbRefresh(ctx, slug, { full: false, healthOnly: false, planRun }) };
   } catch (e) {
     // The dashboard IS saved; only its first refresh stopped. The refusal says so and keeps its exit code.
     if (e instanceof DashboardRefusal) throw new DashboardRefusal(`the dashboard "${slug}" is saved; its first refresh stopped: ${e.message}`, e.code);
@@ -1009,19 +1153,16 @@ function verbStatus(ctx, slug) {
   const snapshot = latest ? openSnapshotFile(latest) : null;
   const pulledMs = snapshot ? Date.parse(snapshot.meta.pulledAt) : null;
   const ageDays = pulledMs != null ? Math.floor((ctx.nowMs - pulledMs) / 86400000) : null;
-  const cadenceDays = CADENCE_DAYS[spec.refresh.cadence];
-  const nextDue = pulledMs != null && cadenceDays ? new Date(pulledMs + cadenceDays * 86400000).toISOString() : null;
   const state = readJsonOr(join(dirOf(ctx, slug), STATE_FILE), null);
+  // No "next due" and no staleness: refreshes are manual (ruled 2026-10-12), and the age says what the pages say.
   return {
-    ok: true, mode: "status", slug, title: spec.title, cadence: spec.refresh.cadence,
+    ok: true, mode: "status", slug, title: spec.title,
     lastPull: snapshot ? { pulledAt: snapshot.meta.pulledAt, ageDays, mode: snapshot.meta.refresh.mode, programs: snapshot.dimensions.programs.length, file: latest } : null,
-    nextDue, due: nextDue ? ctx.nowMs >= Date.parse(nextDue) : snapshot == null,
-    stale: ageDays != null ? ageDays > spec.freshness.maxAgeDays : null, staleAfterDays: spec.freshness.maxAgeDays,
     snapshots: snapshotFiles(ctx, slug).length, pages: spec.pages.map((p) => ({ page: p.id, file: join(dirOf(ctx, slug), pageFileName(p.id)), present: existsSync(join(dirOf(ctx, slug), pageFileName(p.id))) })),
     lock: lockState(ctx, slug), resumable: state ? { run: state.run, startedAt: state.startedAt, by: state.by } : null, draft: !!ctx.store.readDraft(slug),
   };
 }
-function verbRefresh(ctx, slug, { full, healthOnly }) {
+function verbRefresh(ctx, slug, { full, healthOnly, planRun = null }) {
   const spec = savedSpec(ctx, slug);
   const dir = dirOf(ctx, slug);
   // The tenant and the token, before any call, before the lock.
@@ -1032,7 +1173,10 @@ function verbRefresh(ctx, slug, { full, healthOnly }) {
   const resuming = state && state.previousPath === previousPath && state.full === full && state.healthOnly === healthOnly;
   // A stopped run is resumed with the flags it was started with, never silently abandoned for a new one.
   if (state && !resuming && state.previousPath === previousPath) refuse(`a stopped refresh of "${slug}" (run ${state.run}, started ${state.startedAt} by ${state.by}${state.full ? ", --full" : ""}${state.healthOnly ? ", --health-only" : ""}) is waiting to resume: run it again with the same flags, or remove ${join(dir, STATE_FILE)} to start over`);
-  const runId = resuming ? state.run : `dash-${slug}-${snapshotStamp(new Date(ctx.nowMs).toISOString())}`;
+  // The interview's plan continues as this run (the save's first refresh): the run keeps the plan's own directory and
+  // prepareRun resumes it, so the plan's cheap calls are reused instead of made again (nothing is renamed).
+  const continuesPlan = planRun && !resuming && !previousPath && !full && !healthOnly && existsSync(join(ctx.wsDir, ".gs-superadmin", "tmp", "engagement", planRun, "plan.json"));
+  const runId = resuming ? state.run : continuesPlan ? planRun : `dash-${slug}-${snapshotStamp(new Date(ctx.nowMs).toISOString())}`;
   const lock = takeLock(ctx, slug, runId);
   try {
     writeJson(join(dir, STATE_FILE), { run: runId, startedAt: new Date(ctx.nowMs).toISOString(), by: ctx.by, previousPath, full, healthOnly });
@@ -1044,7 +1188,7 @@ function verbRefresh(ctx, slug, { full, healthOnly }) {
     const redoc = kbSettings(spec).redocument;
     const redocSeconds = redoc.enabled ? Math.min(redoc.cap, (estimate.kb?.programs?.length ?? 0)) * 3 + Math.min(Math.max(0, redoc.cap - (estimate.kb?.programs?.length ?? 0)), estimate.templates?.planned ?? 0) * 3 : 0;
     const needed = estimate.thisRun.seconds + redocSeconds + 30;
-    if (needed > who.expiresInSeconds) refuse(`the refresh needs about ${plural(minutesOf(needed), "minute")} (${estimate.thisRun.calls} calls${redocSeconds ? ` plus re-documentation` : ""}) and the login has ${plural(minutesOf(who.expiresInSeconds), "minute")} left — run gs-admin login, then run refresh ${slug} again (it resumes)`, "token-expired");
+    if (needed > who.expiresInSeconds) refuse(`the refresh needs about ${plural(minutesOf(needed), "minute")} (${estimate.thisRun.calls} calls${redocSeconds ? ` plus re-documentation` : ""}) and the login has ${plural(minutesOf(who.expiresInSeconds), "minute")} left — run gs-admin login, then run refresh ${slug} again (it resumes)${lock.takenOver ? `; a stale lock held by ${lock.takenOver.by ?? "unknown"} since ${lock.takenOver.at} was taken over` : ""}`, "token-expired", lock.takenOver ? { lockTakenOver: { by: lock.takenOver.by ?? null, at: lock.takenOver.at ?? null } } : {});
     // Re-documentation first (the fetch then re-reads the moved knowledge base: the run's KB copy is stamped).
     const redocumented = redocument(ctx, { spec, estimate, runDir: planned.runDir });
     // The pull.
@@ -1088,7 +1232,8 @@ function reselectFromRun(ctx, slug, spec) {
   if (!latest) return { done: false, why: "no snapshot yet" };
   const current = openSnapshotFile(latest);
   // The run the latest snapshot came from: its directory is named for the pull it made.
-  const candidates = existsSync(join(ctx.wsDir, ".gs-superadmin", "tmp", "engagement")) ? readdirSync(join(ctx.wsDir, ".gs-superadmin", "tmp", "engagement")).filter((d) => d.startsWith(`dash-${slug}-`) && !d.includes("-plan-") && !d.includes("-preview-")) : [];
+  // Every run directory of this dashboard (a first refresh may live in the interview's plan directory); the pull's time decides.
+  const candidates = existsSync(join(ctx.wsDir, ".gs-superadmin", "tmp", "engagement")) ? readdirSync(join(ctx.wsDir, ".gs-superadmin", "tmp", "engagement")).filter((d) => d.startsWith(`dash-${slug}-`) && !d.includes("-preview-")) : [];
   const runDir = candidates.map((d) => join(ctx.wsDir, ".gs-superadmin", "tmp", "engagement", d)).find((d) => { try { const run = readJsonOr(join(d, "run.json"), null); return run?.params?.pulledAt === current.meta.pulledAt; } catch { return false; } }) ?? null;
   void state;
   if (!runDir || !existsSync(join(runDir, "status.json"))) return { done: false, why: "the last pull's rows are no longer in the workspace: the next refresh selects the lists" };
@@ -1148,12 +1293,11 @@ function verbChange(ctx, slug, pairs, dryRun) {
   return { ...summary, saved: true, previousCopy: `${savedNow.path}.previous`, done };
 }
 function verbReport(ctx, slug, opt, argv) {
-  const spec = savedSpec(ctx, slug);
+  savedSpec(ctx, slug); // a saved dashboard, or the refusal naming the draft
   const latest = latestSnapshotPath(ctx, slug);
   if (!latest) refuse(`no snapshot of "${slug}" yet — run refresh ${slug} first`);
   const snapshot = openSnapshotFile(latest);
   const ageDays = Math.floor((ctx.nowMs - Date.parse(snapshot.meta.pulledAt)) / 86400000);
-  const cadenceDays = CADENCE_DAYS[spec.refresh.cadence];
   const reportDir = join(dirOf(ctx, slug), REPORTS_DIR);
   let summary;
   try {
@@ -1162,7 +1306,8 @@ function verbReport(ctx, slug, opt, argv) {
     if (e instanceof ReportRefusal) refuse(e.message);
     throw e;
   }
-  return { ...summary, mode: "report", slug, snapshotAgeDays: ageDays, withinCadence: cadenceDays ? ageDays <= cadenceDays : true, cadence: spec.refresh.cadence, staleAfterDays: spec.freshness.maxAgeDays, refreshMinutes: lastPlanMinutes(ctx, slug) };
+  // The snapshot's age and the minutes a pull would take: the skill says both and offers the pull (no cadence is read; ruled 2026-10-12).
+  return { ...summary, mode: "report", slug, snapshotAgeDays: ageDays, refreshMinutes: lastPlanMinutes(ctx, slug) };
 }
 function verbExport(ctx, slug, opt, argv) {
   if (!opt("--out")) refuse("export needs --out <file>");
@@ -1214,7 +1359,7 @@ function verbHealth(ctx, slug, opt) {
 // ── CLI ──────────────────────────────────────────────────────────────────────
 const USAGE =
   "usage: dashboard.mjs <new|next|answer|change|save|list|status|refresh|rebuild|report|export|import|health|costs|questions> [<slug>] [...] " +
-  "[--kb <tenant KB folder>] [--workspace <dir>] [--bin <gs-admin entry>] [--by <holder>] [--take-over] [--today YYYY-MM-DD]";
+  "[--kb <tenant KB folder>] [--workspace <dir>] [--bin <gs-admin entry>] [--by <holder>] [--take-over] [--today YYYY-MM-DD] [next: --question <id>]";
 const VERBS = ["new", "next", "answer", "change", "save", "list", "status", "refresh", "rebuild", "report", "export", "import", "health", "costs", "questions"];
 async function main() {
   const [verb, ...rest] = process.argv.slice(2);
@@ -1224,7 +1369,16 @@ async function main() {
   const fail = helpers.fail;
   if (!VERBS.includes(verb)) fail(USAGE);
   if (verb === "costs") await finish({ ok: true, mode: "costs", kinds: COST_KINDS, costs: COSTS, adapterMapping: ADAPTER_MAPPING });
-  if (verb === "questions") await finish({ ok: true, mode: "questions", questions: QUESTIONS.map((q) => ({ id: q.id, kind: q.kind, judgment: q.judgment, path: q.path, ask: q.ask, needsPlan: !!q.needsPlan, hasSkipRule: !!q.skip })) });
+  if (verb === "questions") {
+    // The table for a reader: the asks and options as the interview words them, with the ruled placeholder letters
+    // where a figure comes from the plan (N, M, D, T), over a spec of the defaults; the closing step beside its rows.
+    const rctx = { spec: defaultSpec({ slug: "<slug>", tenantHost: "<tenant>" }), plan: null, answered: [], programs: [], params: null };
+    await finish({
+      ok: true, mode: "questions",
+      questions: QUESTIONS.map((q) => ({ id: q.id, kind: q.kind, judgment: q.judgment, path: q.path, ask: askText(q, rctx), options: q.options(rctx), ...(q.default !== undefined ? { default: typeof q.default === "function" ? "(from the plan)" : q.default } : {}), needsPlan: !!q.needsPlan, hasSkipRule: !!q.skip })),
+      closing: { rows: QUESTIONS.filter((q) => q.kind === "action").map((q) => q.id), ask: CLOSING_ASK(rctx), options: CLOSING_OPTIONS(rctx) },
+    });
+  }
   const positional = rest.filter((t, i) => !t.startsWith("--") && !(i > 0 && rest[i - 1].startsWith("--") && !["--fast-path", "--take-over", "--dry-run", "--full", "--health-only", "--with-snapshot", "--replace", "--by-template", "--exclude-internal", "--include-paused", "--all"].includes(rest[i - 1])));
   try {
     const ctx = openContext(rest, opt);
@@ -1233,7 +1387,7 @@ async function main() {
     let out;
     switch (verb) {
       case "new": out = verbNew(ctx, needSlug(), opt, rest); break;
-      case "next": out = verbNext(ctx, needSlug()); break;
+      case "next": out = verbNext(ctx, needSlug(), { questionId: opt("--question") ?? null }); break;
       case "answer": { needSlug(); if (!positional[1]) refuse(`answer needs <slug> <question id> <value>`); out = verbAnswer(ctx, slug, positional[1], positional.slice(2).join(" ")); break; }
       case "change": out = verbChange(ctx, needSlug(), positional.slice(1), rest.includes("--dry-run")); break;
       case "save": out = verbSave(ctx, needSlug()); break;
@@ -1249,7 +1403,7 @@ async function main() {
     }
     await finish(out);
   } catch (e) {
-    if (e instanceof DashboardRefusal) await finish({ ok: false, mode: verb, status: e.code, error: e.message }, EXIT[e.code] ?? EXIT.failed);
+    if (e instanceof DashboardRefusal) await finish({ ok: false, mode: verb, status: e.code, error: e.message, ...e.details }, EXIT[e.code] ?? EXIT.failed);
     if (e instanceof SpecRefusal || e instanceof EngagementRefusal || e instanceof ReportRefusal) await finish({ ok: false, mode: verb, status: "failed", error: e.message }, EXIT.failed);
     throw e;
   }

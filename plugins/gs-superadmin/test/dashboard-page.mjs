@@ -289,8 +289,8 @@ try {
       [table, expected.rows.map((r) => r.label.program)]);
     check("the page reads without JavaScript: the default view is in the markup, its controls are switched off until the script runs (a control never does nothing), and a line says what needs JavaScript",
       /<fieldset id="gs-root" class="gs-root" disabled>/.test(ADMIN.html) && /<noscript><p>[^<]*JavaScript[^<]*<\/p><\/noscript>/.test(ADMIN.html) && ADMIN.html.indexOf("<table>") > 0 && ADMIN.html.indexOf("<table>") < ADMIN.html.indexOf("<script"));
-    check("every view shows when the data was pulled (R4): the line is the engine's own, at the top of the page, before anything else",
-      [ADMIN, EXEC, ADMIN_P, EXEC_P].every((b) => { const pre = loadPage(b.html).prerender; const line = esc(engine.dataPulledLine(applyGroups(b === ADMIN_P || b === EXEC_P ? SIGNALS : PULLED, SPEC.groups).snapshot)); return pre.includes(line) && pre.indexOf(line) < pre.indexOf("gs-filters") && /<p class="gs-pulled">Data pulled /.test(pre); }));
+    check("every view shows when the data was pulled (R4): the line is the engine's own, at the top of the page, before anything else, with the age's region after the time (empty in the pre-render, which has no clock) and the sentence that the pages are not live (ruled 2026-10-12); no stale banner anywhere",
+      [ADMIN, EXEC, ADMIN_P, EXEC_P].every((b) => { const pre = loadPage(b.html).prerender; const line = esc(engine.dataPulledLine(applyGroups(b === ADMIN_P || b === EXEC_P ? SIGNALS : PULLED, SPEC.groups).snapshot)); const cut = line.indexOf(" from "); const withRegion = `${line.slice(0, cut)}<span data-region="age"></span>${line.slice(cut)} These pages are not live: they change only when the dashboard is refreshed.`; return pre.includes(withRegion) && pre.indexOf(withRegion) < pre.indexOf("gs-filters") && /<p class="gs-pulled">Data pulled /.test(pre) && !/gs-banner-stale|data-banner="stale"|data-region="stale"/.test(b.html); }));
     const closed = admin.call(`app.renderPanel(app.panels.find((p) => p.id === "programs"), app.stateFromHash("m=2026-06..2026-08"), null)`);
     check("the incomplete period is marked (R4): a row that includes the provisional month carries a mark and the table says from when; a view of closed months alone carries neither",
       (panelHtml(ADMIN.html, "programs").match(/<sup><span class="gs-mark" data-tip="Includes the provisional period[^>]*>\*<\/span><\/sup>/g) ?? []).length === [...expected.rows, expected.total].filter((r) => r.incomplete).length && expected.rows.some((r) => r.incomplete) && expected.rows.some((r) => !r.incomplete) && /<sup><span class="gs-mark" data-tip="Includes the provisional period: sends on or after 2026-09-01[^"]*" title="[^"]*" tabindex="0" role="button" aria-label="[^"]*">\*<\/span><\/sup>/.test(panelHtml(ADMIN.html, "programs")) && !panelHtml(ADMIN.html, "programs").includes("gs-note\">* includes") && paneHtml(ADMIN.html, "engagement").includes(`* Provisional period: sends on or after ${GOLD.meta.incompleteFrom} are provisional (opens keep arriving), and bounces and unsubscribes on sends since 2026-08-01 can still change`) &&
@@ -851,14 +851,19 @@ try {
     check("the leaders' About keeps the plain definition and the formula only: no object, fields or filters, every metric shown still defined",
       !execAbout.includes("gs-formula") && !execAbout.includes("Read from:") && engine.glossary([...new Set(presetPanels(SPEC_DEFAULTS.pages[1]).flatMap((p) => p.query.metrics))], SIGNALS).every((e) => execAbout.includes(`<dt data-metric="${e.id}">${esc(e.label)}</dt><dd>${esc(e.definition)} <span class="gs-muted">Calculation: ${esc(e.calculation)}`)));
     // Change a spec value and a registry entry: the About text changes.
-    const changedSpec = specWith((s) => { s.pages[0].panels = []; s.pages[0].statusDefault = null; s.freshness.maxAgeDays = 7; s.purpose = "A changed purpose."; });
+    const changedSpec = specWith((s) => { s.pages[0].panels = []; s.pages[0].statusDefault = null; s.health.silentDays = 7; s.purpose = "A changed purpose."; });
     const changedAbout = paneHtml(build(changedSpec, SIGNALS).html, "about");
     const def = engine.metric("openRate").definition;
     const patched = loadPage(ADMIN_P.html.split(def).join("A CHANGED DEFINITION FOR THE TEST"));
-    check("the About tab is generated from the asset, never hand-written: change a spec value and its sentence changes (freshness 7 days, a new purpose) while the rest stays; change a registry entry (the inlined engine's bytes) and the definition on the page changes with it",
-      about.includes("more than 45 days old") && changedAbout.includes("more than 7 days old") && changedAbout.includes("A changed purpose.") && !about.includes("A changed purpose.") && about.split("<dd>").length === changedAbout.split("<dd>").length &&
+    const WHAT = "This dashboard shows email engagement from the tenant's send log: comparisons across programs and periods, for every program it covers. It is one dashboard with one pull, built as an admin page and a leaders' page, and it is refreshed by hand; the data is as of the pull named below.";
+    check("the About tab is generated from the asset, never hand-written: change a spec value and its sentence changes (the silent threshold 7 days, a new purpose) while the rest stays; change a registry entry (the inlined engine's bytes) and the definition on the page changes with it",
+      about.includes("no send in 45 days") && changedAbout.includes("no send in 7 days") && changedAbout.includes(`<p class="gs-purpose">A changed purpose.</p>`) && !about.includes("A changed purpose.") && about.split("<dd>").length === changedAbout.split("<dd>").length &&
         patched.call(`app.renderAbout()`).includes("A CHANGED DEFINITION FOR THE TEST") && !patched.call(`app.renderAbout()`).includes(def) && about.includes(esc(def)));
-    const settings = describeSpec(SPEC_DEFAULTS);
+    const noPurposeAbout = paneHtml(build(specWith((s) => { s.pages[0].panels = []; s.pages[0].statusDefault = null; s.purpose = null; }), SIGNALS).html, "about");
+    check("the About tab opens with the fixed statement of what the dashboard is (ruled 2026-10-12, F-511 rulings 2 and 3: the send log, comparisons across programs and periods, one pull, an admin page and a leaders' page, refreshed by hand), on both pages, before the data-pulled line; the purpose is a paragraph of its own only when one was set (the fixture sets one; a spec without one shows none), never a settings row; the cadence and the freshness are not listed (unread)",
+      [about, execAbout].every((a) => a.includes(`<section class="gs-about"><h2>About this page</h2><p>${WHAT}</p><p class="gs-purpose">${esc(SPEC.purpose)}</p><p>Data pulled `)) && noPurposeAbout.includes(`<h2>About this page</h2><p>${WHAT}</p><p>Data pulled `) && !noPurposeAbout.includes("gs-purpose") &&
+        [about, execAbout, noPurposeAbout, changedAbout].every((a) => { const settingsDl = a.match(/<dl class="gs-settings">[\s\S]*?<\/dl>/)?.[0] ?? ""; return settingsDl.length > 0 && !settingsDl.includes("<dt>Purpose</dt>") && !settingsDl.includes("<dt>Freshness</dt>") && !settingsDl.includes("<dt>Refresh</dt>") && !/stale banner|Stale:/.test(a); }), about.slice(0, 600));
+    const settings = describeSpec(SPEC_DEFAULTS).filter((d) => !d.covers.some((c) => ["refresh.cadence", "freshness.maxAgeDays", "purpose"].includes(c)));
     // One supergroup rule alone leaves most programs ungrouped at both levels.
     const sparse = specWith((x) => { x.pages[0].panels = []; x.pages[0].statusDefault = null; x.groups.rules = [x.groups.rules[0]]; x.groups.overrides = {}; });
     const sparseAbout = paneHtml(build(sparse, SIGNALS).html, "about");
@@ -872,31 +877,34 @@ try {
     check("on a page with sourceDetail off the recipients sentences keep their meaning and DROP the internal-domain and unsubscribe-link values (ruled 2026-10-05): the leaders' About names neither value, its embedded parameters carry neither, and the admin About carries both",
       !execAbout.includes(domain) && !execAbout.includes(link) && execAbout.includes("Addresses at the company&#39;s own 1 email domain are internal.") && execAbout.includes("Clicks on the tenant&#39;s own 1 unsubscribe link are unsubscribe clicks, not content clicks.") &&
         execP.call(`app.snapshot.meta.params.internalDomains`).length === 0 && execP.call(`app.snapshot.meta.params.unsubscribeLinks`).length === 0 && execP.call(`app.snapshot.meta.params.redactedOnPage`).join() === "internalDomains,unsubscribeLinks" && !EXEC_P.html.includes(link) &&
-        about.includes(`Addresses at ${domain} are internal.`) && about.includes(link) && adminP.call(`app.snapshot.meta.params.internalDomains`).join() === domain && isDeepStrictEqual(aboutSettings(SPEC_DEFAULTS, SPEC_DEFAULTS.pages[0]).map((d) => d.text), describeSpec(SPEC_DEFAULTS).map((d) => d.text)),
+        about.includes(`Addresses at ${domain} are internal.`) && about.includes(link) && adminP.call(`app.snapshot.meta.params.internalDomains`).join() === domain && isDeepStrictEqual(aboutSettings(SPEC_DEFAULTS, SPEC_DEFAULTS.pages[0]).map((d) => d.text), settings.map((d) => d.text)),
       [execAbout.match(/own[^<]*/g)]);
     check("Where the data came from, Caveats and How to refresh: the pull's time, tenant, window, provisional start, refresh mode, step detail, accounts, health and versions from the snapshot's meta; the caveats block from the engine with the health caveats because the Health tab is on (and without them on the leaders' page); the refresh line as the entry command on the admin page, a sentence on the leaders' page; the How to use section names what this page offers",
       about.includes("<dt>Pulled at</dt><dd>2026-09-15T09:00:00-07:00</dd>") && about.includes("<dt>Tenant</dt><dd>acme.gainsightcloud.com</dd>") && about.includes("<dt>Health data</dt><dd>pulled, judged as of 2026-09-15</dd>") && /<dt>Versions<\/dt><dd>CLI [^<]*, plugin [^<]*, snapshot schema 1<\/dd>/.test(about) &&
         about.includes(`<li data-caveat="schedules-from-kb">`) && !execAbout.includes(`<li data-caveat="schedules-from-kb">`) && execAbout.includes(`<li data-caveat="incomplete-period">`) && engine.caveatsFor(SIGNALS, used, { health: true }).every((c) => about.includes(`<li data-caveat="${c.id}">${esc(c.text)}</li>`)) &&
-        about.includes(`<h2>How to refresh</h2><p>Run <code>${esc(COPY_LINES.refresh("program-health"))}</code> from the workspace, with a gs-admin login; the /gs-superadmin:email-engagement skill runs the same command.</p>`) && execAbout.includes("An admin refreshes this page every month") && !execAbout.includes("dashboard.mjs") &&
+        about.includes(`<h2>How to refresh</h2><p>Refreshes are manual. Run <code>${esc(COPY_LINES.refresh("program-health"))}</code> from the workspace with a gs-admin login whenever you want new numbers, or schedule it yourself on your own machine (the plugin README has the recipe; a scheduled run needs a login within the hour). The /gs-superadmin:email-engagement skill runs the same command. The pages always show when the data was pulled.</p>`) && execAbout.includes("An admin refreshes this page by hand") && !execAbout.includes("dashboard.mjs") && !/every month|cadence/.test(execAbout) &&
         about.includes("<h2>How to use this page</h2>") && about.includes("the no-send threshold has buttons (14, 30, 45, 60, 90 days)") && !execAbout.split("<h2>How to use this page</h2>")[1].split("</section>")[0].includes("no-send threshold") && about.includes(`&quot;${engine.NOT_TRACKED}&quot; means no link in the email is click-tracked`),
       about.match(/<h2>Where the data came from<\/h2>[\s\S]*?<\/dl>/)?.[0]);
     check("a caveats footer is on every page, every tab: the same caveats block, collapsed, under the panes", [ADMIN, EXEC, ADMIN_P, EXEC_P].every((b) => /<footer class="gs-foot"><details class="gs-caveats-foot"><summary>Caveats \(\d+\)<\/summary><ul class="gs-caveats">/.test(b.html)) && (markupOf(ADMIN_P.html).match(/<ul class="gs-caveats">/g) ?? []).length === 2);
   }
 
-  // ══ The stale banner ═══════════════════════════════════════════════════════
+  // ══ The header's age (no stale banner: ruled 2026-10-12) ═══════════════════
   {
     const app = createDashboard(engine, pageModel(SPEC_DEFAULTS, GOLD, SPEC_DEFAULTS.pages[0]));
-    const fresh = app.renderStale();
-    app.setClock(() => Date.parse("2026-10-01T00:00:00Z"));
-    const within = app.renderStale();
+    const fresh = app.renderAge();
+    app.setClock(() => Date.parse("2026-09-15T20:00:00Z"));
+    const sameDay = app.renderAge();
+    app.setClock(() => Date.parse("2026-09-17T00:00:00Z"));
+    const oneDay = app.renderAge();
     app.setClock(() => Date.parse("2026-12-01T00:00:00Z"));
-    const stale = app.renderStale();
-    check("a stale banner shows once the data is past the spec's freshness (45 days), read from a clock the page gets at mount: in Node, with no clock, the pre-render carries an empty region; 16 days after the pull nothing; 77 days after, the banner with the age, the cadence and the threshold, and the refresh line on an admin page",
-      fresh === "" && ADMIN_P.html.includes(`<div data-region="stale"></div>`) && within === "" && /<div class="gs-banner gs-banner-stale" role="status" data-banner="stale"><p>Stale: this data was pulled 76 days ago\. The dashboard is refreshed every month and is stale after 45 days\.<\/p><p class="gs-notice-line"><code>node \.gs-superadmin\/plugin\/scripts\/dashboard\.mjs refresh program-health<\/code> <button type="button" data-copy="[^"]*">Copy<\/button><\/p><\/div>/.test(stale) &&
-        !createDashboard(engine, { ...pageModel(SPEC_DEFAULTS, GOLD, SPEC_DEFAULTS.pages[1]), actions: null }).renderStale().includes("gs-banner"), stale);
+    const later = app.renderAge();
+    const headerLater = app.renderPulled();
+    check("the header says how many days ago the data was pulled, read from a clock the page gets at mount: in Node, with no clock, the region is empty; the same day reads today; one day reads 1 day ago; 76 days after, 76 days ago; the age sits after the time and before the tenant, and the not-live sentence follows; no banner, no threshold, no cadence, and the word stale nowhere in the header",
+      fresh === "" && sameDay === ", today," && oneDay === ", 1 day ago," && later === ", 76 days ago," && /^Data pulled 2026-09-15T09:00:00-07:00( \([^)]*\))?<span data-region="age">, 76 days ago,<\/span> from acme\.gainsightcloud\.com\. Window [^<]* These pages are not live: they change only when the dashboard is refreshed\.$/.test(headerLater) &&
+        !/stale|cadence|gs-banner/i.test(headerLater) && !app.regions.stale && typeof app.regions.age === "function", headerLater);
     const execApp = createDashboard(engine, pageModel(SPEC_DEFAULTS, GOLD, SPEC_DEFAULTS.pages[1]));
     execApp.setClock(() => Date.parse("2026-12-01T00:00:00Z"));
-    check("on a leaders' page the stale banner carries no command", execApp.renderStale().includes("Stale: this data was pulled 76 days ago") && !execApp.renderStale().includes("dashboard.mjs"));
+    check("the leaders' page carries the same age and the same not-live sentence, and no command", execApp.renderPulled().includes(", 76 days ago,") && execApp.renderPulled().includes("These pages are not live") && !execApp.renderPulled().includes("dashboard.mjs"));
   }
 
   // ══ Column show and hide (R1) ═════════════════════════════════════════════
@@ -926,8 +934,8 @@ try {
     };
     const blocked = { getItem: () => { throw new Error("storage is blocked"); }, setItem: () => { throw new Error("storage is blocked"); } };
     const a = drive(blocked);
-    check("a browser that blocks storage still gets a working page: reading and writing the column choice are both wrapped, nothing throws, the pre-render is left as it is and the controls are switched on; the stale region is painted from the browser's clock (fresh here)",
-      a.root.disabled === false && a.root.innerHTML === null && a.painted.stale === "" && (a.listeners.change({ target: { getAttribute: (n) => (n === "data-col" ? "programs" : null) } }), /data-sort="programs:opened">Opened<\/button><\/th>/.test(panelHtml(a.painted.panes, "programs")) && !/class="gs-num">Sent<\/th>/.test(panelHtml(a.painted.panes, "programs"))), a.painted.panes?.slice(0, 200));
+    check("a browser that blocks storage still gets a working page: reading and writing the column choice are both wrapped, nothing throws, the pre-render is left as it is and the controls are switched on; the header's age is painted from the browser's clock",
+      a.root.disabled === false && a.root.innerHTML === null && typeof a.painted.age === "string" && /, (today|\d+ days? ago),/.test(a.painted.age) && (a.listeners.change({ target: { getAttribute: (n) => (n === "data-col" ? "programs" : null) } }), /data-sort="programs:opened">Opened<\/button><\/th>/.test(panelHtml(a.painted.panes, "programs")) && !/class="gs-num">Sent<\/th>/.test(panelHtml(a.painted.panes, "programs"))), a.painted.panes?.slice(0, 200));
     const kept = new Map();
     const b = drive({ getItem: (k) => kept.get(k) ?? null, setItem: (k, v) => kept.set(k, v) });
     b.listeners.change({ target: { getAttribute: (n) => (n === "data-col" ? "programs" : null) } });

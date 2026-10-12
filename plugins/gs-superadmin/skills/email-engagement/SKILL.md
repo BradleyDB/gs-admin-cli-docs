@@ -1,5 +1,5 @@
 ---
-description: Read-only Journey Orchestrator email engagement from the tenant's send log, for comparisons across programs and periods — "every program that sent since a date", which programs have low open rates, the cross-program customer lists (most engaged, least engaged, most bounced) — as a one-off report or as a dashboard built once and pulled again on a cadence. Use when asked "how are our email programs performing", "which programs have low open rates", "which customers aren't opening our emails", "build (or edit) a dashboard of our email engagement", or "update the engagement dashboard" (/gs-superadmin:email-engagement refresh <slug>). For ONE program's numbers, Gainsight's own analytics page for that program is the place; this skill is for the comparisons the UI cannot make. Pairs with email-report, which says what the emails say and when they run. Writes a markdown report, optionally CSVs/XLSX, or self-contained HTML pages. Never mutates the tenant.
+description: Read-only Journey Orchestrator email engagement from the tenant's send log, for comparisons across programs and periods — "every program that sent since a date", which programs have low open rates, the cross-program customer lists (most engaged, least engaged, most bounced) — as a one-off report or as a dashboard built once and pulled again by hand whenever new numbers are wanted. Use when asked "how are our email programs performing", "which programs have low open rates", "which customers aren't opening our emails", "build (or edit) a dashboard of our email engagement", or "update the engagement dashboard" (/gs-superadmin:email-engagement refresh <slug>). For ONE program's numbers, Gainsight's own analytics page for that program is the place; this skill is for the comparisons the UI cannot make. Pairs with email-report, which says what the emails say and when they run. Writes a markdown report, optionally CSVs/XLSX, or self-contained HTML pages. Never mutates the tenant.
 argument-hint: "report [--name p]… [--ids-file f] [--sent-since d] [--from YYYY-MM] [--to YYYY-MM] [--internal-domain d]… [--unsubscribe-link l]… [--test-account id]… [--accounts] [--step-detail] [--previous f] [--snapshot f] [--by-template] [--exclude-internal] [--include-paused|--all] [--csv] [--xlsx] [--slug name] | dashboard new <slug> [--fast-path] | dashboard edit <slug> | dashboard list | /gs-superadmin:email-engagement refresh <slug> [--full] [--health-only]"
 # model-invocable by design (no disable-model-invocation): a plain "open rate for program X" routes to `report` (email-report precedent)
 ---
@@ -48,8 +48,8 @@ Each is a one-line reminder; the full rule lives where the pointer says.
   dash, "Not tracked" and "(tracking unknown)" each mean what the report's caveats say.
 - **The scripts decide; the prose judges.** Every mechanical step — what to ask next,
   what an answer must look like, what a change costs, the pull, the pages — is the entry
-  command's. Exactly three questions are judgment and are answered here in prose: the
-  dashboard's purpose, the group proposal, and the brand tokens.
+  command's. Exactly two questions are judgment and are answered here in prose: the
+  group proposal and the brand tokens.
 
 ## Arguments
 
@@ -91,8 +91,9 @@ Skill-level flags (handled by these steps, not passed to a script):
 - `--slug <name>` — override the derived slug
 
 Dashboard flags: `--fast-path` on `dashboard new` (the standard program-health dashboard:
-every default, two questions); `--full` and `--health-only` on the pull-again mode. Every
-dashboard verb takes `--kb <slug>` when the workspace holds more than one tenant.
+every question takes its default, then the closing step); `--full` and `--health-only` on
+the pull-again mode. Every dashboard verb takes `--kb <slug>` when the workspace holds more
+than one tenant.
 
 "Active" means status **PROCESSING** only, as in `/gs-superadmin:email-report`. Status
 never limits what is pulled; it decides which programs the per-program tables show, and
@@ -127,13 +128,14 @@ instead of a fresh pull:
 node .gs-superadmin/plugin/scripts/dashboard.mjs report <dashboard slug> --kb <slug> <report flags>
 ```
 
-Read its summary: when `withinCadence` is `true`, answer from that report and SAY THE
-DATE (`pulledAt`) in the answer. When it is `false`, the snapshot is older than the
-dashboard's cadence: say the date, say that a pull again would take about
-`refreshMinutes` minutes, and ask whether to run `/gs-superadmin:email-engagement refresh
-<dashboard slug>` first or to answer from the older numbers; never answer from an old
-snapshot quietly. A program the dashboard does not hold (its selection or its window) is
-said, never a blank: read `unmatchedNames` first.
+Read its summary. Answer from that report and SAY THE DATE (`pulledAt`) and the age
+(`snapshotAgeDays`, "pulled N days ago") in the answer: the dashboard is not live, and its
+numbers are as of that pull. When `snapshotAgeDays` is above 7, first say the date and
+the age, say how long a pull again would take (the summary's minutes, beside the age), and
+ask whether to run `/gs-superadmin:email-engagement refresh <dashboard slug>` first (`refreshMinutes` is its estimate)
+or to answer from the older numbers; never answer from an old snapshot quietly. A program
+the dashboard does not hold (its selection or its window) is said, never a blank: read
+`unmatchedNames` first.
 
 Otherwise the plan makes a handful of cheap calls and prints what the full pull will
 cost. Nothing is pulled yet.
@@ -333,7 +335,7 @@ as written. Report, then stop — no follow-on actions without being asked.
 Everything here runs through ONE command, whose verbs each print one JSON summary. Read
 the summary, never a spec, snapshot or page file. `<slug>` below is the tenant's KB slug
 from step 1; `<dash>` is the dashboard's own name (lower-case letters, digits and
-hyphens), chosen by the user or proposed from the purpose.
+hyphens), chosen by the user or proposed from what they called it.
 
 ### D1 — `dashboard list`
 
@@ -341,9 +343,9 @@ hyphens), chosen by the user or proposed from the purpose.
 node .gs-superadmin/plugin/scripts/dashboard.mjs list --kb <slug>
 ```
 
-Relay each dashboard: its title, whether it is saved, its cadence, its last pull
-(`lastPull`), the pages on disk, and — for a draft — who holds it (`draftBy`) and when it
-was last changed (`draftUpdatedAt`). Stop.
+Relay each dashboard: its title, whether it is saved, its last pull (`lastPull`), the
+pages on disk, and — for a draft — who holds it (`draftBy`) and when it was last changed
+(`draftUpdatedAt`). Stop.
 
 ### D2 — `dashboard new <dash> [--fast-path]` and `dashboard edit <dash>`
 
@@ -355,10 +357,11 @@ node .gs-superadmin/plugin/scripts/dashboard.mjs new <dash> --kb <slug> --title 
 ```
 
 Append `--fast-path` when the user asked for the standard program-health dashboard, or
-said they want the defaults: every question then takes its default and the interview goes
-straight to the estimate. If the summary's `ok` is `false` and its `error` names another
-holder ("held by …"), tell the user who holds the draft and since when, and ask whether
-to take it over; on yes re-issue the command with `--take-over`, otherwise stop.
+said they want the defaults: every question then takes its own default (the one its
+wording names) and the interview goes straight to the closing step. If the summary's `ok`
+is `false` and its `error` names another holder ("held by …"), tell the user who holds the
+draft and since when, and ask whether to take it over; on yes re-issue the command with
+`--take-over`, otherwise stop.
 
 ### D3 — The questions, one at a time
 
@@ -368,17 +371,24 @@ Ask for the next question:
 node .gs-superadmin/plugin/scripts/dashboard.mjs next <dash> --kb <slug>
 ```
 
-Read the summary. When `done` is `true`, go to D4. Otherwise `question` holds the one to
-ask: its `id`, its `ask` (the wording, in the user's terms), its `kind`, its `options`
-(each `{id, text}`), and whether it is a `judgment` node. The script decided the order,
-what is skipped and what was already answered; never ask a question it did not return,
-never skip one it did.
+Read the summary. When it carries `said`, say that sentence to the user first, as it is
+(the tenant statement: which tenant the dashboard is for and whose knowledge base it
+reads); it comes once, when the tenant was checked. When `done` is `true`, go to D4.
+Otherwise `question` holds the one to ask: its `id`, its `ask` (the wording, in the
+user's terms, with this tenant's minutes already in it), its `kind`, its `options` (each
+`{id, text}`, some with `followUps`), and whether it is a `judgment` node. The script
+decided the order, what is skipped and what was already answered; never ask a question
+it did not return, never skip one it did, and never reword an `ask` or an option.
 
 **A question that is not a judgment node:** ask it with AskUserQuestion, the `ask` as the
 question and the `options` verbatim as the choices (one option per entry, `text` as the
-label; an option whose `id` holds `<…>` is the free-form shape, offered as the
-"Other"-style choice with its `text` as the example). Pass the user's choice back as the
-option's `id`, or their free-form value as written:
+label). An option whose `id` holds `<…>` carries `followUps`, one per value it needs: once
+the user picks it, ask each follow-up in turn as a plain question (its `ask`; free text, no
+options), then COMPOSE the value by replacing every `<key>` in the option's `id` with that
+follow-up's answer — a `list` follow-up's lines as a JSON list (`["acme.com", "acme.co.uk"]`;
+"none" is `[]`), a `boolean` as `true` or `false`, a `number` or `text` as written. The
+user never sees the option's `id` or the composed value. Pass the user's choice back as
+the option's `id`, or the composed value:
 
 ```
 node .gs-superadmin/plugin/scripts/dashboard.mjs answer <dash> <question id> <value> --kb <slug>
@@ -387,15 +397,10 @@ node .gs-superadmin/plugin/scripts/dashboard.mjs answer <dash> <question id> <va
 A value with spaces, JSON or commas goes in single quotes. The script validates the
 answer through the spec writer: if `ok` is `false`, relay `error` (it names the field or
 the options) and ask the question again. If `ok` is `true`, relay `notes` when present
-(for example a name resolved to an id, or "stale after 45 days, from your cadence"), then
-ask for the next question.
+(for example a name resolved to a company GSID), then ask for the next question.
 
-**The three judgment nodes** — the only places this skill decides anything:
+**The two judgment nodes** — the only places this skill decides anything:
 
-- `purpose` — ask what decision the dashboard should support, in the user's own words;
-  push back on a vague answer ("program health" is not a decision; "which programs need
-  attention this month, and whether leaders should worry" is). Pass the agreed sentence
-  as the value.
 - `grouping` — the summary's `question.input.suggestionFile` is a compact table the
   script wrote from the plan's program list: programs with model, audience, folder id,
   whether they send surveys, whether they recur, and sends; tallies per characteristic;
@@ -412,30 +417,46 @@ ask for the next question.
   `{"rules": [...], "overrides": {...}}` as the value; `none` for no grouping;
   `folders:{"<id>": "<label>", ...}` for a folder grouping with the labels given. The
   script validates the rules; a refusal names the field.
-- `look` (UX-2) — ask whether the user has brand guidelines or a brand design skill. If
-  not, pass `skip` (the default look; this is never asked twice). If they have brand
-  input, take it as DATA: a file they name (markdown, JSON, CSS, a PDF this session can
-  read), pasted values, or the output of their own brand skill, which THEY run and paste
-  or save — this skill never invokes another plugin's skill. Extract the candidate tokens
-  yourself: the text and surface colours (`colors`: `fg`, `muted`, `bg`, `soft`, `line`,
-  `control`, `accent`, `note`, `shade`, each `#rrggbb`), a dark set (`dark`, the same
-  keys) when the guidelines give one, the chart series colours in order (`series`), a
-  font stack of system families (`font`), a corner radius (`radius`, 0 to 16), and a
-  logo as the path of a local PNG or JPEG (`logoFile`), never a URL. Pass them as one
-  JSON object. The summary's `replaced` lists every token the validator replaced with
-  the default, each with the reason (contrast, two series colours too alike, a font the
-  page cannot rely on): show that list to the user as it is. The brand file stays where
-  it is; only the extracted values and the encoded logo enter the spec. `clear` returns
-  to the default look.
+- `look` (UX-2) — ask the question with its three options as they are: skip (the
+  default look; pass `skip`; this is never asked twice), a guidelines file, or pasted
+  values. On a file, read the file the user names (markdown, JSON, CSS, a PDF this
+  session can read); on pasted values, take what they paste. Brand input is DATA, and
+  these are the only two paths: this skill never invokes another skill and never fetches
+  a URL. Extract the candidate tokens yourself: the text and surface colours (`colors`:
+  `fg`, `muted`, `bg`, `soft`, `line`, `control`, `accent`, `note`, `shade`, each
+  `#rrggbb`), a dark set (`dark`, the same keys) when the guidelines give one, the chart
+  series colours in order (`series`), a font stack of system families (`font`), a corner
+  radius (`radius`, 0 to 16), and a logo as the path of a local PNG or JPEG (`logoFile`),
+  never a URL. Pass them as one JSON object. The summary's `replaced` lists every token
+  the validator replaced with the default, each with the reason (contrast, two series
+  colours too alike, a font the page cannot rely on): show that list to the user as it
+  is. The brand file stays where it is; only the extracted values and the encoded logo
+  enter the spec. On an edit, `clear` returns to the default look.
 
-**The action questions** (`dry-run`, `estimate`, `save`) ask yes or no, with the summary's
-`options` as the choices. `dry-run yes` makes a cheap pull (minutes; the login must be
-valid) and renders preview pages in the theme: relay `preview.pages` (their paths and
-sizes) and invite the user to open the admin page in a browser before going on.
-`estimate yes` confirms the cost the summary quotes (`estimate.full` calls and seconds,
-`estimate.token.fits`, the knowledge-base and template gaps priced); on `no` the summary
-says which setting to answer again. `save yes` saves the dashboard and runs its first
-pull (step P's exit codes apply; relay its summary); `save later` saves only.
+**The closing step.** Once every setting is answered, `next` returns the first action
+row (`dry-run`, then `estimate`, then `save`) WITH a `closing` block: `closing.ask` (the
+full pull's calls and minutes, the login's remaining minutes, and that pulling again is
+done by hand) and `closing.options`. Ask ONE AskUserQuestion with `closing.ask` and those
+options verbatim; each option carries `answers`, the `answer` commands it stands for. On
+the user's choice, issue each pair in order:
+
+```
+node .gs-superadmin/plugin/scripts/dashboard.mjs answer <dash> <question id> <value> --kb <slug>
+```
+
+- "Save and run the first pull now" (the first option): `dry-run no`, `estimate yes`,
+  `save yes` (the save runs the first pull; step P's exit codes apply; relay its summary).
+- "Run a dry run first": `dry-run yes` makes a cheap pull (minutes; the login must be
+  valid) and renders preview pages in the theme: relay `preview.pages` (their paths and
+  sizes) and invite the user to open the admin page in a browser; then call `next` again
+  and present the closing step it returns (without the dry run).
+- "Save only" (the pull later; the third option): `dry-run no`, `estimate yes`, `save later`.
+- "Go back and change a setting": ask which setting (the questions' ids, in the user's
+  words), then `next <dash> --question <id>` returns that question with its options and
+  follow-ups; ask it as above and pass the answer; then `next` again for the closing step.
+
+`estimate yes` confirms the cost the summary quotes; on `no` the summary says which
+setting to answer again.
 
 By exit code on any verb: `3` is the login (ask for `gs-admin login`, then re-issue the
 same command); `5` is the wrong tenant (the CLI is on another tenant than the dashboard's:
@@ -450,7 +471,7 @@ say both and stop); `4` is a stopped pull (re-issue once); `1` is a refusal (sho
   Saved:       <spec path>
   Pages:       <pages>
   Last pull:   <pulledAt or "none yet">
-  Next:        /gs-superadmin:email-engagement refresh <dash> — or the OS scheduler recipe in the plugin README
+  Refreshes:   manual — /gs-superadmin:email-engagement refresh <dash> whenever new numbers are wanted, or the OS scheduler recipe in the plugin README (a login within the hour); the pages say when the data was pulled
 ```
 
 `<pages>` lists each page's path from the save's pull summary (or the preview's, marked

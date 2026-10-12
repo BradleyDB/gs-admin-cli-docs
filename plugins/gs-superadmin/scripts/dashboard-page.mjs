@@ -43,7 +43,7 @@ import { mkdirSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { makeCliHelpers, readJsonFile, writeFileAtomicSync, isMainModule } from "./doc-lib.mjs";
 import * as engine from "./engagement-query.mjs";
-import { openSpec, SPEC_DESCRIPTIONS, TABS, CADENCES, KNOBBED_PANEL_TYPES, presetPanels, pageDateDefault, pageTemplateContent, panelKnobs, describeSpec } from "./dashboard-spec.mjs";
+import { openSpec, SPEC_DESCRIPTIONS, TABS, KNOBBED_PANEL_TYPES, presetPanels, pageDateDefault, pageTemplateContent, panelKnobs, describeSpec } from "./dashboard-spec.mjs";
 import { applyGroups, resolveGroups, programTraits, describeRule, UNGROUPED } from "./dashboard-groups.mjs";
 import { createDashboard, LACKS, PAGE_MODEL_VERSION } from "./dashboard-runtime.mjs";
 import { DEFAULT_THEME, validateTheme, tokensCss } from "./dashboard-theme.mjs";
@@ -155,7 +155,10 @@ const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
  * @param {T11Spec} spec @param {T11Page} page
  */
 export function aboutSettings(spec, page) {
-  const said = describeSpec(spec);
+  // The settings the pages do not read are not listed (ruled 2026-10-12, F-511 ruling 11): the cadence and the freshness
+  // stay in the spec, and the purpose line is the About tab's own paragraph. Keyed on the covered path, never the label.
+  const unlisted = ["refresh.cadence", "freshness.maxAgeDays", "purpose"];
+  const said = describeSpec(spec).filter((d) => !d.covers.some((c) => unlisted.includes(c)));
   if (page.sourceDetail) return said.map((d) => ({ label: d.label, text: d.text }));
   const domains = spec.sources.reduce((n, s) => n + s.params.internalDomains.length, 0);
   const links = spec.sources.reduce((n, s) => n + s.params.unsubscribeLinks.length, 0);
@@ -213,7 +216,8 @@ export function pageModel(spec, snapshot, page, { delta = null } = {}) {
     filters: { dateRange: offered("dateRange"), programs: offered("programs"), group: offered("group"), status: offered("status"), recipientClass: { enabled: !!recipients?.enabled, default: recipients?.default ?? "all" } },
     testAccounts: spec.sources.reduce((n, s) => n + s.params.testAccounts.length, 0),
     settingLabels,
-    freshness: { maxAgeDays: spec.freshness.maxAgeDays, cadence: spec.refresh.cadence, cadenceText: CADENCES[spec.refresh.cadence] ?? spec.refresh.cadence },
+    // No freshness and no cadence on the page (ruled 2026-10-12): the header says when the data was pulled and that the
+    // pages are not live; refresh.cadence and freshness.maxAgeDays stay in the spec unread.
     health: { silentDays: spec.health.silentDays },
     // Health caveats and the page-level health banner are decided from the spec: is this page's Health tab on (ruled 2026-10-04).
     healthTab: on.has("health"),
@@ -224,6 +228,8 @@ export function pageModel(spec, snapshot, page, { delta = null } = {}) {
     delta,
     about: {
       sourceDetail: page.sourceDetail,
+      // The admin's own sentence, when one was set through `change` (the purpose question is dropped; ruled 2026-10-12).
+      purpose: spec.purpose ?? null,
       settings: aboutSettings(spec, page),
       groups: { rules: spec.groups.rules.map((r, i) => ({ text: describeRule(r), matched: matched[i] })), ungrouped: resolution.ungrouped.map((id) => ({ id, name: names.get(id) ?? null })), overrides: Object.keys(spec.groups.overrides).length },
     },
@@ -349,7 +355,6 @@ tfoot td{font-weight:600}
 .gs-ungrouped.is-prominent{padding:8px 10px;border:1px solid var(--line);border-left:4px solid var(--status-warn);border-radius:4px}
 .gs-no-match{color:var(--status-warn)}
 .gs-banner{margin:8px 0;padding:8px 12px;background:var(--note);border:1px solid var(--line);border-left:4px solid var(--accent);border-radius:4px}
-.gs-banner-stale{border-left-color:var(--status-stale)}
 .gs-banner-health{border-left-color:var(--status-error)}
 .gs-banner p{margin:0}
 .gs-banner .gs-notice-line{margin-top:4px}

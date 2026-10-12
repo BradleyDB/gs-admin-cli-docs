@@ -47,7 +47,7 @@
 //                 back into the T-10 shape the engine reads.
 //   mount         the only code that touches a document: listeners on the
 //                 page's root, column choices in localStorage (wrapped in
-//                 try/catch), the file download, the clock the stale banner
+//                 try/catch), the file download, the clock the header's age
 //                 reads. No network request anywhere.
 //
 // Citations: DSH-n are work items and Rnn rulings of the maintainer's
@@ -55,7 +55,7 @@
 // produced is stated beside the token.
 // ─────────────────────────────────────────────────────────────────────────────
 
-export const PAGE_MODEL_VERSION = 2;
+export const PAGE_MODEL_VERSION = 3;
 
 const HTML_ESCAPES = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
 /** Every tenant string reaches a page through this. */
@@ -1128,16 +1128,24 @@ export function createDashboard(engine, model) {
     return `${esc(renderCount(state))}. ${plural(scope.programs, "program")} shown. ${plural(scope.programsHiddenByStatus, "program")} hidden by status (showing ${esc(showing)}). Months ${esc(when)}; ${state.external ? "external recipients only" : "every recipient"}.`;
   };
 
-  // ── Banners: stale data, and a health pull that was asked for and did not complete ──
-  /** A clock the stale banner reads: null in Node (the pre-render has no now); mount sets it to the browser's. */
+  // ── The header's age, and a health pull that was asked for and did not complete ──
+  // No stale banner and no cadence (ruled 2026-10-12, F-511 ruling 11): the header says when the data was pulled and
+  // how many days ago, and that the pages are not live; the refresh is the admin's, by hand.
+  /** A clock the age reads: null in Node (the pre-render has no now); mount sets it to the browser's. */
   let clock = null;
-  const renderStale = () => {
+  const renderAge = () => {
     const now = typeof clock === "function" ? clock() : null;
     const pulled = Date.parse(snapshot.meta.pulledAt);
     if (now == null || !Number.isFinite(pulled)) return "";
     const ageDays = Math.floor((now - pulled) / MS_PER_DAY);
-    if (ageDays <= model.freshness.maxAgeDays) return "";
-    return `<div class="gs-banner gs-banner-stale" role="status" data-banner="stale"><p>Stale: this data was pulled ${plural(ageDays, "day")} ago. The dashboard is refreshed ${esc(model.freshness.cadenceText)} and is stale after ${plural(model.freshness.maxAgeDays, "day")}.</p>${howTo ? renderLine(COPY_LINES.refresh(model.slug)) : ""}</div>`;
+    return `, ${ageDays <= 0 ? "today" : ageDays === 1 ? "1 day ago" : `${ageDays} days ago`},`;
+  };
+  /** The header's line: the engine's data-pulled sentence with the age after the time, then that the pages are not live. */
+  const renderPulled = () => {
+    const line = engine.dataPulledLine(snapshot);
+    const cut = line.indexOf(" from ");
+    const withAge = cut > 0 ? `${esc(line.slice(0, cut))}<span data-region="age">${renderAge()}</span>${esc(line.slice(cut))}` : esc(line);
+    return `${withAge} These pages are not live: they change only when the dashboard is refreshed.`;
   };
   /** Decided from the spec (the page's Health tab is on), never from a flag: a health pull that was asked for and did not complete is flagged at page level (ruled 2026-10-04). */
   const renderHealthBanner = () => {
@@ -1219,10 +1227,14 @@ export function createDashboard(engine, model) {
     ];
     section("provenance", "Where the data came from", `<dl class="gs-prov">${prov.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join("")}</dl>`);
     section("caveats", "Caveats", renderCaveats());
-    section("refresh", "How to refresh", `<p>${howTo ? `Run <code>${esc(COPY_LINES.refresh(model.slug))}</code> from the workspace, with a gs-admin login; the /gs-superadmin:email-engagement skill runs the same command.` : `An admin refreshes this page ${esc(model.freshness.cadenceText)}; the data-pulled line at the top says when it was last done.`}</p>`);
-    // A contents line first, then each section under its own anchor.
+    // Refreshes are manual (ruled 2026-10-12): the command for an admin, with how to schedule it on their own machine.
+    section("refresh", "How to refresh", `<p>${howTo ? `Refreshes are manual. Run <code>${esc(COPY_LINES.refresh(model.slug))}</code> from the workspace with a gs-admin login whenever you want new numbers, or schedule it yourself on your own machine (the plugin README has the recipe; a scheduled run needs a login within the hour). The /gs-superadmin:email-engagement skill runs the same command. The pages always show when the data was pulled.` : `An admin refreshes this page by hand; the data-pulled line at the top says when it was last done.`}</p>`);
+    // The fixed statement of what the dashboard is (ruled 2026-10-12, F-511 rulings 2 and 3), the admin's own sentence
+    // when one was set (`change <slug> purpose=…`), the data-pulled line, then a contents line and each section under its own anchor.
+    const what = `This dashboard shows email engagement from the tenant's send log: comparisons across programs and periods, for every program it covers. It is one dashboard with one pull, built as an admin page and a leaders' page, and it is refreshed by hand; the data is as of the pull named below.`;
+    const purpose = model.about.purpose ? `<p class="gs-purpose">${esc(model.about.purpose)}</p>` : "";
     const toc = `<ul class="gs-toc">${sections.map((s) => `<li><a href="#about-${s.id}">${esc(s.title)}</a></li>`).join("")}</ul>`;
-    return `<section class="gs-about"><h2>About this page</h2><p>${esc(engine.dataPulledLine(snapshot))}</p>${toc}</section>` + sections.map((s) => `<section class="gs-about" id="about-${s.id}"><h2>${esc(s.title)}</h2>${s.body}</section>`).join("");
+    return `<section class="gs-about"><h2>About this page</h2><p>${what}</p>${purpose}<p>${esc(engine.dataPulledLine(snapshot))}</p>${toc}</section>` + sections.map((s) => `<section class="gs-about" id="about-${s.id}"><h2>${esc(s.title)}</h2>${s.body}</section>`).join("");
   };
   const renderPane = (tab, state, ui) => {
     // An offered tab is an invitation: its pane is the notice, and nothing else.
@@ -1242,8 +1254,8 @@ export function createDashboard(engine, model) {
   // read as one; a page draws the element only when its spec gave a logo.
   const renderLogo = () => (model.look?.logo ? `<${"img"} class="gs-logo" ${"src"}="${esc(model.look.logo)}" alt="">` : "");
   const renderApp = (state, ui) =>
-    `<header class="gs-head">${renderLogo()}<h1>${esc(model.title)}</h1><p class="gs-sub">${esc(page.title)}</p><p class="gs-pulled">${esc(engine.dataPulledLine(snapshot))}</p></header>` +
-    `<div data-region="stale">${renderStale()}</div>${renderHealthBanner()}` +
+    `<header class="gs-head">${renderLogo()}<h1>${esc(model.title)}</h1><p class="gs-sub">${esc(page.title)}</p><p class="gs-pulled">${renderPulled()}</p></header>` +
+    `${renderHealthBanner()}` +
     `<nav class="gs-tabs" data-region="tabs" aria-label="Tabs">${renderTabs(state)}</nav>` +
     `<section class="gs-filters" data-region="filters" aria-label="Filters">${renderFilters(state)}</section>` +
     `<div class="gs-panes" data-region="panes">${renderPanes(state, ui)}</div>` +
@@ -1252,10 +1264,10 @@ export function createDashboard(engine, model) {
   return {
     model, snapshot, programs, panels, tabs, supergroups, groups, healthDayChoices,
     defaultState, clean, hashOf, stateFromHash, filtersOf, run, scopeOf, programMatches,
-    lackFacts, renderNotice, renderTablePanel, renderPanel, renderDrawer, visibleCols, csvOf, colsKey, renderApp, renderAbout, renderStale, renderHealthBanner, caveats,
-    /** @param {?(() => number)} fn the clock the stale banner reads (null = no clock, no banner) */
+    lackFacts, renderNotice, renderTablePanel, renderPanel, renderDrawer, visibleCols, csvOf, colsKey, renderApp, renderAbout, renderAge, renderPulled, renderHealthBanner, caveats,
+    /** @param {?(() => number)} fn the clock the header's age reads (null = no clock, no age) */
     setClock: (fn) => { clock = fn; },
-    regions: { filters: renderFilters, summary: renderSummary, tabs: renderTabs, panes: renderPanes, count: renderCount, groupOptions: renderGroupOptions, stale: renderStale, statusSummary: renderStatusSummary },
+    regions: { filters: renderFilters, summary: renderSummary, tabs: renderTabs, panes: renderPanes, count: renderCount, groupOptions: renderGroupOptions, age: renderAge, statusSummary: renderStatusSummary },
   };
 }
 /** @param {string} day YYYY-MM-DD @returns {[number, number, number]} year, month index, day */
@@ -1329,7 +1341,7 @@ export function cronWords(expr) {
 const BOM = String.fromCharCode(0xfeff);
 /**
  * Wire a page: listeners on its root, the viewer's column choices, the hash,
- * the clock the stale banner reads.
+ * the clock the header's age reads.
  * @param {ReturnType<typeof createDashboard>} app @param {*} root the page's root element @param {*} g the window
  */
 export function mount(app, root, g) {
@@ -1559,10 +1571,10 @@ export function mount(app, root, g) {
     full();
   });
 
-  // The pre-render IS the default view; anything else is drawn now. Then the stale banner reads the clock, and the controls come alive.
+  // The pre-render IS the default view; anything else is drawn now. Then the header's age reads the clock, and the controls come alive.
   if (lastHash || Object.keys(ui.cols).length) full();
   app.setClock(() => (g.Date ?? Date).now());
-  paint(["stale"]);
+  paint(["age"]);
   root.disabled = false;
 }
 
