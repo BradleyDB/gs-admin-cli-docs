@@ -213,9 +213,10 @@ Walk (hb-20261010-01): 2026-10-11 (tester) — V2 SECOND SITTING ("V2.5") @ hb-2
        per-segment customer-list view yet (the selection is in the snapshot for one); on an edit the metrics question
        cannot restore a metric left off earlier (that is `change pages.N.panels=[]`).
      Carried: F-502..F-504 (normal) and F-505..F-509 (polish) stay OPEN for the next builder round.
-     CI on PR #47's head f9a64a1 was running at close (GitGuardian and changes green; manifests, validate and drift
-       pending): owed as a per-job quote here. Also owed from S4d's close: the per-job result of validate-plugin
-       dispatch run 38191969253 on the merged tip.
+     CI on PR #47's head f9a64a1, per job: GitGuardian Security Checks pass; validate-plugin run 38205208768 — changes
+       success, manifests success, validate (ubuntu-latest) success; docs-drift run 38205208777 — drift (full) success.
+       The S4d-owed validate-plugin dispatch on the merged tip (run 38191969253): changes, manifests, validate
+       (ubuntu-latest) all success.
      Next: S5-V (Bradley walks the interview: § DSH-3 I0–I12, § PUB-1 R1–R9, § UX-2 B1–B4), then PR #47 merges; UX-3
        waits for his confirmation in the plan.
 -->
