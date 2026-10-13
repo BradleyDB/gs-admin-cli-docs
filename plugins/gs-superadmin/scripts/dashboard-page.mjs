@@ -40,11 +40,11 @@
 // Zero dependencies — Node built-ins only.
 // ─────────────────────────────────────────────────────────────────────────────
 import { mkdirSync, readFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { basename, join, resolve } from "node:path";
 import { makeCliHelpers, readJsonFile, writeFileAtomicSync, isMainModule } from "./doc-lib.mjs";
 import * as engine from "./engagement-query.mjs";
-import { openSpec, SPEC_DESCRIPTIONS, TABS, KNOBBED_PANEL_TYPES, presetPanels, pageDateDefault, pageTemplateContent, panelKnobs, describeSpec } from "./dashboard-spec.mjs";
-import { applyGroups, resolveGroups, programTraits, describeRule, UNGROUPED } from "./dashboard-groups.mjs";
+import { openSpec, SPEC_DESCRIPTIONS, TABS, KNOBBED_PANEL_TYPES, presetPanels, pageDateDefault, pageTemplateContent, panelKnobs, describeSpec, kbDirOfSpecFile } from "./dashboard-spec.mjs";
+import { applyGroups, resolveGroups, programTraits, describeRule, modelNamesOf, UNGROUPED } from "./dashboard-groups.mjs";
 import { createDashboard, LACKS, PAGE_MODEL_VERSION } from "./dashboard-runtime.mjs";
 import { DEFAULT_THEME, validateTheme, tokensCss } from "./dashboard-theme.mjs";
 
@@ -157,7 +157,9 @@ const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 export function aboutSettings(spec, page) {
   // The settings the pages do not read are not listed (ruled 2026-10-12, F-511 ruling 11): the cadence and the freshness
   // stay in the spec, and the purpose line is the About tab's own paragraph. Keyed on the covered path, never the label.
-  const unlisted = ["refresh.cadence", "freshness.maxAgeDays", "purpose"];
+  // The group rules are not listed here either: the About tab draws them once, as they resolved, with what each
+  // matched (the S5-V second sitting read the Groups part twice, 2026-10-12).
+  const unlisted = ["refresh.cadence", "freshness.maxAgeDays", "purpose", "groups.rules[]"];
   const said = describeSpec(spec).filter((d) => !d.covers.some((c) => unlisted.includes(c)));
   if (page.sourceDetail) return said.map((d) => ({ label: d.label, text: d.text }));
   const domains = spec.sources.reduce((n, s) => n + s.params.internalDomains.length, 0);
@@ -174,7 +176,7 @@ export function aboutSettings(spec, page) {
  * Everything a page embeds (the runtime's model).
  * @param {T11Spec} spec @param {T10Snapshot} snapshot @param {T11Page} page
  */
-export function pageModel(spec, snapshot, page, { delta = null } = {}) {
+export function pageModel(spec, snapshot, page, { delta = null, kb = null } = {}) {
   const admin = page.preset === "admin";
   const tabs = page.tabs.flatMap((t, index) => {
     // `index` is the tab's place in the SPEC's list (the copy line names it: `pages.N.tabs.M.enabled`, F-503).
@@ -198,12 +200,17 @@ export function pageModel(spec, snapshot, page, { delta = null } = {}) {
   const resolution = resolveGroups({ programs: programTraits(snapshot), groups: spec.groups });
   const matched = spec.groups.rules.map((_, i) => resolution.assignments.filter((a) => a.by.supergroup === `rule ${i + 1}` || a.by.group === `rule ${i + 1}`).length);
   const names = new Map(snapshot.dimensions.programs.map((p) => [p.id, p.name]));
+  // A model rule is described by the display name the snapshot knows for its code (F-515 d).
+  const ruleNames = modelNamesOf(snapshot.dimensions.programs);
   // The look (UX-1): the spec's theme through the validator, or the default; the page carries what it needs to SAY
   // about it (the logo, and the notes on replaced tokens), never the colours themselves, which are the style sheet's.
   const look = validateTheme(spec.theme ?? null);
   return {
     v: PAGE_MODEL_VERSION,
     slug: spec.slug,
+    // The knowledge-base folder's NAME (never its path), so every copy line can carry `--kb` (F-503); null when the
+    // builder was run by hand with no folder known.
+    kb: kb ?? null,
     title: spec.title,
     look: { custom: !!spec.theme, logo: look.theme.logo, notes: look.notes, derivedDark: !!spec.theme && look.derivedDark },
     ungrouped: UNGROUPED,
@@ -231,7 +238,7 @@ export function pageModel(spec, snapshot, page, { delta = null } = {}) {
       // The admin's own sentence, when one was set through `change` (the purpose question is dropped; ruled 2026-10-12).
       purpose: spec.purpose ?? null,
       settings: aboutSettings(spec, page),
-      groups: { rules: spec.groups.rules.map((r, i) => ({ text: describeRule(r), matched: matched[i] })), ungrouped: resolution.ungrouped.map((id) => ({ id, name: names.get(id) ?? null })), overrides: Object.keys(spec.groups.overrides).length },
+      groups: { rules: spec.groups.rules.map((r, i) => ({ text: describeRule(r, { names: ruleNames }), matched: matched[i] })), ungrouped: resolution.ungrouped.map((id) => ({ id, name: names.get(id) ?? null })), overrides: Object.keys(spec.groups.overrides).length },
     },
     snapshot: { ...kept, dimensions: packAll(kept.dimensions), facts: packAll(kept.facts) },
   };
@@ -425,7 +432,7 @@ const STYLE = TOKENS + STYLE_RULES;
  *   the change since the last pull (PUB-1): computed by the refresh over the closed months both snapshots hold; null on a first pull
  * @returns {{html: ?string, report: {page: string, preset: string, file: string, written: boolean, bytes: Object<string, number>, megabytes: number, rows: Object<string, number>, tables: Object<string, {rows: number, bytes: number}>, programs: number, warning: ?string, refused: ?string}}}
  */
-export function buildPage({ spec, snapshot, pageId, engineSource, runtimeSource, budget = PAGE_BUDGET, delta = null }) {
+export function buildPage({ spec, snapshot, pageId, engineSource, runtimeSource, budget = PAGE_BUDGET, delta = null, kb = null }) {
   const page = spec.pages.find((p) => p.id === pageId);
   if (!page) throw new Error(`dashboard page: the spec has no page "${pageId}" (it has ${spec.pages.map((p) => p.id).join(", ")})`);
   if (spec.tenantHost !== snapshot.meta.tenantHost) throw new Error(`dashboard page: the spec belongs to ${spec.tenantHost} and the snapshot was pulled from ${snapshot.meta.tenantHost} — a dashboard is never built from another tenant's data`);
@@ -433,7 +440,7 @@ export function buildPage({ spec, snapshot, pageId, engineSource, runtimeSource,
     // Inlined as they are, so neither may hold what would end a script element early.
     if (/<\/script|<!--/i.test(source)) throw new Error(`dashboard page: ${name} holds text that would end the page's script element; it cannot be inlined as it is`);
   }
-  const model = pageModel(spec, snapshot, page, { delta });
+  const model = pageModel(spec, snapshot, page, { delta, kb });
   let prerender;
   try {
     const app = createDashboard(engine, model);
@@ -515,11 +522,14 @@ async function main() {
   const { snapshot, resolution } = applyGroups(pulled, spec.groups);
   const sources = inlinedSources();
   const outDir = resolve(opt("--out-dir"));
+  // The knowledge-base folder's name, for the copy lines (F-503): the spec writer knows where it keeps a spec.
+  const kbDir = kbDirOfSpecFile(opt("--spec"));
+  const kb = kbDir ? basename(kbDir) : null;
   const pages = [];
   for (const page of spec.pages.filter((p) => !only || p.id === only)) {
     let built;
     try {
-      built = buildPage({ spec, snapshot, pageId: page.id, ...sources });
+      built = buildPage({ spec, snapshot, pageId: page.id, ...sources, kb });
     } catch (e) {
       return fail(e instanceof Error ? e.message : String(e));
     }

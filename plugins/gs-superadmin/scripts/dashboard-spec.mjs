@@ -186,7 +186,7 @@
  *   a failing token with the default's and says so on the About tab
  */
 import { existsSync, readdirSync, rmSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { userInfo } from "node:os";
 import { makeCliHelpers, readJsonFile, writeFileAtomicSync, isMainModule, readKbIdentity, cmpKey } from "./doc-lib.mjs";
 import { printable } from "./journal-lib.mjs";
@@ -888,6 +888,17 @@ export function holderName(given = null) {
  * folder's spec and draft files.
  * @param {string} kbDir the tenant's KB folder (the one /gs-superadmin:setup created)
  */
+/**
+ * The tenant KB folder a saved spec or draft file belongs to (`<kb>/dashboards/<slug>/spec.json` → `<kb>`), or null
+ * for a file that does not sit where this writer puts them. The page builder reads the folder's NAME from it for the
+ * copy lines (F-503); only this writer knows the layout.
+ * @param {string} file
+ * @returns {?string}
+ */
+export function kbDirOfSpecFile(file) {
+  const dir = dirname(resolve(file));
+  return basename(dirname(dir)) === DASHBOARDS_DIR ? dirname(dirname(dir)) : null;
+}
 export function specStore(kbDir) {
   const kb = resolve(kbDir);
   if (!existsSync(join(kb, "_manifest.json"))) refuse(`--kb ${kbDir}: no _manifest.json there — pass the tenant's KB folder (the one /gs-superadmin:setup created)`);
@@ -942,7 +953,8 @@ export function specStore(kbDir) {
         const saved = existsSync(specPath(kb, slug)) ? read(specPath(kb, slug), "the spec") : null;
         const draft = existsSync(draftPath(kb, slug)) ? read(draftPath(kb, slug), "the draft") : null;
         return {
-          slug, saved: !!saved, draft: !!draft, title: saved?.title ?? draft?.spec?.title ?? null, cadence: saved?.refresh?.cadence ?? null, pages: Array.isArray(saved?.pages) ? saved.pages.map((p) => p.id) : [],
+          // No cadence here (ruled 2026-10-12, F-511 ruling 11; instance 22): refreshes are manual and nothing reads refresh.cadence.
+          slug, saved: !!saved, draft: !!draft, title: saved?.title ?? draft?.spec?.title ?? null, pages: Array.isArray(saved?.pages) ? saved.pages.map((p) => p.id) : [],
           draftBy: draft?.by ?? null, draftUpdatedAt: draft?.updatedAt ?? null, draftAnswered: Array.isArray(draft?.answered) ? draft.answered.length : null,
         };
       }).filter((d) => d.saved || d.draft);

@@ -279,8 +279,8 @@ try {
 
   // ── list, and the refusals around the KB ───────────────────────────────────
   const listed = run("list", []);
-  check("list: every dashboard of the KB with whether it is saved and whether a draft is in progress, its title, cadence and pages",
-    listed.code === 0 && listed.json?.tenantHost === "acme.gainsightcloud.com" && isDeepStrictEqual(listed.json.dashboards.find((d) => d.slug === "program-health"), { slug: "program-health", saved: true, draft: false, title: "Acme program health", cadence: "monthly", pages: ["admin", "exec"], draftBy: null, draftUpdatedAt: null, draftAnswered: null }), listed.json ?? listed.stderr);
+  check("list: every dashboard of the KB with whether it is saved and whether a draft is in progress, its title and pages — and no cadence (ruled 2026-10-12: refreshes are manual; F-511 instance 22)",
+    listed.code === 0 && listed.json?.tenantHost === "acme.gainsightcloud.com" && isDeepStrictEqual(listed.json.dashboards.find((d) => d.slug === "program-health"), { slug: "program-health", saved: true, draft: false, title: "Acme program health", pages: ["admin", "exec"], draftBy: null, draftUpdatedAt: null, draftAnswered: null }) && !JSON.stringify(listed.json).includes("cadence"), listed.json ?? listed.stderr);
   // ── The draft's holder (ruled 2026-10-05, DSH-1 item 8) ───────────────────
   {
     const mine = run("draft", ["--slug", "held", "--by", "ana"]);

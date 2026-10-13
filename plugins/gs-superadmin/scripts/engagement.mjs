@@ -3950,20 +3950,33 @@ export function prepareRun({ wsDir, runId, params, previousPath, cliVersion, tod
   if (!/^[A-Za-z0-9._-]+$/.test(runId)) throw new EngagementRefusal(`--run must be a plain name (letters, digits, . _ -), got "${printable(runId, 40)}"`);
   const runDir = join(wsDir, ".gs-superadmin", "tmp", "engagement", runId);
   const runFile = join(runDir, "run.json");
-  const stableOf = (p) => { const { pulledAt: _a, timeZone: _b, ...rest } = p; return rest; };
   if (!existsSync(runFile)) {
     writeFileAtomicSync(runFile, JSON.stringify({ params, previousPath, cliVersion }, null, 2));
     return { runDir, params, resumed: false };
   }
-  const started = readJsonFile(runFile);
+  const diff = runParamsMoved(runDir, { params, previousPath, todayGiven, reparams });
+  if (diff.moved.length) throw new EngagementRefusal(`the run at ${runDir} was started with different parameters (${diff.moved.join(", ")} moved) — pass the same flags to resume it, or a new --run`);
+  if (diff.previousMoved) throw new EngagementRefusal(`the run at ${runDir} was started with a different --previous — pass the same one to resume it, or a new --run`);
+  return { runDir, params: diff.started.params, resumed: true };
+}
+/**
+ * Whether a run directory can be CONTINUED with these parameters: the ONE rule prepareRun refuses by, exported so a
+ * caller that owns a pending run (the entry command's refresh state, F-512) can abandon it and plan afresh instead of
+ * running into the refusal. Compares the stable parameters (the pull time and time zone aside) and the previous
+ * snapshot; `today` is re-read from the run unless the caller gave one (F-483).
+ * @param {string} runDir
+ * @param {{params: *, previousPath: ?string, todayGiven: boolean, reparams: (today: string) => *}} args
+ * @returns {{started: *, moved: string[], previousMoved: boolean}}
+ */
+export function runParamsMoved(runDir, { params, previousPath, todayGiven, reparams }) {
+  const started = readJsonFile(join(runDir, "run.json"));
+  const stableOf = (p) => { const { pulledAt: _a, timeZone: _b, ...rest } = p ?? {}; return rest; };
   let now = params;
   if (!todayGiven && started.params?.today && started.params.today !== params.today) now = reparams(started.params.today);
   const was = stableOf(started.params);
   const cur = stableOf(now);
   const moved = [...new Set([...Object.keys(was), ...Object.keys(cur)])].filter((k) => JSON.stringify(was[k]) !== JSON.stringify(cur[k]));
-  if (moved.length) throw new EngagementRefusal(`the run at ${runDir} was started with different parameters (${moved.join(", ")} moved) — pass the same flags to resume it, or a new --run`);
-  if ((started.previousPath ?? null) !== (previousPath ?? null)) throw new EngagementRefusal(`the run at ${runDir} was started with a different --previous — pass the same one to resume it, or a new --run`);
-  return { runDir, params: started.params, resumed: true };
+  return { started, moved, previousMoved: (started.previousPath ?? null) !== (previousPath ?? null) };
 }
 
 // ── CLI ──────────────────────────────────────────────────────────────────────

@@ -89,7 +89,7 @@
 //
 // Zero dependencies — Node built-ins only.
 // ─────────────────────────────────────────────────────────────────────────────
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, unlinkSync, copyFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, unlinkSync, copyFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
@@ -100,9 +100,10 @@ import {
   specStore, SpecRefusal, holderName, openSpec, SPEC_DESCRIPTIONS, PRESETS, TABS, DEFAULT_ACCOUNT_LISTS, defaultSpec,
   accountLists, accountFields, kbSettings, windowOf, presetPanels,
 } from "./dashboard-spec.mjs";
-import { resolveParams, prepareRun, fetchEngagement, reduceEngagement, loadRun, cliTransport, makeGate, parseWhoami, addMonths, monthsBetween, EngagementRefusal, ROW_READERS, rpRunArgv } from "./engagement.mjs";
+import { resolveParams, prepareRun, runParamsMoved, fetchEngagement, reduceEngagement, loadRun, cliTransport, makeGate, parseWhoami, addMonths, monthsBetween, pickSchedule, describedProgram, EngagementRefusal, ROW_READERS, rpRunArgv } from "./engagement.mjs";
 import { applyGroups, programTraitsOf, suggestionTable } from "./dashboard-groups.mjs";
 import { buildPage, inlinedSources, pageFileName } from "./dashboard-page.mjs";
+import { COPY_LINES, REFRESH_SLASH } from "./dashboard-runtime.mjs";
 import { writeReport, ReportRefusal } from "./engagement-report.mjs";
 import * as engine from "./engagement-query.mjs";
 import { validateTheme, readLogo, LOGO_MAX_BYTES } from "./dashboard-theme.mjs";
@@ -126,6 +127,11 @@ export const LOCK_STALE_MS = 2 * 60 * 60 * 1000;
 export const CATEGORIES_FILE = "failure-categories.json";
 // Refreshes are manual (ruled 2026-10-12, F-511 ruling 11): no cadence is read here, no "next due" is computed, and
 // the spec's refresh.cadence and freshness.maxAgeDays stay in T-11 unread.
+// A gs-admin login lasts about an hour and the CLI never refreshes it (reference/auth.md): what a pull longer than
+// one login costs is said in LOGINS of this length (F-513, ruled 2026-10-12: the pull checkpoints across logins).
+export const LOGIN_SECONDS = 3600;
+/** How many logins a pull of `seconds` takes, at least one. */
+export const loginsFor = (seconds) => Math.max(1, Math.ceil((seconds ?? 0) / LOGIN_SECONDS));
 export class DashboardRefusal extends Error {
   /** @param {string} message @param {string} [code] @param {Record<string, *>} [details] fields the failure summary carries beside the error */
   constructor(message, code = "failed", details = {}) { super(message); this.code = code; this.details = details; }
@@ -336,23 +342,44 @@ export function composeAnswer(option, answers) {
   }
   return out;
 }
+/**
+ * The manual-refresh statement, in the admin's terms (ruling 11's wording, owed since F-511 instance 26: where the
+ * command is typed, the login, and the slash command that runs the same thing); the closing step and the final report
+ * carry it. `kb` is the knowledge-base folder's name (null when unknown: the `questions` verb).
+ */
+export const MANUAL_REFRESH_TEXT = (slug, kb) =>
+  `Refreshes are manual: whenever you want new numbers, open a terminal in the workspace folder, run gs-admin login if your last login was more than an hour ago, and run \`${COPY_LINES.refresh(slug, kb)}\` (in a Claude Code session opened there, ${REFRESH_SLASH(slug)} runs the same command). A pull that outlasts the login stops and continues when you log in and run it again. To run it on a schedule on your own machine, the README has the recipe (it needs a login within the hour). The pages always show when the data was pulled.`;
 /** The closing step (ruling 19): the three action rows read as ONE step, with the estimate, the login and the manual-refresh statement. */
 export const CLOSING_ASK = (ctx) => {
   const e = ctx?.plan?.estimate ?? null;
   const left = ctx?.tokenSecondsLeft ?? e?.token?.expiresInSeconds ?? null;
   const fits = e && left != null ? e.full.seconds + 30 <= left : null;
-  const login = left == null ? "your login has about T minutes left" : fits ? `your login has about ${plural(minutesOf(left), "minute")} left` : `your login has about ${plural(minutesOf(left), "minute")} left: not enough for the full refresh, so log in again before it runs`;
-  return `Ready to save. A full refresh with these settings is about ${N(e, (x) => x.full.calls, "N")} calls and ${mins(e, (x) => x.full.seconds, "M")} on this tenant; ${login}. Refreshes are manual: you run the refresh command whenever you want new numbers, or schedule it yourself on your own machine (the README has the recipe; it needs a login within the hour). The pages always show when the data was pulled.`;
+  // A pull longer than the login is not refused: it checkpoints across logins (F-513), so the ask says how many.
+  const login = left == null || !e ? "your login has about T minutes left" : fits ? `your login has about ${plural(minutesOf(left), "minute")} left, enough for it` : `your login has about ${plural(minutesOf(left), "minute")} left, so the first refresh will take about ${plural(loginsFor(e.full.seconds), "login")} of an hour: it runs as far as each login allows, stops, and continues when you log in and run it again`;
+  const slug = ctx?.spec?.slug ?? "<slug>";
+  const edit = ctx?.edit ?? null;
+  const head = edit
+    ? `Ready to save this edit. ${edit.consequence == null ? "Nothing changed against the saved dashboard." : `Compared with the saved dashboard it changes ${plural(edit.changed.length, "setting")} (${edit.changed.map((c) => c.path).join(", ")}): ${edit.consequence === "pull" ? `the next refresh pulls everything again, about ${N(e, (x) => minutesOf(x.full.seconds), "M")} minutes` : edit.consequence === "reselect" ? "the customer lists are ranked again over the last pull's rows (a rebuild, no pull)" : "the pages are rebuilt from the data already pulled, no pull"}.`}`
+    : `Ready to save. A full refresh with these settings is about ${N(e, (x) => x.full.calls, "N")} calls and ${mins(e, (x) => x.full.seconds, "M")} on this tenant; ${login}.`;
+  return `${head} ${MANUAL_REFRESH_TEXT(slug, ctx?.kb ?? null)}`;
 };
 /** A dry run's minutes: the full pull less what customer lists, health and step detail add (the preview pulls none of them). */
 const dryRunSeconds = (e) => (e ? Math.max(60, e.full.seconds - (e.accounts?.on ? e.accounts.addsSeconds : 0) - (e.health?.on ? e.health.addsSeconds : 0) - (e.stepDetail?.on ? e.stepDetail.addsSeconds : 0)) : null);
 export const CLOSING_OPTIONS = (ctx) => {
   const e = ctx?.plan?.estimate ?? null;
   const dryDone = (ctx?.answered ?? []).includes("dry-run");
+  const edit = ctx?.edit ?? null;
+  // On an edit (F-516) the first option DOES the edit's consequence: the pull, a re-selection or a rebuild; with nothing
+  // changed there is nothing to do but close the edit or go back.
+  const first = !edit
+    ? { id: "save-now", text: `Save and run the first refresh now (${mins(e, (x) => x.full.seconds, "M")})`, answers: [["dry-run", "no"], ["estimate", "yes"], ["save", "yes"]] }
+    : edit.consequence == null ? null
+      : edit.consequence === "pull" ? { id: "save-now", text: `Save and run the refresh now (${mins(e, (x) => x.full.seconds, "M")})`, answers: [["dry-run", "no"], ["estimate", "yes"], ["save", "yes"]] }
+        : { id: "save-now", text: edit.consequence === "reselect" ? "Save and rank the customer lists again now (no pull)" : "Save and rebuild the pages now (no pull)", answers: [["dry-run", "no"], ["estimate", "yes"], ["save", "yes"]] };
   return [
-    { id: "save-now", text: `Save and run the first refresh now (${mins(e, (x) => x.full.seconds, "M")})`, answers: [["dry-run", "no"], ["estimate", "yes"], ["save", "yes"]] },
+    ...(first ? [first] : []),
     ...(dryDone ? [] : [{ id: "dry-run", text: `Run a dry run first (a quick program-level pull, ${mins(e, dryRunSeconds, "D")}, rendered as preview pages)`, answers: [["dry-run", "yes"]] }]),
-    { id: "save-only", text: "Save only, refresh later", answers: [["dry-run", "no"], ["estimate", "yes"], ["save", "later"]] },
+    { id: "save-only", text: edit ? (edit.consequence == null ? "Close the edit (nothing changed)" : `Save only, ${edit.consequence === "pull" ? "refresh" : "rebuild"} later`) : "Save only, refresh later", answers: [["dry-run", "no"], ["estimate", "yes"], ["save", "later"]] },
     { id: "go-back", text: "Go back and change a setting", answers: [] },
   ];
 };
@@ -444,8 +471,11 @@ export const QUESTIONS = Object.freeze([
   {
     id: "test-accounts", kind: "list", path: "sources[].params.testAccounts[]", judgment: false, default: "none",
     ask: "Are there test accounts whose sends should count as internal? A test account is a company record in Gainsight (an \"Acme Test\" account whose contacts are employees' alternate addresses), not an email address. Name the accounts or give their company GSIDs, or say none; a name is looked up once, and if it matches more than one account you pick. Test accounts add a few minutes to every refresh with Health on once this tenant has bounce categories, a little more for each internal domain.",
+    // One follow-up per value the option NEEDS (ruling 6; F-511 instance 21): GSIDs and names are two options, not
+    // one option that asks for both.
     options: () => [
-      { id: '{"ids": <ids>, "names": <names>}', text: "Name the accounts, or give their company GSIDs", followUps: [{ key: "ids", kind: "list", ask: "The company GSIDs of the test accounts, one per line (or none)." }, { key: "names", kind: "list", ask: "The names of test accounts to look up, one per line (or none)." }] },
+      { id: '{"ids": <ids>, "names": []}', text: "Give their company GSIDs", followUps: [{ key: "ids", kind: "list", ask: "The company GSIDs of the test accounts, one per line." }] },
+      { id: '{"ids": [], "names": <names>}', text: "Name the accounts (each is looked up once)", followUps: [{ key: "names", kind: "list", ask: "The names of the test accounts, one per line." }] },
       { id: "none", text: "None" },
     ],
     apply: (v, ctx) => {
@@ -572,7 +602,8 @@ export const QUESTIONS = Object.freeze([
     })(),
     options: () => [
       { id: "default", text: "Keep the three lists as described (the default)" },
-      { id: `sizes:${DEFAULT_ACCOUNT_LISTS.map((l) => `<${l.kind}>`).join("|")}`, text: "Change a list's size or floor", followUps: DEFAULT_ACCOUNT_LISTS.map((l) => ({ key: l.kind, kind: "text", ask: `The ${l.n} ${l.kind.replace("-", " ")} accounts, with at least ${l.floor} delivered: give a new size and floor as two numbers (size floor), or keep.` })) },
+      // A list with no delivered floor says so, never "at least 0 delivered" (F-511 instance 23).
+      { id: `sizes:${DEFAULT_ACCOUNT_LISTS.map((l) => `<${l.kind}>`).join("|")}`, text: "Change a list's size or floor", followUps: DEFAULT_ACCOUNT_LISTS.map((l) => ({ key: l.kind, kind: "text", ask: `The ${l.n} ${l.kind.replace("-", " ")} accounts, ${l.floor > 0 ? `with at least ${l.floor} delivered` : "with no delivered floor"}: give a new size and floor as two numbers (size floor; 0 for no floor), or keep.` })) },
       { id: "segments:<field>|<lists>", text: "Add per-segment lists", followUps: [{ key: "field", kind: "text", ask: "Which company field? (Industry, Segment, …)" }, { key: "lists", kind: "text", ask: "Which lists per segment: most engaged, least engaged, most bounced, or all?" }] },
     ],
     apply: (v, ctx) => {
@@ -639,13 +670,17 @@ export const QUESTIONS = Object.freeze([
     ask: CLOSING_ASK,
     options: (ctx) => {
       const e = ctx?.plan?.estimate ?? null;
-      return [{ id: "yes", text: e ? `Confirm: ${e.full.calls} calls, ${secondsText(e.full.seconds)}; the login ${e.token.fits ? "covers it" : "does NOT cover it (log in again first)"}${e.kb ? `; the knowledge base is behind on ${e.kb.undocumented + e.kb.behind} program(s) (${secondsText(e.kb.refreshSeconds)} to re-document)` : ""}${e.templates?.planned ? `; ${e.templates.planned} template(s) to fetch (${secondsText(e.templates.seconds)})` : ""}` : "Confirm (no plan could be made)" }, { id: "no", text: "Not yet: change a setting first (answer it again)" }];
+      // The login's life as read NOW (F-511 instance 25), never the plan's reading from earlier; a pull longer than it
+      // is said in logins (F-513), not refused.
+      const left = ctx?.tokenSecondsLeft ?? e?.token?.expiresInSeconds ?? null;
+      const login = e && left != null ? (e.full.seconds + 30 <= left ? `your login (${plural(minutesOf(left), "minute")} left) covers it` : `your login (${plural(minutesOf(left), "minute")} left) does not cover it: about ${plural(loginsFor(e.full.seconds), "login")} in all, the pull continuing after each`) : "";
+      return [{ id: "yes", text: e ? `Confirm: ${e.full.calls} calls, ${secondsText(e.full.seconds)}; ${login}${e.kb ? `; the knowledge base is behind on ${e.kb.undocumented + e.kb.behind} program(s) (${secondsText(e.kb.refreshSeconds)} to re-document)` : ""}${e.templates?.planned ? `; ${e.templates.planned} template(s) to fetch (${secondsText(e.templates.seconds)})` : ""}` : "Confirm (no plan could be made)" }, { id: "no", text: "Not yet: change a setting first (answer it again)" }];
     },
   },
   {
     id: "save", kind: "action", path: null, judgment: false, needsPlan: true,
     ask: CLOSING_ASK,
-    options: (ctx) => [{ id: "yes", text: "Save and run the first refresh now" }, { id: "later", text: `Save only; refresh later with: refresh ${ctx?.spec?.slug ?? "<slug>"}` }],
+    options: (ctx) => [{ id: "yes", text: ctx?.edit ? "Save the edit and do what it needs now (the refresh, or the rebuild)" : "Save and run the first refresh now" }, { id: "later", text: `Save only; refresh later with: ${COPY_LINES.refresh(ctx?.spec?.slug ?? "<slug>", ctx?.kb ?? null)}` }],
   },
 ]);
 const questionById = (id) => QUESTIONS.find((q) => q.id === id) ?? refuse(`no question is called "${printable(String(id), 40)}" (${QUESTIONS.map((q) => q.id).join(", ")})`);
@@ -874,7 +909,8 @@ export function computeDelta(spec, current, previous) {
 // ── The pages ────────────────────────────────────────────────────────────────
 function buildPages(ctx, { spec, snapshot, delta, outDir }) {
   const sources = inlinedSources();
-  const built = spec.pages.map((pg) => buildPage({ spec, snapshot, pageId: pg.id, ...sources, delta }));
+  // The knowledge-base folder's name rides every page, so its copy lines carry --kb (F-503).
+  const built = spec.pages.map((pg) => buildPage({ spec, snapshot, pageId: pg.id, ...sources, delta, kb: basename(ctx.kbDir) }));
   const refused = built.filter((b) => b.report.refused);
   // All or nothing: a refused page leaves every last good page as it was.
   if (refused.length) refuse(`page "${refused[0].report.page}": ${refused[0].report.refused} — no page was replaced`);
@@ -893,16 +929,24 @@ function rebuildFrom(ctx, { spec, snapshotPath, previousPath, outDir }) {
 }
 
 // ── The verbs ────────────────────────────────────────────────────────────────
+/** The questions an admin answers (neither the tenant statement nor the closing step's action rows). */
+const SETTING_QUESTIONS = QUESTIONS.filter((q) => !["preflight", "action"].includes(q.kind)).map((q) => q.id);
 function verbNew(ctx, slug, opt, argv) {
   const r = ctx.store.startDraft(slug, { title: opt("--title") ?? null, owner: opt("--owner") ?? null, by: ctx.by, takeOver: ctx.takeOver });
   const fastPath = argv.includes("--fast-path");
-  if (fastPath && r.state !== "resumed") {
+  if (fastPath && r.state === "new") {
     // The standard program-health dashboard (F-512): `next` answers every question but the closing step with the
     // question's own default, through its own apply, in order (so the plan the defaults need is made on the way, and a
     // skip rule reads the answers before it); the look is skipped, never asked twice; the tenant is still checked.
     saveInterviewState(ctx, slug, { ...interviewState(ctx, slug), fastPath: true });
   }
-  return { ok: true, mode: "new", slug, state: r.state, fastPath, by: r.by, answered: r.answered, next: nextQuestionId(ctx, slug) };
+  let answered = r.answered;
+  if (r.state === "editing-saved") {
+    // An edit starts from the saved spec, so every setting it holds IS answered (F-516): `next` goes to the closing
+    // step, which says what the edit changes and costs; `next --question <id>` is the way to change one setting.
+    answered = ctx.store.setDraft(slug, { answered: SETTING_QUESTIONS, by: ctx.by, takeOver: ctx.takeOver }).answered;
+  }
+  return { ok: true, mode: "new", slug, state: r.state, fastPath: fastPath && r.state === "new", by: r.by, answered, next: nextQuestionId(ctx, slug), ...(r.state === "editing-saved" ? { hint: `an edit of the saved dashboard: next goes to the closing step; next --question <id> changes one setting (${SETTING_QUESTIONS.join(", ")})` } : {}) };
 }
 function interviewState(ctx, slug) { return readJsonOr(join(dirOf(ctx, slug), INTERVIEW_FILE), { plan: null, preview: null }); }
 function saveInterviewState(ctx, slug, state) { mkdirSync(dirOf(ctx, slug), { recursive: true }); writeJson(join(dirOf(ctx, slug), INTERVIEW_FILE), state); }
@@ -927,10 +971,14 @@ function interviewContext(ctx, slug, { draft }) {
   const exact = planThere && state.plan.hash === keys.exact;
   const plan = planThere && (exact || state.plan.loose === keys.loose) ? readJsonFile(join(planRun, "plan.json")) : null;
   const previewPath = state.preview?.snapshot && existsSync(state.preview.snapshot) ? state.preview.snapshot : null;
+  // An EDIT of a saved dashboard (F-516): what the draft changes against the saved spec and what that costs, from the
+  // same table `change` reads; the closing step says it and its first option does it.
+  const savedRaw = ctx.store.readSaved(slug);
+  const edit = savedRaw ? (() => { const saved = openSpec(savedRaw); const lp = lastPlan(ctx, slug); return { saved, ...changeCost(saved, spec, { longestPeriodDays: lp?.estimate?.health?.lookback?.longestPeriodDays ?? null }) }; })() : null;
   // The preview snapshot is megabytes on a real tenant: parsed once, and only by a reader that asks for it.
   let preview;
   return {
-    spec, answered: draft.answered, plan, planExact: exact ? plan : null, planRun, previewPath, fastPath: !!state.fastPath, get preview() { return previewPath ? (preview ??= openSnapshotFile(previewPath)) : null; },
+    spec, answered: draft.answered, plan, planExact: exact ? plan : null, planRun, previewPath, fastPath: !!state.fastPath, edit, kb: basename(ctx.kbDir), get preview() { return previewPath ? (preview ??= openSnapshotFile(previewPath)) : null; },
     params: adapterParams(spec, { today: ctx.today }), programs: plan ? readJsonOr(join(planRun, "programs.json"), []) : [],
     suggestionFile: join(dirOf(ctx, slug), SUGGESTION_FILE),
     lookupCompany: (name) => lookupCompany(ctx, spec, name),
@@ -946,9 +994,11 @@ function ensurePlan(ctx, slug, ictx, { exact = false } = {}) {
   const r = runAdapter(ctx, { spec, runId, phase: "plan", previousPath: null });
   if (r.summary.status !== "ok") refuse(`the plan did not finish: ${r.summary.stopped ?? r.summary.status} — ${r.summary.status === "token-expired" ? "run gs-admin login, then ask for the next question again" : "ask for the next question again; if it fails again, the failed list is in the run directory"}`, r.summary.status === "token-expired" ? "token-expired" : "partial");
   // The program list and the sends per program, from the plan's own reads: what the grouping proposal is made from.
-  const run = loadRunLightly(r.runDir);
+  // The traits are the ones the rules resolve over at the pull (F-515 b): the same schedule reading and the same
+  // months-with-sends rule the reducer applies, so the proposal's counts are the page's.
+  const run = loadRunLightly(r.runDir, r.params.today);
   const programs = run.programs;
-  const traits = programTraitsOf(programs, {});
+  const traits = programTraitsOf(programs, {}, run.monthsWithSends);
   const table = suggestionTable({ traits, sent: run.sent, tenantHost: spec.tenantHost, pulledAt: null, window: { from: r.params.window.from, to: r.params.window.to } });
   writeJson(join(r.runDir, "programs.json"), programs);
   mkdirSync(dirOf(ctx, slug), { recursive: true });
@@ -958,26 +1008,41 @@ function ensurePlan(ctx, slug, ictx, { exact = false } = {}) {
   const plan = readJsonFile(join(r.runDir, "plan.json"));
   return { ...ictx, plan, planExact: plan, planRun: r.runDir, programs };
 }
-/** The plan's program list and sends per program, read from the run directory's payloads through the adapter's own readers (no fact call). */
-function loadRunLightly(runDir) {
+/**
+ * The plan's program list, sends per program and months with sends per program, read from the run directory's payloads
+ * through the adapter's own readers (no fact call). Each program's schedule is the ONE the reducer gives the program
+ * dimension (`pickSchedule`: a one-run window reads one-time, F-502), so the traits the proposal is built from are the
+ * traits the rules resolve over (F-515 b).
+ */
+function loadRunLightly(runDir, today) {
   const log = readFileSync(join(runDir, "fetch-log.jsonl"), "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l)).filter((r) => r.status === "ok");
   const read = (r) => readJsonFile(join(runDir, r.file));
   const pages = log.filter((r) => r.family === "programs").sort((a, b) => a.page - b.page).map(read);
   const listed = [...pages.flatMap((pg) => pg?.data?.advancedOutreaches ?? [])];
   const kb = readJsonOr(join(runDir, "kb-steps.json"), null);
   const sent = new Map();
-  for (const r of log.filter((x) => x.family === "totals" && x.cls === "all")) for (const row of read(r)) { const t = ROW_READERS.totals(row); if (t.programId != null && t.n != null) sent.set(t.programId, (sent.get(t.programId) ?? 0) + t.n); }
-  const programs = listed.filter((p) => sent.has(String(p.advancedOutreachId))).map((p) => {
+  const months = new Map();
+  for (const r of log.filter((x) => x.family === "totals" && x.cls === "all")) {
+    for (const row of read(r)) {
+      const t = ROW_READERS.totals(row);
+      if (t.programId == null || t.n == null) continue;
+      sent.set(t.programId, (sent.get(t.programId) ?? 0) + t.n);
+      if (t.n > 0 && t.month) (months.get(t.programId) ?? months.set(t.programId, new Set()).get(t.programId)).add(t.month);
+    }
+  }
+  const rows = listed.filter((p) => sent.has(String(p.advancedOutreachId))).map((p) => {
     const st = p.advancedOutreachStatus;
-    const doc = kb?.schedules?.[p.advancedOutreachId] ?? null;
-    const first = doc?.schedules?.[0] ?? null;
-    return {
-      id: String(p.advancedOutreachId), name: p.advancedOutreachName ?? null, statuses: (Array.isArray(st) ? st : [st]).filter(Boolean), model: p.advancedOutreachModel ?? null, modelName: p.advancedOutreachModelName ?? null,
-      audienceType: p.advancedOutreachType ?? null, folderId: p.folderId != null ? String(p.folderId) : null, supergroup: null, group: null,
-      schedule: doc ? { classification: doc.schedules.some((s) => s.classification === "recurring") ? "recurring" : doc.schedules.some((s) => s.classification === "one-time") ? "one-time" : doc.schedules.length ? doc.schedules[0].classification : "no schedule captured", cronExpression: first?.cronExpression ?? null, timeZoneName: first?.timeZoneName ?? null, asOf: doc.asOf ?? null } : null,
-    };
-  }).sort((a, b) => cmpKey(a.id, b.id));
-  return { programs, sent };
+    return { id: String(p.advancedOutreachId), name: p.advancedOutreachName ?? null, statuses: (Array.isArray(st) ? st : [st]).filter(Boolean), model: p.advancedOutreachModel ?? null, modelName: p.advancedOutreachModelName ?? null, audienceType: p.advancedOutreachType ?? null, folderId: p.folderId != null ? String(p.folderId) : null };
+  });
+  // A program with sends the list missed is described live by the plan and pulled (the reducer selects it): it is a
+  // row of the proposal too, so the file's programs are the snapshot's (F-515).
+  const known = new Set(rows.map((p) => p.id));
+  for (const r of log.filter((x) => x.family === "describe" && !x.notFound)) {
+    const d = describedProgram(read(r));
+    if (d && d.id != null && sent.has(d.id) && !known.has(d.id)) { rows.push({ id: d.id, name: d.name, statuses: d.statuses, model: d.model, modelName: d.modelName, audienceType: d.audienceType, folderId: d.folderId }); known.add(d.id); }
+  }
+  const programs = rows.map((p) => ({ ...p, supergroup: null, group: null, schedule: pickSchedule(kb?.schedules?.[p.id] ?? null, today) })).sort((a, b) => cmpKey(a.id, b.id));
+  return { programs, sent, monthsWithSends: Object.fromEntries([...months].map(([id, m]) => [id, m.size])) };
 }
 function lookupCompany(ctx, spec, name) {
   preflight(ctx, spec);
@@ -1036,8 +1101,10 @@ function verbNext(ctx, slug, { questionId = null } = {}) {
       ctx.log(`tenant ${who.host} confirmed; token valid for ${who.expiresInSeconds} s`);
       continue;
     }
-    // The closing step is priced on the exact settings; every other question reads the one loose plan.
-    if (q.needsPlan) ictx = ensurePlan(ctx, slug, ictx, { exact: q.kind === "action" });
+    // The closing step is priced on the exact settings; every other question reads the one loose plan. An edit that
+    // needs no pull (a rebuild, a re-selection, nothing changed) is not planned: there is no pull to price.
+    const noPullEdit = ictx.edit && ictx.edit.consequence !== "pull";
+    if (q.needsPlan && !(q.kind === "action" && noPullEdit)) ictx = ensurePlan(ctx, slug, ictx, { exact: q.kind === "action" });
     if (ictx.fastPath && q.kind !== "action") {
       // The fast path: this question's own default, through its own apply (F-512).
       applyAnswer(ctx, slug, q, defaultAnswer(q, ictx), ictx);
@@ -1108,37 +1175,63 @@ function verbAction(ctx, slug, q, value, ictx) {
     return mark({ preview: { snapshot: snapshotPath, pages: pages.map((p) => ({ page: p.page, path: p.path, megabytes: p.megabytes, warning: p.warning })), pulledAt: snapshot.meta.pulledAt, programs: snapshot.dimensions.programs.length, ungrouped: resolution.line, calls: r.summary.calls, themed: !!spec.theme } });
   }
   if (q.id === "estimate") {
+    // An edit that needs no pull has no pull to price: confirmed as it stands (F-516).
+    if (ictx.edit && ictx.edit.consequence !== "pull") return yes === "yes" ? mark({ confirmed: true, estimate: null, edit: { changed: ictx.edit.changed, consequence: ictx.edit.consequence } }) : { ok: true, mode: "answer", slug, question: q.id, confirmed: false, estimate: null, next: nextQuestionId(ctx, slug), hint: "answer the setting to change (next --question <id>), then estimate again" };
     const withPlan = ensurePlan(ctx, slug, ictx, { exact: true });
     if (yes !== "yes") return { ok: true, mode: "answer", slug, question: q.id, confirmed: false, estimate: withPlan.plan.estimate, next: nextQuestionId(ctx, slug), hint: "answer the setting to change, then estimate again" };
-    return mark({ confirmed: true, estimate: { full: withPlan.plan.estimate.full, token: withPlan.plan.estimate.token, kb: withPlan.plan.estimate.kb, templates: withPlan.plan.estimate.templates } });
+    // The login's remaining life as read NOW, and the logins a pull of this size takes (F-511 instance 25; F-513).
+    const left = preflight(ctx, ictx.spec).expiresInSeconds;
+    const full = withPlan.plan.estimate.full;
+    return mark({ confirmed: true, estimate: { full, token: { expiresInSeconds: left, fits: full.seconds + 30 <= left, loginsNeeded: loginsFor(full.seconds) }, kb: withPlan.plan.estimate.kb, templates: withPlan.plan.estimate.templates } });
   }
   // save: the first refresh continues the closing step's plan (its cheap calls are not made again) when that plan was
   // made on the exact settings and the dashboard has no snapshot yet (the first sitting's note of 2026-10-12).
   const planRun = ictx.planExact && ictx.planRun && !latestSnapshotPath(ctx, slug) ? basename(ictx.planRun) : null;
+  const edit = ictx.edit;
   const saved = verbSave(ctx, slug);
-  if (yes !== "yes") return { ...saved, mode: "answer", question: q.id, refresh: null, hint: `refresh ${slug} when ready` };
+  if (yes !== "yes") return { ...saved, mode: "answer", question: q.id, refresh: null, done: null, hint: edit && edit.consequence !== "pull" ? (edit.consequence == null ? "nothing changed" : `rebuild ${slug} when ready`) : `refresh ${slug} when ready` };
   try {
+    // An edit DOES its consequence (F-516): the pull, a re-selection of the lists, or a rebuild; nothing when nothing changed.
+    if (edit) {
+      const spec = savedSpec(ctx, slug);
+      const done = edit.consequence == null ? { kind: "nothing", done: false, why: "nothing changed" } : doConsequence(ctx, slug, spec, edit.consequence);
+      return { ...saved, mode: "answer", question: q.id, edit: { changed: edit.changed, consequence: edit.consequence }, done, refresh: done.kind === "refresh" ? done : null };
+    }
     return { ...saved, mode: "answer", question: q.id, refresh: verbRefresh(ctx, slug, { full: false, healthOnly: false, planRun }) };
   } catch (e) {
     // The dashboard IS saved; only its first refresh stopped. The refusal says so and keeps its exit code.
-    if (e instanceof DashboardRefusal) throw new DashboardRefusal(`the dashboard "${slug}" is saved; its first refresh stopped: ${e.message}`, e.code);
+    if (e instanceof DashboardRefusal) throw new DashboardRefusal(`the dashboard "${slug}" is saved; its ${edit ? "refresh" : "first refresh"} stopped: ${e.message}`, e.code, e.details);
     throw e;
   }
+}
+/** What a saved change needs, done: the pull, a re-selection of the customer lists over the last rows, or a rebuild. */
+function doConsequence(ctx, slug, spec, consequence) {
+  if (consequence === "pull") return { kind: "refresh", ...verbRefresh(ctx, slug, { full: false, healthOnly: false }) };
+  if (consequence === "reselect") return { kind: "reselect", ...reselectFromRun(ctx, slug, spec) };
+  const files = snapshotFiles(ctx, slug);
+  return files.length ? { kind: "rebuild", ...rebuildFrom(ctx, { spec, snapshotPath: files.at(-1), previousPath: files.at(-2) ?? null, outDir: dirOf(ctx, slug) }) } : { kind: "rebuild", done: false, why: `no snapshot yet: run refresh ${slug}` };
 }
 /** The last plan this dashboard made (null until one exists): the minutes of a full refresh and the longest schedule period come from it. */
 function lastPlan(ctx, slug) {
   const root = join(ctx.wsDir, ".gs-superadmin", "tmp", "engagement");
   const state = readJsonOr(join(dirOf(ctx, slug), STATE_FILE), null);
-  const runs = existsSync(root) ? readdirSync(root).filter((x) => x.startsWith(`dash-${slug}-`)).sort(cmpKey) : [];
-  const newestFirst = [...runs].reverse();
-  const plan = (state?.run ? [state.run, ...newestFirst] : newestFirst).map((d) => readJsonOr(join(root, d, "plan.json"), null)).find(Boolean);
+  // The plan of the run the LATEST SNAPSHOT was pulled from (its directory is the one whose run.json carries that pull
+  // time), else a stopped run's, else the most recent run directory by its clock; never a dry run's (its preview
+  // parameters price nothing a refresh does: the S5-V second sitting's "about 72 minutes" was read from one).
+  const runs = existsSync(root) ? readdirSync(root, { withFileTypes: true }).filter((d) => d.isDirectory() && d.name.startsWith(`dash-${slug}-`) && !d.name.includes("-preview-")).map((d) => d.name) : [];
+  const latest = latestSnapshotPath(ctx, slug);
+  const stamp = latest ? basename(latest).replace(/\.json$/, "") : null;
+  const pulledFrom = stamp ? runs.find((d) => { const run = readJsonOr(join(root, d, "run.json"), null); return run?.params?.pulledAt && snapshotStamp(run.params.pulledAt) === stamp; }) ?? null : null;
+  const byClock = runs.map((d) => ({ d, at: (() => { try { return statSync(join(root, d, "run.json")).mtimeMs; } catch { return 0; } })() })).sort((a, b) => b.at - a.at).map((x) => x.d);
+  const plan = [pulledFrom, state?.run ?? null, ...byClock].filter(Boolean).map((d) => readJsonOr(join(root, d, "plan.json"), null)).find(Boolean);
   return plan ?? null;
 }
 const lastPlanMinutes = (ctx, slug) => { const plan = lastPlan(ctx, slug); return plan?.estimate?.full?.seconds != null ? minutesOf(plan.estimate.full.seconds) : null; };
 function verbSave(ctx, slug) {
   const r = ctx.store.save(slug);
   rmSync(join(dirOf(ctx, slug), INTERVIEW_FILE), { force: true });
-  return { ok: true, mode: "save", slug, path: r.path, replaced: r.replaced, pages: r.pages, notes: r.notes };
+  // The manual-refresh statement in the admin's terms, for the skill's final report (F-511 instance 26).
+  return { ok: true, mode: "save", slug, path: r.path, replaced: r.replaced, pages: r.pages, notes: r.notes, refreshLine: COPY_LINES.refresh(slug, basename(ctx.kbDir)), refreshText: MANUAL_REFRESH_TEXT(slug, basename(ctx.kbDir)) };
 }
 function verbList(ctx) {
   const dashboards = ctx.store.listDashboards().map((d) => {
@@ -1167,33 +1260,62 @@ function verbRefresh(ctx, slug, { full, healthOnly, planRun = null }) {
   const dir = dirOf(ctx, slug);
   // The tenant and the token, before any call, before the lock.
   const who = preflight(ctx, spec);
-  const state = readJsonOr(join(dir, STATE_FILE), null);
+  let state = readJsonOr(join(dir, STATE_FILE), null);
   const previousPath = latestSnapshotPath(ctx, slug);
+  const runsRoot = join(ctx.wsDir, ".gs-superadmin", "tmp", "engagement");
+  // A pending run whose PARAMETERS moved (a pull setting changed between the save and the pull: F-512, reopened
+  // 2026-10-12) cannot be continued: it is abandoned here, by the adapter's own rule, and the pull is planned afresh.
+  // Only a run started with the same settings is resumed.
+  let abandoned = null;
+  if (state) {
+    const pendingRun = join(runsRoot, state.run);
+    if (!existsSync(join(pendingRun, "run.json"))) { abandoned = { run: state.run, why: "its run directory is gone" }; }
+    else {
+      const { categories } = categoriesFor(ctx);
+      const paramsOn = (today) => resolveParams(adapterParams(spec, { today, forceFull: !!state.full, healthOnly: !!state.healthOnly, categories }));
+      const diff = runParamsMoved(pendingRun, { params: paramsOn(ctx.today), previousPath, todayGiven: ctx.todayGiven, reparams: paramsOn });
+      if (diff.moved.length) abandoned = { run: state.run, why: `${diff.moved.join(", ")} moved since it started` };
+    }
+    if (abandoned) { ctx.log(`the pending refresh of "${slug}" (run ${state.run}) is abandoned: ${abandoned.why}; planning afresh`); rmSync(join(dir, STATE_FILE), { force: true }); state = null; }
+  }
   // A refresh that stopped (token, a failed call) resumes its run: the same run id, the same previous snapshot.
   const resuming = state && state.previousPath === previousPath && state.full === full && state.healthOnly === healthOnly;
   // A stopped run is resumed with the flags it was started with, never silently abandoned for a new one.
   if (state && !resuming && state.previousPath === previousPath) refuse(`a stopped refresh of "${slug}" (run ${state.run}, started ${state.startedAt} by ${state.by}${state.full ? ", --full" : ""}${state.healthOnly ? ", --health-only" : ""}) is waiting to resume: run it again with the same flags, or remove ${join(dir, STATE_FILE)} to start over`);
   // The interview's plan continues as this run (the save's first refresh): the run keeps the plan's own directory and
   // prepareRun resumes it, so the plan's cheap calls are reused instead of made again (nothing is renamed).
-  const continuesPlan = planRun && !resuming && !previousPath && !full && !healthOnly && existsSync(join(ctx.wsDir, ".gs-superadmin", "tmp", "engagement", planRun, "plan.json"));
+  const continuesPlan = planRun && !resuming && !previousPath && !full && !healthOnly && existsSync(join(runsRoot, planRun, "plan.json"));
   const runId = resuming ? state.run : continuesPlan ? planRun : `dash-${slug}-${snapshotStamp(new Date(ctx.nowMs).toISOString())}`;
   const lock = takeLock(ctx, slug, runId);
+  const takenOver = lock.takenOver ? { lockTakenOver: { by: lock.takenOver.by ?? null, at: lock.takenOver.at ?? null } } : {};
   try {
     writeJson(join(dir, STATE_FILE), { run: runId, startedAt: new Date(ctx.nowMs).toISOString(), by: ctx.by, previousPath, full, healthOnly });
-    // The plan, with the derived lookback; then the budget: the pull plus the re-documentation against the token.
+    // The plan, with the derived lookback. The pull is NOT held to the login (F-513, ruled 2026-10-12): it runs as far
+    // as the token allows, the adapter stops it cleanly when the next call would outlast the token, and the next run
+    // after a login continues it. What is said is how many logins a pull of this size takes.
     const planned = planWithLookback(ctx, { spec, runId, previousPath, forceFull: full, healthOnly });
-    const stopped = (r) => { const code = r.summary.status === "token-expired" ? "token-expired" : r.summary.status === "partial" ? "partial" : "failed"; refuse(`the ${healthOnly ? "health-only " : ""}refresh stopped: ${r.summary.stopped ?? r.summary.status}${code === "failed" ? "" : ` — ${code === "token-expired" ? "run gs-admin login, then" : ""} run refresh ${slug} again to resume it; the last good pages are untouched`}`, code); };
+    const stopped = (r, logins = null) => {
+      const code = r.summary.status === "token-expired" ? "token-expired" : r.summary.status === "partial" ? "partial" : "failed";
+      const made = r.summary.calls ? ` after ${plural(r.summary.calls.made, "call")} this run${r.summary.calls.reused ? ` (${r.summary.calls.reused} reused from before)` : ""}` : "";
+      const more = code === "token-expired" && logins != null ? ` — about ${plural(logins, "more login")} of an hour to finish` : "";
+      refuse(`the ${healthOnly ? "health-only " : ""}refresh stopped${made}: ${r.summary.stopped ?? r.summary.status}${code === "failed" ? "" : ` — ${code === "token-expired" ? "run gs-admin login, then" : ""} run refresh ${slug} again: it continues where it stopped; the last good pages are untouched`}${more}${lock.takenOver ? `; a stale lock held by ${lock.takenOver.by ?? "unknown"} since ${lock.takenOver.at} was taken over` : ""}`, code, { ...takenOver, ...(abandoned ? { abandoned } : {}) });
+    };
     if (planned.summary.status !== "ok") stopped(planned);
     const estimate = planned.summary.estimate;
     const redoc = kbSettings(spec).redocument;
     const redocSeconds = redoc.enabled ? Math.min(redoc.cap, (estimate.kb?.programs?.length ?? 0)) * 3 + Math.min(Math.max(0, redoc.cap - (estimate.kb?.programs?.length ?? 0)), estimate.templates?.planned ?? 0) * 3 : 0;
     const needed = estimate.thisRun.seconds + redocSeconds + 30;
-    if (needed > who.expiresInSeconds) refuse(`the refresh needs about ${plural(minutesOf(needed), "minute")} (${estimate.thisRun.calls} calls${redocSeconds ? ` plus re-documentation` : ""}) and the login has ${plural(minutesOf(who.expiresInSeconds), "minute")} left — run gs-admin login, then run refresh ${slug} again (it resumes)${lock.takenOver ? `; a stale lock held by ${lock.takenOver.by ?? "unknown"} since ${lock.takenOver.at} was taken over` : ""}`, "token-expired", lock.takenOver ? { lockTakenOver: { by: lock.takenOver.by ?? null, at: lock.takenOver.at ?? null } } : {});
+    const budget = { neededSeconds: needed, loginSecondsLeft: who.expiresInSeconds, fitsThisLogin: needed <= who.expiresInSeconds, loginsNeeded: loginsFor(needed) };
+    if (!budget.fitsThisLogin) ctx.log(`the refresh needs about ${plural(minutesOf(needed), "minute")} and the login has ${plural(minutesOf(who.expiresInSeconds), "minute")} left: it will run as far as the login allows (about ${plural(budget.loginsNeeded, "login")} of an hour in all) and continue after the next login`);
     // Re-documentation first (the fetch then re-reads the moved knowledge base: the run's KB copy is stamped).
     const redocumented = redocument(ctx, { spec, estimate, runDir: planned.runDir });
     // The pull.
     const pulledRun = runAdapter(ctx, { spec, runId: basename(planned.runDir), phase: "all", previousPath, forceFull: full, healthOnly, lookbackDays: planned.lookbackDays });
-    if (pulledRun.summary.status !== "ok") stopped(pulledRun);
+    if (pulledRun.summary.status !== "ok") {
+      const c = pulledRun.summary.calls ?? { made: 0, reused: 0 };
+      const left = Math.max(0, estimate.thisRun.calls - c.made - c.reused);
+      stopped(pulledRun, loginsFor(estimate.thisRun.calls ? (left / estimate.thisRun.calls) * estimate.thisRun.seconds : 0));
+    }
     const pulled = reduceEngagement(loadRun(pulledRun.runDir, { previous: pulledRun.previous, cliVersion: ctx.catalog.meta?.cliVersion ?? null, pluginVersion: ctx.pluginVersion }));
     const previous = pulledRun.previous;
     const { snapshot, resolution } = applyGroups(pulled, spec.groups, { previous });
@@ -1206,7 +1328,7 @@ function verbRefresh(ctx, slug, { full, healthOnly, planRun = null }) {
     const pages = buildPages(ctx, { spec, snapshot, delta, outDir: dir });
     rmSync(join(dir, STATE_FILE), { force: true });
     return {
-      ok: true, mode: "refresh", slug, status: "ok", run: basename(pulledRun.runDir), resumed: !!resuming, full, healthOnly,
+      ok: true, mode: "refresh", slug, status: "ok", run: basename(pulledRun.runDir), resumed: !!resuming, full, healthOnly, budget, ...(abandoned ? { abandoned } : {}),
       pull: { mode: snapshot.meta.refresh.mode, why: snapshot.meta.refresh.why, pulledAt: snapshot.meta.pulledAt, programs: snapshot.dimensions.programs.length, calls: pulledRun.summary.calls, reconciled: snapshot.reconciliation.ok, health: engine.healthAvailability(snapshot).pulled, accounts: engine.accountAvailability(snapshot).pulled, lookbackDays: planned.lookbackDays, lookbackDerivedFrom: planned.lookbackDerivedFrom ?? null },
       redocumented, snapshot: snapshotPath, pruned, ungrouped: resolution.line, kbBehind: snapshot.honesty?.kb ?? null,
       delta: delta ? { previousPulledAt: delta.previousPulledAt, closedMonths: delta.closedMonths.length, programs: delta.programs, metrics: Object.fromEntries(Object.entries(delta.metrics).map(([k, v]) => [k, v.change])) } : null,
@@ -1273,9 +1395,10 @@ function verbChange(ctx, slug, pairs, dryRun) {
   }
   const plan = lastPlan(ctx, slug);
   const { changed, consequence } = changeCost(saved, d.draft.spec, { longestPeriodDays: plan?.estimate?.health?.lookback?.longestPeriodDays ?? null });
-  const minutes = plan?.estimate?.full?.seconds != null ? minutesOf(plan.estimate.full.seconds) : null;
-  const says = consequence == null ? "nothing changed" : consequence === "pull" ? `the next refresh pulls everything again, ${minutes != null ? `about ${plural(minutes, "minute")}` : "a first pull's time (no plan yet)"}` : consequence === "reselect" ? "the customer lists are ranked again over the last pull's rows (a rebuild), or the next refresh when those rows are gone" : "rebuild only (no pull)";
-  const summary = { ok: true, mode: "change", slug, by: started.by, draftHadEarlierChanges: had, changed, consequence, consequenceText: says, costTable: COST_KINDS, dryRun };
+  // The pull's minutes are priced for the spec AFTER the change (F-511 instance 24), from the last plan's parts.
+  const seconds = pullSecondsAfter(plan, saved, d.draft.spec);
+  const says = consequence == null ? "nothing changed" : consequence === "pull" ? `the next refresh pulls everything again, ${seconds != null ? `about ${plural(minutesOf(seconds), "minute")}${seconds > LOGIN_SECONDS ? ` (about ${plural(loginsFor(seconds), "login")} of an hour)` : ""}` : "a first pull's time (no plan yet)"}` : consequence === "reselect" ? "the customer lists are ranked again over the last pull's rows (a rebuild), or the next refresh when those rows are gone" : "rebuild only (no pull)";
+  const summary = { ok: true, mode: "change", slug, by: started.by, draftHadEarlierChanges: had, changed, consequence, consequenceText: says, pullSeconds: consequence === "pull" ? seconds : null, costTable: COST_KINDS, dryRun };
   if (dryRun) {
     if (!had) ctx.store.discardDraft(slug);
     return { ...summary, saved: false, done: null };
@@ -1283,14 +1406,29 @@ function verbChange(ctx, slug, pairs, dryRun) {
   if (!changed.length) { if (!had) ctx.store.discardDraft(slug); return { ...summary, saved: false, done: null }; }
   const savedNow = ctx.store.save(slug);
   const spec = openSpec(savedNow.spec);
-  let done;
-  if (consequence === "pull") done = { kind: "refresh", ...verbRefresh(ctx, slug, { full: false, healthOnly: false }) };
-  else if (consequence === "reselect") done = { kind: "reselect", ...reselectFromRun(ctx, slug, spec) };
-  else {
-    const files = snapshotFiles(ctx, slug);
-    done = files.length ? { kind: "rebuild", ...rebuildFrom(ctx, { spec, snapshotPath: files.at(-1), previousPath: files.at(-2) ?? null, outDir: dirOf(ctx, slug) }) } : { kind: "rebuild", done: false, why: `no snapshot yet: run refresh ${slug}` };
-  }
+  const done = doConsequence(ctx, slug, spec, consequence);
   return { ...summary, saved: true, previousCopy: `${savedNow.path}.previous`, done };
+}
+/**
+ * A full pull's seconds for the spec AFTER a change, from the last plan made on the spec BEFORE it: the plan prices each
+ * switch (customer lists, Health, step detail) whether it is on or off, so a flipped switch adds or removes its part,
+ * and a rolling window's months scale the rest (the window ask says a first pull scales with the months). Null with no
+ * plan. A change the plan cannot price this way (the programs, a fixed window) keeps the plan's figure.
+ * @param {?*} plan the last plan's summary (plan.json)
+ */
+export function pullSecondsAfter(plan, before, after) {
+  const e = plan?.estimate;
+  if (!e?.full?.seconds) return null;
+  let seconds = e.full.seconds;
+  const flip = (part, was, now) => { if (!part || was === now) return; seconds += now ? (part.on ? 0 : part.addsSeconds) : -(part.on ? part.addsSeconds : 0); };
+  const healthOn = (s) => s.pages.some((pg) => pg.tabs.some((t) => t.id === "health" && t.enabled));
+  flip(e.accounts, !!before.accounts.pull, !!after.accounts.pull);
+  flip(e.health, healthOn(before), healthOn(after));
+  flip(e.stepDetail, !!src(before).stepDetail, !!src(after).stepDetail);
+  const wb = windowOf(src(before));
+  const wa = windowOf(src(after));
+  if (wb.kind === "rolling" && wa.kind === "rolling" && src(before).windowMonths !== src(after).windowMonths && src(before).windowMonths > 0) seconds = (seconds / src(before).windowMonths) * src(after).windowMonths;
+  return Math.max(0, Math.round(seconds));
 }
 function verbReport(ctx, slug, opt, argv) {
   savedSpec(ctx, slug); // a saved dashboard, or the refusal naming the draft

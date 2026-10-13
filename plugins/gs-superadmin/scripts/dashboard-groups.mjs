@@ -87,7 +87,9 @@ const fold = (v) => String(v ?? "").toLowerCase();
 // ── Characteristics (R25): what a "characteristic" rule tests ────────────────
 // `type` is the type `is` must have; `of` reads the trait; `say` words the rule.
 export const CHARACTERISTICS = Object.freeze({
-  model: { label: "Program model", type: "string", of: (p) => p.model, say: (is) => `programs whose model is ${is}` },
+  // The rule tests the model CODE (`DRIPV2`); it is described by the display name when the caller knows it
+  // ("Email Chain"), the code alone otherwise (F-515 d: an admin reads the name, not the code).
+  model: { label: "Program model", type: "string", of: (p) => p.model, say: (is, names) => `programs whose model is ${names?.[is] ?? is}` },
   audience: { label: "Audience", type: "string", of: (p) => p.audienceType, say: (is) => `programs sent to ${is === "USER" ? "internal users" : is === "CUSTOMER" ? "customers" : is}` },
   sendsSurveys: { label: "Sends surveys", type: "boolean", of: (p) => p.sendsSurveys, say: (is) => `programs that ${is ? "send" : "do not send"} a survey` },
   recurring: { label: "Recurring schedule", type: "boolean", of: (p) => p.recurring, say: (is) => `programs ${is ? "on a recurring schedule" : "whose schedule does not recur"}` },
@@ -116,7 +118,7 @@ export const RULE_KINDS = Object.freeze({
       const v = CHARACTERISTICS[r.characteristic].of(p);
       return v != null && v === r.is ? r.label.trim() : null;
     },
-    describe: (r) => CHARACTERISTICS[r.characteristic].say(r.is),
+    describe: (r, names) => CHARACTERISTICS[r.characteristic].say(r.is, names?.[r.characteristic]),
   },
   folder: {
     fields: ["folders"],
@@ -221,14 +223,23 @@ export function validateGroups(groups, at = "groups") {
 }
 
 /**
- * One rule in words, for a page's About tab and for `show`.
+ * One rule in words, for a page's About tab and for `show`. A characteristic's VALUE is the code the rule tests; the
+ * caller may pass the display names it knows (`{model: {DRIPV2: "Email Chain"}}`) so the sentence reads as an admin
+ * does (F-515 d); without them the code is said.
  * @param {T11GroupRule} rule
+ * @param {{names?: {model?: Object<string, string>}}} [opts]
  * @returns {string}
  */
-export function describeRule(rule) {
+export function describeRule(rule, { names = null } = {}) {
   const kind = RULE_KINDS[rule.kind];
   const label = "label" in rule && isText(rule.label) ? ` "${rule.label.trim()}"` : "";
-  return `${rule.level === "supergroup" ? "Supergroup" : "Group"}${label}${rule.within ? ` (inside ${rule.within})` : ""}: ${kind.describe(rule)}.`;
+  return `${rule.level === "supergroup" ? "Supergroup" : "Group"}${label}${rule.within ? ` (inside ${rule.within})` : ""}: ${kind.describe(rule, names)}.`;
+}
+/** The display name of each model code among these programs (what describeRule says a model rule by). */
+export function modelNamesOf(programs) {
+  const names = {};
+  for (const p of programs ?? []) if (p?.model && isText(p.modelName)) names[p.model] = p.modelName;
+  return { model: names };
 }
 
 // ── Traits: what the rules test, read from a snapshot ────────────────────────
@@ -304,10 +315,17 @@ export function resolveGroups({ programs, groups, previousProgramIds = null }) {
     const g = isText(over.group) ? { label: over.group.trim(), by: "override" } : firstMatch("group", p, supergroup);
     return { id: p.id, supergroup, group: g?.label ?? UNGROUPED, by: { supergroup: sg?.by ?? null, group: g?.by ?? null } };
   });
-  const ungrouped = assignments.filter((a) => a.by.supergroup == null && a.by.group == null).map((a) => a.id);
+  // Ungrouped at EITHER level the spec groups on (F-515 c): no supergroup; or, when the spec has group rules at all,
+  // a supergroup but no group inside it (the "<supergroup> / Ungrouped" rows). A spec with no group rule groups on
+  // one level only, so its programs are not ungrouped for lacking a group.
+  const groupsLevel = groups.rules.some((r) => r.level === "group") || Object.values(groups.overrides).some((o) => isText(o?.group));
+  const ungroupedWithin = assignments.filter((a) => a.by.supergroup != null && a.by.group == null && groupsLevel).map((a) => a.id);
+  const ungrouped = assignments.filter((a) => a.by.supergroup == null || ungroupedWithin.includes(a.id)).map((a) => a.id);
   const before = previousProgramIds ? new Set(previousProgramIds) : null;
   const newUngrouped = before ? ungrouped.filter((id) => !before.has(id)) : ungrouped;
-  return { assignments, ungrouped, newUngrouped, line: `${newUngrouped.length} new program${newUngrouped.length === 1 ? "" : "s"} ungrouped` };
+  const newWithin = newUngrouped.filter((id) => ungroupedWithin.includes(id));
+  const line = `${newUngrouped.length} new program${newUngrouped.length === 1 ? "" : "s"} ungrouped${newWithin.length ? ` (${newWithin.length} inside a supergroup with no group)` : ""}`;
+  return { assignments, ungrouped, ungroupedWithin, newUngrouped, line };
 }
 
 /**
@@ -366,13 +384,16 @@ export function suggestionTable({ traits, sent, tenantHost, pulledAt, window }) 
     pulledAt,
     window: { from: window.from, to: window.to },
     notes: [
+      "A characteristic rule tests `model`, the model CODE (DRIPV2, CSAT_SURVEY_V2, …): write the code as the rule's `is` and use `modelName`, the display name, as the rule's label. The tallies carry both.",
+      "`recurring` is the trait the rules resolve over on a pull with this knowledge base: a recurring schedule whose window admits one run reads one-time unless the program sent in two or more months.",
       "Folder NAMES are not available from Gainsight: a folder shows as its id, and a folder group needs a label from the person.",
       "sendsSurveys and recurring are null where they could not be determined (survey data unreadable; no knowledge-base doc for the program; a schedule whose kind the doc does not settle).",
       "A survey's TYPE is known only through the program model (CSAT or generic survey programs). A Dynamic Program that sends a survey does not say which type.",
     ],
-    programs: traits.map((p) => ({ id: p.id, name: p.name, status: p.statuses.map(statusLabel).join(" + "), model: p.modelName ?? p.model, audience: p.audienceType, folderId: p.folderId, sendsSurveys: p.sendsSurveys, recurring: p.recurring, sent: sent.get(p.id) ?? 0 })),
+    // `model` is the CODE a characteristic rule tests; `modelName` is its display name, the rule's label (F-515 a).
+    programs: traits.map((p) => ({ id: p.id, name: p.name, status: p.statuses.map(statusLabel).join(" + "), model: p.model, modelName: p.modelName ?? p.model, audience: p.audienceType, folderId: p.folderId, sendsSurveys: p.sendsSurveys, recurring: p.recurring, sent: sent.get(p.id) ?? 0 })),
     tallies: {
-      model: tally((p) => p.modelName ?? p.model ?? "(none)"),
+      model: tally((p) => p.model ?? "(none)").map((t) => ({ ...t, label: modelNamesOf(traits).model[t.value] ?? t.value })),
       audience: tally((p) => p.audienceType ?? "(none)"),
       status: tally((p) => p.statuses.map(statusLabel)),
       sendsSurveys: tally((p) => String(p.sendsSurveys)),

@@ -2123,8 +2123,11 @@ const TEMPLATE_CAVEATS = Object.freeze(["template-content-current", "template-co
  */
 export function caveatsFor(snapshot, metricIds, { health = false, templates = false } = {}) {
   const out = [];
+  // One entry per CAVEAT, not per id (F-506): an id the adapter writes once per health part (`failure-samples-capped`,
+  // for the refusals and for the bounce text) keeps both sentences; a caveat repeated for the same part is said once.
+  const keyOf = (id, detail) => `${id}\u0000${detail?.part ?? ""}`;
   const push = (id, detail) => {
-    if (!out.some((c) => c.id === id)) out.push({ id, text: caveatText(id, detail) });
+    if (!out.some((c) => c.key === keyOf(id, detail))) out.push({ key: keyOf(id, detail), id, text: caveatText(id, detail) });
   };
   const own = [...snapshot.caveats].sort((a, b) => Number(b.id === "reconciliation-mismatch") - Number(a.id === "reconciliation-mismatch"));
   for (const c of own) if ((health || !HEALTH_CAVEATS.includes(c.id)) && (templates || !TEMPLATE_CAVEATS.includes(c.id))) push(c.id, c.detail);
@@ -2144,7 +2147,7 @@ export function caveatsFor(snapshot, metricIds, { health = false, templates = fa
   if (h.responses?.testParticipantsExcluded && metricIds.some((id) => metric(id).kind === "response")) push("test-participants-excluded", { count: h.responses.testParticipantsExcluded });
   const unread = (h.clicks?.unreadable ?? 0) + (h.clicks?.detailMissing ?? 0);
   if (unread && metricIds.some((id) => metric(id).tracking === "clicks")) push("click-detail-unreadable", { count: unread });
-  return out;
+  return out.map(({ id, text }) => ({ id, text }));
 }
 /**
  * The "data pulled" line every output carries (R4).

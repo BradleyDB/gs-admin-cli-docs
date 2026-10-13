@@ -120,11 +120,17 @@ export const NEEDS = Object.freeze({
 // page's. A `fill` setting's line ends at the `=` sign: the notice says what
 // to put there.
 export const ENTRY_COMMAND = "node .gs-superadmin/plugin/scripts/dashboard.mjs";
+// Every line names the dashboard's knowledge-base folder with `--kb` (F-503, reopened 2026-10-12): a workspace that
+// holds two tenants refuses the verb without it, and the folder's NAME is not a machine path, so the page may carry it.
+// A page built with no folder known (the page builder run by hand) omits the flag.
+const kbFlag = (kb) => (kb ? ` --kb ${kb}` : "");
 export const COPY_LINES = Object.freeze({
-  change: (slug, path, value) => `${ENTRY_COMMAND} change ${slug} ${path}=${value}`,
-  refresh: (slug) => `${ENTRY_COMMAND} refresh ${slug}`,
-  health: (slug, programId) => `${ENTRY_COMMAND} health ${slug} --program ${programId}`,
+  change: (slug, path, value, kb = null) => `${ENTRY_COMMAND} change ${slug} ${path}=${value}${kbFlag(kb)}`,
+  refresh: (slug, kb = null) => `${ENTRY_COMMAND} refresh ${slug}${kbFlag(kb)}`,
+  health: (slug, programId, kb = null) => `${ENTRY_COMMAND} health ${slug} --program ${programId}${kbFlag(kb)}`,
 });
+/** The skill's slash command that runs the same refresh (house rule 18: the mode is never written bare). */
+export const REFRESH_SLASH = (slug) => `/gs-superadmin:email-engagement refresh ${slug}`;
 // The no-send thresholds one click away on the Health tab (ruled 2026-10-05); the spec's own value joins them.
 export const HEALTH_DAY_OPTIONS = Object.freeze([14, 30, 60, 90]);
 
@@ -264,7 +270,7 @@ export function createDashboard(engine, model) {
     if (!row) return { reason, text, known: false, needs: null, needsText: null, setting: null, line: null };
     const needs = row.needs === "by-data" ? (ctx.held ? "rebuild" : "pull") : row.needs;
     const setting = row.setting ? { ...row.setting, label: model.settingLabels[row.setting.path] ?? row.setting.path } : null;
-    const line = row.line === "refresh" || !setting ? COPY_LINES.refresh(model.slug) : COPY_LINES.change(model.slug, concretePath(setting.path, ctx), setting.how === "on" ? "true" : "");
+    const line = row.line === "refresh" || !setting ? COPY_LINES.refresh(model.slug, model.kb) : COPY_LINES.change(model.slug, concretePath(setting.path, ctx), setting.how === "on" ? "true" : "", model.kb);
     return { reason, text, known: true, needs, needsText: NEEDS[needs], setting, line };
   };
   /** The line to copy, or the button that runs it when the page has a local app behind it (the `actions` seam, LTR-10). */
@@ -834,7 +840,7 @@ export function createDashboard(engine, model) {
       const b = view.bounces;
       const rows = shown(b.categories).map((c) => `<tr><td>${categoryCell(c)}</td><td>${esc(kindLabel(c.kind))}</td><td class="gs-num">${c.count}</td><td class="gs-num">${c.usualPerMonth == null ? esc(engine.NO_VALUE) : Math.round(c.usualPerMonth * 10) / 10}</td><td class="gs-num">${changeCell(c)}</td></tr>`).join("");
       const other = b.other ? `<tr class="gs-other"><td>${categoryCell(b.other)} <span class="gs-muted">${b.other.share == null ? "" : `${Math.round(b.other.share * 100)}% of bounces`}</span></td><td></td><td class="gs-num">${b.other.count}</td><td class="gs-num">${b.other.usualPerMonth == null ? esc(engine.NO_VALUE) : Math.round(b.other.usualPerMonth * 10) / 10}</td><td class="gs-num">${changeCell(b.other)}</td></tr>` : "";
-      const signal = b.other?.overThreshold ? `<div class="gs-notice gs-notice-compact" role="note" data-signal="other"><p>Uncategorised bounce text is ${Math.round(b.other.share * 100)}% of bounces, over a few percent: the masked samples are in the terminal, never on a page.</p>${renderLine(COPY_LINES.health(model.slug, "<program id>"))}</div>` : "";
+      const signal = b.other?.overThreshold ? `<div class="gs-notice gs-notice-compact" role="note" data-signal="other"><p>Uncategorised bounce text is ${Math.round(b.other.share * 100)}% of bounces, over a few percent: the masked samples are in the terminal, never on a page.</p>${renderLine(COPY_LINES.health(model.slug, "<program id>", model.kb))}</div>` : "";
       bounces = `<h3>Bounce reasons <span class="gs-muted">(${plural(b.total, "bounce")} in the ${plural(b.months, "month")} shown)</span></h3><div class="gs-scroll"><table><thead><tr><th scope="col">Reason</th><th scope="col">Kind</th><th scope="col" class="gs-num">This period</th><th scope="col" class="gs-num">Usual a month</th><th scope="col" class="gs-num">Change</th></tr></thead><tbody>${rows}${other}</tbody></table></div>${signal}${hidden(b.categories)}`;
     }
     // Refusals at entry: exact totals, the split exact or a sample.
@@ -1227,8 +1233,12 @@ export function createDashboard(engine, model) {
     ];
     section("provenance", "Where the data came from", `<dl class="gs-prov">${prov.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join("")}</dl>`);
     section("caveats", "Caveats", renderCaveats());
-    // Refreshes are manual (ruled 2026-10-12): the command for an admin, with how to schedule it on their own machine.
-    section("refresh", "How to refresh", `<p>${howTo ? `Refreshes are manual. Run <code>${esc(COPY_LINES.refresh(model.slug))}</code> from the workspace with a gs-admin login whenever you want new numbers, or schedule it yourself on your own machine (the plugin README has the recipe; a scheduled run needs a login within the hour). The /gs-superadmin:email-engagement skill runs the same command. The pages always show when the data was pulled.` : `An admin refreshes this page by hand; the data-pulled line at the top says when it was last done.`}</p>`);
+    // Refreshes are manual (ruled 2026-10-12), said in the admin's terms (F-511 instance 26: "not sure how I would run
+    // that"): where to type the command, how to log in, what to do when a first pull outlasts the login, and the slash
+    // command that runs the same thing in a session. The leaders' page gets the statement alone.
+    section("refresh", "How to refresh", howTo
+      ? `<p>Refreshes are manual: these pages change only when someone runs a refresh. To refresh:</p><ol class="gs-howto"><li>Open a terminal in the workspace folder${model.kb ? ` (the folder that holds this tenant's knowledge-base folder <code>${esc(model.kb)}</code>)` : ""} and run <code>gs-admin login</code> if your last login was more than an hour ago.</li><li>Run the refresh command there:${renderLine(COPY_LINES.refresh(model.slug, model.kb))}</li><li>A first pull can outlast one login. When it stops, log in and run the same command again: it continues where it stopped, and the pages change only once it finishes.</li></ol><p>In a Claude Code session opened in that folder, <code>${esc(REFRESH_SLASH(model.slug))}</code> runs the same command. To run it on a schedule on your own machine (a login within the hour), the plugin README has the recipe. The pages always show when the data was pulled.</p>`
+      : `<p>An admin refreshes this page by hand; the data-pulled line at the top says when it was last done.</p>`);
     // The fixed statement of what the dashboard is (ruled 2026-10-12, F-511 rulings 2 and 3), the admin's own sentence
     // when one was set (`change <slug> purpose=…`), the data-pulled line, then a contents line and each section under its own anchor.
     const what = `This dashboard shows email engagement from the tenant's send log: comparisons across programs and periods, for every program it covers. It is one dashboard with one pull, built as an admin page and a leaders' page, and it is refreshed by hand; the data is as of the pull named below.`;

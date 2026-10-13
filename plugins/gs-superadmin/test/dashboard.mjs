@@ -30,7 +30,8 @@ import { join, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { isDeepStrictEqual } from "node:util";
 import { makeTempDir, removeTempDir, writeFiles, runNode } from "../../../test/rig.mjs";
-import { COSTS, COST_KINDS, ADAPTER_MAPPING, QUESTIONS, CLOSING_ASK, CLOSING_OPTIONS, askText, defaultAnswer, composeAnswer, defaultGroupRules, categoryCostText, changeCost, coveredPath, computeDelta, adapterParams, EXIT, KEEP_SNAPSHOTS, LOCK_STALE_MS, LOCK_FILE, STATE_FILE, SNAPSHOTS_DIR, PREVIEW_DIR, SUGGESTION_FILE } from "../scripts/dashboard.mjs";
+import { COSTS, COST_KINDS, ADAPTER_MAPPING, QUESTIONS, CLOSING_ASK, CLOSING_OPTIONS, MANUAL_REFRESH_TEXT, askText, defaultAnswer, composeAnswer, defaultGroupRules, categoryCostText, changeCost, coveredPath, computeDelta, adapterParams, pullSecondsAfter, loginsFor, LOGIN_SECONDS, EXIT, KEEP_SNAPSHOTS, LOCK_STALE_MS, LOCK_FILE, STATE_FILE, SNAPSHOTS_DIR, PREVIEW_DIR, SUGGESTION_FILE } from "../scripts/dashboard.mjs";
+import { resolveGroups, programTraits } from "../scripts/dashboard-groups.mjs";
 import { SPEC_DESCRIPTIONS, defaultSpec, openSpec, DEFAULT_ACCOUNT_LISTS } from "../scripts/dashboard-spec.mjs";
 import { LACKS } from "../scripts/dashboard-runtime.mjs";
 import { openSnapshot } from "../scripts/engagement-query.mjs";
@@ -114,8 +115,9 @@ const RULED = {
   "customer-list-detail": "How should the customer lists be built? Three lists are made across programs: the 25 most engaged, the 25 least engaged and the 25 most bounced accounts. Each needs at least 10 delivered emails across programs before an account can appear, so one unopened email is not a risk; on a program that sends about once per contact, the least-engaged list uses at least 3 delivered and no open instead. You can change the size and the floor of each list, and you can add \"per segment\" lists, which rank the same lists within each value of a company field you name, such as Industry or Segment. Do you want to change the defaults?",
   "step-detail": "Do you want step detail? By default the figures are per program and per email, read from the delivery log. Step detail reads a second log that records which step of a program and which A/B variant each send came from, so the pages also show rows per step and per variant, and the participant-records count. It is one switch for the whole dashboard. On this tenant it adds about 5 minutes to each refresh. Off by default; turning it on later means the next refresh pulls everything again.",
   "expected-reasons": "Are there participant-failure reasons that are expected by design on this tenant? Some reasons a participant is refused are a business rule doing its job. These six are recognised already and counted apart from real failures, never hidden: Already in the participant list; Unique criteria already met; Met the advanced criteria; Unsubscribed from a category; On the global opt-out; Opted out at the send step. If this tenant has a wording of its own that should count the same way, give the fixed part of its text. Most people say none here and add one later, when the Health tab's \"Other\" line shows it. Marking a reason expected changes only how it is labelled: a program that admits nobody for the due days you set earlier is still flagged as \"Admitting nobody\", whatever the reasons were.",
-  // 150 calls, about 19 minutes, 3000 s of login = about 50 minutes.
-  closing: "Ready to save. A full refresh with these settings is about 150 calls and about 19 minutes on this tenant; your login has about 50 minutes left. Refreshes are manual: you run the refresh command whenever you want new numbers, or schedule it yourself on your own machine (the README has the recipe; it needs a login within the hour). The pages always show when the data was pulled.",
+  // 150 calls, about 19 minutes, 3000 s of login = about 50 minutes. The manual-refresh statement is ruling 11's, in the
+  // admin's terms (F-511 instance 26): where the command is typed, the login, the slash command, the multi-login pull.
+  closing: "Ready to save. A full refresh with these settings is about 150 calls and about 19 minutes on this tenant; your login has about 50 minutes left, enough for it. Refreshes are manual: whenever you want new numbers, open a terminal in the workspace folder, run gs-admin login if your last login was more than an hour ago, and run `node .gs-superadmin/plugin/scripts/dashboard.mjs refresh x` (in a Claude Code session opened there, /gs-superadmin:email-engagement refresh x runs the same command). A pull that outlasts the login stops and continues when you log in and run it again. To run it on a schedule on your own machine, the README has the recipe (it needs a login within the hour). The pages always show when the data was pulled.",
 };
 const RULED_OPTIONS = {
   programs: ["The last 90 days (the default)", "180 days", "The last year", "Every program that sent in the reporting period", "Since a date you give", "Named programs (names or ids, one per line)"],
@@ -157,7 +159,9 @@ try {
     check("the closing step (ruling 19): one ask with the calls, the minutes and the login's remaining minutes, the manual-refresh statement and that the pages say when the data was pulled; four options (save and refresh now, a dry run first with its minutes, save only, go back), each standing for the action rows it answers; the three action rows carry the same ask; a short login says so; a dry run already made drops its option",
       closingAsk === RULED.closing && isDeepStrictEqual(closingOptions.map((o) => o.text), RULED_OPTIONS.closing) && isDeepStrictEqual(closingOptions.map((o) => o.id), ["save-now", "dry-run", "save-only", "go-back"]) &&
         isDeepStrictEqual(closingOptions[0].answers, [["dry-run", "no"], ["estimate", "yes"], ["save", "yes"]]) && isDeepStrictEqual(closingOptions[1].answers, [["dry-run", "yes"]]) && isDeepStrictEqual(closingOptions[2].answers, [["dry-run", "no"], ["estimate", "yes"], ["save", "later"]]) && isDeepStrictEqual(closingOptions[3].answers, []) &&
-        QUESTIONS.filter((x) => x.kind === "action").every((x) => askText(x, PLAN_CTX) === RULED.closing) && /your login has about 5 minutes left: not enough for the full refresh, so log in again before it runs/.test(CLOSING_ASK({ ...PLAN_CTX, tokenSecondsLeft: 300 })) &&
+        QUESTIONS.filter((x) => x.kind === "action").every((x) => askText(x, PLAN_CTX) === RULED.closing) && /your login has about 5 minutes left, so the first refresh will take about 1 login of an hour: it runs as far as each login allows, stops, and continues when you log in and run it again/.test(CLOSING_ASK({ ...PLAN_CTX, tokenSecondsLeft: 300 })) &&
+        // F-513: a pull longer than one login is said in logins, never refused; the kb folder rides the command when known.
+        /about 2 logins of an hour/.test(CLOSING_ASK({ ...PLAN_CTX, tokenSecondsLeft: 300, plan: { estimate: { ...PLAN.estimate, full: { calls: 700, seconds: 4300 } } } })) && CLOSING_ASK({ ...PLAN_CTX, kb: "acme-prod" }).includes("refresh x --kb acme-prod`") &&
         isDeepStrictEqual(CLOSING_OPTIONS({ ...PLAN_CTX, answered: ["dry-run"] }).map((o) => o.id), ["save-now", "save-only", "go-back"]), [closingAsk, closingOptions]);
     const optionTexts = Object.fromEntries(Object.keys(RULED_OPTIONS).filter((id) => id !== "closing").map((id) => [id, q(id).options(PLAN_CTX).map((o) => o.text)]));
     check("the options are the ruled ones, in order, with the default named first and the figures where the ruling put them",
@@ -168,9 +172,30 @@ try {
       placeholders.length >= 12 && placeholders.every((p) => Array.isArray(p.followUps) && p.followUps.length > 0 && [...p.id.matchAll(/<([^>]+)>/g)].every((m) => p.followUps.some((f) => f.key === m[1])) && p.followUps.every((f) => typeof f.ask === "string" && f.ask.length > 8 && ["text", "list", "number", "boolean"].includes(f.kind))) &&
         isDeepStrictEqual([...new Set(placeholders.map((p) => p.q))], ["programs", "window", "internal-domains", "test-accounts", "unsubscribe-links", "failure-settings", "tabs", "customer-list-detail", "expected-reasons"]) && option("tabs", "{", PLAN_CTX).followUps.length === 4 && q("grouping").options(PLAN_CTX).every((o) => !o.followUps),
       placeholders.map((p) => [p.q, p.id, p.followUps?.map((f) => f.key)]));
+    check("F-511 instance 21: one follow-up per value an option NEEDS — the test accounts are two options (GSIDs, names), each with its one follow-up, plus none; an admin who gives GSIDs is never asked for names",
+      isDeepStrictEqual(q("test-accounts").options(PLAN_CTX).map((o) => o.followUps?.map((f) => f.key) ?? null), [["ids"], ["names"], null]) && q("test-accounts").options(PLAN_CTX)[0].text === "Give their company GSIDs" && placeholders.every((p) => p.followUps.length === [...p.id.matchAll(/<([^>]+)>/g)].length));
+    // F-514 (ruled 2026-10-12): the question tool shows four options; a question with more is asked in chat as a
+    // numbered list (the skill's rule). The programs question keeps its six (ruling 4); every other list fits the tool.
+    const over = QUESTIONS.filter((x) => !x.judgment && x.options(PLAN_CTX).length > 4).map((x) => [x.id, x.options(PLAN_CTX).length]);
+    const skillText = readFileSync(join(HERE, "..", "skills", "email-engagement", "SKILL.md"), "utf8");
+    check("F-514 every option list is held to the question tool's four, or to the skill's numbered-list rule: only the programs question exceeds four (its six as ruled), and the skill prose carries the rule for any question over four (a numbered list in chat, the reply a number, never \"Other\")",
+      isDeepStrictEqual(over, [["programs", 6]]) && /more than four options/.test(skillText) && /numbered list/.test(skillText) && /never (offer |use |say )?"?Other"?/i.test(skillText), over);
+    check("F-511 instance 23: a list with no delivered floor says so in its follow-up, never \"at least 0 delivered\"",
+      option("customer-list-detail", "sizes:").followUps.find((f) => f.key === "most-bounced").ask.includes("with no delivered floor") && option("customer-list-detail", "sizes:").followUps.find((f) => f.key === "most-engaged").ask.includes("with at least 10 delivered") && !JSON.stringify(q("customer-list-detail").options(PLAN_CTX)).includes("at least 0 delivered"));
+    // F-511 instance 24: a change's pull is priced for the spec AFTER the change, from the plan's priced parts.
+    const b0 = base();
+    const listsOn = structuredClone(b0); listsOn.accounts.pull = true;
+    const healthOff = structuredClone(b0); for (const pg of healthOff.pages) pg.tabs.find((t) => t.id === "health").enabled = false;
+    const wider = structuredClone(b0); wider.sources[0].params.windowMonths = 26;
+    const stepOn = structuredClone(b0); stepOn.sources[0].params.stepDetail = true;
+    check("F-511 instance 24: pullSecondsAfter prices a change from the last plan's parts — customer lists on adds their seconds, Health off removes its, step detail on adds its, a wider rolling window scales, and the plan made with the lists ON prices turning them off by removing them; null with no plan",
+      pullSecondsAfter(PLAN, b0, listsOn) === 1132 + 1800 && pullSecondsAfter(PLAN, b0, healthOff) === 1132 - 600 && pullSecondsAfter(PLAN, b0, stepOn) === 1132 + 300 && pullSecondsAfter(PLAN, b0, wider) === Math.round((1132 / 13) * 26) && pullSecondsAfter(PLAN, b0, b0) === 1132 &&
+        pullSecondsAfter({ estimate: { ...PLAN.estimate, full: { calls: 400, seconds: 3000 }, accounts: { on: true, addsCalls: 264, addsSeconds: 1800 } } }, listsOn, b0) === 3000 - 1800 && pullSecondsAfter(null, b0, listsOn) === null);
+    check("F-513 logins: a pull's seconds read as whole logins of an hour, at least one",
+      loginsFor(0) === 1 && loginsFor(3600) === 1 && loginsFor(3601) === 2 && loginsFor(4327) === 2 && LOGIN_SECONDS === 3600);
     check("composeAnswer is the follow-up rule as code: each <key> replaced by its answer, a list as a JSON list (none as the empty list), a boolean as true or false, text as written; a missing answer is refused",
       composeAnswer(option("programs", "since:"), { date: "2026-05-01" }) === "since:2026-05-01" && composeAnswer(option("programs", "names:"), { programs: "Acme One\nAcme Two" }) === 'names:["Acme One","Acme Two"]' && composeAnswer(option("window", "rolling:<"), { months: 4 }) === "rolling:4" &&
-        composeAnswer(option("window", "fixed:"), { from: "2025-01", to: "2025-06" }) === "fixed:2025-01:2025-06" && composeAnswer(option("internal-domains", "<domains>"), { domains: "none" }) === "[]" && composeAnswer(option("test-accounts", "{"), { ids: ["co-09"], names: "Acme Test" }) === '{"ids": ["co-09"], "names": ["Acme Test"]}' &&
+        composeAnswer(option("window", "fixed:"), { from: "2025-01", to: "2025-06" }) === "fixed:2025-01:2025-06" && composeAnswer(option("internal-domains", "<domains>"), { domains: "none" }) === "[]" && composeAnswer(option("test-accounts", '{"ids": <ids>'), { ids: ["co-09"] }) === '{"ids": ["co-09"], "names": []}' && composeAnswer(option("test-accounts", '{"ids": [], "names"'), { names: "Acme Test" }) === '{"ids": [], "names": ["Acme Test"]}' &&
         composeAnswer(option("tabs", "{", PLAN_CTX), { "admin.health": "yes", "admin.templates": "no", "exec.health": true, "exec.templates": "off" }) === '{"admin": {"health": true, "templates": false}, "exec": {"health": true, "templates": false}}' && composeAnswer(option("failure-settings", "set:"), { quietDueDays: "keep", samplePrograms: "10" }) === "set:keep:10" &&
         composeAnswer(option("customer-list-detail", "sizes:"), { "most-engaged": "3 2", "least-engaged": "keep", "most-bounced": "5 0" }) === "sizes:3 2|keep|5 0" && (() => { try { composeAnswer(option("programs", "since:"), {}); return false; } catch (e) { return /has no answer/.test(e.message); } })());
     check("F-504 the category cost is quoted where ruled: on the tabs question (K4's bar moved there), from the plan's categories × recipient classes = counted calls with the minutes; nothing when the tenant has no category file; the internal-domains and test-accounts asks say a few minutes per domain and per test account instead of counted calls",
@@ -251,11 +276,17 @@ try {
   const domainsQ = run("next", [SLUG]);
   const domains = run("answer", [SLUG, "internal-domains", composeAnswer(domainsQ.json.question.options[0], { domains: "acme.com" })]);
   const testsQ = run("next", [SLUG]);
-  const tests = run("answer", [SLUG, "test-accounts", composeAnswer(testsQ.json.question.options[0], { ids: "co-09", names: "Acme Customer 03" })]);
-  const noSuch = run("answer", [SLUG, "test-accounts", composeAnswer(testsQ.json.question.options[0], { ids: "none", names: "Nobody Here" })]);
-  check("internal domains through the list follow-up; test accounts through their two follow-ups (GSIDs, names): an id is kept as given, a name is looked up once through the gate (one read-only company call; several matches or none are said, never guessed), and the answer is the ids",
-    domainsQ.json?.question?.id === "internal-domains" && domains.code === 0 && isDeepStrictEqual(readJson(draftFile()).spec.sources[0].params.internalDomains, ["acme.com"]) && testsQ.json?.question?.id === "test-accounts" && tests.code === 0 && isDeepStrictEqual(readJson(draftFile()).spec.sources[0].params.testAccounts, ["co-03", "co-09"]) && tests.json.notes.some((n) => /"Acme Customer 03" is co-03/.test(n)) &&
-      argvLines().filter((a) => a.includes("--object company") && a.includes("Acme Customer 03")).length === 1 && noSuch.code === 1 && /no account is named "Nobody Here"/.test(noSuch.json?.error ?? ""), [tests.json, noSuch.json]);
+  const byIds = run("answer", [SLUG, "test-accounts", composeAnswer(testsQ.json.question.options[0], { ids: "co-09" })]);
+  const idsOnly = readJson(draftFile()).spec.sources[0].params.testAccounts;
+  const byNames = run("answer", [SLUG, "test-accounts", composeAnswer(testsQ.json.question.options[1], { names: "Acme Customer 03" })]);
+  const namesOnly = readJson(draftFile()).spec.sources[0].params.testAccounts;
+  const noSuch = run("answer", [SLUG, "test-accounts", composeAnswer(testsQ.json.question.options[1], { names: "Nobody Here" })]);
+  // Both forms at once, as the written form still reads (the walk keeps both accounts from here on).
+  const tests = run("answer", [SLUG, "test-accounts", '{"ids": ["co-09"], "names": ["Acme Customer 03"]}']);
+  check("internal domains through the list follow-up; test accounts through ONE follow-up each (F-511 instance 21): the GSIDs option asks for GSIDs alone and keeps them as given, the names option asks for names alone and looks each up once through the gate (one read-only company call; several matches or none are said, never guessed), and the answer is the ids",
+    domainsQ.json?.question?.id === "internal-domains" && domains.code === 0 && isDeepStrictEqual(readJson(draftFile()).spec.sources[0].params.internalDomains, ["acme.com"]) && testsQ.json?.question?.id === "test-accounts" && testsQ.json.question.options.length === 3 &&
+      byIds.code === 0 && isDeepStrictEqual(idsOnly, ["co-09"]) && byNames.code === 0 && isDeepStrictEqual(namesOnly, ["co-03"]) && byNames.json.notes.some((n) => /"Acme Customer 03" is co-03/.test(n)) && tests.code === 0 && isDeepStrictEqual(readJson(draftFile()).spec.sources[0].params.testAccounts, ["co-03", "co-09"]) &&
+      argvLines().filter((a) => a.includes("--object company") && a.includes("Acme Customer 03")).length === 2 && noSuch.code === 1 && /no account is named "Nobody Here"/.test(noSuch.json?.error ?? ""), [byIds.json, byNames.json, noSuch.json]);
   const unsubQ = run("next", [SLUG]);
   const unsub = run("answer", [SLUG, "unsubscribe-links", composeAnswer(unsubQ.json.question.options[0], { links: OWN_SITE_UNSUBSCRIBE })]);
   const badUnsub = run("answer", [SLUG, "unsubscribe-links", composeAnswer(unsubQ.json.question.options[0], { links: "not a host" })]);
@@ -304,7 +335,7 @@ try {
   const callsBeforeClosing = argvLines().length;
   const closing = run("next", [SLUG]);
   check("the closing step (ruling 19): once every setting is answered, next returns the first action row WITH the closing block: the ruled ask priced on the exact settings (a new plan, since the pull-affecting answers moved), the login's remaining minutes read now, and the four options with the action answers each stands for",
-    closing.code === 0 && closing.json?.question?.id === "dry-run" && closing.json.closing && /^Ready to save\. A full refresh with these settings is about \d+ calls and about \d+ minutes on this tenant; your login has about \d+ minutes left\. Refreshes are manual: you run the refresh command whenever you want new numbers, or schedule it yourself on your own machine \(the README has the recipe; it needs a login within the hour\)\. The pages always show when the data was pulled\.$/.test(closing.json.closing.ask) &&
+    closing.code === 0 && closing.json?.question?.id === "dry-run" && closing.json.closing && /^Ready to save\. A full refresh with these settings is about \d+ calls and about \d+ minutes on this tenant; your login has about \d+ minutes left, enough for it\. Refreshes are manual: whenever you want new numbers, open a terminal in the workspace folder, run gs-admin login if your last login was more than an hour ago, and run `node \.gs-superadmin\/plugin\/scripts\/dashboard\.mjs refresh acme-health --kb acme-prod` \(in a Claude Code session opened there, \/gs-superadmin:email-engagement refresh acme-health runs the same command\)\. A pull that outlasts the login stops and continues when you log in and run it again\. To run it on a schedule on your own machine, the README has the recipe \(it needs a login within the hour\)\. The pages always show when the data was pulled\.$/.test(closing.json.closing.ask) &&
       closing.json.question.ask === closing.json.closing.ask && isDeepStrictEqual(closing.json.closing.options.map((o) => o.id), ["save-now", "dry-run", "save-only", "go-back"]) && closing.json.closing.options.every((o) => Array.isArray(o.answers)) && argvLines().length > callsBeforeClosing && closing.json.progress.remaining === 3, closing.json);
   const callsBeforeDry = argvLines().length;
   const dry = run("answer", [SLUG, "dry-run", "yes"]);
@@ -314,7 +345,7 @@ try {
     dry.code === 0 && dry.json.preview?.pages?.length === 2 && dry.json.preview.themed === true && previewPage.includes("--accent:#0b57d0") && previewPage.includes("data:image/png;base64,") && argvLines().slice(callsBeforeDry).every((a) => !a.includes("ao_failed_participants") && !/"GsCompanyId" ?,? ?"IN"|GsCompanyId","operator":"IN"/.test(a)) &&
       afterDry.json?.question?.id === "estimate" && isDeepStrictEqual(afterDry.json.closing.options.map((o) => o.id), ["save-now", "save-only", "go-back"]), [dry.json?.preview, dry.stderr?.slice(-300), afterDry.json?.closing?.options]);
   const estimate = run("answer", [SLUG, "estimate", "yes"]);
-  check("the estimate: the full refresh's calls and minutes against the token, the knowledge-base gap priced, confirmed", estimate.code === 0 && estimate.json.confirmed === true && estimate.json.estimate.full.calls > 0 && estimate.json.estimate.token.fits === true && estimate.json.estimate.kb.undocumented + estimate.json.estimate.kb.behind >= 2, estimate.json);
+  check("the estimate: the full refresh's calls and minutes against the token READ NOW (F-511 instance 25: whoami at the confirmation, not the plan's reading) with the logins a pull of this size takes, the knowledge-base gap priced, confirmed", estimate.code === 0 && estimate.json.confirmed === true && estimate.json.estimate.full.calls > 0 && estimate.json.estimate.token.fits === true && estimate.json.estimate.token.loginsNeeded === 1 && argvLines().at(-1) === "whoami" && estimate.json.estimate.kb.undocumented + estimate.json.estimate.kb.behind >= 2, estimate.json);
   const done = run("next", [SLUG]);
   check("after the estimate every question but the save is answered; next says so, the closing block still beside it", done.json?.question?.id === "save" && done.json.progress.remaining === 1 && done.json.closing?.options?.length === 3, done.json);
   const planDirsBeforeSave = runDirs().filter((d) => d.includes("-plan-"));
@@ -322,8 +353,8 @@ try {
   const callsBeforeRefresh = argvLines().length;
   const saved = run("answer", [SLUG, "save", "yes"]);
   const refresh = { code: saved.code, json: saved.json?.refresh ?? null, stderr: saved.stderr };
-  check("save (and refresh now): the draft becomes the saved spec, the draft and the interview state are gone, and the first refresh CONTINUES the closing step's plan (the first sitting's note of 2026-10-12): the run keeps the plan's directory, so the plan's cheap calls are reused, not made again",
-    saved.code === 0 && existsSync(specFile()) && !existsSync(draftFile()) && openSpec(readJson(specFile())).accounts.pull === true && refresh.json?.status === "ok" && refresh.json.resumed === false && refresh.json.pull.calls.reused > 0 && planDirsBeforeSave.some((d) => refresh.json.run.startsWith(d)) && runDirs().includes(refresh.json.run),
+  check("save (and refresh now): the draft becomes the saved spec, the draft and the interview state are gone, the summary carries the manual-refresh statement with the kb folder, and the first refresh CONTINUES the closing step's plan (the first sitting's note of 2026-10-12): the run keeps the plan's directory, so the plan's cheap calls are reused, not made again",
+    saved.code === 0 && existsSync(specFile()) && !existsSync(draftFile()) && openSpec(readJson(specFile())).accounts.pull === true && saved.json.refreshText === MANUAL_REFRESH_TEXT(SLUG, "acme-prod") && saved.json.refreshLine.endsWith(`refresh ${SLUG} --kb acme-prod`) && refresh.json?.status === "ok" && refresh.json.resumed === false && refresh.json.pull.calls.reused > 0 && planDirsBeforeSave.some((d) => refresh.json.run.startsWith(d)) && runDirs().includes(refresh.json.run) && refresh.json.budget?.loginsNeeded === 1,
     [saved.json?.refresh?.pull?.calls, planDirsBeforeSave, runDirs()]);
 
   // ══ The refresh ════════════════════════════════════════════════════════════
@@ -361,11 +392,16 @@ try {
   const snapshot1b = openSnapshot(readJson(join(dash(), SNAPSHOTS_DIR, snap1[0])));
   check("change (the customer lists): a re-selection over the last run directory's rows (reduce again, no pull): the snapshot's selection record now holds the one list of 2 and the pages are rebuilt",
     relisted.code === 0 && relisted.json.consequence === "reselect" && relisted.json.done.done === true && isDeepStrictEqual(relisted.json.done.lists, [{ kind: "most-bounced", kept: 2 }]) && argvLines().length === callsBeforeChange && snapshot1b.honesty.accountSelection.lists.length === 1 && snapshot1b.honesty.accountSelection.lists[0].kept.length === 2, relisted.json);
+  // The last plan is the one the latest snapshot was pulled from (its run directory, the derived-lookback one), never
+  // the preview's or an older plan's.
+  const lastPlanBefore = JSON.parse(readFileSync(join(WS, ".gs-superadmin", "tmp", "engagement", refresh.json.run, "plan.json"), "utf8"));
+  const priced = run("change", [SLUG, "sources.0.params.stepDetail=true", "--dry-run"]);
   const pulled = run("change", [SLUG, "sources.0.params.stepDetail=true"]);
   const snap2 = snapshots();
-  check("change (a pull setting): the consequence is a new pull with its minutes from the last plan, and the refresh runs: a second snapshot, the step-detail switch changing forces a full one, the delta against the first pull wired to the pages",
-    pulled.code === 0 && pulled.json.consequence === "pull" && /about \d+ minute/.test(pulled.json.consequenceText) && pulled.json.done.kind === "refresh" && pulled.json.done.status === "ok" && snap2.length === 2 && pulled.json.done.pull.mode === "full" && /step-detail switch changed/.test(pulled.json.done.pull.why) &&
-      pulled.json.done.delta?.previousPulledAt === snapshot1.meta.pulledAt && pageText("admin").includes("Change since the last refresh (pulled") && pageText("exec").includes("Since last pull:"), [pulled.json?.consequenceText, pulled.json?.done?.pull, pulled.json?.done?.delta]);
+  check("change (a pull setting): the consequence is a new pull priced for the spec AFTER the change (F-511 instance 24: the last plan's seconds plus what step detail adds, not the old plan's figure), and the refresh runs: a second snapshot, the step-detail switch changing forces a full one, the delta against the first pull wired to the pages",
+    priced.code === 0 && priced.json.pullSeconds === lastPlanBefore.estimate.full.seconds + lastPlanBefore.estimate.stepDetail.addsSeconds && priced.json.consequenceText === `the next refresh pulls everything again, about ${Math.max(1, Math.round(priced.json.pullSeconds / 60))} minutes` &&
+      pulled.code === 0 && pulled.json.consequence === "pull" && /about \d+ minute/.test(pulled.json.consequenceText) && pulled.json.done.kind === "refresh" && pulled.json.done.status === "ok" && snap2.length === 2 && pulled.json.done.pull.mode === "full" && /step-detail switch changed/.test(pulled.json.done.pull.why) &&
+      pulled.json.done.delta?.previousPulledAt === snapshot1.meta.pulledAt && pageText("admin").includes("Change since the last refresh (pulled") && pageText("exec").includes("Since last pull:"), [priced.json?.pullSeconds, lastPlanBefore.estimate?.full, pulled.json?.consequenceText, pulled.json?.done?.pull]);
   const identity = run("change", [SLUG, 'tenantHost="acme--sbx.gainsightcloud.com"']);
   check("change refuses an identity setting (the tenant, the slug)", identity.code === 1 && /cannot be changed/.test(identity.json?.error ?? ""), identity.json);
 
@@ -378,13 +414,28 @@ try {
   check("the lock: a second refresh is refused naming the holder and the time, before any call", locked.code === 1 && /already running: started by ben at /.test(locked.json?.error ?? "") && snapshots().length === 3, locked.json);
   const staleAt = new Date(Date.now() - LOCK_STALE_MS - 60000).toISOString();
   writeFileSync(join(dash(), LOCK_FILE), JSON.stringify({ by: "ben", at: staleAt, pid: 1 }));
-  const shortLogin = run("refresh", [SLUG], { tenant: { ...TENANT, token: { state: "valid", seconds: 60 } } });
-  check("a stale lock taken over by a run the budget then refuses is RECORDED (the first sitting's note): the refusal's summary carries lockTakenOver, its message names the holder, and stderr said so at the takeover; the lock is released; no snapshot",
-    shortLogin.code === EXIT["token-expired"] && shortLogin.json?.status === "token-expired" && isDeepStrictEqual(shortLogin.json.lockTakenOver, { by: "ben", at: staleAt }) && /a stale lock held by ben since/.test(shortLogin.json.error) && /took over a stale refresh lock of "acme-health" held by ben since/.test(shortLogin.stderr) && !existsSync(join(dash(), LOCK_FILE)) && snapshots().length === 3, shortLogin.json);
-  rmSync(join(dash(), STATE_FILE), { force: true });
+  // F-513: the budget gate is gone. A login shorter than the pull is not refused: the pull runs as far as the token
+  // allows (here the stand-in CLI kills the token after six calls), stops with exit 3 keeping its calls, and the stop
+  // says how many more logins it needs; the stale lock it took over is recorded in that refusal (the first sitting's note).
+  const shortLogin = run("refresh", [SLUG], { tenant: { ...TENANT, token: { state: "valid", seconds: 60 } }, env: { FAKE_FAULTS: JSON.stringify([{ match: "rp run", kind: "auth", skip: 30, times: 9999 }]) } });
+  check("F-513 a pull longer than the login is NOT refused at the gate: it starts (stderr says it will take more logins), stops cleanly on the token with exit 3 after the calls it could make, names the login to run and that the next run continues it, says about how many more logins, and keeps its run resumable; the stale lock it took over is recorded in the refusal and released; no snapshot",
+    shortLogin.code === EXIT["token-expired"] && shortLogin.json?.status === "token-expired" && /the refresh stopped after \d+ calls this run/.test(shortLogin.json.error) && /run gs-admin login, then run refresh acme-health again: it continues where it stopped/.test(shortLogin.json.error) && /about \d+ more logins? of an hour to finish/.test(shortLogin.json.error) &&
+      /will run as far as the login allows \(about \d+ logins? of an hour in all\)/.test(shortLogin.stderr) && isDeepStrictEqual(shortLogin.json.lockTakenOver, { by: "ben", at: staleAt }) && /a stale lock held by ben since/.test(shortLogin.json.error) && /took over a stale refresh lock of "acme-health" held by ben since/.test(shortLogin.stderr) && !existsSync(join(dash(), LOCK_FILE)) && existsSync(join(dash(), STATE_FILE)) && snapshots().length === 3, shortLogin.json);
   writeFileSync(join(dash(), LOCK_FILE), JSON.stringify({ by: "ben", at: staleAt, pid: 1 }));
   const stale = run("refresh", [SLUG]);
-  check("a lock older than two hours is stale: the refresh takes it over and says whose it was", stale.code === 0 && stale.json.lockTakenOver?.by === "ben" && !existsSync(join(dash(), LOCK_FILE)) && snapshots().length === 4, stale.json?.lockTakenOver ?? stale.json);
+  check("after a login the same refresh RESUMES the stopped pull to a completed one (F-513: save → stop → resume), reusing the calls made, and a lock older than two hours is stale: the refresh takes it over and says whose it was",
+    stale.code === 0 && stale.json.resumed === true && stale.json.pull.calls.reused > 0 && stale.json.lockTakenOver?.by === "ben" && !existsSync(join(dash(), LOCK_FILE)) && !existsSync(join(dash(), STATE_FILE)) && snapshots().length === 4, stale.json?.lockTakenOver ?? stale.json);
+  // F-512 (reopened 2026-10-12): a pull-affecting change between a stopped pull and its resume. The pending run's
+  // parameters moved, so it is abandoned and the pull planned afresh — never refused as "started with different
+  // parameters", and no state file to remove by hand.
+  const stoppedAgain = run("refresh", [SLUG, "--full"], { env: { FAKE_FAULTS: JSON.stringify([{ match: "rp run", kind: "auth", skip: 30, times: 9999 }]) } });
+  const pendingRun = readJson(join(dash(), STATE_FILE)).run;
+  const listsOff = run("change", [SLUG, "accounts.pull=false"]);
+  check("F-512 save → stop → a change of a pull setting → refresh to a COMPLETED pull: the change's own refresh abandons the pending run (its parameters moved), says so, plans afresh and completes; the state file is gone and no hand-removal was needed",
+    stoppedAgain.code === EXIT["token-expired"] && pendingRun != null && listsOff.code === 0 && listsOff.json.consequence === "pull" && listsOff.json.done.kind === "refresh" && listsOff.json.done.status === "ok" && listsOff.json.done.abandoned?.run === pendingRun && /accounts moved/.test(listsOff.json.done.abandoned.why) && listsOff.json.done.run !== pendingRun && !existsSync(join(dash(), STATE_FILE)) && snapshots().length === 5 && openSpec(readJson(specFile())).accounts.pull === false,
+    [stoppedAgain.json?.status, pendingRun, listsOff.json?.done?.abandoned, listsOff.json?.done?.status, listsOff.json?.error]);
+  const listsBack = run("change", [SLUG, "accounts.pull=true"]);
+  check("(the walk's lists back on for what follows)", listsBack.code === 0 && listsBack.json.done.status === "ok" && snapshots().length === 6, listsBack.json?.error);
 
   // ══ The wrong tenant, before any call; the expired token leaving the pages ══
   const callsBeforeWrong = argvLines().length;
@@ -400,12 +451,40 @@ try {
   const resumed = run("refresh", [SLUG, "--full"]);
   check("after a login the same refresh resumes its run (status named it; the calls already answered are not made again) and finishes", resumedStatus.json?.resumable?.run != null && resumed.code === 0 && resumed.json.resumed === true && resumed.json.pull.calls.reused > 0 && snapshots().length === countBefore + 1 && !existsSync(join(dash(), STATE_FILE)), [resumedStatus.json?.resumable, resumed.json?.pull?.calls]);
 
-  // ══ The draft take-over, list, report, health, export and import ══════════
+  // ══ An edit of the saved dashboard (F-516), the draft take-over, list, report, health, export and import ══
   const edit = run("new", [SLUG]);
   const asBen = common.slice(0, -2);
   const theirs = run("next", [SLUG], { flags: [...asBen, "--by", "ben"] });
   const taken = run("next", [SLUG], { flags: [...asBen, "--by", "ben", "--take-over"] });
   check("the draft's holder: an edit started by ana is refused to ben at next, naming ana and the time, and continues for ben with --take-over", edit.json?.state === "editing-saved" && theirs.code === 1 && /held by ana \(last changed /.test(theirs.json?.error ?? "") && taken.code === 0 && readJson(draftFile()).by === "ben", [theirs.json, taken.json?.question?.id]);
+  // F-516: `new` over a saved spec marks every setting answered, so `next` goes straight to the closing step with
+  // nothing re-asked; with nothing changed yet the step says so and offers no refresh; `next --question <id>` is the
+  // way to change one setting, after which the closing step states the consequence and its first option DOES it.
+  const callsBeforeEdit = argvLines().length;
+  const editNext = run("next", [SLUG], { flags: [...asBen, "--by", "ben"] });
+  check("F-516 new over a saved spec → next goes to the closing step with nothing re-asked: every setting marked answered (programs through expected-reasons), the first question returned is an action row with the closing block, the step says nothing changed and offers no refresh (close the edit, a dry run, go back), and no plan was made for it (no call)",
+    edit.json.answered.length === 14 && edit.json.answered.includes("programs") && edit.json.answered.includes("expected-reasons") && !edit.json.answered.includes("tenant") && edit.json.next === "dry-run" && editNext.code === 0 && editNext.json.question?.id === "dry-run" && editNext.json.closing && /^Ready to save this edit\. Nothing changed against the saved dashboard\. Refreshes are manual/.test(editNext.json.closing.ask) &&
+      isDeepStrictEqual(editNext.json.closing.options.map((o) => o.id), ["dry-run", "save-only", "go-back"]) && editNext.json.closing.options[1].text === "Close the edit (nothing changed)" && editNext.json.progress.remaining === 3 && argvLines().slice(callsBeforeEdit).every((a) => a === "whoami"), [edit.json, editNext.json?.closing, argvLines().slice(callsBeforeEdit)]);
+  const backTo = run("next", [SLUG, "--question", "tabs"], { flags: [...asBen, "--by", "ben"] });
+  const retabbed = run("answer", [SLUG, "tabs", composeAnswer(backTo.json.question.options[1], { "admin.health": "yes", "admin.templates": "no", "exec.health": "no", "exec.templates": "no" })], { flags: [...asBen, "--by", "ben"] });
+  const editClosing = run("next", [SLUG], { flags: [...asBen, "--by", "ben"] });
+  check("F-516 next --question <id> changes one setting on the edit (the Templates tab off: a rebuild) and the closing step then STATES the consequence — the setting changed, rebuild with no pull — and its first option is the rebuild, not a refresh; the estimate needs no plan",
+    backTo.json?.question?.id === "tabs" && backTo.json.again === true && retabbed.code === 0 && editClosing.code === 0 && /^Ready to save this edit\. Compared with the saved dashboard it changes 1 setting \(pages\[\]\.tabs\[\]\.enabled\): the pages are rebuilt from the data already pulled, no pull\. Refreshes are manual/.test(editClosing.json.closing.ask) &&
+      editClosing.json.closing.options[0].id === "save-now" && editClosing.json.closing.options[0].text === "Save and rebuild the pages now (no pull)" && isDeepStrictEqual(editClosing.json.closing.options.map((o) => o.id), ["save-now", "dry-run", "save-only", "go-back"]), [editClosing.json?.closing, retabbed.json?.error]);
+  const snapsBeforeEditSave = snapshots().length;
+  const callsBeforeEditSave = argvLines().length;
+  const editEstimate = run("answer", [SLUG, "estimate", "yes"], { flags: [...asBen, "--by", "ben"] });
+  const editSaved = run("answer", [SLUG, "save", "yes"], { flags: [...asBen, "--by", "ben"] });
+  check("F-516 the edit's save DOES its consequence: the rebuild runs (no tenant call beyond whoami, no snapshot), the Templates tab is off on the saved spec, the draft is gone, and the summary says what was done",
+    editEstimate.code === 0 && editEstimate.json.confirmed === true && editEstimate.json.estimate === null && editSaved.code === 0 && editSaved.json.done?.kind === "rebuild" && editSaved.json.done.pages?.length === 2 && editSaved.json.edit?.consequence === "rebuild" && snapshots().length === snapsBeforeEditSave && !existsSync(draftFile()) && openSpec(readJson(specFile())).pages[0].tabs.find((t) => t.id === "templates").enabled === false &&
+      argvLines().slice(callsBeforeEditSave).every((a) => a === "whoami"), [editEstimate.json, editSaved.json?.done, editSaved.json?.error]);
+  const editPull = run("new", [SLUG]);
+  run("next", [SLUG, "--question", "tabs"]);
+  run("answer", [SLUG, "tabs", "default"]);
+  const editPullClosing = run("next", [SLUG]);
+  const editPullSaved = run("answer", [SLUG, "save", "later"]);
+  check("F-516 an edit that needs a pull (the Templates tab back on is a rebuild; here the admin Health tab stays on and nothing else moved, so a pull-cost change is made through step detail off): the closing step prices the pull on a plan, names the next refresh, and 'save only' saves without pulling",
+    editPull.json?.state === "editing-saved" && editPullClosing.code === 0 && editPullClosing.json.closing && editPullSaved.code === 0 && editPullSaved.json.done === null && !existsSync(draftFile()), [editPullClosing.json?.closing?.ask, editPullSaved.json?.error]);
   rmSync(draftFile(), { force: true });
   const listed = run("list", []);
   check("list: the saved dashboard with its last pull and the pages on disk; a draft would show with its holder and date", listed.code === 0 && listed.json.dashboards.some((d) => d.slug === SLUG && d.saved && d.lastPull && d.pages.length === 2), listed.json);
@@ -421,6 +500,52 @@ try {
   check("import on a second workspace of the same tenant: the spec and the snapshot land, the pages rebuild from it with no pull, and status reads the carried pull", imported.code === 0 && imported.json.snapshot != null && rebuilt.code === 0 && rebuilt.json.pages.length === 2 && status2.json?.lastPull?.pulledAt === resumed.json.pull.pulledAt, [imported.json, rebuilt.json, status2.json?.lastPull]);
   const wrongImport = run("import", ["--file", join(ROOT, "handover", "acme-health.json")], { flags: ["--workspace", WS2, "--kb", KB2, "--bin", FAKE, "--today", TODAY] });
   check("import never overwrites silently: the same slug again is refused without --replace", wrongImport.code === 1 && /already saved here/.test(wrongImport.json?.error ?? ""), wrongImport.json);
+
+  // ══ F-515: the proposal written from the suggestion file, through the rules ══
+  {
+    // The file the grouping node hands the prose (written at the closing step's exact plan): a two-level proposal
+    // written FROM it — Recurring / One-off by `recurring`, one group per model CODE with the display name as its
+    // label — resolves over the pulled snapshot to the counts the file gave, every program grouped at both levels
+    // except those whose `recurring` the file itself calls unknown.
+    const file = readJson(join(dash(), SUGGESTION_FILE));
+    const proposal = {
+      rules: [
+        { kind: "characteristic", level: "supergroup", characteristic: "recurring", is: true, label: "Recurring" },
+        { kind: "characteristic", level: "supergroup", characteristic: "recurring", is: false, label: "One-off" },
+        ...file.tallies.model.filter((t) => t.value !== "(none)").map((t) => ({ kind: "characteristic", level: "group", characteristic: "model", is: t.value, label: t.label })),
+      ],
+      overrides: {},
+    };
+    const latest = openSnapshot(readJson(join(dash(), SNAPSHOTS_DIR, snapshots().at(-1))));
+    const r = resolveGroups({ programs: programTraits(latest), groups: proposal });
+    const matched = proposal.rules.map((_, i) => r.assignments.filter((a) => a.by.supergroup === `rule ${i + 1}` || a.by.group === `rule ${i + 1}`).length);
+    const tallyOf = (key, value) => file.tallies[key].find((t) => String(t.value) === String(value))?.programs ?? 0;
+    const unknownRecurring = file.programs.filter((p) => p.recurring === null).map((p) => p.id).sort();
+    check("F-515 the proposal written from the suggestion file through the rules groups every program with the file's counts: the file's `model` is the code a rule tests (its `modelName` the label), its `recurring` is the trait the snapshot resolves (the one-run-window and months-with-sends rules applied at the plan), so Recurring / One-off and each model group match exactly the file's tallies, and only the programs the file calls unknown are ungrouped",
+      file.programs.length === latest.dimensions.programs.length && file.programs.every((p) => typeof p.model === "string" && typeof p.modelName === "string") && file.notes.some((n) => /model CODE/.test(n)) && matched[0] === tallyOf("recurring", true) && matched[1] === tallyOf("recurring", false) &&
+        proposal.rules.slice(2).every((rule, i) => matched[i + 2] === tallyOf("model", rule.is)) && isDeepStrictEqual([...r.ungrouped].sort(), unknownRecurring) && r.ungroupedWithin.length === 0 && matched.slice(2).reduce((a, b) => a + b, 0) === file.programs.length,
+      { matched, tallies: file.tallies, ungrouped: r.ungrouped, unknownRecurring, programs: [file.programs.length, latest.dimensions.programs.length] });
+    const answered = run("change", [SLUG, `groups=${JSON.stringify(proposal)}`]);
+    check("the same proposal written through the writer (as the grouping node does) is accepted, a rebuild only; the About tab then shows each model rule by its display name with its count, and the Groups part once",
+      answered.code === 0 && answered.json.consequence === "rebuild" && answered.json.done.kind === "rebuild" && /programs whose model is Email Chain\. Matched \d+ programs?\./.test(pageText("admin")) && !/whose model is DRIPV2/.test(pageText("admin")) && !pageText("admin").includes("<dt>Groups</dt>") && (pageText("admin").replace(/<script[\s\S]*?<\/script>/g, "").match(/Group rules, as they resolved/g) ?? []).length === 1,
+      [answered.json?.error ?? answered.stderr?.slice(-600), answered.json?.done?.ungrouped]);
+  }
+
+  // ══ F-503: every copy line the pages emit runs as drawn in a workspace with TWO tenant KB folders ══
+  {
+    writeFiles(WS, { "acme-sbx/_manifest.json": JSON.stringify({ slug: "acme-sbx", baseUrl: "https://acme--sbx.gainsightcloud.com", environment: "sandbox", created: "2026-01-01T00:00:00.000Z", last_refresh: null, domains_indexed: {}, inventory: {} }) });
+    // The pre-render's lines only: the inlined runtime SOURCE also holds the text `data-copy="…"`.
+    const prerender = pageText("admin").replace(/<script[\s\S]*?<\/script>/g, "");
+    const lines = [...new Set([...prerender.matchAll(/data-copy="([^"]*)"/g)].map((m) => m[1].replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&")))];
+    const fromWorkspace = (argv) => { const x = runNode(SCRIPT, [...argv, "--bin", FAKE, "--today", TODAY, "--by", "ana"], { cwd: WS, env: { ...process.env, FAKE_STATE: STATE, FAKE_TENANT: JSON.stringify(TENANT) } }); let json = null; try { json = JSON.parse(x.stdout); } catch { /* a stack */ } return { code: x.status, json, stderr: x.stderr }; };
+    const asArgv = (line) => line.replace(/^node \.gs-superadmin\/plugin\/scripts\/dashboard\.mjs /, "").replace("<program id>", "p-onboard").replace(/=$/, '=["example.com"]').split(" ");
+    const results = lines.map((line) => { const argv = asArgv(line); return { line, ...fromWorkspace(argv[0] === "change" ? [...argv, "--dry-run"] : argv) }; });
+    const bare = fromWorkspace(asArgv(lines.find((l) => / refresh /.test(l))).filter((a, i, all) => !(a === "--kb" || all[i - 1] === "--kb")));
+    check("F-503 every copy line the admin page emits (the How to refresh line, every notice's change line, the health line) carries --kb <folder> and runs as drawn from the workspace folder with two tenant KB folders present (a change line as a dry run, the refresh and health lines for real); the same refresh line without --kb is refused naming the two folders, as the tester saw",
+      lines.length >= 1 && lines.some((l) => / refresh acme-health --kb acme-prod$/.test(l)) && lines.every((l) => / --kb acme-prod$/.test(l)) && results.every((x) => x.code === 0 && x.json?.ok === true) && bare.code === 1 && /holds 2 tenant KB folders \(acme-prod, acme-sbx\)/.test(bare.json?.error ?? ""),
+      results.map((x) => [x.line, x.code, x.json?.error ?? x.stderr?.slice(-200)]));
+    rmSync(join(WS, "acme-sbx"), { recursive: true, force: true });
+  }
 
   // ══ Retention; the fast path (F-512); refusals ════════════════════════════
   {
