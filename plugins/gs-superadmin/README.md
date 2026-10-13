@@ -303,7 +303,8 @@ Things worth knowing before you read the numbers:
 - **The pull takes minutes, not seconds.** The skill prints the estimate first and asks
   before a pull of more than about ten minutes. `--sent-since 90d` or `--name` narrows it.
   A pull the login expires under stops cleanly and continues where it stopped after
-  `gs-admin login`.
+  `gs-admin login`. A call the server will not answer (a timeout that survives its retry)
+  stops the pull the same way, naming the call: the next run retries it and continues.
 
 Reports land in `<slug>/reports-adhoc/` beside the snapshot they were written from;
 `--csv` or `--xlsx` adds spreadsheet output, and `--snapshot <file>` writes a report from

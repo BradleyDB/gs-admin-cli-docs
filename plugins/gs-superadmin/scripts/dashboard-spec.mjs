@@ -393,7 +393,8 @@ export function describePanel(spec, panel) {
   }
   const q = panel.query ?? { metrics: [] };
   const by = q.groupBy?.length ? ` by ${q.groupBy.join(" and ")}` : "";
-  const top = q.limit != null ? `, the top ${q.limit}${q.sort?.[0]?.metric ? ` by ${metricLabel(q.sort[0].metric)}` : ""}` : "";
+  // The sort's direction names the end of the ranking a limit keeps (F-508): "the 10 lowest by Open rate" is not "the top 10".
+  const top = q.limit != null ? `, the ${q.sort?.[0]?.dir === "asc" ? `${q.limit} lowest` : `top ${q.limit}`}${q.sort?.[0]?.metric ? ` by ${metricLabel(q.sort[0].metric)}` : ""}` : "";
   return `${head} of ${listed(q.metrics.map(metricLabel), "nothing")}${by}${top}.`;
 }
 /** @type {ReadonlyArray<{covers: string[], label: string, say: (spec: any) => string[]}>} */

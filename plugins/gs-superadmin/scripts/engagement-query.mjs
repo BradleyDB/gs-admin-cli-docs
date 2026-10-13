@@ -696,7 +696,7 @@ export const statusLabel = (status) => STATUS_LABELS[status] ?? String(status);
  * @property {?{reason: string}} unavailable    set, with no rows, when the snapshot does not hold that table
  * @property {EngagementRow[]} rows
  * @property {?EngagementRow} total             everything the filters keep, as one row; distinct counts are never totalled
- * @property {{months: string[], fullWindow: boolean, programs: number, programsHiddenByStatus: number}} scope
+ * @property {{months: string[], fullWindow: boolean, programs: number, programsHiddenByStatus: number, programsWithRows: number}} scope
  */
 export const DIMENSIONS = Object.freeze(["program", "template", "step", "variant", "account", "month", "recipientClass", "supergroup", "group", "model", "audience"]);
 const STEP_DIMS = ["step", "variant"];
@@ -756,7 +756,9 @@ export function runQuery(snapshot, filters, query) {
   const fullWindow = months.length === allMonths.length;
   const programById = new Map(dims.programs.map((p) => [p.id, p]));
   const { kept, keptIds, hiddenByStatus } = keptPrograms(snapshot, f);
-  const scope = { months, fullWindow, programs: kept.length, programsHiddenByStatus: hiddenByStatus };
+  // `programsWithRows` (F-505): of the programs the filters keep, how many have a row under the months and recipient
+  // class asked for — a kept program with no send in the chosen months is in the scope and on no row.
+  const scope = { months, fullWindow, programs: kept.length, programsHiddenByStatus: hiddenByStatus, programsWithRows: 0 };
   const empty = (reason) => ({ table, unavailable: { reason }, rows: [], total: null, scope });
   if (table === "byAccount" && !accountAvailability(snapshot).pulled) return empty(accountAvailability(snapshot).reason ?? "not-pulled");
   if (table === "byStep" && !snapshot.meta.stepDetail) return empty("step-detail-off");
@@ -771,6 +773,7 @@ export function runQuery(snapshot, filters, query) {
       monthSet.has(r.month) && keptIds.has(r.programId) && (cls === "all" || r.recipientClass === cls) &&
       has(f.templates, r.templateId ?? null) && has(f.accountBuckets, r.bucket) && (!f.accounts || (r.bucket === "account" && f.accounts.includes(r.accountKey))),
   );
+  scope.programsWithRows = new Set(facts.map((r) => r.programId)).size;
 
   const keyOf = {
     program: (r) => r.programId,
@@ -2068,10 +2071,15 @@ export const CAVEATS = Object.freeze({
     "A documented schedule that ended before its source last synced is read as documentation behind the tenant (Cannot judge yet), never as an ended schedule.",
   "failure-samples-capped": (d) => `${d.notSampled} program(s) with ${d.part === "participantFailures" ? "refused participants" : "uncategorised bounce text"} were not sampled this pull: the sample reads at most ${d.cap} programs a pull, most failures first (about ${d.secondsEach} seconds each). Their text is carried from the previous pull where it had one. Raise --sample-programs to read them.`,
   "failure-samples-sampled": () => "The breakdown of refused participants by reason is a SAMPLE: one page per program of the refusals still happening in the day window, the most repeated first, because the reason field takes no filter on this tenant. The totals beside it are exact. Each sampled text carries how many participants it refused and how many times in all.",
+  // Each part's clause stands on its own count (F-509): the entry clause only when a sampled wording is unclassified,
+  // the step clause only when step participants fell off on an unnamed reason, never a "0 wording(s)" clause.
   "unclassified-wordings": (d) =>
     [
       d.wordings || d.stepParticipants
-        ? `${d.wordings} entry-refusal wording(s) in the samples of ${d.programs} program(s) match no known category and are labelled "unclassified" (kind unknown): ${d.participants} sampled participant(s), ${d.occurrences} refusal(s) in all${d.stepParticipants ? `, plus ${d.stepParticipants} participant(s) who fell off at a step for a reason the shipped list does not name` : ""}. ` +
+        ? `${[
+          d.wordings ? `${d.wordings} entry-refusal wording(s) in the samples of ${d.programs} program(s) match no known category and are labelled "unclassified" (kind unknown): ${d.participants} sampled participant(s), ${d.occurrences} refusal(s) in all` : "",
+          d.stepParticipants ? `${d.wordings ? "plus " : ""}${d.stepParticipants} participant(s) ${d.wordings ? "who " : ""}fell off at a step for a reason the shipped list does not name` : "",
+        ].filter(Boolean).join(", ")}. ` +
           "An unknown product wording is treated as a failure needing investigation, never as a business rule or a known error. Read the texts in the snapshot's failureSamples table (terminal only; they never reach a page) and report them with /gs-superadmin:report-bug so the shipped list can learn them, or add them to this tenant's --failure-categories file."
         : "",
       d.bounceWordings

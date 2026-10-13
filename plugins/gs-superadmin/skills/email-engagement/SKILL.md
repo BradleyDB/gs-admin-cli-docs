@@ -167,7 +167,11 @@ By exit code, before reading anything else:
 On exit 0, read the summary JSON on stdout:
 
 - `estimate.thisRun.calls` and `estimate.thisRun.seconds` — the pull's cost.
-- `estimate.token.fits` — whether the pull finishes before the login expires.
+- `estimate.token.fits` — whether the pull alone finishes before the login expires;
+  `estimate.token.withProposals.fits` — whether the pull PLUS the re-documentation and the
+  template gap-fill the plan proposes (`estimate.kb.refreshSeconds` and
+  `estimate.templates.seconds`) still fit it; `estimate.token.afterPullSeconds` — what the
+  login has left once the pull is made, the budget any gap-fill has to fit.
 - `estimate.accounts.addsSeconds` and `estimate.stepDetail.addsSeconds` — what `--accounts`
   and `--step-detail` add, printed whether or not they are on.
 - `programs.selected` — how many programs the pull covers.
@@ -175,7 +179,9 @@ On exit 0, read the summary JSON on stdout:
 Tell the user the estimate in one line (programs, calls, minutes). Then:
 
 - `estimate.token.fits` is `false`: ask the user to run `gs-admin login` again, then
-  re-issue the plan command unchanged.
+  re-issue the plan command unchanged. `fits` is the pull alone: a gap-fill or a
+  re-documentation is offered below against `afterPullSeconds`, never started on a login
+  the pull was judged to fit.
 - The estimate is over 10 minutes: ask before pulling. Offer to pull as planned, to narrow
   with `--sent-since 90d`, or to stop. Otherwise go on without asking.
 - The user asked about accounts ("which accounts aren't opening") and did not pass
@@ -186,7 +192,11 @@ Tell the user the estimate in one line (programs, calls, minutes). Then:
   programs modified after their doc was written). Their schedules are unknown to the pull,
   so they would read "Cannot judge yet" on the health lists. Tell the user the two counts and
   the seconds `estimate.kb` quotes, and ask whether to re-document those programs in the
-  knowledge base now. On yes, run the three commands below, then re-issue the plan command
+  knowledge base now. The ask says when it would outlive the login: when
+  `estimate.kb.refreshSeconds` is more than `estimate.token.afterPullSeconds` (what the
+  login has left after the pull), say so in the ask, with both numbers in minutes, and that
+  a login first (`gs-admin login`, then the plan command unchanged) makes room for it. On
+  yes, run the three commands below, then re-issue the plan command
   unchanged (same `<run>`: the plan re-reads the knowledge base it moved) and read the
   summary again. On no, go on; the report's caveat names the programs and the remedy.
   Never re-document anything beyond these programs here: bringing the whole knowledge
@@ -215,10 +225,15 @@ stays "Cannot judge yet"; say so.
   never-clicked templates whose doc carries no link-tracking reading, so their click
   tracking would read unknown). Without them the report's Subject column shows a dash
   for those templates and the dashboard's Templates tab has no text to show or search.
-  When `planned` is 50 or fewer, fill the gap without asking. Above that, ask with the
+  When `planned` is 50 or fewer AND `estimate.templates.seconds` fits
+  `estimate.token.afterPullSeconds`, fill the gap without asking. Otherwise ask with the
   count and the seconds `estimate.templates` quotes (the same ask as
   `/gs-superadmin:email-report` step 4b): fill all of it, the first 50 (the keys file's
-  order: missing first, then behind, then unread), or none. On a fill, run the three
+  order: missing first, then behind, then unread), or none. Price each choice against
+  what the login has left after the pull (`afterPullSeconds`; a choice costs its count
+  times `estimate.templates.secondsEach`) and say in the ask which choices would outlive
+  the login, so the user can log in first (`gs-admin login`, then the plan command
+  unchanged) or take a smaller budget. On a fill, run the three
   commands below with the chosen budget, then re-issue the plan command unchanged (same
   `<run>`: the plan re-reads the knowledge base it moved) and read the summary again. On
   none, go on; the report's caveats name the gap. The pull itself never fetches a
@@ -260,8 +275,11 @@ Read the summary JSON, never the snapshot file. By exit code:
 - `0` — the snapshot is written. Go to step R4.
 - `3` — the login expired during the pull. Ask the user to run `gs-admin login`, then
   re-issue the same command: answered calls are not made again.
-- `4` — a call failed. Re-issue the same command once. If it exits 4 again, stop and
-  report the `failed` list from the summary; no report is written from a partial pull.
+- `4` — a call failed. The summary's `failed` list names each call (its family, the
+  programs it covered, the cause, and in how many runs it has failed so far). Re-issue the
+  same command once: the next run retries what failed and continues where it stopped. If
+  it exits 4 again, stop and report the `failed` list; no report is written from a partial
+  pull.
 - `1` — the script refused or failed. Show its message and stop.
 
 ### R4 — Write the report
@@ -501,8 +519,8 @@ that moment, with `loginsNeeded`); on `no` the summary says which setting to ans
 
 By exit code on any verb: `3` is the login (ask for `gs-admin login`, then re-issue the
 same command); `5` is the wrong tenant (the CLI is on another tenant than the dashboard's:
-say both and stop); `4` is a stopped pull (re-issue once); `1` is a refusal (show
-`error`).
+say both and stop); `4` is a stopped pull (`error` names the call that failed and says the
+next run retries it: re-issue once); `1` is a refusal (show `error`).
 
 ### D4 — Final report (dashboard)
 
@@ -565,8 +583,10 @@ nothing else with `gs-admin` meanwhile. By exit code:
   calls were made and about how many more logins the pull needs), ask the user to run
   `gs-admin login` (a browser flow they complete by hand), then re-issue the same command;
   it continues where it stopped, and the last good pages are untouched.
-- `4` — a call failed: re-issue once; if it exits 4 again, report `error`; the pages are
-  untouched.
+- `4` — a call failed: `error` names the call (its family, the programs it covered, the
+  cause, and in how many runs it has failed so far) and says the next run retries it.
+  Re-issue once; if it exits 4 again, report `error` (a cause that recurs run after run is
+  the server's, not a transient); the pages are untouched.
 - `5` — the CLI is on another tenant than the dashboard's: say both tenants and stop.
 - `1` — refused (another pull of it is running, its holder and time named; or the
   script's own reason): relay `error` and stop.

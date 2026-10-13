@@ -38,6 +38,7 @@ import { openSpec, SPEC_DESCRIPTIONS, PRESETS, presetPanels, describeSpec, setPa
 import { coveredPath } from "../scripts/dashboard.mjs";
 import { applyGroups } from "../scripts/dashboard-groups.mjs";
 import { kbFiles, FIXTURE_BOUNCE_CATEGORIES } from "./fixtures/engagement/acme-tenant.mjs";
+import { HOW_TO_REFRESH_RULED_PARTS } from "./fixtures/engagement/ruled-text.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const PLUGIN = join(HERE, "..");
@@ -84,6 +85,15 @@ function loadPage(html) {
 }
 const panelRun = (page, panelId, hash) => page.call(`app.run(app.panels.find((p) => p.id === ${JSON.stringify(panelId)}), app.stateFromHash(${JSON.stringify(hash)}))`);
 const unescape = (s) => s.replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&dagger;/g, "+").replace(/&amp;/g, "&");
+/**
+ * The About tab's How to refresh section as the words a reader sees, in the ruled form (F-511 instance 27): each
+ * list item numbered, the refresh line's Copy button read as the line itself, paragraphs joined by one space.
+ */
+const howToRefreshText = (aboutHtml) => {
+  const section = aboutHtml.split("<h2>How to refresh</h2>")[1].split("</section>")[0];
+  let n = 0;
+  return unescape(section.replace(/<li>/g, () => ` ${++n}. `).replace(/<p class="gs-notice-line"><code>([^<]*)<\/code> <button[^>]*>Copy<\/button><\/p>/g, " $1. ").replace(/<\/(?:p|ol)><p>/g, " ").replace(/<[^>]+>/g, "")).replace(/\s+/g, " ").trim();
+};
 const textOf = (h) => unescape(h.replace(/<sup[^>]*>[\s\S]*?<\/sup>/g, "").replace(/<[^>]+>/g, "")).trim();
 const panelHtml = (html, id) => html.match(new RegExp(`<section class="gs-panel" data-panel="${id}"[^>]*>([\\s\\S]*?)</section>`))?.[1] ?? null;
 const paneHtml = (html, id) => {
@@ -349,12 +359,24 @@ try {
   // ══ The filter bar ════════════════════════════════════════════════════════
   {
     const pre = admin.prerender;
-    const listed = [...pre.matchAll(/<label class="gs-prog"><input type="checkbox" data-f="program" value="([^"]+)" checked> <span class="gs-prog-name">([^<]*)<\/span> ([\s\S]*?)<\/label>/g)].map((m) => ({ id: m[1], name: unescape(m[2]), badges: [...m[3].matchAll(/<span class="gs-badge[^"]*">([^<]*)<\/span>/g)].map((b) => unescape(b[1])) }));
+    const rowsIn = (html) => [...html.matchAll(/<label class="gs-prog"(?: data-dim="([^"]+)")?><input type="checkbox" data-f="program" value="([^"]+)" checked> <span class="gs-prog-name">([^<]*)<\/span> ([\s\S]*?)(?: <span class="gs-dim-why">([^<]*)<\/span>)?<\/label>/g)].map((m) => ({ id: m[2], name: unescape(m[3]), dim: m[1] ?? null, why: m[5] ?? null, badges: [...m[4].matchAll(/<span class="gs-badge[^"]*">([^<]*)<\/span>/g)].map((b) => unescape(b[1])) }));
+    const listed = rowsIn(pre);
     const byId = new Map(GOLD.dimensions.programs.map((p) => [p.id, p]));
-    check("the program filter is a scrollable, searchable list of every program in the snapshot, each with its status and group badges, with select all, select none and 'N of M selected'",
+    check("the program filter is a scrollable, searchable list of every program in the snapshot, each with its status and group badges, with select all, select none and a count line that names the set (F-505: 'N programs sent in this window, M selected')",
       listed.length === 5 && listed.every((l) => byId.get(l.id).name === l.name && isDeepStrictEqual(l.badges, [...byId.get(l.id).statuses.map(engine.statusLabel), `${byId.get(l.id).supergroup} / ${byId.get(l.id).group}`])) &&
-        /<input type="search" data-f="search"/.test(pre) && /data-act="all">Select all</.test(pre) && /data-act="none">Select none</.test(pre) && pre.includes(`data-region="count">5 of 5 selected<`) && /\.gs-proglist\{max-height:\d+px;overflow:auto/.test(ADMIN.html),
+        /<input type="search" data-f="search"/.test(pre) && /data-act="all">Select all</.test(pre) && /data-act="none">Select none</.test(pre) && pre.includes(`data-region="count">5 programs sent in this window, 5 selected<`) && /\.gs-proglist\{max-height:\d+px;overflow:auto/.test(ADMIN.html),
       listed);
+    // F-505: the list answers to the month and status filters without changing the selection — a program outside the
+    // chosen statuses, or with no send in the chosen months, is dimmed and says why; the summary's "shown" counts the
+    // programs with rows under the filters and says how many selected programs have no sends in these months.
+    const june = rowsIn(admin.call(`app.regions.proglist(app.stateFromHash("m=2026-06..2026-06"))`));
+    check("F-505: on the admin page (Active by default) the paused program's row is dimmed 'hidden by status' and every other row is plain over the whole window; under one month the two programs with no sends in it are dimmed 'no sends in these months', every row stays selected, and the summary reads '2 programs shown (2 selected programs with no sends in these months)' while the whole window reads '4 programs shown' with no such clause; the status change repaints the list region",
+      isDeepStrictEqual(listed.map((l) => [l.id, l.dim, l.why]), [["p-pilot", null, null], ["p-nps", null, null], ["p-onboard", null, null], ["p-renew", "status", "hidden by status"], ["p-unlisted", null, null]]) &&
+        isDeepStrictEqual(june.map((l) => [l.id, l.dim, l.why]), [["p-pilot", null, null], ["p-nps", "no-sends", "no sends in these months"], ["p-onboard", null, null], ["p-renew", "status", "hidden by status"], ["p-unlisted", "no-sends", "no sends in these months"]]) && june.length === 5 &&
+        admin.call(`app.regions.summary(app.stateFromHash("m=2026-06..2026-06"))`).startsWith("5 programs sent in this window, 5 selected. 2 programs shown (2 selected programs with no sends in these months). 1 program hidden by status (showing Active). Months 2026-06;") &&
+        admin.call(`app.regions.summary(app.defaultState())`).startsWith("5 programs sent in this window, 5 selected. 4 programs shown. 1 program hidden by status (showing Active).") &&
+        rowsIn(admin.call(`app.regions.proglist(app.stateFromHash("s=NEW"))`)).filter((l) => l.dim === "status").length === 4 && pre.includes(`<div class="gs-proglist" data-region="proglist">`) && /\.gs-prog\[data-dim\]\{opacity:/.test(ADMIN.html) && /"status" \? \["statusSummary", "count", "proglist", "summary", "panes"\]/.test(ADMIN.html),
+      [listed.map((l) => [l.id, l.dim]), june.map((l) => [l.id, l.dim]), admin.call(`app.regions.summary(app.stateFromHash("m=2026-06..2026-06"))`)]);
     check("the date filter is month-granular: a from and a to, each offering exactly the snapshot's months, starting on the whole window on an admin page",
       isDeepStrictEqual([...pre.split(`data-f="from" aria-label="From month">`)[1].split("</select>")[0].matchAll(/<option value="([^"]+)"( selected)?>/g)].map((m) => m[1] + (m[2] ?? "")), ["2026-06 selected", "2026-07", "2026-08", "2026-09"]) &&
         isDeepStrictEqual([...pre.split(`data-f="to" aria-label="To month">`)[1].split("</select>")[0].matchAll(/<option value="([^"]+)"( selected)?>/g)].map((m) => m[1] + (m[2] ?? "")), ["2026-06", "2026-07", "2026-08", "2026-09 selected"]));
@@ -886,7 +908,10 @@ try {
     check("Where the data came from, Caveats and How to refresh: the pull's time, tenant, window, provisional start, refresh mode, step detail, accounts, health and versions from the snapshot's meta; the caveats block from the engine with the health caveats because the Health tab is on (and without them on the leaders' page); the refresh line as the entry command on the admin page, a sentence on the leaders' page; the How to use section names what this page offers",
       about.includes("<dt>Pulled at</dt><dd>2026-09-15T09:00:00-07:00</dd>") && about.includes("<dt>Tenant</dt><dd>acme.gainsightcloud.com</dd>") && about.includes("<dt>Health data</dt><dd>pulled, judged as of 2026-09-15</dd>") && /<dt>Versions<\/dt><dd>CLI [^<]*, plugin [^<]*, snapshot schema 1<\/dd>/.test(about) &&
         about.includes(`<li data-caveat="schedules-from-kb">`) && !execAbout.includes(`<li data-caveat="schedules-from-kb">`) && execAbout.includes(`<li data-caveat="incomplete-period">`) && engine.caveatsFor(SIGNALS, used, { health: true }).every((c) => about.includes(`<li data-caveat="${c.id}">${esc(c.text)}</li>`)) &&
-        about.includes(`<h2>How to refresh</h2><p>Refreshes are manual: these pages change only when someone runs a refresh. To refresh:</p><ol class="gs-howto"><li>Open a terminal in the workspace folder and run <code>gs-admin login</code> if your last login was more than an hour ago.</li><li>Run the refresh command there:<p class="gs-notice-line"><code>${esc(COPY_LINES.refresh("program-health"))}</code> <button type="button" data-copy="${esc(COPY_LINES.refresh("program-health"))}">Copy</button></p></li><li>A first pull can outlast one login. When it stops, log in and run the same command again: it continues where it stopped, and the pages change only once it finishes.</li></ol><p>In a Claude Code session opened in that folder, <code>/gs-superadmin:email-engagement refresh program-health</code> runs the same command. To run it on a schedule on your own machine (a login within the hour), the plugin README has the recipe. The pages always show when the data was pulled.</p>`) &&
+        // F-511 instance 27: the About tab's section is the ruled wording verbatim in its stepped form (the lead, three
+        // numbered steps with the refresh line and its Copy button, what the admin will see, the session paragraph).
+        howToRefreshText(about) === HOW_TO_REFRESH_RULED_PARTS("program-health", null).join(" ") && about.includes(`<h2>How to refresh</h2><p>Refreshes are manual: the pages change only when you run one.</p><ol class="gs-howto"><li>Open a terminal`) &&
+        about.includes(`<li>Run the refresh line:<p class="gs-notice-line"><code>${esc(COPY_LINES.refresh("program-health"))}</code> <button type="button" data-copy="${esc(COPY_LINES.refresh("program-health"))}">Copy</button></p>Nothing else is needed.</li></ol><p>What you will see:`) &&
         execAbout.includes("An admin refreshes this page by hand") && !execAbout.includes("dashboard.mjs") && !/every month|cadence/.test(execAbout) &&
         about.includes("<h2>How to use this page</h2>") && about.includes("the no-send threshold has buttons (14, 30, 45, 60, 90 days)") && !execAbout.split("<h2>How to use this page</h2>")[1].split("</section>")[0].includes("no-send threshold") && about.includes(`&quot;${engine.NOT_TRACKED}&quot; means no link in the email is click-tracked`),
       about.match(/<h2>Where the data came from<\/h2>[\s\S]*?<\/dl>/)?.[0]);
@@ -1235,12 +1260,12 @@ try {
     const built = build(SPEC, many);
     const page = loadPage(built.html);
     const took = Date.now() - started;
-    const labels = (page.prerender.match(/<label class="gs-prog">/g) ?? []).length;
+    const labels = (page.prerender.match(/<label class="gs-prog"(?: data-dim="[^"]+")?>/g) ?? []).length;
     const names = [...many.dimensions.programs].map((p) => p.name).sort();
     const hits = page.call(`app.programMatches("renewal 00")`);
     const listedNames = page.call(`app.programs.map((p) => p.name)`);
     check("the program list handles several hundred programs: all 400 are in the list, in name order, each with its badges, and the page builds, loads and answers in seconds",
-      labels === 400 && isDeepStrictEqual(listedNames, names) && (page.prerender.match(/<span class="gs-badge">Active<\/span>/g) ?? []).length >= 200 && built.html.includes(`data-region="count">400 of 400 selected<`) && took < 20000, [labels, took]);
+      labels === 400 && isDeepStrictEqual(listedNames, names) && (page.prerender.match(/<span class="gs-badge">Active<\/span>/g) ?? []).length >= 200 && built.html.includes(`data-region="count">400 programs sent in this window, 400 selected<`) && took < 20000, [labels, took]);
     check("the search finds programs by any part of the name, whatever the letter case: the matches are exactly the programs whose name holds the text, an empty search shows all, and a miss shows none",
       hits.length === 400 && isDeepStrictEqual(listedNames.filter((_, i) => hits[i]), names.filter((n) => n.toLowerCase().includes("renewal 00"))) && hits.filter(Boolean).length > 5 && hits.filter(Boolean).length < 400 &&
         page.call(`app.programMatches("  ")`).every(Boolean) && !page.call(`app.programMatches("zzz-no-such")`).some(Boolean) && page.call(`app.programMatches("P-0399")`).filter(Boolean).length === 1, hits.filter(Boolean).length);
@@ -1249,7 +1274,7 @@ try {
     const [h1, h2] = [page.call(`app.hashOf(app.clean({ ...app.defaultState(), programs: ${JSON.stringify(some)} }))`), page.call(`app.hashOf(app.clean({ ...app.defaultState(), programs: ${JSON.stringify(most)} }))`)];
     check("a large selection stays a short address: the hash lists whichever is shorter, the programs kept or the programs left out, and reads back as the same selection either way",
       h1.startsWith("p=") && h2.startsWith("px=") && h2.split(",").length === 8 && isDeepStrictEqual(page.call(`app.stateFromHash(${JSON.stringify(h2)}).programs`).sort(), [...most].sort()) && isDeepStrictEqual(page.call(`app.stateFromHash(${JSON.stringify(h1)}).programs`).sort(), [...some].sort()) &&
-        page.call(`app.regions.count(app.stateFromHash(${JSON.stringify(h2)}))`) === "392 of 400 selected", [h1.length, h2]);
+        page.call(`app.regions.count(app.stateFromHash(${JSON.stringify(h2)}))`) === "400 programs sent in this window, 392 selected", [h1.length, h2]);
     check("with every program selected and filtered by status, the program table still equals the engine's over the generated snapshot",
       isDeepStrictEqual(panelRun(page, "programs", "s=PAUSE"), plain(runQuery(applyGroups(many, SPEC.groups).snapshot, { recipientClass: "all", statuses: ["PAUSE"] }, SPEC.pages[0].panels[0].query))) && panelRun(page, "programs", "s=PAUSE").rows.length === 100);
   }
@@ -1311,7 +1336,7 @@ try {
     // The pre-render's lines only: the inlined runtime SOURCE also holds the text `data-copy="…"`.
     const kbLines = [...kbAdmin.replace(/<script[\s\S]*?<\/script>/g, "").matchAll(/data-copy="([^"]*)"/g)].map((m) => m[1]);
     check("F-503 every copy line carries the dashboard's knowledge-base folder: built from the writer's own layout, each line the admin page offers to copy ends in --kb <folder> (the refresh line of How to refresh among them), the folder is named in the How to refresh steps, and the same page built by hand with no folder known omits the flag",
-      withKb.status === 0 && kbLines.length >= 1 && kbLines.every((l) => l.endsWith(" --kb acme-prod")) && kbLines.includes(COPY_LINES.refresh("program-health", "acme-prod")) && kbAdmin.includes("knowledge-base folder <code>acme-prod</code>") && !build(SPEC, PULLED).html.replace(/<script[\s\S]*?<\/script>/g, "").includes("--kb ") && COPY_LINES.change("x", "accounts.pull", "true", "kb") === "node .gs-superadmin/plugin/scripts/dashboard.mjs change x accounts.pull=true --kb kb" &&
+      withKb.status === 0 && kbLines.length >= 1 && kbLines.every((l) => l.endsWith(" --kb acme-prod")) && kbLines.includes(COPY_LINES.refresh("program-health", "acme-prod")) && howToRefreshText(kbAdmin) === HOW_TO_REFRESH_RULED_PARTS("program-health", "acme-prod").join(" ") && !build(SPEC, PULLED).html.replace(/<script[\s\S]*?<\/script>/g, "").includes("--kb ") && COPY_LINES.change("x", "accounts.pull", "true", "kb") === "node .gs-superadmin/plugin/scripts/dashboard.mjs change x accounts.pull=true --kb kb" &&
         // The offered-tab and account notices carry it too: a page built with the folder known over a snapshot that lacks the data.
         (() => { const offSpec = specWith((s) => { s.pages[0].tabs.find((t) => t.id === "health").enabled = false; s.pages[0].tabs.find((t) => t.id === "templates").enabled = false; s.pages[0].panels = s.pages[0].panels.filter((p) => p.tab !== "health" && p.tab !== "templates"); }); const strip = (h) => h.replace(/<script[\s\S]*?<\/script>/g, ""); const linesOf = (h) => [...strip(h).matchAll(/data-copy="([^"]*)"/g)].map((m) => m[1]); const plain = linesOf(build(offSpec, OFF).html); const withFolder = linesOf(buildPage({ spec: offSpec, snapshot: applyGroups(OFF, offSpec.groups).snapshot, pageId: "admin", ...SOURCES, kb: "acme-prod" }).html); return plain.length >= 2 && withFolder.length === plain.length && withFolder.every((l) => l.endsWith(" --kb acme-prod")) && plain.every((l) => !l.includes("--kb")); })(),
       [withKb.status, kbLines, withKb.stderr?.slice(-300)]);

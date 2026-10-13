@@ -314,6 +314,8 @@ button:hover{border-color:var(--accent)}
 .gs-picker-tools input[type=search]{flex:1 1 140px}
 .gs-proglist{max-height:260px;overflow:auto;border:1px solid var(--line);border-radius:4px;background:var(--bg);padding:4px}
 .gs-prog,.gs-status{display:block;padding:2px 4px;overflow-wrap:anywhere}
+.gs-prog[data-dim]{opacity:.6}
+.gs-dim-why{font-size:12px;color:var(--muted)}
 .gs-badge{display:inline-block;margin-left:4px;padding:0 6px;border:1px solid var(--line);border-radius:9px;font-size:12px;color:var(--muted)}
 .gs-badge-stale{color:var(--status-stale);border-color:var(--status-stale)}
 .gs-badge-error{color:var(--status-error);border-color:var(--status-error)}

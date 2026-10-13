@@ -131,6 +131,32 @@ export const COPY_LINES = Object.freeze({
 });
 /** The skill's slash command that runs the same refresh (house rule 18: the mode is never written bare). */
 export const REFRESH_SLASH = (slug) => `/gs-superadmin:email-engagement refresh ${slug}`;
+/**
+ * How to refresh, in the admin's terms: the maintainer's ruled wording of 2026-10-13 (F-511 instance 27), held ONCE
+ * as data — the sentences in the order of the reader's five questions (which folder; whether to go there before the
+ * login; whether anything beyond the one line is needed; how "done", or another login needed, shows; whether the
+ * terminal says so). The About tab draws it stepped (`HOW_TO_REFRESH`), the closing step and the save summary as one
+ * paragraph (`HOW_TO_REFRESH_TEXT`); every place reads this, so the three cannot drift. `kb` is the knowledge-base
+ * folder's name (null when unknown: the `questions` verb prints `<kb>`).
+ */
+export const HOW_TO_REFRESH = (slug, kb = null) => {
+  const folder = kb ?? "<kb>";
+  return Object.freeze({
+    lead: "Refreshes are manual: the pages change only when you run one.",
+    steps: Object.freeze([
+      `Open a terminal in the workspace folder. That is the folder that CONTAINS the knowledge-base folder ${folder}, not ${folder} itself. Every command below is typed there.`,
+      "Run gs-admin login if your last login was more than an hour ago. It opens your browser; finish signing in and come back to the terminal.",
+      Object.freeze({ before: "Run the refresh line:", line: COPY_LINES.refresh(slug, kb), after: "Nothing else is needed." }),
+    ]),
+    seeing: `What you will see: one line per call while it runs, then a summary. "ok": true means it finished: both pages are rebuilt and show the new pulled-at time. If the summary instead says "run gs-admin login, then run refresh … again", the login ran out before the pull did: log in (step 2) and run the same line again. It continues where it stopped, and the pages do not change until it finishes. The terminal always tells you which of the two happened.`,
+    session: `In a Claude Code session opened in that folder, ${REFRESH_SLASH(slug)} does all of this for you and reports the same way. To run it on a schedule on your own machine, the plugin README has the recipe: a scheduled run writes the same summary to its log instead of the screen, and needs a login within the hour before it fires.`,
+  });
+};
+/** The same statement as one paragraph: the steps numbered, the refresh line in place of its Copy button. */
+export const HOW_TO_REFRESH_TEXT = (slug, kb = null) => {
+  const h = HOW_TO_REFRESH(slug, kb);
+  return [h.lead, ...h.steps.map((s, i) => `${i + 1}. ${typeof s === "string" ? s : `${s.before} ${s.line}. ${s.after}`}`), h.seeing, h.session].join(" ");
+};
 // The no-send thresholds one click away on the Health tab (ruled 2026-10-05); the spec's own value joins them.
 export const HEALTH_DAY_OPTIONS = Object.freeze([14, 30, 60, 90]);
 
@@ -764,7 +790,7 @@ export function createDashboard(engine, model) {
     const cols = panel.query.metrics;
     const cross = isCrossProgram(panel);
     const scope = result.scope;
-    const rank = `<p class="gs-note">Ranked over the ${scope.fullWindow ? "whole window" : "months shown; the pull selected these accounts over the whole window, so this is a re-ranking of the embedded rows"}${panel.query.limit != null && result.rows.length >= panel.query.limit ? `; the top ${panel.query.limit}` : ""}.</p>`;
+    const rank = `<p class="gs-note">Ranked over the ${scope.fullWindow ? "whole window" : "months shown; the pull selected these accounts over the whole window, so this is a re-ranking of the embedded rows"}${panel.query.limit != null && result.rows.length >= panel.query.limit ? `; the ${panel.query.sort?.[0]?.dir === "asc" ? `${panel.query.limit} lowest` : `top ${panel.query.limit}`}` : ""}.</p>`;
     if (!cross) {
       const notes = whyNotes(result.rows, cols);
       return `${open(panel, csvButton(panel))}${tableOf(panel, result, cols)}${result.rows.length ? "" : `<p class="gs-note">Nothing matches the current filters.</p>`}${rank}${notesBlock(notes)}${close}`;
@@ -1064,7 +1090,25 @@ export function createDashboard(engine, model) {
   // the account control only on a tab with an account panel. A lack is a
   // one-line pointer here; the full notice stands where the data would be.
   const renderGroupOptions = (state) => option("", "Every group", state.g == null) + groupsWithin(state.sg).map((label) => option(groups.indexOf(label), label, groups.indexOf(label) === state.g)).join("");
-  const renderCount = (state) => `${state.programs ? state.programs.length : programs.length} of ${programs.length} selected`;
+  // The count line names the set the list holds (F-505): every program with a send in the pulled window, and how
+  // many of them the viewer keeps.
+  const renderCount = (state) => `${plural(programs.length, "program")} sent in this window, ${state.programs ? state.programs.length : programs.length} selected`;
+  /** The programs with a row under the months and recipient class in force, whatever the selection and status filters say. */
+  const programsWithSends = (state) => new Set(engine.runQuery(snapshot, { ...filtersOf(state), programs: null, statuses: null }, { groupBy: ["program"], metrics: ["sent"] }).rows.map((r) => r.key.program));
+  /**
+   * The program list's rows (F-505): a program with no send in the chosen months, or outside the chosen statuses, is
+   * dimmed and says why, so the list answers to the month and status filters without changing the selection.
+   */
+  const renderProgramList = (state) => {
+    const keep = state.programs ? new Set(state.programs) : null;
+    const withSends = programsWithSends(state);
+    return programs.map((p) => {
+      const b = p.statuses.map((s) => `<span class="gs-badge">${esc(engine.statusLabel(s))}</span>`).join("") + groupBadge(p);
+      const dim = state.statuses && !p.statuses.some((s) => state.statuses.includes(s)) ? "status" : withSends.has(p.id) ? null : "no-sends";
+      const why = dim === "status" ? "hidden by status" : dim === "no-sends" ? "no sends in these months" : null;
+      return `<label class="gs-prog"${dim ? ` data-dim="${dim}"` : ""}><input type="checkbox" data-f="program" value="${esc(p.id)}"${attr("checked", !keep || keep.has(p.id))}> <span class="gs-prog-name">${esc(p.name ?? p.id)}</span> ${b}${why ? ` <span class="gs-dim-why">${why}</span>` : ""}</label>`;
+    }).join("");
+  };
   const pointer = (reason, text) => `<span class="gs-pointer" data-pointer="${esc(reason)}">${esc(text)}</span>`;
   /** The status picker's button text: the statuses in force, in words. */
   const renderStatusSummary = (state) => {
@@ -1085,15 +1129,10 @@ export function createDashboard(engine, model) {
     }
     if (offers.programs) {
       // The program picker: a popover that opens on click (ruled 2026-10-10); closed, its list is out of the tab order.
-      const keep = state.programs ? new Set(state.programs) : null;
-      const rows = programs.map((p) => {
-        const b = p.statuses.map((s) => `<span class="gs-badge">${esc(engine.statusLabel(s))}</span>`).join("") + groupBadge(p);
-        return `<label class="gs-prog"><input type="checkbox" data-f="program" value="${esc(p.id)}"${attr("checked", !keep || keep.has(p.id))}> <span class="gs-prog-name">${esc(p.name ?? p.id)}</span> ${b}</label>`;
-      });
       parts.push(filter("Programs",
         `<details class="gs-picker gs-pop-host" data-picker><summary class="gs-btn"><span class="gs-count" data-region="count">${renderCount(state)}</span> &#9662;</summary>` +
           `<div class="gs-pop"><p class="gs-pop-head">Every program with a send in the window</p><div class="gs-picker-tools"><input type="search" data-f="search" placeholder="Search programs" aria-label="Search programs"> <button type="button" data-act="all">Select all</button> <button type="button" data-act="none">Select none</button></div>` +
-          `<div class="gs-proglist">${rows.join("")}</div></div></details>`));
+          `<div class="gs-proglist" data-region="proglist">${renderProgramList(state)}</div></div></details>`));
     }
     if (offers.group && (supergroups.length || groups.length)) {
       parts.push(filter("Group", `<select data-f="sg" aria-label="Supergroup">${option("", "Every supergroup", state.sg == null)}${supergroups.map((label, i) => option(i, label, i === state.sg)).join("")}</select> <select data-f="g" data-region="groupOptions" aria-label="Group">${renderGroupOptions(state)}</select>`));
@@ -1131,7 +1170,10 @@ export function createDashboard(engine, model) {
     const scope = scopeOf(state);
     const showing = state.statuses ? (state.statuses.length ? state.statuses.map(engine.statusLabel).join(", ") : "no status") : "every status";
     const when = state.from === state.to ? state.from : `${state.from} to ${state.to}`;
-    return `${esc(renderCount(state))}. ${plural(scope.programs, "program")} shown. ${plural(scope.programsHiddenByStatus, "program")} hidden by status (showing ${esc(showing)}). Months ${esc(when)}; ${state.external ? "external recipients only" : "every recipient"}.`;
+    // "Shown" counts the programs with a row under the filters in force (F-505); a kept program with no send in the
+    // chosen months is said apart, so the count agrees with the Programs table.
+    const noSends = scope.programs - scope.programsWithRows;
+    return `${esc(renderCount(state))}. ${plural(scope.programsWithRows, "program")} shown${noSends > 0 ? ` (${plural(noSends, "selected program")} with no sends in these months)` : ""}. ${plural(scope.programsHiddenByStatus, "program")} hidden by status (showing ${esc(showing)}). Months ${esc(when)}; ${state.external ? "external recipients only" : "every recipient"}.`;
   };
 
   // ── The header's age, and a health pull that was asked for and did not complete ──
@@ -1233,12 +1275,14 @@ export function createDashboard(engine, model) {
     ];
     section("provenance", "Where the data came from", `<dl class="gs-prov">${prov.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join("")}</dl>`);
     section("caveats", "Caveats", renderCaveats());
-    // Refreshes are manual (ruled 2026-10-12), said in the admin's terms (F-511 instance 26: "not sure how I would run
-    // that"): where to type the command, how to log in, what to do when a first pull outlasts the login, and the slash
-    // command that runs the same thing in a session. The leaders' page gets the statement alone.
-    section("refresh", "How to refresh", howTo
-      ? `<p>Refreshes are manual: these pages change only when someone runs a refresh. To refresh:</p><ol class="gs-howto"><li>Open a terminal in the workspace folder${model.kb ? ` (the folder that holds this tenant's knowledge-base folder <code>${esc(model.kb)}</code>)` : ""} and run <code>gs-admin login</code> if your last login was more than an hour ago.</li><li>Run the refresh command there:${renderLine(COPY_LINES.refresh(model.slug, model.kb))}</li><li>A first pull can outlast one login. When it stops, log in and run the same command again: it continues where it stopped, and the pages change only once it finishes.</li></ol><p>In a Claude Code session opened in that folder, <code>${esc(REFRESH_SLASH(model.slug))}</code> runs the same command. To run it on a schedule on your own machine (a login within the hour), the plugin README has the recipe. The pages always show when the data was pulled.</p>`
-      : `<p>An admin refreshes this page by hand; the data-pulled line at the top says when it was last done.</p>`);
+    // Refreshes are manual (ruled 2026-10-12), said in the admin's terms: the ruled wording of 2026-10-13 (F-511
+    // instance 27), drawn from HOW_TO_REFRESH — the one data the closing step and the save summary read too — as the
+    // stepped form, the refresh line with its Copy button. The leaders' page gets the statement alone.
+    const howToRefresh = () => {
+      const h = HOW_TO_REFRESH(model.slug, model.kb);
+      return `<p>${esc(h.lead)}</p><ol class="gs-howto">${h.steps.map((s) => `<li>${typeof s === "string" ? esc(s) : `${esc(s.before)}${renderLine(s.line)}${esc(s.after)}`}</li>`).join("")}</ol><p>${esc(h.seeing)}</p><p>${esc(h.session)}</p>`;
+    };
+    section("refresh", "How to refresh", howTo ? howToRefresh() : `<p>An admin refreshes this page by hand; the data-pulled line at the top says when it was last done.</p>`);
     // The fixed statement of what the dashboard is (ruled 2026-10-12, F-511 rulings 2 and 3), the admin's own sentence
     // when one was set (`change <slug> purpose=…`), the data-pulled line, then a contents line and each section under its own anchor.
     const what = `This dashboard shows email engagement from the tenant's send log: comparisons across programs and periods, for every program it covers. It is one dashboard with one pull, built as an admin page and a leaders' page, and it is refreshed by hand; the data is as of the pull named below.`;
@@ -1277,7 +1321,7 @@ export function createDashboard(engine, model) {
     lackFacts, renderNotice, renderTablePanel, renderPanel, renderDrawer, visibleCols, csvOf, colsKey, renderApp, renderAbout, renderAge, renderPulled, renderHealthBanner, caveats,
     /** @param {?(() => number)} fn the clock the header's age reads (null = no clock, no age) */
     setClock: (fn) => { clock = fn; },
-    regions: { filters: renderFilters, summary: renderSummary, tabs: renderTabs, panes: renderPanes, count: renderCount, groupOptions: renderGroupOptions, age: renderAge, statusSummary: renderStatusSummary },
+    regions: { filters: renderFilters, summary: renderSummary, tabs: renderTabs, panes: renderPanes, count: renderCount, proglist: renderProgramList, groupOptions: renderGroupOptions, age: renderAge, statusSummary: renderStatusSummary },
   };
 }
 /** @param {string} day YYYY-MM-DD @returns {[number, number, number]} year, month index, day */
@@ -1445,7 +1489,8 @@ export function mount(app, root, g) {
     // A month range given backwards is shown the right way round, so the bar is drawn again; so is the quick month
     // button, which depends on the range. A status box repaints the picker's summary; the account control is a
     // filter of the panes alone.
-    commit(f === "sg" ? ["groupOptions", "count", "summary", "panes"] : f === "from" || f === "to" || f === "current" ? ["filters", "summary", "panes"] : f === "he" ? ["panes"] : f === "status" ? ["statusSummary", "count", "summary", "panes"] : ["count", "summary", "panes"]);
+    // A status box also redraws the program list, whose rows dim by status (F-505); the months redraw the whole bar.
+    commit(f === "sg" ? ["groupOptions", "count", "summary", "panes"] : f === "from" || f === "to" || f === "current" ? ["filters", "summary", "panes"] : f === "he" ? ["panes"] : f === "status" ? ["statusSummary", "count", "proglist", "summary", "panes"] : ["count", "summary", "panes"]);
   });
   root.addEventListener("input", (ev) => {
     const t = ev.target;
