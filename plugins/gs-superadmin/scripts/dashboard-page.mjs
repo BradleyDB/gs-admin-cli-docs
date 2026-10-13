@@ -5,7 +5,7 @@
 // page of the spec. Read-only: it reads the two files and writes pages; it
 // makes no gs-admin call, and it changes neither contract.
 //
-//   node dashboard-page.mjs --spec <file> --snapshot <file> --out-dir <dir> [--page <id>]
+//   node dashboard-page.mjs --spec <file> --snapshot <file> --out-dir <dir> [--page <id>] [--kb <folder name>]
 //
 // A page is ONE file that works from file:// and asks the network for nothing:
 //   - the data, embedded compactly: one table per grain, each column a list,
@@ -54,7 +54,7 @@ import { DEFAULT_THEME, validateTheme, tokensCss } from "./dashboard-theme.mjs";
  * @typedef {import("./dashboard-spec.mjs").T11Page} T11Page
  */
 
-const USAGE = "usage: dashboard-page.mjs --spec <file> --snapshot <file> --out-dir <dir> [--page <id>]";
+const USAGE = "usage: dashboard-page.mjs --spec <file> --snapshot <file> --out-dir <dir> [--page <id>] [--kb <tenant KB folder name>]";
 const MB = 1024 * 1024;
 // Not frozen: the page-size budget. 15 MB sits under the 16 MB limit of a hosted artifact.
 export const PAGE_BUDGET = Object.freeze({ warnBytes: 5 * MB, refuseExecBytes: 15 * MB });
@@ -523,9 +523,11 @@ async function main() {
   const { snapshot, resolution } = applyGroups(pulled, spec.groups);
   const sources = inlinedSources();
   const outDir = resolve(opt("--out-dir"));
-  // The knowledge-base folder's name, for the copy lines (F-503): the spec writer knows where it keeps a spec.
+  // The knowledge-base folder's NAME, for the copy lines (F-503): `--kb <name>` when given, else read from where the
+  // spec writer keeps a spec (a spec read from anywhere else gives none, and the lines omit the flag; stderr says so).
   const kbDir = kbDirOfSpecFile(opt("--spec"));
-  const kb = kbDir ? basename(kbDir) : null;
+  const kb = opt("--kb") ?? (kbDir ? basename(kbDir) : null);
+  if (!kb) console.error("dashboard-page.mjs: no knowledge-base folder known for this spec (pass --kb <folder name>): the pages' copy lines omit --kb");
   const pages = [];
   for (const page of spec.pages.filter((p) => !only || p.id === only)) {
     let built;

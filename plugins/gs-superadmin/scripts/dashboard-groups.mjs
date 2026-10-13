@@ -320,8 +320,11 @@ export function resolveGroups({ programs, groups, previousProgramIds = null }) {
   // a supergroup but no group inside it (the "<supergroup> / Ungrouped" rows). A spec with no group rule groups on
   // one level only, so its programs are not ungrouped for lacking a group.
   const groupsLevel = groups.rules.some((r) => r.level === "group") || Object.values(groups.overrides).some((o) => isText(o?.group));
+  const superLevel = groups.rules.some((r) => r.level === "supergroup") || Object.values(groups.overrides).some((o) => isText(o?.supergroup));
+  // A spec that groups on neither level (no rules at all) leaves every program ungrouped; one that groups on one level
+  // only counts misses at that level alone (a group-level-only spec does not report every program for lacking a supergroup).
   const ungroupedWithin = assignments.filter((a) => a.by.supergroup != null && a.by.group == null && groupsLevel).map((a) => a.id);
-  const ungrouped = assignments.filter((a) => a.by.supergroup == null || ungroupedWithin.includes(a.id)).map((a) => a.id);
+  const ungrouped = assignments.filter((a) => (a.by.supergroup == null && (superLevel || !groupsLevel)) || ungroupedWithin.includes(a.id) || (a.by.supergroup == null && a.by.group == null)).map((a) => a.id);
   const before = previousProgramIds ? new Set(previousProgramIds) : null;
   const newUngrouped = before ? ungrouped.filter((id) => !before.has(id)) : ungrouped;
   const newWithin = newUngrouped.filter((id) => ungroupedWithin.includes(id));
@@ -379,6 +382,8 @@ export function suggestionTable({ traits, sent, tenantHost, pulledAt, window }) 
     }
     return { delimiter, programs: using.length, firstParts: [...first].map(([value, programs]) => ({ value, programs })).sort((a, b) => b.programs - a.programs || cmpKey(a.value, b.value)).slice(0, 25) };
   }).filter((d) => d.programs > 0);
+  // The code → display name map, built once (the tallies and every program row read it).
+  const modelNames = modelNamesOf(traits).model;
   return {
     kind: "dashboard-group-suggestion-input",
     tenantHost,
@@ -392,9 +397,9 @@ export function suggestionTable({ traits, sent, tenantHost, pulledAt, window }) 
       "A survey's TYPE is known only through the program model (CSAT or generic survey programs). A Dynamic Program that sends a survey does not say which type.",
     ],
     // `model` is the CODE a characteristic rule tests; `modelName` is its display name, the rule's label (F-515 a).
-    programs: traits.map((p) => ({ id: p.id, name: p.name, status: p.statuses.map(statusLabel).join(" + "), model: p.model, modelName: p.modelName ?? p.model, audience: p.audienceType, folderId: p.folderId, sendsSurveys: p.sendsSurveys, recurring: p.recurring, sent: sent.get(p.id) ?? 0 })),
+    programs: traits.map((p) => ({ id: p.id, name: p.name, status: p.statuses.map(statusLabel).join(" + "), model: p.model, modelName: modelNames[p.model] ?? p.model, audience: p.audienceType, folderId: p.folderId, sendsSurveys: p.sendsSurveys, recurring: p.recurring, sent: sent.get(p.id) ?? 0 })),
     tallies: {
-      model: tally((p) => p.model ?? "(none)").map((t) => ({ ...t, label: modelNamesOf(traits).model[t.value] ?? t.value })),
+      model: tally((p) => p.model ?? "(none)").map((t) => ({ ...t, label: modelNames[t.value] ?? t.value })),
       audience: tally((p) => p.audienceType ?? "(none)"),
       status: tally((p) => p.statuses.map(statusLabel)),
       sendsSurveys: tally((p) => String(p.sendsSurveys)),
