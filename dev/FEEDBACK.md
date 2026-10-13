@@ -199,7 +199,8 @@ Walk (hb-20261012-01): 2026-10-12 (tester) — S5-V SECOND SITTING @ hb-20261012
      For the third sitting (SESSION-PROMPTS.md "S5-V, third sitting"): VALIDATION § DSH-3 I4, I8 (new flow), I10 (a pull
        above one login, F-512's change between stop and resume), I13 (the edit), I14 (the copy lines with --kb), I15 (the
        scheduled recipe from the README alone), and the re-verification of each FIXED section on its Fix line. Blind
-       spots on the header's line. CI on the branch head owed as a per-job quote on the bus once it completes.
+       spots on the header's line. CI on the head 0aa1c85, per job: GitGuardian pass; validate-plugin run 38342118878
+       changes, manifests, validate (ubuntu-latest) success; docs-drift run 38342118894 drift (full) success.
 -->
 
 <!-- builder 2026-10-12 (JO-dashboards S5 FIX ROUND HANDED OFF — UNMERGED, riding feat/jo-dash-s5-entry-command; F-511 and F-512 FIXED on that branch (PR #47 to dev, still open); token hb-20261012-01; S5-V's first sitting is on the branch at 6fcf7d3; next free F-513):
