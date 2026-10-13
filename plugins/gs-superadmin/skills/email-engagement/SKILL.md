@@ -169,9 +169,9 @@ On exit 0, read the summary JSON on stdout:
 - `estimate.thisRun.calls` and `estimate.thisRun.seconds` — the pull's cost.
 - `estimate.token.fits` — whether the pull alone finishes before the login expires;
   `estimate.token.withProposals.fits` — whether the pull PLUS the re-documentation and the
-  template gap-fill the plan proposes (`estimate.kb.refreshSeconds` and
-  `estimate.templates.seconds`) still fit it; `estimate.token.afterPullSeconds` — what the
-  login has left once the pull is made, the budget any gap-fill has to fit.
+  template gap-fill the plan proposes (the seconds `estimate.kb` and `estimate.templates`
+  quote) still fit it; `estimate.token.afterPullSeconds` — what the login has left once the
+  pull is made, the budget any gap-fill has to fit.
 - `estimate.accounts.addsSeconds` and `estimate.stepDetail.addsSeconds` — what `--accounts`
   and `--step-detail` add, printed whether or not they are on.
 - `programs.selected` — how many programs the pull covers.
@@ -192,9 +192,9 @@ Tell the user the estimate in one line (programs, calls, minutes). Then:
   programs modified after their doc was written). Their schedules are unknown to the pull,
   so they would read "Cannot judge yet" on the health lists. Tell the user the two counts and
   the seconds `estimate.kb` quotes, and ask whether to re-document those programs in the
-  knowledge base now. The ask says when it would outlive the login: when
-  `estimate.kb.refreshSeconds` is more than `estimate.token.afterPullSeconds` (what the
-  login has left after the pull), say so in the ask, with both numbers in minutes, and that
+  knowledge base now. The ask says when it would outlive the login: when the seconds
+  `estimate.kb` quotes are more than `estimate.token.afterPullSeconds` (what the login has
+  left after the pull), say so in the ask, with both numbers in minutes, and that
   a login first (`gs-admin login`, then the plan command unchanged) makes room for it. On
   yes, run the three commands below, then re-issue the plan command
   unchanged (same `<run>`: the plan re-reads the knowledge base it moved) and read the
