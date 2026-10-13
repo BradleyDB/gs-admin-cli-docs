@@ -352,48 +352,103 @@ days ago, and that the pages are not live: they change only when the dashboard i
 by hand. Thirteen snapshots are kept beside them.
 
 **Pulling again.** A refresh checks that the CLI is on the dashboard's tenant before any
-call (a production dashboard is never refreshed from a sandbox), holds your login's
-remaining life against the pull, takes a lock so a second refresh is refused by name,
+call (a production dashboard is never refreshed from a sandbox), says how many logins a
+pull of this size takes, takes a lock so a second refresh is refused by name,
 brings the knowledge base up to date for the dashboard's programs (the ones modified since
 they were documented, and the never-documented, plus the email templates it lacks, up to 50
 per pull with no model), pulls, keeps the snapshots, rebuilds the pages, and shows the change
 since the last pull on the headline figures. The first pull is full and takes minutes to
 tens of minutes on a large tenant; later ones are selective (the recent months only) and
-much shorter. A pull that stops (the login expired, a call failed) leaves the last good
-pages untouched and resumes on the next run.
+shorter. A pull that stops (the login expired, a call failed) leaves the last good pages
+untouched and continues on the next run, and a setting changed in between does not strand
+it: the pull is then planned afresh for the new settings.
 
-- **On demand:** `/gs-superadmin:email-engagement refresh program-health`, or from the
-  workspace with no session at all:
+Every line below names the tenant's knowledge-base folder with `--kb <folder>` (here
+`acme-prod`): a workspace can hold more than one tenant, and the command refuses to guess
+which dashboard folder a bare slug means. The pages' own copy lines carry it the same way.
+
+- **On demand:** `/gs-superadmin:email-engagement refresh program-health` in a session, or
+  from a terminal in the workspace folder with no session at all, after `gs-admin login`
+  if your last login was more than an hour ago:
 
   ```bash
-  node .gs-superadmin/plugin/scripts/dashboard.mjs refresh program-health
+  node .gs-superadmin/plugin/scripts/dashboard.mjs refresh program-health --kb acme-prod
   ```
 
+- **A pull longer than one login.** The `gs-admin` login lasts about an hour, the CLI never
+  refreshes it, and every login is a browser flow you complete by hand (see the operating
+  model and `reference/auth.md`). A pull that needs longer is not refused: it runs as far
+  as the login allows, stops cleanly with exit code 3 keeping every call it made, and the
+  pages stay as they were. Log in again and run the same line: it continues where it
+  stopped. The interview's closing step and the refresh itself say about how many logins a
+  pull of that size takes; plan around that number. A first pull on a large tenant, and a
+  selective one with Health on and several recipient classes, can each take two.
 - **Health only, between full refreshes** (the current month and the health families are
   read again, the rest carried; on a tenant with many bounce categories the health calls
   are most of the time, so this is shorter than a full refresh but not by much):
 
   ```bash
-  node .gs-superadmin/plugin/scripts/dashboard.mjs refresh program-health --health-only
+  node .gs-superadmin/plugin/scripts/dashboard.mjs refresh program-health --health-only --kb acme-prod
   ```
 
-- **Scheduled.** A refresh can run from the OS scheduler (Task Scheduler on Windows,
-  launchd or cron elsewhere) or as a Claude desktop local task, with the workspace as the
-  working directory — never as a cloud routine, which cannot reach the keychain token. It
-  is semi-attended: the `gs-admin` login lasts about an hour and the CLI never refreshes it
-  (see the operating model and `reference/auth.md`), so a scheduled run succeeds only after
-  a login within the hour. Log in, then let the task run. The first pull is full and may
-  need more than one login; later ones are selective and fit in one. A run the login
-  expires under stops cleanly, with its exit code (3), and the next run resumes it.
+- **Scheduled.** A task on your own machine can run the refresh for you, never a cloud
+  routine (it cannot reach the keychain token). Because every login is by hand, a scheduled
+  run succeeds only when you logged in within the hour before it fires: a firing with no
+  recent login exits 3 and leaves the pages alone, and the next firing after you log in
+  resumes it and finishes. So the schedule is a reminder with the run attached: log in
+  shortly before it fires. The recipe is a runner script (it sets the working directory,
+  runs the refresh line and keeps a log), one line to create the task, and one to delete it.
+
+  Windows: save this as `refresh-program-health.cmd` in the workspace folder (replace the
+  path and the folder name):
+
+  ```bat
+  @echo off
+  cd /d C:\path\to\workspace
+  node .gs-superadmin\plugin\scripts\dashboard.mjs refresh program-health --kb acme-prod >> dashboards-refresh.log 2>&1
+  ```
+
+  then create the task (monthly, the 1st at 09:00; `/SC WEEKLY /D MON` for weekly), run it
+  once by hand to see it work, and delete it when the dashboard retires:
+
+  ```bat
+  schtasks /Create /TN "gs-dashboard program-health" /SC MONTHLY /D 1 /ST 09:00 /TR "C:\path\to\workspace\refresh-program-health.cmd" /F
+  schtasks /Run /TN "gs-dashboard program-health"
+  schtasks /Delete /TN "gs-dashboard program-health" /F
+  ```
+
+  From a Git Bash prompt put `MSYS_NO_PATHCONV=1` in front of each `schtasks` line: that
+  shell otherwise rewrites `/Create` into a path. The task opens a console window while it
+  runs (the scripts' `npm root -g` lookup and the refresh's progress lines); nothing in it
+  needs a click, and the log holds what it printed.
+
+  macOS and Linux: save this as `refresh-program-health.sh` in the workspace folder and
+  `chmod +x` it:
+
+  ```bash
+  #!/bin/sh
+  cd /path/to/workspace || exit 1
+  node .gs-superadmin/plugin/scripts/dashboard.mjs refresh program-health --kb acme-prod >> dashboards-refresh.log 2>&1
+  ```
+
+  then add one line with `crontab -e` (monthly, the 1st at 09:00; `0 9 * * 1` for Monday
+  mornings) and remove that line the same way when the dashboard retires:
+
+  ```
+  0 9 1 * * /path/to/workspace/refresh-program-health.sh
+  ```
+
+  A Claude desktop local task that runs the same runner script works the same way.
 - **Changing one setting:** `node .gs-superadmin/plugin/scripts/dashboard.mjs change
-  program-health accounts.pull=true --dry-run` says what the change costs (a rebuild with no
-  pull, a re-selection of the customer lists, or the next pull with its minutes); without
-  `--dry-run` it saves and does it. The value is JSON: a text setting goes in JSON quotes
-  inside the shell's (`'pages.1.title="Leadership"'`). The lines the pages offer to copy
-  are these.
+  program-health accounts.pull=true --kb acme-prod --dry-run` says what the change costs (a
+  rebuild with no pull, a re-selection of the customer lists, or the next pull with its
+  minutes, priced for the dashboard as it will be after the change); without `--dry-run` it
+  saves and does it. The value is JSON: a text setting goes in JSON quotes inside the
+  shell's (`'pages.1.title="Leadership"'`). The lines the pages offer to copy are these.
 - **Handing over to a backup refresher:** `… export program-health --out handover.json
-  --with-snapshot`, then on their machine `… import --file handover.json`: their first pull
-  is selective, with a change against yours. No lock is shared across machines.
+  --with-snapshot --kb acme-prod`, then on their machine `… import --file handover.json --kb
+  acme-prod`: their first pull is selective, with a change against yours. No lock is shared
+  across machines.
 - **The leaders' copy** is `latest-exec.html`: copy the file into a shared folder. SharePoint,
   OneDrive and Teams download an HTML file rather than show it, so a leader opens it in two
   clicks (download, open); it is current each time. It holds no account rows unless the

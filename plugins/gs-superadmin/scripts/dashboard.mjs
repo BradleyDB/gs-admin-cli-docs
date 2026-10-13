@@ -72,8 +72,12 @@
 //   - The lock: a workspace file beside the spec; a second refresh is refused
 //     naming the holder and the time; a lock older than LOCK_STALE_MS is stale
 //     and taken over. No cross-machine lock is attempted.
-//   - The budget: the plan's seconds plus the re-documentation's are held to
-//     the token's remaining life before the first fact call.
+//   - The login: a pull longer than the login is NOT refused (F-513, ruled
+//     2026-10-12). It runs as far as the token allows, the adapter stops it
+//     cleanly when the next call would outlast the token, and the next run
+//     after a login continues it; the summary and the stop say how many logins
+//     of an hour a pull of this size takes. A pending run whose parameters moved
+//     since it stopped is abandoned and planned afresh (F-512).
 //   - Re-documentation: ONE staleness predicate (the adapter's kbGap: a
 //     program's list modified_date against its doc's manifest last_verified,
 //     modified since documented, never age) and ONE re-documenter (the
@@ -1041,7 +1045,10 @@ function loadRunLightly(runDir, today) {
     const d = describedProgram(read(r));
     if (d && d.id != null && sent.has(d.id) && !known.has(d.id)) { rows.push({ id: d.id, name: d.name, statuses: d.statuses, model: d.model, modelName: d.modelName, audienceType: d.audienceType, folderId: d.folderId }); known.add(d.id); }
   }
-  const programs = rows.map((p) => ({ ...p, supergroup: null, group: null, schedule: pickSchedule(kb?.schedules?.[p.id] ?? null, today) })).sort((a, b) => cmpKey(a.id, b.id));
+  // The plan's own selection (the selector applied: `--sent-since`, names; deleted programs out) is the set the rules
+  // resolve over at the pull; a plan written before it recorded the set (none now) falls back to every program with sends.
+  const selected = readJsonOr(join(runDir, "plan.json"), null)?.selectedIds ?? null;
+  const programs = rows.filter((p) => !selected || selected.includes(p.id)).map((p) => ({ ...p, supergroup: null, group: null, schedule: pickSchedule(kb?.schedules?.[p.id] ?? null, today) })).sort((a, b) => cmpKey(a.id, b.id));
   return { programs, sent, monthsWithSends: Object.fromEntries([...months].map(([id, m]) => [id, m.size])) };
 }
 function lookupCompany(ctx, spec, name) {
@@ -1231,7 +1238,7 @@ function verbSave(ctx, slug) {
   const r = ctx.store.save(slug);
   rmSync(join(dirOf(ctx, slug), INTERVIEW_FILE), { force: true });
   // The manual-refresh statement in the admin's terms, for the skill's final report (F-511 instance 26).
-  return { ok: true, mode: "save", slug, path: r.path, replaced: r.replaced, pages: r.pages, notes: r.notes, refreshLine: COPY_LINES.refresh(slug, basename(ctx.kbDir)), refreshText: MANUAL_REFRESH_TEXT(slug, basename(ctx.kbDir)) };
+  return { ok: true, mode: "save", slug, path: r.path, replaced: r.replaced, pages: r.pages, notes: r.notes, pullAgainLine: COPY_LINES.refresh(slug, basename(ctx.kbDir)), pullAgainText: MANUAL_REFRESH_TEXT(slug, basename(ctx.kbDir)) };
 }
 function verbList(ctx) {
   const dashboards = ctx.store.listDashboards().map((d) => {

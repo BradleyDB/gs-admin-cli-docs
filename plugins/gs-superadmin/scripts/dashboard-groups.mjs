@@ -293,8 +293,9 @@ export function programTraitsOf(programs, responses = {}, monthsWithSends = {}) 
  * `within` only inside that supergroup); else "Ungrouped".
  * @param {{programs: ProgramTraits[], groups: T11Groups, previousProgramIds?: ?Iterable<string>}} input
  *   previousProgramIds: the programs the previous snapshot held, so "new" can be said of the ungrouped
- * @returns {{assignments: GroupAssignment[], ungrouped: string[], newUngrouped: string[], line: string}}
- *   ungrouped: programs no override and no rule reached at either level
+ * @returns {{assignments: GroupAssignment[], ungrouped: string[], ungroupedWithin: string[], newUngrouped: string[], line: string}}
+ *   ungrouped: programs with no supergroup, plus (when the spec has group rules) those with a supergroup but no group
+ *   (F-515 c); ungroupedWithin: the latter alone
  */
 export function resolveGroups({ programs, groups, previousProgramIds = null }) {
   const problems = validateGroups(groups);

@@ -65,6 +65,48 @@ dashboard with no model in the loop, and `/gs-superadmin:email-engagement` gains
   every token it replaced with the reason; the dry-run preview renders in the theme; a logo
   is read from a local PNG or JPEG, never a URL. Skipping is the fast path's default and is
   never asked twice.
+- **From the second verdict sitting (2026-10-12; the pull across logins, the edit, the
+  proposal, the copy lines):**
+  - **A pull longer than one login is not refused: it checkpoints across logins** (F-513,
+    ruled). The refresh no longer holds the whole pull to the login's remaining minutes
+    before the first call: it runs as far as the login allows, stops cleanly with exit 3
+    keeping every call it made, and the next run after a login continues it; the closing
+    step, the estimate and the stop say about how many logins of an hour a pull of that
+    size takes. The estimate's confirmation reads the login as it stands at that moment.
+  - **A setting changed between a stopped pull and its resume no longer strands the
+    dashboard** (F-512): a pending run whose parameters moved is abandoned, said, and the
+    pull planned afresh, so no state file is removed by hand and no refusal names a flag
+    the command lacks.
+  - **An edit over a saved dashboard asks nothing again** (F-516): every setting the saved
+    spec holds counts as answered, `next` goes to the closing step, which states what the
+    edit changes and costs (a pull, a re-ranking of the customer lists, or a rebuild), and
+    its first option does that; `next --question <id>` changes one setting.
+  - **The group proposal is built from what the rules resolve over** (F-515): the suggestion
+    file carries each program's model CODE (what a rule tests) beside its display name,
+    its `recurring` as the pull reads it (the one-run-window and months-with-sends rules
+    applied at the plan), and exactly the programs the dashboard selects (the plan's own
+    selection, listed-or-described); the refresh summary counts a program ungrouped inside
+    its supergroup too; the About tab describes a model rule by its display name and draws
+    the Groups part once.
+  - **Every copy line and recipe carries `--kb <folder>`** (F-503): the pages know their
+    knowledge-base folder's name, so the lines they offer to copy and the About tab's
+    refresh line run as drawn in a workspace with two tenants; the README's recipes the
+    same.
+  - **The README's scheduled refresh is a copy-paste recipe per OS** (F-517): a runner
+    script, the task's create, run-once and delete lines (`schtasks`; `crontab`), the Git
+    Bash prefix, what the task shows, and the two-firing behaviour (a stop on an expired
+    login, a resume after the next by-hand login).
+  - **Wording** (F-511): the How to refresh statement on the About tab and at the closing
+    step says where to type the command, how to log in and what to do when a pull outlasts
+    the login, with the slash command that runs the same thing; the test-accounts option
+    asks for GSIDs or for names, never both; `list` shows no cadence; a list with no
+    delivered floor says so; a change's pull is priced for the dashboard after the change,
+    from the last real pull's plan (never a dry run's). A question with more than four
+    options (the programs question keeps its six) is asked in chat as a numbered list, never
+    through "Other" (F-514, ruled). The skill says what `--owner` is and names every group
+    rule's fields.
+  - **Smaller:** the page's caveats list keeps one entry per caveat rather than per id, so
+    both sample-cap sentences show (F-506).
 - **Smaller:** the save's first refresh continues the closing step's plan instead of
   planning again; a stale refresh lock taken over by a run the budget then refuses is
   recorded in the refusal; the derived health lookback says what it came from on a tie;

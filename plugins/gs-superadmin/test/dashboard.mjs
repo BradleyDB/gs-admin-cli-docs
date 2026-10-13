@@ -354,7 +354,7 @@ try {
   const saved = run("answer", [SLUG, "save", "yes"]);
   const refresh = { code: saved.code, json: saved.json?.refresh ?? null, stderr: saved.stderr };
   check("save (and refresh now): the draft becomes the saved spec, the draft and the interview state are gone, the summary carries the manual-refresh statement with the kb folder, and the first refresh CONTINUES the closing step's plan (the first sitting's note of 2026-10-12): the run keeps the plan's directory, so the plan's cheap calls are reused, not made again",
-    saved.code === 0 && existsSync(specFile()) && !existsSync(draftFile()) && openSpec(readJson(specFile())).accounts.pull === true && saved.json.refreshText === MANUAL_REFRESH_TEXT(SLUG, "acme-prod") && saved.json.refreshLine.endsWith(`refresh ${SLUG} --kb acme-prod`) && refresh.json?.status === "ok" && refresh.json.resumed === false && refresh.json.pull.calls.reused > 0 && planDirsBeforeSave.some((d) => refresh.json.run.startsWith(d)) && runDirs().includes(refresh.json.run) && refresh.json.budget?.loginsNeeded === 1,
+    saved.code === 0 && existsSync(specFile()) && !existsSync(draftFile()) && openSpec(readJson(specFile())).accounts.pull === true && saved.json.pullAgainText === MANUAL_REFRESH_TEXT(SLUG, "acme-prod") && saved.json.pullAgainLine.endsWith(`refresh ${SLUG} --kb acme-prod`) && refresh.json?.status === "ok" && refresh.json.resumed === false && refresh.json.pull.calls.reused > 0 && planDirsBeforeSave.some((d) => refresh.json.run.startsWith(d)) && runDirs().includes(refresh.json.run) && refresh.json.budget?.loginsNeeded === 1,
     [saved.json?.refresh?.pull?.calls, planDirsBeforeSave, runDirs()]);
 
   // ══ The refresh ════════════════════════════════════════════════════════════

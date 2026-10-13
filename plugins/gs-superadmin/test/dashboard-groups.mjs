@@ -199,7 +199,7 @@ check("a group rule with `within` applies only inside that supergroup: the same 
 
 // ── Descriptions, and the snapshot with its groups applied ───────────────────
 {
-  const said = RULES.map(describeRule);
+  const said = RULES.map((r) => describeRule(r));
   check("every rule reads as a sentence: its level, its label, what it matches — and a folder rule says the label is the person's, since folder names are not available",
     said.every((t) => /^(Supergroup|Group)/.test(t) && t.endsWith(".")) && /Supergroup "Surveys": programs that send a survey\./.test(said[0]) && /internal users/.test(said[1]) && /Renewals \(folder id 202\).*not available/.test(said[3]) &&
       /Group "CSAT" \(inside Surveys\)/.test(said[4]) && /part 2 of the name, split on " "/.test(said[5]), said);

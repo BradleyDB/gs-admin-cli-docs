@@ -2604,7 +2604,9 @@ export function fetchEngagement(ctx) {
     writeFileAtomicSync(join(runDir, KB_GAP_KEYS_FILE), JSON.stringify(kbPlan.programs.map((id) => `journey/${id}`), null, 2));
     writeFileAtomicSync(join(runDir, KB_GAP_LIST_FILE), JSON.stringify({ result: true, data: { advancedOutreaches: listRows } }, null, 2));
   }
-  writeFileAtomicSync(join(runDir, "plan.json"), JSON.stringify({ estimate, programs, refresh: { ...refresh, carriedPrograms: [...refresh.carriedPrograms] } }, null, 2));
+  // `selectedIds`: the programs this pull selects (the selector applied, deleted ones out), so a reader of the plan
+  // (the dashboard interview's group proposal, F-515) works over exactly the set the reducer will.
+  writeFileAtomicSync(join(runDir, "plan.json"), JSON.stringify({ estimate, programs, selectedIds, refresh: { ...refresh, carriedPrograms: [...refresh.carriedPrograms] } }, null, 2));
   if (phase === "plan") return conclude({ whoami, estimate, programs });
 
   // Phase C: the facts. The pull time is stamped HERE, when the first fact call is about to be made (F-482),

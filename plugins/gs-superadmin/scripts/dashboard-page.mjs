@@ -430,6 +430,7 @@ const STYLE = TOKENS + STYLE_RULES;
  * @param {{warnBytes: number, refuseExecBytes: number}} [args.budget]
  * @param {?{previousPulledAt: string, closedMonths: string[], metrics: Object<string, {previous: ?number, current: ?number, change: ?{kind: "points"|"ratio", value: ?number}}>}} [args.delta]
  *   the change since the last pull (PUB-1): computed by the refresh over the closed months both snapshots hold; null on a first pull
+ * @param {?string} [args.kb] the tenant knowledge-base folder's NAME, so every copy line carries `--kb` (F-503); null when unknown
  * @returns {{html: ?string, report: {page: string, preset: string, file: string, written: boolean, bytes: Object<string, number>, megabytes: number, rows: Object<string, number>, tables: Object<string, {rows: number, bytes: number}>, programs: number, warning: ?string, refused: ?string}}}
  */
 export function buildPage({ spec, snapshot, pageId, engineSource, runtimeSource, budget = PAGE_BUDGET, delta = null, kb = null }) {

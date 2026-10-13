@@ -92,8 +92,9 @@ Skill-level flags (handled by these steps, not passed to a script):
 
 Dashboard flags: `--fast-path` on `dashboard new` (the standard program-health dashboard:
 every question takes its default, then the closing step); `--full` and `--health-only` on
-the pull-again mode. Every dashboard verb takes `--kb <slug>` when the workspace holds more
-than one tenant.
+the pull-again mode. Every dashboard verb takes `--kb <slug>`, always (a workspace can hold
+more than one tenant, and the command never guesses); the lines the pages offer to copy
+carry it too.
 
 "Active" means status **PROCESSING** only, as in `/gs-superadmin:email-report`. Status
 never limits what is pulled; it decides which programs the per-program tables show, and
@@ -356,12 +357,25 @@ an edit from the saved spec):
 node .gs-superadmin/plugin/scripts/dashboard.mjs new <dash> --kb <slug> --title '<title>' --owner '<owner>'
 ```
 
-Append `--fast-path` when the user asked for the standard program-health dashboard, or
-said they want the defaults: every question then takes its own default (the one its
-wording names) and the interview goes straight to the closing step. If the summary's `ok`
-is `false` and its `error` names another holder ("held by …"), tell the user who holds the
-draft and since when, and ask whether to take it over; on yes re-issue the command with
-`--take-over`, otherwise stop.
+`<title>` is the dashboard's title as the user called it (the page header shows it) and
+`<owner>` is the name of the person who owns the dashboard, as the About tab's settings
+list it under Owner; take both from what the user said, and omit a flag the user gave
+nothing for (the title then defaults to the slug, the owner to none). Append `--fast-path`
+when the user asked for the standard program-health dashboard, or said they want the
+defaults: every question then takes its own default (the one its wording names) and the
+interview goes straight to the closing step. If the summary's `ok` is `false` and its
+`error` names another holder ("held by …"), tell the user who holds the draft and since
+when, and ask whether to take it over; on yes re-issue the command with `--take-over`,
+otherwise stop.
+
+**An edit** (the summary's `state` is `editing-saved`) starts from the saved dashboard, so
+every setting already counts as answered: the next `next` returns the closing step
+directly, which states what the edit changes against the saved dashboard and what that
+costs (a new pull with its minutes, a re-ranking of the customer lists, or a rebuild with
+no pull; "nothing changed" until a setting moves). Nothing is re-asked. To change one
+setting, ask for that question again with `next <dash> --question <id>` (the ids are the
+questions' own; the summary's `hint` lists them), ask it as in D3 and pass the answer, then
+`next` again for the closing step.
 
 ### D3 — The questions, one at a time
 
@@ -399,24 +413,42 @@ answer through the spec writer: if `ok` is `false`, relay `error` (it names the 
 the options) and ask the question again. If `ok` is `true`, relay `notes` when present
 (for example a name resolved to a company GSID), then ask for the next question.
 
+**A question with more than four options** (the programs question has six) is not asked
+with AskUserQuestion, which shows four choices at most: ask it in chat instead, as the
+`ask` followed by a numbered list of the `options`' `text` verbatim, in the script's order,
+ending "Reply with the number." Match the reply (a number, or the option's own words) to
+one option and continue as above, its follow-ups included; a reply that matches none is
+asked again. Never offer "Other" or a "more choices" entry, and never leave an option out:
+the admin decides with every choice in view.
+
 **The two judgment nodes** — the only places this skill decides anything:
 
 - `grouping` — the summary's `question.input.suggestionFile` is a compact table the
-  script wrote from the plan's program list: programs with model, audience, folder id,
-  whether they send surveys, whether they recur, and sends; tallies per characteristic;
-  the first parts of names by separator. Read THAT file (it holds no account, person or
-  message). First ask whether there is an organizational structure to follow: folders, a
-  naming convention, a program field. Then PROPOSE a two-level table — supergroups from
-  program characteristics (surveys, recurring or one-off, model, audience) and groups
-  inside them — as a markdown table the user can edit, with the count each rule would
-  match. Offer folders as an option, saying plainly that folder NAMES are unavailable
-  from Gainsight (a folder group shows its id until labelled). When the user confirms or
-  edits the table, write it as the rules the grouping script takes (its kinds:
-  `characteristic`, `folder`, `namePattern`, `programField`, `manual`; one rule fills one
-  level; `within` names the supergroup a group rule applies inside) and pass the JSON
-  `{"rules": [...], "overrides": {...}}` as the value; `none` for no grouping;
-  `folders:{"<id>": "<label>", ...}` for a folder grouping with the labels given. The
-  script validates the rules; a refusal names the field.
+  script wrote from the plan's program list, exactly the programs the dashboard selects:
+  programs with `model` (the model code a rule tests) and `modelName` (its display name),
+  audience, folder id, whether they send surveys, whether they recur (the trait the rules
+  resolve over, as the pull will read it), and sends; tallies per characteristic (the model
+  tally carries code and label); the first parts of names by separator. Read THAT file (it
+  holds no account, person or message). First ask whether there is an organizational
+  structure to follow: folders, a naming convention, a program field. Then PROPOSE a
+  two-level table — supergroups from program characteristics (surveys, recurring or
+  one-off, model, audience) and groups inside them — as a markdown table the user can
+  edit, naming models by their display name, with the count each rule would match (the
+  file's tallies are those counts). Offer folders as an option, saying plainly that folder
+  NAMES are unavailable from Gainsight (a folder group shows its id until labelled). When
+  the user confirms or edits the table, write it as the rules the grouping script takes
+  and pass the JSON `{"rules": [...], "overrides": {...}}` as the value; `none` for no
+  grouping; `folders:{"<id>": "<label>", ...}` for a folder grouping with the labels given.
+  Every rule is `{"kind", "level", "within"?, …}`: `level` is `supergroup` or `group`, one
+  rule fills one level, and `within` (group rules only) names the supergroup label the rule
+  applies inside. The kinds and their own fields: `characteristic` {`characteristic`: `model`
+  | `audience` | `sendsSurveys` | `recurring`, `is`, `label`} — for `model`, `is` is the
+  file's `model` CODE and `label` its `modelName`; `audience` tests `CUSTOMER` or `USER`;
+  the two booleans test `true` or `false`; `folder` {`folders`: [{`id`, `label`?}]};
+  `namePattern` {`match`: `contains` | `startsWith` | `endsWith`, `text`, `label`} or
+  {`match`: `segment`, `delimiter`, `index`}; `programField` {`field`: `model` | `modelName`
+  | `audienceType` | `folderId` | `status`, `is`, `label`}; `manual` {`programIds`,
+  `label`}. The script validates the rules; a refusal names the field.
 - `look` (UX-2) — ask the question with its three options as they are: skip (the
   default look; pass `skip`; this is never asked twice), a guidelines file, or pasted
   values. On a file, read the file the user names (markdown, JSON, CSS, a PDF this
@@ -435,28 +467,34 @@ the options) and ask the question again. If `ok` is `true`, relay `notes` when p
 
 **The closing step.** Once every setting is answered, `next` returns the first action
 row (`dry-run`, then `estimate`, then `save`) WITH a `closing` block: `closing.ask` (the
-full pull's calls and minutes, the login's remaining minutes, and that pulling again is
-done by hand) and `closing.options`. Ask ONE AskUserQuestion with `closing.ask` and those
-options verbatim; each option carries `answers`, the `answer` commands it stands for. On
-the user's choice, issue each pair in order:
+full pull's calls and minutes against the login's remaining minutes — a pull longer than
+one login is not refused, the ask says about how many logins it takes — and how pulling
+again is done by hand; on an edit, what the edit changes and what that costs) and
+`closing.options`. Ask ONE AskUserQuestion with `closing.ask` and those options verbatim;
+each option carries `answers`, the `answer` commands it stands for. On the user's choice,
+issue each pair in order:
 
 ```
 node .gs-superadmin/plugin/scripts/dashboard.mjs answer <dash> <question id> <value> --kb <slug>
 ```
 
-- "Save and run the first pull now" (the first option): `dry-run no`, `estimate yes`,
-  `save yes` (the save runs the first pull; step P's exit codes apply; relay its summary).
-- "Run a dry run first": `dry-run yes` makes a cheap pull (minutes; the login must be
-  valid) and renders preview pages in the theme: relay `preview.pages` (their paths and
-  sizes) and invite the user to open the admin page in a browser; then call `next` again
-  and present the closing step it returns (without the dry run).
-- "Save only" (the pull later; the third option): `dry-run no`, `estimate yes`, `save later`.
-- "Go back and change a setting": ask which setting (the questions' ids, in the user's
-  words), then `next <dash> --question <id>` returns that question with its options and
-  follow-ups; ask it as above and pass the answer; then `next` again for the closing step.
+- The `save-now` option (save and pull now; on an edit: save and pull, rebuild the pages,
+  or rank the customer lists again, as its text says): `dry-run no`, `estimate yes`,
+  `save yes`. The save does what the option says (a pull: step P's exit codes apply, a
+  stop on the login included; a rebuild or a re-ranking: no call); relay its summary.
+- The `dry-run` option ("Run a dry run first"): `dry-run yes` makes a cheap pull (minutes;
+  the login must be valid) and renders preview pages in the theme: relay `preview.pages`
+  (their paths and sizes) and invite the user to open the admin page in a browser; then
+  call `next` again and present the closing step it returns (without the dry run).
+- The `save-only` option (save only, pull or rebuild later; or close an edit that changed
+  nothing): `dry-run no`, `estimate yes`, `save later`.
+- The `go-back` option ("Go back and change a setting"): ask which setting (the questions'
+  ids, in the user's words), then `next <dash> --question <id>` returns that question with
+  its options and follow-ups; ask it as above and pass the answer; then `next` again for
+  the closing step.
 
-`estimate yes` confirms the cost the summary quotes; on `no` the summary says which
-setting to answer again.
+`estimate yes` confirms the cost the summary quotes (its `token` is the login as read at
+that moment, with `loginsNeeded`); on `no` the summary says which setting to answer again.
 
 By exit code on any verb: `3` is the login (ask for `gs-admin login`, then re-issue the
 same command); `5` is the wrong tenant (the CLI is on another tenant than the dashboard's:
@@ -471,11 +509,14 @@ say both and stop); `4` is a stopped pull (re-issue once); `1` is a refusal (sho
   Saved:       <spec path>
   Pages:       <pages>
   Last pull:   <pulledAt or "none yet">
-  Refreshes:   manual — /gs-superadmin:email-engagement refresh <dash> whenever new numbers are wanted, or the OS scheduler recipe in the plugin README (a login within the hour); the pages say when the data was pulled
+  Pulling again: <pullAgainText>
 ```
 
 `<pages>` lists each page's path from the save's pull summary (or the preview's, marked
-"preview"), one per line in the same indentation. Then stop.
+"preview"), one per line in the same indentation. `<pullAgainText>` is the save summary's
+`pullAgainText`, as written: how pulling again is done, in the admin's terms (where the
+command is typed, the login, the slash command, what a pull longer than the login does).
+Then stop.
 
 **Changing one setting later** (the user says "turn customer lists on", "make it
 quarterly", "rename the leaders' page"): no interview. Run the change verb with the
@@ -513,10 +554,14 @@ nothing else with `gs-admin` meanwhile. By exit code:
 - `0` — relay the summary: `pull.mode` and `pull.why`, `pull.programs`, `redocumented`
   (how many programs and templates the knowledge base gained, and what is still behind),
   `delta` (the change since the last pull, or null on a first one), the pages' paths and
-  sizes, and `lockTakenOver` when a stale lock was taken over.
-- `3` — the login expired (before the pull, or during it): ask the user to run
-  `gs-admin login`, then re-issue the same command; it resumes where it stopped, and the
-  last good pages are untouched.
+  sizes, `lockTakenOver` when a stale lock was taken over, and `abandoned` when a pull
+  stopped earlier was left behind because a setting changed since (the pull was planned
+  afresh).
+- `3` — the login expired, before the pull or during it. A pull longer than one login is
+  expected and keeps every call it made: relay the summary's `error` (it says how many
+  calls were made and about how many more logins the pull needs), ask the user to run
+  `gs-admin login` (a browser flow they complete by hand), then re-issue the same command;
+  it continues where it stopped, and the last good pages are untouched.
 - `4` — a call failed: re-issue once; if it exits 4 again, report `error`; the pages are
   untouched.
 - `5` — the CLI is on another tenant than the dashboard's: say both tenants and stop.
