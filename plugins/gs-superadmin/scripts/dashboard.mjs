@@ -738,6 +738,12 @@ const savedSpec = (ctx, slug) => {
 };
 // ── Snapshots: the latest, the one before, retention ─────────────────────────
 const snapshotStamp = (pulledAt) => String(pulledAt).replace(/[^0-9T]/g, "").slice(0, 15);
+/** `base`, or `base-2`, `base-3`, …: the first name no entry of `dir` holds (with `ext` for a file). */
+function freshName(dir, base, ext = "") {
+  let name = base;
+  for (let n = 2; existsSync(join(dir, `${name}${ext}`)); n++) name = `${base}-${n}`;
+  return name;
+}
 function snapshotFiles(ctx, slug) {
   const dir = join(dirOf(ctx, slug), SNAPSHOTS_DIR);
   return existsSync(dir) ? readdirSync(dir).filter((f) => /\.json$/.test(f) && !f.startsWith("preview")).sort(cmpKey).map((f) => join(dir, f)) : [];
@@ -1248,7 +1254,8 @@ function lastPlan(ctx, slug) {
   // parameters price nothing a refresh does: the S5-V second sitting's "about 72 minutes" was read from one).
   const runs = existsSync(root) ? readdirSync(root, { withFileTypes: true }).filter((d) => d.isDirectory() && d.name.startsWith(`dash-${slug}-`) && !d.name.includes("-preview-")).map((d) => d.name) : [];
   const latest = latestSnapshotPath(ctx, slug);
-  const stamp = latest ? basename(latest).replace(/\.json$/, "") : null;
+  // The file's stamp (its first 15 characters: a collision suffix may follow) names the pull it came from.
+  const stamp = latest ? basename(latest).slice(0, 15) : null;
   const pulledFrom = stamp ? runs.find((d) => { const run = readJsonOr(join(root, d, "run.json"), null); return run?.params?.pulledAt && snapshotStamp(run.params.pulledAt) === stamp; }) ?? null : null;
   const byClock = runs.map((d) => ({ d, at: (() => { try { return statSync(join(root, d, "run.json")).mtimeMs; } catch { return 0; } })() })).sort((a, b) => b.at - a.at).map((x) => x.d);
   const plan = [pulledFrom, state?.run ?? null, ...byClock].filter(Boolean).map((d) => readJsonOr(join(root, d, "plan.json"), null)).find(Boolean);
@@ -1313,7 +1320,10 @@ function verbRefresh(ctx, slug, { full, healthOnly, planRun = null }) {
   // The interview's plan continues as this run (the save's first refresh): the run keeps the plan's own directory and
   // prepareRun resumes it, so the plan's cheap calls are reused instead of made again (nothing is renamed).
   const continuesPlan = planRun && !resuming && !previousPath && !full && !healthOnly && existsSync(join(runsRoot, planRun, "plan.json"));
-  const runId = resuming ? state.run : continuesPlan ? planRun : `dash-${slug}-${snapshotStamp(new Date(ctx.nowMs).toISOString())}`;
+  // A fresh run's name is stamped to the second; a directory of that name may already exist (a run abandoned or stopped
+  // in the same second: CI's runner did it on 2026-10-12), and prepareRun would then refuse the "fresh" run as another
+  // run's. A fresh name is one no directory holds.
+  const runId = resuming ? state.run : continuesPlan ? planRun : freshName(runsRoot, `dash-${slug}-${snapshotStamp(new Date(ctx.nowMs).toISOString())}`);
   const lock = takeLock(ctx, slug, runId);
   const takenOver = lock.takenOver ? { lockTakenOver: { by: lock.takenOver.by ?? null, at: lock.takenOver.at ?? null } } : {};
   try {
@@ -1352,7 +1362,8 @@ function verbRefresh(ctx, slug, { full, healthOnly, planRun = null }) {
     const { snapshot, resolution } = applyGroups(pulled, spec.groups, { previous });
     // The snapshot, then retention, then the pages (all or nothing), then the state is cleared.
     mkdirSync(join(dir, SNAPSHOTS_DIR), { recursive: true });
-    const snapshotPath = join(dir, SNAPSHOTS_DIR, `${snapshotStamp(snapshot.meta.pulledAt)}.json`);
+    // The same second-resolution stamp names the snapshot; a second pull stamped in the same second never overwrites the first.
+    const snapshotPath = join(dir, SNAPSHOTS_DIR, `${freshName(join(dir, SNAPSHOTS_DIR), snapshotStamp(snapshot.meta.pulledAt), ".json")}.json`);
     writeFileAtomicSync(snapshotPath, JSON.stringify(snapshot));
     const pruned = pruneSnapshots(ctx, slug);
     const delta = computeDelta(spec, snapshot, previous);
