@@ -47,7 +47,7 @@
 //                 back into the T-10 shape the engine reads.
 //   mount         the only code that touches a document: listeners on the
 //                 page's root, column choices in localStorage (wrapped in
-//                 try/catch), the file download, the clock the stale banner
+//                 try/catch), the file download, the clock the header's age
 //                 reads. No network request anywhere.
 //
 // Citations: DSH-n are work items and Rnn rulings of the maintainer's
@@ -55,7 +55,7 @@
 // produced is stated beside the token.
 // ─────────────────────────────────────────────────────────────────────────────
 
-export const PAGE_MODEL_VERSION = 2;
+export const PAGE_MODEL_VERSION = 3;
 
 const HTML_ESCAPES = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
 /** Every tenant string reaches a page through this. */
@@ -120,11 +120,43 @@ export const NEEDS = Object.freeze({
 // page's. A `fill` setting's line ends at the `=` sign: the notice says what
 // to put there.
 export const ENTRY_COMMAND = "node .gs-superadmin/plugin/scripts/dashboard.mjs";
+// Every line names the dashboard's knowledge-base folder with `--kb` (F-503, reopened 2026-10-12): a workspace that
+// holds two tenants refuses the verb without it, and the folder's NAME is not a machine path, so the page may carry it.
+// A page built with no folder known (the page builder run by hand) omits the flag.
+const kbFlag = (kb) => (kb ? ` --kb ${kb}` : "");
 export const COPY_LINES = Object.freeze({
-  change: (slug, path, value) => `${ENTRY_COMMAND} change ${slug} ${path}=${value}`,
-  refresh: (slug) => `${ENTRY_COMMAND} refresh ${slug}`,
-  health: (slug, programId) => `${ENTRY_COMMAND} health ${slug} --program ${programId}`,
+  change: (slug, path, value, kb = null) => `${ENTRY_COMMAND} change ${slug} ${path}=${value}${kbFlag(kb)}`,
+  refresh: (slug, kb = null) => `${ENTRY_COMMAND} refresh ${slug}${kbFlag(kb)}`,
+  health: (slug, programId, kb = null) => `${ENTRY_COMMAND} health ${slug} --program ${programId}${kbFlag(kb)}`,
 });
+/** The skill's slash command that runs the same refresh (house rule 18: the mode is never written bare). */
+export const REFRESH_SLASH = (slug) => `/gs-superadmin:email-engagement refresh ${slug}`;
+/**
+ * How to refresh, in the admin's terms: the maintainer's ruled wording of 2026-10-13 (F-511 instance 27), held ONCE
+ * as data — the sentences in the order of the reader's five questions (which folder; whether to go there before the
+ * login; whether anything beyond the one line is needed; how "done", or another login needed, shows; whether the
+ * terminal says so). The About tab draws it stepped (`HOW_TO_REFRESH`), the closing step and the save summary as one
+ * paragraph (`HOW_TO_REFRESH_TEXT`); every place reads this, so the three cannot drift. `kb` is the knowledge-base
+ * folder's name (null when unknown: the `questions` verb prints `<kb>`).
+ */
+export const HOW_TO_REFRESH = (slug, kb = null) => {
+  const folder = kb ?? "<kb>";
+  return Object.freeze({
+    lead: "Refreshes are manual: the pages change only when you run one.",
+    steps: Object.freeze([
+      `Open a terminal in the workspace folder. That is the folder that CONTAINS the knowledge-base folder ${folder}, not ${folder} itself. Every command below is typed there.`,
+      "Run gs-admin login if your last login was more than an hour ago. It opens your browser; finish signing in and come back to the terminal.",
+      Object.freeze({ before: "Run the refresh line:", line: COPY_LINES.refresh(slug, kb), after: "Nothing else is needed." }),
+    ]),
+    seeing: `What you will see: one line per call while it runs, then a summary. "ok": true means it finished: both pages are rebuilt and show the new pulled-at time. If the summary instead says "run gs-admin login, then run refresh … again", the login ran out before the pull did: log in (step 2) and run the same line again. It continues where it stopped, and the pages do not change until it finishes. The terminal always tells you which of the two happened.`,
+    session: `In a Claude Code session opened in that folder, ${REFRESH_SLASH(slug)} does all of this for you and reports the same way. To run it on a schedule on your own machine, the plugin README has the recipe: a scheduled run writes the same summary to its log instead of the screen, and needs a login within the hour before it fires.`,
+  });
+};
+/** The same statement as one paragraph: the steps numbered, the refresh line in place of its Copy button. */
+export const HOW_TO_REFRESH_TEXT = (slug, kb = null) => {
+  const h = HOW_TO_REFRESH(slug, kb);
+  return [h.lead, ...h.steps.map((s, i) => `${i + 1}. ${typeof s === "string" ? s : `${s.before} ${s.line}. ${s.after}`}`), h.seeing, h.session].join(" ");
+};
 // The no-send thresholds one click away on the Health tab (ruled 2026-10-05); the spec's own value joins them.
 export const HEALTH_DAY_OPTIONS = Object.freeze([14, 30, 60, 90]);
 
@@ -246,8 +278,17 @@ export function createDashboard(engine, model) {
 
   // ── Lacks: the facts, then the one renderer ────────────────────────────────
   /**
+   * The LACKS row's setting path names a KIND of setting (`pages[].tabs[].enabled`, the spec descriptions' grammar);
+   * the line to copy must name THIS page, THIS tab and the dashboard's source in the writer's own grammar
+   * (`pages.0.tabs.2.enabled`), or it cannot be run as written (F-503). A trailing `[]` is the list itself.
+   * @param {string} path
+   * @param {{tab?: number}} ctx the tab the notice stands on, by its index in the spec's list
+   */
+  const concretePath = (path, ctx) =>
+    path.replace(/\[\]$/, "").replace(/pages\[\]/, `pages.${model.page.index}`).replace(/tabs\[\]/, `tabs.${ctx.tab ?? model.page.tabs.find((t) => t.state === "offered")?.index ?? 0}`).replace(/sources\[\]/, "sources.0");
+  /**
    * @param {string} reason an id of the engine's REASONS
-   * @param {{held?: boolean}} [ctx] for a "by-data" lack: whether the pull holds the data
+   * @param {{held?: boolean, tab?: number}} [ctx] for a "by-data" lack: whether the pull holds the data; for a tab's: its index
    */
   const lackFacts = (reason, ctx = {}) => {
     const row = LACKS.find((r) => r.reason === reason);
@@ -255,7 +296,7 @@ export function createDashboard(engine, model) {
     if (!row) return { reason, text, known: false, needs: null, needsText: null, setting: null, line: null };
     const needs = row.needs === "by-data" ? (ctx.held ? "rebuild" : "pull") : row.needs;
     const setting = row.setting ? { ...row.setting, label: model.settingLabels[row.setting.path] ?? row.setting.path } : null;
-    const line = row.line === "refresh" || !setting ? COPY_LINES.refresh(model.slug) : COPY_LINES.change(model.slug, setting.path, setting.how === "on" ? "true" : "");
+    const line = row.line === "refresh" || !setting ? COPY_LINES.refresh(model.slug, model.kb) : COPY_LINES.change(model.slug, concretePath(setting.path, ctx), setting.how === "on" ? "true" : "", model.kb);
     return { reason, text, known: true, needs, needsText: NEEDS[needs], setting, line };
   };
   /** The line to copy, or the button that runs it when the page has a local app behind it (the `actions` seam, LTR-10). */
@@ -587,21 +628,37 @@ export function createDashboard(engine, model) {
     const ratio = Math.round(change.value * 100) / 100;
     return ratio === 1 ? "level with the usual" : `${ratio > 1 ? "&#9650;" : "&#9660;"} ${ratio}&times; the usual`;
   };
+  // The change since the last pull (PUB-1, S5): the refresh computes it over the closed months both pulls hold and
+  // the page carries it (model.delta); a tile's figure reads "level with", "up" or "down" against that pull's.
+  const sinceText = (d) => {
+    if (!d || d.change == null || d.change.value == null) return null;
+    if (d.change.kind === "points") {
+      const pts = Math.round(d.change.value * 10) / 10;
+      return pts === 0 ? "level with the last pull" : `${pts > 0 ? "&#9650;" : "&#9660;"} ${Math.abs(pts)} pts since the last pull`;
+    }
+    const ratio = Math.round(d.change.value * 100) / 100;
+    return ratio === 1 ? "level with the last pull" : `${ratio > 1 ? "&#9650;" : "&#9660;"} ${ratio}&times; the last pull's`;
+  };
   const renderKpiPanel = (panel, state) => {
     const view = engine.kpiView(snapshot, filtersOf(state), panel.query);
+    const delta = model.delta ?? null;
     // "No previous pull" is one fact about the page, said once under the tiles, not once per tile.
-    const noPrevious = view.tiles.every((t) => t.sinceLastPull == null);
+    const noPrevious = !delta;
     const tiles = view.tiles.map((t) => {
       const usual = t.usual ? `<p class="gs-kpi-usual">Usual${t.usual.perMonth ? " a month" : ""}: ${fmt(t.id, t.usual.perMonth ? Math.round(t.usual.value) : t.usual.value)} <span class="gs-muted">(${plural(t.usual.closedMonths, "closed month")})</span>${t.change ? ` &middot; ${changeText(t.change)}` : ""}</p>` : `<p class="gs-kpi-usual gs-muted">No closed month to compare with.</p>`;
       const den = t.denominator ? `<p class="gs-kpi-context">${esc(t.denominator.label)} ${figure(t.denominator.id, t.denominator.cell)}</p>` : "";
-      const since = noPrevious ? "" : `<p class="gs-kpi-since gs-muted">Since last pull: ${t.sinceLastPull == null ? "no previous pull to compare with." : esc(String(t.sinceLastPull))}</p>`;
+      const d = delta?.metrics?.[t.id] ?? null;
+      const since = noPrevious ? "" : `<p class="gs-kpi-since gs-muted">Since last pull: ${sinceText(d) ?? "no figure to compare with."}</p>`;
       const whyAttr = t.cell.value == null && t.cell.why ? ` title="${esc(engine.reasonText(t.cell.why))}"` : "";
       return `<div class="gs-kpi" data-metric="${esc(t.id)}"><p class="gs-kpi-label">${esc(t.label)}</p><p class="gs-kpi-value"${whyAttr}>${figure(t.id, t.cell)}${view.incomplete ? `<sup>${tip(provisionalTip(), "*")}</sup>` : ""}</p>${usual}${den}${since}</div>`;
     });
     const total = { incomplete: view.incomplete, carried: view.carried, cells: Object.fromEntries(view.tiles.map((t) => [t.id, t.cell])) };
     const notes = whyNotes([total], panel.query.metrics);
-    // The change strip (DSH-4; S5 fills it): until a second pull exists it is one muted line beside the title (ruled 2026-10-11).
-    const since = noPrevious ? `<span class="gs-kpi-since">Change since the last refresh: none yet, this is the first pull.</span>` : "";
+    // The change strip (DSH-4; S5 fills it): until a second pull exists it is one muted line beside the title (ruled
+    // 2026-10-11); with one, the line names the pull compared with and the closed months the comparison covers.
+    const since = noPrevious
+      ? `<span class="gs-kpi-since">Change since the last refresh: none yet, this is the first pull.</span>`
+      : `<span class="gs-kpi-since">Change since the last refresh (pulled ${esc(String(delta.previousPulledAt ?? "earlier"))}), over ${plural(delta.closedMonths?.length ?? 0, "closed month")} both pulls hold.</span>`;
     return `${open(panel, csvButton(panel), since)}<div class="gs-kpis">${tiles.join("")}</div>${notesBlock(notes)}${close}`;
   };
 
@@ -733,7 +790,7 @@ export function createDashboard(engine, model) {
     const cols = panel.query.metrics;
     const cross = isCrossProgram(panel);
     const scope = result.scope;
-    const rank = `<p class="gs-note">Ranked over the ${scope.fullWindow ? "whole window" : "months shown; the pull selected these accounts over the whole window, so this is a re-ranking of the embedded rows"}${panel.query.limit != null && result.rows.length >= panel.query.limit ? `; the top ${panel.query.limit}` : ""}.</p>`;
+    const rank = `<p class="gs-note">Ranked over the ${scope.fullWindow ? "whole window" : "months shown; the pull selected these accounts over the whole window, so this is a re-ranking of the embedded rows"}${panel.query.limit != null && result.rows.length >= panel.query.limit ? `; the ${panel.query.sort?.[0]?.dir === "asc" ? `${panel.query.limit} lowest` : `top ${panel.query.limit}`}` : ""}.</p>`;
     if (!cross) {
       const notes = whyNotes(result.rows, cols);
       return `${open(panel, csvButton(panel))}${tableOf(panel, result, cols)}${result.rows.length ? "" : `<p class="gs-note">Nothing matches the current filters.</p>`}${rank}${notesBlock(notes)}${close}`;
@@ -773,7 +830,7 @@ export function createDashboard(engine, model) {
       case "admitting-nobody": return `Admitting nobody: ${s.admissions.admitted ?? 0} participants over the last ${plural(s.admissions.dueDays ?? 0, "due day")}`;
       case "step-errors": return `Step errors this period: ${plural(s.steps.participants ?? 0, "participant")} (${Object.entries(s.steps.byCategory ?? {}).map(([k, v]) => `${k} ${v}`).join(", ")})`;
       case "no-recent-sends": return s.sends.rule === "history" && s.sends.allowedDays != null ? `No send in ${s.sends.daysSince ?? "?"} days; it usually sends every ${s.sends.longestGapMonths} months at most (${s.sends.allowedDays} days)` : `No send in ${s.sends.daysSince ?? "?"} days (threshold ${s.sends.threshold ?? view.days} days)`;
-      case "finished": return `Every participant has finished or dropped; nothing recurs`;
+      case "finished": return `Every participant has finished or dropped; nothing recurs${s.schedule?.oneRunWindow ? ` (one-day schedule${s.schedule.endDay ? `, ended ${s.schedule.endDay}` : ""})` : ""}`;
       case "no-sends-in-window": return `Active, with no send in the ${plural(s.sends.windowMonths ?? 0, "month")} the pull covers`;
       case "cannot-judge": return `Cannot judge yet: ${view.cannotJudgeReasons[s.why] ?? s.why ?? "its data was not read"}`;
       default: return "Working as expected";
@@ -809,7 +866,7 @@ export function createDashboard(engine, model) {
       const b = view.bounces;
       const rows = shown(b.categories).map((c) => `<tr><td>${categoryCell(c)}</td><td>${esc(kindLabel(c.kind))}</td><td class="gs-num">${c.count}</td><td class="gs-num">${c.usualPerMonth == null ? esc(engine.NO_VALUE) : Math.round(c.usualPerMonth * 10) / 10}</td><td class="gs-num">${changeCell(c)}</td></tr>`).join("");
       const other = b.other ? `<tr class="gs-other"><td>${categoryCell(b.other)} <span class="gs-muted">${b.other.share == null ? "" : `${Math.round(b.other.share * 100)}% of bounces`}</span></td><td></td><td class="gs-num">${b.other.count}</td><td class="gs-num">${b.other.usualPerMonth == null ? esc(engine.NO_VALUE) : Math.round(b.other.usualPerMonth * 10) / 10}</td><td class="gs-num">${changeCell(b.other)}</td></tr>` : "";
-      const signal = b.other?.overThreshold ? `<div class="gs-notice gs-notice-compact" role="note" data-signal="other"><p>Uncategorised bounce text is ${Math.round(b.other.share * 100)}% of bounces, over a few percent: the masked samples are in the terminal, never on a page.</p>${renderLine(COPY_LINES.health(model.slug, "<program id>"))}</div>` : "";
+      const signal = b.other?.overThreshold ? `<div class="gs-notice gs-notice-compact" role="note" data-signal="other"><p>Uncategorised bounce text is ${Math.round(b.other.share * 100)}% of bounces, over a few percent: the masked samples are in the terminal, never on a page.</p>${renderLine(COPY_LINES.health(model.slug, "<program id>", model.kb))}</div>` : "";
       bounces = `<h3>Bounce reasons <span class="gs-muted">(${plural(b.total, "bounce")} in the ${plural(b.months, "month")} shown)</span></h3><div class="gs-scroll"><table><thead><tr><th scope="col">Reason</th><th scope="col">Kind</th><th scope="col" class="gs-num">This period</th><th scope="col" class="gs-num">Usual a month</th><th scope="col" class="gs-num">Change</th></tr></thead><tbody>${rows}${other}</tbody></table></div>${signal}${hidden(b.categories)}`;
     }
     // Refusals at entry: exact totals, the split exact or a sample.
@@ -1033,7 +1090,32 @@ export function createDashboard(engine, model) {
   // the account control only on a tab with an account panel. A lack is a
   // one-line pointer here; the full notice stands where the data would be.
   const renderGroupOptions = (state) => option("", "Every group", state.g == null) + groupsWithin(state.sg).map((label) => option(groups.indexOf(label), label, groups.indexOf(label) === state.g)).join("");
-  const renderCount = (state) => `${state.programs ? state.programs.length : programs.length} of ${programs.length} selected`;
+  // The count line names the set the list holds (F-505): every program with a send in the pulled window, and how
+  // many of them the viewer keeps.
+  const renderCount = (state) => `${plural(programs.length, "program")} sent in this window, ${state.programs ? state.programs.length : programs.length} selected`;
+  /**
+   * The programs with a send in the months in force — the months ALONE: the group, status, selection and recipient
+   * filters say nothing about whether a program sent, so a program outside the chosen group is never dimmed "no sends"
+   * (the review of 2026-10-13), and the rows' dim state depends on the months and the statuses only.
+   */
+  const programsWithSends = (state) => {
+    const { months: inForce } = filtersOf(state);
+    return new Set(engine.runQuery(snapshot, { recipientClass: "all", ...(inForce ? { months: inForce } : {}) }, { groupBy: ["program"], metrics: ["sent"] }).rows.map((r) => r.key.program));
+  };
+  /**
+   * The program list's rows (F-505): a program with no send in the chosen months, or outside the chosen statuses, is
+   * dimmed and says why, so the list answers to the month and status filters without changing the selection.
+   */
+  const renderProgramList = (state) => {
+    const keep = state.programs ? new Set(state.programs) : null;
+    const withSends = programsWithSends(state);
+    return programs.map((p) => {
+      const b = p.statuses.map((s) => `<span class="gs-badge">${esc(engine.statusLabel(s))}</span>`).join("") + groupBadge(p);
+      const dim = state.statuses && !p.statuses.some((s) => state.statuses.includes(s)) ? "status" : withSends.has(p.id) ? null : "no-sends";
+      const why = dim === "status" ? "hidden by status" : dim === "no-sends" ? "no sends in these months" : null;
+      return `<label class="gs-prog"${dim ? ` data-dim="${dim}"` : ""}><input type="checkbox" data-f="program" value="${esc(p.id)}"${attr("checked", !keep || keep.has(p.id))}> <span class="gs-prog-name">${esc(p.name ?? p.id)}</span> ${b}${why ? ` <span class="gs-dim-why">${why}</span>` : ""}</label>`;
+    }).join("");
+  };
   const pointer = (reason, text) => `<span class="gs-pointer" data-pointer="${esc(reason)}">${esc(text)}</span>`;
   /** The status picker's button text: the statuses in force, in words. */
   const renderStatusSummary = (state) => {
@@ -1054,15 +1136,10 @@ export function createDashboard(engine, model) {
     }
     if (offers.programs) {
       // The program picker: a popover that opens on click (ruled 2026-10-10); closed, its list is out of the tab order.
-      const keep = state.programs ? new Set(state.programs) : null;
-      const rows = programs.map((p) => {
-        const b = p.statuses.map((s) => `<span class="gs-badge">${esc(engine.statusLabel(s))}</span>`).join("") + groupBadge(p);
-        return `<label class="gs-prog"><input type="checkbox" data-f="program" value="${esc(p.id)}"${attr("checked", !keep || keep.has(p.id))}> <span class="gs-prog-name">${esc(p.name ?? p.id)}</span> ${b}</label>`;
-      });
       parts.push(filter("Programs",
         `<details class="gs-picker gs-pop-host" data-picker><summary class="gs-btn"><span class="gs-count" data-region="count">${renderCount(state)}</span> &#9662;</summary>` +
           `<div class="gs-pop"><p class="gs-pop-head">Every program with a send in the window</p><div class="gs-picker-tools"><input type="search" data-f="search" placeholder="Search programs" aria-label="Search programs"> <button type="button" data-act="all">Select all</button> <button type="button" data-act="none">Select none</button></div>` +
-          `<div class="gs-proglist">${rows.join("")}</div></div></details>`));
+          `<div class="gs-proglist" data-region="proglist">${renderProgramList(state)}</div></div></details>`));
     }
     if (offers.group && (supergroups.length || groups.length)) {
       parts.push(filter("Group", `<select data-f="sg" aria-label="Supergroup">${option("", "Every supergroup", state.sg == null)}${supergroups.map((label, i) => option(i, label, i === state.sg)).join("")}</select> <select data-f="g" data-region="groupOptions" aria-label="Group">${renderGroupOptions(state)}</select>`));
@@ -1100,19 +1177,30 @@ export function createDashboard(engine, model) {
     const scope = scopeOf(state);
     const showing = state.statuses ? (state.statuses.length ? state.statuses.map(engine.statusLabel).join(", ") : "no status") : "every status";
     const when = state.from === state.to ? state.from : `${state.from} to ${state.to}`;
-    return `${esc(renderCount(state))}. ${plural(scope.programs, "program")} shown. ${plural(scope.programsHiddenByStatus, "program")} hidden by status (showing ${esc(showing)}). Months ${esc(when)}; ${state.external ? "external recipients only" : "every recipient"}.`;
+    // "Shown" counts the programs with a row under the filters in force (F-505); a kept program with no send in the
+    // chosen months is said apart, so the count agrees with the Programs table.
+    const noSends = scope.programs - scope.programsWithRows;
+    return `${esc(renderCount(state))}. ${plural(scope.programsWithRows, "program")} shown${noSends > 0 ? ` (${plural(noSends, "selected program")} with no sends in these months)` : ""}. ${plural(scope.programsHiddenByStatus, "program")} hidden by status (showing ${esc(showing)}). Months ${esc(when)}; ${state.external ? "external recipients only" : "every recipient"}.`;
   };
 
-  // ── Banners: stale data, and a health pull that was asked for and did not complete ──
-  /** A clock the stale banner reads: null in Node (the pre-render has no now); mount sets it to the browser's. */
+  // ── The header's age, and a health pull that was asked for and did not complete ──
+  // No stale banner and no cadence (ruled 2026-10-12, F-511 ruling 11): the header says when the data was pulled and
+  // how many days ago, and that the pages are not live; the refresh is the admin's, by hand.
+  /** A clock the age reads: null in Node (the pre-render has no now); mount sets it to the browser's. */
   let clock = null;
-  const renderStale = () => {
+  const renderAge = () => {
     const now = typeof clock === "function" ? clock() : null;
     const pulled = Date.parse(snapshot.meta.pulledAt);
     if (now == null || !Number.isFinite(pulled)) return "";
     const ageDays = Math.floor((now - pulled) / MS_PER_DAY);
-    if (ageDays <= model.freshness.maxAgeDays) return "";
-    return `<div class="gs-banner gs-banner-stale" role="status" data-banner="stale"><p>Stale: this data was pulled ${plural(ageDays, "day")} ago. The dashboard is refreshed ${esc(model.freshness.cadenceText)} and is stale after ${plural(model.freshness.maxAgeDays, "day")}.</p>${howTo ? renderLine(COPY_LINES.refresh(model.slug)) : ""}</div>`;
+    return `, ${ageDays <= 0 ? "today" : ageDays === 1 ? "1 day ago" : `${ageDays} days ago`},`;
+  };
+  /** The header's line: the engine's data-pulled sentence with the age after the time, then that the pages are not live. */
+  const renderPulled = () => {
+    const line = engine.dataPulledLine(snapshot);
+    const cut = line.indexOf(" from ");
+    const withAge = cut > 0 ? `${esc(line.slice(0, cut))}<span data-region="age">${renderAge()}</span>${esc(line.slice(cut))}` : esc(line);
+    return `${withAge} These pages are not live: they change only when the dashboard is refreshed.`;
   };
   /** Decided from the spec (the page's Health tab is on), never from a flag: a health pull that was asked for and did not complete is flagged at page level (ruled 2026-10-04). */
   const renderHealthBanner = () => {
@@ -1194,14 +1282,24 @@ export function createDashboard(engine, model) {
     ];
     section("provenance", "Where the data came from", `<dl class="gs-prov">${prov.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join("")}</dl>`);
     section("caveats", "Caveats", renderCaveats());
-    section("refresh", "How to refresh", `<p>${howTo ? `Run <code>${esc(COPY_LINES.refresh(model.slug))}</code> from the workspace, with a gs-admin login; the /gs-superadmin:email-engagement skill runs the same command.` : `An admin refreshes this page ${esc(model.freshness.cadenceText)}; the data-pulled line at the top says when it was last done.`}</p>`);
-    // A contents line first, then each section under its own anchor.
+    // Refreshes are manual (ruled 2026-10-12), said in the admin's terms: the ruled wording of 2026-10-13 (F-511
+    // instance 27), drawn from HOW_TO_REFRESH — the one data the closing step and the save summary read too — as the
+    // stepped form, the refresh line with its Copy button. The leaders' page gets the statement alone.
+    const howToRefresh = () => {
+      const h = HOW_TO_REFRESH(model.slug, model.kb);
+      return `<p>${esc(h.lead)}</p><ol class="gs-howto">${h.steps.map((s) => `<li>${typeof s === "string" ? esc(s) : `${esc(s.before)}${renderLine(s.line)}${esc(s.after)}`}</li>`).join("")}</ol><p>${esc(h.seeing)}</p><p>${esc(h.session)}</p>`;
+    };
+    section("refresh", "How to refresh", howTo ? howToRefresh() : `<p>An admin refreshes this page by hand; the data-pulled line at the top says when it was last done.</p>`);
+    // The fixed statement of what the dashboard is (ruled 2026-10-12, F-511 rulings 2 and 3), the admin's own sentence
+    // when one was set (`change <slug> purpose=…`), the data-pulled line, then a contents line and each section under its own anchor.
+    const what = `This dashboard shows email engagement from the tenant's send log: comparisons across programs and periods, for every program it covers. It is one dashboard with one pull, built as an admin page and a leaders' page, and it is refreshed by hand; the data is as of the pull named below.`;
+    const purpose = model.about.purpose ? `<p class="gs-purpose">${esc(model.about.purpose)}</p>` : "";
     const toc = `<ul class="gs-toc">${sections.map((s) => `<li><a href="#about-${s.id}">${esc(s.title)}</a></li>`).join("")}</ul>`;
-    return `<section class="gs-about"><h2>About this page</h2><p>${esc(engine.dataPulledLine(snapshot))}</p>${toc}</section>` + sections.map((s) => `<section class="gs-about" id="about-${s.id}"><h2>${esc(s.title)}</h2>${s.body}</section>`).join("");
+    return `<section class="gs-about"><h2>About this page</h2><p>${what}</p>${purpose}<p>${esc(engine.dataPulledLine(snapshot))}</p>${toc}</section>` + sections.map((s) => `<section class="gs-about" id="about-${s.id}"><h2>${esc(s.title)}</h2>${s.body}</section>`).join("");
   };
   const renderPane = (tab, state, ui) => {
     // An offered tab is an invitation: its pane is the notice, and nothing else.
-    if (tab.state === "offered") return renderNotice(lackFacts("tab-off", { held: !!tab.held }), { heading: tab.meaning });
+    if (tab.state === "offered") return renderNotice(lackFacts("tab-off", { held: !!tab.held, tab: tab.index }), { heading: tab.meaning });
     if (tab.id === "about") return renderAbout();
     const own = panels.filter((p) => p.tab === tab.id);
     if (!own.length) return `<p class="gs-muted">${esc(tab.meaning)}</p>`; // the writer refuses such a spec (F-486): reached by no built page
@@ -1217,8 +1315,8 @@ export function createDashboard(engine, model) {
   // read as one; a page draws the element only when its spec gave a logo.
   const renderLogo = () => (model.look?.logo ? `<${"img"} class="gs-logo" ${"src"}="${esc(model.look.logo)}" alt="">` : "");
   const renderApp = (state, ui) =>
-    `<header class="gs-head">${renderLogo()}<h1>${esc(model.title)}</h1><p class="gs-sub">${esc(page.title)}</p><p class="gs-pulled">${esc(engine.dataPulledLine(snapshot))}</p></header>` +
-    `<div data-region="stale">${renderStale()}</div>${renderHealthBanner()}` +
+    `<header class="gs-head">${renderLogo()}<h1>${esc(model.title)}</h1><p class="gs-sub">${esc(page.title)}</p><p class="gs-pulled">${renderPulled()}</p></header>` +
+    `${renderHealthBanner()}` +
     `<nav class="gs-tabs" data-region="tabs" aria-label="Tabs">${renderTabs(state)}</nav>` +
     `<section class="gs-filters" data-region="filters" aria-label="Filters">${renderFilters(state)}</section>` +
     `<div class="gs-panes" data-region="panes">${renderPanes(state, ui)}</div>` +
@@ -1227,10 +1325,10 @@ export function createDashboard(engine, model) {
   return {
     model, snapshot, programs, panels, tabs, supergroups, groups, healthDayChoices,
     defaultState, clean, hashOf, stateFromHash, filtersOf, run, scopeOf, programMatches,
-    lackFacts, renderNotice, renderTablePanel, renderPanel, renderDrawer, visibleCols, csvOf, colsKey, renderApp, renderAbout, renderStale, renderHealthBanner, caveats,
-    /** @param {?(() => number)} fn the clock the stale banner reads (null = no clock, no banner) */
+    lackFacts, renderNotice, renderTablePanel, renderPanel, renderDrawer, visibleCols, csvOf, colsKey, renderApp, renderAbout, renderAge, renderPulled, renderHealthBanner, caveats,
+    /** @param {?(() => number)} fn the clock the header's age reads (null = no clock, no age) */
     setClock: (fn) => { clock = fn; },
-    regions: { filters: renderFilters, summary: renderSummary, tabs: renderTabs, panes: renderPanes, count: renderCount, groupOptions: renderGroupOptions, stale: renderStale, statusSummary: renderStatusSummary },
+    regions: { filters: renderFilters, summary: renderSummary, tabs: renderTabs, panes: renderPanes, count: renderCount, proglist: renderProgramList, groupOptions: renderGroupOptions, age: renderAge, statusSummary: renderStatusSummary },
   };
 }
 /** @param {string} day YYYY-MM-DD @returns {[number, number, number]} year, month index, day */
@@ -1304,7 +1402,7 @@ export function cronWords(expr) {
 const BOM = String.fromCharCode(0xfeff);
 /**
  * Wire a page: listeners on its root, the viewer's column choices, the hash,
- * the clock the stale banner reads.
+ * the clock the header's age reads.
  * @param {ReturnType<typeof createDashboard>} app @param {*} root the page's root element @param {*} g the window
  */
 export function mount(app, root, g) {
@@ -1398,15 +1496,23 @@ export function mount(app, root, g) {
     // A month range given backwards is shown the right way round, so the bar is drawn again; so is the quick month
     // button, which depends on the range. A status box repaints the picker's summary; the account control is a
     // filter of the panes alone.
-    commit(f === "sg" ? ["groupOptions", "count", "summary", "panes"] : f === "from" || f === "to" || f === "current" ? ["filters", "summary", "panes"] : f === "he" ? ["panes"] : f === "status" ? ["statusSummary", "count", "summary", "panes"] : ["count", "summary", "panes"]);
+    // A status box also redraws the program list, whose rows dim by status (F-505); the months redraw the whole bar.
+    commit(f === "sg" ? ["groupOptions", "count", "summary", "panes"] : f === "from" || f === "to" || f === "current" ? ["filters", "summary", "panes"] : f === "he" ? ["panes"] : f === "status" ? ["statusSummary", "count", "proglist", "summary", "panes"] : ["count", "summary", "panes"]);
+    // The redrawn list keeps the search's hidden rows (the box keeps its text; the rows are new elements).
+    if (f === "status") applySearch();
   });
-  root.addEventListener("input", (ev) => {
-    const t = ev.target;
-    if (t?.getAttribute?.("data-f") !== "search") return;
-    const hits = app.programMatches(t.value);
+  /** Hide the rows the search box's text does not match; the list is redrawn on a status change, so this runs again then. */
+  const applySearch = () => {
+    const box = root.querySelector('[data-f="search"]');
+    if (!box) return;
+    const hits = app.programMatches(box.value);
     all(".gs-prog").forEach((label, i) => {
       label.hidden = !hits[i];
     });
+  };
+  root.addEventListener("input", (ev) => {
+    if (ev.target?.getAttribute?.("data-f") !== "search") return;
+    applySearch();
   });
   // The Templates tab's search: the form's words and options become the state (and the hash), never a request.
   root.addEventListener("submit", (ev) => {
@@ -1534,10 +1640,10 @@ export function mount(app, root, g) {
     full();
   });
 
-  // The pre-render IS the default view; anything else is drawn now. Then the stale banner reads the clock, and the controls come alive.
+  // The pre-render IS the default view; anything else is drawn now. Then the header's age reads the clock, and the controls come alive.
   if (lastHash || Object.keys(ui.cols).length) full();
   app.setClock(() => (g.Date ?? Date).now());
-  paint(["stale"]);
+  paint(["age"]);
   root.disabled = false;
 }
 

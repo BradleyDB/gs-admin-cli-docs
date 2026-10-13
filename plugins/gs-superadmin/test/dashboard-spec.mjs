@@ -20,6 +20,7 @@ import { makeTempDir, removeTempDir, writeFiles, runNode } from "../../../test/r
 import {
   defaultSpec, validateSpec, describeSpec, describePanel, openSpec, setPath, kbTenantHost, presetPanels, panelKnobs, SPEC_DESCRIPTIONS, SPEC_FILE, DRAFT_FILE, T11_SCHEMA_VERSION,
   ADAPTERS, FILTERS, TABS, CADENCES, PANEL_TYPES, PRESETS, HEALTH_PANEL_TYPES, TEMPLATE_PANEL_TYPES, KNOBBED_PANEL_TYPES, DATE_DEFAULTS, pageTemplateContent,
+  FRESHNESS_BY_CADENCE, windowOf, accountLists, accountFields, kbSettings, specStore, SpecRefusal,
 } from "../scripts/dashboard-spec.mjs";
 import { METRICS } from "../scripts/engagement-query.mjs";
 
@@ -95,8 +96,10 @@ try {
       isDeepStrictEqual(readJson(draftAt(KB, "program-health")).spec, defaultSpec({ slug: "program-health", title: "Program health", owner: "Acme CS Ops", tenantHost: "acme.gainsightcloud.com" })), started.json ?? started.stderr);
   {
     const d = defaultSpec({ slug: "x", tenantHost: "acme.gainsightcloud.com" });
-    check("defaults: 13 months, 2 months read again, R24's account numbers kept but unused, silent after 30 days, stale after 45, every status on both pages (the admin page opens on every program that sent, ruled 2026-10-05), the admin page on the whole window and the leaders' page on closed months, Health and Templates off on the exec page, About on both, no panel of their own (the presets' draw)",
-      d.sources[0].params.windowMonths === 13 && d.sources[0].params.repullMonths === 2 && d.sources[0].params.stepDetail === false && isDeepStrictEqual(d.accounts, { pull: false, busiest: 20, lowEngagement: 15, mostBounces: 15, lowEngagementMinDelivered: 10 }) &&
+    check("defaults: 13 months (a rolling window), 2 months read again, R24's per-program account numbers OFF (0, ruled 2026-10-05) with the three cross-program lists of 25 and no company field, the knowledge base re-documented up to 50 per refresh, silent after 30 days, stale after 45 (monthly's), every status on both pages (the admin page opens on every program that sent, ruled 2026-10-05), the admin page on the whole window and the leaders' page on closed months, Health and Templates off on the exec page, About on both, no panel of their own (the presets' draw)",
+      d.sources[0].params.windowMonths === 13 && isDeepStrictEqual(d.sources[0].params.window, { kind: "rolling" }) && d.sources[0].params.repullMonths === 2 && d.sources[0].params.stepDetail === false && d.sources[0].params.quietDueDays === 5 && d.sources[0].params.samplePrograms === 25 && isDeepStrictEqual(d.sources[0].params.expectedReasons, []) &&
+        isDeepStrictEqual(d.accounts, { pull: false, busiest: 0, lowEngagement: 0, mostBounces: 0, lowEngagementMinDelivered: 10, lists: [{ kind: "most-engaged", n: 25, floor: 10 }, { kind: "least-engaged", n: 25, floor: 10 }, { kind: "most-bounced", n: 25, floor: 0 }], fields: [] }) &&
+        isDeepStrictEqual(d.kb, { redocument: { enabled: true, cap: 50 } }) && FRESHNESS_BY_CADENCE.monthly === 45 &&
         d.health.silentDays === 30 && d.freshness.maxAgeDays === 45 && d.refresh.cadence === "monthly" && isDeepStrictEqual(d.pages.map((p) => [p.preset, p.statusDefault, p.dateDefault, p.tabs.filter((t) => t.enabled).map((t) => t.id).join(), p.panels.length]), [["admin", null, "window", "engagement,health,templates,about", 0], ["exec", null, "closed-months", "engagement,about", 0]]) &&
         d.pages[1].accountNames === false && d.publish.target === "none" && validateSpec(d).problems.length === 0);
     // The presets' own panels (DSH-4, choice A of 2026-10-09): valid as specs, every on tab given at least one, the health set shared.
@@ -145,6 +148,10 @@ try {
     check("describePanel says each panel exactly: a query panel's type, metrics, grouping and top-N, a health view's type and every knob's sentence from the type's own table, so a knob cannot sit in a spec without words for it",
       describePanel(d, adminPanels[3]) === `"Programs" on the engagement tab: a table of Sent, Unique recipients, Accounts reached, Delivered, Opened, Open rate, Clicked, Click rate, Bounced, Send failures, Error rate by program.` &&
         describePanel(d, execPanels[4]) === `"Top programs by open rate" on the engagement tab: a table of Sent, Open rate by program, the top 10 by Open rate.` &&
+        // F-508: the direction names the end of the ranking a limit keeps, pinned on both preset directions.
+        describePanel(d, execPanels[5]) === `"Lowest open rates" on the engagement tab: a table of Sent, Open rate by program, the 10 lowest by Open rate.` &&
+        describePanel(d, adminPanels.find((p) => p.id === "least-engaged")).endsWith("by account, the 25 lowest by Open rate.") && describePanel(d, adminPanels.find((p) => p.id === "most-engaged")).endsWith("by account, the top 25 by Open rate.") && describePanel(d, adminPanels.find((p) => p.id === "most-bounced")).endsWith("by account, the top 25 by Bounced.") &&
+        [...adminPanels, ...execPanels].filter((p) => p.query?.limit != null).every((p) => describePanel(d, p).includes(p.query.sort?.[0]?.dir === "asc" ? `the ${p.query.limit} lowest by` : `the top ${p.query.limit} by`)) &&
         describePanel(d, adminPanels[11]) === `"Program health" on the health tab: ${PANEL_TYPES["health-silent"]}; the no-send threshold starts at 30 days (14, 30, 60 and 90 are one click away).` &&
         describePanel(d, { ...adminPanels[14], knobs: { months: 12 } }).endsWith("each program's sends over the last 12 months.") && describeSpec(d).find((x) => x.label === "Pages").text.length === 2 + adminPanels.length + execPanels.length &&
         describePanel(d, adminPanels[16]) === `"Emails: text and search" on the templates tab: ${PANEL_TYPES.templates}; a search hit shows 50 characters of context either side.` && describePanel(d, { ...adminPanels[16], knobs: { snippet: 40 } }).endsWith("shows 40 characters of context either side.") &&
@@ -195,12 +202,13 @@ try {
   const valid = run("validate", ["--slug", "program-health"]);
   check("validate: a valid draft passes with exit 0; with accounts off it NOTES that the selection numbers are unused, without calling it a problem",
     valid.code === 0 && valid.json?.ok === true && valid.json.which === "draft" && valid.json.problems.length === 0 && valid.json.notes.length === 0 &&
-      validateSpec(defaultSpec({ slug: "x", tenantHost: "acme.gainsightcloud.com" })).notes.some((n) => /accounts\.pull is false: the four account-selection numbers are kept and unused/.test(n)), valid.json ?? valid.stderr);
+      validateSpec(defaultSpec({ slug: "x", tenantHost: "acme.gainsightcloud.com" })).notes.some((n) => /accounts\.pull is false: the account-selection numbers and the customer lists are kept and unused/.test(n)), valid.json ?? valid.stderr);
   const shown = run("show", ["--slug", "program-health"]);
   const line = (label) => shown.json?.settings.find((x) => x.label === label)?.text.join(" ") ?? "";
   check("show: the spec in words, one entry per setting — the programs selector, the internal domain, the unsubscribe link, accounts on with its numbers, each group rule in order, the silent threshold, each page's tabs and status default, the cadence",
     shown.code === 0 && /programs that have sent since 90 days before each refresh/.test(line("Programs")) && /acme\.com are internal/.test(line("Internal recipients")) && /www\.acme\.com\/mail-settings are unsubscribe clicks/.test(line("Unsubscribe link")) &&
-      /20 busiest accounts, the 15 lowest open rates among accounts with at least 10 delivered, and the 15 with the most bounces/.test(line("Accounts")) && /1\. Supergroup "Surveys": programs that send a survey\./.test(line("Groups")) && /1 program placed by hand/.test(line("Groups")) &&
+      /Customer lists are on: across programs over the whole window, the 25 most engaged \(at least 10 delivered\), the 25 least engaged \(at least 10 delivered\), the 25 most bounced; every kept account has its own rows/.test(line("Accounts")) && !/Per program as well/.test(line("Accounts")) && /1\. Supergroup "Surveys": programs that send a survey\./.test(line("Groups")) && /1 program placed by hand/.test(line("Groups")) &&
+      /The last 13 months, the current one included/.test(line("Window")) && /re-documents the programs the knowledge base is behind on .* up to 50 assets per refresh/.test(line("Knowledge base")) && /5 due days admitting nobody/.test(line("Failure settings")) &&
       /no send in 45 days/.test(line("Silent programs")) && /Shows Active programs at first/.test(line("Pages")) && /programs of every status at first/.test(line("Pages")) && /3 panels/.test(line("Pages")) && /No panel of its own: the exec preset's 6 panels/.test(line("Pages")) && /every month.*first Monday/.test(line("Refresh")), shown.json?.settings ?? shown.stderr);
   const saved = run("save", ["--slug", "program-health"]);
   const spec = existsSync(specAt(KB, "program-health")) ? readJson(specAt(KB, "program-health")) : null;
@@ -275,8 +283,57 @@ try {
 
   // ── list, and the refusals around the KB ───────────────────────────────────
   const listed = run("list", []);
-  check("list: every dashboard of the KB with whether it is saved and whether a draft is in progress, its title, cadence and pages",
-    listed.code === 0 && listed.json?.tenantHost === "acme.gainsightcloud.com" && isDeepStrictEqual(listed.json.dashboards.find((d) => d.slug === "program-health"), { slug: "program-health", saved: true, draft: false, title: "Acme program health", cadence: "monthly", pages: ["admin", "exec"] }), listed.json ?? listed.stderr);
+  check("list: every dashboard of the KB with whether it is saved and whether a draft is in progress, its title and pages — and no cadence (ruled 2026-10-12: refreshes are manual; F-511 instance 22)",
+    listed.code === 0 && listed.json?.tenantHost === "acme.gainsightcloud.com" && isDeepStrictEqual(listed.json.dashboards.find((d) => d.slug === "program-health"), { slug: "program-health", saved: true, draft: false, title: "Acme program health", pages: ["admin", "exec"], draftBy: null, draftUpdatedAt: null, draftAnswered: null }) && !JSON.stringify(listed.json).includes("cadence"), listed.json ?? listed.stderr);
+  // ── The draft's holder (ruled 2026-10-05, DSH-1 item 8) ───────────────────
+  {
+    const mine = run("draft", ["--slug", "held", "--by", "ana"]);
+    const theirs = run("draft", ["--slug", "held", "--by", "ben"]);
+    const theirSet = set("held", [["title", "Ben's"]], ["--by", "ben"]);
+    const resumedByAna = run("draft", ["--slug", "held", "--by", "ana"]);
+    const taken = run("draft", ["--slug", "held", "--by", "ben", "--take-over"]);
+    const nowBen = set("held", [["title", "Ben's"]], ["--by", "ben"]);
+    const lst = run("list", []).json?.dashboards.find((d) => d.slug === "held");
+    check("a draft records its holder; another holder's draft (or set) is refused naming the holder and the time without --take-over, the same holder resumes it, a take-over records whom it was taken from and the new holder continues; list shows the draft's holder and date",
+      mine.code === 0 && mine.json?.by === "ana" && theirs.code === 1 && /held by ana \(last changed /.test(theirs.stderr) && theirSet.code === 1 && /held by ana/.test(theirSet.stderr) && resumedByAna.code === 0 && resumedByAna.json?.state === "resumed" &&
+        taken.code === 0 && taken.json?.by === "ben" && taken.json.takenOverFrom === "ana" && nowBen.code === 0 && lst?.draft === true && lst.draftBy === "ben" && typeof lst.draftUpdatedAt === "string" && lst.draftAnswered === 0,
+      [mine.json, theirs.stderr?.slice(-200), taken.json, lst]);
+    const drafted = readJson(draftAt(KB, "held"));
+    check("the holder is the draft file's own field (`by`), beside startedAt and updatedAt; the spec inside is untouched by it", drafted.by === "ben" && !("by" in drafted.spec) && validateSpec(drafted.spec).problems.length === 0);
+    run("save", ["--slug", "held"]);
+  }
+  // ── The additive fields (S5): the window kind, the customer lists and company fields, the knowledge base ──
+  {
+    const base = defaultSpec({ slug: "x", tenantHost: "acme.gainsightcloud.com" });
+    const withSet = (edit) => { const s = structuredClone(base); edit(s); return validateSpec(s).problems.map((p) => `${p.path}: ${p.problem}`); };
+    check("the window kind: rolling, fixed {from, to} and since {from} are each valid; an unknown kind, a month not as YYYY-MM, a fixed window ending before it starts, and a field the kind lacks are refused by field; the sentence says each kind; a spec with no window field is rolling",
+      withSet((s) => { s.sources[0].params.window = { kind: "fixed", from: "2025-01", to: "2025-12" }; }).length === 0 && withSet((s) => { s.sources[0].params.window = { kind: "since", from: "2024-07" }; }).length === 0 &&
+        withSet((s) => { s.sources[0].params.window = { kind: "weekly" }; }).some((p) => /params\.window: must be/.test(p)) && withSet((s) => { s.sources[0].params.window = { kind: "fixed", from: "2025-13", to: "2025-12" }; }).some((p) => /window\.from: must be a month/.test(p)) &&
+        withSet((s) => { s.sources[0].params.window = { kind: "fixed", from: "2025-12", to: "2025-01" }; }).some((p) => /window\.to: must not be earlier/.test(p)) && withSet((s) => { s.sources[0].params.window = { kind: "rolling", from: "2025-01" }; }).some((p) => /window\.from: is not a field of a rolling window/.test(p)) &&
+        (() => { const s = structuredClone(base); s.sources[0].params.window = { kind: "fixed", from: "2025-01", to: "2025-12" }; return /The months from 2025-01 to 2025-12, the same every refresh/.test(describeSpec(s).find((x) => x.label === "Window").text[0]); })() &&
+        (() => { const s = structuredClone(base); s.sources[0].params.window = { kind: "since", from: "2024-07" }; return /Every month from 2024-07 to the current one/.test(describeSpec(s).find((x) => x.label === "Window").text[0]); })() &&
+        (() => { const s = structuredClone(base); delete s.sources[0].params.window; return validateSpec(s).problems.length === 0 && isDeepStrictEqual(windowOf(s.sources[0].params), { kind: "rolling" }); })());
+    check("the customer lists are data: each {kind, n, floor, per?}; an unknown kind, a size of 0, a per that names no company field, and an unknown key are refused by field; a company field must be an API name; a spec with neither field takes the three defaults and no field",
+      withSet((s) => { s.accounts.lists = [{ kind: "most-bounced", n: 10, floor: 0 }]; }).length === 0 && withSet((s) => { s.accounts.fields = ["Industry"]; s.accounts.lists = [{ kind: "least-engaged", n: 5, floor: 3, per: "Industry" }]; }).length === 0 &&
+        withSet((s) => { s.accounts.lists = [{ kind: "churn", n: 10, floor: 0 }]; }).some((p) => /lists\[0\]\.kind: must be one of most-engaged, least-engaged, most-bounced/.test(p)) && withSet((s) => { s.accounts.lists = [{ kind: "most-bounced", n: 0, floor: 0 }]; }).some((p) => /lists\[0\]\.n: must be a whole number from 1/.test(p)) &&
+        withSet((s) => { s.accounts.lists = [{ kind: "most-engaged", n: 5, floor: 1, per: "Region" }]; }).some((p) => /lists\[0\]\.per: must name one of accounts\.fields/.test(p)) && withSet((s) => { s.accounts.lists = [{ kind: "most-engaged", n: 5, floor: 1, top: 1 }]; }).some((p) => /lists\[0\]\.top: is not a field of a customer list/.test(p)) &&
+        withSet((s) => { s.accounts.fields = ["Industry Name"]; }).some((p) => /fields\[0\]: must be a company field's API name/.test(p)) &&
+        (() => { const s = structuredClone(base); delete s.accounts.lists; delete s.accounts.fields; return validateSpec(s).problems.length === 0 && accountLists(s).length === 3 && accountLists(s)[1].kind === "least-engaged" && accountFields(s).length === 0; })());
+    check("the knowledge-base settings: kb.redocument {enabled, cap}; a cap below 0 and an unknown key are refused; absent is on with a cap of 50; the sentence says what a refresh re-documents",
+      withSet((s) => { s.kb = { redocument: { enabled: false, cap: 0 } }; }).length === 0 && withSet((s) => { s.kb = { redocument: { enabled: true, cap: -1 } }; }).some((p) => /kb\.redocument\.cap: must be a whole number from 0/.test(p)) && withSet((s) => { s.kb = { redocument: { enabled: true, cap: 5, budget: 1 } }; }).some((p) => /kb\.redocument\.budget: is not a field/.test(p)) &&
+        (() => { const s = structuredClone(base); delete s.kb; return validateSpec(s).problems.length === 0 && isDeepStrictEqual(kbSettings(s), { redocument: { enabled: true, cap: 50 } }); })() &&
+        /leaves the knowledge base alone/.test(describeSpec({ ...base, kb: { redocument: { enabled: false, cap: 50 } } }).find((x) => x.label === "Knowledge base").text[0]));
+    check("the failure settings: quietDueDays (1 up), samplePrograms (0 up) and expectedReasons (texts, no repeat) are checked; absent is valid; freshness by cadence is data (weekly 10, monthly 45, quarterly 120, manual the validator's upper bound)",
+      withSet((s) => { s.sources[0].params.quietDueDays = 0; }).some((p) => /quietDueDays: must be a whole number from 1/.test(p)) && withSet((s) => { s.sources[0].params.expectedReasons = ["a", "a"]; }).some((p) => /expectedReasons: lists a value twice/.test(p)) &&
+        (() => { const s = structuredClone(base); delete s.sources[0].params.quietDueDays; delete s.sources[0].params.samplePrograms; delete s.sources[0].params.expectedReasons; return validateSpec(s).problems.length === 0; })() &&
+        isDeepStrictEqual(FRESHNESS_BY_CADENCE, { weekly: 10, monthly: 45, quarterly: 120, manual: 3660 }) && validateSpec({ ...base, freshness: { maxAgeDays: FRESHNESS_BY_CADENCE.manual } }).problems.length === 0);
+    // The verbs as functions: the entry command imports them and never spawns the writer; the store refuses a folder that is no KB.
+    const store = specStore(KB);
+    check("specStore: the writer's verbs are functions (draft, set, validate, save, list, export, import) over one KB folder, each refusing with a SpecRefusal the CLI prints as one line; a folder that is no KB is refused at the store",
+      typeof store.startDraft === "function" && typeof store.setDraft === "function" && typeof store.save === "function" && typeof store.exportSpec === "function" && typeof store.importSpec === "function" && typeof store.listDashboards === "function" && store.tenantHost === "acme.gainsightcloud.com" &&
+        (() => { try { specStore(join(ROOT, "bare", "nokb")); return false; } catch (e) { return e instanceof SpecRefusal && /no _manifest\.json there/.test(e.message); } })() &&
+        (() => { try { store.setDraft("program-health", { sets: [["title", "x"]] }); return false; } catch (e) { return e instanceof SpecRefusal && /no draft of "program-health"/.test(e.message); } })());
+  }
   check("a folder that is not a tenant KB is refused, as are a missing --kb, a missing --slug, a slug that is not a plain name and an unknown mode; kbTenantHost reads the tenant from the manifest",
     run("draft", ["--slug", "x"], join(ROOT, "bare", "nokb")).code === 1 && runNode(SCRIPT, ["draft", "--slug", "x"]).status === 1 && run("draft", []).code === 1 && run("draft", ["--slug", "../up"]).code === 1 && run("frobnicate", ["--slug", "x"]).code === 1 &&
       kbTenantHost(KB) === "acme.gainsightcloud.com" && kbTenantHost(SBX) === "acme--sbx.gainsightcloud.com");
@@ -309,7 +366,8 @@ try {
         const other = structuredClone(base);
         other.freshness.maxAgeDays = 7;
         const diff = describeSpec(other).filter((d, i) => !isDeepStrictEqual(d.text, said[i].text)).map((d) => d.label);
-        return isDeepStrictEqual(diff, ["Freshness"]) && /more than 7 days old/.test(describeSpec(other).find((d) => d.label === "Freshness").text[0]);
+        // Freshness is kept in the contract and read by nothing (ruled 2026-10-12): its sentence says so, with the value.
+        return isDeepStrictEqual(diff, ["Freshness"]) && /^7 days; not read by the pages/.test(describeSpec(other).find((d) => d.label === "Freshness").text[0]) && /not read: refreshes are run by hand/.test(said.find((d) => d.label === "Refresh").text[0]);
       })(), said.filter((d) => !d.text.length));
     check("every value of an enum has its meaning as data: adapters, filters, tabs, cadences, panel types, presets — and a panel's metrics are the engine's own registry",
       [ADAPTERS, FILTERS, TABS, CADENCES, PANEL_TYPES].every((e) => Object.values(e).every((m) => typeof m === "string" && m.length > 5)) && Object.values(PRESETS).every((p) => p.meaning.length > 10 && isDeepStrictEqual(Object.keys(p.page.tabs), Object.keys(TABS))) &&

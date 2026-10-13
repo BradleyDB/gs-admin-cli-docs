@@ -11,6 +11,9 @@
       "adapter": "jo-engagement",
       "params": {
         "windowMonths": 13,
+        "window": {
+          "kind": "rolling"
+        },
         "selector": {
           "sentSince": "90d",
           "names": [],
@@ -27,7 +30,10 @@
           "co-01"
         ],
         "stepDetail": false,
-        "repullMonths": 2
+        "repullMonths": 2,
+        "quietDueDays": 5,
+        "samplePrograms": 25,
+        "expectedReasons": []
       }
     }
   ],
@@ -56,10 +62,28 @@
   ],
   "accounts": {
     "pull": true,
-    "busiest": 20,
-    "lowEngagement": 15,
-    "mostBounces": 15,
-    "lowEngagementMinDelivered": 10
+    "busiest": 0,
+    "lowEngagement": 0,
+    "mostBounces": 0,
+    "lowEngagementMinDelivered": 10,
+    "lists": [
+      {
+        "kind": "most-engaged",
+        "n": 25,
+        "floor": 10
+      },
+      {
+        "kind": "least-engaged",
+        "n": 25,
+        "floor": 10
+      },
+      {
+        "kind": "most-bounced",
+        "n": 25,
+        "floor": 0
+      }
+    ],
+    "fields": []
   },
   "groups": {
     "rules": [
@@ -118,6 +142,12 @@
   },
   "health": {
     "silentDays": 45
+  },
+  "kb": {
+    "redocument": {
+      "enabled": true,
+      "cap": 50
+    }
   },
   "pages": [
     {

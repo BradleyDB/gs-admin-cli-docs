@@ -244,7 +244,19 @@ const OLDSHORT = { id: "p-oldshort", name: "Acme Old Short Chain", model: "DRIPV
 //               expected) and flagged behind, named by honesty.kb and the kb-behind-tenant caveat
 const UNDOC = { id: "p-undoc", name: "Acme Undocumented Chain", model: "DRIPV2", modelName: "Email Chain", statuses: ["PROCESSING"], type: "CUSTOMER", folderId: "808", months: monthsBetween("2026-03", LAST_MONTH), accounts: [0, 2], perAccount: 1, fixedDay: "14", freshEntry: true, fixedState: "COMPLETED", noDoc: true, lastSync: "2026-09-14 10:15:00", schedules: [sched("0 15 10 1/1 * ? *")], steps: [{ stepId: "st-ud-1", stepName: "Undocumented note", order: 1, templateId: "tpl-undoc", variants: ["var-undoc"] }] };
 const BEHIND = { id: "p-behind", name: "Acme Behind Doc Chain", model: "DRIPV2", modelName: "Email Chain", statuses: ["PROCESSING"], type: "CUSTOMER", folderId: "808", months: monthsBetween("2026-03", LAST_MONTH), accounts: [1, 3], perAccount: 1, fixedDay: "14", freshEntry: true, modifiedDate: "2026-09-10T15:00:00.000Z", lastSync: "2026-09-14 08:01:00", schedules: [sched(DAILY)], steps: [{ stepId: "st-bh-1", stepName: "Behind doc note", order: 1, templateId: "tpl-behind", variants: ["var-behind"] }] };
-const SIGNALS = [ENDED, OVERDUE, NOBODY, REFUSED, STEPERR, DISABLED, TWOSCHED, STALEDOC, NEWCOHORT, SENDFAIL, OLDSHORT, UNDOC, BEHIND];
+// F-502 (ruled by Bradley at V2, 2026-10-10): the measured tenant schedules one-off sends as a DAILY cron boxed into one day
+// (68 of its 127 "recurring" programs), which read Schedule ended once the day had passed, while the same campaign run by
+// hand read Finished campaign. A window admitting exactly one run is one-time by its data:
+//   p-oneday    a daily cron whose window is one day (2026-07-14, 23 h 59 min), sent that month, everyone completed:
+//               "Finished campaign" with the one-day note, never "Schedule ended"; the grouping trait reads not recurring
+//   p-twoday    a daily cron whose window is TWO days (2026-06-10 to 2026-06-12), ended: it could have run twice, so it
+//               stays recurring and alarms "Schedule ended" (Bradley's hard-to-spot case: meant recurring, set too short)
+//   p-rerun     RE-RUN through one-day windows (2026-04-14 and 2026-06-16), sending in both months, everyone completed:
+//               one-time by its schedule, but hand-fed (F-491's taxonomy), so the grouping trait reads RECURRING
+const ONEDAY = { id: "p-oneday", name: "Acme One-day Blast", model: "DRIPV2", modelName: "Email Chain", statuses: ["PROCESSING"], type: "CUSTOMER", folderId: "808", months: ["2026-07"], accounts: [0, 1], perAccount: 1, fixedState: "COMPLETED", lastSync: "2026-07-14 08:01:00", schedules: [sched(DAILY, { startTime: 1783987200000, endTime: 1784073540000 })], steps: [{ stepId: "st-od-1", stepName: "One-day note", order: 1, templateId: "tpl-oneday", variants: ["var-oneday"] }] };
+const TWODAY = { id: "p-twoday", name: "Acme Two-day Chain", model: "DRIPV2", modelName: "Email Chain", statuses: ["PROCESSING"], type: "CUSTOMER", folderId: "808", months: ["2026-06"], accounts: [2, 3], perAccount: 1, fixedState: "COMPLETED", lastSync: "2026-06-11 08:01:00", schedules: [sched(DAILY, { startTime: 1781049600000, endTime: 1781222400000 })], steps: [{ stepId: "st-td-1", stepName: "Two-day note", order: 1, templateId: "tpl-twoday", variants: ["var-twoday"] }] };
+const RERUN = { id: "p-rerun", name: "Acme Re-run Blast", model: "DRIPV2", modelName: "Email Chain", statuses: ["PROCESSING"], type: "CUSTOMER", folderId: "808", months: ["2026-04", "2026-06"], accounts: [4, 5], perAccount: 1, fixedState: "COMPLETED", lastSync: "2026-06-16 08:01:00", schedules: [sched(DAILY, { startTime: 1776124800000, endTime: 1776211140000 }), sched(DAILY, { startTime: 1781568000000, endTime: 1781654340000 })], steps: [{ stepId: "st-rr-1", stepName: "Re-run note", order: 1, templateId: "tpl-rerun", variants: ["var-rerun"] }] };
+const SIGNALS = [ENDED, OVERDUE, NOBODY, REFUSED, STEPERR, DISABLED, TWOSCHED, STALEDOC, NEWCOHORT, SENDFAIL, OLDSHORT, UNDOC, BEHIND, ONEDAY, TWODAY, RERUN];
 // What the product writes on a participant who got in and fell off at a STEP (ao_participants.FailureReasons;
 // measured 2026-10-07, the Send Email step's own drops 2026-10-08), by the participant's state. `kind` is the
 // oracle's key. The first two DROP wordings keep their positions (the generator indexes them).
@@ -269,6 +281,7 @@ const TEMPLATE_NAMES = {
   "tpl-prefs": "Acme Prefs", "tpl-prefs-mix": "Acme Prefs Follow-up", "tpl-blast": "Acme Announcement", "tpl-quiet": "Acme Quiet",
   "tpl-quarter": "Acme Quarterly", "tpl-sporadic": "Acme Sporadic", "tpl-once": "Acme One-time", "tpl-lapsed": "Acme Digest",
   "tpl-ended": "Acme Ended", "tpl-overdue": "Acme Overdue", "tpl-nobody": "Acme Nobody", "tpl-refused": "Acme Refused", "tpl-steperr": "Acme Step Error", "tpl-disabled": "Acme Disabled",
+  "tpl-oneday": "Acme One-day", "tpl-twoday": "Acme Two-day", "tpl-rerun": "Acme Re-run",
   "tpl-twosched": "Acme Two-schedule", "tpl-staledoc": "Acme Stale Doc", "tpl-newcohort": "Acme New Cohort", "tpl-sendfail": "Acme Send Fail", "tpl-oldshort": "Acme Old Short", "tpl-undoc": "Acme Undocumented", "tpl-behind": "Acme Behind Doc",
 };
 // Click behaviour per template (the five R19 fixtures ride on these):
@@ -390,7 +403,9 @@ export function templatePayload(id) {
 const TEMPLATE_DOCS = { "tpl-nps": "2026-09-01", "tpl-renew": "2026-09-01", "tpl-renew-b": "2026-09-01", "tpl-welcome": "2026-08-20" };
 export const TEMPLATES_DOMAIN = "journey-email-templates";
 
-const ACCOUNTS = Array.from({ length: 12 }, (_, i) => ({ Gsid: `co-${pad(i + 1)}`, Name: `Acme Customer ${pad(i + 1)}` }));
+// Industry: the fictional tenant's own company field (S5: a spec may name company fields to read beside the name).
+export const ACCOUNT_INDUSTRIES = ["Software", "Retail", "Finance"];
+const ACCOUNTS = Array.from({ length: 12 }, (_, i) => ({ Gsid: `co-${pad(i + 1)}`, Name: `Acme Customer ${pad(i + 1)}`, Industry: ACCOUNT_INDUSTRIES[i % 3] }));
 const INTERNAL_PEOPLE = [
   { id: "pe-int-1", email: `ann@${INTERNAL_DOMAIN}` },
   { id: "pe-int-2", email: `raj@${INTERNAL_DOMAIN}` },
@@ -706,7 +721,7 @@ export function buildTenant(variant = {}) {
       ["Gsid", "AOParticipantId", "Responded", "RespondedDate", "ResponseStatus", "SurveyOpened", "TestParticipant"],
       { Gsid: "GSID", AOParticipantId: "LOOKUP", Responded: "BOOLEAN", RespondedDate: "DATETIME", SurveyOpened: "BOOLEAN", TestParticipant: "BOOLEAN" }
     ),
-    company: fields(["Gsid", "Name"], { Gsid: "GSID" }),
+    company: fields(["Gsid", "Name", "Industry"], { Gsid: "GSID" }),
     ao_failed_participants: fields(["Gsid", "AdvancedOutreachId", "FailureReasons", "OccurrenceCount", "ModifiedAt"], { Gsid: "GSID", FailureReasons: "JSONSTRING", OccurrenceCount: "NUMBER", ModifiedAt: "DATETIME" }),
     // FailureReasons is a plain STRING here (filterable: CONTAINS works), unlike the refusal object's JSON-path field (measured 2026-10-07).
     ao_participants: fields(["Gsid", "AdvancedOutreachId", "ParticipantState", "ParticipantSourceType", "CreatedAt", "ModifiedAt", "FailureReasons"], { Gsid: "GSID", CreatedAt: "DATETIME", ModifiedAt: "DATETIME" }),
@@ -724,7 +739,8 @@ export function buildTenant(variant = {}) {
   const token = variant.token ?? { state: "valid", seconds: 3200 };
   return {
     variant, tables, schemas, byGsid, token,
-    baseUrl: "https://acme.gainsightcloud.com",
+    // baseUrl (S5): the tenant whoami names; a variant moves it so the wrong-tenant refusal can be driven.
+    baseUrl: variant.baseUrl ?? "https://acme.gainsightcloud.com",
     listed,
     describable: new Map([...listed, UNLISTED].map((p) => [p.id, p])),
     serverMax: variant.serverMax ?? 5000,
@@ -772,7 +788,8 @@ export function kbFiles(slug = "acme-prod", variant = {}) {
       "```json", JSON.stringify(programPayload(p), null, 2), "```", "",
     ].join("\n");
     // When the doc was last checked against the tenant: what a schedule result read from it is "as of".
-    inventory[`journey/${p.id}`] = { last_verified: p.id === "p-onboard" ? "2026-09-01T00:00:00.000Z" : "2026-08-20T00:00:00.000Z" };
+    // A full inventory entry (S5: the entry command's re-documentation selects by domain and status through the manifest script).
+    inventory[`journey/${p.id}`] = { id: p.id, domain: "journey", status: "documented", depth: "full", last_verified: p.id === "p-onboard" ? "2026-09-01T00:00:00.000Z" : "2026-08-20T00:00:00.000Z", doc_path: `${slug}/journey/${p.id}.md` };
   }
   // The template docs (TPL-1), through the plugin's own renderer from the same payloads the stand-in CLI answers, each
   // with a full inventory entry (the gap-fill's manifest verbs select by status and domain) under the templates

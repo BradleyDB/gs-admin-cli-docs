@@ -300,7 +300,9 @@ try {
     const programsOf = (key) => [...new Set(GOLD.facts.byAccount.filter((r) => r.accountKey === key).map((r) => r.programId))];
     const mixed = across.filter((r) => new Set(programsOf(r.key.account).map((p) => programClickAvailability(GOLD, p).state)).size > 1);
     check("clicks at the account grain, one account across several programs: the state is the roll-up of ALL of them — an account a tracked and an unknown program both send to reads unknown, whichever comes first; an account only a not-tracked program sends to reads not-tracked",
-      mixed.length > 0 && mixed.every((r) => r.cells.clicked.state === "unknown") && across.some((r) => r.cells.clicked.state === "not-tracked") &&
+      mixed.length > 0 && mixed.every((r) => r.cells.clicked.state === "unknown") &&
+        // Seen through one not-tracked program alone (the program filter), every account reads not-tracked (since S5 every kept account has rows on every program it is on, so no account is on a not-tracked program only).
+        (() => { const only = runQuery(GOLD, { accountBuckets: ["account"], programs: ["p-renew"] }, { groupBy: ["account"], metrics: ["clicked"] }).rows; return only.length > 0 && only.every((r) => r.cells.clicked.state === "not-tracked"); })() &&
         across.every((r) => r.cells.clicked.state === rollUpTracking(/** @type {any} */ (Object.fromEntries([["tracked", "tracked"], ["notTracked", "not-tracked"], ["unknown", "unknown"]].map(([k, st]) => [k, programsOf(r.key.account).filter((p) => programClickAvailability(GOLD, p).state === st).length]))))),
       across.map((r) => [r.key.account, r.cells.clicked.state, programsOf(r.key.account)]));
     check("rollUpTracking: all tracked is tracked, all not-tracked is not-tracked, any mix and nothing at all are unknown",
@@ -681,6 +683,15 @@ try {
         /not a failure/.test(fc.find((c) => c.id === "incomplete-period-drift").text) && fc.find((c) => c.id === "incomplete-period-drift").text.includes("templates-sum-to-program: 3"));
     check("caveats: one this module has no text for is shown with its id and detail, never dropped",
       caveatText("some-new-caveat", { n: 2 }) === 'some-new-caveat: {"n":2}' && caveatsFor({ ...GOLD, caveats: [{ id: "some-new-caveat", detail: { n: 2 } }] }, []).some((c) => c.text === 'some-new-caveat: {"n":2}'));
+    // F-509: each part of the unclassified-wordings caveat is gated on its own count, so a zero-entry pull never reads
+    // "0 entry-refusal wording(s) … plus 232 participant(s)".
+    const unc = (detail) => caveatText("unclassified-wordings", { wordings: 0, programs: 0, participants: 0, occurrences: 0, stepParticipants: 0, bounceWordings: 0, bouncePrograms: 0, ...detail });
+    check("F-509 unclassified-wordings: with no unclassified entry wording the sentence starts at the step part (no '0 entry-refusal' clause); with both parts it reads the entry clause plus the step clause; with the entry part alone no step clause; with nothing but bounce wordings only the bounce sentence",
+      unc({ stepParticipants: 232 }).startsWith("232 participant(s) fell off at a step for a reason the shipped list does not name. An unknown product wording") && !unc({ stepParticipants: 232 }).includes("0 entry-refusal") &&
+        unc({ wordings: 2, programs: 1, participants: 4, occurrences: 9, stepParticipants: 232 }).startsWith('2 entry-refusal wording(s) in the samples of 1 program(s) match no known category and are labelled "unclassified" (kind unknown): 4 sampled participant(s), 9 refusal(s) in all, plus 232 participant(s) who fell off at a step for a reason the shipped list does not name. An unknown product wording') &&
+        unc({ wordings: 2, programs: 1, participants: 4, occurrences: 9 }).startsWith('2 entry-refusal wording(s) in the samples of 1 program(s) match no known category and are labelled "unclassified" (kind unknown): 4 sampled participant(s), 9 refusal(s) in all. An unknown product wording') &&
+        unc({ bounceWordings: 3, bouncePrograms: 2 }).startsWith("3 bounce wording(s) in the samples of 2 program(s)") && !unc({ bounceWordings: 3, bouncePrograms: 2 }).includes("entry-refusal"),
+      [unc({ stepParticipants: 232 })]);
     check("data pulled: the line every output carries names the pull's date and time, the time zone when the snapshot has one, the tenant, the window and the provisional period",
       dataPulledLine(GOLD) === "Data pulled 2026-09-15T09:00:00-07:00 from acme.gainsightcloud.com. Window 2026-06 to 2026-09; sends on or after 2026-09-01 are provisional (opens keep arriving), and bounces and unsubscribes on sends since 2026-08-01 can still change (the 2 months a refresh reads again)." &&
         Q.provisionalText({ ...GOLD.meta, refresh: { ...GOLD.meta.refresh, repullMonths: 1 } }) === "sends on or after 2026-09-01 are provisional (opens keep arriving)" && isDeepStrictEqual(Q.provisionalSpan(GOLD.meta), { from: "2026-09-01", flagsFrom: "2026-08-01", repullMonths: 2 }) &&

@@ -319,7 +319,7 @@
  *   never clamped).
  *
  * @typedef {object} T10Dimensions
- * @property {Array<{id: string, name: ?string, statuses: string[], model: ?string, modelName: ?string, audienceType: ?string, supergroup: ?string, group: ?string, folderId: ?string, schedule?: ?{classification: string, cronExpression: ?string, timeZoneName: ?string, startTime?: ?number, endTime?: ?number, asOf: ?string}, syncScheduleDisabled?: ?boolean, modifiedAt?: ?string}>} programs
+ * @property {Array<{id: string, name: ?string, statuses: string[], model: ?string, modelName: ?string, audienceType: ?string, supergroup: ?string, group: ?string, folderId: ?string, schedule?: ?{classification: string, cronExpression: ?string, timeZoneName: ?string, startTime?: ?number, endTime?: ?number, asOf: ?string, oneRunWindow?: boolean}, syncScheduleDisabled?: ?boolean, modifiedAt?: ?string}>} programs
  *   statuses is a LIST (a Dynamic Program edited while live carries two);
  *   supergroup and group are null until the grouping resolver fills them (DSH-5).
  *   schedule (additive, S3b) rides every pull made with a KB, whether or not
@@ -329,6 +329,10 @@
  *   epoch milliseconds), as of the doc's last verified date; "no schedule
  *   captured" for a documented program with none; null for a program the KB
  *   has no full doc for, and on every program of a pull made without a KB.
+ *   oneRunWindow (additive, F-502): true when the schedule read is a recurring
+ *   cron whose window admits exactly one run (end minus start shorter than one
+ *   period), which classifies one-time; such a program that ended with nobody
+ *   in flight is a finished campaign, never "Schedule ended".
  *   The grouping resolver's `recurring` and the health signals read it here.
  *   syncScheduleDisabled (additive, F-491): what `jo p list` says of the
  *   program's participant sync; null when the list did not say.
@@ -351,7 +355,10 @@
  *   templateAvailability (engagement-query.mjs), never directly.
  * @property {Array<{programId: string, stepId: ?string, name: ?string, order: ?number, templateId: ?string, variantId: ?string, variantName: ?string}>} [steps]
  *   only when meta.stepDetail
- * @property {Array<{key: string, name: ?string}>} accounts   the selected accounts; key is opaque. Empty when the account grain was not pulled (meta.accounts)
+ * @property {Array<{key: string, name: ?string, attrs?: Object<string, *>}>} accounts   the selected accounts; key is opaque. Empty when the account grain was not pulled (meta.accounts).
+ *   attrs (additive, S5): the company fields the pull was asked to read beside the name (params.accounts.fields), each
+ *   the row's value or null; absent on every account when no field was asked for. The selection itself (R24 per program,
+ *   and the cross-program lists of DSH-2 ruling 4 with the low-cadence rule) is recorded in honesty.accountSelection
  * @property {string[]} months
  *
  * @typedef {object} T10TemplateContent
@@ -510,6 +517,15 @@ const MAX_LIST_PAGES = 100;
 // command MUTATES is read from the catalog (tenet 6); this list is only which
 // reads the adapter issues, so anything else is refused whatever its flag.
 export const ENGAGEMENT_READ_PATHS = new Set(["whoami", "report run", "report schema", "journey programs list", "journey programs describe"]);
+// The cross-program customer lists (DSH-2 ruling 4, 2026-10-05): each kind with its meaning (the labels never say
+// churn) and its default size and delivered floor; the three defaults are what a pull selects unless told otherwise.
+export const ACCOUNT_LIST_KINDS = Object.freeze({
+  "most-engaged": Object.freeze({ meaning: "the accounts with the highest open rates across programs (possible advocates)", n: 25, floor: 10 }),
+  "least-engaged": Object.freeze({ meaning: "the accounts with the lowest open rates across programs (possible bad contacts or disengagement)", n: 25, floor: 10 }),
+  "most-bounced": Object.freeze({ meaning: "the accounts with the most bounce events across programs (possible bad contacts)", n: 25, floor: 0 }),
+});
+/** @type {ReadonlyArray<{kind: "most-engaged"|"least-engaged"|"most-bounced", n: number, floor: number}>} */
+export const DEFAULT_ACCOUNT_LISTS = Object.freeze(Object.entries(ACCOUNT_LIST_KINDS).map(([kind, d]) => Object.freeze({ kind: /** @type {"most-engaged"|"least-engaged"|"most-bounced"} */ (kind), n: d.n, floor: d.floor })));
 
 // ── Dates (day and month strings; UTC arithmetic, no time zone in play) ──────
 const DAY_MS = 86400000;
@@ -803,7 +819,8 @@ export const ROW_READERS = Object.freeze({
   "resp-unattributed": (row) => ({ n: cellNumber(row[col.count(SURVEY)]) }),
   "resp-test": (row) => ({ programId: str(cellValue(row[col.hop(PATH.surveyProgram)])), n: cellNumber(row[col.count(SURVEY)]) }),
   "resp-total": (row) => ({ programId: str(cellValue(row[col.hop(PATH.surveyProgram)])), status: cellValue(row[col.field(SURVEY, SURVEY_SRC.statusField)]), n: cellNumber(row[col.count(SURVEY)]) }),
-  "account-names": (row) => ({ key: str(cellValue(row[col.field(COMPANY, "Gsid")])), name: str(cellValue(row[col.field(COMPANY, "Name")])) }),
+  // `fields` (S5): the company fields the pull was asked to read beside the name, each as the row's cell value.
+  "account-names": (row, fields = []) => ({ key: str(cellValue(row[col.field(COMPANY, "Gsid")])), name: str(cellValue(row[col.field(COMPANY, "Name")])), attrs: Object.fromEntries(fields.map((f) => [f, cellValue(row[col.field(COMPANY, f)]) ?? null])) }),
   step: (row) => ({
     programId: str(cellValue(row[col.field(JO_LOG, JO_SRC.programField)])), month: cellMonth(row[col.month(JO_LOG, JO_SRC.dateField)]), n: cellNumber(row[col.count(JO_LOG)]),
     stepId: str(cellValue(row[col.field(JO_LOG, "StepId")])), templateId: str(cellValue(row[col.field(JO_LOG, "EmailTemplateId")])),
@@ -972,7 +989,8 @@ const FAMILIES = {
   // All time, like the denominator above: resp-month's query without its month
   // bucket and its window, so the two count a response the same way.
   "resp-total": { object: SURVEY, split: [], query: () => ({ group: [PATH.surveyProgram, surveyStatus], show: [countOf], where: [responded(), ...notTest()] }) },
-  "account-names": { object: COMPANY, split: ["keys"], query: (d) => ({ group: [], show: [{ name: "Gsid" }, { name: "Name" }], where: [cond("Gsid", "IN", d.keys)] }) },
+  // The company fields a spec names ride the names call (S5: "per segment" lists read them beside the name).
+  "account-names": { object: COMPANY, split: ["keys"], query: (d) => ({ group: [], show: [{ name: "Gsid" }, { name: "Name" }, ...(d.fields ?? []).map((name) => ({ name }))], where: [cond("Gsid", "IN", d.keys)] }) },
   // Step detail only (R21): the JO send log, windowed on CreatedAt.
   step: {
     object: JO_LOG, split: ["programs", "day", "flags", "address"], flags: cutFlags(JO_SRC),
@@ -1278,7 +1296,8 @@ export function splitUnit(d) {
 }
 
 // ── The read-only gate ───────────────────────────────────────────────────────
-class EngagementRefusal extends Error {}
+/** A refusal with a message for the person, never a stack: the CLI prints it and exits 1; an importer catches it. */
+export class EngagementRefusal extends Error {}
 /**
  * (argv) → null when the command may run, else why not. Built on the shared
  * gate (doc-lib assertReadOnlyCommand): unresolved, catalog-mutating,
@@ -1369,6 +1388,22 @@ export function resolveParams(raw) {
     if (!Number.isInteger(n) || n < 0) throw new Error(`${name} must be a whole number >= 0 (got ${v})`);
     return n;
   };
+  // The cross-program customer lists as DATA (DSH-2 ruling 4, 2026-10-05): each a kind, a size, a delivered floor
+  // and, for a per-segment list, one of the company fields read beside the name. The three defaults unless given;
+  // an empty list keeps no cross-program list. Validated here, so a wrong kind is refused before any call.
+  const fields = [...new Set((acc.fields ?? []).map((s) => String(s).trim()).filter(Boolean))].sort();
+  for (const f of fields) if (!/^[A-Za-z][A-Za-z0-9_]*$/.test(f)) throw new Error(`--account-field takes a company field's API name (letters, digits, underscores) — got "${printable(f, 60)}"`);
+  const lists = (acc.lists ?? DEFAULT_ACCOUNT_LISTS).map((l, i) => {
+    const kind = String(l?.kind ?? "");
+    if (!(kind in ACCOUNT_LIST_KINDS)) throw new Error(`--account-list ${i + 1}: the kind must be one of ${Object.keys(ACCOUNT_LIST_KINDS).join(", ")} (got "${printable(kind, 40)}")`);
+    const n = l.n ?? ACCOUNT_LIST_KINDS[kind].n;
+    const floor = l.floor ?? ACCOUNT_LIST_KINDS[kind].floor;
+    if (!Number.isInteger(n) || n < 1) throw new Error(`--account-list ${kind}: the size must be a whole number >= 1 (got ${l.n})`);
+    if (!Number.isInteger(floor) || floor < 0) throw new Error(`--account-list ${kind}: the delivered floor must be a whole number >= 0 (got ${l.floor})`);
+    const per = l.per == null ? null : String(l.per).trim();
+    if (per != null && !fields.includes(per)) throw new Error(`--account-list ${kind}: "per ${per}" names a company field the pull does not read — pass it with --account-field ${per}`);
+    return { kind, n, floor, ...(per != null ? { per } : {}) };
+  });
   const timeoutMs = raw.timeoutMs ?? 300000;
   if (!Number.isFinite(timeoutMs) || timeoutMs < 1000) throw new Error(`--timeout-ms must be a number >= 1000 (got ${raw.timeoutMs})`);
   // The row budget, in pages: a family whose count-first read exceeds it is not read (S3b).
@@ -1414,10 +1449,14 @@ export function resolveParams(raw) {
     testAccounts,
     stepDetail: !!raw.stepDetail,
     accounts: {
-      busiest: whole(acc.busiest, 20, "--accounts-busiest"),
-      lowEngagement: whole(acc.lowEngagement, 15, "--accounts-low"),
-      mostBounces: whole(acc.mostBounces, 15, "--accounts-bounce"),
+      // R24's PER-PROGRAM lists: off (0) by default since the watch list was redesigned around the customer
+      // (ruled 2026-10-05); the cross-program `lists` are the default selection.
+      busiest: whole(acc.busiest, 0, "--accounts-busiest"),
+      lowEngagement: whole(acc.lowEngagement, 0, "--accounts-low"),
+      mostBounces: whole(acc.mostBounces, 0, "--accounts-bounce"),
       lowEngagementMinDelivered: whole(acc.lowEngagementMinDelivered, 10, "--accounts-low-min-delivered"),
+      lists,
+      fields,
       pinned: [...new Set((acc.pinned ?? []).map((s) => String(s).trim()).filter(Boolean))].sort(),
       names: acc.names !== false,
       // The account grain: off unless asked for (it is most of a pull's calls).
@@ -1638,10 +1677,12 @@ function unusableWhy(previous, tenantHost) {
  * @returns {?T10Snapshot}
  */
 export const usablePrevious = (previous, tenantHost) => (previous && !unusableWhy(previous, tenantHost) ? previous : null);
-// The account selection as decideRefresh compares it: names are a display
-// choice, and the switch itself is compared through the snapshot's marker.
+// The account selection as decideRefresh compares it: names and the company
+// fields are display choices, the switch itself is compared through the
+// snapshot's marker, and the cross-program LISTS are re-selected in reduce
+// over the run directory's rows (a rebuild, never a pull; ruled 2026-10-05).
 const accountSelection = (a) => {
-  const { names: _n, pull: _p, ...rest } = a ?? {};
+  const { names: _n, pull: _p, lists: _l, fields: _f, ...rest } = a ?? {};
   return rest;
 };
 const sameUnsubscribeLinks = (previous, params) => sameList(previous?.meta?.params?.unsubscribeLinks ?? [], params.unsubscribeLinks ?? []);
@@ -1703,16 +1744,66 @@ export function decideRefresh({ params, previous, tenantHost, selectedIds }) {
  * @param {{busiest: number, lowEngagement: number, mostBounces: number, lowEngagementMinDelivered: number, pinned: string[]}} rules
  * @returns {Set<string>}
  */
-export function selectAccounts(perAccount, rules) {
+export function selectAccounts(perAccount, rules, { lowCadence = false } = {}) {
   const rows = [...perAccount].map(([key, m]) => ({ key, ...m }));
   const top = (list, cmp, n) => list.sort((a, b) => cmp(a, b) || cmpKey(a.key, b.key)).slice(0, n).map((r) => r.key);
+  // On a low-cadence program (about one send per contact) an open rate says little: the low-engagement signal is
+  // "delivered at least LOW_CADENCE_MIN_DELIVERED and opened 0" (ruled 2026-10-05); weekly chains keep the rate rule.
+  const low = lowCadence
+    ? top(rows.filter((r) => r.delivered >= LOW_CADENCE_MIN_DELIVERED && r.opened === 0), (a, b) => b.delivered - a.delivered, rules.lowEngagement)
+    : top(rows.filter((r) => r.delivered >= rules.lowEngagementMinDelivered && r.delivered > 0), (a, b) => a.opened / a.delivered - b.opened / b.delivered || b.delivered - a.delivered, rules.lowEngagement);
   const picked = new Set([
     ...top([...rows], (a, b) => b.sent - a.sent, rules.busiest),
-    ...top(rows.filter((r) => r.delivered >= rules.lowEngagementMinDelivered && r.delivered > 0), (a, b) => a.opened / a.delivered - b.opened / b.delivered || b.delivered - a.delivered, rules.lowEngagement),
+    ...low,
     ...top(rows.filter((r) => r.bounced > 0), (a, b) => b.bounced - a.bounced, rules.mostBounces),
   ]);
   for (const key of rules.pinned) if (perAccount.has(key)) picked.add(key);
   return picked;
+}
+// A program sends about once per contact when its attempts are at most this many times its distinct people over
+// the window (DSH-2 ruling 4: "sent ÷ distinct people near 1, decided by the pull and recorded").
+export const LOW_CADENCE_MAX_RATIO = 1.5;
+export const LOW_CADENCE_MIN_DELIVERED = 3;
+/**
+ * The cross-program customer lists (DSH-2 ruling 4, 2026-10-05): each list ranks every account over its measures
+ * summed across the selected programs over the whole window. most-engaged: the highest open rates among accounts
+ * with at least `floor` delivered; least-engaged: the lowest open rates among those — joined by any account that,
+ * on a low-cadence program, had LOW_CADENCE_MIN_DELIVERED or more delivered and no open (the signal that program
+ * can give); most-bounced: the most bounce events (the floor is a delivered floor there too, 0 by default). A
+ * per-segment list (`per`) is one list per value of that company field among the accounts' attrs.
+ * @param {Map<string, {sent: number, delivered: number, opened: number, bounced: number}>} across  account → measures summed across programs
+ * @param {Array<{kind: string, n: number, floor: number, per?: ?string}>} lists
+ * @param {{quietOnLowCadence?: Set<string>, attrs?: Map<string, Object<string, *>>}} [extra]
+ *   quietOnLowCadence: the accounts that qualify for least-engaged by the low-cadence rule; attrs: each account's company fields
+ * @returns {Array<{kind: string, n: number, floor: number, per: ?string, segment: ?string, keys: string[]}>} one entry per list (and per segment)
+ */
+export function selectAccountsAcross(across, lists, { quietOnLowCadence = new Set(), attrs = new Map() } = {}) {
+  const rows = [...across].map(([key, m]) => ({ key, ...m }));
+  const rate = (r) => (r.delivered > 0 ? r.opened / r.delivered : null);
+  const rank = (list, pool) => {
+    const eligible = pool.filter((r) => r.delivered >= list.floor);
+    if (list.kind === "most-engaged") return eligible.filter((r) => rate(r) != null).sort((a, b) => rate(b) - rate(a) || b.delivered - a.delivered || cmpKey(a.key, b.key));
+    if (list.kind === "least-engaged") {
+      const joined = new Map(eligible.filter((r) => rate(r) != null).map((r) => [r.key, r]));
+      for (const r of pool) if (quietOnLowCadence.has(r.key) && !joined.has(r.key)) joined.set(r.key, r);
+      return [...joined.values()].sort((a, b) => (rate(a) ?? 0) - (rate(b) ?? 0) || b.delivered - a.delivered || cmpKey(a.key, b.key));
+    }
+    return eligible.filter((r) => r.bounced > 0).sort((a, b) => b.bounced - a.bounced || cmpKey(a.key, b.key));
+  };
+  const out = [];
+  for (const list of lists) {
+    const per = list.per ?? null;
+    if (!per) { out.push({ kind: list.kind, n: list.n, floor: list.floor, per: null, segment: null, keys: rank(list, rows).slice(0, list.n).map((r) => r.key) }); continue; }
+    const segments = new Map();
+    for (const r of rows) {
+      const v = attrs.get(r.key)?.[per];
+      const seg = v == null || v === "" ? "(none)" : String(v);
+      if (!segments.has(seg)) segments.set(seg, []);
+      segments.get(seg).push(r);
+    }
+    for (const seg of [...segments.keys()].sort(cmpKey)) out.push({ kind: list.kind, n: list.n, floor: list.floor, per, segment: seg, keys: rank(list, segments.get(seg)).slice(0, list.n).map((r) => r.key) });
+  }
+  return out;
 }
 
 // ── The plan: which units a run makes ────────────────────────────────────────
@@ -1964,7 +2055,9 @@ const previousSampledPrograms = (previous, part) => new Set(previous?.meta?.heal
 
 // Seconds per call, by family: medians measured on CLI 1.0.10, rounded up. An
 // estimate, printed as one; the token check before each call is what decides.
-const CALL_SECONDS = { whoami: 1, programs: 2, schema: 2, describe: 3, template: 3, "template-months": 4, "uniques-month": 13, "uniques-window": 23, "account-names": 4, "health-states": 16, "health-reasons-total": 9, "health-entry-window": 6, "health-reasons-sample": 12, "health-bounce-sample": 8, "health-admissions": 16, "health-step-total": 10, "health-step-cat": 10, "health-step-state": 10 };
+// health-bounce-cat: measured at V2 (F-504) — about 2.5 s a call over a 55-category file (330 calls), against the
+// 7 s default that priced the run twice too high and turned token.fits false long before the pull would fail.
+const CALL_SECONDS = { whoami: 1, programs: 2, schema: 2, describe: 3, template: 3, "template-months": 4, "uniques-month": 13, "uniques-window": 23, "account-names": 4, "health-states": 16, "health-reasons-total": 9, "health-entry-window": 6, "health-reasons-sample": 12, "health-bounce-sample": 8, "health-bounce-cat": 3, "health-admissions": 16, "health-step-total": 10, "health-step-cat": 10, "health-step-state": 10 };
 // Rows per program-month a bounce-count unit is expected to hold (templates × bounce types), never more than the bounces.
 const BOUNCE_ROWS_PER_MONTH = 6;
 const monthsOf = (u) => (u.window ? monthsBetween(u.window.start.slice(0, 7), addDays(u.window.end, -1).slice(0, 7)) : []);
@@ -2110,13 +2203,18 @@ export function fetchEngagement(ctx) {
     flags.set(object, schemaFlags(payload));
   };
 
-  const execute = (d, id, argv) => {
+  // How many programs a unit names, for a failure entry: the reader of a stop is told what failed and for whom.
+  const unitScope = (d) => (d.programs ? { programs: d.programs.length } : d.programId ? { programs: 1 } : d.scope ? { programs: d.scope.length } : {});
+  // `prior` is the record a resume found for this call: a record that did not succeed counts the runs it failed in
+  // (F-519), so a failure that recurs across runs is reported as recurring, never as new each time.
+  const execute = (d, id, argv, prior = null) => {
     const refusal = gate(argv);
     if (refusal) throw new EngagementRefusal(refusal);
     if (isRpRun(d)) {
       const problems = validateQuery(buildQuery(d), types.get(FAMILIES[d.family].object) ?? new Map(), flags.get(FAMILIES[d.family].object) ?? null);
       if (problems.length) throw new EngagementRefusal(`refusing to run the ${d.family} query: ${problems.join("; ")}`);
     }
+    const runs = (prior && prior.status !== "ok" ? prior.runs ?? 1 : 0) + 1;
     for (let attempt = 1; ; attempt++) {
       if (deadline != null && now() + params.tokenMarginSeconds * 1000 > deadline) {
         stop = { reason: "token-expired", detail: "the token would expire before the next call returns" };
@@ -2142,8 +2240,8 @@ export function fetchEngagement(ctx) {
           payload = JSON.parse(r.stdout);
         } catch {
           say("failed: the answer is not JSON");
-          failed.push({ id, family: d.family, kind: "unparseable" });
-          record({ ...d, id, status: "failed", kind: "unparseable", attempt });
+          failed.push({ id, family: d.family, kind: "unparseable", runs, ...unitScope(d) });
+          record({ ...d, id, status: "failed", kind: "unparseable", attempt, runs });
           return null;
         }
         const rows = Array.isArray(payload) ? payload.length : null;
@@ -2171,7 +2269,7 @@ export function fetchEngagement(ctx) {
       }
       if (kind === "timeout") {
         say("timed out twice: it will be split");
-        return record({ ...d, id, status: "split", kind, attempt });
+        return record({ ...d, id, status: "split", kind, attempt, runs });
       }
       if (kind === "not-found" && d.family === "describe") {
         say("not found twice: recorded as a deleted program, not a failure");
@@ -2179,7 +2277,7 @@ export function fetchEngagement(ctx) {
         writeFileAtomicSync(join(runDir, file), JSON.stringify({ notFound: true }));
         return record({ ...d, id, status: "ok", file, notFound: true, attempt });
       }
-      const failure = { id, family: d.family, kind: kind === "outage" ? "shape-error" : kind, stderr: printable(r.stderr, 300) };
+      const failure = { id, family: d.family, kind: kind === "outage" ? "shape-error" : kind, stderr: printable(r.stderr, 300), runs, ...unitScope(d) };
       say(`failed: ${failure.kind}`);
       failed.push(failure);
       record({ ...d, ...failure, status: "failed", attempt });
@@ -2187,6 +2285,8 @@ export function fetchEngagement(ctx) {
     }
   };
 
+  /** What a unit that came back full, or timed out twice, is cut into: null when nothing is left to cut on. */
+  const cutsOf = (d, rec) => (rec.status === "split" && FAMILIES[d.family]?.timeoutSplit === false ? null : splitUnit(d));
   /** Run one unit, splitting as needed. Returns the ok, complete leaf records. */
   const runUnit = (d) => {
     if (stop) return [];
@@ -2194,16 +2294,19 @@ export function fetchEngagement(ctx) {
     const id = unitId(d, argv);
     const prior = records.get(id);
     let rec;
-    if (prior && ((prior.status === "ok" && existsSync(join(runDir, prior.file))) || prior.status === "split")) {
+    // A prior answer on disk is reused as it stands. A prior "split" record is reused only as the DECISION to cut the
+    // unit (its halves carry the attempts); for a unit with nothing left to cut on, that record was a failed attempt,
+    // and the resume makes the call afresh — a failed record is never reused either: the next run IS the retry (F-519:
+    // a timed-out unsplittable call was replayed as final on every resume, stranding the refresh for good).
+    if (prior && ((prior.status === "ok" && existsSync(join(runDir, prior.file))) || (prior.status === "split" && cutsOf(d, prior)))) {
       counts.reused++;
       rec = prior;
-    } else rec = execute(d, id, argv);
+    } else rec = execute(d, id, argv, prior);
     if (!rec) return [];
     if (rec.status === "ok" && !rec.truncated) return [rec];
-    const kids = rec.status === "split" && FAMILIES[d.family]?.timeoutSplit === false ? null : splitUnit(d);
+    const kids = cutsOf(d, rec);
     if (!kids) {
-      const failure = { id, family: d.family, kind: rec.truncated ? "truncated" : "timeout", stderr: "nothing left to split on" };
-      failed.push(failure);
+      failed.push({ id, family: d.family, kind: rec.truncated ? "truncated" : "timeout", stderr: "nothing left to split on", runs: rec.runs ?? 1, ...unitScope(d) });
       return [];
     }
     counts.split++;
@@ -2387,6 +2490,18 @@ export function fetchEngagement(ctx) {
   // Calls and seconds include the splits a program-month too large for a page will force.
   const calls = (list) => estimateCalls(list, base, params.pageSize);
   const seconds = (list) => estimateSeconds(list, base, params.pageSize);
+  // What this run still has to make (F-518): on a resume, the planned units whose answers are not all on disk — a
+  // unit answered whole, or cut into halves every one of which is answered, costs nothing more. The remainder is what
+  // the login must cover; a fresh run's remainder is the whole run.
+  const remainingOf = (u) => {
+    const rec = records.get(unitId(u, unitArgv(u, params.pageSize)));
+    if (!rec) return [u];
+    if (rec.status === "ok" && !rec.truncated) return existsSync(join(runDir, rec.file)) ? [] : [u];
+    // A unit already cut is priced by the halves still unanswered, never whole again (the review of 2026-10-13).
+    const kids = cutsOf(u, rec);
+    return kids ? kids.flatMap(remainingOf) : [u];
+  };
+  const remainingUnits = units.flatMap(remainingOf);
   // The per-program samples (F-484), priced from the count-first reads: how many selected programs have
   // refusals in the window (read above) and how many have uncategorised bounces (from the bounce count-first
   // read: every bounce, until the categories are counted), against the cap; what the cap leaves out, and what
@@ -2456,7 +2571,7 @@ export function fetchEngagement(ctx) {
   const templatesPlan = {
     source: kbSteps ? "kb" : "none", referenced: planReferenced.length, designOnly: planReferenced.length - tplRef.referenced.length, inKb: kbSteps ? planReferenced.length - tplGap.missing.length : 0,
     missing: tplGap.missing.length, behind: tplGap.behind.length, unread: tplGap.unread.length,
-    planned: tplKeys.length, seconds: tplKeys.length * CALL_SECONDS.template,
+    planned: tplKeys.length, seconds: tplKeys.length * CALL_SECONDS.template, secondsEach: CALL_SECONDS.template,
     domain: kbSteps?.templatesDomain?.folder ?? null, idField: kbSteps?.templatesDomain?.idField ?? null,
     listFile: tplGap.missing.length ? join(runDir, TEMPLATE_GAP_LIST_FILE) : null,
     staleKeysFile: tplGap.behind.length + tplGap.unread.length ? join(runDir, TEMPLATE_GAP_STALE_FILE) : null,
@@ -2464,7 +2579,12 @@ export function fetchEngagement(ctx) {
   };
   const estimate = {
     mode: refresh.mode, why: refresh.why,
-    thisRun: { calls: calls(units) + ownReads, seconds: seconds(units) + describeSeconds(ownReads), units: units.length, byFamily: { ...familyCounts(units, base, params.pageSize), ...(ownReads ? sampleFamilies : {}) } },
+    thisRun: {
+      calls: calls(units) + ownReads, seconds: seconds(units) + describeSeconds(ownReads), units: units.length, byFamily: { ...familyCounts(units, base, params.pageSize), ...(ownReads ? sampleFamilies : {}) },
+      // The part not yet made (F-518): a resumed run's price is this, never the whole plan's. The samples are counted
+      // whole (they are picked after the counts), so a resume's remainder is an upper bound.
+      remaining: { calls: calls(remainingUnits) + ownReads, seconds: seconds(remainingUnits) + describeSeconds(ownReads), units: remainingUnits.length },
+    },
     full: { calls: calls(fullUnits) + ownReads, seconds: seconds(fullUnits) + describeSeconds(ownReads) },
     stepDetail: { on: params.stepDetail, addsCalls: calls(withStep) - calls(without), addsSeconds: seconds(withStep) - seconds(without) },
     // What the account grain costs, printed whether it is on or off (its name lookups are not counted: how many depends on the selection).
@@ -2475,10 +2595,27 @@ export function fetchEngagement(ctx) {
       on: params.health.pull, addsCalls: calls(healthOn) - calls(healthOff) + plannedSamples, addsSeconds: seconds(healthOn) - seconds(healthOff) + sampleSeconds(plannedSamples),
       samples, lookback, failedParticipantRows: failedRows,
       categories: { bounceReasons: (params.health.categories?.bounceReasons ?? []).length, participantFailures: (params.health.categories?.participantFailures ?? []).length },
+      // What the bounce categories cost, said plainly (F-504): one COUNTED call per category per recipient class
+      // (all, each internal domain, the test accounts, and the test accounts on each internal domain), over the
+      // pulled span and, on a selective refresh, the old months of the programs the previous snapshot did not hold.
+      // The interview shows this before a category file, a domain or a test account is added.
+      categoryCalls: (() => {
+        const units = healthOn.filter((u) => u.family === "health-bounce-cat");
+        const domains = params.internalDomains.length;
+        const classes = 1 + domains + (params.testAccounts?.length ? 1 + domains : 0);
+        return { bounce: { categories: (params.health.categories?.bounceReasons ?? []).length, classes, calls: calls(units), seconds: seconds(units), secondsEach: CALL_SECONDS["health-bounce-cat"] } };
+      })(),
     },
     // The row budget and what exceeds it (a health part over it is not read; the click detail refused above).
     rowBudget: { rows: rowBudget, pages: params.maxPages ?? MAX_PAGES, overBudget },
-    token: { expiresInSeconds: whoami.expiresInSeconds, fits: seconds(units) + describeSeconds(ownReads) + params.tokenMarginSeconds <= whoami.expiresInSeconds },
+    token: {
+      expiresInSeconds: whoami.expiresInSeconds, fits: seconds(units) + describeSeconds(ownReads) + params.tokenMarginSeconds <= whoami.expiresInSeconds,
+      // What the login has left once the pull is made, and whether the pull PLUS the re-documentation and the template
+      // gap-fill the plan proposes still fit it (F-507): the skill's asks read these before a budget is chosen, so a
+      // gap-fill is never started on a login the pull alone was judged to fit.
+      afterPullSeconds: Math.max(0, whoami.expiresInSeconds - seconds(units) - describeSeconds(ownReads) - params.tokenMarginSeconds),
+      withProposals: { seconds: seconds(units) + describeSeconds(ownReads) + kbPlan.refreshSeconds + templatesPlan.seconds, fits: seconds(units) + describeSeconds(ownReads) + kbPlan.refreshSeconds + templatesPlan.seconds + params.tokenMarginSeconds <= whoami.expiresInSeconds },
+    },
     // Where the KB is behind the tenant for the selected programs (F-491, redesigned 2026-10-08), priced as the
     // narrow refresh that closes it (one describe per program), with its inputs written beside this plan: the
     // manifest keys of every such program, and the list rows of the undocumented ones (what registers them).
@@ -2501,7 +2638,9 @@ export function fetchEngagement(ctx) {
     writeFileAtomicSync(join(runDir, KB_GAP_KEYS_FILE), JSON.stringify(kbPlan.programs.map((id) => `journey/${id}`), null, 2));
     writeFileAtomicSync(join(runDir, KB_GAP_LIST_FILE), JSON.stringify({ result: true, data: { advancedOutreaches: listRows } }, null, 2));
   }
-  writeFileAtomicSync(join(runDir, "plan.json"), JSON.stringify({ estimate, programs, refresh: { ...refresh, carriedPrograms: [...refresh.carriedPrograms] } }, null, 2));
+  // `selectedIds`: the programs this pull selects (the selector applied, deleted ones out), so a reader of the plan
+  // (the dashboard interview's group proposal, F-515) works over exactly the set the reducer will.
+  writeFileAtomicSync(join(runDir, "plan.json"), JSON.stringify({ estimate, programs, selectedIds, refresh: { ...refresh, carriedPrograms: [...refresh.carriedPrograms] } }, null, 2));
   if (phase === "plan") return conclude({ whoami, estimate, programs });
 
   // Phase C: the facts. The pull time is stamped HERE, when the first fact call is about to be made (F-482),
@@ -2529,7 +2668,7 @@ export function fetchEngagement(ctx) {
     const keys = selectedAccountKeys({ params, units: rowsOf(accountRecs), selected: decision.selected, refresh, previous });
     const nameFailures = failed.length;
     for (const b of batches(keys, NAME_BATCH)) {
-      runUnit({ family: "account-names", cls: "all", keys: b });
+      runUnit({ family: "account-names", cls: "all", keys: b, ...(params.accounts.fields?.length ? { fields: params.accounts.fields } : {}) });
       if (stop) break;
     }
     // A name that could not be read is a blank name, never a failed pull.
@@ -2720,34 +2859,57 @@ function readKbSteps(kbDir, today = null, inputs = { templateIds: [], programIds
   };
 }
 /**
+ * A recurring schedule whose window admits exactly ONE run (F-502, ruled by
+ * Bradley at V2): its end minus its start is shorter than one cron period, so
+ * the cron can fire once at most. The measured tenant schedules one-off sends
+ * as a daily cron boxed into one day (68 of its 127 "recurring" programs), and
+ * such a program is one-time by its data, whatever its builder clicked. A
+ * window at least one period long can hold two runs and stays recurring
+ * (Bradley's hard-to-spot case: meant recurring, set for about two days). An
+ * unreadable cron, or a window without both ends, decides nothing.
+ * @param {{classification?: string, cronExpression?: ?string, startTime?: ?number, endTime?: ?number}} s
+ * @param {string} today
+ * @returns {boolean}
+ */
+export function isOneRunWindow(s, today) {
+  if (s?.classification !== "recurring") return false;
+  if (!(typeof s.startTime === "number" && s.startTime > 0 && typeof s.endTime === "number" && s.endTime > 0 && s.endTime >= s.startTime)) return false;
+  const period = cronLastDue(s.cronExpression, today).periodDays;
+  return period != null && s.endTime - s.startTime < period * DAY_MS;
+}
+/**
  * A program's ONE schedule for the program dimension (S3b): with several, the
  * recurring one with the shortest period (the most frequent decides what "due"
  * means); the classification is recurring when any is, else one-time when any
- * is, else the first's. A documented program with none says so.
+ * is, else the first's. A documented program with none says so. A recurring
+ * schedule whose window admits one run reads one-time (F-502), marked
+ * `oneRunWindow` so a reader can say so; among such the latest end decides.
  * @param {?{asOf: ?string, schedules: Array<*>}} doc
  * @param {string} today
- * @returns {?{classification: string, cronExpression: ?string, timeZoneName: ?string, startTime: ?number, endTime: ?number, asOf: ?string}}
+ * @returns {?{classification: string, cronExpression: ?string, timeZoneName: ?string, startTime: ?number, endTime: ?number, asOf: ?string, oneRunWindow: boolean}}
  */
 export function pickSchedule(doc, today) {
   if (!doc) return null;
   const list = doc.schedules ?? [];
-  if (!list.length) return { classification: NO_SCHEDULE, cronExpression: null, timeZoneName: null, startTime: null, endTime: null, asOf: doc.asOf ?? null };
-  const recurring = list.filter((s) => s.classification === "recurring");
+  if (!list.length) return { classification: NO_SCHEDULE, cronExpression: null, timeZoneName: null, startTime: null, endTime: null, asOf: doc.asOf ?? null, oneRunWindow: false };
+  const endDay = (s) => (typeof s.endTime === "number" && s.endTime > 0 ? new Date(s.endTime).toISOString().slice(0, 10) : null);
+  const byLatestEnd = (a, b) => (endDay(a) ?? "") < (endDay(b) ?? "") ? 1 : (endDay(a) ?? "") > (endDay(b) ?? "") ? -1 : 0;
+  const oneRun = list.filter((s) => isOneRunWindow(s, today));
+  const recurring = list.filter((s) => s.classification === "recurring" && !oneRun.includes(s));
   let chosen = list[0];
   if (recurring.length) {
     // A LIVE schedule (no end, or an end not yet passed) decides before an ended one, whatever its position:
     // the measured tenant's programs carry an ended job schedule BESIDE their live participant sync, and the
     // ended one read as the program's (F-491, 2026-10-08: 15 of 35 "Schedule ended" reads). Among live ones the
     // shortest period decides; among ended ones (none live) the latest end.
-    const endDay = (s) => (typeof s.endTime === "number" && s.endTime > 0 ? new Date(s.endTime).toISOString().slice(0, 10) : null);
     const live = recurring.filter((s) => endDay(s) == null || endDay(s) >= today);
     chosen = live.length
       ? live.map((s) => ({ s, period: cronLastDue(s.cronExpression, today).periodDays ?? Infinity })).sort((a, b) => a.period - b.period)[0].s
-      : recurring.map((s) => ({ s, end: endDay(s) ?? "" })).sort((a, b) => (a.end < b.end ? 1 : a.end > b.end ? -1 : 0))[0].s;
-  }
-  const classification = recurring.length ? "recurring" : list.some((s) => s.classification === "one-time") ? "one-time" : String(chosen.classification ?? "unknown");
+      : [...recurring].sort(byLatestEnd)[0];
+  } else if (oneRun.length) chosen = [...oneRun].sort(byLatestEnd)[0];
+  const classification = recurring.length ? "recurring" : oneRun.length || list.some((s) => s.classification === "one-time") ? "one-time" : String(chosen.classification ?? "unknown");
   const time = (t) => (typeof t === "number" && t > 0 ? t : null);
-  return { classification, cronExpression: chosen.cronExpression ?? null, timeZoneName: chosen.timeZoneName ?? null, startTime: time(chosen.startTime), endTime: time(chosen.endTime), asOf: doc.asOf ?? null };
+  return { classification, cronExpression: chosen.cronExpression ?? null, timeZoneName: chosen.timeZoneName ?? null, startTime: time(chosen.startTime), endTime: time(chosen.endTime), asOf: doc.asOf ?? null, oneRunWindow: !recurring.length && oneRun.includes(chosen) };
 }
 /** Each program's last send from the day buckets and the base call: the lastSends table. */
 function lastSendsFrom({ dayUnits, base, listed, selected, params, inWindow }) {
@@ -2834,23 +2996,62 @@ const previousSelection = (previous) => {
 // The selection per program. A program carried from the previous snapshot
 // keeps the accounts that snapshot selected, so each one's row series stays
 // whole across carried and pulled months; ranking is redone on a full pull.
-function selectionFor({ params, units, selected, refresh, previous }) {
+// Per program over the window: attempts ÷ distinct people, from the base and the full-window distinct count. A
+// program whose ratio is at most LOW_CADENCE_MAX_RATIO sends about once per contact (null = no distinct count read).
+function cadenceRatios(units, selected) {
+  const sent = new Map();
+  const people = new Map();
+  for (const u of units) {
+    if (u.family === "totals" && u.cls === "all") for (const row of u.rows) { const r = ROW_READERS.totals(row); if (r.programId != null && r.n != null) sent.set(r.programId, (sent.get(r.programId) ?? 0) + r.n); }
+    if (u.family === "uniques-window" && u.cls === "all" && u.of === "people") for (const row of u.rows) { const r = ROW_READERS["uniques-window"](row); if (r.programId != null && r.people != null) people.set(r.programId, r.people); }
+  }
+  const out = new Map();
+  for (const p of selected.keys()) out.set(p, (people.get(p) ?? 0) > 0 && sent.has(p) ? sent.get(p) / people.get(p) : null);
+  return out;
+}
+/**
+ * The account selection (R24 per program, and the cross-program lists, ruled 2026-10-05). A program carried from the
+ * previous snapshot keeps the accounts that snapshot selected, so each one's row series stays whole across carried
+ * and pulled months; ranking is redone on a full pull. The cross-program lists are ranked over every account row of
+ * the programs pulled whole, and a kept account gets its own rows on every one of those programs it is on.
+ * @returns {{byProgram: Map<string, Set<string>>, lists: Array<*>, lowCadence: string[], ratios: Map<string, ?number>, across: Map<string, *>}}
+ */
+function selectionFor({ params, units, selected, refresh, previous, attrs = new Map() }) {
   const windowMonths = new Set(monthsBetween(params.window.from, params.window.to));
   const pulled = new Set(refresh.pulledMonths);
   const accept = (p, m) => selected.has(p) && (refresh.carriedPrograms.has(p) ? pulled.has(m) : windowMonths.has(m));
   const totals = accountTotals(units, accept);
   const prev = previousSelection(previous);
-  const out = new Map();
+  const ratios = cadenceRatios(units, selected);
+  const lowCadence = [...selected.keys()].filter((p) => ratios.get(p) != null && ratios.get(p) <= LOW_CADENCE_MAX_RATIO).sort(cmpKey);
+  const lowSet = new Set(lowCadence);
+  // Across the programs pulled whole: each account's measures summed, and the accounts a low-cadence program marks quiet.
+  const across = new Map();
+  const quiet = new Set();
+  for (const p of selected.keys()) {
+    if (refresh.carriedPrograms.has(p)) continue;
+    for (const [key, m] of totals.get(p) ?? []) {
+      const a = across.get(key) ?? zero();
+      for (const k of Object.keys(m)) a[k] = (a[k] ?? 0) + m[k];
+      across.set(key, a);
+      if (lowSet.has(p) && m.delivered >= LOW_CADENCE_MIN_DELIVERED && m.opened === 0) quiet.add(key);
+    }
+  }
+  // A per-segment list needs each account's company fields, which the names call reads for the KEPT accounts only:
+  // it is ranked in reduce over the kept accounts, after the names are read; the selection here takes the rest.
+  const lists = selectAccountsAcross(across, (params.accounts.lists ?? []).filter((l) => !l.per), { quietOnLowCadence: quiet, attrs });
+  const crossKeys = new Set(lists.flatMap((l) => l.keys));
+  const byProgram = new Map();
   for (const p of selected.keys()) {
     const acc = totals.get(p) ?? new Map();
-    if (refresh.carriedPrograms.has(p)) out.set(p, new Set([...(prev.get(p) ?? []), ...params.accounts.pinned.filter((k) => acc.has(k))]));
-    else out.set(p, selectAccounts(acc, params.accounts));
+    if (refresh.carriedPrograms.has(p)) byProgram.set(p, new Set([...(prev.get(p) ?? []), ...params.accounts.pinned.filter((k) => acc.has(k))]));
+    else byProgram.set(p, new Set([...selectAccounts(acc, params.accounts, { lowCadence: lowSet.has(p) }), ...[...crossKeys].filter((k) => acc.has(k))]));
   }
-  return out;
+  return { byProgram, lists, lowCadence, ratios, across };
 }
 function selectedAccountKeys(args) {
   const all = new Set();
-  for (const set of selectionFor(args).values()) for (const k of set) all.add(k);
+  for (const set of selectionFor(args).byProgram.values()) for (const k of set) all.add(k);
   return [...all].sort(cmpKey);
 }
 
@@ -3010,7 +3211,7 @@ export function reduceEngagement(input) {
   const byTemplate = [...emit(tplTable, ([programId, templateId, month]) => ({ programId, templateId, month })), ...carried(previous?.facts?.byTemplate)]
     .sort(byKeys("programId", "month", "templateId", "recipientClass"));
 
-  const selection = selectionFor({ params, units, selected, refresh, previous });
+  const { byProgram: selection, lists: listSelection, lowCadence, ratios: cadenceRatioOf, across: acrossTotals } = selectionFor({ params, units, selected, refresh, previous });
   const bucketTable = new Map();
   for (const e of accTable.values()) {
     const [p, account, m] = e.key;
@@ -3545,12 +3746,15 @@ export function reduceEngagement(input) {
   const tplGap = kbSteps ? templateGap({ referenced: templateIds, lastSend: lastSendOf, templates: kbSteps.templates, clicked: new Set([...history].filter(([, h]) => h.everClicked).map(([t]) => t)) }) : null;
   const withContent = templates.filter((t) => t.content).length;
   const names = new Map((previous?.dimensions?.accounts ?? []).map((a) => [a.key, a.name]));
+  // Each kept account's company fields (S5), from this pull's names call, else the previous snapshot's.
+  const attrsOf = new Map((previous?.dimensions?.accounts ?? []).filter((a) => a.attrs).map((a) => [a.key, a.attrs]));
   let namesResolved = 0;
   for (const u of of("account-names")) {
     for (const row of u.rows) {
-      const { key, name } = ROW_READERS["account-names"](row);
+      const { key, name, attrs } = ROW_READERS["account-names"](row, u.fields ?? []);
       if (key == null) continue;
       names.set(key, name);
+      if (u.fields?.length) attrsOf.set(key, attrs);
       namesResolved++;
     }
   }
@@ -3567,9 +3771,13 @@ export function reduceEngagement(input) {
     programs: [...selected.values()].sort(byKeys("id")).map((p) => ({ ...p, schedule: kbSteps ? pickSchedule(kbSteps.schedules?.[p.id], params.today) : null })),
     templates,
     ...(params.stepDetail ? { steps: [...stepRows.values()].sort(byKeys("programId", "stepId", "variantId")) } : {}),
-    accounts: accountKeys.map((key) => ({ key, name: params.accounts.names ? names.get(key) ?? null : null })),
+    // attrs (additive, S5): the company fields the spec names, read beside the name; absent when none was asked for.
+    accounts: accountKeys.map((key) => ({ key, name: params.accounts.names ? names.get(key) ?? null : null, ...(params.accounts.fields?.length ? { attrs: attrsOf.get(key) ?? Object.fromEntries(params.accounts.fields.map((f) => [f, null])) } : {}) })),
     months: windowMonths,
   };
+  // The per-segment customer lists (S5), ranked over the KEPT accounts' summed measures with the fields just read.
+  const keptAcross = new Map(accountKeys.filter((k) => acrossTotals.has(k)).map((k) => [k, acrossTotals.get(k)]));
+  const perSegmentLists = selectAccountsAcross(keptAcross, (params.accounts.lists ?? []).filter((l) => l.per), { attrs: attrsOf });
 
   // ── Honesty and this snapshot's own caveats ──
   for (const u of of("classes")) {
@@ -3593,6 +3801,15 @@ export function reduceEngagement(input) {
     // ones modified after their doc. The health signals read it; the caveat names it; a narrow refresh closes it.
     kb: gap,
     accountNames: { requested: params.accounts.names ? accountKeys.length : 0, resolved: namesResolved },
+    // The account selection as made (S5): each cross-program list's kept accounts (a per-segment list per value), the
+    // programs read as low cadence (about one send per contact) with every program's ratio, and the per-program rule.
+    accountSelection: !params.accounts.pull ? null : {
+      lists: [...listSelection, ...perSegmentLists].map((l) => ({ kind: l.kind, n: l.n, floor: l.floor, per: l.per, segment: l.segment, kept: l.keys, selectedFrom: refresh.carriedPrograms.size ? "the programs pulled whole" : "every program" })),
+      lowCadencePrograms: lowCadence,
+      cadenceRatio: Object.fromEntries([...cadenceRatioOf].map(([p, r]) => [p, r == null ? null : Math.round(r * 100) / 100])),
+      lowCadenceRule: { maxRatio: LOW_CADENCE_MAX_RATIO, minDelivered: LOW_CADENCE_MIN_DELIVERED },
+      perProgram: { busiest: params.accounts.busiest, lowEngagement: params.accounts.lowEngagement, mostBounces: params.accounts.mostBounces, lowEngagementMinDelivered: params.accounts.lowEngagementMinDelivered },
+    },
     clicks,
     responses: { available: surveyAvailable, ...respStats },
     health: healthStats,
@@ -3745,10 +3962,64 @@ export const joEngagementAdapter = {
   reduce: reduceEngagement,
 };
 
+// ── The run directory ────────────────────────────────────────────────────────
+/** One --account-list value: <kind>[:<n>[:<floor>[:<per field>]]]. */
+export function parseAccountListFlag(value) {
+  const [kind, n, floor, per] = String(value).split(":");
+  const num = (v, what) => { if (v === undefined || v === "") return undefined; const x = Number(v); if (!Number.isInteger(x)) throw new Error(`--account-list ${value}: the ${what} must be a whole number`); return x; };
+  return { kind, n: num(n, "size"), floor: num(floor, "delivered floor"), ...(per ? { per } : {}) };
+}
+/**
+ * The run directory a pull works in: created with its run.json on a first
+ * call, resumed on a later one with the parameters it started with. A resumed
+ * run keeps the day it was planned on (F-483: a plan before midnight and its
+ * run after it are one run, so `today` is re-read from the run unless the
+ * caller gave one) and the pull time, stamped when its fact calls started
+ * (F-482); what differs is named and the resume refused. The previous snapshot
+ * decides the plan (selective or full), so a different one is refused too:
+ * payloads of two plans must never be reduced together. The entry command
+ * (dashboard.mjs) imports this; the CLI below calls it.
+ * @param {{wsDir: string, runId: string, params: *, previousPath: ?string, cliVersion: ?string, todayGiven: boolean, reparams: (today: string) => *}} args
+ * @returns {{runDir: string, params: *, resumed: boolean}}
+ */
+export function prepareRun({ wsDir, runId, params, previousPath, cliVersion, todayGiven, reparams }) {
+  if (!/^[A-Za-z0-9._-]+$/.test(runId)) throw new EngagementRefusal(`--run must be a plain name (letters, digits, . _ -), got "${printable(runId, 40)}"`);
+  const runDir = join(wsDir, ".gs-superadmin", "tmp", "engagement", runId);
+  const runFile = join(runDir, "run.json");
+  if (!existsSync(runFile)) {
+    writeFileAtomicSync(runFile, JSON.stringify({ params, previousPath, cliVersion }, null, 2));
+    return { runDir, params, resumed: false };
+  }
+  const diff = runParamsMoved(runDir, { params, previousPath, todayGiven, reparams });
+  if (diff.moved.length) throw new EngagementRefusal(`the run at ${runDir} was started with different parameters (${diff.moved.join(", ")} moved) — pass the same flags to resume it, or a new --run`);
+  if (diff.previousMoved) throw new EngagementRefusal(`the run at ${runDir} was started with a different --previous — pass the same one to resume it, or a new --run`);
+  return { runDir, params: diff.started.params, resumed: true };
+}
+/**
+ * Whether a run directory can be CONTINUED with these parameters: the ONE rule prepareRun refuses by, exported so a
+ * caller that owns a pending run (the entry command's refresh state, F-512) can abandon it and plan afresh instead of
+ * running into the refusal. Compares the stable parameters (the pull time and time zone aside) and the previous
+ * snapshot; `today` is re-read from the run unless the caller gave one (F-483).
+ * @param {string} runDir
+ * @param {{params: *, previousPath: ?string, todayGiven: boolean, reparams: (today: string) => *}} args
+ * @returns {{started: *, moved: string[], previousMoved: boolean}}
+ */
+export function runParamsMoved(runDir, { params, previousPath, todayGiven, reparams }) {
+  const started = readJsonFile(join(runDir, "run.json"));
+  const stableOf = (p) => { const { pulledAt: _a, timeZone: _b, ...rest } = p ?? {}; return rest; };
+  let now = params;
+  if (!todayGiven && started.params?.today && started.params.today !== params.today) now = reparams(started.params.today);
+  const was = stableOf(started.params);
+  const cur = stableOf(now);
+  const moved = [...new Set([...Object.keys(was), ...Object.keys(cur)])].filter((k) => JSON.stringify(was[k]) !== JSON.stringify(cur[k]));
+  return { started, moved, previousMoved: (started.previousPath ?? null) !== (previousPath ?? null) };
+}
+
 // ── CLI ──────────────────────────────────────────────────────────────────────
 const USAGE =
   "usage: engagement.mjs <plan|fetch|run> [--workspace <dir>] [--run <id>] [--kb <slugDir>] [--from YYYY-MM --to YYYY-MM] " +
-  "[--name <program-name-or-id>]... [--ids-file <file>] [--sent-since <date|Nd|Nm>] [--internal-domain <domain>]... [--unsubscribe-link <link|host>]... [--test-account <company id>]... [--step-detail] [--accounts] " +
+  "[--name <program-name-or-id>]... [--ids-file <file>] [--sent-since <date|Nd|Nm>] [--internal-domain <domain>]... [--unsubscribe-link <link|host>]... [--test-account <company id>]... [--step-detail] " +
+  "[--accounts [--account-list <kind>[:<n>[:<floor>[:<per field>]]]]... [--no-account-lists] [--account-field <company field>]... [--accounts-busiest <N>] [--accounts-low <N>] [--accounts-bounce <N>]] " +
   "[--health [--health-lookback-days <N>] [--failure-categories <file.json>] [--expected-reason <text>]... [--sample-programs <N>] [--quiet-due-days <N>]] " +
   "[--page-size <N>] [--max-pages <N>] [--previous <snapshot.json>] [--full] [--out <snapshot.json>]  |  engagement.mjs reduce --run-dir <dir> --out <snapshot.json> [--previous <file>] [--link-settings <file>]";
 const EXIT = { ok: 0, failed: 1, "token-expired": 3, partial: 4 };
@@ -3798,7 +4069,7 @@ async function main() {
   const idsFile = opt("--ids-file");
   const pinFile = opt("--pin-accounts-file");
   // A flag that shapes the account grain says nothing while the grain is off: refuse it rather than drop it.
-  const accountFlags = ["--accounts-busiest", "--accounts-low", "--accounts-bounce", "--accounts-low-min-delivered", "--pin-accounts-file", "--no-account-names"].filter((f) => argv.includes(f));
+  const accountFlags = ["--accounts-busiest", "--accounts-low", "--accounts-bounce", "--accounts-low-min-delivered", "--pin-accounts-file", "--no-account-names", "--account-list", "--no-account-lists", "--account-field"].filter((f) => argv.includes(f));
   if (accountFlags.length && !argv.includes("--accounts")) fail(`${accountFlags.join(", ")} only applies with --accounts (the account grain is off unless asked for; plan prints what it adds)`);
   const healthFlags = ["--health-lookback-days", "--failure-categories", "--expected-reason", "--sample-programs", "--quiet-due-days"].filter((f) => argv.includes(f));
   if (healthFlags.length && !argv.includes("--health")) fail(`${healthFlags.join(", ")} only applies with --health (health facts are off unless asked for; plan prints what they add)`);
@@ -3820,6 +4091,9 @@ async function main() {
     internalDomains: all("--internal-domain"), unsubscribeLinks: all("--unsubscribe-link"), testAccounts: all("--test-account"), stepDetail: argv.includes("--step-detail"),
     accounts: {
       busiest: int("--accounts-busiest"), lowEngagement: int("--accounts-low"), mostBounces: int("--accounts-bounce"), lowEngagementMinDelivered: int("--accounts-low-min-delivered"),
+      // The cross-program lists as data: --account-list <kind>[:<n>[:<floor>[:<per field>]]], repeatable; --no-account-lists keeps none; neither = the three defaults.
+      lists: argv.includes("--no-account-lists") ? [] : all("--account-list").length ? all("--account-list").map(parseAccountListFlag) : undefined,
+      fields: all("--account-field"),
       pinned: pinFile ? parseIdList(readFileSync(resolve(pinFile), "utf8")) : [], names: !argv.includes("--no-account-names"), pull: argv.includes("--accounts"),
     },
     incompleteFrom: opt("--incomplete-from"), repullMonths: int("--repull-months"), forceFull: argv.includes("--full"),
@@ -3836,31 +4110,11 @@ async function main() {
   const prevPath = opt("--previous") ? resolve(opt("--previous")) : null;
   const previous = prevPath ? readSnapshot(prevPath) : null;
   const runId = opt("--run") ?? stampClock(Date.now()).pulledAt.replace(/[^0-9]/g, "").slice(0, 14);
-  if (!/^[A-Za-z0-9._-]+$/.test(runId)) fail(`--run must be a plain name (letters, digits, . _ -), got "${printable(runId, 40)}"`);
-  const runDir = join(wsDir, ".gs-superadmin", "tmp", "engagement", runId);
-  const runFile = join(runDir, "run.json");
-  // A resumed run keeps the parameters it started with: the day it was planned on (F-483: a plan before
-  // midnight and its run after it are one run, so `today` is re-read from the run unless --today says
-  // otherwise) and the pull time, stamped when its fact calls started (F-482). What differs is named.
-  const stableOf = (p) => { const { pulledAt: _a, timeZone: _b, ...rest } = p; return rest; };
-  if (existsSync(runFile)) {
-    const started = readJsonFile(runFile);
-    if (opt("--today") === undefined && started.params?.today && started.params.today !== params.today) {
-      try {
-        params = resolveParams(rawParams(started.params.today));
-      } catch (e) {
-        fail(e instanceof Error ? e.message : String(e));
-      }
-    }
-    const was = stableOf(started.params);
-    const now = stableOf(params);
-    const moved = [...new Set([...Object.keys(was), ...Object.keys(now)])].filter((k) => JSON.stringify(was[k]) !== JSON.stringify(now[k]));
-    if (moved.length) fail(`the run at ${runDir} was started with different parameters (${moved.join(", ")} moved) — pass the same flags to resume it, or a new --run`);
-    // The previous snapshot decides the plan (selective or full): payloads of two plans must never be reduced together.
-    if ((started.previousPath ?? null) !== prevPath) fail(`the run at ${runDir} was started with a different --previous — pass the same one to resume it, or a new --run`);
-    params = started.params;
-  } else {
-    writeFileAtomicSync(runFile, JSON.stringify({ params, previousPath: prevPath, cliVersion: catalog.meta?.cliVersion ?? null }, null, 2));
+  let runDir;
+  try {
+    ({ runDir, params } = prepareRun({ wsDir, runId, params, previousPath: prevPath, cliVersion: catalog.meta?.cliVersion ?? null, todayGiven: opt("--today") !== undefined, reparams: (today) => resolveParams(rawParams(today)) }));
+  } catch (e) {
+    fail(e instanceof Error ? e.message : String(e));
   }
   const kbDir = opt("--kb") ? resolve(opt("--kb")) : null;
   if (kbDir && !existsSync(kbDir)) fail(`--kb ${opt("--kb")}: directory not found`);

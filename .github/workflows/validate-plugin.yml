@@ -230,6 +230,12 @@ jobs:
       # over its four fixtures, and a themed page through the real builder.
       - name: Dashboard theme fixtures (dashboard-theme.mjs)
         run: node plugins/gs-superadmin/test/dashboard-theme.mjs
+      # The entry command (PUB-1, DSH-3, UX-2): the questions table walked as a
+      # real process, the refresh with its lock, tenant check, re-documentation
+      # and resumable stop, the change verb's three consequences, export and
+      # import, over the fictional tenant and the stand-in CLI.
+      - name: Dashboard entry-command fixtures (dashboard.mjs)
+        run: node plugins/gs-superadmin/test/dashboard.mjs
       # Executes the frozen T-1/T-2 contracts against produced artifacts
       # (GP-B5 DS-18): manifest verbs in a temp workspace, bundled catalog
       # key sets.

@@ -25,7 +25,7 @@
 // Run:  node plugins/gs-superadmin/test/dashboard-page.mjs
 // Zero dependencies — Node built-ins only.
 // ─────────────────────────────────────────────────────────────────────────────
-import { readFileSync, writeFileSync, existsSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync, mkdirSync, copyFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { isDeepStrictEqual } from "node:util";
@@ -34,9 +34,11 @@ import { makeTempDir, removeTempDir, writeFiles, runNode } from "../../../test/r
 import { buildPage, pageModel, pageSnapshot, packTable, inlinedSources, pageFileName, aboutSettings, PAGE_BUDGET, TOKENS } from "../scripts/dashboard-page.mjs";
 import { createDashboard, mount, unpackSnapshot, unpackTable, csvCell, csvText, esc, LACKS, NOT_LACKS, NEEDS, COPY_LINES, ENTRY_COMMAND, HEALTH_DAY_OPTIONS, PAGE_MODEL_VERSION, cronWords } from "../scripts/dashboard-runtime.mjs";
 import * as engine from "../scripts/engagement-query.mjs";
-import { openSpec, SPEC_DESCRIPTIONS, PRESETS, presetPanels, describeSpec } from "../scripts/dashboard-spec.mjs";
+import { openSpec, SPEC_DESCRIPTIONS, PRESETS, presetPanels, describeSpec, setPath, validateSpec } from "../scripts/dashboard-spec.mjs";
+import { coveredPath } from "../scripts/dashboard.mjs";
 import { applyGroups } from "../scripts/dashboard-groups.mjs";
 import { kbFiles, FIXTURE_BOUNCE_CATEGORIES } from "./fixtures/engagement/acme-tenant.mjs";
+import { HOW_TO_REFRESH_RULED_PARTS } from "./fixtures/engagement/ruled-text.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const PLUGIN = join(HERE, "..");
@@ -83,6 +85,15 @@ function loadPage(html) {
 }
 const panelRun = (page, panelId, hash) => page.call(`app.run(app.panels.find((p) => p.id === ${JSON.stringify(panelId)}), app.stateFromHash(${JSON.stringify(hash)}))`);
 const unescape = (s) => s.replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&dagger;/g, "+").replace(/&amp;/g, "&");
+/**
+ * The About tab's How to refresh section as the words a reader sees, in the ruled form (F-511 instance 27): each
+ * list item numbered, the refresh line's Copy button read as the line itself, paragraphs joined by one space.
+ */
+const howToRefreshText = (aboutHtml) => {
+  const section = aboutHtml.split("<h2>How to refresh</h2>")[1].split("</section>")[0];
+  let n = 0;
+  return unescape(section.replace(/<li>/g, () => ` ${++n}. `).replace(/<p class="gs-notice-line"><code>([^<]*)<\/code> <button[^>]*>Copy<\/button><\/p>/g, " $1. ").replace(/<\/(?:p|ol)><p>/g, " ").replace(/<[^>]+>/g, "")).replace(/\s+/g, " ").trim();
+};
 const textOf = (h) => unescape(h.replace(/<sup[^>]*>[\s\S]*?<\/sup>/g, "").replace(/<[^>]+>/g, "")).trim();
 const panelHtml = (html, id) => html.match(new RegExp(`<section class="gs-panel" data-panel="${id}"[^>]*>([\\s\\S]*?)</section>`))?.[1] ?? null;
 const paneHtml = (html, id) => {
@@ -181,9 +192,9 @@ try {
   const OFF = pull("page-off", ["--internal-domain", "acme.com"]);
   const NO_DOMAIN = pull("page-nodomain", []);
   const SIGNALS = pull("page-signals", ["--internal-domain", "acme.com", "--health", "--failure-categories", CATS], { kb: join(ROOT, "kb-signals", "acme-prod"), variant: { silent: true, cadence: true, signals: true } });
-  check("the fixtures are what they are named for: the default pull holds no account data, no step detail and no health data and says so itself; the other pull was given no internal domain and carries the marker for it; the signals pull holds health with every part read and one program on each alarm list",
+  check("the fixtures are what they are named for: the default pull holds no account data, no step detail and no health data and says so itself; the other pull was given no internal domain and carries the marker for it; the signals pull holds health with every part read and one program on each alarm list (two on Schedule ended since F-502's two-day chain joined)",
     engine.accountAvailability(OFF).reason === "accounts-off" && OFF.meta.stepDetail === false && engine.healthAvailability(OFF).pulled === false && engine.healthAvailability(OFF).reason === "health-off" && !OFF.caveats.some((c) => c.id === "recipient-class-not-configured") && NO_DOMAIN.caveats.some((c) => c.id === "recipient-class-not-configured") &&
-      engine.healthAvailability(SIGNALS).pulled === true && Object.values(engine.healthAvailability(SIGNALS).parts).every((p) => p.pulled) && engine.healthSilentView(SIGNALS, {}, { days: 30 }).rows.length === 6,
+      engine.healthAvailability(SIGNALS).pulled === true && Object.values(engine.healthAvailability(SIGNALS).parts).every((p) => p.pulled) && engine.healthSilentView(SIGNALS, {}, { days: 30 }).rows.length === 7,
     [OFF.meta.accounts, NO_DOMAIN.caveats, engine.healthSilentView(SIGNALS, {}, { days: 30 }).counts]);
 
   const ADMIN = build(SPEC_ACCOUNTS, PULLED);
@@ -288,8 +299,8 @@ try {
       [table, expected.rows.map((r) => r.label.program)]);
     check("the page reads without JavaScript: the default view is in the markup, its controls are switched off until the script runs (a control never does nothing), and a line says what needs JavaScript",
       /<fieldset id="gs-root" class="gs-root" disabled>/.test(ADMIN.html) && /<noscript><p>[^<]*JavaScript[^<]*<\/p><\/noscript>/.test(ADMIN.html) && ADMIN.html.indexOf("<table>") > 0 && ADMIN.html.indexOf("<table>") < ADMIN.html.indexOf("<script"));
-    check("every view shows when the data was pulled (R4): the line is the engine's own, at the top of the page, before anything else",
-      [ADMIN, EXEC, ADMIN_P, EXEC_P].every((b) => { const pre = loadPage(b.html).prerender; const line = esc(engine.dataPulledLine(applyGroups(b === ADMIN_P || b === EXEC_P ? SIGNALS : PULLED, SPEC.groups).snapshot)); return pre.includes(line) && pre.indexOf(line) < pre.indexOf("gs-filters") && /<p class="gs-pulled">Data pulled /.test(pre); }));
+    check("every view shows when the data was pulled (R4): the line is the engine's own, at the top of the page, before anything else, with the age's region after the time (empty in the pre-render, which has no clock) and the sentence that the pages are not live (ruled 2026-10-12); no stale banner anywhere",
+      [ADMIN, EXEC, ADMIN_P, EXEC_P].every((b) => { const pre = loadPage(b.html).prerender; const line = esc(engine.dataPulledLine(applyGroups(b === ADMIN_P || b === EXEC_P ? SIGNALS : PULLED, SPEC.groups).snapshot)); const cut = line.indexOf(" from "); const withRegion = `${line.slice(0, cut)}<span data-region="age"></span>${line.slice(cut)} These pages are not live: they change only when the dashboard is refreshed.`; return pre.includes(withRegion) && pre.indexOf(withRegion) < pre.indexOf("gs-filters") && /<p class="gs-pulled">Data pulled /.test(pre) && !/gs-banner-stale|data-banner="stale"|data-region="stale"/.test(b.html); }));
     const closed = admin.call(`app.renderPanel(app.panels.find((p) => p.id === "programs"), app.stateFromHash("m=2026-06..2026-08"), null)`);
     check("the incomplete period is marked (R4): a row that includes the provisional month carries a mark and the table says from when; a view of closed months alone carries neither",
       (panelHtml(ADMIN.html, "programs").match(/<sup><span class="gs-mark" data-tip="Includes the provisional period[^>]*>\*<\/span><\/sup>/g) ?? []).length === [...expected.rows, expected.total].filter((r) => r.incomplete).length && expected.rows.some((r) => r.incomplete) && expected.rows.some((r) => !r.incomplete) && /<sup><span class="gs-mark" data-tip="Includes the provisional period: sends on or after 2026-09-01[^"]*" title="[^"]*" tabindex="0" role="button" aria-label="[^"]*">\*<\/span><\/sup>/.test(panelHtml(ADMIN.html, "programs")) && !panelHtml(ADMIN.html, "programs").includes("gs-note\">* includes") && paneHtml(ADMIN.html, "engagement").includes(`* Provisional period: sends on or after ${GOLD.meta.incompleteFrom} are provisional (opens keep arriving), and bounces and unsubscribes on sends since 2026-08-01 can still change`) &&
@@ -348,12 +359,26 @@ try {
   // ══ The filter bar ════════════════════════════════════════════════════════
   {
     const pre = admin.prerender;
-    const listed = [...pre.matchAll(/<label class="gs-prog"><input type="checkbox" data-f="program" value="([^"]+)" checked> <span class="gs-prog-name">([^<]*)<\/span> ([\s\S]*?)<\/label>/g)].map((m) => ({ id: m[1], name: unescape(m[2]), badges: [...m[3].matchAll(/<span class="gs-badge[^"]*">([^<]*)<\/span>/g)].map((b) => unescape(b[1])) }));
+    const rowsIn = (html) => [...html.matchAll(/<label class="gs-prog"(?: data-dim="([^"]+)")?><input type="checkbox" data-f="program" value="([^"]+)" checked> <span class="gs-prog-name">([^<]*)<\/span> ([\s\S]*?)(?: <span class="gs-dim-why">([^<]*)<\/span>)?<\/label>/g)].map((m) => ({ id: m[2], name: unescape(m[3]), dim: m[1] ?? null, why: m[5] ?? null, badges: [...m[4].matchAll(/<span class="gs-badge[^"]*">([^<]*)<\/span>/g)].map((b) => unescape(b[1])) }));
+    const listed = rowsIn(pre);
     const byId = new Map(GOLD.dimensions.programs.map((p) => [p.id, p]));
-    check("the program filter is a scrollable, searchable list of every program in the snapshot, each with its status and group badges, with select all, select none and 'N of M selected'",
+    check("the program filter is a scrollable, searchable list of every program in the snapshot, each with its status and group badges, with select all, select none and a count line that names the set (F-505: 'N programs sent in this window, M selected')",
       listed.length === 5 && listed.every((l) => byId.get(l.id).name === l.name && isDeepStrictEqual(l.badges, [...byId.get(l.id).statuses.map(engine.statusLabel), `${byId.get(l.id).supergroup} / ${byId.get(l.id).group}`])) &&
-        /<input type="search" data-f="search"/.test(pre) && /data-act="all">Select all</.test(pre) && /data-act="none">Select none</.test(pre) && pre.includes(`data-region="count">5 of 5 selected<`) && /\.gs-proglist\{max-height:\d+px;overflow:auto/.test(ADMIN.html),
+        /<input type="search" data-f="search"/.test(pre) && /data-act="all">Select all</.test(pre) && /data-act="none">Select none</.test(pre) && pre.includes(`data-region="count">5 programs sent in this window, 5 selected<`) && /\.gs-proglist\{max-height:\d+px;overflow:auto/.test(ADMIN.html),
       listed);
+    // F-505: the list answers to the month and status filters without changing the selection — a program outside the
+    // chosen statuses, or with no send in the chosen months, is dimmed and says why; the summary's "shown" counts the
+    // programs with rows under the filters and says how many selected programs have no sends in these months.
+    const june = rowsIn(admin.call(`app.regions.proglist(app.stateFromHash("m=2026-06..2026-06"))`));
+    check("F-505: on the admin page (Active by default) the paused program's row is dimmed 'hidden by status' and every other row is plain over the whole window; under one month the two programs with no sends in it are dimmed 'no sends in these months', every row stays selected, and the summary reads '2 programs shown (2 selected programs with no sends in these months)' while the whole window reads '4 programs shown' with no such clause; the status change repaints the list region",
+      isDeepStrictEqual(listed.map((l) => [l.id, l.dim, l.why]), [["p-pilot", null, null], ["p-nps", null, null], ["p-onboard", null, null], ["p-renew", "status", "hidden by status"], ["p-unlisted", null, null]]) &&
+        isDeepStrictEqual(june.map((l) => [l.id, l.dim, l.why]), [["p-pilot", null, null], ["p-nps", "no-sends", "no sends in these months"], ["p-onboard", null, null], ["p-renew", "status", "hidden by status"], ["p-unlisted", "no-sends", "no sends in these months"]]) && june.length === 5 &&
+        admin.call(`app.regions.summary(app.stateFromHash("m=2026-06..2026-06"))`).startsWith("5 programs sent in this window, 5 selected. 2 programs shown (2 selected programs with no sends in these months). 1 program hidden by status (showing Active). Months 2026-06;") &&
+        admin.call(`app.regions.summary(app.defaultState())`).startsWith("5 programs sent in this window, 5 selected. 4 programs shown. 1 program hidden by status (showing Active).") &&
+        rowsIn(admin.call(`app.regions.proglist(app.stateFromHash("s=NEW"))`)).filter((l) => l.dim === "status").length === 4 && pre.includes(`<div class="gs-proglist" data-region="proglist">`) && /\.gs-prog\[data-dim\]\{opacity:/.test(ADMIN.html) && /"status" \? \["statusSummary", "count", "proglist", "summary", "panes"\]/.test(ADMIN.html) &&
+        // The dim state reads the months and the statuses alone: a group filter, a recipient switch or a selection dims nothing "no sends".
+        rowsIn(admin.call(`app.regions.proglist(app.clean({ ...app.defaultState(), sg: 0, external: true, programs: ["p-pilot"] }))`)).every((l) => l.dim !== "no-sends") && /if \(f === "status"\) applySearch\(\);/.test(ADMIN.html),
+      [listed.map((l) => [l.id, l.dim]), june.map((l) => [l.id, l.dim]), admin.call(`app.regions.summary(app.stateFromHash("m=2026-06..2026-06"))`)]);
     check("the date filter is month-granular: a from and a to, each offering exactly the snapshot's months, starting on the whole window on an admin page",
       isDeepStrictEqual([...pre.split(`data-f="from" aria-label="From month">`)[1].split("</select>")[0].matchAll(/<option value="([^"]+)"( selected)?>/g)].map((m) => m[1] + (m[2] ?? "")), ["2026-06 selected", "2026-07", "2026-08", "2026-09"]) &&
         isDeepStrictEqual([...pre.split(`data-f="to" aria-label="To month">`)[1].split("</select>")[0].matchAll(/<option value="([^"]+)"( selected)?>/g)].map((m) => m[1] + (m[2] ?? "")), ["2026-06", "2026-07", "2026-08", "2026-09 selected"]));
@@ -418,7 +443,7 @@ try {
     check("the facts come from one function: reason, the engine's wording, pull or rebuild, the setting and the line; a lack that depends on the data asks the caller which it is; a figure the snapshot predates and a health part the pull lost each get the refresh line",
       isDeepStrictEqual(app.lackFacts("accounts-off"), { reason: "accounts-off", text: reasonText("accounts-off"), known: true, needs: "pull", needsText: NEEDS.pull, setting: { path: "accounts.pull", how: "on", label: "Accounts" }, line: COPY_LINES.change("program-health", "accounts.pull", "true") }) &&
         app.lackFacts("tab-off", { held: true }).needs === "rebuild" && app.lackFacts("tab-off", { held: false }).needs === "pull" && app.lackFacts("measure-not-in-snapshot").line === COPY_LINES.refresh("program-health") && app.lackFacts("measure-not-in-snapshot").setting === null &&
-        app.lackFacts("call-failed").line === "node .gs-superadmin/plugin/scripts/dashboard.mjs refresh program-health" && app.lackFacts("no-internal-domain").line === "node .gs-superadmin/plugin/scripts/dashboard.mjs change program-health sources[].params.internalDomains[]=");
+        app.lackFacts("call-failed").line === "node .gs-superadmin/plugin/scripts/dashboard.mjs refresh program-health" && app.lackFacts("no-internal-domain").line === "node .gs-superadmin/plugin/scripts/dashboard.mjs change program-health sources.0.params.internalDomains=");
     // The actions seam (ruled 2026-10-05; the local app is LTR-10): a button when the page has one behind it, the copy line when it does not.
     const withActions = createDashboard(engine, { ...pageModel(SPEC_ACCOUNTS, GOLD, SPEC_ACCOUNTS.pages[0]), actions: { base: "http://127.0.0.1:1/", token: "never-in-markup" } });
     const button = withActions.renderNotice(withActions.lackFacts("accounts-off"));
@@ -466,6 +491,26 @@ try {
     check("opening an offered tab opens the notice and nothing else: what the tab is for, that it is off for this page, what it would take and the line to copy. The pull holds health data, so for Health it is only a rebuild",
       lacksIn(pane).join() === "tab-off" && pane.includes(`<p class="gs-notice-head">${esc("Health: error rates, error messages, silent programs and schedule failures")}</p>`) && pane.includes(esc(reasonText("tab-off"))) && pane.includes(esc(NEEDS.rebuild)) &&
         pane.includes(`<span class="gs-path">pages[].tabs[].enabled</span>`) && pane.includes("data-copy=") && !/<table|gs-panel/.test(pane) && loadPage(offered.html).call(`app.stateFromHash("t=health").tab`) === "health", pane);
+    // F-503 (V2, 2026-10-10): the line a page tells an admin to copy names THIS page, THIS tab and the source in the
+    // writer's own grammar (dotted, with indexes), never the descriptions' kind path with empty brackets, so it runs as
+    // written: every emitted copy line's path is one setPath takes and validate accepts, and one the entry command's
+    // cost table covers (the kind path is derived back from it).
+    const copyLines = (html, spec) => [...html.matchAll(/data-copy="[^"]*? change ([^ "]+) ([^="]+)=([^"]*)"/g)].map((m) => ({ slug: m[1], path: m[2], value: m[3], spec }));
+    // The pre-rendered pages' lines, plus the About tab's internal-domain line, which the runtime draws (its facts are checked above).
+    const emitted = [...copyLines(offered.html, healthOff), ...copyLines(ADMIN.html, SPEC_ACCOUNTS), ...copyLines(ADMIN_P.html, SPEC_DEFAULTS), ...copyLines(build(specWith((s) => { s.sources[0].params.stepDetail = false; s.pages[0].panels = []; }), PULLED).html, specWith((s) => { s.sources[0].params.stepDetail = false; s.pages[0].panels = []; })),
+      { slug: "program-health", path: createDashboard(engine, pageModel(SPEC_ACCOUNTS, GOLD, SPEC_ACCOUNTS.pages[0])).lackFacts("no-internal-domain").line.replace(/^.* change program-health /, "").replace(/=.*$/, ""), value: "", spec: SPEC_ACCOUNTS }];
+    // "Runs as written": the writer takes the path and the value, and no validation problem is ABOUT that field (a page
+    // whose hand-listed panels lack the tab's is the writer's own refusal, naming the panels, and says what to do).
+    const runsAsWritten = (l) => {
+      const spec = JSON.parse(JSON.stringify(l.spec));
+      try { setPath(spec, l.path, l.value === "true" ? true : l.value === "" ? ["example.com"] : JSON.parse(l.value)); } catch (e) { return { ok: false, why: e.message }; }
+      const about = validateSpec(spec).problems.filter((p) => p.path.replace(/\[(\d+)\]/g, ".$1") === l.path);
+      return { ok: about.length === 0 && coveredPath(l.path) != null, why: about, covered: coveredPath(l.path), path: l.path };
+    };
+    check("F-503 every copy line runs as written: the health tab's line names the page and the tab (pages.0.tabs.1.enabled=true), the step-detail and internal-domain lines name the source (sources.0.params.…), no emitted path carries empty brackets, and each one is a path the writer sets and validates and the entry command's cost table covers",
+      emitted.length >= 4 && emitted.some((l) => l.path === "pages.0.tabs.1.enabled" && l.value === "true") && emitted.some((l) => l.path === "pages.0.tabs.2.enabled") && emitted.some((l) => l.path === "sources.0.params.stepDetail" && l.value === "true") &&
+        emitted.some((l) => l.path === "sources.0.params.internalDomains" && l.value === "") && emitted.every((l) => !l.path.includes("[]") && runsAsWritten(l).ok),
+      emitted.map((l) => [l.path, l.value, runsAsWritten(l)]));
     const LEGACY = { ...PULLED, meta: { ...PULLED.meta, templates: undefined } };
     check("whether turning a tab on is a rebuild or a new pull is read from the pull: over a snapshot with no health data the Health tab needs a new pull; Templates is a rebuild over a pull that holds template content and a new pull over a snapshot made before it existed",
       paneHtml(build(healthOff, OFF).html, "health").includes(esc(NEEDS.pull)) && !paneHtml(build(healthOff, OFF).html, "health").includes(esc(NEEDS.rebuild)) && paneHtml(offered.html, "templates").includes(esc(NEEDS.rebuild)) && paneHtml(build(healthOff, LEGACY).html, "templates").includes(esc(NEEDS.pull)));
@@ -576,7 +621,7 @@ try {
     const loaded = loadPage(page.html);
     check("no internal domain configured: the recipients toggle is drawn switched off with a one-line pointer beside it, never a control that does nothing; the full notice stands on the About tab beside the setting it names (ruled 2026-10-10): what it would take is a new pull with the domains filled in, and the line to copy ends at the = sign with the notice saying what to put there",
       /<input type="checkbox" role="switch" data-f="internal" checked disabled aria-checked="true">/.test(toggle) && /data-pointer="no-internal-domain"/.test(toggle) && lacksIn(toggle).length === 0 && toggle.includes("see About") && lacksIn(aboutNotice).includes("no-internal-domain") && aboutNotice.includes(esc(reasonText("no-internal-domain"))) && aboutNotice.includes(esc(NEEDS.pull)) && aboutNotice.includes(`Fill in &quot;Internal recipients&quot;`) && aboutNotice.includes(`<span class="gs-path">sources[].params.internalDomains[]</span>`) &&
-        aboutNotice.includes("sources[].params.internalDomains[]=</code>") && aboutNotice.includes("ends at the = sign: put the value there"), toggle);
+        aboutNotice.includes("sources.0.params.internalDomains=</code>") && aboutNotice.includes("ends at the = sign: put the value there"), toggle);
     check("and it cannot be switched on from outside either: a hash asking for external recipients is read as everyone, and a spec whose toggle starts on external starts on everyone here",
       loaded.call(`app.stateFromHash("rc=external").external`) === false && loaded.call(`app.filtersOf(app.stateFromHash("rc=external")).recipientClass`) === "all" &&
         loadPage(build(specWith((s) => { s.globalFilters.find((f) => f.id === "recipientClass").default = "external"; }), NO_DOMAIN).html).call(`app.defaultState().external`) === false);
@@ -729,10 +774,10 @@ try {
     const view = engine.healthSilentView(gold, { recipientClass: "all" }, { days: 45 });
     const alarmRows = anyRows(ph.split("<details")[0]).slice(1);
     check("program health (health-silent): the alarms the engine lists, longest silent first, each with its last send, days silent and the signal that put it there in words; the other lists collapsed with their counts (Active with no sends in this window, Finished, Cannot judge yet with why, Working as expected); the threshold chips 14 / 30 / 60 / 90 with the spec's own value (45) among them and on; judged as of the pull's day over the day window",
-      view.rows.length === 6 && alarmRows.length === 6 && alarmRows.every((r, i) => r[0].startsWith(view.rows[i].name) && r[2] === String(view.rows[i].daysSilent)) && /Participant sync overdue: last synced 2026-08-20, due 2026-09-14/.test(ph) && /Admitting nobody: 0 participants over the last 5 due days/.test(ph) && /Only refused participants arriving/.test(ph) && /Schedule ended 2026-08-01/.test(ph) && /Participant sync disabled/.test(ph) && /Step errors this period: \d+ participants \(/.test(ph) &&
+      view.rows.length === 7 && alarmRows.length === 7 && alarmRows.every((r, i) => r[0].startsWith(view.rows[i].name) && r[2] === (view.rows[i].daysSilent == null ? "—" : String(view.rows[i].daysSilent))) && /Participant sync overdue: last synced 2026-08-20, due 2026-09-14/.test(ph) && /Admitting nobody: 0 participants over the last 5 due days/.test(ph) && /Only refused participants arriving/.test(ph) && /Schedule ended 2026-08-01/.test(ph) && /Schedule ended 2026-06-12/.test(ph) && /one-day schedule, ended 2026-07-14/.test(ph) && /Participant sync disabled/.test(ph) && /Step errors this period: \d+ participants \(/.test(ph) &&
         ph.includes(`<summary>Active, no sends in this window (${view.counts["no-sends-in-window"]})</summary>`) && ph.includes(`<summary>Cannot judge yet (${view.counts["cannot-judge"]})</summary>`) && /Cannot judge yet: (fewer than three months|the knowledge base has no doc|the documented schedule ended)/.test(ph) && ph.includes(`<summary>Working as expected (${view.counts.ok})</summary>`) &&
         isDeepStrictEqual([...ph.matchAll(/data-act="hd" data-days="(\d+)" aria-pressed="(true|false)">/g)].map((m) => `${m[1]}:${m[2]}`), ["14:false", "30:false", "45:true", "60:false", "90:false"]) && ph.includes("Judged as of 2026-09-15 over the last 90 days of sends") && ph.includes(`data-csv="program-health"`) && /<tr title="schedule: [a-z-]+ · ingest: /.test(ph),
-      [alarmRows, view.counts]);
+      [alarmRows, view.counts, view.lists.finished?.map((r) => [r.programId, r.signals.schedule]), ph.match(/Every participant has finished[^<]*/g)]);
     const at60 = adminP.call(`app.renderPanel(app.panels.find((p) => p.id === "program-health"), app.stateFromHash("hd=60"), null)`);
     check("the threshold is adjustable in the page (ruled 2026-10-04): the hash carries hd=60, the 60 chip is on, the view is the engine's at 60 days (fewer late sends than at 30), the spec's own value is the default and leaves the hash, a value not offered is dropped, and a value over the day window is never asked of the engine",
       /data-days="60" aria-pressed="true"/.test(at60) && adminP.call(`app.stateFromHash("hd=60").hd`) === 60 && adminP.call(`app.hashOf(app.stateFromHash("hd=60"))`) === "hd=60" && adminP.call(`app.hashOf(app.stateFromHash("hd=45"))`) === "" && adminP.call(`app.stateFromHash("hd=50").hd`) === null && adminP.call(`app.healthDayChoices`).join() === "14,30,45,60,90" &&
@@ -830,52 +875,68 @@ try {
     check("the leaders' About keeps the plain definition and the formula only: no object, fields or filters, every metric shown still defined",
       !execAbout.includes("gs-formula") && !execAbout.includes("Read from:") && engine.glossary([...new Set(presetPanels(SPEC_DEFAULTS.pages[1]).flatMap((p) => p.query.metrics))], SIGNALS).every((e) => execAbout.includes(`<dt data-metric="${e.id}">${esc(e.label)}</dt><dd>${esc(e.definition)} <span class="gs-muted">Calculation: ${esc(e.calculation)}`)));
     // Change a spec value and a registry entry: the About text changes.
-    const changedSpec = specWith((s) => { s.pages[0].panels = []; s.pages[0].statusDefault = null; s.freshness.maxAgeDays = 7; s.purpose = "A changed purpose."; });
+    const changedSpec = specWith((s) => { s.pages[0].panels = []; s.pages[0].statusDefault = null; s.health.silentDays = 7; s.purpose = "A changed purpose."; });
     const changedAbout = paneHtml(build(changedSpec, SIGNALS).html, "about");
     const def = engine.metric("openRate").definition;
     const patched = loadPage(ADMIN_P.html.split(def).join("A CHANGED DEFINITION FOR THE TEST"));
-    check("the About tab is generated from the asset, never hand-written: change a spec value and its sentence changes (freshness 7 days, a new purpose) while the rest stays; change a registry entry (the inlined engine's bytes) and the definition on the page changes with it",
-      about.includes("more than 45 days old") && changedAbout.includes("more than 7 days old") && changedAbout.includes("A changed purpose.") && !about.includes("A changed purpose.") && about.split("<dd>").length === changedAbout.split("<dd>").length &&
+    const WHAT = "This dashboard shows email engagement from the tenant's send log: comparisons across programs and periods, for every program it covers. It is one dashboard with one pull, built as an admin page and a leaders' page, and it is refreshed by hand; the data is as of the pull named below.";
+    check("the About tab is generated from the asset, never hand-written: change a spec value and its sentence changes (the silent threshold 7 days, a new purpose) while the rest stays; change a registry entry (the inlined engine's bytes) and the definition on the page changes with it",
+      about.includes("no send in 45 days") && changedAbout.includes("no send in 7 days") && changedAbout.includes(`<p class="gs-purpose">A changed purpose.</p>`) && !about.includes("A changed purpose.") && about.split("<dd>").length === changedAbout.split("<dd>").length &&
         patched.call(`app.renderAbout()`).includes("A CHANGED DEFINITION FOR THE TEST") && !patched.call(`app.renderAbout()`).includes(def) && about.includes(esc(def)));
-    const settings = describeSpec(SPEC_DEFAULTS);
+    const noPurposeAbout = paneHtml(build(specWith((s) => { s.pages[0].panels = []; s.pages[0].statusDefault = null; s.purpose = null; }), SIGNALS).html, "about");
+    check("the About tab opens with the fixed statement of what the dashboard is (ruled 2026-10-12, F-511 rulings 2 and 3: the send log, comparisons across programs and periods, one pull, an admin page and a leaders' page, refreshed by hand), on both pages, before the data-pulled line; the purpose is a paragraph of its own only when one was set (the fixture sets one; a spec without one shows none), never a settings row; the cadence and the freshness are not listed (unread)",
+      [about, execAbout].every((a) => a.includes(`<section class="gs-about"><h2>About this page</h2><p>${WHAT}</p><p class="gs-purpose">${esc(SPEC.purpose)}</p><p>Data pulled `)) && noPurposeAbout.includes(`<h2>About this page</h2><p>${WHAT}</p><p>Data pulled `) && !noPurposeAbout.includes("gs-purpose") &&
+        [about, execAbout, noPurposeAbout, changedAbout].every((a) => { const settingsDl = a.match(/<dl class="gs-settings">[\s\S]*?<\/dl>/)?.[0] ?? ""; return settingsDl.length > 0 && !settingsDl.includes("<dt>Purpose</dt>") && !settingsDl.includes("<dt>Freshness</dt>") && !settingsDl.includes("<dt>Refresh</dt>") && !/stale banner|Stale:/.test(a); }), about.slice(0, 600));
+    // The group rules are not among the listed settings: the About tab draws them ONCE, as they resolved (the S5-V second sitting read them twice, 2026-10-12).
+    const settings = describeSpec(SPEC_DEFAULTS).filter((d) => !d.covers.some((c) => ["refresh.cadence", "freshness.maxAgeDays", "purpose", "groups.rules[]"].includes(c)));
     // One supergroup rule alone leaves most programs ungrouped at both levels.
     const sparse = specWith((x) => { x.pages[0].panels = []; x.pages[0].statusDefault = null; x.groups.rules = [x.groups.rules[0]]; x.groups.overrides = {}; });
     const sparseAbout = paneHtml(build(sparse, SIGNALS).html, "about");
     const sparseExecAbout = paneHtml(build(sparse, SIGNALS, "exec").html, "about");
     check("This dashboard's settings: the spec's own description (describeSpec), every setting with its sentences, each group rule with the count it matched and a rule that matched nothing flagged, the Ungrouped bucket prominent on the admin page with the programs named, and whether accounts were pulled",
-      settings.every((d) => about.includes(`<dt>${esc(d.label)}</dt>`)) && about.includes(esc(settings.find((d) => d.label === "Silent programs").text[0])) && /<ol><li data-rule-matched="\d+">Supergroup &quot;Surveys&quot;: programs that send a survey\. Matched \d+ programs?\.<\/li>/.test(about) && paneHtml(build(specWith((s) => { s.pages[0].panels = []; s.pages[0].statusDefault = null; s.groups.rules.push({ kind: "manual", level: "group", programIds: ["p-ghost"], label: "Ghost" }); }), PULLED).html, "about").includes(`<li data-rule-matched="0">Group &quot;Ghost&quot;: 1 program(s) picked by hand. <strong class="gs-no-match">Matched nothing.</strong></li>`) && !about.includes("gs-no-match") &&
-        about.includes(`<p class="gs-ungrouped">Every program is grouped.</p>`) && /<p class="gs-ungrouped is-prominent"><strong>Ungrouped: \d+ programs?<\/strong>: Acme [^<]*\.<\/p>/.test(sparseAbout) && !/is-prominent/.test(sparseExecAbout) && /<p class="gs-ungrouped"><strong>Ungrouped: \d+ programs?<\/strong>\.<\/p>/.test(sparseExecAbout) && about.includes(esc(reasonText("accounts-off"))),
-      about.match(/<ol>[\s\S]*?<\/ol>/)?.[0]);
+      settings.every((d) => about.includes(`<dt>${esc(d.label)}</dt>`)) && !about.includes("<dt>Groups</dt>") && (about.match(/programs that send a survey/g) ?? []).length === 1 && about.includes(esc(settings.find((d) => d.label === "Silent programs").text[0])) && /<ol><li data-rule-matched="\d+">Supergroup &quot;Surveys&quot;: programs that send a survey\. Matched \d+ programs?\.<\/li>/.test(about) &&
+        // F-515 (d): a model rule reads by the display name the snapshot knows, never the code alone.
+        about.includes("programs whose model is CSAT Survey. Matched") && !about.includes("whose model is CSAT_SURVEY_V2") && paneHtml(build(specWith((s) => { s.pages[0].panels = []; s.pages[0].statusDefault = null; s.groups.rules.push({ kind: "manual", level: "group", programIds: ["p-ghost"], label: "Ghost" }); }), PULLED).html, "about").includes(`<li data-rule-matched="0">Group &quot;Ghost&quot;: 1 program(s) picked by hand. <strong class="gs-no-match">Matched nothing.</strong></li>`) && !about.includes("gs-no-match") &&
+        // F-515 (c): the program no supergroup rule reaches is Ungrouped although a name rule gave it a group.
+        /<p class="gs-ungrouped is-prominent"><strong>Ungrouped: \d+ programs?<\/strong>: [^<]*\.<\/p>/.test(about) && /<p class="gs-ungrouped is-prominent"><strong>Ungrouped: \d+ programs?<\/strong>: Acme [^<]*\.<\/p>/.test(sparseAbout) && !/is-prominent/.test(sparseExecAbout) && /<p class="gs-ungrouped"><strong>Ungrouped: \d+ programs?<\/strong>\.<\/p>/.test(sparseExecAbout) && about.includes(esc(reasonText("accounts-off"))),
+      { settingsIn: settings.filter((d) => !about.includes(`<dt>${esc(d.label)}</dt>`)).map((d) => d.label), groupsDt: about.includes("<dt>Groups</dt>"), surveyMentions: (about.match(/programs that send a survey/g) ?? []).length, model: about.includes("programs whose model is CSAT Survey. Matched"), ungrouped: about.match(/<p class="gs-ungrouped[^"]*">.*?<\/p>/)?.[0], sparse: sparseAbout.match(/<p class="gs-ungrouped[^"]*">.*?<\/p>/)?.[0], sparseExec: sparseExecAbout.match(/<p class="gs-ungrouped[^"]*">.*?<\/p>/)?.[0], ol: about.match(/<ol>[\s\S]*?<\/ol>/)?.[0]?.slice(0, 300) });
     const domain = "acme.com";
     const link = "www.acme.com/mail-settings";
     check("on a page with sourceDetail off the recipients sentences keep their meaning and DROP the internal-domain and unsubscribe-link values (ruled 2026-10-05): the leaders' About names neither value, its embedded parameters carry neither, and the admin About carries both",
       !execAbout.includes(domain) && !execAbout.includes(link) && execAbout.includes("Addresses at the company&#39;s own 1 email domain are internal.") && execAbout.includes("Clicks on the tenant&#39;s own 1 unsubscribe link are unsubscribe clicks, not content clicks.") &&
         execP.call(`app.snapshot.meta.params.internalDomains`).length === 0 && execP.call(`app.snapshot.meta.params.unsubscribeLinks`).length === 0 && execP.call(`app.snapshot.meta.params.redactedOnPage`).join() === "internalDomains,unsubscribeLinks" && !EXEC_P.html.includes(link) &&
-        about.includes(`Addresses at ${domain} are internal.`) && about.includes(link) && adminP.call(`app.snapshot.meta.params.internalDomains`).join() === domain && isDeepStrictEqual(aboutSettings(SPEC_DEFAULTS, SPEC_DEFAULTS.pages[0]).map((d) => d.text), describeSpec(SPEC_DEFAULTS).map((d) => d.text)),
+        about.includes(`Addresses at ${domain} are internal.`) && about.includes(link) && adminP.call(`app.snapshot.meta.params.internalDomains`).join() === domain && isDeepStrictEqual(aboutSettings(SPEC_DEFAULTS, SPEC_DEFAULTS.pages[0]).map((d) => d.text), settings.map((d) => d.text)),
       [execAbout.match(/own[^<]*/g)]);
     check("Where the data came from, Caveats and How to refresh: the pull's time, tenant, window, provisional start, refresh mode, step detail, accounts, health and versions from the snapshot's meta; the caveats block from the engine with the health caveats because the Health tab is on (and without them on the leaders' page); the refresh line as the entry command on the admin page, a sentence on the leaders' page; the How to use section names what this page offers",
       about.includes("<dt>Pulled at</dt><dd>2026-09-15T09:00:00-07:00</dd>") && about.includes("<dt>Tenant</dt><dd>acme.gainsightcloud.com</dd>") && about.includes("<dt>Health data</dt><dd>pulled, judged as of 2026-09-15</dd>") && /<dt>Versions<\/dt><dd>CLI [^<]*, plugin [^<]*, snapshot schema 1<\/dd>/.test(about) &&
         about.includes(`<li data-caveat="schedules-from-kb">`) && !execAbout.includes(`<li data-caveat="schedules-from-kb">`) && execAbout.includes(`<li data-caveat="incomplete-period">`) && engine.caveatsFor(SIGNALS, used, { health: true }).every((c) => about.includes(`<li data-caveat="${c.id}">${esc(c.text)}</li>`)) &&
-        about.includes(`<h2>How to refresh</h2><p>Run <code>${esc(COPY_LINES.refresh("program-health"))}</code> from the workspace, with a gs-admin login; the /gs-superadmin:email-engagement skill runs the same command.</p>`) && execAbout.includes("An admin refreshes this page every month") && !execAbout.includes("dashboard.mjs") &&
+        // F-511 instance 27: the About tab's section is the ruled wording verbatim in its stepped form (the lead, three
+        // numbered steps with the refresh line and its Copy button, what the admin will see, the session paragraph).
+        howToRefreshText(about) === HOW_TO_REFRESH_RULED_PARTS("program-health", null).join(" ") && about.includes(`<h2>How to refresh</h2><p>Refreshes are manual: the pages change only when you run one.</p><ol class="gs-howto"><li>Open a terminal`) &&
+        about.includes(`<li>Run the refresh line:<p class="gs-notice-line"><code>${esc(COPY_LINES.refresh("program-health"))}</code> <button type="button" data-copy="${esc(COPY_LINES.refresh("program-health"))}">Copy</button></p>Nothing else is needed.</li></ol><p>What you will see:`) &&
+        execAbout.includes("An admin refreshes this page by hand") && !execAbout.includes("dashboard.mjs") && !/every month|cadence/.test(execAbout) &&
         about.includes("<h2>How to use this page</h2>") && about.includes("the no-send threshold has buttons (14, 30, 45, 60, 90 days)") && !execAbout.split("<h2>How to use this page</h2>")[1].split("</section>")[0].includes("no-send threshold") && about.includes(`&quot;${engine.NOT_TRACKED}&quot; means no link in the email is click-tracked`),
       about.match(/<h2>Where the data came from<\/h2>[\s\S]*?<\/dl>/)?.[0]);
     check("a caveats footer is on every page, every tab: the same caveats block, collapsed, under the panes", [ADMIN, EXEC, ADMIN_P, EXEC_P].every((b) => /<footer class="gs-foot"><details class="gs-caveats-foot"><summary>Caveats \(\d+\)<\/summary><ul class="gs-caveats">/.test(b.html)) && (markupOf(ADMIN_P.html).match(/<ul class="gs-caveats">/g) ?? []).length === 2);
   }
 
-  // ══ The stale banner ═══════════════════════════════════════════════════════
+  // ══ The header's age (no stale banner: ruled 2026-10-12) ═══════════════════
   {
     const app = createDashboard(engine, pageModel(SPEC_DEFAULTS, GOLD, SPEC_DEFAULTS.pages[0]));
-    const fresh = app.renderStale();
-    app.setClock(() => Date.parse("2026-10-01T00:00:00Z"));
-    const within = app.renderStale();
+    const fresh = app.renderAge();
+    app.setClock(() => Date.parse("2026-09-15T20:00:00Z"));
+    const sameDay = app.renderAge();
+    app.setClock(() => Date.parse("2026-09-17T00:00:00Z"));
+    const oneDay = app.renderAge();
     app.setClock(() => Date.parse("2026-12-01T00:00:00Z"));
-    const stale = app.renderStale();
-    check("a stale banner shows once the data is past the spec's freshness (45 days), read from a clock the page gets at mount: in Node, with no clock, the pre-render carries an empty region; 16 days after the pull nothing; 77 days after, the banner with the age, the cadence and the threshold, and the refresh line on an admin page",
-      fresh === "" && ADMIN_P.html.includes(`<div data-region="stale"></div>`) && within === "" && /<div class="gs-banner gs-banner-stale" role="status" data-banner="stale"><p>Stale: this data was pulled 76 days ago\. The dashboard is refreshed every month and is stale after 45 days\.<\/p><p class="gs-notice-line"><code>node \.gs-superadmin\/plugin\/scripts\/dashboard\.mjs refresh program-health<\/code> <button type="button" data-copy="[^"]*">Copy<\/button><\/p><\/div>/.test(stale) &&
-        !createDashboard(engine, { ...pageModel(SPEC_DEFAULTS, GOLD, SPEC_DEFAULTS.pages[1]), actions: null }).renderStale().includes("gs-banner"), stale);
+    const later = app.renderAge();
+    const headerLater = app.renderPulled();
+    check("the header says how many days ago the data was pulled, read from a clock the page gets at mount: in Node, with no clock, the region is empty; the same day reads today; one day reads 1 day ago; 76 days after, 76 days ago; the age sits after the time and before the tenant, and the not-live sentence follows; no banner, no threshold, no cadence, and the word stale nowhere in the header",
+      fresh === "" && sameDay === ", today," && oneDay === ", 1 day ago," && later === ", 76 days ago," && /^Data pulled 2026-09-15T09:00:00-07:00( \([^)]*\))?<span data-region="age">, 76 days ago,<\/span> from acme\.gainsightcloud\.com\. Window [^<]* These pages are not live: they change only when the dashboard is refreshed\.$/.test(headerLater) &&
+        !/stale|cadence|gs-banner/i.test(headerLater) && !app.regions.stale && typeof app.regions.age === "function", headerLater);
     const execApp = createDashboard(engine, pageModel(SPEC_DEFAULTS, GOLD, SPEC_DEFAULTS.pages[1]));
     execApp.setClock(() => Date.parse("2026-12-01T00:00:00Z"));
-    check("on a leaders' page the stale banner carries no command", execApp.renderStale().includes("Stale: this data was pulled 76 days ago") && !execApp.renderStale().includes("dashboard.mjs"));
+    check("the leaders' page carries the same age and the same not-live sentence, and no command", execApp.renderPulled().includes(", 76 days ago,") && execApp.renderPulled().includes("These pages are not live") && !execApp.renderPulled().includes("dashboard.mjs"));
   }
 
   // ══ Column show and hide (R1) ═════════════════════════════════════════════
@@ -905,8 +966,8 @@ try {
     };
     const blocked = { getItem: () => { throw new Error("storage is blocked"); }, setItem: () => { throw new Error("storage is blocked"); } };
     const a = drive(blocked);
-    check("a browser that blocks storage still gets a working page: reading and writing the column choice are both wrapped, nothing throws, the pre-render is left as it is and the controls are switched on; the stale region is painted from the browser's clock (fresh here)",
-      a.root.disabled === false && a.root.innerHTML === null && a.painted.stale === "" && (a.listeners.change({ target: { getAttribute: (n) => (n === "data-col" ? "programs" : null) } }), /data-sort="programs:opened">Opened<\/button><\/th>/.test(panelHtml(a.painted.panes, "programs")) && !/class="gs-num">Sent<\/th>/.test(panelHtml(a.painted.panes, "programs"))), a.painted.panes?.slice(0, 200));
+    check("a browser that blocks storage still gets a working page: reading and writing the column choice are both wrapped, nothing throws, the pre-render is left as it is and the controls are switched on; the header's age is painted from the browser's clock",
+      a.root.disabled === false && a.root.innerHTML === null && typeof a.painted.age === "string" && /, (today|\d+ days? ago),/.test(a.painted.age) && (a.listeners.change({ target: { getAttribute: (n) => (n === "data-col" ? "programs" : null) } }), /data-sort="programs:opened">Opened<\/button><\/th>/.test(panelHtml(a.painted.panes, "programs")) && !/class="gs-num">Sent<\/th>/.test(panelHtml(a.painted.panes, "programs"))), a.painted.panes?.slice(0, 200));
     const kept = new Map();
     const b = drive({ getItem: (k) => kept.get(k) ?? null, setItem: (k, v) => kept.set(k, v) });
     b.listeners.change({ target: { getAttribute: (n) => (n === "data-col" ? "programs" : null) } });
@@ -1201,12 +1262,12 @@ try {
     const built = build(SPEC, many);
     const page = loadPage(built.html);
     const took = Date.now() - started;
-    const labels = (page.prerender.match(/<label class="gs-prog">/g) ?? []).length;
+    const labels = (page.prerender.match(/<label class="gs-prog"(?: data-dim="[^"]+")?>/g) ?? []).length;
     const names = [...many.dimensions.programs].map((p) => p.name).sort();
     const hits = page.call(`app.programMatches("renewal 00")`);
     const listedNames = page.call(`app.programs.map((p) => p.name)`);
     check("the program list handles several hundred programs: all 400 are in the list, in name order, each with its badges, and the page builds, loads and answers in seconds",
-      labels === 400 && isDeepStrictEqual(listedNames, names) && (page.prerender.match(/<span class="gs-badge">Active<\/span>/g) ?? []).length >= 200 && built.html.includes(`data-region="count">400 of 400 selected<`) && took < 20000, [labels, took]);
+      labels === 400 && isDeepStrictEqual(listedNames, names) && (page.prerender.match(/<span class="gs-badge">Active<\/span>/g) ?? []).length >= 200 && built.html.includes(`data-region="count">400 programs sent in this window, 400 selected<`) && took < 20000, [labels, took]);
     check("the search finds programs by any part of the name, whatever the letter case: the matches are exactly the programs whose name holds the text, an empty search shows all, and a miss shows none",
       hits.length === 400 && isDeepStrictEqual(listedNames.filter((_, i) => hits[i]), names.filter((n) => n.toLowerCase().includes("renewal 00"))) && hits.filter(Boolean).length > 5 && hits.filter(Boolean).length < 400 &&
         page.call(`app.programMatches("  ")`).every(Boolean) && !page.call(`app.programMatches("zzz-no-such")`).some(Boolean) && page.call(`app.programMatches("P-0399")`).filter(Boolean).length === 1, hits.filter(Boolean).length);
@@ -1215,7 +1276,7 @@ try {
     const [h1, h2] = [page.call(`app.hashOf(app.clean({ ...app.defaultState(), programs: ${JSON.stringify(some)} }))`), page.call(`app.hashOf(app.clean({ ...app.defaultState(), programs: ${JSON.stringify(most)} }))`)];
     check("a large selection stays a short address: the hash lists whichever is shorter, the programs kept or the programs left out, and reads back as the same selection either way",
       h1.startsWith("p=") && h2.startsWith("px=") && h2.split(",").length === 8 && isDeepStrictEqual(page.call(`app.stateFromHash(${JSON.stringify(h2)}).programs`).sort(), [...most].sort()) && isDeepStrictEqual(page.call(`app.stateFromHash(${JSON.stringify(h1)}).programs`).sort(), [...some].sort()) &&
-        page.call(`app.regions.count(app.stateFromHash(${JSON.stringify(h2)}))`) === "392 of 400 selected", [h1.length, h2]);
+        page.call(`app.regions.count(app.stateFromHash(${JSON.stringify(h2)}))`) === "400 programs sent in this window, 392 selected", [h1.length, h2]);
     check("with every program selected and filtered by status, the program table still equals the engine's over the generated snapshot",
       isDeepStrictEqual(panelRun(page, "programs", "s=PAUSE"), plain(runQuery(applyGroups(many, SPEC.groups).snapshot, { recipientClass: "all", statuses: ["PAUSE"] }, SPEC.pages[0].panels[0].query))) && panelRun(page, "programs", "s=PAUSE").rows.length === 100);
   }
@@ -1225,7 +1286,7 @@ try {
     const r = ADMIN.report;
     check("the builder measures every page and reports it: the total is the file's real size in bytes, with what the data, the engine, the runtime and the pre-render each take, and the rows of each embedded table",
       r.bytes.total === Buffer.byteLength(ADMIN.html, "utf8") && r.bytes.engine === Buffer.byteLength(SOURCES.engineSource) && r.bytes.runtime === Buffer.byteLength(SOURCES.runtimeSource) && r.bytes.data === Buffer.byteLength(admin.data) && r.bytes.prerender === Buffer.byteLength(admin.prerender) &&
-        r.rows.byTemplate === 30 && r.rows.byAccount === 67 && r.rows["health.bounceReasons"] === PULLED.facts.health.bounceReasons.length && r.rows["health.schedules"] === PULLED.facts.health.schedules.length && r.rows["health.sources"] === PULLED.facts.health.sources.length && Object.keys(r.tables).length === 17 && r.tables.byAccount.bytes > 0 && r.tables.byAccount.bytes < r.bytes.data && r.megabytes === Number((r.bytes.total / MB).toFixed(2)) && r.warning === null && r.refused === null && r.file === "latest-admin.html" && pageFileName("exec") === "latest-exec.html" &&
+        r.rows.byTemplate === 30 && r.rows.byAccount === PULLED.facts.byAccount.length && r.rows["health.bounceReasons"] === PULLED.facts.health.bounceReasons.length && r.rows["health.schedules"] === PULLED.facts.health.schedules.length && r.rows["health.sources"] === PULLED.facts.health.sources.length && Object.keys(r.tables).length === 17 && r.tables.byAccount.bytes > 0 && r.tables.byAccount.bytes < r.bytes.data && r.megabytes === Number((r.bytes.total / MB).toFixed(2)) && r.warning === null && r.refused === null && r.file === "latest-admin.html" && pageFileName("exec") === "latest-exec.html" &&
           // The template text's share (TPL-2): the template dimension is reported like a table, and the exec page's copy, with the text withheld, is smaller.
           r.rows["dimensions.templates"] === PULLED.dimensions.templates.length && r.tables["dimensions.templates"].bytes > 0 && EXEC.report.tables["dimensions.templates"].bytes < r.tables["dimensions.templates"].bytes, r);
     check("the budget is 5 MB to warn and 15 MB to refuse a leaders' page, under the 16 MB a hosted page may be", PAGE_BUDGET.warnBytes === 5 * MB && PAGE_BUDGET.refuseExecBytes === 15 * MB && PAGE_BUDGET.refuseExecBytes < 16e6);
@@ -1265,7 +1326,22 @@ try {
     try { json = JSON.parse(run.stdout); } catch { /* failure path */ }
     check("the command builds one file per page of the spec and prints one JSON summary with the size report; what it writes is what the pure builder returns",
       run.status === 0 && json?.ok === true && isDeepStrictEqual(json.pages.map((p) => [p.page, p.file, p.written]), [["admin", "latest-admin.html", true], ["exec", "latest-exec.html", true]]) && json.pages.every((p) => p.bytes.total > 0 && p.megabytes >= 0) && json.budget.warnMegabytes === 5 &&
-        readFileSync(join(out, "latest-admin.html"), "utf8") === build(SPEC, PULLED).html && readFileSync(join(out, "latest-exec.html"), "utf8") === build(SPEC, PULLED, "exec").html && json.ungrouped === "0 new programs ungrouped", json ?? run.stderr);
+        readFileSync(join(out, "latest-admin.html"), "utf8") === build(SPEC, PULLED).html && readFileSync(join(out, "latest-exec.html"), "utf8") === build(SPEC, PULLED, "exec").html && json.ungrouped === "1 new program ungrouped", json ?? run.stderr);
+    // F-503 (reopened 2026-10-12): a spec read from where the writer keeps it (<kb>/dashboards/<slug>/spec.json) gives
+    // the page its knowledge-base folder's NAME, and every copy line then carries --kb <folder>; a spec read from
+    // anywhere else gives none, and the lines omit the flag (the pages above).
+    const kbRoot = join(ROOT, "kbws", "acme-prod");
+    mkdirSync(join(kbRoot, "dashboards", "program-health"), { recursive: true });
+    copyFileSync(SPEC_FILE, join(kbRoot, "dashboards", "program-health", "spec.json"));
+    const withKb = runNode(BUILDER, ["--spec", join(kbRoot, "dashboards", "program-health", "spec.json"), "--snapshot", SNAPSHOT_FILE, "--out-dir", join(ROOT, "withkb")]);
+    const kbAdmin = withKb.status === 0 ? readFileSync(join(ROOT, "withkb", "latest-admin.html"), "utf8") : "";
+    // The pre-render's lines only: the inlined runtime SOURCE also holds the text `data-copy="…"`.
+    const kbLines = [...kbAdmin.replace(/<script[\s\S]*?<\/script>/g, "").matchAll(/data-copy="([^"]*)"/g)].map((m) => m[1]);
+    check("F-503 every copy line carries the dashboard's knowledge-base folder: built from the writer's own layout, each line the admin page offers to copy ends in --kb <folder> (the refresh line of How to refresh among them), the folder is named in the How to refresh steps, and the same page built by hand with no folder known omits the flag",
+      withKb.status === 0 && kbLines.length >= 1 && kbLines.every((l) => l.endsWith(" --kb acme-prod")) && kbLines.includes(COPY_LINES.refresh("program-health", "acme-prod")) && howToRefreshText(kbAdmin) === HOW_TO_REFRESH_RULED_PARTS("program-health", "acme-prod").join(" ") && !build(SPEC, PULLED).html.replace(/<script[\s\S]*?<\/script>/g, "").includes("--kb ") && COPY_LINES.change("x", "accounts.pull", "true", "kb") === "node .gs-superadmin/plugin/scripts/dashboard.mjs change x accounts.pull=true --kb kb" &&
+        // The offered-tab and account notices carry it too: a page built with the folder known over a snapshot that lacks the data.
+        (() => { const offSpec = specWith((s) => { s.pages[0].tabs.find((t) => t.id === "health").enabled = false; s.pages[0].tabs.find((t) => t.id === "templates").enabled = false; s.pages[0].panels = s.pages[0].panels.filter((p) => p.tab !== "health" && p.tab !== "templates"); }); const strip = (h) => h.replace(/<script[\s\S]*?<\/script>/g, ""); const linesOf = (h) => [...strip(h).matchAll(/data-copy="([^"]*)"/g)].map((m) => m[1]); const plain = linesOf(build(offSpec, OFF).html); const withFolder = linesOf(buildPage({ spec: offSpec, snapshot: applyGroups(OFF, offSpec.groups).snapshot, pageId: "admin", ...SOURCES, kb: "acme-prod" }).html); return plain.length >= 2 && withFolder.length === plain.length && withFolder.every((l) => l.endsWith(" --kb acme-prod")) && plain.every((l) => !l.includes("--kb")); })(),
+      [withKb.status, kbLines, withKb.stderr?.slice(-300)]);
     const one = runNode(BUILDER, ["--spec", SPEC_FILE, "--snapshot", SNAPSHOT_FILE, "--out-dir", join(ROOT, "one"), "--page", "exec"]);
     check("--page builds that page alone, and a page the spec does not have is refused by name", one.status === 0 && existsSync(join(ROOT, "one", "latest-exec.html")) && !existsSync(join(ROOT, "one", "latest-admin.html")) &&
       runNode(BUILDER, ["--spec", SPEC_FILE, "--snapshot", SNAPSHOT_FILE, "--out-dir", join(ROOT, "none"), "--page", "ghost"]).stderr.includes("--page ghost: the spec has no such page (it has admin, exec)"));

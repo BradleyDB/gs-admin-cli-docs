@@ -87,7 +87,9 @@ const fold = (v) => String(v ?? "").toLowerCase();
 // ── Characteristics (R25): what a "characteristic" rule tests ────────────────
 // `type` is the type `is` must have; `of` reads the trait; `say` words the rule.
 export const CHARACTERISTICS = Object.freeze({
-  model: { label: "Program model", type: "string", of: (p) => p.model, say: (is) => `programs whose model is ${is}` },
+  // The rule tests the model CODE (`DRIPV2`); it is described by the display name when the caller knows it
+  // ("Email Chain"), the code alone otherwise (F-515 d: an admin reads the name, not the code).
+  model: { label: "Program model", type: "string", of: (p) => p.model, say: (is, names) => `programs whose model is ${names?.[is] ?? is}` },
   audience: { label: "Audience", type: "string", of: (p) => p.audienceType, say: (is) => `programs sent to ${is === "USER" ? "internal users" : is === "CUSTOMER" ? "customers" : is}` },
   sendsSurveys: { label: "Sends surveys", type: "boolean", of: (p) => p.sendsSurveys, say: (is) => `programs that ${is ? "send" : "do not send"} a survey` },
   recurring: { label: "Recurring schedule", type: "boolean", of: (p) => p.recurring, say: (is) => `programs ${is ? "on a recurring schedule" : "whose schedule does not recur"}` },
@@ -116,7 +118,7 @@ export const RULE_KINDS = Object.freeze({
       const v = CHARACTERISTICS[r.characteristic].of(p);
       return v != null && v === r.is ? r.label.trim() : null;
     },
-    describe: (r) => CHARACTERISTICS[r.characteristic].say(r.is),
+    describe: (r, names) => CHARACTERISTICS[r.characteristic].say(r.is, names?.[r.characteristic]),
   },
   folder: {
     fields: ["folders"],
@@ -221,14 +223,23 @@ export function validateGroups(groups, at = "groups") {
 }
 
 /**
- * One rule in words, for a page's About tab and for `show`.
+ * One rule in words, for a page's About tab and for `show`. A characteristic's VALUE is the code the rule tests; the
+ * caller may pass the display names it knows (`{model: {DRIPV2: "Email Chain"}}`) so the sentence reads as an admin
+ * does (F-515 d); without them the code is said.
  * @param {T11GroupRule} rule
+ * @param {{names?: {model?: Object<string, string>}}} [opts]
  * @returns {string}
  */
-export function describeRule(rule) {
+export function describeRule(rule, { names = null } = {}) {
   const kind = RULE_KINDS[rule.kind];
   const label = "label" in rule && isText(rule.label) ? ` "${rule.label.trim()}"` : "";
-  return `${rule.level === "supergroup" ? "Supergroup" : "Group"}${label}${rule.within ? ` (inside ${rule.within})` : ""}: ${kind.describe(rule)}.`;
+  return `${rule.level === "supergroup" ? "Supergroup" : "Group"}${label}${rule.within ? ` (inside ${rule.within})` : ""}: ${kind.describe(rule, names)}.`;
+}
+/** The display name of each model code among these programs (what describeRule says a model rule by). */
+export function modelNamesOf(programs) {
+  const names = {};
+  for (const p of programs ?? []) if (p?.model && isText(p.modelName)) names[p.model] = p.modelName;
+  return { model: names };
 }
 
 // ── Traits: what the rules test, read from a snapshot ────────────────────────
@@ -237,8 +248,22 @@ export function describeRule(rule) {
  * @returns {ProgramTraits[]} one per program of the snapshot, by id
  */
 export function programTraits(snapshot) {
-  const responses = snapshot.meta.metricAvailability.responses.programs;
-  return snapshot.dimensions.programs
+  // The months each program sent in (F-502's hand-fed read: a one-run window re-run month after month recurs by hand).
+  const sentMonths = {};
+  for (const r of snapshot.facts.byTemplate ?? []) if (r.sent > 0) (sentMonths[r.programId] ??= new Set()).add(r.month);
+  return programTraitsOf(snapshot.dimensions.programs, snapshot.meta.metricAvailability.responses.programs, Object.fromEntries(Object.entries(sentMonths).map(([id, m]) => [id, m.size])));
+}
+/**
+ * The same traits from program rows alone (the program dimension's shape, as `jo p list` plus the KB's schedule
+ * give it) and the response availability per program (empty when no pull has read surveys yet: a survey model
+ * still says it sends one). The interview reads the plan's program list through this before any fact is pulled (S5).
+ * @param {Array<*>} programs rows shaped like T10Dimensions.programs
+ * @param {Object<string, {state: string}>} [responses] metricAvailability.responses.programs, or none
+ * @param {Object<string, number>} [monthsWithSends] per program id, how many months it sent in (none known: {})
+ * @returns {ProgramTraits[]}
+ */
+export function programTraitsOf(programs, responses = {}, monthsWithSends = {}) {
+  return programs
     .map((p) => {
       const survey = responses[p.id]?.state;
       // The schedule rides the program dimension on every pull made with a KB (ruled 2026-10-05, S3b): a
@@ -251,7 +276,9 @@ export function programTraits(snapshot) {
         sendsSurveys: SURVEY_MODELS.includes(p.model) || survey === "tracked" ? true : survey === "not-tracked" ? false : null,
         // A classification the audit could settle decides; a pass-through label (a CRON-type schedule whose cron the KB
         // did not capture, "unknown") is a kind that could not be read, so the trait is unknown, never false (F-494).
-        recurring: !schedule ? null : schedule.classification === "recurring" ? true : schedule.classification === "one-time" || schedule.classification === NO_SCHEDULE_LABEL ? false : null,
+        // A one-run window (F-502) is one-time by its data — unless the program was RE-RUN through such windows, sending
+        // in two or more months: that is the hand-fed class (F-491's taxonomy), which recurs by hand and stays out of One-off.
+        recurring: !schedule ? null : schedule.classification === "recurring" ? true : schedule.oneRunWindow === true && (monthsWithSends[p.id] ?? 0) >= 2 ? true : schedule.classification === "one-time" || schedule.classification === NO_SCHEDULE_LABEL ? false : null,
       };
     })
     .sort((a, b) => cmpKey(a.id, b.id));
@@ -266,8 +293,9 @@ export function programTraits(snapshot) {
  * `within` only inside that supergroup); else "Ungrouped".
  * @param {{programs: ProgramTraits[], groups: T11Groups, previousProgramIds?: ?Iterable<string>}} input
  *   previousProgramIds: the programs the previous snapshot held, so "new" can be said of the ungrouped
- * @returns {{assignments: GroupAssignment[], ungrouped: string[], newUngrouped: string[], line: string}}
- *   ungrouped: programs no override and no rule reached at either level
+ * @returns {{assignments: GroupAssignment[], ungrouped: string[], ungroupedWithin: string[], newUngrouped: string[], line: string}}
+ *   ungrouped: programs with no supergroup, plus (when the spec has group rules) those with a supergroup but no group
+ *   (F-515 c); ungroupedWithin: the latter alone
  */
 export function resolveGroups({ programs, groups, previousProgramIds = null }) {
   const problems = validateGroups(groups);
@@ -288,10 +316,20 @@ export function resolveGroups({ programs, groups, previousProgramIds = null }) {
     const g = isText(over.group) ? { label: over.group.trim(), by: "override" } : firstMatch("group", p, supergroup);
     return { id: p.id, supergroup, group: g?.label ?? UNGROUPED, by: { supergroup: sg?.by ?? null, group: g?.by ?? null } };
   });
-  const ungrouped = assignments.filter((a) => a.by.supergroup == null && a.by.group == null).map((a) => a.id);
+  // Ungrouped at EITHER level the spec groups on (F-515 c): no supergroup; or, when the spec has group rules at all,
+  // a supergroup but no group inside it (the "<supergroup> / Ungrouped" rows). A spec with no group rule groups on
+  // one level only, so its programs are not ungrouped for lacking a group.
+  const groupsLevel = groups.rules.some((r) => r.level === "group") || Object.values(groups.overrides).some((o) => isText(o?.group));
+  const superLevel = groups.rules.some((r) => r.level === "supergroup") || Object.values(groups.overrides).some((o) => isText(o?.supergroup));
+  // A spec that groups on neither level (no rules at all) leaves every program ungrouped; one that groups on one level
+  // only counts misses at that level alone (a group-level-only spec does not report every program for lacking a supergroup).
+  const ungroupedWithin = assignments.filter((a) => a.by.supergroup != null && a.by.group == null && groupsLevel).map((a) => a.id);
+  const ungrouped = assignments.filter((a) => (a.by.supergroup == null && (superLevel || !groupsLevel)) || ungroupedWithin.includes(a.id) || (a.by.supergroup == null && a.by.group == null)).map((a) => a.id);
   const before = previousProgramIds ? new Set(previousProgramIds) : null;
   const newUngrouped = before ? ungrouped.filter((id) => !before.has(id)) : ungrouped;
-  return { assignments, ungrouped, newUngrouped, line: `${newUngrouped.length} new program${newUngrouped.length === 1 ? "" : "s"} ungrouped` };
+  const newWithin = newUngrouped.filter((id) => ungroupedWithin.includes(id));
+  const line = `${newUngrouped.length} new program${newUngrouped.length === 1 ? "" : "s"} ungrouped${newWithin.length ? ` (${newWithin.length} inside a supergroup with no group)` : ""}`;
+  return { assignments, ungrouped, ungroupedWithin, newUngrouped, line };
 }
 
 /**
@@ -320,8 +358,15 @@ const NAME_DELIMITERS = Object.freeze(["|", " - ", ":", "_", "/", " "]);
  * @param {T10Snapshot} snapshot
  */
 export function suggestionInput(snapshot) {
-  const traits = programTraits(snapshot);
   const sent = new Map(runQuery(snapshot, {}, { groupBy: ["program"], metrics: ["sent"] }).rows.map((r) => [r.key.program, r.cells.sent.value]));
+  return suggestionTable({ traits: programTraits(snapshot), sent, tenantHost: snapshot.meta.tenantHost, pulledAt: snapshot.meta.pulledAt, window: { from: snapshot.meta.window.from, to: snapshot.meta.window.to } });
+}
+/**
+ * The same table from traits and sends already in hand: what the interview builds from the plan's program list
+ * (programTraitsOf over the listed programs, sends from the plan's base read) before any fact call is made (S5).
+ * @param {{traits: ProgramTraits[], sent: Map<string, number>, tenantHost: string, pulledAt: ?string, window: {from: string, to: string}}} args
+ */
+export function suggestionTable({ traits, sent, tenantHost, pulledAt, window }) {
   const tally = (keyOf) => {
     const out = new Map();
     for (const p of traits) for (const k of [keyOf(p)].flat()) out.set(k, (out.get(k) ?? 0) + 1);
@@ -337,19 +382,24 @@ export function suggestionInput(snapshot) {
     }
     return { delimiter, programs: using.length, firstParts: [...first].map(([value, programs]) => ({ value, programs })).sort((a, b) => b.programs - a.programs || cmpKey(a.value, b.value)).slice(0, 25) };
   }).filter((d) => d.programs > 0);
+  // The code → display name map, built once (the tallies and every program row read it).
+  const modelNames = modelNamesOf(traits).model;
   return {
     kind: "dashboard-group-suggestion-input",
-    tenantHost: snapshot.meta.tenantHost,
-    pulledAt: snapshot.meta.pulledAt,
-    window: { from: snapshot.meta.window.from, to: snapshot.meta.window.to },
+    tenantHost,
+    pulledAt,
+    window: { from: window.from, to: window.to },
     notes: [
+      "A characteristic rule tests `model`, the model CODE (DRIPV2, CSAT_SURVEY_V2, …): write the code as the rule's `is` and use `modelName`, the display name, as the rule's label. The tallies carry both.",
+      "`recurring` is the trait the rules resolve over on a pull with this knowledge base: a recurring schedule whose window admits one run reads one-time unless the program sent in two or more months.",
       "Folder NAMES are not available from Gainsight: a folder shows as its id, and a folder group needs a label from the person.",
       "sendsSurveys and recurring are null where they could not be determined (survey data unreadable; no knowledge-base doc for the program; a schedule whose kind the doc does not settle).",
       "A survey's TYPE is known only through the program model (CSAT or generic survey programs). A Dynamic Program that sends a survey does not say which type.",
     ],
-    programs: traits.map((p) => ({ id: p.id, name: p.name, status: p.statuses.map(statusLabel).join(" + "), model: p.modelName ?? p.model, audience: p.audienceType, folderId: p.folderId, sendsSurveys: p.sendsSurveys, recurring: p.recurring, sent: sent.get(p.id) ?? 0 })),
+    // `model` is the CODE a characteristic rule tests; `modelName` is its display name, the rule's label (F-515 a).
+    programs: traits.map((p) => ({ id: p.id, name: p.name, status: p.statuses.map(statusLabel).join(" + "), model: p.model, modelName: modelNames[p.model] ?? p.model, audience: p.audienceType, folderId: p.folderId, sendsSurveys: p.sendsSurveys, recurring: p.recurring, sent: sent.get(p.id) ?? 0 })),
     tallies: {
-      model: tally((p) => p.modelName ?? p.model ?? "(none)"),
+      model: tally((p) => p.model ?? "(none)").map((t) => ({ ...t, label: modelNames[t.value] ?? t.value })),
       audience: tally((p) => p.audienceType ?? "(none)"),
       status: tally((p) => p.statuses.map(statusLabel)),
       sendsSurveys: tally((p) => String(p.sendsSurveys)),

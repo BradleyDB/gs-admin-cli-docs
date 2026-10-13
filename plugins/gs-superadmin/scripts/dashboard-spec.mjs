@@ -74,6 +74,17 @@
  * @property {string[]} params.pinnedAccounts      account keys always kept as their own rows (R24)
  * @property {boolean} params.stepDetail           the ONE step-detail switch (R21): step and variant rows, at the cost of a longer pull
  * @property {number} params.repullMonths          months read again by a refresh that continues from an earlier snapshot
+ * @property {{kind: "rolling"} | {kind: "fixed", from: string, to: string} | {kind: "since", from: string}} [params.window]
+ *   the reporting window's KIND (additive, S5; ruled 2026-10-04): rolling = the last windowMonths months counted
+ *   back from each refresh's day (the default, and what an absent field means); fixed = the months from `from` to
+ *   `to` (YYYY-MM, inclusive), the same every refresh; since = every month from `from` to the current one ("all time"
+ *   from a date). The 36-month cap applies to the rolling kind only; a first pull scales with the months covered
+ * @property {number} [params.quietDueDays]        due days an ingest may run admitting nobody before the program is listed as
+ *   "Admitting nobody" (additive, S5; F-491 ruling 4, default 5); passed to the adapter as --quiet-due-days
+ * @property {number} [params.samplePrograms]      programs a health pull may sample for failure text, most failures first
+ *   (additive, S5; F-491 ruling 5, default 25); passed to the adapter as --sample-programs
+ * @property {string[]} [params.expectedReasons]   the tenant's own expected participant-failure wordings (additive, S5;
+ *   HLT-1 ruling 4): each becomes a category flagged expected, passed to the adapter as --expected-reason
  *
  * @typedef {object} T11GroupRule
  *   One rule fills one level. kind decides the other fields (dashboard-groups.mjs RULE_KINDS):
@@ -114,7 +125,7 @@
  *   a health-typed panel's settings (additive, S4b): health-silent {days: the no-send threshold the page starts on;
  *   default the spec's health.silentDays}, health-reasons {showExpected: expected failures shown from the start;
  *   default false}, health-schedules {staleAfterDays: a schedule documented longer ago than this before the pull is
- *   marked stale; default freshness.maxAgeDays}, health-one-time {months: of send history shown per program; default 6};
+ *   marked stale; default 45}, health-one-time {months: of send history shown per program; default 6};
  *   a templates panel's (additive, TPL-2): {snippet: the characters of context either side of a search hit; default 50}
  * @property {string[]} [columns]                  the metrics shown at first; a viewer can show or hide any (R1)
  *
@@ -130,6 +141,14 @@
  * @property {boolean} sourceDetail                whether a definition also shows its object, fields and filters
  * @property {boolean} [templateContent]           whether the page carries template TEXT (subjects, bodies, the keyword search; additive, TPL-2): on by the admin preset, off by the exec preset unless opted in (a leaders' page carries no content by default). Absent on a spec written before it existed: the preset's. The performance rows of the Templates tab draw either way
  *
+ * @typedef {object} T11AccountList            one cross-program customer list (additive, S5; DSH-2 ruling 4, 2026-10-05)
+ * @property {"most-engaged"|"least-engaged"|"most-bounced"} kind
+ * @property {number} n                            how many accounts the list keeps
+ * @property {number} floor                        the delivered floor an account needs before it is ranked (most-engaged and
+ *   least-engaged; bounces need none); on a program that sends about once per contact the least-engaged signal is
+ *   "delivered at least 3 and opened 0" instead, decided by the pull and recorded
+ * @property {?string} [per]                       a company field (one of accounts.fields): one list per value, "per segment"
+ *
  * @typedef {object} T11Spec
  * @property {1} schemaVersion
  * @property {"dashboard-spec"} kind
@@ -141,10 +160,19 @@
  * @property {T11Source[]} sources
  * @property {Array<{id: "dateRange"|"programs"|"group"|"status"|"recipientClass", enabled: boolean, default?: string}>} globalFilters
  *   which filters the pages offer; recipientClass carries its starting value (all | external)
- * @property {{pull: boolean, busiest: number, lowEngagement: number, mostBounces: number, lowEngagementMinDelivered: number}} accounts
- *   pull maps onto the adapter's own switch; the four numbers are R24's selection and are unused while pull is false
+ * @property {{pull: boolean, busiest: number, lowEngagement: number, mostBounces: number, lowEngagementMinDelivered: number, lists?: T11AccountList[], fields?: string[]}} accounts
+ *   pull maps onto the adapter's own switch; the four numbers are R24's PER-PROGRAM selection (0 = off, the default
+ *   since the customer watch list was redesigned around the customer, ruled 2026-10-05) and are unused while pull is
+ *   false. lists (additive, S5): the cross-program customer lists as DATA, selected at refresh over the whole window
+ *   (the three defaults: 25 most engaged, 25 least engaged, 25 most bounced, each with a delivered floor of 10;
+ *   absent = those). fields (additive, S5): the company fields read beside each kept account's name, a tenant's own,
+ *   for "per segment" lists; absent = none
  * @property {T11Groups} groups
  * @property {{silentDays: number}} health         an Active program with no send in this many days is silent
+ * @property {{redocument: {enabled: boolean, cap: number}}} [kb]   the knowledge base beside the pull (additive, S5;
+ *   ruled 2026-10-05): a refresh re-documents the selected programs the KB is behind on (modified since documented, or
+ *   never documented) and the email templates it lacks, with no model, up to `cap` per refresh (the rest next time);
+ *   enabled false leaves the KB alone and marks what is stale. Absent = enabled, cap 50
  * @property {T11Page[]} pages
  * @property {{maxAgeDays: number}} freshness      a page older than this shows a stale banner
  * @property {{cadence: "weekly"|"monthly"|"quarterly"|"manual", ownerNote: ?string}} refresh
@@ -158,10 +186,11 @@
  *   a failing token with the default's and says so on the About tab
  */
 import { existsSync, readdirSync, rmSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
+import { userInfo } from "node:os";
 import { makeCliHelpers, readJsonFile, writeFileAtomicSync, isMainModule, readKbIdentity, cmpKey } from "./doc-lib.mjs";
 import { printable } from "./journal-lib.mjs";
-import { parseUnsubscribeLink, parseSentSince } from "./engagement.mjs";
+import { parseUnsubscribeLink, parseSentSince, ACCOUNT_LIST_KINDS, DEFAULT_ACCOUNT_LISTS } from "./engagement.mjs";
 import { METRICS, DIMENSIONS, STATUS_LABELS, statusLabel, SILENT_DAYS_DEFAULT } from "./engagement-query.mjs";
 import { validateGroups, describeRule, UNGROUPED } from "./dashboard-groups.mjs";
 import { themeShapeProblems, validateTheme, COLOR_KEYS, LOGO_MAX_BYTES } from "./dashboard-theme.mjs";
@@ -187,6 +216,26 @@ export const TABS = Object.freeze({
   about: "About: definitions, how to use the page, this dashboard's settings and where the data came from",
 });
 export const CADENCES = Object.freeze({ weekly: "every week", monthly: "every month", quarterly: "every quarter", manual: "only when someone asks" });
+// How stale a page may be before its banner shows, from the cadence (ruled 2026-10-05, DSH-1 item 3): a typed
+// value wins; the entry command's cadence question fills freshness from this unless freshness was answered.
+// "manual" never goes stale on its own: the validator's upper bound stands in for never.
+export const FRESHNESS_BY_CADENCE = Object.freeze({ weekly: 10, monthly: 45, quarterly: 120, manual: 3660 });
+// The health-schedules panel's doc-age mark: a schedule documented more than this many days before the pull is marked (not frozen).
+export const SCHEDULE_DOC_AGE_DAYS = 45;
+// The reporting window's kinds (ruled 2026-10-04, DSH-1 item 4), each with its meaning.
+export const WINDOW_KINDS = Object.freeze({ rolling: "the last N months, counted back from each refresh", fixed: "a fixed start and end month, the same every refresh", since: "every month from a start month to the current one" });
+// The cross-program customer lists (DSH-2 ruling 4, 2026-10-05) are the adapter's data (engagement.mjs owns the
+// mechanism); the writer re-exports them so the interview and the About tab read one table.
+export { ACCOUNT_LIST_KINDS, DEFAULT_ACCOUNT_LISTS };
+export const DEFAULT_KB = Object.freeze({ redocument: Object.freeze({ enabled: true, cap: 50 }) });
+/** A spec's customer lists (T11Spec.accounts.lists; the defaults on a spec written before they existed). */
+export const accountLists = (spec) => (Array.isArray(spec.accounts?.lists) ? spec.accounts.lists : DEFAULT_ACCOUNT_LISTS.map((l) => ({ ...l })));
+/** A spec's company fields read beside each kept account's name (T11Spec.accounts.fields; none before they existed). */
+export const accountFields = (spec) => (Array.isArray(spec.accounts?.fields) ? spec.accounts.fields : []);
+/** A spec's knowledge-base settings (T11Spec.kb; the defaults on a spec written before they existed). */
+export const kbSettings = (spec) => ({ redocument: { ...DEFAULT_KB.redocument, ...(spec.kb?.redocument ?? {}) } });
+/** A source's window kind (T11Source.params.window; rolling on a spec written before it existed). */
+export const windowOf = (params) => params.window ?? { kind: "rolling" };
 export const PANEL_TYPES = Object.freeze({
   kpi: "headline figures, each beside the usual and the change against it",
   bar: "a bar chart",
@@ -206,7 +255,8 @@ export const DATE_DEFAULTS = Object.freeze({ window: "the whole window, with the
 export const HEALTH_PANEL_TYPES = Object.freeze({
   "health-silent": { knobs: { days: { kind: "whole", min: 1, max: 366, default: (spec) => spec.health.silentDays, say: (v) => `the no-send threshold starts at ${v} days (14, 30, 60 and 90 are one click away)` } } },
   "health-reasons": { knobs: { showExpected: { kind: "boolean", default: () => false, say: (v) => (v ? "expected failures are shown from the start" : "expected failures are behind a toggle") } } },
-  "health-schedules": { knobs: { staleAfterDays: { kind: "whole", min: 1, max: 3660, default: (spec) => spec.freshness.maxAgeDays, say: (v) => `a schedule documented more than ${v} days before the pull is marked stale` } } },
+  // The doc-age mark's default is its own number (45), not the spec's freshness, which the pages no longer read (ruled 2026-10-12).
+  "health-schedules": { knobs: { staleAfterDays: { kind: "whole", min: 1, max: 3660, default: () => SCHEDULE_DOC_AGE_DAYS, say: (v) => `a schedule documented more than ${v} days before the pull is marked stale` } } },
   "health-one-time": { knobs: { months: { kind: "whole", min: 1, max: 36, default: () => 6, say: (v) => `each program's sends over the last ${v} months` } } },
 });
 // The templates view (TPL-2): the one knobbed type of the templates tab, checked and described like the health four.
@@ -305,13 +355,16 @@ export function defaultSpec({ slug, title = null, owner = null, tenantHost }) {
     owner,
     purpose: null,
     tenantHost,
-    sources: [{ adapter: "jo-engagement", params: { windowMonths: 13, selector: { sentSince: null, names: [], ids: [] }, internalDomains: [], unsubscribeLinks: [], testAccounts: [], pinnedAccounts: [], stepDetail: false, repullMonths: 2 } }],
+    sources: [{ adapter: "jo-engagement", params: { windowMonths: 13, window: { kind: "rolling" }, selector: { sentSince: null, names: [], ids: [] }, internalDomains: [], unsubscribeLinks: [], testAccounts: [], pinnedAccounts: [], stepDetail: false, repullMonths: 2, quietDueDays: 5, samplePrograms: 25, expectedReasons: [] } }],
     globalFilters: [{ id: "dateRange", enabled: true }, { id: "programs", enabled: true }, { id: "group", enabled: true }, { id: "status", enabled: true }, { id: "recipientClass", enabled: true, default: "all" }],
-    accounts: { pull: false, busiest: 20, lowEngagement: 15, mostBounces: 15, lowEngagementMinDelivered: 10 },
+    // The per-program numbers are OFF (0) by default since the watch list was redesigned around the customer (ruled
+    // 2026-10-05); the three cross-program lists are the default selection.
+    accounts: { pull: false, busiest: 0, lowEngagement: 0, mostBounces: 0, lowEngagementMinDelivered: 10, lists: DEFAULT_ACCOUNT_LISTS.map((l) => ({ ...l })), fields: [] },
     groups: { rules: [], overrides: {} },
     health: { silentDays: SILENT_DAYS_DEFAULT },
+    kb: { redocument: { ...DEFAULT_KB.redocument } },
     pages: /** @type {T11Page[]} */ (/** @type {unknown} */ ([pageOf("admin", "admin", "Admin"), pageOf("exec", "exec", "Leadership")])),
-    freshness: { maxAgeDays: 45 },
+    freshness: { maxAgeDays: FRESHNESS_BY_CADENCE.monthly },
     refresh: { cadence: "monthly", ownerNote: null },
     publish: { target: "none", config: {} },
     native: { reports: [] },
@@ -340,7 +393,8 @@ export function describePanel(spec, panel) {
   }
   const q = panel.query ?? { metrics: [] };
   const by = q.groupBy?.length ? ` by ${q.groupBy.join(" and ")}` : "";
-  const top = q.limit != null ? `, the top ${q.limit}${q.sort?.[0]?.metric ? ` by ${metricLabel(q.sort[0].metric)}` : ""}` : "";
+  // The sort's direction names the end of the ranking a limit keeps (F-508): "the 10 lowest by Open rate" is not "the top 10".
+  const top = q.limit != null ? `, the ${q.sort?.[0]?.dir === "asc" ? `${q.limit} lowest` : `top ${q.limit}`}${q.sort?.[0]?.metric ? ` by ${metricLabel(q.sort[0].metric)}` : ""}` : "";
   return `${head} of ${listed(q.metrics.map(metricLabel), "nothing")}${by}${top}.`;
 }
 /** @type {ReadonlyArray<{covers: string[], label: string, say: (spec: any) => string[]}>} */
@@ -361,7 +415,18 @@ export const SPEC_DESCRIPTIONS = Object.freeze([
       return `${parts.length ? `Only ${parts.join(", among ")}.` : "Every program with a send in the window."} A program's status never limits what is pulled; the status filter decides what shows.`;
     }),
   },
-  { covers: ["sources[].params.windowMonths"], label: "Window", say: (s) => each(s, (x) => x.sources).map(({ params: p }) => `The last ${plural(p.windowMonths, "month")}, the current one included. The current month is provisional: opens keep arriving.`) },
+  {
+    covers: ["sources[].params.windowMonths", "sources[].params.window.kind", "sources[].params.window.from", "sources[].params.window.to"], label: "Window",
+    say: (s) => each(s, (x) => x.sources).map(({ params: p }) => {
+      const w = windowOf(p);
+      const span = w.kind === "fixed" ? `The months from ${w.from} to ${w.to}, the same every refresh.` : w.kind === "since" ? `Every month from ${w.from} to the current one.` : `The last ${plural(p.windowMonths, "month")}, the current one included.`;
+      return `${span} The current month is provisional: opens keep arriving.`;
+    }),
+  },
+  {
+    covers: ["sources[].params.quietDueDays", "sources[].params.samplePrograms", "sources[].params.expectedReasons[]"], label: "Failure settings",
+    say: (s) => each(s, (x) => x.sources).map(({ params: p }) => `A program whose ingest has run ${plural(p.quietDueDays ?? 5, "due day")} admitting nobody is listed as "Admitting nobody". A health pull samples failure text for at most ${plural(p.samplePrograms ?? 25, "program")}, most failures first. ${(p.expectedReasons ?? []).length ? `${plural(p.expectedReasons.length, "failure wording")} named as expected by design: ${p.expectedReasons.join("; ")}.` : "No failure wording of the tenant's own is named as expected."}`),
+  },
   { covers: ["sources[].params.internalDomains[]"], label: "Internal recipients", say: (s) => each(s, (x) => x.sources).map(({ params: p }) => (p.internalDomains.length ? `Addresses at ${p.internalDomains.join(", ")} are internal.` : "No internal domain is named, so every recipient counts as external.")) },
   { covers: ["sources[].params.unsubscribeLinks[]"], label: "Unsubscribe link", say: (s) => each(s, (x) => x.sources).map(({ params: p }) => (p.unsubscribeLinks.length ? `Clicks on ${p.unsubscribeLinks.join(", ")} are unsubscribe clicks, not content clicks.` : "No unsubscribe link of the tenant's own is named; only the usual unsubscribe wordings are left out of click figures.")) },
   { covers: ["sources[].params.testAccounts[]", "sources[].params.pinnedAccounts[]"], label: "Named accounts", say: (s) => each(s, (x) => x.sources).map(({ params: p }) => `${plural(p.testAccounts.length, "test account")} and ${plural(p.pinnedAccounts.length, "pinned account")}. Named accounts are always kept as their own rows when accounts are pulled.`) },
@@ -369,12 +434,19 @@ export const SPEC_DESCRIPTIONS = Object.freeze([
   { covers: ["sources[].params.repullMonths"], label: "Months read again", say: (s) => each(s, (x) => x.sources).map(({ params: p }) => `A refresh reads the last ${plural(p.repullMonths, "month")} again and keeps earlier months as they were last read.`) },
   { covers: ["globalFilters[].id", "globalFilters[].enabled", "globalFilters[].default"], label: "Filters", say: (s) => each(s, (x) => x.globalFilters).map((f) => `${FILTERS[f.id] ?? f.id}${f.enabled ? "" : " (not offered)"}${f.default ? `; starts on ${f.default === "external" ? "external recipients only" : "everyone"}` : ""}.`) },
   {
-    covers: ["accounts.pull", "accounts.busiest", "accounts.lowEngagement", "accounts.mostBounces", "accounts.lowEngagementMinDelivered"], label: "Accounts",
-    say: (s) => [
-      s.accounts.pull
-        ? `Customer lists are on: per program, the ${s.accounts.busiest} busiest accounts, the ${s.accounts.lowEngagement} lowest open rates among accounts with at least ${s.accounts.lowEngagementMinDelivered} delivered, and the ${s.accounts.mostBounces} with the most bounces. Every other account is in one "all other accounts" row, so totals stay exact.`
-        : "Customer lists are off: the dashboard shows how each program is doing and how many accounts each reached, not which customers are not opening or are bouncing. Turning them on adds, per program, the busiest accounts, the lowest open rates and the most bounces, and makes a pull take several times longer; the refresh that adds them reads every table again.",
-    ],
+    covers: ["accounts.pull", "accounts.busiest", "accounts.lowEngagement", "accounts.mostBounces", "accounts.lowEngagementMinDelivered", "accounts.lists[]", "accounts.fields[]"], label: "Accounts",
+    say: (s) => {
+      const lists = accountLists(s).map((l) => `the ${l.n} ${l.kind.replace("-", " ")}${l.floor > 0 ? ` (at least ${l.floor} delivered)` : ""}${l.per ? `, per ${l.per}` : ""}`);
+      const perProgram = s.accounts.busiest + s.accounts.lowEngagement + s.accounts.mostBounces > 0
+        ? ` Per program as well: the ${s.accounts.busiest} busiest accounts, the ${s.accounts.lowEngagement} lowest open rates among accounts with at least ${s.accounts.lowEngagementMinDelivered} delivered, and the ${s.accounts.mostBounces} with the most bounces.`
+        : "";
+      const fields = accountFields(s).length ? ` Each kept account also carries its ${accountFields(s).join(", ")}.` : "";
+      return [
+        s.accounts.pull
+          ? `Customer lists are on: across programs over the whole window, ${listed(lists, "no list")}; every kept account has its own rows on every program it is on.${perProgram}${fields} Every other account is in one "all other accounts" row per program, so totals stay exact.`
+          : `Customer lists are off: the dashboard shows how each program is doing and how many accounts each reached, not which customers are not opening or are bouncing. Turning them on adds ${listed(lists, "no list")} across programs${perProgram ? ", and the per-program lists" : ""}, and makes a pull take several times longer; the refresh that adds them reads every table again.`,
+      ];
+    },
   },
   {
     covers: ["groups.rules[]", "groups.overrides{}"], label: "Groups",
@@ -386,6 +458,12 @@ export const SPEC_DESCRIPTIONS = Object.freeze([
   },
   { covers: ["health.silentDays"], label: "Silent programs", say: (s) => [`An Active program with no send in ${plural(s.health.silentDays, "day")} is listed as silent.`] },
   {
+    covers: ["kb.redocument.enabled", "kb.redocument.cap"], label: "Knowledge base",
+    say: (s) => [kbSettings(s).redocument.enabled
+      ? `Each refresh re-documents the programs the knowledge base is behind on (modified since documented, or never documented) and fetches the email templates it lacks, up to ${plural(kbSettings(s).redocument.cap, "asset")} per refresh; the rest wait for the next one. What is still behind is marked on the page.`
+      : "A refresh leaves the knowledge base alone; programs it is behind on are marked on the page."],
+  },
+  {
     covers: ["pages[].id", "pages[].preset", "pages[].title", "pages[].statusDefault", "pages[].statusDefault[]", "pages[].dateDefault", "pages[].tabs[].id", "pages[].tabs[].enabled", "pages[].panels[]", "pages[].accountNames", "pages[].sourceDetail", "pages[].templateContent"], label: "Pages",
     say: (s) => each(s, (x) => x.pages).flatMap((p) => [
       `"${p.title}" (${p.id}): ${PRESETS[p.preset]?.meaning ?? p.preset}. Tabs: ${listed(p.tabs.filter((t) => t.enabled).map((t) => t.id), "none")}. ` +
@@ -396,8 +474,10 @@ export const SPEC_DESCRIPTIONS = Object.freeze([
       ...presetPanels(p).map((pn) => `  ${describePanel(s, pn)}`),
     ]),
   },
-  { covers: ["freshness.maxAgeDays"], label: "Freshness", say: (s) => [`A page shows a stale banner once its data is more than ${plural(s.freshness.maxAgeDays, "day")} old.`] },
-  { covers: ["refresh.cadence", "refresh.ownerNote"], label: "Refresh", say: (s) => [`Refreshed ${CADENCES[s.refresh.cadence] ?? s.refresh.cadence}; a refresh can also be run at any time.${s.refresh.ownerNote ? ` ${s.refresh.ownerNote}` : ""}`] },
+  // Kept in the contract, read by nothing (ruled 2026-10-12, F-511 ruling 11): refreshes are manual, and the pages say
+  // when the data was pulled instead of showing a staleness banner. The About tab does not list these two.
+  { covers: ["freshness.maxAgeDays"], label: "Freshness", say: (s) => [`${plural(s.freshness.maxAgeDays, "day")}; not read by the pages, which say when their data was pulled instead.`] },
+  { covers: ["refresh.cadence", "refresh.ownerNote"], label: "Refresh", say: (s) => [`${CADENCES[s.refresh.cadence] ?? s.refresh.cadence}; not read: refreshes are run by hand, whenever new numbers are wanted.${s.refresh.ownerNote ? ` ${s.refresh.ownerNote}` : ""}`] },
   { covers: ["publish.target", "publish.config"], label: "Publishing", say: (s) => [s.publish.target === "none" ? "Not published anywhere: the pages are files in the workspace." : `Published to ${s.publish.target}.`] },
   { covers: ["native.reports[]"], label: "Gainsight reports", say: (s) => [`${plural(s.native.reports.length, "report")} created in Gainsight from this dashboard.`] },
   // The look (UX-1, additive): what the theme sets and what the validator replaced, in words; the About tab shows it.
@@ -506,6 +586,23 @@ export function validateSpec(input) {
     const p = src.params;
     if (!obj(p, `${at}.params`)) continue;
     whole(p.windowMonths, `${at}.params.windowMonths`, 1, 36);
+    // The window kind (additive): absent is rolling; fixed and since name their months (YYYY-MM) and are not capped.
+    if (p.window !== undefined) {
+      const w = p.window;
+      const wat = `${at}.params.window`;
+      if (!isObj(w) || !(w.kind in WINDOW_KINDS)) bad(wat, `must be {kind: rolling} (the last windowMonths months), {kind: fixed, from, to} or {kind: since, from}, each month as YYYY-MM`);
+      else {
+        const month = (v, path) => { if (typeof v !== "string" || !/^\d{4}-(0[1-9]|1[0-2])$/.test(v)) bad(path, "must be a month as YYYY-MM"); };
+        const allowed = { rolling: ["kind"], fixed: ["kind", "from", "to"], since: ["kind", "from"] }[w.kind];
+        for (const k of Object.keys(w)) if (!allowed.includes(k)) bad(`${wat}.${k}`, `is not a field of a ${w.kind} window (${allowed.join(", ")})`);
+        if (w.kind !== "rolling") month(w.from, `${wat}.from`);
+        if (w.kind === "fixed") { month(w.to, `${wat}.to`); if (typeof w.from === "string" && typeof w.to === "string" && w.from > w.to) bad(`${wat}.to`, "must not be earlier than from"); }
+        if (w.kind === "since" && typeof w.from === "string" && w.from > "2100-12") bad(`${wat}.from`, "must be a month that has started");
+      }
+    }
+    if (p.quietDueDays !== undefined) whole(p.quietDueDays, `${at}.params.quietDueDays`, 1, 3660);
+    if (p.samplePrograms !== undefined) whole(p.samplePrograms, `${at}.params.samplePrograms`, 0, 100000);
+    if (p.expectedReasons !== undefined) texts(p.expectedReasons, `${at}.params.expectedReasons`);
     if (obj(p.selector, `${at}.params.selector`)) {
       const since = p.selector.sentSince;
       // The adapter's own reading: a date, or a span counted back from each refresh's day.
@@ -541,10 +638,38 @@ export function validateSpec(input) {
   if (obj(s.accounts, "accounts")) {
     bool(s.accounts.pull, "accounts.pull");
     for (const k of ["busiest", "lowEngagement", "mostBounces", "lowEngagementMinDelivered"]) whole(s.accounts[k], `accounts.${k}`, 0, 500);
-    if (s.accounts.pull === false) notes.push("accounts.pull is false: the four account-selection numbers are kept and unused until customer lists are turned on.");
+    // The cross-program lists (additive): each a kind, a size, a delivered floor and, for a per-segment list, one of the
+    // company fields the spec names; absent takes the defaults.
+    const fields = Array.isArray(s.accounts.fields) ? s.accounts.fields : [];
+    if (s.accounts.fields !== undefined) {
+      texts(s.accounts.fields, "accounts.fields");
+      fields.forEach((f, i) => { if (isText(f) && !/^[A-Za-z][A-Za-z0-9_]*$/.test(f)) bad(`accounts.fields[${i}]`, "must be a company field's API name (letters, digits, underscores)"); });
+    }
+    if (s.accounts.lists !== undefined) {
+      if (!Array.isArray(s.accounts.lists)) bad("accounts.lists", "must be a list of customer lists {kind, n, floor, per?} (an empty one keeps no cross-program list)");
+      else s.accounts.lists.forEach((l, i) => {
+        const lat = `accounts.lists[${i}]`;
+        if (!obj(l, lat)) return;
+        for (const k of Object.keys(l)) if (!["kind", "n", "floor", "per"].includes(k)) bad(`${lat}.${k}`, "is not a field of a customer list (kind, n, floor, per)");
+        if (!(l.kind in ACCOUNT_LIST_KINDS)) bad(`${lat}.kind`, `must be one of ${Object.keys(ACCOUNT_LIST_KINDS).join(", ")}`);
+        whole(l.n, `${lat}.n`, 1, 500);
+        whole(l.floor, `${lat}.floor`, 0, 100000);
+        if (l.per != null && (!isText(l.per) || !fields.includes(l.per))) bad(`${lat}.per`, "must name one of accounts.fields (the company field the list is split by), or be absent");
+      });
+    }
+    if (s.accounts.pull === false) notes.push("accounts.pull is false: the account-selection numbers and the customer lists are kept and unused until customer lists are turned on.");
   }
   problems.push(...validateGroups(s.groups));
   if (obj(s.health, "health")) whole(s.health.silentDays, "health.silentDays", 1, 366);
+  // The knowledge base beside the pull (additive): absent is on with a cap of 50.
+  if (s.kb !== undefined && obj(s.kb, "kb")) {
+    for (const k of Object.keys(s.kb)) if (k !== "redocument") bad(`kb.${k}`, "is not a field of kb (redocument)");
+    if (obj(s.kb.redocument, "kb.redocument")) {
+      for (const k of Object.keys(s.kb.redocument)) if (!["enabled", "cap"].includes(k)) bad(`kb.redocument.${k}`, "is not a field of kb.redocument (enabled, cap)");
+      bool(s.kb.redocument.enabled, "kb.redocument.enabled");
+      whole(s.kb.redocument.cap, "kb.redocument.cap", 0, 100000);
+    }
+  }
 
   if (!Array.isArray(s.pages) || !s.pages.length) bad("pages", "must list at least one page");
   const pageIds = new Set();
@@ -702,8 +827,28 @@ export function setPath(spec, path, value) {
   }
 }
 
+/**
+ * Remove one field of a spec IN PLACE, by the same dotted path setPath takes. The containers before it must exist.
+ * @param {*} spec @param {string} path
+ */
+export function unsetPath(spec, path) {
+  const keys = String(path).split(".");
+  if (!path || keys.some((k) => k === "" || FORBIDDEN_KEYS.has(k))) throw new Error(`--unset ${printable(String(path), 80)}: not a field path (dotted keys and list indexes, like theme)`);
+  let at = spec;
+  for (const key of keys.slice(0, -1)) {
+    if (!at || typeof at !== "object" || !Object.hasOwn(at, key)) throw new Error(`--unset ${path}: "${key}" does not exist`);
+    at = at[key];
+  }
+  const last = keys[keys.length - 1];
+  if (Array.isArray(at)) at.splice(Number(last), 1);
+  else if (at && typeof at === "object") delete at[last];
+  else throw new Error(`--unset ${path}: not a field`);
+}
+
 // ── Files: the one writer ────────────────────────────────────────────────────
-const dashboardDir = (kbDir, slug) => join(kbDir, DASHBOARDS_DIR, slug);
+// Every verb below is a FUNCTION the entry command (dashboard.mjs) imports and
+// the CLI at the foot calls: one writer, two front doors, never a spawn.
+export const dashboardDir = (kbDir, slug) => join(kbDir, DASHBOARDS_DIR, slug);
 const specPath = (kbDir, slug) => join(dashboardDir(kbDir, slug), SPEC_FILE);
 const draftPath = (kbDir, slug) => join(dashboardDir(kbDir, slug), DRAFT_FILE);
 // Every spec and draft byte on disk is written here, and nowhere else.
@@ -718,9 +863,222 @@ export function kbTenantHost(kbDir) {
   }
 }
 const EXPORT_KIND = "dashboard-spec-export";
+const DRAFT_KIND = "dashboard-spec-draft";
+/** A refusal with a message for the person, never a stack: the CLI prints it and exits 1. */
+export class SpecRefusal extends Error {}
+const refuse = (msg) => { throw new SpecRefusal(msg); };
+const problemsText = (problems) => problems.map((p) => `${p.path || "(spec)"} ${p.problem}`).join("; ");
+/**
+ * Who holds a draft (ruled 2026-10-05, DSH-1 item 8): the name given, else the
+ * operating system's user name. A draft records it, and another holder's
+ * draft is refused without a take-over.
+ * @param {?string} [given]
+ */
+export function holderName(given = null) {
+  if (isText(given)) return given.trim();
+  const env = process.env.GS_SUPERADMIN_USER ?? process.env.USERNAME ?? process.env.USER;
+  if (isText(env)) return env.trim();
+  try {
+    return userInfo().username || "unknown";
+  } catch {
+    return "unknown";
+  }
+}
+/**
+ * The spec store of one tenant KB folder: the verbs as functions over the
+ * folder's spec and draft files.
+ * @param {string} kbDir the tenant's KB folder (the one /gs-superadmin:setup created)
+ */
+/**
+ * The tenant KB folder a saved spec or draft file belongs to (`<kb>/dashboards/<slug>/spec.json` → `<kb>`), or null
+ * for a file that does not sit where this writer puts them. The page builder reads the folder's NAME from it for the
+ * copy lines (F-503); only this writer knows the layout.
+ * @param {string} file
+ * @returns {?string}
+ */
+export function kbDirOfSpecFile(file) {
+  const dir = dirname(resolve(file));
+  return basename(dirname(dir)) === DASHBOARDS_DIR ? dirname(dirname(dir)) : null;
+}
+export function specStore(kbDir) {
+  const kb = resolve(kbDir);
+  if (!existsSync(join(kb, "_manifest.json"))) refuse(`--kb ${kbDir}: no _manifest.json there — pass the tenant's KB folder (the one /gs-superadmin:setup created)`);
+  const tenantHost = kbTenantHost(kb);
+  if (!tenantHost) refuse(`--kb ${kbDir}: its manifest names no tenant (baseUrl) — a dashboard belongs to one tenant`);
+  const read = (path, what) => {
+    try {
+      return readJsonFile(path);
+    } catch (e) {
+      return refuse(`${what} at ${path} cannot be read: ${e instanceof Error ? e.message : e}`);
+    }
+  };
+  const checkSlug = (slug) => {
+    if (!isText(slug)) refuse("--slug <slug> is required");
+    if (!SLUG_RE.test(slug)) refuse(`--slug must be lower-case letters, digits and hyphens (got "${printable(slug, 40)}")`);
+    return slug;
+  };
+  const paths = (slug) => ({ dir: dashboardDir(kb, checkSlug(slug)), saved: specPath(kb, slug), draft: draftPath(kb, slug) });
+  const readDraft = (slug) => {
+    const { draft } = paths(slug);
+    if (!existsSync(draft)) return null;
+    const d = read(draft, "the draft");
+    if (!isObj(d) || d.kind !== DRAFT_KIND || !isObj(d.spec)) refuse(`the draft at ${draft} is not a dashboard spec draft`);
+    return d;
+  };
+  const readSaved = (slug) => {
+    const { saved } = paths(slug);
+    return existsSync(saved) ? read(saved, "the saved spec") : null;
+  };
+  // The holder's claim on a draft: the same holder continues it; another is refused without a take-over, which
+  // records whom it was taken from. A draft written before holders existed has none and is open to anyone.
+  const claim = (d, by, takeOver) => {
+    if (isText(d.by) && isText(by) && d.by !== by) {
+      if (!takeOver) refuse(`the draft of "${d.spec.slug}" is held by ${d.by} (last changed ${d.updatedAt}) — pass --take-over to continue it as ${by}, or wait for them`);
+      d.takenOverFrom = d.by;
+    }
+    if (isText(by)) d.by = by;
+  };
+  const summary = (slug, d) => ({ slug, path: paths(slug).draft, answered: d.answered, title: d.spec.title, by: d.by ?? null, startedAt: d.startedAt, updatedAt: d.updatedAt, ...(d.takenOverFrom ? { takenOverFrom: d.takenOverFrom } : {}) });
+
+  return {
+    kbDir: kb,
+    tenantHost,
+    paths,
+    readSaved,
+    readDraft,
+    /** Every dashboard of this KB, saved and in draft (a draft with its holder and date; ruled 2026-10-04). */
+    listDashboards() {
+      const root = join(kb, DASHBOARDS_DIR);
+      const slugs = existsSync(root) ? readdirSync(root, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name).sort(cmpKey) : [];
+      return slugs.map((slug) => {
+        const saved = existsSync(specPath(kb, slug)) ? read(specPath(kb, slug), "the spec") : null;
+        const draft = existsSync(draftPath(kb, slug)) ? read(draftPath(kb, slug), "the draft") : null;
+        return {
+          // No cadence here (ruled 2026-10-12, F-511 ruling 11; instance 22): refreshes are manual and nothing reads refresh.cadence.
+          slug, saved: !!saved, draft: !!draft, title: saved?.title ?? draft?.spec?.title ?? null, pages: Array.isArray(saved?.pages) ? saved.pages.map((p) => p.id) : [],
+          draftBy: draft?.by ?? null, draftUpdatedAt: draft?.updatedAt ?? null, draftAnswered: Array.isArray(draft?.answered) ? draft.answered.length : null,
+        };
+      }).filter((d) => d.saved || d.draft);
+    },
+    /** Start a draft from the defaults or the saved spec, or resume the one in progress (the same holder, or a take-over). */
+    startDraft(slug, { title = null, owner = null, by = null, takeOver = false } = {}) {
+      const { draft } = paths(slug);
+      const existing = readDraft(slug);
+      if (existing) {
+        const before = JSON.stringify(existing);
+        claim(existing, by, takeOver);
+        if (JSON.stringify(existing) !== before) { existing.updatedAt = new Date().toISOString(); writeSpecFile(draft, existing); }
+        return { state: "resumed", draft: existing, ...summary(slug, existing) };
+      }
+      const from = readSaved(slug);
+      const now = new Date().toISOString();
+      const d = { kind: DRAFT_KIND, spec: from ?? defaultSpec({ slug, title, owner, tenantHost }), answered: [], by: isText(by) ? by : null, startedAt: now, updatedAt: now };
+      const { problems } = validateSpec(d.spec);
+      if (problems.length) refuse(`cannot start the draft: ${problemsText(problems)}`);
+      writeSpecFile(draft, d);
+      return { state: from ? "editing-saved" : "new", draft: d, ...summary(slug, d) };
+    },
+    /**
+     * Change the draft: each set is [path, value]. The WHOLE draft is validated first; a change that makes it
+     * invalid is refused, naming the field, and nothing is written.
+     * @param {string} slug @param {{sets?: Array<[string, *]>, unset?: string[], answered?: string[], by?: ?string, takeOver?: boolean}} args
+     */
+    setDraft(slug, { sets = [], unset = [], answered = [], by = null, takeOver = false } = {}) {
+      const { draft } = paths(slug);
+      const d = readDraft(slug);
+      if (!d) refuse(`no draft of "${slug}" — start one with: dashboard-spec.mjs draft --kb <kb> --slug ${slug}`);
+      claim(d, by, takeOver);
+      if (!sets.length && !unset.length && !answered.length) refuse("nothing to set — pass --set <path>=<json> and/or --answered <key>");
+      for (const key of answered) if (!/^[a-z0-9][a-z0-9-]*$/.test(String(key))) refuse(`--answered takes a plain key (lower-case letters, digits, hyphens), got "${printable(String(key), 40)}"`);
+      for (const [path, value] of sets) {
+        try {
+          setPath(d.spec, path, value);
+        } catch (e) {
+          refuse(e instanceof Error ? e.message : String(e));
+        }
+      }
+      // An optional field removed (the theme back to the default look): only a field that may be absent survives validation.
+      for (const path of unset) {
+        try {
+          unsetPath(d.spec, path);
+        } catch (e) {
+          refuse(e instanceof Error ? e.message : String(e));
+        }
+      }
+      if (d.spec.slug !== slug) refuse("slug cannot be changed with set: the dashboard's folder is named for it (export it and import it under the new slug)");
+      if (d.spec.tenantHost !== tenantHost) refuse(`tenantHost cannot be changed: this KB belongs to ${tenantHost}`);
+      // The whole draft, not the touched field: a change is refused when what it leaves is not a valid spec.
+      const { problems, notes } = validateSpec(d.spec);
+      if (problems.length) refuse(`not saved — ${problemsText(problems)}`);
+      d.answered = [...new Set([...d.answered, ...answered])];
+      d.updatedAt = new Date().toISOString();
+      writeSpecFile(draft, d);
+      return { set: sets.map(([p]) => p), notes, draft: d, ...summary(slug, d) };
+    },
+    /** Every problem of the draft (or the saved spec), each with its field; and the notes. */
+    validate(slug, { saved = false } = {}) {
+      const { saved: savedAt } = paths(slug);
+      const useSaved = saved || !readDraft(slug);
+      if (useSaved && !existsSync(savedAt)) refuse(`no dashboard "${slug}" here: neither a saved spec nor a draft`);
+      const d = useSaved ? null : readDraft(slug);
+      const spec = useSaved ? readSaved(slug) : d.spec;
+      const { problems, notes } = validateSpec(spec);
+      return { which: useSaved ? "saved" : "draft", problems, notes, spec, answered: d ? d.answered : null };
+    },
+    /** The draft becomes the saved spec (the replaced spec is kept as one previous copy); the draft is removed. */
+    save(slug) {
+      const { saved, draft } = paths(slug);
+      const d = readDraft(slug);
+      if (!d) refuse(`no draft of "${slug}" to save`);
+      const { problems, notes } = validateSpec(d.spec);
+      if (problems.length) refuse(`not saved — ${problemsText(problems)}`);
+      const replaced = existsSync(saved);
+      // The replaced spec stays as ONE previous copy (ruled 2026-10-04), so a change can be read back and undone by hand.
+      if (replaced) writeSpecFile(`${saved}.previous`, read(saved, "the saved spec"));
+      writeSpecFile(saved, d.spec);
+      rmSync(draft, { force: true });
+      return { path: saved, replaced, notes, pages: d.spec.pages.map((p) => p.id), spec: d.spec };
+    },
+    /** Remove a draft without saving it. */
+    discardDraft(slug) {
+      const { draft } = paths(slug);
+      const had = existsSync(draft);
+      rmSync(draft, { force: true });
+      return { discarded: had };
+    },
+    /** The saved spec as one portable file: the spec in an envelope naming its tenant. A valid spec holds no machine path. */
+    exportSpec(slug, outPath) {
+      const { saved, draft } = paths(slug);
+      if (!existsSync(saved)) refuse(`no saved dashboard "${slug}" to export${existsSync(draft) ? " (a draft exists: save it first)" : ""}`);
+      const spec = read(saved, "the saved spec");
+      const invalid = validateSpec(spec).problems;
+      if (invalid.length) refuse(`the saved spec is not valid, so it is not exported: ${problemsText(invalid)}`);
+      const envelope = { kind: EXPORT_KIND, exportVersion: 1, exportedAt: new Date().toISOString(), tenantHost: spec.tenantHost, spec };
+      writeSpecFile(resolve(outPath), envelope);
+      return { out: resolve(outPath), tenantHost: spec.tenantHost, spec };
+    },
+    /** Write an exported spec into this KB; refused when it was exported from another tenant (the SPEC's tenant decides). */
+    importSpec({ file, slug = null, replace = false }) {
+      const envelope = typeof file === "string" ? read(resolve(file), "the export") : file;
+      if (!isObj(envelope) || envelope.kind !== EXPORT_KIND || !isObj(envelope.spec)) refuse(`${typeof file === "string" ? `--file ${file}` : "the export"}: not a dashboard spec export (its kind is not "${EXPORT_KIND}")`);
+      const spec = envelope.spec;
+      if (slug) spec.slug = slug;
+      const { problems } = validateSpec(spec);
+      if (problems.length) refuse(`the exported spec is not valid here: ${problemsText(problems)}`);
+      // Before anything is written: a spec is refreshed from ONE tenant.
+      if (spec.tenantHost !== tenantHost) refuse(`this dashboard was exported from ${spec.tenantHost}, and this KB belongs to ${tenantHost} — a spec is never imported onto another tenant (its programs, groups and accounts are that tenant's)`);
+      const { saved, draft } = paths(spec.slug);
+      if (existsSync(draft)) refuse(`a draft of "${spec.slug}" is in progress here — save or delete it first, or import under another --slug`);
+      if (existsSync(saved) && !replace) refuse(`a dashboard "${spec.slug}" is already saved here — pass --replace to overwrite it, or --slug <other> to import beside it`);
+      if (existsSync(saved)) writeSpecFile(`${saved}.previous`, read(saved, "the saved spec"));
+      writeSpecFile(saved, spec);
+      return { slug: spec.slug, path: saved, exportedAt: envelope.exportedAt ?? null, spec };
+    },
+  };
+}
 
 const USAGE =
-  "usage: dashboard-spec.mjs <draft|set|validate|save|show|export|import|list> --kb <tenant KB folder> [--slug <slug>] " +
+  "usage: dashboard-spec.mjs <draft|set|validate|save|show|export|import|list> --kb <tenant KB folder> [--slug <slug>] [--by <holder>] [--take-over] " +
   "[draft: --title <t> --owner <o>] [set: --set <path>=<json>... --answered <key>...] [validate|show: --saved] [export: --out <file>] [import: --file <file> [--slug <as>] [--replace]]";
 
 async function main() {
@@ -732,130 +1090,63 @@ async function main() {
   if (!["draft", "set", "validate", "save", "show", "export", "import", "list"].includes(mode)) fail(USAGE);
   const all = (name) => argv.flatMap((t, i) => (t === name && argv[i + 1] !== undefined ? [argv[i + 1]] : []));
   if (!opt("--kb")) fail(`--kb <tenant KB folder> is required — ${USAGE}`);
-  const kbDir = resolve(opt("--kb"));
-  if (!existsSync(join(kbDir, "_manifest.json"))) fail(`--kb ${opt("--kb")}: no _manifest.json there — pass the tenant's KB folder (the one /gs-superadmin:setup created)`);
-  const tenantHost = kbTenantHost(kbDir);
-  if (!tenantHost) fail(`--kb ${opt("--kb")}: its manifest names no tenant (baseUrl) — a dashboard belongs to one tenant`);
-  const read = (path, what) => {
-    try {
-      return readJsonFile(path);
-    } catch (e) {
-      return fail(`${what} at ${path} cannot be read: ${e instanceof Error ? e.message : e}`);
+  let store;
+  try {
+    store = specStore(opt("--kb"));
+  } catch (e) {
+    if (e instanceof SpecRefusal) return fail(e.message);
+    throw e;
+  }
+  const by = holderName(opt("--by") ?? null);
+  const takeOver = argv.includes("--take-over");
+  try {
+    if (mode === "list") await finish({ ok: true, mode, tenantHost: store.tenantHost, dashboards: store.listDashboards() });
+    if (mode === "import") {
+      if (!opt("--file")) fail(USAGE);
+      const r = store.importSpec({ file: opt("--file"), slug: opt("--slug") ?? null, replace: argv.includes("--replace") });
+      await finish({ ok: true, mode, slug: r.slug, tenantHost: store.tenantHost, path: r.path, exportedAt: r.exportedAt });
     }
-  };
-  const problemsText = (problems) => problems.map((p) => `${p.path || "(spec)"} ${p.problem}`).join("; ");
-
-  if (mode === "list") {
-    const root = join(kbDir, DASHBOARDS_DIR);
-    const slugs = existsSync(root) ? readdirSync(root, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name).sort(cmpKey) : [];
-    const dashboards = slugs.map((slug) => {
-      const saved = existsSync(specPath(kbDir, slug)) ? read(specPath(kbDir, slug), "the spec") : null;
-      return { slug, saved: !!saved, draft: existsSync(draftPath(kbDir, slug)), title: saved?.title ?? null, cadence: saved?.refresh?.cadence ?? null, pages: Array.isArray(saved?.pages) ? saved.pages.map((p) => p.id) : [] };
-    }).filter((d) => d.saved || d.draft);
-    await finish({ ok: true, mode, tenantHost, dashboards });
-  }
-
-  if (mode === "import") {
-    if (!opt("--file")) fail(USAGE);
-    const file = read(resolve(opt("--file")), "the export");
-    if (!isObj(file) || file.kind !== EXPORT_KIND || !isObj(file.spec)) fail(`--file ${opt("--file")}: not a dashboard spec export (its kind is not "${EXPORT_KIND}")`);
-    const spec = file.spec;
-    if (opt("--slug")) spec.slug = opt("--slug");
-    const { problems } = validateSpec(spec);
-    if (problems.length) fail(`the exported spec is not valid here: ${problemsText(problems)}`);
-    // Before anything is written: a spec is refreshed from ONE tenant.
-    if (spec.tenantHost !== tenantHost) fail(`this dashboard was exported from ${spec.tenantHost}, and this KB belongs to ${tenantHost} — a spec is never imported onto another tenant (its programs, groups and accounts are that tenant's)`);
-    if (existsSync(draftPath(kbDir, spec.slug))) fail(`a draft of "${spec.slug}" is in progress here — save or delete it first, or import under another --slug`);
-    if (existsSync(specPath(kbDir, spec.slug)) && !argv.includes("--replace")) fail(`a dashboard "${spec.slug}" is already saved here — pass --replace to overwrite it, or --slug <other> to import beside it`);
-    writeSpecFile(specPath(kbDir, spec.slug), spec);
-    await finish({ ok: true, mode, slug: spec.slug, tenantHost, path: specPath(kbDir, spec.slug), exportedAt: file.exportedAt ?? null });
-  }
-
-  const slug = opt("--slug");
-  if (!slug) fail(`--slug <slug> is required — ${USAGE}`);
-  if (!SLUG_RE.test(slug)) fail(`--slug must be lower-case letters, digits and hyphens (got "${printable(slug, 40)}")`);
-  const [saved, draft] = [specPath(kbDir, slug), draftPath(kbDir, slug)];
-  const readDraft = () => {
-    const d = read(draft, "the draft");
-    if (!isObj(d) || d.kind !== "dashboard-spec-draft" || !isObj(d.spec)) fail(`the draft at ${draft} is not a dashboard spec draft`);
-    return d;
-  };
-  const summary = (d) => ({ slug, path: draft, answered: d.answered, title: d.spec.title, startedAt: d.startedAt, updatedAt: d.updatedAt });
-
-  if (mode === "draft") {
-    if (existsSync(draft)) await finish({ ok: true, mode, state: "resumed", ...summary(readDraft()) });
-    const from = existsSync(saved) ? read(saved, "the saved spec") : null;
-    const now = new Date().toISOString();
-    const d = { kind: "dashboard-spec-draft", spec: from ?? defaultSpec({ slug, title: opt("--title") ?? null, owner: opt("--owner") ?? null, tenantHost }), answered: [], startedAt: now, updatedAt: now };
-    const { problems } = validateSpec(d.spec);
-    if (problems.length) fail(`cannot start the draft: ${problemsText(problems)}`);
-    writeSpecFile(draft, d);
-    await finish({ ok: true, mode, state: from ? "editing-saved" : "new", ...summary(d) });
-  }
-
-  if (mode === "set") {
-    if (!existsSync(draft)) fail(`no draft of "${slug}" — start one with: dashboard-spec.mjs draft --kb <kb> --slug ${slug}`);
-    const d = readDraft();
-    const sets = all("--set");
-    const answered = all("--answered");
-    if (!sets.length && !answered.length) fail(`nothing to set — pass --set <path>=<json> and/or --answered <key>`);
-    for (const key of answered) if (!/^[a-z0-9][a-z0-9-]*$/.test(key)) fail(`--answered takes a plain key (lower-case letters, digits, hyphens), got "${printable(key, 40)}"`);
-    for (const pair of sets) {
-      const cut = pair.indexOf("=");
-      if (cut < 1) fail(`--set takes <path>=<json> (got "${printable(pair, 80)}")`);
-      let value;
-      try {
-        value = JSON.parse(pair.slice(cut + 1));
-      } catch {
-        fail(`--set ${pair.slice(0, cut)}: the value is not JSON — quote text ("Renewals"), and write lists and objects as JSON`);
-      }
-      try {
-        setPath(d.spec, pair.slice(0, cut), value);
-      } catch (e) {
-        fail(e instanceof Error ? e.message : String(e));
-      }
+    const slug = opt("--slug");
+    if (!slug) fail(`--slug <slug> is required — ${USAGE}`);
+    if (mode === "draft") {
+      const r = store.startDraft(slug, { title: opt("--title") ?? null, owner: opt("--owner") ?? null, by, takeOver });
+      const { draft: _d, ...rest } = r;
+      await finish({ ok: true, mode, ...rest });
     }
-    if (d.spec.slug !== slug) fail(`slug cannot be changed with set: the dashboard's folder is named for it (export it and import it under the new slug)`);
-    if (d.spec.tenantHost !== tenantHost) fail(`tenantHost cannot be changed: this KB belongs to ${tenantHost}`);
-    // The whole draft, not the touched field: a change is refused when what it leaves is not a valid spec.
-    const { problems, notes } = validateSpec(d.spec);
-    if (problems.length) fail(`not saved — ${problemsText(problems)}`);
-    d.answered = [...new Set([...d.answered, ...answered])];
-    d.updatedAt = new Date().toISOString();
-    writeSpecFile(draft, d);
-    await finish({ ok: true, mode, set: sets.map((p) => p.slice(0, p.indexOf("="))), notes, ...summary(d) });
+    if (mode === "set") {
+      const sets = all("--set").map((pair) => {
+        const cut = pair.indexOf("=");
+        if (cut < 1) fail(`--set takes <path>=<json> (got "${printable(pair, 80)}")`);
+        let value;
+        try {
+          value = JSON.parse(pair.slice(cut + 1));
+        } catch {
+          fail(`--set ${pair.slice(0, cut)}: the value is not JSON — quote text ("Renewals"), and write lists and objects as JSON`);
+        }
+        return /** @type {[string, *]} */ ([pair.slice(0, cut), value]);
+      });
+      const r = store.setDraft(slug, { sets, answered: all("--answered"), by, takeOver });
+      const { draft: _d, ...rest } = r;
+      await finish({ ok: true, mode, ...rest });
+    }
+    if (["validate", "show"].includes(mode)) {
+      const r = store.validate(slug, { saved: argv.includes("--saved") });
+      if (mode === "validate") await finish({ ok: !r.problems.length, mode, slug, which: r.which, problems: r.problems, notes: r.notes }, r.problems.length ? 1 : 0);
+      if (r.problems.length) fail(`the ${r.which === "saved" ? "saved spec" : "draft"} is not valid: ${problemsText(r.problems)}`);
+      await finish({ ok: true, mode, slug, which: r.which, answered: r.answered, settings: describeSpec(r.spec).map((d) => ({ label: d.label, text: d.text })), notes: r.notes });
+    }
+    if (mode === "save") {
+      const r = store.save(slug);
+      await finish({ ok: true, mode, slug, path: r.path, replaced: r.replaced, notes: r.notes, pages: r.pages });
+    }
+    // export
+    if (!opt("--out")) fail(USAGE);
+    const r = store.exportSpec(slug, opt("--out"));
+    await finish({ ok: true, mode, slug, out: r.out, tenantHost: r.tenantHost });
+  } catch (e) {
+    if (e instanceof SpecRefusal) return fail(e.message);
+    throw e;
   }
-
-  const useSaved = argv.includes("--saved") || !existsSync(draft);
-  if (["validate", "show"].includes(mode)) {
-    if (useSaved && !existsSync(saved)) fail(`no dashboard "${slug}" here: neither a saved spec nor a draft`);
-    const spec = useSaved ? read(saved, "the saved spec") : readDraft().spec;
-    const { problems, notes } = validateSpec(spec);
-    if (mode === "validate") await finish({ ok: !problems.length, mode, slug, which: useSaved ? "saved" : "draft", problems, notes }, problems.length ? 1 : 0);
-    if (problems.length) fail(`the ${useSaved ? "saved spec" : "draft"} is not valid: ${problemsText(problems)}`);
-    await finish({ ok: true, mode, slug, which: useSaved ? "saved" : "draft", answered: useSaved ? null : readDraft().answered, settings: describeSpec(spec).map((d) => ({ label: d.label, text: d.text })), notes });
-  }
-
-  if (mode === "save") {
-    if (!existsSync(draft)) fail(`no draft of "${slug}" to save`);
-    const d = readDraft();
-    const { problems, notes } = validateSpec(d.spec);
-    if (problems.length) fail(`not saved — ${problemsText(problems)}`);
-    const replaced = existsSync(saved);
-    writeSpecFile(saved, d.spec);
-    rmSync(draft, { force: true });
-    await finish({ ok: true, mode, slug, path: saved, replaced, notes, pages: d.spec.pages.map((p) => p.id) });
-  }
-
-  // export
-  if (!opt("--out")) fail(USAGE);
-  if (!existsSync(saved)) fail(`no saved dashboard "${slug}" to export${existsSync(draft) ? " (a draft exists: save it first)" : ""}`);
-  // A valid spec holds no machine path, so the export is the spec itself.
-  const spec = read(saved, "the saved spec");
-  const invalid = validateSpec(spec).problems;
-  if (invalid.length) fail(`the saved spec is not valid, so it is not exported: ${problemsText(invalid)}`);
-  writeSpecFile(resolve(opt("--out")), { kind: EXPORT_KIND, exportVersion: 1, exportedAt: new Date().toISOString(), tenantHost: spec.tenantHost, spec });
-  await finish({ ok: true, mode, slug, out: resolve(opt("--out")), tenantHost: spec.tenantHost });
 }
 
 if (isMainModule(import.meta.url)) {

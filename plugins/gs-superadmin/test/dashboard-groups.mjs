@@ -17,7 +17,7 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { isDeepStrictEqual } from "node:util";
 import { makeTempDir, removeTempDir, runNode } from "../../../test/rig.mjs";
-import { resolveGroups, applyGroups, validateGroups, describeRule, programTraits, suggestionInput, UNGROUPED, RULE_KINDS, CHARACTERISTICS, GROUP_LEVELS } from "../scripts/dashboard-groups.mjs";
+import { resolveGroups, applyGroups, validateGroups, describeRule, modelNamesOf, programTraits, programTraitsOf, suggestionInput, UNGROUPED, RULE_KINDS, CHARACTERISTICS, GROUP_LEVELS } from "../scripts/dashboard-groups.mjs";
 import { openSnapshot, runQuery } from "../scripts/engagement-query.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -54,6 +54,15 @@ check("traits: sendsSurveys is true for a survey model, false for a program with
       .map((p) => p.sendsSurveys).join() === "true,,,," );
 check("traits: recurring is true for a program with a recurring schedule, false for a documented program with none, and null for a program the KB has no doc for (never false)",
   trait("p-onboard").recurring === true && trait("p-nps").recurring === true && trait("p-renew").recurring === false && trait("p-pilot").recurring === false && trait("p-unlisted").recurring === null);
+check("traits (F-502): a one-run window reads not recurring (one-time by its data) when the program sent in one month, and RECURRING when it was re-run through such windows, sending in two or more months (the hand-fed class stays out of One-off); programTraits reads the months from the snapshot's sends",
+  (() => {
+    const oneRun = { id: "p-x", name: "X", statuses: ["PROCESSING"], model: "DRIPV2", modelName: "Email Chain", audienceType: "CUSTOMER", supergroup: null, group: null, folderId: "1", schedule: { classification: "one-time", cronExpression: "0 0 8 * * ? *", timeZoneName: null, startTime: 1, endTime: 2, asOf: "d", oneRunWindow: true } };
+    const plainOneTime = { ...oneRun, id: "p-y", schedule: { ...oneRun.schedule, oneRunWindow: false } };
+    const of = (months) => programTraitsOf([oneRun, plainOneTime], {}, months);
+    const sends = /** @type {any[]} */ ([{ programId: "p-x", templateId: "t", month: "2026-04", recipientClass: "external", sent: 3 }, { programId: "p-x", templateId: "t", month: "2026-06", recipientClass: "external", sent: 2 }]);
+    const rerun = programTraits({ ...S, dimensions: { ...S.dimensions, programs: [...S.dimensions.programs, oneRun] }, facts: { ...S.facts, byTemplate: [...S.facts.byTemplate, ...sends] } }).find((p) => p.id === "p-x");
+    return of({})[0].recurring === false && of({ "p-x": 1 })[0].recurring === false && of({ "p-x": 2 })[0].recurring === true && of({ "p-x": 2, "p-y": 2 })[1].recurring === false && rerun.recurring === true;
+  })());
 check("traits: a pass-through classification is NOT a boolean (F-494): a CRON-type schedule whose cron the KB did not capture reads classification CRON, and the trait is null (unknown), never false; a one-time schedule reads false",
   (() => {
     const withLabel = (label) => programTraits({ ...S, dimensions: { ...S.dimensions, programs: S.dimensions.programs.map((p) => (p.id === "p-onboard" ? { ...p, schedule: { ...p.schedule, classification: label, cronExpression: null } } : p)) } }).find((p) => p.id === "p-onboard").recurring;
@@ -106,7 +115,17 @@ check("every assignment says what decided each level: the override, the rule by 
   const one = resolveGroups({ programs: T, groups: few, previousProgramIds: ["p-nps", "p-onboard", "p-pilot", "p-renew"] });
   check("the refresh summary line counts the NEW programs that are ungrouped: those the previous snapshot did not hold — with no previous snapshot, every ungrouped program is new",
     known.line === "2 new programs ungrouped" && isDeepStrictEqual(known.newUngrouped, ["p-renew", "p-unlisted"]) && one.line === "1 new program ungrouped" && r.line === "4 new programs ungrouped" &&
-      resolveGroups({ programs: T, groups: groupsOf(RULES), previousProgramIds: [] }).line === "0 new programs ungrouped");
+      resolveGroups({ programs: T, groups: groupsOf(RULES), previousProgramIds: [] }).line === "1 new program ungrouped");
+  // F-515 (c): a program with a supergroup but no GROUP, where the spec has group rules, is ungrouped too — the
+  // "<supergroup> / Ungrouped" rows the About tab shows — and the line says how many sit inside a supergroup; a spec
+  // with no group rule groups on one level and counts no program as ungrouped for lacking a group.
+  const noGroupMatch = resolveGroups({ programs: T, groups: groupsOf([RULES[0], RULES[2], g({ kind: "characteristic", characteristic: "model", is: "NO_SUCH_MODEL", label: "Nothing" })]) });
+  check("F-515 ungrouped counts BOTH levels the spec groups on: with a group rule that matches nothing, every program with a supergroup is ungrouped inside it and the line says so; with supergroup rules alone, a program with a supergroup is grouped",
+    noGroupMatch.ungrouped.length === 5 && isDeepStrictEqual(noGroupMatch.ungroupedWithin, ["p-nps", "p-onboard"]) && noGroupMatch.line === "5 new programs ungrouped (2 inside a supergroup with no group)" &&
+      isDeepStrictEqual(resolveGroups({ programs: T, groups: groupsOf([RULES[0], RULES[2]]) }).ungrouped, ["p-pilot", "p-renew", "p-unlisted"]) && resolveGroups({ programs: T, groups: groupsOf([RULES[0], RULES[2]]) }).ungroupedWithin.length === 0 &&
+      isDeepStrictEqual(full.ungrouped, ["p-unlisted"]) && full.line === "1 new program ungrouped" &&
+      // A spec that groups on the GROUP level alone counts no program as ungrouped for lacking a supergroup (the review of 2026-10-12): only the ones no group rule reached.
+      isDeepStrictEqual(resolveGroups({ programs: T, groups: groupsOf([{ ...RULES[5], within: undefined }]) }).ungrouped, []) && isDeepStrictEqual(resolveGroups({ programs: T, groups: groupsOf([g({ kind: "manual", programIds: ["p-nps"], label: "One" })]) }).ungrouped, ["p-onboard", "p-pilot", "p-renew", "p-unlisted"]), [noGroupMatch.ungrouped, noGroupMatch.line]);
   check("an empty groups object groups nothing: everything is Ungrouped, and nothing is refused",
     resolveGroups({ programs: T, groups: groupsOf([]) }).ungrouped.length === 5);
 }
@@ -182,7 +201,7 @@ check("a group rule with `within` applies only inside that supergroup: the same 
 
 // ── Descriptions, and the snapshot with its groups applied ───────────────────
 {
-  const said = RULES.map(describeRule);
+  const said = RULES.map((r) => describeRule(r));
   check("every rule reads as a sentence: its level, its label, what it matches — and a folder rule says the label is the person's, since folder names are not available",
     said.every((t) => /^(Supergroup|Group)/.test(t) && t.endsWith(".")) && /Supergroup "Surveys": programs that send a survey\./.test(said[0]) && /internal users/.test(said[1]) && /Renewals \(folder id 202\).*not available/.test(said[3]) &&
       /Group "CSAT" \(inside Surveys\)/.test(said[4]) && /part 2 of the name, split on " "/.test(said[5]), said);
@@ -193,7 +212,7 @@ check("a group rule with `within` applies only inside that supergroup: the same 
   const { snapshot: applied, resolution } = applyGroups(S, groups);
   check("applyGroups fills every program's supergroup and group in a NEW snapshot and leaves the one it was given untouched",
     isDeepStrictEqual(Object.fromEntries(applied.dimensions.programs.map((p) => [p.id, [p.supergroup, p.group]])), by(full)) && S.dimensions.programs.every((p) => p.supergroup === null) && applied.facts === S.facts &&
-      isDeepStrictEqual(Object.keys(applied.dimensions.programs[0]), Object.keys(S.dimensions.programs[0])) && resolution.line === "0 new programs ungrouped");
+      isDeepStrictEqual(Object.keys(applied.dimensions.programs[0]), Object.keys(S.dimensions.programs[0])) && resolution.line === "1 new program ungrouped");
   const sum = (ids) => S.facts.byTemplate.filter((r) => ids.includes(r.programId)).reduce((x, r) => x + r.sent, 0);
   const bySg = Object.fromEntries(runQuery(applied, {}, { groupBy: ["supergroup"], metrics: ["sent"] }).rows.map((r) => [r.key.supergroup, r.cells.sent.value]));
   check("the engine filters and groups by what the resolver wrote: sends by supergroup equal a straight sum of each supergroup's programs, and a supergroup filter keeps only its own",
@@ -207,7 +226,7 @@ check("a group rule with `within` applies only inside that supergroup: the same 
   const input = suggestionInput(S);
   const text = JSON.stringify(input);
   check("suggestion input: one compact row per program — id, name, status in the UI's words, model, audience, folder id, the two derived characteristics, sends — and nothing about an account, a person or a message",
-    input.programs.length === 5 && input.programs.every((p) => isDeepStrictEqual(Object.keys(p), ["id", "name", "status", "model", "audience", "folderId", "sendsSurveys", "recurring", "sent"])) &&
+    input.programs.length === 5 && input.programs.every((p) => isDeepStrictEqual(Object.keys(p), ["id", "name", "status", "model", "modelName", "audience", "folderId", "sendsSurveys", "recurring", "sent"])) &&
       input.programs.find((p) => p.id === "p-renew").status === "Paused + Draft" && input.programs.find((p) => p.id === "p-nps").sent === S.facts.byTemplate.filter((r) => r.programId === "p-nps").reduce((x, r) => x + r.sent, 0) &&
       !text.includes("@") && !/co-\d\d/.test(text) && !text.includes("Acme Customer") && text.length < 6000, input.programs[0]);
   check("suggestion input: the tallies show what structure the tenant already has — programs per model, audience, status, folder id and characteristic — and how names split on the separators they use",
@@ -215,7 +234,10 @@ check("a group rule with `within` applies only inside that supergroup: the same 
       input.tallies.recurring.some((x) => x.value === "null" && x.programs === 1) && input.tallies.status.some((x) => x.value === "Active" && x.programs === 4) &&
       input.nameParts.length >= 1 && input.nameParts.every((d) => d.programs > 0 && d.firstParts.length > 0));
   check("suggestion input says what cannot be known: folder names, an undetermined characteristic, and a Dynamic Program's survey type",
-    input.notes.length === 3 && /Folder NAMES are not available/.test(input.notes[0]) && /null where they could not be determined/.test(input.notes[1]) && /Dynamic Program/.test(input.notes[2]));
+    input.notes.length === 5 && /tests `model`, the model CODE/.test(input.notes[0]) && /`recurring` is the trait the rules resolve over/.test(input.notes[1]) && /Folder NAMES are not available/.test(input.notes[2]) && /null where they could not be determined/.test(input.notes[3]) && /Dynamic Program/.test(input.notes[4]));
+  check("F-515 (a) the suggestion file carries, per program, the model CODE a rule tests and its display name as the label, and the model tally carries both; describeRule says a model rule by the display name when given the names, by the code otherwise",
+    input.programs.find((p) => p.id === "p-nps").model === "CSAT_SURVEY_V2" && input.programs.find((p) => p.id === "p-nps").modelName === "CSAT Survey" && input.tallies.model.some((t) => t.value === "CSAT_SURVEY_V2" && t.label === "CSAT Survey" && t.programs === 1) &&
+      describeRule(RULES[4]) === 'Group "CSAT" (inside Surveys): programs whose model is CSAT_SURVEY_V2.' && describeRule(RULES[4], { names: modelNamesOf(S.dimensions.programs) }) === 'Group "CSAT" (inside Surveys): programs whose model is CSAT Survey.' && isDeepStrictEqual(modelNamesOf([{ model: "DRIPV2", modelName: "Email Chain" }, { model: "X", modelName: null }]), { model: { DRIPV2: "Email Chain" } }), input.tallies.model);
 }
 
 // ── The CLI ──────────────────────────────────────────────────────────────────
@@ -238,7 +260,7 @@ try {
   check("resolve: prints counts and the summary line — programs, ungrouped, 'N new programs ungrouped', programs per supergroup and group — and never a program's name",
     resolved.code === 0 && resolved.json?.programs === 5 && resolved.json.ungrouped === 4 && resolved.json.line === "4 new programs ungrouped" && isDeepStrictEqual(resolved.json.supergroups, { Surveys: 1, [UNGROUPED]: 4 }) && !resolved.stdout.includes("Acme"), resolved.json ?? resolved.stderr);
   check("resolve: a draft file is read like a saved spec, and --previous makes 'new' mean new since that snapshot",
-    run(["resolve", "--snapshot", SNAPSHOT_PATH, "--spec", draft]).json?.ungrouped === 0 && run(["resolve", "--snapshot", SNAPSHOT_PATH, "--spec", spec, "--previous", SNAPSHOT_PATH]).json?.line === "0 new programs ungrouped");
+    run(["resolve", "--snapshot", SNAPSHOT_PATH, "--spec", draft]).json?.ungrouped === 1 && run(["resolve", "--snapshot", SNAPSHOT_PATH, "--spec", spec, "--previous", SNAPSHOT_PATH]).json?.line === "0 new programs ungrouped");
   const refused = run(["resolve", "--snapshot", SNAPSHOT_PATH, "--spec", bad]);
   check("resolve: groups that do not validate are refused with exit 1, naming the field", refused.code === 1 && /groups\.rules\[0\]\.kind/.test(refused.stderr), refused.stderr);
   const out = join(ROOT, "suggest.json");

@@ -5,6 +5,187 @@ marketplace doesn't pin versions — users get main — so entries describe what
 user who updates, not internal refactors. Entries before 0.8.0 were reconstructed from git
 history when this file was introduced.
 
+## 0.51.0 — 2026-10-12
+
+The engagement dashboard's entry command and the interview that builds a dashboard (PUB-1,
+DSH-3, UX-2): one deterministic command, `dashboard.mjs`, does everything mechanical about a
+dashboard with no model in the loop, and `/gs-superadmin:email-engagement` gains the
+`dashboard new | edit | list` and `refresh <slug>` modes as a thin front door over it.
+
+- **One entry command, `node .gs-superadmin/plugin/scripts/dashboard.mjs <verb>`.** `new`
+  starts a draft (or `--fast-path`, the standard program-health dashboard); `next` and
+  `answer` walk the questions table; `change <slug> <path>=<json>` sets a setting through
+  the spec writer, says what it costs (in-page, rebuild only, or the next pull with its
+  minutes), saves, and does it (`--dry-run` stops before); `save`, `list` (drafts with their
+  holder and date), `status` (last pull, age, the lock), `refresh
+  <slug> [--full] [--health-only]`, `rebuild`, `report` (the open-rate report over the latest
+  snapshot, no pull), `export [--with-snapshot]` / `import`, and `health <slug> --program
+  <id>` (a program's masked messages and the "Other" samples, to the terminal only).
+- **The refresh, with no model:** the tenant is checked before any call (a dashboard is
+  never refreshed from another tenant: its own exit code), the login's remaining life is
+  held against the pull plus the re-documentation, a workspace lock refuses a second refresh
+  naming its holder (stale after two hours), the knowledge base is brought up to date for the
+  dashboard's programs (modified since documented, or never documented) and the email
+  templates it lacks, up to a cap per refresh, the spec's settings become the pull's
+  (customer lists, test accounts, the window kind, the health lookback derived from the
+  longest schedule period), the groups are applied, thirteen snapshots are kept, both pages
+  are rebuilt, and the headline tiles show the change since the last pull over the closed
+  months both pulls hold. A refresh that stops (the login, a failed call) leaves the last
+  good pages untouched and resumes on the next run. `--health-only` reads the current month
+  and the health families again and carries the rest.
+- **The questions table, as data in the command, in an admin's terms** (the wordings
+  ruled by the maintainer at the first verdict sitting, 2026-10-12): the interview opens by
+  saying which tenant the dashboard is for, then asks which programs (those that sent in
+  the last 90 days by default), which months the pages cover (rolling, fixed, or since a
+  month, with this tenant's minutes per month), the grouping (proposed from the plan's
+  program list, written as rules), internal domains, test accounts as company records
+  (names looked up once, or GSIDs), the unsubscribe link (the standard one is recognised on
+  its own), two health settings, the look, the tabs per page (one bullet per tab, with the
+  minutes Health adds and the bounce categories' share), the customer lists (off by default,
+  with the first pull's minutes with and without them) and, when they are on, whether the
+  leaders' page may carry them with names and how the lists are built, step detail with its
+  minutes, and the tenant's own expected failure reasons (the six shipped ones named). An
+  option that needs a value (a date, a number of months, a list of names) asks for it on
+  its own; the admin never sees an input grammar. It closes with one step: the full
+  refresh's calls and minutes against the login, and save and refresh now, a dry run first
+  (preview pages on real data), save only, or go back. The fast path takes every question's
+  own default through the same apply (the standard dashboard is the programs that sent in
+  the last 90 days, grouped Recurring / One-off with each model beneath) and goes straight
+  to the closing step. No purpose, audiences, cadence or metrics question: both pages are
+  always built, both optional metrics always shown, and the About tab opens with a fixed
+  statement of what the dashboard is (an admin's own sentence can be set with `change`).
+- **The pages say when the data was pulled and how many days ago, and that they are not
+  live.** No stale banner and no cadence: refreshes are manual, and the About tab's "How to
+  refresh" says how to run or schedule one. `refresh.cadence` and `freshness.maxAgeDays`
+  stay in the spec, read by nothing; `status` and the dashboard's `report` no longer compute
+  a next due date or a staleness.
+- **Brand theming in the interview (UX-2):** brand input arrives as data (a guidelines file
+  the user names, or pasted values; a brand skill's output is not a path); the candidate
+  tokens are stored as the spec's theme; the theme validator runs and the interview shows
+  every token it replaced with the reason; the dry-run preview renders in the theme; a logo
+  is read from a local PNG or JPEG, never a URL. Skipping is the fast path's default and is
+  never asked twice.
+- **From the second verdict sitting (2026-10-12; the pull across logins, the edit, the
+  proposal, the copy lines):**
+  - **A pull longer than one login is not refused: it checkpoints across logins** (F-513,
+    ruled). The refresh no longer holds the whole pull to the login's remaining minutes
+    before the first call: it runs as far as the login allows, stops cleanly with exit 3
+    keeping every call it made, and the next run after a login continues it; the closing
+    step, the estimate and the stop say about how many logins of an hour a pull of that
+    size takes. The estimate's confirmation reads the login as it stands at that moment.
+  - **A setting changed between a stopped pull and its resume no longer strands the
+    dashboard** (F-512): a pending run whose parameters moved is abandoned, said, and the
+    pull planned afresh, so no state file is removed by hand and no refusal names a flag
+    the command lacks.
+  - **An edit over a saved dashboard asks nothing again** (F-516): every setting the saved
+    spec holds counts as answered, `next` goes to the closing step, which states what the
+    edit changes and costs (a pull, a re-ranking of the customer lists, or a rebuild), and
+    its first option does that; `next --question <id>` changes one setting.
+  - **The group proposal is built from what the rules resolve over** (F-515): the suggestion
+    file carries each program's model CODE (what a rule tests) beside its display name,
+    its `recurring` as the pull reads it (the one-run-window and months-with-sends rules
+    applied at the plan), and exactly the programs the dashboard selects (the plan's own
+    selection, listed-or-described); the refresh summary counts a program ungrouped inside
+    its supergroup too; the About tab describes a model rule by its display name and draws
+    the Groups part once.
+  - **Every copy line and recipe carries `--kb <folder>`** (F-503): the pages know their
+    knowledge-base folder's name, so the lines they offer to copy and the About tab's
+    refresh line run as drawn in a workspace with two tenants; the README's recipes the
+    same.
+  - **The README's scheduled refresh is a copy-paste recipe per OS** (F-517): a runner
+    script, the task's create, run-once and delete lines (`schtasks`; `crontab`), the Git
+    Bash prefix, what the task shows, and the two-firing behaviour (a stop on an expired
+    login, a resume after the next by-hand login).
+  - **Wording** (F-511): the How to refresh statement on the About tab and at the closing
+    step says where to type the command, how to log in and what to do when a pull outlasts
+    the login, with the slash command that runs the same thing; the test-accounts option
+    asks for GSIDs or for names, never both; `list` shows no cadence; a list with no
+    delivered floor says so; a change's pull is priced for the dashboard after the change,
+    from the last real pull's plan (never a dry run's). A question with more than four
+    options (the programs question keeps its six) is asked in chat as a numbered list, never
+    through "Other" (F-514, ruled). The skill says what `--owner` is and names every group
+    rule's fields.
+  - **Smaller:** the page's caveats list keeps one entry per caveat rather than per id, so
+    both sample-cap sentences show (F-506).
+- **From the third verdict sitting (2026-10-13; the scheduled firing, the pricing lines,
+  the How to refresh wording, the V2 polish):**
+  - **A call the server did not answer is retried by the next run, never replayed as
+    final** (F-519). A resume reused a call's "timed out twice" record as a decision, and
+    for a call with nothing left to split on that made one transient server timeout a
+    permanent failure: every later refresh stopped partial within seconds, the message said
+    to run it again, and only a hand-removed state file ended the loop. A resume now makes
+    such a call afresh (a split record is reused only as the decision to cut a unit whose
+    halves then carry the attempts; a failed record is never reused), the stop says what
+    failed (the family, the programs the call covered, "a server timeout"), that the next
+    run retries it, and in how many runs it has failed so far, and the message has no empty
+    slot.
+  - **A pricing line reads the run in front of the admin, not the plan** (F-518): a resumed
+    refresh prices the remainder (the plan's units whose answers are not on disk yet) and
+    says it is continuing with what remains of what, and the summary's `budget` carries the
+    plan's seconds beside the remainder's; an edit's forced re-pull carries the same login
+    clause as a new dashboard's first refresh (the logins of an hour when the login does
+    not cover it).
+  - **The How to refresh statement is the maintainer's ruled wording, verbatim, held once**
+    (F-511 instance 27, the section's second reopen): the About tab's section (three
+    numbered steps, what the admin will see, the session and schedule paragraph), the
+    closing step's statement and the save summary's text all read one data structure in
+    the page runtime, so the three cannot drift; the leaders' page keeps its one sentence.
+  - **The filter bar's program list says what it holds and answers to the other filters**
+    (F-505): the count line reads "N programs sent in this window, M selected", a program
+    with no send in the chosen months or outside the chosen statuses is dimmed in the list
+    and says why, and the summary's "shown" counts the programs with rows under the filters
+    (saying how many selected programs have no sends in these months).
+  - **The plan prices the gap-fill with the pull** (F-507): `estimate.token.withProposals`
+    (the pull plus the re-documentation and the template gap-fill the plan proposes, and
+    whether that fits the login) and `estimate.token.afterPullSeconds` (what the login has
+    left after the pull); the skill's two asks say which budget would outlive the login.
+  - **A lowest-N panel is described as such** (F-508): "the 10 lowest by Open rate" on the
+    About tab, in `show` and in the in-page ranking note, never "the top 10".
+  - **The unclassified-wordings caveat gates each part on its own count** (F-509): with no
+    unclassified entry wording the sentence starts at the step part.
+- **Smaller:** the save's first refresh continues the closing step's plan instead of
+  planning again; a stale refresh lock taken over by a run the budget then refuses is
+  recorded in the refusal; the derived health lookback says what it came from on a tie;
+  the generic unsubscribe-link rule reads the singular `preference` as well (Gainsight's
+  own preference-page token is singular).
+- **The customer watch list redesigned around the customer (DSH-2 ruling 4):** the pull's
+  default selection is three cross-program lists over the whole window — 25 most engaged,
+  25 least engaged (a delivered floor of 10; on a program that sends about once per contact
+  the signal is at least 3 delivered and no open), 25 most bounced — each kept account
+  getting its own rows on every program it is on; R24's per-program numbers stay available
+  and are off by default (`--accounts-busiest`, `--accounts-low`, `--accounts-bounce`). Lists
+  are data (`--account-list <kind>[:<n>[:<floor>[:<per field>]]]`, `--no-account-lists`),
+  company fields ride the names call (`--account-field`) for "per segment" lists, and the
+  selection is recorded in the snapshot. The open-rate report's account section shows the
+  cross-program lists, and the per-program lists only when their numbers are set.
+- **The spec (T-11, additive):** the window kind, the two health settings and the expected
+  reasons under the source's params; the customer lists and company fields under accounts;
+  `kb.redocument {enabled, cap}`; freshness defaulted from the cadence; a draft records its
+  holder, and another holder's draft is refused without `--take-over`. The spec writer's
+  verbs are importable functions, so the entry command never spawns it.
+- **README recipes:** the on-demand refresh, `--health-only`, a scheduled refresh through the
+  OS scheduler or a Claude desktop local task (never a cloud routine: the login lasts about
+  an hour, so a scheduled run succeeds only after a login within it; the first pull is full
+  and may need more than one login, later ones are selective), the hand-over to a backup
+  refresher (export with the snapshot, import), and the leaders' copy as a file copy to a
+  shared folder (SharePoint and OneDrive download an HTML file rather than show it).
+- **Three V2 findings fixed with the batch (F-502, F-503, F-504), and one interview edge:**
+  a program whose recurring cron is boxed into a window shorter than one period (the
+  tenant's one-day sends) is one-time by its data: ended with nobody in flight it reads
+  Finished campaign with "one-day schedule, ended <day>", never Schedule ended, and the
+  Recurring / One-off grouping follows, except a program re-run through such windows month
+  after month, which recurs by hand (F-502; the snapshot's program schedule gains
+  `oneRunWindow`). The line a page tells an admin to copy names the page, the tab and the
+  source in the entry command's own grammar (`pages.0.tabs.1.enabled=true`), so it runs
+  as written (F-503). The plan and the interview say what the bounce categories cost (one
+  counted call per category per recipient class: all, each internal domain, the test
+  accounts, the test accounts on each domain) before a category file, a domain or a test
+  account is added, and the category call is priced at its measured 2.5 s instead of a 7 s
+  default (F-504; the calls are not fewer yet). On an edit, the metrics question puts a
+  metric left off earlier back when the page's panels are the preset's (or the preset's
+  minus a metric); a page whose panels were changed by hand keeps them and the answer names
+  the change that starts again from the preset.
+
 ## 0.50.0 — 2026-10-11
 
 The engagement dashboard's look (UX-1): a design round over the finished pages, on
