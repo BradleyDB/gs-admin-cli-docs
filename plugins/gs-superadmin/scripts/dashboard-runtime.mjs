@@ -1093,8 +1093,15 @@ export function createDashboard(engine, model) {
   // The count line names the set the list holds (F-505): every program with a send in the pulled window, and how
   // many of them the viewer keeps.
   const renderCount = (state) => `${plural(programs.length, "program")} sent in this window, ${state.programs ? state.programs.length : programs.length} selected`;
-  /** The programs with a row under the months and recipient class in force, whatever the selection and status filters say. */
-  const programsWithSends = (state) => new Set(engine.runQuery(snapshot, { ...filtersOf(state), programs: null, statuses: null }, { groupBy: ["program"], metrics: ["sent"] }).rows.map((r) => r.key.program));
+  /**
+   * The programs with a send in the months in force — the months ALONE: the group, status, selection and recipient
+   * filters say nothing about whether a program sent, so a program outside the chosen group is never dimmed "no sends"
+   * (the review of 2026-10-13), and the rows' dim state depends on the months and the statuses only.
+   */
+  const programsWithSends = (state) => {
+    const { months: inForce } = filtersOf(state);
+    return new Set(engine.runQuery(snapshot, { recipientClass: "all", ...(inForce ? { months: inForce } : {}) }, { groupBy: ["program"], metrics: ["sent"] }).rows.map((r) => r.key.program));
+  };
   /**
    * The program list's rows (F-505): a program with no send in the chosen months, or outside the chosen statuses, is
    * dimmed and says why, so the list answers to the month and status filters without changing the selection.
@@ -1491,14 +1498,21 @@ export function mount(app, root, g) {
     // filter of the panes alone.
     // A status box also redraws the program list, whose rows dim by status (F-505); the months redraw the whole bar.
     commit(f === "sg" ? ["groupOptions", "count", "summary", "panes"] : f === "from" || f === "to" || f === "current" ? ["filters", "summary", "panes"] : f === "he" ? ["panes"] : f === "status" ? ["statusSummary", "count", "proglist", "summary", "panes"] : ["count", "summary", "panes"]);
+    // The redrawn list keeps the search's hidden rows (the box keeps its text; the rows are new elements).
+    if (f === "status") applySearch();
   });
-  root.addEventListener("input", (ev) => {
-    const t = ev.target;
-    if (t?.getAttribute?.("data-f") !== "search") return;
-    const hits = app.programMatches(t.value);
+  /** Hide the rows the search box's text does not match; the list is redrawn on a status change, so this runs again then. */
+  const applySearch = () => {
+    const box = root.querySelector('[data-f="search"]');
+    if (!box) return;
+    const hits = app.programMatches(box.value);
     all(".gs-prog").forEach((label, i) => {
       label.hidden = !hits[i];
     });
+  };
+  root.addEventListener("input", (ev) => {
+    if (ev.target?.getAttribute?.("data-f") !== "search") return;
+    applySearch();
   });
   // The Templates tab's search: the form's words and options become the state (and the hash), never a request.
   root.addEventListener("submit", (ev) => {

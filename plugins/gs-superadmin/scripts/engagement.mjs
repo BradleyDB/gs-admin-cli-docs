@@ -2493,14 +2493,15 @@ export function fetchEngagement(ctx) {
   // What this run still has to make (F-518): on a resume, the planned units whose answers are not all on disk — a
   // unit answered whole, or cut into halves every one of which is answered, costs nothing more. The remainder is what
   // the login must cover; a fresh run's remainder is the whole run.
-  const answered = (u) => {
+  const remainingOf = (u) => {
     const rec = records.get(unitId(u, unitArgv(u, params.pageSize)));
-    if (!rec) return false;
-    if (rec.status === "ok" && !rec.truncated) return existsSync(join(runDir, rec.file));
+    if (!rec) return [u];
+    if (rec.status === "ok" && !rec.truncated) return existsSync(join(runDir, rec.file)) ? [] : [u];
+    // A unit already cut is priced by the halves still unanswered, never whole again (the review of 2026-10-13).
     const kids = cutsOf(u, rec);
-    return !!kids && kids.every(answered);
+    return kids ? kids.flatMap(remainingOf) : [u];
   };
-  const remainingUnits = units.filter((u) => !answered(u));
+  const remainingUnits = units.flatMap(remainingOf);
   // The per-program samples (F-484), priced from the count-first reads: how many selected programs have
   // refusals in the window (read above) and how many have uncategorised bounces (from the bounce count-first
   // read: every bounce, until the categories are counted), against the cap; what the cap leaves out, and what

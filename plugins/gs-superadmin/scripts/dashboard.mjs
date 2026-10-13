@@ -137,7 +137,7 @@ export const LOGIN_SECONDS = 3600;
 /** How many logins a pull of `seconds` takes, at least one. */
 export const loginsFor = (seconds) => Math.max(1, Math.ceil((seconds ?? 0) / LOGIN_SECONDS));
 // What a failed call's kind means to the admin reading a stop (F-519): the adapter's kinds, in words.
-const FAILURE_WHY = Object.freeze({ timeout: "timed out on the server twice (a server timeout)", truncated: "came back as a full page that cannot be cut smaller", "shape-error": "was refused by the server (a query-shape error)", unparseable: "answered with something that is not JSON", refused: "was refused before it was made", other: "failed" });
+const FAILURE_WHY = Object.freeze({ timeout: "timed out on the server twice (a server timeout)", truncated: "came back as a full page that cannot be cut smaller", "shape-error": "was refused by the server (a query-shape error)", "not-found": "was answered 'not found' twice", unparseable: "answered with something that is not JSON", refused: "was refused before it was made", other: "failed" });
 /**
  * A partial stop's failures in words: the family, the programs the call named, the cause, and the runs it has failed
  * in so far (a resume retries it; a timeout that recurs run after run is said to recur, so the admin can tell a
@@ -358,13 +358,8 @@ export function composeAnswer(option, answers) {
   }
   return out;
 }
-/**
- * The manual-refresh statement, in the admin's terms: the ruled wording of 2026-10-13 (F-511 instance 27) as one
- * paragraph, read from the same data the About tab draws stepped (`HOW_TO_REFRESH` in the runtime module); the
- * closing step and the save summary carry it. `kb` is the knowledge-base folder's name (null when unknown: the
- * `questions` verb).
- */
-export const MANUAL_REFRESH_TEXT = HOW_TO_REFRESH_TEXT;
+// The manual-refresh statement (the ruled wording of 2026-10-13, F-511 instance 27) is the runtime's HOW_TO_REFRESH_TEXT:
+// one data structure the About tab draws stepped and the closing step and the save summary carry as a paragraph.
 /** The closing step (ruling 19): the three action rows read as ONE step, with the estimate, the login and the manual-refresh statement. */
 export const CLOSING_ASK = (ctx) => {
   const e = ctx?.plan?.estimate ?? null;
@@ -378,7 +373,7 @@ export const CLOSING_ASK = (ctx) => {
   const head = edit
     ? `Ready to save this edit. ${edit.consequence == null ? "Nothing changed against the saved dashboard." : `Compared with the saved dashboard it changes ${plural(edit.changed.length, "setting")} (${edit.changed.map((c) => c.path).join(", ")}): ${edit.consequence === "pull" ? `the next refresh pulls everything again, about ${N(e, (x) => minutesOf(x.full.seconds), "M")} minutes; ${login("the refresh")}` : edit.consequence === "reselect" ? "the customer lists are ranked again over the last pull's rows (a rebuild, no pull)" : "the pages are rebuilt from the data already pulled, no pull"}.`}`
     : `Ready to save. A full refresh with these settings is about ${N(e, (x) => x.full.calls, "N")} calls and ${mins(e, (x) => x.full.seconds, "M")} on this tenant; ${login("the first refresh")}.`;
-  return `${head} ${MANUAL_REFRESH_TEXT(slug, ctx?.kb ?? null)}`;
+  return `${head} ${HOW_TO_REFRESH_TEXT(slug, ctx?.kb ?? null)}`;
 };
 /** A dry run's minutes: the full pull less what customer lists, health and step detail add (the preview pulls none of them). */
 const dryRunSeconds = (e) => (e ? Math.max(60, e.full.seconds - (e.accounts?.on ? e.accounts.addsSeconds : 0) - (e.health?.on ? e.health.addsSeconds : 0) - (e.stepDetail?.on ? e.stepDetail.addsSeconds : 0)) : null);
@@ -1279,7 +1274,7 @@ function verbSave(ctx, slug) {
   const r = ctx.store.save(slug);
   rmSync(join(dirOf(ctx, slug), INTERVIEW_FILE), { force: true });
   // The manual-refresh statement in the admin's terms, for the skill's final report (F-511 instance 26).
-  return { ok: true, mode: "save", slug, path: r.path, replaced: r.replaced, pages: r.pages, notes: r.notes, pullAgainLine: COPY_LINES.refresh(slug, basename(ctx.kbDir)), pullAgainText: MANUAL_REFRESH_TEXT(slug, basename(ctx.kbDir)) };
+  return { ok: true, mode: "save", slug, path: r.path, replaced: r.replaced, pages: r.pages, notes: r.notes, pullAgainLine: COPY_LINES.refresh(slug, basename(ctx.kbDir)), pullAgainText: HOW_TO_REFRESH_TEXT(slug, basename(ctx.kbDir)) };
 }
 function verbList(ctx) {
   const dashboards = ctx.store.listDashboards().map((d) => {
