@@ -428,12 +428,15 @@ try {
   // F-512 (reopened 2026-10-12): a pull-affecting change between a stopped pull and its resume. The pending run's
   // parameters moved, so it is abandoned and the pull planned afresh — never refused as "started with different
   // parameters", and no state file to remove by hand.
-  const stoppedAgain = run("refresh", [SLUG, "--full"], { env: { FAKE_FAULTS: JSON.stringify([{ match: "rp run", kind: "auth", skip: 30, times: 9999 }]) } });
+  // Both commands share one clock (`--now`), so the fresh run's second-stamped name COLLIDES with the abandoned run's
+  // (what CI's fast runner did on 2026-10-12 with the wall clock): the fresh run must take a name no directory holds.
+  const sameSecond = ["--now", "2026-09-15T18:00:00.000Z"];
+  const stoppedAgain = run("refresh", [SLUG, "--full", ...sameSecond], { env: { FAKE_FAULTS: JSON.stringify([{ match: "rp run", kind: "auth", skip: 30, times: 9999 }]) } });
   const pendingRun = readJson(join(dash(), STATE_FILE)).run;
-  const listsOff = run("change", [SLUG, "accounts.pull=false"]);
-  check("F-512 save → stop → a change of a pull setting → refresh to a COMPLETED pull: the change's own refresh abandons the pending run (its parameters moved), says so, plans afresh and completes; the state file is gone and no hand-removal was needed",
-    stoppedAgain.code === EXIT["token-expired"] && pendingRun != null && listsOff.code === 0 && listsOff.json.consequence === "pull" && listsOff.json.done.kind === "refresh" && listsOff.json.done.status === "ok" && listsOff.json.done.abandoned?.run === pendingRun && /accounts moved/.test(listsOff.json.done.abandoned.why) && listsOff.json.done.run !== pendingRun && !existsSync(join(dash(), STATE_FILE)) && snapshots().length === 5 && openSpec(readJson(specFile())).accounts.pull === false,
-    [stoppedAgain.json?.status, pendingRun, listsOff.json?.done?.abandoned, listsOff.json?.done?.status, listsOff.json?.error]);
+  const listsOff = run("change", [SLUG, "accounts.pull=false", ...sameSecond]);
+  check("F-512 save → stop → a change of a pull setting → refresh to a COMPLETED pull: the change's own refresh abandons the pending run (its parameters moved), says so, plans afresh under a name no directory holds (the abandoned run's name plus a suffix when the clock gives the same second) and completes; the state file is gone and no hand-removal was needed",
+    stoppedAgain.code === EXIT["token-expired"] && pendingRun != null && listsOff.code === 0 && listsOff.json.consequence === "pull" && listsOff.json.done.kind === "refresh" && listsOff.json.done.status === "ok" && listsOff.json.done.abandoned?.run === pendingRun && /accounts moved/.test(listsOff.json.done.abandoned.why) && listsOff.json.done.run !== pendingRun && listsOff.json.done.run.startsWith(`${pendingRun}-`) && !existsSync(join(dash(), STATE_FILE)) && snapshots().length === 5 && openSpec(readJson(specFile())).accounts.pull === false,
+    [stoppedAgain.json?.status, pendingRun, listsOff.json?.done?.run, listsOff.json?.done?.abandoned, listsOff.json?.done?.status, listsOff.json?.error]);
   const listsBack = run("change", [SLUG, "accounts.pull=true"]);
   check("(the walk's lists back on for what follows)", listsBack.code === 0 && listsBack.json.done.status === "ok" && snapshots().length === 6, listsBack.json?.error);
 
