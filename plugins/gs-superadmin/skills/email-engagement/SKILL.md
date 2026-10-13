@@ -363,10 +363,11 @@ list it under Owner; take both from what the user said, and omit a flag the user
 nothing for (the title then defaults to the slug, the owner to none). Append `--fast-path`
 when the user asked for the standard program-health dashboard, or said they want the
 defaults: every question then takes its own default (the one its wording names) and the
-interview goes straight to the closing step. If the summary's `ok` is `false` and its
-`error` names another holder ("held by …"), tell the user who holds the draft and since
-when, and ask whether to take it over; on yes re-issue the command with `--take-over`,
-otherwise stop.
+interview goes straight to the closing step (on an edit or a resumed draft the flag does
+nothing, and the summary's `fastPathIgnored` says so: relay it). If the summary's `ok` is
+`false` and its `error` names another holder ("held by …"), tell the user who holds the
+draft and since when, and ask whether to take it over; on yes re-issue the command with
+`--take-over`, otherwise stop.
 
 **An edit** (the summary's `state` is `editing-saved`) starts from the saved dashboard, so
 every setting already counts as answered: the next `next` returns the closing step
@@ -482,10 +483,12 @@ node .gs-superadmin/plugin/scripts/dashboard.mjs answer <dash> <question id> <va
   or rank the customer lists again, as its text says): `dry-run no`, `estimate yes`,
   `save yes`. The save does what the option says (a pull: step P's exit codes apply, a
   stop on the login included; a rebuild or a re-ranking: no call); relay its summary.
-- The `dry-run` option ("Run a dry run first"): `dry-run yes` makes a cheap pull (minutes;
-  the login must be valid) and renders preview pages in the theme: relay `preview.pages`
-  (their paths and sizes) and invite the user to open the admin page in a browser; then
-  call `next` again and present the closing step it returns (without the dry run).
+- The `dry-run` option (a dry run first; on an edit, a preview rebuilt from the last pull
+  with the draft's settings, no call): `dry-run yes` renders preview pages in the theme (on a
+  new dashboard it makes a cheap pull first, minutes, the login must be valid): relay
+  `preview.pages` (their paths and sizes) and `preview.note` when present, and invite the
+  user to open the admin page in a browser; then call `next` again and present the closing
+  step it returns (without the preview option).
 - The `save-only` option (save only, pull or rebuild later; or close an edit that changed
   nothing): `dry-run no`, `estimate yes`, `save later`.
 - The `go-back` option ("Go back and change a setting"): ask which setting (the questions'

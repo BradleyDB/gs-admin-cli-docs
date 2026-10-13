@@ -380,9 +380,12 @@ export const CLOSING_OPTIONS = (ctx) => {
     : edit.consequence == null ? null
       : edit.consequence === "pull" ? { id: "save-now", text: `Save and run the refresh now (${mins(e, (x) => x.full.seconds, "M")})`, answers: [["dry-run", "no"], ["estimate", "yes"], ["save", "yes"]] }
         : { id: "save-now", text: edit.consequence === "reselect" ? "Save and rank the customer lists again now (no pull)" : "Save and rebuild the pages now (no pull)", answers: [["dry-run", "no"], ["estimate", "yes"], ["save", "yes"]] };
+  // On an edit with a pull already made, the preview is rebuilt from the last pull with no call (the themed preview
+  // UX-2 promises, at no login cost); a new dashboard's dry run is the cheap program-level pull.
+  const previewFromPull = edit && ctx?.hasSnapshot;
   return [
     ...(first ? [first] : []),
-    ...(dryDone ? [] : [{ id: "dry-run", text: `Run a dry run first (a quick program-level pull, ${mins(e, dryRunSeconds, "D")}, rendered as preview pages)`, answers: [["dry-run", "yes"]] }]),
+    ...(dryDone ? [] : [{ id: "dry-run", text: previewFromPull ? "Preview the pages first (rebuilt from the last pull with these settings; no call)" : `Run a dry run first (a quick program-level pull, ${mins(e, dryRunSeconds, "D")}, rendered as preview pages)`, answers: [["dry-run", "yes"]] }]),
     { id: "save-only", text: edit ? (edit.consequence == null ? "Close the edit (nothing changed)" : `Save only, ${edit.consequence === "pull" ? "refresh" : "rebuild"} later`) : "Save only, refresh later", answers: [["dry-run", "no"], ["estimate", "yes"], ["save", "later"]] },
     { id: "go-back", text: "Go back and change a setting", answers: [] },
   ];
@@ -950,7 +953,9 @@ function verbNew(ctx, slug, opt, argv) {
     // step, which says what the edit changes and costs; `next --question <id>` is the way to change one setting.
     answered = ctx.store.setDraft(slug, { answered: SETTING_QUESTIONS, by: ctx.by, takeOver: ctx.takeOver }).answered;
   }
-  return { ok: true, mode: "new", slug, state: r.state, fastPath: fastPath && r.state === "new", by: r.by, answered, next: nextQuestionId(ctx, slug), ...(r.state === "editing-saved" ? { hint: `an edit of the saved dashboard: next goes to the closing step; next --question <id> changes one setting (${SETTING_QUESTIONS.join(", ")})` } : {}) };
+  // --fast-path applies to a NEW dashboard: an edit starts from the saved settings and a resumed draft keeps its own; said, never dropped in silence.
+  const fastPathIgnored = fastPath && r.state !== "new" ? `--fast-path applies to a new dashboard only (this is ${r.state === "resumed" ? "a resumed draft, which keeps its answers" : "an edit, which starts from the saved settings"}); ignored` : null;
+  return { ok: true, mode: "new", slug, state: r.state, fastPath: fastPath && r.state === "new", ...(fastPathIgnored ? { fastPathIgnored } : {}), by: r.by, answered, next: nextQuestionId(ctx, slug), ...(r.state === "editing-saved" ? { hint: `an edit of the saved dashboard: next goes to the closing step; next --question <id> changes one setting (${SETTING_QUESTIONS.join(", ")})` } : {}) };
 }
 function interviewState(ctx, slug) { return readJsonOr(join(dirOf(ctx, slug), INTERVIEW_FILE), { plan: null, preview: null }); }
 function saveInterviewState(ctx, slug, state) { mkdirSync(dirOf(ctx, slug), { recursive: true }); writeJson(join(dirOf(ctx, slug), INTERVIEW_FILE), state); }
@@ -976,13 +981,17 @@ function interviewContext(ctx, slug, { draft }) {
   const plan = planThere && (exact || state.plan.loose === keys.loose) ? readJsonFile(join(planRun, "plan.json")) : null;
   const previewPath = state.preview?.snapshot && existsSync(state.preview.snapshot) ? state.preview.snapshot : null;
   // An EDIT of a saved dashboard (F-516): what the draft changes against the saved spec and what that costs, from the
-  // same table `change` reads; the closing step says it and its first option does it.
+  // same table `change` reads; the closing step says it and its first option does it. Computed once, by the first
+  // reader that asks (it reads the saved spec and the last plan's run directories).
   const savedRaw = ctx.store.readSaved(slug);
-  const edit = savedRaw ? (() => { const saved = openSpec(savedRaw); const lp = lastPlan(ctx, slug); return { saved, ...changeCost(saved, spec, { longestPeriodDays: lp?.estimate?.health?.lookback?.longestPeriodDays ?? null }) }; })() : null;
+  let edit;
   // The preview snapshot is megabytes on a real tenant: parsed once, and only by a reader that asks for it.
   let preview;
   return {
-    spec, answered: draft.answered, plan, planExact: exact ? plan : null, planRun, previewPath, fastPath: !!state.fastPath, edit, kb: basename(ctx.kbDir), get preview() { return previewPath ? (preview ??= openSnapshotFile(previewPath)) : null; },
+    spec, answered: draft.answered, plan, planExact: exact ? plan : null, planRun, previewPath, fastPath: !!state.fastPath, kb: basename(ctx.kbDir),
+    get edit() { return savedRaw ? (edit ??= (() => { const saved = openSpec(savedRaw); const lp = lastPlan(ctx, slug); return { saved, ...changeCost(saved, spec, { longestPeriodDays: lp?.estimate?.health?.lookback?.longestPeriodDays ?? null }) }; })()) : null; },
+    get hasSnapshot() { return !!latestSnapshotPath(ctx, slug); },
+    get preview() { return previewPath ? (preview ??= openSnapshotFile(previewPath)) : null; },
     params: adapterParams(spec, { today: ctx.today }), programs: plan ? readJsonOr(join(planRun, "programs.json"), []) : [],
     suggestionFile: join(dirOf(ctx, slug), SUGGESTION_FILE),
     lookupCompany: (name) => lookupCompany(ctx, spec, name),
@@ -1167,6 +1176,18 @@ function verbAction(ctx, slug, q, value, ictx) {
   if (q.id === "dry-run") {
     if (yes !== "yes") return mark({ preview: null });
     const spec = ictx.spec;
+    const lastPull = ictx.edit ? latestSnapshotPath(ctx, slug) : null;
+    if (lastPull) {
+      // An edit's preview: the draft's settings over the LAST PULL, no call (the review of 2026-10-12: a dry run that
+      // pulls for an edit that needs no pull spends login minutes on nothing; a pull-cost edit still previews what the
+      // last pull holds, said so).
+      const pulled = openSnapshotFile(lastPull);
+      const previewDir = join(dirOf(ctx, slug), PREVIEW_DIR);
+      const { snapshot, resolution } = applyGroups(pulled, spec.groups);
+      const pages = buildPages(ctx, { spec, snapshot, delta: null, outDir: previewDir });
+      saveInterviewState(ctx, slug, { ...interviewState(ctx, slug), preview: { run: null, snapshot: lastPull, at: new Date(ctx.nowMs).toISOString() } });
+      return mark({ preview: { snapshot: lastPull, fromLastPull: true, pages: pages.map((p) => ({ page: p.page, path: p.path, megabytes: p.megabytes, warning: p.warning })), pulledAt: snapshot.meta.pulledAt, programs: snapshot.dimensions.programs.length, ungrouped: resolution.line, calls: { made: 0, reused: 0 }, themed: !!spec.theme, note: ictx.edit.consequence === "pull" ? "built from the last pull: a setting that needs a new pull shows the data as last pulled" : null } });
+    }
     preflight(ctx, spec);
     const runId = stableRunId(ctx, spec, "preview");
     const r = runAdapter(ctx, { spec, runId, phase: "all", previousPath: null, preview: true });
@@ -1304,7 +1325,8 @@ function verbRefresh(ctx, slug, { full, healthOnly, planRun = null }) {
     const stopped = (r, logins = null) => {
       const code = r.summary.status === "token-expired" ? "token-expired" : r.summary.status === "partial" ? "partial" : "failed";
       const made = r.summary.calls ? ` after ${plural(r.summary.calls.made, "call")} this run${r.summary.calls.reused ? ` (${r.summary.calls.reused} reused from before)` : ""}` : "";
-      const more = code === "token-expired" && logins != null ? ` — about ${plural(logins, "more login")} of an hour to finish` : "";
+      // The logins still needed, when known: none left means the next run only finishes (the reduce and the pages).
+      const more = code !== "token-expired" || logins == null ? "" : logins === 0 ? " — every call is made: the next run finishes it" : ` — about ${plural(logins, "more login")} of an hour to finish`;
       refuse(`the ${healthOnly ? "health-only " : ""}refresh stopped${made}: ${r.summary.stopped ?? r.summary.status}${code === "failed" ? "" : ` — ${code === "token-expired" ? "run gs-admin login, then" : ""} run refresh ${slug} again: it continues where it stopped; the last good pages are untouched`}${more}${lock.takenOver ? `; a stale lock held by ${lock.takenOver.by ?? "unknown"} since ${lock.takenOver.at} was taken over` : ""}`, code, { ...takenOver, ...(abandoned ? { abandoned } : {}) });
     };
     if (planned.summary.status !== "ok") stopped(planned);
@@ -1314,14 +1336,16 @@ function verbRefresh(ctx, slug, { full, healthOnly, planRun = null }) {
     const needed = estimate.thisRun.seconds + redocSeconds + 30;
     const budget = { neededSeconds: needed, loginSecondsLeft: who.expiresInSeconds, fitsThisLogin: needed <= who.expiresInSeconds, loginsNeeded: loginsFor(needed) };
     if (!budget.fitsThisLogin) ctx.log(`the refresh needs about ${plural(minutesOf(needed), "minute")} and the login has ${plural(minutesOf(who.expiresInSeconds), "minute")} left: it will run as far as the login allows (about ${plural(budget.loginsNeeded, "login")} of an hour in all) and continue after the next login`);
-    // Re-documentation first (the fetch then re-reads the moved knowledge base: the run's KB copy is stamped).
+    // Re-documentation first (the fetch then re-reads the moved knowledge base: the run's KB copy is stamped). A login
+    // that dies under it is the same stop as one that dies under the pull: exit 3, resumable, "log in, then run again".
     const redocumented = redocument(ctx, { spec, estimate, runDir: planned.runDir });
+    if (redocumented.aborted?.reason === "auth") refuse(`the refresh stopped during re-documentation (${plural(redocumented.calls, "describe")} made): the login expired — run gs-admin login, then run refresh ${slug} again: it continues where it stopped; the last good pages are untouched${lock.takenOver ? `; a stale lock held by ${lock.takenOver.by ?? "unknown"} since ${lock.takenOver.at} was taken over` : ""}`, "token-expired", { ...takenOver, ...(abandoned ? { abandoned } : {}), redocumented });
     // The pull.
     const pulledRun = runAdapter(ctx, { spec, runId: basename(planned.runDir), phase: "all", previousPath, forceFull: full, healthOnly, lookbackDays: planned.lookbackDays });
     if (pulledRun.summary.status !== "ok") {
       const c = pulledRun.summary.calls ?? { made: 0, reused: 0 };
       const left = Math.max(0, estimate.thisRun.calls - c.made - c.reused);
-      stopped(pulledRun, loginsFor(estimate.thisRun.calls ? (left / estimate.thisRun.calls) * estimate.thisRun.seconds : 0));
+      stopped(pulledRun, left === 0 ? 0 : loginsFor(estimate.thisRun.calls ? (left / estimate.thisRun.calls) * estimate.thisRun.seconds : 0));
     }
     const pulled = reduceEngagement(loadRun(pulledRun.runDir, { previous: pulledRun.previous, cliVersion: ctx.catalog.meta?.cliVersion ?? null, pluginVersion: ctx.pluginVersion }));
     const previous = pulledRun.previous;
@@ -1427,14 +1451,16 @@ export function pullSecondsAfter(plan, before, after) {
   const e = plan?.estimate;
   if (!e?.full?.seconds) return null;
   let seconds = e.full.seconds;
+  // The window's scale first, on the plan's own figure; then the flipped switches, each priced by the plan as it stands
+  // (its addsSeconds is for the plan's window, never scaled).
+  const wb = windowOf(src(before));
+  const wa = windowOf(src(after));
+  if (wb.kind === "rolling" && wa.kind === "rolling" && src(before).windowMonths !== src(after).windowMonths && src(before).windowMonths > 0) seconds = (seconds / src(before).windowMonths) * src(after).windowMonths;
   const flip = (part, was, now) => { if (!part || was === now) return; seconds += now ? (part.on ? 0 : part.addsSeconds) : -(part.on ? part.addsSeconds : 0); };
   const healthOn = (s) => s.pages.some((pg) => pg.tabs.some((t) => t.id === "health" && t.enabled));
   flip(e.accounts, !!before.accounts.pull, !!after.accounts.pull);
   flip(e.health, healthOn(before), healthOn(after));
   flip(e.stepDetail, !!src(before).stepDetail, !!src(after).stepDetail);
-  const wb = windowOf(src(before));
-  const wa = windowOf(src(after));
-  if (wb.kind === "rolling" && wa.kind === "rolling" && src(before).windowMonths !== src(after).windowMonths && src(before).windowMonths > 0) seconds = (seconds / src(before).windowMonths) * src(after).windowMonths;
   return Math.max(0, Math.round(seconds));
 }
 function verbReport(ctx, slug, opt, argv) {

@@ -471,6 +471,14 @@ try {
   check("F-516 next --question <id> changes one setting on the edit (the Templates tab off: a rebuild) and the closing step then STATES the consequence — the setting changed, rebuild with no pull — and its first option is the rebuild, not a refresh; the estimate needs no plan",
     backTo.json?.question?.id === "tabs" && backTo.json.again === true && retabbed.code === 0 && editClosing.code === 0 && /^Ready to save this edit\. Compared with the saved dashboard it changes 1 setting \(pages\[\]\.tabs\[\]\.enabled\): the pages are rebuilt from the data already pulled, no pull\. Refreshes are manual/.test(editClosing.json.closing.ask) &&
       editClosing.json.closing.options[0].id === "save-now" && editClosing.json.closing.options[0].text === "Save and rebuild the pages now (no pull)" && isDeepStrictEqual(editClosing.json.closing.options.map((o) => o.id), ["save-now", "dry-run", "save-only", "go-back"]), [editClosing.json?.closing, retabbed.json?.error]);
+  // The edit's preview is rebuilt from the LAST PULL with the draft's settings, no call (the review of 2026-10-12): the
+  // closing step's option says so, and the preview pages carry the edit (the Templates tab gone from the admin page).
+  const callsBeforePreview = argvLines().length;
+  const editPreview = run("answer", [SLUG, "dry-run", "yes"], { flags: [...asBen, "--by", "ben"] });
+  const previewAdmin = existsSync(join(dash(), PREVIEW_DIR, "latest-admin.html")) ? readFileSync(join(dash(), PREVIEW_DIR, "latest-admin.html"), "utf8") : "";
+  check("F-516 the edit's dry run previews the draft over the last pull with NO call: the option reads 'Preview the pages first (rebuilt from the last pull …)', the preview is marked fromLastPull with 0 calls, the admin preview shows the Templates tab as offered (off), and the closing step then offers no second preview",
+    /Preview the pages first \(rebuilt from the last pull/.test(editClosing.json.closing.options[1].text) && editPreview.code === 0 && editPreview.json.preview?.fromLastPull === true && editPreview.json.preview.calls.made === 0 && argvLines().length === callsBeforePreview && previewAdmin.length > 0 && /class="gs-tab is-offered" data-tab="templates"/.test(previewAdmin.replace(/<script[\s\S]*?<\/script>/g, "")) &&
+      isDeepStrictEqual(run("next", [SLUG], { flags: [...asBen, "--by", "ben"] }).json?.closing?.options?.map((o) => o.id), ["save-now", "save-only", "go-back"]), [editClosing.json?.closing?.options?.[1], editPreview.json ?? editPreview.stderr?.slice(-300)]);
   const snapsBeforeEditSave = snapshots().length;
   const callsBeforeEditSave = argvLines().length;
   const editEstimate = run("answer", [SLUG, "estimate", "yes"], { flags: [...asBen, "--by", "ben"] });

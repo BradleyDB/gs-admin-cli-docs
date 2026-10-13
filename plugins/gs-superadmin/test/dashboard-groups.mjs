@@ -123,7 +123,9 @@ check("every assignment says what decided each level: the override, the rule by 
   check("F-515 ungrouped counts BOTH levels the spec groups on: with a group rule that matches nothing, every program with a supergroup is ungrouped inside it and the line says so; with supergroup rules alone, a program with a supergroup is grouped",
     noGroupMatch.ungrouped.length === 5 && isDeepStrictEqual(noGroupMatch.ungroupedWithin, ["p-nps", "p-onboard"]) && noGroupMatch.line === "5 new programs ungrouped (2 inside a supergroup with no group)" &&
       isDeepStrictEqual(resolveGroups({ programs: T, groups: groupsOf([RULES[0], RULES[2]]) }).ungrouped, ["p-pilot", "p-renew", "p-unlisted"]) && resolveGroups({ programs: T, groups: groupsOf([RULES[0], RULES[2]]) }).ungroupedWithin.length === 0 &&
-      isDeepStrictEqual(full.ungrouped, ["p-unlisted"]) && full.line === "1 new program ungrouped", [noGroupMatch.ungrouped, noGroupMatch.line]);
+      isDeepStrictEqual(full.ungrouped, ["p-unlisted"]) && full.line === "1 new program ungrouped" &&
+      // A spec that groups on the GROUP level alone counts no program as ungrouped for lacking a supergroup (the review of 2026-10-12): only the ones no group rule reached.
+      isDeepStrictEqual(resolveGroups({ programs: T, groups: groupsOf([{ ...RULES[5], within: undefined }]) }).ungrouped, []) && isDeepStrictEqual(resolveGroups({ programs: T, groups: groupsOf([g({ kind: "manual", programIds: ["p-nps"], label: "One" })]) }).ungrouped, ["p-onboard", "p-pilot", "p-renew", "p-unlisted"]), [noGroupMatch.ungrouped, noGroupMatch.line]);
   check("an empty groups object groups nothing: everything is Ungrouped, and nothing is refused",
     resolveGroups({ programs: T, groups: groupsOf([]) }).ungrouped.length === 5);
 }
