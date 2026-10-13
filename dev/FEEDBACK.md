@@ -172,7 +172,7 @@ Walk (hb-20261012-02): 2026-10-13 (tester) — S5-V THIRD SITTING @ hb-20261012-
 
 <!-- builder 2026-10-13 (JO-dashboards S5 FIX ROUND 3 HANDED OFF — UNMERGED, riding feat/jo-dash-s5-entry-command (PR #47 to dev, still open); F-519 (normal), F-518, F-511 (instance 27, second reopen: Redesign line), F-505, F-507, F-508, F-509 FIXED on that branch; token hb-20261013-01; next free F-520):
      Built in a worktree on feat/jo-dash-s5-fix3 (cut from 386f6a0) and merged (fast-forward) into feat/jo-dash-s5-entry-command
-       in the main checkout: the batch e46a0da, the review's findings 8f0942e, the house-rule-18 wording 3934148, the handoff
+       in the main checkout: the batch e46a0da, the review's findings 8f4fe50, the house-rule-18 wording 3934148, the handoff
        fb47fc6 (bus header + canary), then this comment with the token filled into the Fix notes and the re-bank. Plugin stays
        0.51.0, unreleased; the round is folded into its CHANGELOG entry.
      Root cause first (F-519): the adapter's resume counted a prior "split" record as reused whatever the family; for a unit
@@ -205,8 +205,7 @@ Walk (hb-20261012-02): 2026-10-13 (tester) — S5-V THIRD SITTING @ hb-20261012-
        the spec suite pins both), the `<kb>` placeholder on a page built by hand with no folder (the builder's warning now
        says so). Mutation sweep: vacuity check, no predictions recorded.
      Owed: the fourth sitting (VALIDATION § DSH-3, re-banked under hb-20261013-01: I15's resume arm, the statement read by
-       Bradley, F-518's two lines, F-505/F-507/F-508/F-509 on the real pages and a real plan); CI on the pushed head as a
-       per-job quote; the worktree removed at close.
+       Bradley, F-518's two lines, F-505/F-507/F-508/F-509 on the real pages and a real plan); CI on the pushed head 6d42f19, per job: validate-plugin run 38441017569 changes, manifests, validate (ubuntu-latest) success; docs-drift run 38441017557 drift (full) success; the worktree removed at close.
 -->
 
 <!-- builder 2026-10-13 (PR #47 CI RED ON d364297, FIXED AFTER S5-V's THIRD SITTING CLOSED — UNMERGED, riding feat/jo-dash-s5-entry-command; next free F-520):
