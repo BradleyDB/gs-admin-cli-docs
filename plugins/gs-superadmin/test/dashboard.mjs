@@ -30,11 +30,11 @@ import { join, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { isDeepStrictEqual } from "node:util";
 import { makeTempDir, removeTempDir, writeFiles, runNode } from "../../../test/rig.mjs";
-import { COSTS, COST_KINDS, ADAPTER_MAPPING, QUESTIONS, CLOSING_ASK, CLOSING_OPTIONS, MANUAL_REFRESH_TEXT, askText, defaultAnswer, composeAnswer, defaultGroupRules, categoryCostText, changeCost, coveredPath, computeDelta, adapterParams, pullSecondsAfter, loginsFor, LOGIN_SECONDS, EXIT, KEEP_SNAPSHOTS, LOCK_STALE_MS, LOCK_FILE, STATE_FILE, SNAPSHOTS_DIR, PREVIEW_DIR, SUGGESTION_FILE } from "../scripts/dashboard.mjs";
+import { COSTS, COST_KINDS, ADAPTER_MAPPING, QUESTIONS, CLOSING_ASK, CLOSING_OPTIONS, askText, defaultAnswer, composeAnswer, defaultGroupRules, categoryCostText, changeCost, coveredPath, computeDelta, adapterParams, pullSecondsAfter, loginsFor, LOGIN_SECONDS, EXIT, KEEP_SNAPSHOTS, LOCK_STALE_MS, LOCK_FILE, STATE_FILE, SNAPSHOTS_DIR, PREVIEW_DIR, SUGGESTION_FILE } from "../scripts/dashboard.mjs";
 import { resolveGroups, programTraits } from "../scripts/dashboard-groups.mjs";
 import { SPEC_DESCRIPTIONS, defaultSpec, openSpec, DEFAULT_ACCOUNT_LISTS } from "../scripts/dashboard-spec.mjs";
 import { HOW_TO_REFRESH_RULED } from "./fixtures/engagement/ruled-text.mjs";
-import { LACKS } from "../scripts/dashboard-runtime.mjs";
+import { LACKS, HOW_TO_REFRESH_TEXT } from "../scripts/dashboard-runtime.mjs";
 import { openSnapshot } from "../scripts/engagement-query.mjs";
 import { kbFiles, OWN_SITE_UNSUBSCRIBE, TEMPLATES_DOMAIN } from "./fixtures/engagement/acme-tenant.mjs";
 
@@ -167,7 +167,7 @@ try {
     // F-511 instance 27: the three places that carry the How to refresh statement read ONE data (the runtime's
     // HOW_TO_REFRESH): the closing ask and the save summary's text here, the About tab in the page suite.
     check("F-511 instance 27: the manual-refresh statement is the ruled wording of 2026-10-13 verbatim, as one paragraph, with the folder and the slug filled in (and the ruling's <kb> with no folder known); the closing ask ends with it",
-      MANUAL_REFRESH_TEXT("x", "acme-prod") === HOW_TO_REFRESH_RULED("x", "acme-prod") && MANUAL_REFRESH_TEXT("x", null) === HOW_TO_REFRESH_RULED("x", null) && closingAsk.endsWith(` ${HOW_TO_REFRESH_RULED("x", null)}`), MANUAL_REFRESH_TEXT("x", "acme-prod"));
+      HOW_TO_REFRESH_TEXT("x", "acme-prod") === HOW_TO_REFRESH_RULED("x", "acme-prod") && HOW_TO_REFRESH_TEXT("x", null) === HOW_TO_REFRESH_RULED("x", null) && closingAsk.endsWith(` ${HOW_TO_REFRESH_RULED("x", null)}`), HOW_TO_REFRESH_TEXT("x", "acme-prod"));
     // F-518 b: an edit's forced re-pull carries the same login clause as a new dashboard's first refresh.
     const editPullAsk = CLOSING_ASK({ ...PLAN_CTX, tokenSecondsLeft: 300, plan: { estimate: { ...PLAN.estimate, full: { calls: 700, seconds: 4300 } } }, edit: { changed: [{ path: "accounts.pull" }], consequence: "pull" } });
     check("F-518 b: an edit whose consequence is a pull prices it with the login clause of the new dashboard's closing step (the minutes, then the logins of an hour when the login does not cover it; 'enough for it' when it does)",

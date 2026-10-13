@@ -529,7 +529,7 @@ async function main() {
   // spec writer keeps a spec (a spec read from anywhere else gives none, and the lines omit the flag; stderr says so).
   const kbDir = kbDirOfSpecFile(opt("--spec"));
   const kb = opt("--kb") ?? (kbDir ? basename(kbDir) : null);
-  if (!kb) console.error("dashboard-page.mjs: no knowledge-base folder known for this spec (pass --kb <folder name>): the pages' copy lines omit --kb");
+  if (!kb) console.error("dashboard-page.mjs: no knowledge-base folder known for this spec (pass --kb <folder name>): the pages' copy lines omit --kb and the About tab's How to refresh names the folder as <kb>");
   const pages = [];
   for (const page of spec.pages.filter((p) => !only || p.id === only)) {
     let built;
