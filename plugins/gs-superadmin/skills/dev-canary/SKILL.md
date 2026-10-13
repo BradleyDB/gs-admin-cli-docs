@@ -1,6 +1,6 @@
 ---
 name: dev-canary
-description: DEV CANARY — under test feat/jo-dash-s4d-ux · hb-20261011-01 · 2026-10-11. Visible only when this plugin is loaded from a dev working tree; removed before merge to main. If invoked, report this token and stop.
+description: DEV CANARY — under test feat/jo-dash-s5-entry-command · hb-20261013-01 · 2026-10-13. Visible only when this plugin is loaded from a dev working tree; removed before merge to main. If invoked, report this token and stop.
 ---
 
 Load-provenance marker for the /dev-loop workflow. The token above is

@@ -269,6 +269,12 @@ try {
         onboard.includes("Low engagement:") && onboard.includes("Deliverability:") && isDeepStrictEqual(tables[0], wantLow) && isDeepStrictEqual(tables[1], wantBounce) && full.json.counts.watchListPrograms >= 2, [tables, wantLow, wantBounce]);
     check("the watch list names accounts only: no roll-up row (\"All other accounts\", \"No company link\") is ranked in it",
       !watch.includes("All other accounts") && !watch.includes("No company link"));
+    // The cross-program lists (S5): one table per list the pull selected, every kept account in it whatever the status
+    // filter (the lists were selected over every program), with the programs it is on.
+    const crossTables = [...watch.matchAll(/### (Most engaged|Least engaged|Most bounced) customers\n\n((?:\|.*\n)+)/g)].map((m) => [m[1], m[2].split("\n").filter((l) => l.startsWith("|")).slice(2).map((l) => l.split("|")[1].trim())]);
+    const sel = GOLD.honesty.accountSelection.lists.filter((l) => !l.per);
+    check("the cross-program lists: a table per selected list, its rows exactly the accounts the pull kept (the status filter does not narrow them), each with the programs it is on",
+      crossTables.length === sel.length && sel.every((l, i) => crossTables[i][1].length === l.kept.length && l.kept.every((k) => crossTables[i][1].includes(nameOf[k]))) && full.json.counts.crossProgramLists === sel.length && /\| Account \| Programs \|/.test(watch), [crossTables.map((t) => t[1].length), sel.map((l) => l.kept.length)]);
 
     // The glossary.
     const gloss = section(md, "## How each number is calculated");
@@ -374,15 +380,19 @@ try {
   // ══ The skill's prose (house rule 18) ═════════════════════════════════════
   {
     const skill = readFileSync(join(PLUGIN, "skills", "email-engagement", "SKILL.md"), "utf8");
-    const bare = skill.split("\n").filter((l) => /refresh/i.test(l) && !/\/gs-superadmin:email-engagement refresh\b/.test(l));
-    check("the skill never writes the word for its later pull-again mode bare: another skill of that name exists, so every mention carries this skill's name in front",
+    // Three spellings are not bare: this skill's own mode with its name in front, the knowledge-base skill named in
+    // full, and the entry command's verb as a command (S5: `dashboard.mjs refresh <slug>` is the line a user runs).
+    const bare = skill.split("\n").filter((l) => /refresh/i.test(l) && !/\/gs-superadmin:email-engagement refresh\b/.test(l) && !/\/gs-superadmin:refresh\b/.test(l) && !/dashboard\.mjs refresh\b/.test(l));
+    check("the skill never writes the word for its later pull-again mode bare: another skill of that name exists, so every mention carries this skill's name in front (or names the knowledge-base skill in full, or is the entry command's own verb)",
       bare.length === 0, bare);
     const flags = (text) => new Set([...text.matchAll(/--[a-z][a-z-]+/g)].map((m) => m[0]));
     const adapterFlags = flags(readFileSync(ENGINE, "utf8"));
     const reportFlags = flags(readFileSync(REPORT, "utf8"));
+    // The entry command's own flags (S5): the dashboard modes pass them to scripts/dashboard.mjs.
+    const dashboardFlags = flags(readFileSync(join(PLUGIN, "scripts", "dashboard.mjs"), "utf8"));
     const skillOnly = new Set(["--snapshot", "--csv", "--xlsx", "--slug"]);
-    const fence = skill.slice(skill.indexOf("### 6 — Final report")).split("```")[1];
-    const rules = skill.slice(skill.indexOf("Substitute from the step-4 summary JSON"));
+    const fence = skill.slice(skill.indexOf("### R6 — Final report")).split("```")[1];
+    const rules = skill.slice(skill.indexOf("Substitute from the step-R4 summary JSON"));
     const placeholders = [...new Set([...fence.matchAll(/<[a-zA-Z ]+>/g)].map((m) => m[0]))];
     check("F-481: every placeholder of the final block has a substitution rule, and none asks the reader to choose: the Caveats line is filled from the summary's leadCaveats",
       placeholders.length >= 12 && placeholders.every((ph) => rules.includes(`\`${ph}\``)) && fence.includes("<N> — <lead>") && rules.includes("`leadCaveats`") && !/most affect/.test(skill), placeholders.filter((ph) => !rules.includes(`\`${ph}\``)));
@@ -398,7 +408,7 @@ try {
     check("every flag the skill passes through exists in the script it is passed to, in that script's own spelling: pull flags in the adapter, report flags in the report script, and a fenced line naming another plugin script carries only that script's flags",
       pullFlags.length >= 9 && pullFlags.every((f) => adapterFlags.has(f)) && repFlags.length === 4 && repFlags.every((f) => reportFlags.has(f)) && ["--internal-domain", "--unsubscribe-link", "--accounts", "--step-detail"].every((f) => pullFlags.includes(f)) &&
         scriptLines.length >= 3 && scriptLines.every((l) => { const own = scriptFlagsOf(l); return [...flags(l)].every((f) => own.has(f)); }) &&
-        [...flags(prose)].every((f) => adapterFlags.has(f) || reportFlags.has(f) || skillOnly.has(f) || otherLineFlags.has(f)), [pullFlags, repFlags, [...flags(prose)].filter((f) => !adapterFlags.has(f) && !reportFlags.has(f) && !skillOnly.has(f) && !otherLineFlags.has(f)), scriptLines.length]);
+        [...flags(prose)].every((f) => adapterFlags.has(f) || reportFlags.has(f) || skillOnly.has(f) || otherLineFlags.has(f) || dashboardFlags.has(f)), [pullFlags, repFlags, [...flags(prose)].filter((f) => !adapterFlags.has(f) && !reportFlags.has(f) && !skillOnly.has(f) && !otherLineFlags.has(f) && !dashboardFlags.has(f)), scriptLines.length]);
   }
 
   // ══ One aggregation path (house rule 11) ══════════════════════════════════

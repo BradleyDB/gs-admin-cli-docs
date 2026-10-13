@@ -5,7 +5,7 @@
 // page of the spec. Read-only: it reads the two files and writes pages; it
 // makes no gs-admin call, and it changes neither contract.
 //
-//   node dashboard-page.mjs --spec <file> --snapshot <file> --out-dir <dir> [--page <id>]
+//   node dashboard-page.mjs --spec <file> --snapshot <file> --out-dir <dir> [--page <id>] [--kb <folder name>]
 //
 // A page is ONE file that works from file:// and asks the network for nothing:
 //   - the data, embedded compactly: one table per grain, each column a list,
@@ -40,11 +40,11 @@
 // Zero dependencies — Node built-ins only.
 // ─────────────────────────────────────────────────────────────────────────────
 import { mkdirSync, readFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { basename, join, resolve } from "node:path";
 import { makeCliHelpers, readJsonFile, writeFileAtomicSync, isMainModule } from "./doc-lib.mjs";
 import * as engine from "./engagement-query.mjs";
-import { openSpec, SPEC_DESCRIPTIONS, TABS, CADENCES, KNOBBED_PANEL_TYPES, presetPanels, pageDateDefault, pageTemplateContent, panelKnobs, describeSpec } from "./dashboard-spec.mjs";
-import { applyGroups, resolveGroups, programTraits, describeRule, UNGROUPED } from "./dashboard-groups.mjs";
+import { openSpec, SPEC_DESCRIPTIONS, TABS, KNOBBED_PANEL_TYPES, presetPanels, pageDateDefault, pageTemplateContent, panelKnobs, describeSpec, kbDirOfSpecFile } from "./dashboard-spec.mjs";
+import { applyGroups, resolveGroups, programTraits, describeRule, modelNamesOf, UNGROUPED } from "./dashboard-groups.mjs";
 import { createDashboard, LACKS, PAGE_MODEL_VERSION } from "./dashboard-runtime.mjs";
 import { DEFAULT_THEME, validateTheme, tokensCss } from "./dashboard-theme.mjs";
 
@@ -54,7 +54,7 @@ import { DEFAULT_THEME, validateTheme, tokensCss } from "./dashboard-theme.mjs";
  * @typedef {import("./dashboard-spec.mjs").T11Page} T11Page
  */
 
-const USAGE = "usage: dashboard-page.mjs --spec <file> --snapshot <file> --out-dir <dir> [--page <id>]";
+const USAGE = "usage: dashboard-page.mjs --spec <file> --snapshot <file> --out-dir <dir> [--page <id>] [--kb <tenant KB folder name>]";
 const MB = 1024 * 1024;
 // Not frozen: the page-size budget. 15 MB sits under the 16 MB limit of a hosted artifact.
 export const PAGE_BUDGET = Object.freeze({ warnBytes: 5 * MB, refuseExecBytes: 15 * MB });
@@ -123,6 +123,8 @@ export function pageSnapshot(snapshot, page) {
     facts.byAccount = [];
     dimensions.accounts = [];
   }
+  // The test accounts are company ids too (S5): a page that may not name accounts carries none of them.
+  if (!page.accountNames && meta.params?.testAccounts?.length) meta.params = { ...meta.params, testAccounts: [], redactedOnPage: [...(meta.params.redactedOnPage ?? []), "testAccounts"] };
   if (engine.healthAvailability(snapshot).pulled && !tabOn("health")) {
     meta.health = { pulled: false, reason: "tab-off", asOf: null, dayWindow: null, parts: {} };
     facts.health = Object.fromEntries(Object.keys(facts.health ?? {}).map((k) => [k, []]));
@@ -140,8 +142,10 @@ export function pageSnapshot(snapshot, page) {
   if (facts.health) facts.health = engine.healthForPage(facts.health);
   // A page whose definitions show no source detail names no internal domain and no unsubscribe link (ruled
   // 2026-10-05): the values leave the page's copy of the pull's parameters; the recipient class on every row stays.
-  if (!page.sourceDetail && meta.params) meta.params = { ...meta.params, internalDomains: [], unsubscribeLinks: [], redactedOnPage: ["internalDomains", "unsubscribeLinks"] };
-  return { ...snapshot, meta, dimensions, facts };
+  if (!page.sourceDetail && meta.params) meta.params = { ...meta.params, internalDomains: [], unsubscribeLinks: [], redactedOnPage: [...(meta.params.redactedOnPage ?? []), "internalDomains", "unsubscribeLinks"] };
+  // The selection record names accounts by key (S5): it leaves a page that may not name accounts with the rows.
+  const honesty = !page.accountNames && snapshot.honesty?.accountSelection ? { ...snapshot.honesty, accountSelection: null } : snapshot.honesty;
+  return { ...snapshot, meta, dimensions, facts, honesty };
 }
 const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 /**
@@ -151,7 +155,12 @@ const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
  * @param {T11Spec} spec @param {T11Page} page
  */
 export function aboutSettings(spec, page) {
-  const said = describeSpec(spec);
+  // The settings the pages do not read are not listed (ruled 2026-10-12, F-511 ruling 11): the cadence and the freshness
+  // stay in the spec, and the purpose line is the About tab's own paragraph. Keyed on the covered path, never the label.
+  // The group rules are not listed here either: the About tab draws them once, as they resolved, with what each
+  // matched (the S5-V second sitting read the Groups part twice, 2026-10-12).
+  const unlisted = ["refresh.cadence", "freshness.maxAgeDays", "purpose", "groups.rules[]"];
+  const said = describeSpec(spec).filter((d) => !d.covers.some((c) => unlisted.includes(c)));
   if (page.sourceDetail) return said.map((d) => ({ label: d.label, text: d.text }));
   const domains = spec.sources.reduce((n, s) => n + s.params.internalDomains.length, 0);
   const links = spec.sources.reduce((n, s) => n + s.params.unsubscribeLinks.length, 0);
@@ -167,10 +176,11 @@ export function aboutSettings(spec, page) {
  * Everything a page embeds (the runtime's model).
  * @param {T11Spec} spec @param {T10Snapshot} snapshot @param {T11Page} page
  */
-export function pageModel(spec, snapshot, page) {
+export function pageModel(spec, snapshot, page, { delta = null, kb = null } = {}) {
   const admin = page.preset === "admin";
-  const tabs = page.tabs.flatMap((t) => {
-    const about = { id: t.id, label: TABS[t.id].split(":")[0], meaning: TABS[t.id] };
+  const tabs = page.tabs.flatMap((t, index) => {
+    // `index` is the tab's place in the SPEC's list (the copy line names it: `pages.N.tabs.M.enabled`, F-503).
+    const about = { id: t.id, index, label: TABS[t.id].split(":")[0], meaning: TABS[t.id] };
     if (t.enabled) return [{ ...about, state: "on" }];
     // Off: an invitation on an admin page, absent on a leaders' page.
     return admin ? [{ ...about, state: "offered", held: TAB_DATA_HELD[t.id](snapshot) }] : [];
@@ -190,33 +200,45 @@ export function pageModel(spec, snapshot, page) {
   const resolution = resolveGroups({ programs: programTraits(snapshot), groups: spec.groups });
   const matched = spec.groups.rules.map((_, i) => resolution.assignments.filter((a) => a.by.supergroup === `rule ${i + 1}` || a.by.group === `rule ${i + 1}`).length);
   const names = new Map(snapshot.dimensions.programs.map((p) => [p.id, p.name]));
+  // A model rule is described by the display name the snapshot knows for its code (F-515 d).
+  const ruleNames = modelNamesOf(snapshot.dimensions.programs);
   // The look (UX-1): the spec's theme through the validator, or the default; the page carries what it needs to SAY
   // about it (the logo, and the notes on replaced tokens), never the colours themselves, which are the style sheet's.
   const look = validateTheme(spec.theme ?? null);
   return {
     v: PAGE_MODEL_VERSION,
     slug: spec.slug,
+    // The knowledge-base folder's NAME (never its path), so every copy line can carry `--kb` (F-503); null when the
+    // builder was run by hand with no folder known.
+    kb: kb ?? null,
     title: spec.title,
     look: { custom: !!spec.theme, logo: look.theme.logo, notes: look.notes, derivedDark: !!spec.theme && look.derivedDark },
     ungrouped: UNGROUPED,
     page: {
-      id: page.id, preset: page.preset, title: page.title, statusDefault: page.statusDefault, dateDefault: pageDateDefault(page), tabs,
+      // `index`: the page's place in the spec's list, so a copy line can name it (`pages.N…`, F-503).
+      id: page.id, index: spec.pages.findIndex((p) => p.id === page.id), preset: page.preset, title: page.title, statusDefault: page.statusDefault, dateDefault: pageDateDefault(page), tabs,
       // The panels, each typed view (the health four, the templates view) with its knobs resolved against the spec (the page cannot read the spec).
       panels: presetPanels(page).filter((p) => on.has(p.tab)).map((p) => (p.type in KNOBBED_PANEL_TYPES ? { ...p, knobs: panelKnobs(spec, p) } : p)),
     },
     filters: { dateRange: offered("dateRange"), programs: offered("programs"), group: offered("group"), status: offered("status"), recipientClass: { enabled: !!recipients?.enabled, default: recipients?.default ?? "all" } },
     testAccounts: spec.sources.reduce((n, s) => n + s.params.testAccounts.length, 0),
     settingLabels,
-    freshness: { maxAgeDays: spec.freshness.maxAgeDays, cadence: spec.refresh.cadence, cadenceText: CADENCES[spec.refresh.cadence] ?? spec.refresh.cadence },
+    // No freshness and no cadence on the page (ruled 2026-10-12): the header says when the data was pulled and that the
+    // pages are not live; refresh.cadence and freshness.maxAgeDays stay in the spec unread.
     health: { silentDays: spec.health.silentDays },
     // Health caveats and the page-level health banner are decided from the spec: is this page's Health tab on (ruled 2026-10-04).
     healthTab: on.has("health"),
     // The actions seam (ruled 2026-10-05, LTR-10): null on every page built here; a local app would set {base, token}.
     actions: null,
+    // The change since the last pull (PUB-1, S5): the refresh computes it and passes it in; null on a first pull and
+    // on a page built by hand. {previousPulledAt, closedMonths, metrics: {id: {previous, current, change}}}.
+    delta,
     about: {
       sourceDetail: page.sourceDetail,
+      // The admin's own sentence, when one was set through `change` (the purpose question is dropped; ruled 2026-10-12).
+      purpose: spec.purpose ?? null,
       settings: aboutSettings(spec, page),
-      groups: { rules: spec.groups.rules.map((r, i) => ({ text: describeRule(r), matched: matched[i] })), ungrouped: resolution.ungrouped.map((id) => ({ id, name: names.get(id) ?? null })), overrides: Object.keys(spec.groups.overrides).length },
+      groups: { rules: spec.groups.rules.map((r, i) => ({ text: describeRule(r, { names: ruleNames }), matched: matched[i] })), ungrouped: resolution.ungrouped.map((id) => ({ id, name: names.get(id) ?? null })), overrides: Object.keys(spec.groups.overrides).length },
     },
     snapshot: { ...kept, dimensions: packAll(kept.dimensions), facts: packAll(kept.facts) },
   };
@@ -292,6 +314,8 @@ button:hover{border-color:var(--accent)}
 .gs-picker-tools input[type=search]{flex:1 1 140px}
 .gs-proglist{max-height:260px;overflow:auto;border:1px solid var(--line);border-radius:4px;background:var(--bg);padding:4px}
 .gs-prog,.gs-status{display:block;padding:2px 4px;overflow-wrap:anywhere}
+.gs-prog[data-dim]{opacity:.6}
+.gs-dim-why{font-size:12px;color:var(--muted)}
 .gs-badge{display:inline-block;margin-left:4px;padding:0 6px;border:1px solid var(--line);border-radius:9px;font-size:12px;color:var(--muted)}
 .gs-badge-stale{color:var(--status-stale);border-color:var(--status-stale)}
 .gs-badge-error{color:var(--status-error);border-color:var(--status-error)}
@@ -340,7 +364,6 @@ tfoot td{font-weight:600}
 .gs-ungrouped.is-prominent{padding:8px 10px;border:1px solid var(--line);border-left:4px solid var(--status-warn);border-radius:4px}
 .gs-no-match{color:var(--status-warn)}
 .gs-banner{margin:8px 0;padding:8px 12px;background:var(--note);border:1px solid var(--line);border-left:4px solid var(--accent);border-radius:4px}
-.gs-banner-stale{border-left-color:var(--status-stale)}
 .gs-banner-health{border-left-color:var(--status-error)}
 .gs-banner p{margin:0}
 .gs-banner .gs-notice-line{margin-top:4px}
@@ -407,9 +430,12 @@ const STYLE = TOKENS + STYLE_RULES;
  * @param {string} args.engineSource  engagement-query.mjs, as on disk
  * @param {string} args.runtimeSource dashboard-runtime.mjs, as on disk
  * @param {{warnBytes: number, refuseExecBytes: number}} [args.budget]
+ * @param {?{previousPulledAt: string, closedMonths: string[], metrics: Object<string, {previous: ?number, current: ?number, change: ?{kind: "points"|"ratio", value: ?number}}>}} [args.delta]
+ *   the change since the last pull (PUB-1): computed by the refresh over the closed months both snapshots hold; null on a first pull
+ * @param {?string} [args.kb] the tenant knowledge-base folder's NAME, so every copy line carries `--kb` (F-503); null when unknown
  * @returns {{html: ?string, report: {page: string, preset: string, file: string, written: boolean, bytes: Object<string, number>, megabytes: number, rows: Object<string, number>, tables: Object<string, {rows: number, bytes: number}>, programs: number, warning: ?string, refused: ?string}}}
  */
-export function buildPage({ spec, snapshot, pageId, engineSource, runtimeSource, budget = PAGE_BUDGET }) {
+export function buildPage({ spec, snapshot, pageId, engineSource, runtimeSource, budget = PAGE_BUDGET, delta = null, kb = null }) {
   const page = spec.pages.find((p) => p.id === pageId);
   if (!page) throw new Error(`dashboard page: the spec has no page "${pageId}" (it has ${spec.pages.map((p) => p.id).join(", ")})`);
   if (spec.tenantHost !== snapshot.meta.tenantHost) throw new Error(`dashboard page: the spec belongs to ${spec.tenantHost} and the snapshot was pulled from ${snapshot.meta.tenantHost} — a dashboard is never built from another tenant's data`);
@@ -417,7 +443,7 @@ export function buildPage({ spec, snapshot, pageId, engineSource, runtimeSource,
     // Inlined as they are, so neither may hold what would end a script element early.
     if (/<\/script|<!--/i.test(source)) throw new Error(`dashboard page: ${name} holds text that would end the page's script element; it cannot be inlined as it is`);
   }
-  const model = pageModel(spec, snapshot, page);
+  const model = pageModel(spec, snapshot, page, { delta, kb });
   let prerender;
   try {
     const app = createDashboard(engine, model);
@@ -499,11 +525,16 @@ async function main() {
   const { snapshot, resolution } = applyGroups(pulled, spec.groups);
   const sources = inlinedSources();
   const outDir = resolve(opt("--out-dir"));
+  // The knowledge-base folder's NAME, for the copy lines (F-503): `--kb <name>` when given, else read from where the
+  // spec writer keeps a spec (a spec read from anywhere else gives none, and the lines omit the flag; stderr says so).
+  const kbDir = kbDirOfSpecFile(opt("--spec"));
+  const kb = opt("--kb") ?? (kbDir ? basename(kbDir) : null);
+  if (!kb) console.error("dashboard-page.mjs: no knowledge-base folder known for this spec (pass --kb <folder name>): the pages' copy lines omit --kb and the About tab's How to refresh names the folder as <kb>");
   const pages = [];
   for (const page of spec.pages.filter((p) => !only || p.id === only)) {
     let built;
     try {
-      built = buildPage({ spec, snapshot, pageId: page.id, ...sources });
+      built = buildPage({ spec, snapshot, pageId: page.id, ...sources, kb });
     } catch (e) {
       return fail(e instanceof Error ? e.message : String(e));
     }

@@ -392,7 +392,8 @@ export function categoryTable(part, extra = []) {
 /** @type {ReadonlyArray<{kind: "mailto"|"unsubscribe", re: RegExp}>} */
 export const NON_CONTENT_LINK_RULES = Object.freeze([
   { kind: "mailto", re: /^mailto:/i },
-  { kind: "unsubscribe", re: /unsubscribe|opt[-_]?out|email[-_]?preferences|manage[-_]?preferences/i },
+  // The singular as well (2026-10-12, measured at S5-V: Gainsight's own preference-page token is MANAGE_PREFERENCE_PAGE).
+  { kind: "unsubscribe", re: /unsubscribe|opt[-_]?out|email[-_]?preferences?|manage[-_]?preferences?/i },
 ]);
 // R19: what a template's own link settings say about click tracking, read from
 // its `jo email template --id` payload at the sanctioned describe by doc-lib's
@@ -695,7 +696,7 @@ export const statusLabel = (status) => STATUS_LABELS[status] ?? String(status);
  * @property {?{reason: string}} unavailable    set, with no rows, when the snapshot does not hold that table
  * @property {EngagementRow[]} rows
  * @property {?EngagementRow} total             everything the filters keep, as one row; distinct counts are never totalled
- * @property {{months: string[], fullWindow: boolean, programs: number, programsHiddenByStatus: number}} scope
+ * @property {{months: string[], fullWindow: boolean, programs: number, programsHiddenByStatus: number, programsWithRows: number}} scope
  */
 export const DIMENSIONS = Object.freeze(["program", "template", "step", "variant", "account", "month", "recipientClass", "supergroup", "group", "model", "audience"]);
 const STEP_DIMS = ["step", "variant"];
@@ -755,7 +756,9 @@ export function runQuery(snapshot, filters, query) {
   const fullWindow = months.length === allMonths.length;
   const programById = new Map(dims.programs.map((p) => [p.id, p]));
   const { kept, keptIds, hiddenByStatus } = keptPrograms(snapshot, f);
-  const scope = { months, fullWindow, programs: kept.length, programsHiddenByStatus: hiddenByStatus };
+  // `programsWithRows` (F-505): of the programs the filters keep, how many have a row under the months and recipient
+  // class asked for — a kept program with no send in the chosen months is in the scope and on no row.
+  const scope = { months, fullWindow, programs: kept.length, programsHiddenByStatus: hiddenByStatus, programsWithRows: 0 };
   const empty = (reason) => ({ table, unavailable: { reason }, rows: [], total: null, scope });
   if (table === "byAccount" && !accountAvailability(snapshot).pulled) return empty(accountAvailability(snapshot).reason ?? "not-pulled");
   if (table === "byStep" && !snapshot.meta.stepDetail) return empty("step-detail-off");
@@ -770,6 +773,7 @@ export function runQuery(snapshot, filters, query) {
       monthSet.has(r.month) && keptIds.has(r.programId) && (cls === "all" || r.recipientClass === cls) &&
       has(f.templates, r.templateId ?? null) && has(f.accountBuckets, r.bucket) && (!f.accounts || (r.bucket === "account" && f.accounts.includes(r.accountKey))),
   );
+  scope.programsWithRows = new Set(facts.map((r) => r.programId)).size;
 
   const keyOf = {
     program: (r) => r.programId,
@@ -1180,7 +1184,7 @@ export function dueDaysBefore(expr, asOf, n, floor) {
  * means "not read": its signal says so and never alarms.
  * @param {{asOf: string, dayWindow: {start: string, endExclusive: string}, days: number, quietDueDays?: number, incompleteMonth: string, months: string[],
  *   programs: Array<{programId: string, name: ?string, statuses: string[], selected: boolean, lastSendDay: ?string, lastSendMonth: ?string,
- *     schedule: ?{classification: string, cronExpression: ?string, startTime?: ?number, endTime?: ?number, asOf?: ?string}, syncDisabled?: ?boolean,
+ *     schedule: ?{classification: string, cronExpression: ?string, startTime?: ?number, endTime?: ?number, asOf?: ?string, oneRunWindow?: boolean}, syncDisabled?: ?boolean,
  *     kbSource?: string, docModifiedAt?: ?string,
  *     sources: ?Array<{type: ?string, lastSyncedOn: ?string}>, admissionDays: ?Array<{day: string, participants: number}>,
  *     entryFailures: ?{window: {participants: number, occurrences: number}, recent?: ?number, sample: ?{rows: number, expected: number, unexpected: number, uncategorised: number, byKind?: Object<string, number>}},
@@ -1221,7 +1225,9 @@ export function judgeHealth({ asOf, dayWindow, days, quietDueDays = QUIET_DUE_DA
       p.syncDisabled === true ? { state: "disabled" }
         : cls === "recurring" ? (ended && lastSync != null && lastSync > endDay ? { state: "doc-stale", endDay, lastSync } : ended ? { state: "ended", endDay } : startDay && startDay > asOf ? { state: "not-started", startDay }
           : { state: "recurring", readable: due.readable, lastDue: due.lastDue, periodDays: due.periodDays, endDay })
-          : cls === "one-time" ? { state: "one-time" } : cls == null ? (p.kbSource === "kb" ? { state: "undocumented" } : { state: "unknown" }) : { state: "none", classification: cls };
+          // A one-run window (F-502: a recurring cron boxed into less than one period) is one-time by its data; its
+          // end rides along so a reader can say "one-day schedule, ended <day>" where the program lands.
+          : cls === "one-time" ? (p.schedule?.oneRunWindow ? { state: "one-time", oneRunWindow: true, endDay, ended } : { state: "one-time" }) : cls == null ? (p.kbSource === "kb" ? { state: "undocumented" } : { state: "unknown" }) : { state: "none", classification: cls };
     if (docBehind) Object.assign(schedule, { docBehind: true, asOf: p.schedule.asOf, modifiedAt: p.docModifiedAt });
 
     // (1, continued) The heartbeat against the cron's last due day. A schedule the pull does not have decides nothing.
@@ -1708,7 +1714,7 @@ export function healthOneTimeView(snapshot, filters, { months: n }) {
     const monthsWithSends = [...m].filter(([, v]) => v > 0).map(([k]) => k).sort();
     const ls = lastSends?.get(p.id) ?? null;
     rows.push({
-      programId: p.id, name: p.name, statuses: p.statuses, classification: c,
+      programId: p.id, name: p.name, statuses: p.statuses, classification: c, oneRunWindow: p.schedule?.oneRunWindow === true,
       lastSendDay: ls?.lastSendDay ?? null, lastSendMonth: ls ? ls.lastSendMonth : monthsWithSends[monthsWithSends.length - 1] ?? null,
       monthsWithSends: monthsWithSends.length, templates: templates.get(p.id) ?? 0, history: history.map((month) => ({ month, sent: m.get(month) ?? 0 })),
     });
@@ -2065,10 +2071,15 @@ export const CAVEATS = Object.freeze({
     "A documented schedule that ended before its source last synced is read as documentation behind the tenant (Cannot judge yet), never as an ended schedule.",
   "failure-samples-capped": (d) => `${d.notSampled} program(s) with ${d.part === "participantFailures" ? "refused participants" : "uncategorised bounce text"} were not sampled this pull: the sample reads at most ${d.cap} programs a pull, most failures first (about ${d.secondsEach} seconds each). Their text is carried from the previous pull where it had one. Raise --sample-programs to read them.`,
   "failure-samples-sampled": () => "The breakdown of refused participants by reason is a SAMPLE: one page per program of the refusals still happening in the day window, the most repeated first, because the reason field takes no filter on this tenant. The totals beside it are exact. Each sampled text carries how many participants it refused and how many times in all.",
+  // Each part's clause stands on its own count (F-509): the entry clause only when a sampled wording is unclassified,
+  // the step clause only when step participants fell off on an unnamed reason, never a "0 wording(s)" clause.
   "unclassified-wordings": (d) =>
     [
       d.wordings || d.stepParticipants
-        ? `${d.wordings} entry-refusal wording(s) in the samples of ${d.programs} program(s) match no known category and are labelled "unclassified" (kind unknown): ${d.participants} sampled participant(s), ${d.occurrences} refusal(s) in all${d.stepParticipants ? `, plus ${d.stepParticipants} participant(s) who fell off at a step for a reason the shipped list does not name` : ""}. ` +
+        ? `${[
+          d.wordings ? `${d.wordings} entry-refusal wording(s) in the samples of ${d.programs} program(s) match no known category and are labelled "unclassified" (kind unknown): ${d.participants} sampled participant(s), ${d.occurrences} refusal(s) in all` : "",
+          d.stepParticipants ? `${d.wordings ? "plus " : ""}${d.stepParticipants} participant(s) ${d.wordings ? "who " : ""}fell off at a step for a reason the shipped list does not name` : "",
+        ].filter(Boolean).join(", ")}. ` +
           "An unknown product wording is treated as a failure needing investigation, never as a business rule or a known error. Read the texts in the snapshot's failureSamples table (terminal only; they never reach a page) and report them with /gs-superadmin:report-bug so the shipped list can learn them, or add them to this tenant's --failure-categories file."
         : "",
       d.bounceWordings
@@ -2120,8 +2131,11 @@ const TEMPLATE_CAVEATS = Object.freeze(["template-content-current", "template-co
  */
 export function caveatsFor(snapshot, metricIds, { health = false, templates = false } = {}) {
   const out = [];
+  // One entry per CAVEAT, not per id (F-506): an id the adapter writes once per health part (`failure-samples-capped`,
+  // for the refusals and for the bounce text) keeps both sentences; a caveat repeated for the same part is said once.
+  const keyOf = (id, detail) => `${id}\u0000${detail?.part ?? ""}`;
   const push = (id, detail) => {
-    if (!out.some((c) => c.id === id)) out.push({ id, text: caveatText(id, detail) });
+    if (!out.some((c) => c.key === keyOf(id, detail))) out.push({ key: keyOf(id, detail), id, text: caveatText(id, detail) });
   };
   const own = [...snapshot.caveats].sort((a, b) => Number(b.id === "reconciliation-mismatch") - Number(a.id === "reconciliation-mismatch"));
   for (const c of own) if ((health || !HEALTH_CAVEATS.includes(c.id)) && (templates || !TEMPLATE_CAVEATS.includes(c.id))) push(c.id, c.detail);
@@ -2141,7 +2155,7 @@ export function caveatsFor(snapshot, metricIds, { health = false, templates = fa
   if (h.responses?.testParticipantsExcluded && metricIds.some((id) => metric(id).kind === "response")) push("test-participants-excluded", { count: h.responses.testParticipantsExcluded });
   const unread = (h.clicks?.unreadable ?? 0) + (h.clicks?.detailMissing ?? 0);
   if (unread && metricIds.some((id) => metric(id).tracking === "clicks")) push("click-detail-unreadable", { count: unread });
-  return out;
+  return out.map(({ id, text }) => ({ id, text }));
 }
 /**
  * The "data pulled" line every output carries (R4).

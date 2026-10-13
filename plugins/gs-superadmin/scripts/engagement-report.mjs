@@ -61,6 +61,8 @@ const RESPONSE_METRICS = ["surveyParticipants", "submitted", "partiallySubmitted
 const EMAIL_METRICS = ["sent", "delivered", "opened", "openRate", "clicked", "clickRate", "bounced"];
 const LOW_METRICS = ["sent", "delivered", "opened", "openRate"];
 const BOUNCE_METRICS = ["sent", "bounced", "bounceRate"];
+// The cross-program lists' columns (DSH-2 ruling 4): delivered, opened, open rate, bounces — beside the programs touched.
+const CROSS_METRICS = ["delivered", "opened", "openRate", "bounced"];
 const labels = (ids) => ids.map((id) => metric(id).label);
 const shown = (row, ids) => ids.map((id) => formatCell(id, row.cells[id]));
 // CSV cells are numbers a spreadsheet can use: a rate as a fraction, blank
@@ -223,19 +225,49 @@ export function buildReport(snapshot, opts = {}) {
   // ── The account watch list, or the snapshot's reason in its place ──
   const accounts = accountAvailability(snapshot);
   let watched = 0;
+  let crossLists = 0;
   if (!accounts.pulled) {
     sections.push(
       ["## Account watch list", "", `Not included. ${reasonText(accounts.reason ?? "not-pulled")}`, "", "To include it, pull again with `--accounts`. That pull reads every table again and takes longer; `plan` prints how much before it starts."].join("\n"),
     );
   } else {
     const rules = meta.params?.accounts ?? {};
-    const low = rules.lowEngagement ?? 15;
-    const most = rules.mostBounces ?? 15;
-    const minDelivered = rules.lowEngagementMinDelivered ?? 10;
-    const parts = ["## Account watch list", "", `Per program, among the accounts this snapshot kept: the ${low} lowest open rates among accounts with at least ${minDelivered} delivered, and the ${most} accounts with the most bounce events.`];
+    // The cross-program customer lists (DSH-2 ruling 4, 2026-10-05): the pull's own selection record names each list
+    // and the accounts it kept; the engine ranks those accounts' rows across programs. A snapshot made before the
+    // record existed shows the per-program lists alone.
+    const selection = snapshot.honesty?.accountSelection ?? null;
+    const lists = Array.isArray(selection?.lists) ? selection.lists : [];
+    const parts = ["## Account watch list"];
     const csvRows = [];
-    use([...LOW_METRICS, ...BOUNCE_METRICS]);
-    for (const p of programs.rows) {
+    use([...LOW_METRICS, ...BOUNCE_METRICS, ...CROSS_METRICS]);
+    if (lists.length) {
+      const lowCadence = selection.lowCadencePrograms ?? [];
+      parts.push("", `Across programs over the whole window, the accounts this pull kept: ${lists.map((l) => `the ${l.n} ${l.kind.replace("-", " ")}${l.floor > 0 ? ` (at least ${l.floor} delivered)` : ""}${l.per ? ` per ${l.per}` : ""}`).join("; ")}. Possible advocates, possible bad contacts or disengagement, possible bad contacts: never a verdict on a customer.${lowCadence.length ? ` On ${lowCadence.length} program(s) that send about once per contact, the least-engaged signal is at least ${selection.lowCadenceRule?.minDelivered ?? 3} delivered and no open.` : ""}`);
+      for (const l of lists) {
+        const title = `${l.kind === "most-engaged" ? "Most engaged" : l.kind === "least-engaged" ? "Least engaged" : "Most bounced"} customers${l.per ? ` (${l.per}: ${l.segment})` : ""}`;
+        if (!l.kept.length) { parts.push("", `### ${title}`, "", "_No account met this list's floor._"); continue; }
+        crossLists++;
+        const sort = l.kind === "most-engaged" ? [{ metric: "openRate", dir: "desc" }, { metric: "delivered", dir: "desc" }] : l.kind === "least-engaged" ? [{ metric: "openRate", dir: "asc" }, { metric: "delivered", dir: "desc" }] : [{ metric: "bounced", dir: "desc" }];
+        // The lists were selected over EVERY program, so their rows are read over every status (the recipient class
+        // still applies); the per-program tables below keep the status filter.
+        const across = (query) => runQuery(snapshot, { recipientClass, accounts: l.kept, accountBuckets: /** @type {Array<"account">} */ (["account"]) }, query);
+        const rows = across({ groupBy: ["account"], metrics: CROSS_METRICS, sort }).rows;
+        const name = (r) => r.label.account ?? r.key.account;
+        // The programs each kept account is on: the engine's own program × account rows, counted per account.
+        const touched = new Map();
+        for (const r of across({ groupBy: ["program", "account"], metrics: ["sent"] }).rows) touched.set(r.key.account, (touched.get(r.key.account) ?? 0) + 1);
+        const programsOf = (key) => touched.get(key) ?? 0;
+        parts.push("", `### ${title}`, "", mdTable(["Account", "Programs", ...labels(CROSS_METRICS)], rows.map((r) => [name(r), programsOf(r.key.account), ...shown(r, CROSS_METRICS)])));
+        for (const r of rows) csvRows.push(["", "", `${l.kind}${l.per ? ` per ${l.per}=${l.segment}` : ""}`, r.key.account, r.label.account, programsOf(r.key.account), ...csvValues(r, CROSS_METRICS)]);
+      }
+    }
+    const low = rules.lowEngagement ?? 0;
+    const most = rules.mostBounces ?? 0;
+    const minDelivered = rules.lowEngagementMinDelivered ?? 10;
+    const perProgram = low + most > 0;
+    if (perProgram) parts.push("", `Per program, among the accounts this snapshot kept: the ${low} lowest open rates among accounts with at least ${minDelivered} delivered, and the ${most} accounts with the most bounce events.`);
+    else if (!lists.length) parts.push("", "No customer list is set: the pull kept the accounts named in it only.");
+    for (const p of perProgram ? programs.rows : []) {
       const scope = { programs: [p.key.program], accountBuckets: /** @type {Array<"account">} */ (["account"]) };
       const lowRows = q(scope, { groupBy: ["account"], metrics: LOW_METRICS, having: [{ metric: "delivered", gte: Math.max(1, minDelivered) }], sort: [{ metric: "openRate", dir: "asc" }, { metric: "delivered", dir: "desc" }], limit: low }).rows;
       const bounceRows = q(scope, { groupBy: ["account"], metrics: BOUNCE_METRICS, having: [{ metric: "bounced", gt: 0 }], sort: [{ metric: "bounced", dir: "desc" }], limit: most }).rows;
@@ -245,12 +277,12 @@ export function buildReport(snapshot, opts = {}) {
       parts.push("", `### ${p.label.program ?? p.key.program}`);
       if (lowRows.length) parts.push("", "Low engagement:", "", mdTable(["Account", ...labels(LOW_METRICS)], lowRows.map((r) => [name(r), ...shown(r, LOW_METRICS)])));
       if (bounceRows.length) parts.push("", "Deliverability:", "", mdTable(["Account", ...labels(BOUNCE_METRICS)], bounceRows.map((r) => [name(r), ...shown(r, BOUNCE_METRICS)])));
-      for (const r of lowRows) csvRows.push([p.key.program, p.label.program, "low engagement", r.key.account, r.label.account, ...csvValues(r, LOW_METRICS), "", ""]);
-      for (const r of bounceRows) csvRows.push([p.key.program, p.label.program, "deliverability", r.key.account, r.label.account, r.cells.sent.value, "", "", "", ...csvValues(r, ["bounced", "bounceRate"])]);
+      for (const r of lowRows) csvRows.push([p.key.program, p.label.program, "low engagement", r.key.account, r.label.account, "", ...csvValues(r, LOW_METRICS), "", ""]);
+      for (const r of bounceRows) csvRows.push([p.key.program, p.label.program, "deliverability", r.key.account, r.label.account, "", r.cells.sent.value, "", "", "", ...csvValues(r, ["bounced", "bounceRate"])]);
     }
-    if (!watched) parts.push("", "_No account of the programs shown meets either signal._");
+    if (perProgram && !watched) parts.push("", "_No account of the programs shown meets either per-program signal._");
     sections.push(parts.join("\n"));
-    csv["engagement-watch-list"] = { headers: ["program_id", "program", "signal", "account_key", "account", "sent", "delivered", "opened", "openRate", "bounced", "bounceRate"], rows: csvRows };
+    csv["engagement-watch-list"] = { headers: ["program_id", "program", "signal", "account_key", "account", "programs", "sent", "delivered", "opened", "openRate", "bounced", "bounceRate"], rows: csvRows };
   }
 
   // ── The glossary: each number, rebuildable in a Gainsight report ──
@@ -317,6 +349,7 @@ export function buildReport(snapshot, opts = {}) {
       templateRows: templates?.rows.length ?? null,
       stepRows: steps?.rows.length ?? null,
       watchListPrograms: accounts.pulled ? watched : null,
+      crossProgramLists: accounts.pulled ? crossLists : null,
       metricsExplained: entries.length,
     },
     statusesShown: statuses,
@@ -324,14 +357,16 @@ export function buildReport(snapshot, opts = {}) {
   };
 }
 
-async function main() {
-  const argv = process.argv.slice(2);
-  const { opt, fail, finish } = makeCliHelpers("engagement-report.mjs", argv);
-  const flag = (name) => argv.includes(name);
-  const snapPath = opt("--snapshot");
-  const reportDir = opt("--report");
-  if (!snapPath || !reportDir) fail(USAGE);
-  if (flag("--all") && flag("--include-paused")) fail("--all already shows every status — pass --include-paused or --all, not both");
+/** A refusal with a message for the person: the CLI prints it and exits 1; an importer catches it. */
+export class ReportRefusal extends Error {}
+/**
+ * The report from a snapshot file, written to disk: the markdown, the CSVs when a directory is given, and the
+ * summary the CLI prints. The entry command (dashboard.mjs) imports this for its `report` verb; the CLI below calls it.
+ * @param {{snapPath: string, reportDir: string, kb?: ?string, csvDir?: ?string, opts: {byTemplate?: boolean, excludeInternal?: boolean, includePaused?: boolean, all?: boolean}, generatedAt?: ?string, scriptPath?: ?string}} args
+ */
+export function writeReport({ snapPath, reportDir, kb = null, csvDir: csvDirOpt = null, opts, generatedAt: givenAt = null, scriptPath = null }) {
+  const fail = (msg) => { throw new ReportRefusal(msg); };
+  if (opts.all && opts.includePaused) fail("--all already shows every status — pass --include-paused or --all, not both");
   if (!existsSync(resolve(snapPath))) fail(`--snapshot ${snapPath}: file not found`);
   let snapshot;
   try {
@@ -344,7 +379,6 @@ async function main() {
   // tenant is refused: a report must never carry one tenant's name over
   // another's numbers.
   let identity = { slug: meta.tenantHost, baseUrl: `https://${meta.tenantHost}`, environment: "unknown" };
-  const kb = opt("--kb");
   if (kb) {
     if (!existsSync(resolve(kb))) fail(`--kb ${kb}: directory not found`);
     const id = readKbIdentity(resolve(kb), []);
@@ -356,12 +390,10 @@ async function main() {
     if (host) identity = { slug: id.slug ?? meta.tenantHost, baseUrl: id.baseUrl, environment: id.environment ?? "unknown" };
   }
 
-  const opts = { byTemplate: flag("--by-template"), excludeInternal: flag("--exclude-internal"), includePaused: flag("--include-paused"), all: flag("--all") };
   const built = buildReport(snapshot, opts);
   const modeArgs = [opts.byTemplate ? "--by-template" : null, opts.excludeInternal ? "--exclude-internal" : null, opts.includePaused ? "--include-paused" : null, opts.all ? "--all" : null].filter(Boolean);
-  const csvDirOpt = opt("--csv-dir");
-  const rerun = ["node", shq(process.argv[1] ?? "engagement-report.mjs"), `--snapshot ${shq(snapPath)}`, kb ? `--kb ${shq(kb)}` : null, ...modeArgs, `--report ${shq(reportDir)}`, csvDirOpt ? `--csv-dir ${shq(csvDirOpt)}` : null].filter(Boolean).join(" ");
-  const generatedAt = opt("--generated-at") ?? nowIso();
+  const rerun = ["node", shq(scriptPath ?? "engagement-report.mjs"), `--snapshot ${shq(snapPath)}`, kb ? `--kb ${shq(kb)}` : null, ...modeArgs, `--report ${shq(reportDir)}`, csvDirOpt ? `--csv-dir ${shq(csvDirOpt)}` : null].filter(Boolean).join(" ");
+  const generatedAt = givenAt ?? nowIso();
   const failed = !snapshot.reconciliation.ok;
   const md = renderReport({
     mode: "report",
@@ -403,7 +435,7 @@ async function main() {
   }
   const accounts = accountAvailability(snapshot);
   const drift = snapshot.reconciliation.checks.filter((c) => c.drift).map((c) => ({ id: c.id, drift: c.drift }));
-  await finish({
+  return {
     ok: true,
     mode: "report",
     report: outPath,
@@ -425,7 +457,27 @@ async function main() {
     caveatCount: built.caveats.length,
     leadCaveats: built.leadCaveats,
     rerun,
-  });
+  };
+}
+
+async function main() {
+  const argv = process.argv.slice(2);
+  const { opt, fail, finish } = makeCliHelpers("engagement-report.mjs", argv);
+  const flag = (name) => argv.includes(name);
+  const snapPath = opt("--snapshot");
+  const reportDir = opt("--report");
+  if (!snapPath || !reportDir) fail(USAGE);
+  let summary;
+  try {
+    summary = writeReport({
+      snapPath, reportDir, kb: opt("--kb") ?? null, csvDir: opt("--csv-dir") ?? null, generatedAt: opt("--generated-at") ?? null, scriptPath: process.argv[1] ?? null,
+      opts: { byTemplate: flag("--by-template"), excludeInternal: flag("--exclude-internal"), includePaused: flag("--include-paused"), all: flag("--all") },
+    });
+  } catch (e) {
+    if (e instanceof ReportRefusal) return fail(e.message);
+    throw e;
+  }
+  await finish(summary);
 }
 
 if (isMainModule(import.meta.url)) {
