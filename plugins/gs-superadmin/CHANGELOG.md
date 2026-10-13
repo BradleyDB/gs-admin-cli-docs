@@ -107,6 +107,42 @@ dashboard with no model in the loop, and `/gs-superadmin:email-engagement` gains
     rule's fields.
   - **Smaller:** the page's caveats list keeps one entry per caveat rather than per id, so
     both sample-cap sentences show (F-506).
+- **From the third verdict sitting (2026-10-13; the scheduled firing, the pricing lines,
+  the How to refresh wording, the V2 polish):**
+  - **A call the server did not answer is retried by the next run, never replayed as
+    final** (F-519). A resume reused a call's "timed out twice" record as a decision, and
+    for a call with nothing left to split on that made one transient server timeout a
+    permanent failure: every later refresh stopped partial within seconds, the message said
+    to run it again, and only a hand-removed state file ended the loop. A resume now makes
+    such a call afresh (a split record is reused only as the decision to cut a unit whose
+    halves then carry the attempts; a failed record is never reused), the stop says what
+    failed (the family, the programs the call covered, "a server timeout"), that the next
+    run retries it, and in how many runs it has failed so far, and the message has no empty
+    slot.
+  - **A pricing line reads the run in front of the admin, not the plan** (F-518): a resumed
+    refresh prices the remainder (the plan's units whose answers are not on disk yet) and
+    says it is continuing with what remains of what, and the summary's `budget` carries the
+    plan's seconds beside the remainder's; an edit's forced re-pull carries the same login
+    clause as a new dashboard's first refresh (the logins of an hour when the login does
+    not cover it).
+  - **The How to refresh statement is the maintainer's ruled wording, verbatim, held once**
+    (F-511 instance 27, the section's second reopen): the About tab's section (three
+    numbered steps, what the admin will see, the session and schedule paragraph), the
+    closing step's statement and the save summary's text all read one data structure in
+    the page runtime, so the three cannot drift; the leaders' page keeps its one sentence.
+  - **The filter bar's program list says what it holds and answers to the other filters**
+    (F-505): the count line reads "N programs sent in this window, M selected", a program
+    with no send in the chosen months or outside the chosen statuses is dimmed in the list
+    and says why, and the summary's "shown" counts the programs with rows under the filters
+    (saying how many selected programs have no sends in these months).
+  - **The plan prices the gap-fill with the pull** (F-507): `estimate.token.withProposals`
+    (the pull plus the re-documentation and the template gap-fill the plan proposes, and
+    whether that fits the login) and `estimate.token.afterPullSeconds` (what the login has
+    left after the pull); the skill's two asks say which budget would outlive the login.
+  - **A lowest-N panel is described as such** (F-508): "the 10 lowest by Open rate" on the
+    About tab, in `show` and in the in-page ranking note, never "the top 10".
+  - **The unclassified-wordings caveat gates each part on its own count** (F-509): with no
+    unclassified entry wording the sentence starts at the step part.
 - **Smaller:** the save's first refresh continues the closing step's plan instead of
   planning again; a stale refresh lock taken over by a run the budget then refuses is
   recorded in the refusal; the derived health lookback says what it came from on a tie;

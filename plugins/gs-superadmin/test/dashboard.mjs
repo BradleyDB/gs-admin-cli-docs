@@ -33,6 +33,7 @@ import { makeTempDir, removeTempDir, writeFiles, runNode } from "../../../test/r
 import { COSTS, COST_KINDS, ADAPTER_MAPPING, QUESTIONS, CLOSING_ASK, CLOSING_OPTIONS, MANUAL_REFRESH_TEXT, askText, defaultAnswer, composeAnswer, defaultGroupRules, categoryCostText, changeCost, coveredPath, computeDelta, adapterParams, pullSecondsAfter, loginsFor, LOGIN_SECONDS, EXIT, KEEP_SNAPSHOTS, LOCK_STALE_MS, LOCK_FILE, STATE_FILE, SNAPSHOTS_DIR, PREVIEW_DIR, SUGGESTION_FILE } from "../scripts/dashboard.mjs";
 import { resolveGroups, programTraits } from "../scripts/dashboard-groups.mjs";
 import { SPEC_DESCRIPTIONS, defaultSpec, openSpec, DEFAULT_ACCOUNT_LISTS } from "../scripts/dashboard-spec.mjs";
+import { HOW_TO_REFRESH_RULED } from "./fixtures/engagement/ruled-text.mjs";
 import { LACKS } from "../scripts/dashboard-runtime.mjs";
 import { openSnapshot } from "../scripts/engagement-query.mjs";
 import { kbFiles, OWN_SITE_UNSUBSCRIBE, TEMPLATES_DOMAIN } from "./fixtures/engagement/acme-tenant.mjs";
@@ -115,9 +116,9 @@ const RULED = {
   "customer-list-detail": "How should the customer lists be built? Three lists are made across programs: the 25 most engaged, the 25 least engaged and the 25 most bounced accounts. Each needs at least 10 delivered emails across programs before an account can appear, so one unopened email is not a risk; on a program that sends about once per contact, the least-engaged list uses at least 3 delivered and no open instead. You can change the size and the floor of each list, and you can add \"per segment\" lists, which rank the same lists within each value of a company field you name, such as Industry or Segment. Do you want to change the defaults?",
   "step-detail": "Do you want step detail? By default the figures are per program and per email, read from the delivery log. Step detail reads a second log that records which step of a program and which A/B variant each send came from, so the pages also show rows per step and per variant, and the participant-records count. It is one switch for the whole dashboard. On this tenant it adds about 5 minutes to each refresh. Off by default; turning it on later means the next refresh pulls everything again.",
   "expected-reasons": "Are there participant-failure reasons that are expected by design on this tenant? Some reasons a participant is refused are a business rule doing its job. These six are recognised already and counted apart from real failures, never hidden: Already in the participant list; Unique criteria already met; Met the advanced criteria; Unsubscribed from a category; On the global opt-out; Opted out at the send step. If this tenant has a wording of its own that should count the same way, give the fixed part of its text. Most people say none here and add one later, when the Health tab's \"Other\" line shows it. Marking a reason expected changes only how it is labelled: a program that admits nobody for the due days you set earlier is still flagged as \"Admitting nobody\", whatever the reasons were.",
-  // 150 calls, about 19 minutes, 3000 s of login = about 50 minutes. The manual-refresh statement is ruling 11's, in the
-  // admin's terms (F-511 instance 26): where the command is typed, the login, the slash command, the multi-login pull.
-  closing: "Ready to save. A full refresh with these settings is about 150 calls and about 19 minutes on this tenant; your login has about 50 minutes left, enough for it. Refreshes are manual: whenever you want new numbers, open a terminal in the workspace folder, run gs-admin login if your last login was more than an hour ago, and run `node .gs-superadmin/plugin/scripts/dashboard.mjs refresh x` (in a Claude Code session opened there, /gs-superadmin:email-engagement refresh x runs the same command). A pull that outlasts the login stops and continues when you log in and run it again. To run it on a schedule on your own machine, the README has the recipe (it needs a login within the hour). The pages always show when the data was pulled.",
+  // 150 calls, about 19 minutes, 3000 s of login = about 50 minutes. The manual-refresh statement is Bradley's ruled
+  // wording of 2026-10-13 (F-511 instance 27), verbatim, as one paragraph; the kb folder reads <kb> with none known.
+  closing: "Ready to save. A full refresh with these settings is about 150 calls and about 19 minutes on this tenant; your login has about 50 minutes left, enough for it. " + HOW_TO_REFRESH_RULED("x", null),
 };
 const RULED_OPTIONS = {
   programs: ["The last 90 days (the default)", "180 days", "The last year", "Every program that sent in the reporting period", "Since a date you give", "Named programs (names or ids, one per line)"],
@@ -161,8 +162,17 @@ try {
         isDeepStrictEqual(closingOptions[0].answers, [["dry-run", "no"], ["estimate", "yes"], ["save", "yes"]]) && isDeepStrictEqual(closingOptions[1].answers, [["dry-run", "yes"]]) && isDeepStrictEqual(closingOptions[2].answers, [["dry-run", "no"], ["estimate", "yes"], ["save", "later"]]) && isDeepStrictEqual(closingOptions[3].answers, []) &&
         QUESTIONS.filter((x) => x.kind === "action").every((x) => askText(x, PLAN_CTX) === RULED.closing) && /your login has about 5 minutes left, so the first refresh will take about 1 login of an hour: it runs as far as each login allows, stops, and continues when you log in and run it again/.test(CLOSING_ASK({ ...PLAN_CTX, tokenSecondsLeft: 300 })) &&
         // F-513: a pull longer than one login is said in logins, never refused; the kb folder rides the command when known.
-        /about 2 logins of an hour/.test(CLOSING_ASK({ ...PLAN_CTX, tokenSecondsLeft: 300, plan: { estimate: { ...PLAN.estimate, full: { calls: 700, seconds: 4300 } } } })) && CLOSING_ASK({ ...PLAN_CTX, kb: "acme-prod" }).includes("refresh x --kb acme-prod`") &&
+        /about 2 logins of an hour/.test(CLOSING_ASK({ ...PLAN_CTX, tokenSecondsLeft: 300, plan: { estimate: { ...PLAN.estimate, full: { calls: 700, seconds: 4300 } } } })) && CLOSING_ASK({ ...PLAN_CTX, kb: "acme-prod" }).endsWith(` ${HOW_TO_REFRESH_RULED("x", "acme-prod")}`) &&
         isDeepStrictEqual(CLOSING_OPTIONS({ ...PLAN_CTX, answered: ["dry-run"] }).map((o) => o.id), ["save-now", "save-only", "go-back"]), [closingAsk, closingOptions]);
+    // F-511 instance 27: the three places that carry the How to refresh statement read ONE data (the runtime's
+    // HOW_TO_REFRESH): the closing ask and the save summary's text here, the About tab in the page suite.
+    check("F-511 instance 27: the manual-refresh statement is the ruled wording of 2026-10-13 verbatim, as one paragraph, with the folder and the slug filled in (and the ruling's <kb> with no folder known); the closing ask ends with it",
+      MANUAL_REFRESH_TEXT("x", "acme-prod") === HOW_TO_REFRESH_RULED("x", "acme-prod") && MANUAL_REFRESH_TEXT("x", null) === HOW_TO_REFRESH_RULED("x", null) && closingAsk.endsWith(` ${HOW_TO_REFRESH_RULED("x", null)}`), MANUAL_REFRESH_TEXT("x", "acme-prod"));
+    // F-518 b: an edit's forced re-pull carries the same login clause as a new dashboard's first refresh.
+    const editPullAsk = CLOSING_ASK({ ...PLAN_CTX, tokenSecondsLeft: 300, plan: { estimate: { ...PLAN.estimate, full: { calls: 700, seconds: 4300 } } }, edit: { changed: [{ path: "accounts.pull" }], consequence: "pull" } });
+    check("F-518 b: an edit whose consequence is a pull prices it with the login clause of the new dashboard's closing step (the minutes, then the logins of an hour when the login does not cover it; 'enough for it' when it does)",
+      /it changes 1 setting \(accounts\.pull\): the next refresh pulls everything again, about 72 minutes; your login has about 5 minutes left, so the refresh will take about 2 logins of an hour: it runs as far as each login allows, stops, and continues when you log in and run it again\./.test(editPullAsk) &&
+        /about 19 minutes; your login has about 50 minutes left, enough for it\./.test(CLOSING_ASK({ ...PLAN_CTX, edit: { changed: [{ path: "accounts.pull" }], consequence: "pull" } })), editPullAsk);
     const optionTexts = Object.fromEntries(Object.keys(RULED_OPTIONS).filter((id) => id !== "closing").map((id) => [id, q(id).options(PLAN_CTX).map((o) => o.text)]));
     check("the options are the ruled ones, in order, with the default named first and the figures where the ruling put them",
       Object.entries(RULED_OPTIONS).filter(([id]) => id !== "closing").every(([id, texts]) => isDeepStrictEqual(optionTexts[id], texts)) && q("failure-settings").options(PLAN_CTX)[0].text === "Keep both defaults: 5 due days, 25 programs (the default)" && q("tabs").options(PLAN_CTX)[0].text === "Keep the defaults: admins Health and Templates, leaders neither (the default)",
@@ -335,7 +345,7 @@ try {
   const callsBeforeClosing = argvLines().length;
   const closing = run("next", [SLUG]);
   check("the closing step (ruling 19): once every setting is answered, next returns the first action row WITH the closing block: the ruled ask priced on the exact settings (a new plan, since the pull-affecting answers moved), the login's remaining minutes read now, and the four options with the action answers each stands for",
-    closing.code === 0 && closing.json?.question?.id === "dry-run" && closing.json.closing && /^Ready to save\. A full refresh with these settings is about \d+ calls and about \d+ minutes on this tenant; your login has about \d+ minutes left, enough for it\. Refreshes are manual: whenever you want new numbers, open a terminal in the workspace folder, run gs-admin login if your last login was more than an hour ago, and run `node \.gs-superadmin\/plugin\/scripts\/dashboard\.mjs refresh acme-health --kb acme-prod` \(in a Claude Code session opened there, \/gs-superadmin:email-engagement refresh acme-health runs the same command\)\. A pull that outlasts the login stops and continues when you log in and run it again\. To run it on a schedule on your own machine, the README has the recipe \(it needs a login within the hour\)\. The pages always show when the data was pulled\.$/.test(closing.json.closing.ask) &&
+    closing.code === 0 && closing.json?.question?.id === "dry-run" && closing.json.closing && /^Ready to save\. A full refresh with these settings is about \d+ calls and about \d+ minutes on this tenant; your login has about \d+ minutes left, enough for it\. /.test(closing.json.closing.ask) && closing.json.closing.ask.endsWith(` ${HOW_TO_REFRESH_RULED("acme-health", "acme-prod")}`) &&
       closing.json.question.ask === closing.json.closing.ask && isDeepStrictEqual(closing.json.closing.options.map((o) => o.id), ["save-now", "dry-run", "save-only", "go-back"]) && closing.json.closing.options.every((o) => Array.isArray(o.answers)) && argvLines().length > callsBeforeClosing && closing.json.progress.remaining === 3, closing.json);
   const callsBeforeDry = argvLines().length;
   const dry = run("answer", [SLUG, "dry-run", "yes"]);
@@ -354,7 +364,7 @@ try {
   const saved = run("answer", [SLUG, "save", "yes"]);
   const refresh = { code: saved.code, json: saved.json?.refresh ?? null, stderr: saved.stderr };
   check("save (and refresh now): the draft becomes the saved spec, the draft and the interview state are gone, the summary carries the manual-refresh statement with the kb folder, and the first refresh CONTINUES the closing step's plan (the first sitting's note of 2026-10-12): the run keeps the plan's directory, so the plan's cheap calls are reused, not made again",
-    saved.code === 0 && existsSync(specFile()) && !existsSync(draftFile()) && openSpec(readJson(specFile())).accounts.pull === true && saved.json.pullAgainText === MANUAL_REFRESH_TEXT(SLUG, "acme-prod") && saved.json.pullAgainLine.endsWith(`refresh ${SLUG} --kb acme-prod`) && refresh.json?.status === "ok" && refresh.json.resumed === false && refresh.json.pull.calls.reused > 0 && planDirsBeforeSave.some((d) => refresh.json.run.startsWith(d)) && runDirs().includes(refresh.json.run) && refresh.json.budget?.loginsNeeded === 1,
+    saved.code === 0 && existsSync(specFile()) && !existsSync(draftFile()) && openSpec(readJson(specFile())).accounts.pull === true && saved.json.pullAgainText === HOW_TO_REFRESH_RULED(SLUG, "acme-prod") && saved.json.pullAgainLine.endsWith(`refresh ${SLUG} --kb acme-prod`) && refresh.json?.status === "ok" && refresh.json.resumed === false && refresh.json.pull.calls.reused > 0 && planDirsBeforeSave.some((d) => refresh.json.run.startsWith(d)) && runDirs().includes(refresh.json.run) && refresh.json.budget?.loginsNeeded === 1,
     [saved.json?.refresh?.pull?.calls, planDirsBeforeSave, runDirs()]);
 
   // ══ The refresh ════════════════════════════════════════════════════════════
@@ -425,6 +435,12 @@ try {
   const stale = run("refresh", [SLUG]);
   check("after a login the same refresh RESUMES the stopped pull to a completed one (F-513: save → stop → resume), reusing the calls made, and a lock older than two hours is stale: the refresh takes it over and says whose it was",
     stale.code === 0 && stale.json.resumed === true && stale.json.pull.calls.reused > 0 && stale.json.lockTakenOver?.by === "ben" && !existsSync(join(dash(), LOCK_FILE)) && !existsSync(join(dash(), STATE_FILE)) && snapshots().length === 4, stale.json?.lockTakenOver ?? stale.json);
+  // F-518 a: the resume prices the REMAINDER, never the whole plan: its budget is below the plan's by the reused share,
+  // it says it is continuing, and the stopped run before it (nothing reused yet) priced the whole run.
+  check("F-518 a: a resumed run's budget is the remainder (neededSeconds below the plan's seconds by the share already made, continuing true, the logins for the remainder), its stderr says it is continuing and what remains of what; the fresh run before it priced the whole plan (needed equal to the plan's)",
+    stale.json.budget?.continuing === true && stale.json.budget.neededSeconds < stale.json.budget.planSeconds && stale.json.budget.neededSeconds > 0 && stale.json.budget.loginsNeeded === 1 &&
+      /continuing the refresh of "acme-health" \(run [^)]+\): about \d+ minutes? of its \d+ minutes remain, the calls already made are reused; the login has \d+ minutes? left/.test(stale.stderr) &&
+      shortLogin.json.budget == null && /the refresh needs about \d+ minutes/.test(shortLogin.stderr), [stale.json.budget, stale.stderr.split("\n").find((l) => l.includes("continuing"))]);
   // F-512 (reopened 2026-10-12): a pull-affecting change between a stopped pull and its resume. The pending run's
   // parameters moved, so it is abandoned and the pull planned afresh — never refused as "started with different
   // parameters", and no state file to remove by hand.
@@ -453,6 +469,40 @@ try {
   check("a stopped run is never abandoned silently: a retry with other flags is refused naming the run, its flags and how to start over", otherFlags.code === 1 && /is waiting to resume: run it again with the same flags/.test(otherFlags.json?.error ?? "") && /--full/.test(otherFlags.json.error) && existsSync(join(dash(), STATE_FILE)), otherFlags.json);
   const resumed = run("refresh", [SLUG, "--full"]);
   check("after a login the same refresh resumes its run (status named it; the calls already answered are not made again) and finishes", resumedStatus.json?.resumable?.run != null && resumed.code === 0 && resumed.json.resumed === true && resumed.json.pull.calls.reused > 0 && snapshots().length === countBefore + 1 && !existsSync(join(dash(), STATE_FILE)), [resumedStatus.json?.resumable, resumed.json?.pull?.calls]);
+
+  // ══ F-519: a call the adapter gave up on is a fresh attempt on the next run, never replayed as final ══
+  // The survey participants count has nothing to split on. The stand-in times it out three times in a row (the fault
+  // counter persists across invocations): the first run's attempt and retry fail, so the run stops partial naming the
+  // call; the resume makes it afresh, its first attempt fails again (the third fault) and its retry answers.
+  rmSync(join(STATE, "faults.json"), { force: true });
+  const UNSPLITTABLE = '"to":"ao_participants"}]}}] --where-filters {"conditions":[{"leftOperand":{"fieldName":"TestParticipant"},"operator":"EQ","rightOperand":{"value":false}}]}';
+  const countBeforeTimeout = snapshots().length;
+  const timedOut = run("refresh", [SLUG], { env: { FAKE_FAULTS: JSON.stringify([{ match: UNSPLITTABLE, kind: "timeout", times: 3 }]) } });
+  // The pull's own status: the run the state file names, or its re-planned twin (`<run>-lb<days>`, the one the pull resumes).
+  const runStatus = () => {
+    const root = join(WS, ".gs-superadmin", "tmp", "engagement");
+    const run = readJson(join(dash(), STATE_FILE)).run;
+    const all = readdirSync(root).filter((d) => d === run || d.startsWith(`${run}-lb`)).map((d) => join(root, d, "status.json")).filter(existsSync).map(readJson);
+    return all.find((s) => s.phase === "all") ?? all[0] ?? null;
+  };
+  const partialStatus = timedOut.code === EXIT.partial && existsSync(join(dash(), STATE_FILE)) ? runStatus() : null;
+  check("F-519: a refresh stopped on an unsplittable timeout exits 4 (partial, resumable) and its message says WHAT failed (the family, a server timeout), that the next run retries it, and has no empty slot; the run's status names the call with the run it failed in; the pages and the snapshots are untouched",
+    timedOut.code === EXIT.partial && timedOut.json?.status === "partial" && /the refresh stopped after \d+ calls this run( \(\d+ reused from before\))?: 1 call failed: resp-participants timed out on the server twice \(a server timeout\) — run refresh acme-health again: it retries what failed and continues where it stopped; the last good pages are untouched/.test(timedOut.json.error) &&
+      !/partial —  run/.test(timedOut.json.error) && partialStatus?.status === "partial" && partialStatus.failed.length === 1 && partialStatus.failed[0].family === "resp-participants" && partialStatus.failed[0].kind === "timeout" && partialStatus.failed[0].runs === 1 && snapshots().length === countBeforeTimeout,
+    [timedOut.json?.error, partialStatus?.failed]);
+  const retried = run("refresh", [SLUG], { env: { FAKE_FAULTS: JSON.stringify([{ match: UNSPLITTABLE, kind: "timeout", times: 3 }]) } });
+  check("F-519: the resume RE-RUNS the failed call as a fresh attempt (the stand-in answering on its retry: calls.retried above 0) and completes the pull with exit 0, a new snapshot and no state file — one transient timeout cost one more run, not the dashboard",
+    retried.code === 0 && retried.json?.status === "ok" && retried.json.resumed === true && retried.json.pull.calls.retried > 0 && retried.json.pull.calls.reused > 0 && snapshots().length === countBeforeTimeout + 1 && !existsSync(join(dash(), STATE_FILE)) &&
+      argvLines().slice(-40).filter((a) => a.includes(UNSPLITTABLE)).length >= 2, [retried.json?.error, retried.json?.pull?.calls]);
+  // A timeout that recurs run after run is said to recur: the second partial stop counts the runs.
+  rmSync(join(STATE, "faults.json"), { force: true });
+  const again = run("refresh", [SLUG, "--full"], { env: { FAKE_FAULTS: JSON.stringify([{ match: UNSPLITTABLE, kind: "timeout", times: 4 }]) } });
+  const againTwice = run("refresh", [SLUG, "--full"], { env: { FAKE_FAULTS: JSON.stringify([{ match: UNSPLITTABLE, kind: "timeout", times: 4 }]) } });
+  const recurringStatus = againTwice.code === EXIT.partial ? runStatus() : null;
+  const answeredAtLast = run("refresh", [SLUG, "--full"]);
+  check("F-519: a timeout that recurs across runs is reported as recurring — the second partial stop says the call failed in 2 runs so far, and the status's entry counts the same; a later run on which the server answers completes it",
+    again.code === EXIT.partial && againTwice.code === EXIT.partial && / in 2 runs so far/.test(againTwice.json?.error ?? "") && !/ in 2 runs so far/.test(again.json?.error ?? "") && recurringStatus?.failed?.[0]?.runs === 2 && answeredAtLast.code === 0 && !existsSync(join(dash(), STATE_FILE)),
+    [again.json?.error, againTwice.json?.error, recurringStatus?.failed]);
 
   // ══ An edit of the saved dashboard (F-516), the draft take-over, list, report, health, export and import ══
   const edit = run("new", [SLUG]);
@@ -508,7 +558,7 @@ try {
   const imported = run("import", ["--file", join(ROOT, "handover", "acme-health.json")], { flags: ["--workspace", WS2, "--kb", KB2, "--bin", FAKE, "--today", TODAY, "--by", "cy"] });
   const rebuilt = run("rebuild", [SLUG], { flags: ["--workspace", WS2, "--kb", KB2, "--bin", FAKE, "--today", TODAY, "--by", "cy"] });
   const status2 = run("status", [SLUG], { flags: ["--workspace", WS2, "--kb", KB2, "--bin", FAKE, "--today", TODAY, "--by", "cy"] });
-  check("import on a second workspace of the same tenant: the spec and the snapshot land, the pages rebuild from it with no pull, and status reads the carried pull", imported.code === 0 && imported.json.snapshot != null && rebuilt.code === 0 && rebuilt.json.pages.length === 2 && status2.json?.lastPull?.pulledAt === resumed.json.pull.pulledAt, [imported.json, rebuilt.json, status2.json?.lastPull]);
+  check("import on a second workspace of the same tenant: the spec and the snapshot land, the pages rebuild from it with no pull, and status reads the carried pull", imported.code === 0 && imported.json.snapshot != null && rebuilt.code === 0 && rebuilt.json.pages.length === 2 && status2.json?.lastPull?.pulledAt === answeredAtLast.json.pull.pulledAt, [imported.json, rebuilt.json, status2.json?.lastPull]);
   const wrongImport = run("import", ["--file", join(ROOT, "handover", "acme-health.json")], { flags: ["--workspace", WS2, "--kb", KB2, "--bin", FAKE, "--today", TODAY] });
   check("import never overwrites silently: the same slug again is refused without --replace", wrongImport.code === 1 && /already saved here/.test(wrongImport.json?.error ?? ""), wrongImport.json);
 

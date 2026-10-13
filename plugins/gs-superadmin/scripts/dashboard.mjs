@@ -107,7 +107,7 @@ import {
 import { resolveParams, prepareRun, runParamsMoved, fetchEngagement, reduceEngagement, loadRun, cliTransport, makeGate, parseWhoami, addMonths, monthsBetween, pickSchedule, describedProgram, EngagementRefusal, ROW_READERS, rpRunArgv } from "./engagement.mjs";
 import { applyGroups, programTraitsOf, suggestionTable } from "./dashboard-groups.mjs";
 import { buildPage, inlinedSources, pageFileName } from "./dashboard-page.mjs";
-import { COPY_LINES, REFRESH_SLASH } from "./dashboard-runtime.mjs";
+import { COPY_LINES, HOW_TO_REFRESH_TEXT } from "./dashboard-runtime.mjs";
 import { writeReport, ReportRefusal } from "./engagement-report.mjs";
 import * as engine from "./engagement-query.mjs";
 import { validateTheme, readLogo, LOGO_MAX_BYTES } from "./dashboard-theme.mjs";
@@ -136,6 +136,18 @@ export const CATEGORIES_FILE = "failure-categories.json";
 export const LOGIN_SECONDS = 3600;
 /** How many logins a pull of `seconds` takes, at least one. */
 export const loginsFor = (seconds) => Math.max(1, Math.ceil((seconds ?? 0) / LOGIN_SECONDS));
+// What a failed call's kind means to the admin reading a stop (F-519): the adapter's kinds, in words.
+const FAILURE_WHY = Object.freeze({ timeout: "timed out on the server twice (a server timeout)", truncated: "came back as a full page that cannot be cut smaller", "shape-error": "was refused by the server (a query-shape error)", unparseable: "answered with something that is not JSON", refused: "was refused before it was made", other: "failed" });
+/**
+ * A partial stop's failures in words: the family, the programs the call named, the cause, and the runs it has failed
+ * in so far (a resume retries it; a timeout that recurs run after run is said to recur, so the admin can tell a
+ * transient one from a call the server will not answer).
+ * @param {Array<{family: string, kind: string, programs?: number, runs?: number}>} failed
+ */
+export const failedText = (failed = []) =>
+  failed.length
+    ? `${plural(failed.length, "call")} failed: ${failed.map((f) => `${f.family}${f.programs != null ? ` (${plural(f.programs, "program")})` : ""} ${FAILURE_WHY[f.kind] ?? f.kind}${(f.runs ?? 1) > 1 ? ` in ${f.runs} runs so far` : ""}`).join("; ")}`
+    : "a call failed";
 export class DashboardRefusal extends Error {
   /** @param {string} message @param {string} [code] @param {Record<string, *>} [details] fields the failure summary carries beside the error */
   constructor(message, code = "failed", details = {}) { super(message); this.code = code; this.details = details; }
@@ -347,24 +359,25 @@ export function composeAnswer(option, answers) {
   return out;
 }
 /**
- * The manual-refresh statement, in the admin's terms (ruling 11's wording, owed since F-511 instance 26: where the
- * command is typed, the login, and the slash command that runs the same thing); the closing step and the final report
- * carry it. `kb` is the knowledge-base folder's name (null when unknown: the `questions` verb).
+ * The manual-refresh statement, in the admin's terms: the ruled wording of 2026-10-13 (F-511 instance 27) as one
+ * paragraph, read from the same data the About tab draws stepped (`HOW_TO_REFRESH` in the runtime module); the
+ * closing step and the save summary carry it. `kb` is the knowledge-base folder's name (null when unknown: the
+ * `questions` verb).
  */
-export const MANUAL_REFRESH_TEXT = (slug, kb) =>
-  `Refreshes are manual: whenever you want new numbers, open a terminal in the workspace folder, run gs-admin login if your last login was more than an hour ago, and run \`${COPY_LINES.refresh(slug, kb)}\` (in a Claude Code session opened there, ${REFRESH_SLASH(slug)} runs the same command). A pull that outlasts the login stops and continues when you log in and run it again. To run it on a schedule on your own machine, the README has the recipe (it needs a login within the hour). The pages always show when the data was pulled.`;
+export const MANUAL_REFRESH_TEXT = HOW_TO_REFRESH_TEXT;
 /** The closing step (ruling 19): the three action rows read as ONE step, with the estimate, the login and the manual-refresh statement. */
 export const CLOSING_ASK = (ctx) => {
   const e = ctx?.plan?.estimate ?? null;
   const left = ctx?.tokenSecondsLeft ?? e?.token?.expiresInSeconds ?? null;
   const fits = e && left != null ? e.full.seconds + 30 <= left : null;
-  // A pull longer than the login is not refused: it checkpoints across logins (F-513), so the ask says how many.
-  const login = left == null || !e ? "your login has about T minutes left" : fits ? `your login has about ${plural(minutesOf(left), "minute")} left, enough for it` : `your login has about ${plural(minutesOf(left), "minute")} left, so the first refresh will take about ${plural(loginsFor(e.full.seconds), "login")} of an hour: it runs as far as each login allows, stops, and continues when you log in and run it again`;
+  // A pull longer than the login is not refused: it checkpoints across logins (F-513), so the ask says how many. The
+  // clause is the same for a new dashboard's first refresh and an edit's forced re-pull (F-518 b).
+  const login = (what) => (left == null || !e ? "your login has about T minutes left" : fits ? `your login has about ${plural(minutesOf(left), "minute")} left, enough for it` : `your login has about ${plural(minutesOf(left), "minute")} left, so ${what} will take about ${plural(loginsFor(e.full.seconds), "login")} of an hour: it runs as far as each login allows, stops, and continues when you log in and run it again`);
   const slug = ctx?.spec?.slug ?? "<slug>";
   const edit = ctx?.edit ?? null;
   const head = edit
-    ? `Ready to save this edit. ${edit.consequence == null ? "Nothing changed against the saved dashboard." : `Compared with the saved dashboard it changes ${plural(edit.changed.length, "setting")} (${edit.changed.map((c) => c.path).join(", ")}): ${edit.consequence === "pull" ? `the next refresh pulls everything again, about ${N(e, (x) => minutesOf(x.full.seconds), "M")} minutes` : edit.consequence === "reselect" ? "the customer lists are ranked again over the last pull's rows (a rebuild, no pull)" : "the pages are rebuilt from the data already pulled, no pull"}.`}`
-    : `Ready to save. A full refresh with these settings is about ${N(e, (x) => x.full.calls, "N")} calls and ${mins(e, (x) => x.full.seconds, "M")} on this tenant; ${login}.`;
+    ? `Ready to save this edit. ${edit.consequence == null ? "Nothing changed against the saved dashboard." : `Compared with the saved dashboard it changes ${plural(edit.changed.length, "setting")} (${edit.changed.map((c) => c.path).join(", ")}): ${edit.consequence === "pull" ? `the next refresh pulls everything again, about ${N(e, (x) => minutesOf(x.full.seconds), "M")} minutes; ${login("the refresh")}` : edit.consequence === "reselect" ? "the customer lists are ranked again over the last pull's rows (a rebuild, no pull)" : "the pages are rebuilt from the data already pulled, no pull"}.`}`
+    : `Ready to save. A full refresh with these settings is about ${N(e, (x) => x.full.calls, "N")} calls and ${mins(e, (x) => x.full.seconds, "M")} on this tenant; ${login("the first refresh")}.`;
   return `${head} ${MANUAL_REFRESH_TEXT(slug, ctx?.kb ?? null)}`;
 };
 /** A dry run's minutes: the full pull less what customer lists, health and step detail add (the preview pulls none of them). */
@@ -1337,15 +1350,25 @@ function verbRefresh(ctx, slug, { full, healthOnly, planRun = null }) {
       const made = r.summary.calls ? ` after ${plural(r.summary.calls.made, "call")} this run${r.summary.calls.reused ? ` (${r.summary.calls.reused} reused from before)` : ""}` : "";
       // The logins still needed, when known: none left means the next run only finishes (the reduce and the pages).
       const more = code !== "token-expired" || logins == null ? "" : logins === 0 ? " — every call is made: the next run finishes it" : ` — about ${plural(logins, "more login")} of an hour to finish`;
-      refuse(`the ${healthOnly ? "health-only " : ""}refresh stopped${made}: ${r.summary.stopped ?? r.summary.status}${code === "failed" ? "" : ` — ${code === "token-expired" ? "run gs-admin login, then" : ""} run refresh ${slug} again: it continues where it stopped; the last good pages are untouched`}${more}${lock.takenOver ? `; a stale lock held by ${lock.takenOver.by ?? "unknown"} since ${lock.takenOver.at} was taken over` : ""}`, code, { ...takenOver, ...(abandoned ? { abandoned } : {}) });
+      // A partial stop says what failed and that the next run retries it (F-519): the family, the programs the call
+      // named, the cause and the runs it has failed in; never an empty slot.
+      const why = code === "partial" ? failedText(r.summary.failed) : r.summary.stopped ?? r.summary.status;
+      const next = code === "failed" ? "" : ` — ${code === "token-expired" ? "run gs-admin login, then " : ""}run refresh ${slug} again: it ${code === "partial" ? "retries what failed and " : ""}continues where it stopped; the last good pages are untouched`;
+      refuse(`the ${healthOnly ? "health-only " : ""}refresh stopped${made}: ${why}${next}${more}${lock.takenOver ? `; a stale lock held by ${lock.takenOver.by ?? "unknown"} since ${lock.takenOver.at} was taken over` : ""}`, code, { ...takenOver, ...(abandoned ? { abandoned } : {}) });
     };
     if (planned.summary.status !== "ok") stopped(planned);
     const estimate = planned.summary.estimate;
     const redoc = kbSettings(spec).redocument;
     const redocSeconds = redoc.enabled ? Math.min(redoc.cap, (estimate.kb?.programs?.length ?? 0)) * 3 + Math.min(Math.max(0, redoc.cap - (estimate.kb?.programs?.length ?? 0)), estimate.templates?.planned ?? 0) * 3 : 0;
-    const needed = estimate.thisRun.seconds + redocSeconds + 30;
-    const budget = { neededSeconds: needed, loginSecondsLeft: who.expiresInSeconds, fitsThisLogin: needed <= who.expiresInSeconds, loginsNeeded: loginsFor(needed) };
-    if (!budget.fitsThisLogin) ctx.log(`the refresh needs about ${plural(minutesOf(needed), "minute")} and the login has ${plural(minutesOf(who.expiresInSeconds), "minute")} left: it will run as far as the login allows (about ${plural(budget.loginsNeeded, "login")} of an hour in all) and continue after the next login`);
+    // The price is THIS run's (F-518 a): a resumed run's remainder, the plan's units whose answers are not on disk
+    // yet, never the whole plan; the share already made is what the resume reuses.
+    const remaining = estimate.thisRun.remaining ?? estimate.thisRun;
+    const needed = remaining.seconds + redocSeconds + 30;
+    const planSeconds = estimate.thisRun.seconds + redocSeconds + 30;
+    const budget = { neededSeconds: needed, planSeconds, continuing: !!resuming, loginSecondsLeft: who.expiresInSeconds, fitsThisLogin: needed <= who.expiresInSeconds, loginsNeeded: loginsFor(needed) };
+    const beyond = `it will run as far as the login allows (about ${plural(budget.loginsNeeded, "login")} of an hour in all) and continue after the next login`;
+    if (resuming) ctx.log(`continuing the refresh of "${slug}" (run ${runId}): about ${plural(minutesOf(needed), "minute")} of its ${plural(minutesOf(planSeconds), "minute")} remain, the calls already made are reused; the login has ${plural(minutesOf(who.expiresInSeconds), "minute")} left${budget.fitsThisLogin ? ", enough for it" : `: ${beyond}`}`);
+    else if (!budget.fitsThisLogin) ctx.log(`the refresh needs about ${plural(minutesOf(needed), "minute")} and the login has ${plural(minutesOf(who.expiresInSeconds), "minute")} left: ${beyond}`);
     // Re-documentation first (the fetch then re-reads the moved knowledge base: the run's KB copy is stamped). A login
     // that dies under it is the same stop as one that dies under the pull: exit 3, resumable, "log in, then run again".
     const redocumented = redocument(ctx, { spec, estimate, runDir: planned.runDir });

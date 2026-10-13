@@ -2203,13 +2203,18 @@ export function fetchEngagement(ctx) {
     flags.set(object, schemaFlags(payload));
   };
 
-  const execute = (d, id, argv) => {
+  // How many programs a unit names, for a failure entry: the reader of a stop is told what failed and for whom.
+  const unitScope = (d) => (d.programs ? { programs: d.programs.length } : d.programId ? { programs: 1 } : d.scope ? { programs: d.scope.length } : {});
+  // `prior` is the record a resume found for this call: a record that did not succeed counts the runs it failed in
+  // (F-519), so a failure that recurs across runs is reported as recurring, never as new each time.
+  const execute = (d, id, argv, prior = null) => {
     const refusal = gate(argv);
     if (refusal) throw new EngagementRefusal(refusal);
     if (isRpRun(d)) {
       const problems = validateQuery(buildQuery(d), types.get(FAMILIES[d.family].object) ?? new Map(), flags.get(FAMILIES[d.family].object) ?? null);
       if (problems.length) throw new EngagementRefusal(`refusing to run the ${d.family} query: ${problems.join("; ")}`);
     }
+    const runs = (prior && prior.status !== "ok" ? prior.runs ?? 1 : 0) + 1;
     for (let attempt = 1; ; attempt++) {
       if (deadline != null && now() + params.tokenMarginSeconds * 1000 > deadline) {
         stop = { reason: "token-expired", detail: "the token would expire before the next call returns" };
@@ -2235,8 +2240,8 @@ export function fetchEngagement(ctx) {
           payload = JSON.parse(r.stdout);
         } catch {
           say("failed: the answer is not JSON");
-          failed.push({ id, family: d.family, kind: "unparseable" });
-          record({ ...d, id, status: "failed", kind: "unparseable", attempt });
+          failed.push({ id, family: d.family, kind: "unparseable", runs, ...unitScope(d) });
+          record({ ...d, id, status: "failed", kind: "unparseable", attempt, runs });
           return null;
         }
         const rows = Array.isArray(payload) ? payload.length : null;
@@ -2264,7 +2269,7 @@ export function fetchEngagement(ctx) {
       }
       if (kind === "timeout") {
         say("timed out twice: it will be split");
-        return record({ ...d, id, status: "split", kind, attempt });
+        return record({ ...d, id, status: "split", kind, attempt, runs });
       }
       if (kind === "not-found" && d.family === "describe") {
         say("not found twice: recorded as a deleted program, not a failure");
@@ -2272,7 +2277,7 @@ export function fetchEngagement(ctx) {
         writeFileAtomicSync(join(runDir, file), JSON.stringify({ notFound: true }));
         return record({ ...d, id, status: "ok", file, notFound: true, attempt });
       }
-      const failure = { id, family: d.family, kind: kind === "outage" ? "shape-error" : kind, stderr: printable(r.stderr, 300) };
+      const failure = { id, family: d.family, kind: kind === "outage" ? "shape-error" : kind, stderr: printable(r.stderr, 300), runs, ...unitScope(d) };
       say(`failed: ${failure.kind}`);
       failed.push(failure);
       record({ ...d, ...failure, status: "failed", attempt });
@@ -2280,6 +2285,8 @@ export function fetchEngagement(ctx) {
     }
   };
 
+  /** What a unit that came back full, or timed out twice, is cut into: null when nothing is left to cut on. */
+  const cutsOf = (d, rec) => (rec.status === "split" && FAMILIES[d.family]?.timeoutSplit === false ? null : splitUnit(d));
   /** Run one unit, splitting as needed. Returns the ok, complete leaf records. */
   const runUnit = (d) => {
     if (stop) return [];
@@ -2287,16 +2294,19 @@ export function fetchEngagement(ctx) {
     const id = unitId(d, argv);
     const prior = records.get(id);
     let rec;
-    if (prior && ((prior.status === "ok" && existsSync(join(runDir, prior.file))) || prior.status === "split")) {
+    // A prior answer on disk is reused as it stands. A prior "split" record is reused only as the DECISION to cut the
+    // unit (its halves carry the attempts); for a unit with nothing left to cut on, that record was a failed attempt,
+    // and the resume makes the call afresh — a failed record is never reused either: the next run IS the retry (F-519:
+    // a timed-out unsplittable call was replayed as final on every resume, stranding the refresh for good).
+    if (prior && ((prior.status === "ok" && existsSync(join(runDir, prior.file))) || (prior.status === "split" && cutsOf(d, prior)))) {
       counts.reused++;
       rec = prior;
-    } else rec = execute(d, id, argv);
+    } else rec = execute(d, id, argv, prior);
     if (!rec) return [];
     if (rec.status === "ok" && !rec.truncated) return [rec];
-    const kids = rec.status === "split" && FAMILIES[d.family]?.timeoutSplit === false ? null : splitUnit(d);
+    const kids = cutsOf(d, rec);
     if (!kids) {
-      const failure = { id, family: d.family, kind: rec.truncated ? "truncated" : "timeout", stderr: "nothing left to split on" };
-      failed.push(failure);
+      failed.push({ id, family: d.family, kind: rec.truncated ? "truncated" : "timeout", stderr: "nothing left to split on", runs: rec.runs ?? 1, ...unitScope(d) });
       return [];
     }
     counts.split++;
@@ -2480,6 +2490,17 @@ export function fetchEngagement(ctx) {
   // Calls and seconds include the splits a program-month too large for a page will force.
   const calls = (list) => estimateCalls(list, base, params.pageSize);
   const seconds = (list) => estimateSeconds(list, base, params.pageSize);
+  // What this run still has to make (F-518): on a resume, the planned units whose answers are not all on disk — a
+  // unit answered whole, or cut into halves every one of which is answered, costs nothing more. The remainder is what
+  // the login must cover; a fresh run's remainder is the whole run.
+  const answered = (u) => {
+    const rec = records.get(unitId(u, unitArgv(u, params.pageSize)));
+    if (!rec) return false;
+    if (rec.status === "ok" && !rec.truncated) return existsSync(join(runDir, rec.file));
+    const kids = cutsOf(u, rec);
+    return !!kids && kids.every(answered);
+  };
+  const remainingUnits = units.filter((u) => !answered(u));
   // The per-program samples (F-484), priced from the count-first reads: how many selected programs have
   // refusals in the window (read above) and how many have uncategorised bounces (from the bounce count-first
   // read: every bounce, until the categories are counted), against the cap; what the cap leaves out, and what
@@ -2549,7 +2570,7 @@ export function fetchEngagement(ctx) {
   const templatesPlan = {
     source: kbSteps ? "kb" : "none", referenced: planReferenced.length, designOnly: planReferenced.length - tplRef.referenced.length, inKb: kbSteps ? planReferenced.length - tplGap.missing.length : 0,
     missing: tplGap.missing.length, behind: tplGap.behind.length, unread: tplGap.unread.length,
-    planned: tplKeys.length, seconds: tplKeys.length * CALL_SECONDS.template,
+    planned: tplKeys.length, seconds: tplKeys.length * CALL_SECONDS.template, secondsEach: CALL_SECONDS.template,
     domain: kbSteps?.templatesDomain?.folder ?? null, idField: kbSteps?.templatesDomain?.idField ?? null,
     listFile: tplGap.missing.length ? join(runDir, TEMPLATE_GAP_LIST_FILE) : null,
     staleKeysFile: tplGap.behind.length + tplGap.unread.length ? join(runDir, TEMPLATE_GAP_STALE_FILE) : null,
@@ -2557,7 +2578,12 @@ export function fetchEngagement(ctx) {
   };
   const estimate = {
     mode: refresh.mode, why: refresh.why,
-    thisRun: { calls: calls(units) + ownReads, seconds: seconds(units) + describeSeconds(ownReads), units: units.length, byFamily: { ...familyCounts(units, base, params.pageSize), ...(ownReads ? sampleFamilies : {}) } },
+    thisRun: {
+      calls: calls(units) + ownReads, seconds: seconds(units) + describeSeconds(ownReads), units: units.length, byFamily: { ...familyCounts(units, base, params.pageSize), ...(ownReads ? sampleFamilies : {}) },
+      // The part not yet made (F-518): a resumed run's price is this, never the whole plan's. The samples are counted
+      // whole (they are picked after the counts), so a resume's remainder is an upper bound.
+      remaining: { calls: calls(remainingUnits) + ownReads, seconds: seconds(remainingUnits) + describeSeconds(ownReads), units: remainingUnits.length },
+    },
     full: { calls: calls(fullUnits) + ownReads, seconds: seconds(fullUnits) + describeSeconds(ownReads) },
     stepDetail: { on: params.stepDetail, addsCalls: calls(withStep) - calls(without), addsSeconds: seconds(withStep) - seconds(without) },
     // What the account grain costs, printed whether it is on or off (its name lookups are not counted: how many depends on the selection).
@@ -2581,7 +2607,14 @@ export function fetchEngagement(ctx) {
     },
     // The row budget and what exceeds it (a health part over it is not read; the click detail refused above).
     rowBudget: { rows: rowBudget, pages: params.maxPages ?? MAX_PAGES, overBudget },
-    token: { expiresInSeconds: whoami.expiresInSeconds, fits: seconds(units) + describeSeconds(ownReads) + params.tokenMarginSeconds <= whoami.expiresInSeconds },
+    token: {
+      expiresInSeconds: whoami.expiresInSeconds, fits: seconds(units) + describeSeconds(ownReads) + params.tokenMarginSeconds <= whoami.expiresInSeconds,
+      // What the login has left once the pull is made, and whether the pull PLUS the re-documentation and the template
+      // gap-fill the plan proposes still fit it (F-507): the skill's asks read these before a budget is chosen, so a
+      // gap-fill is never started on a login the pull alone was judged to fit.
+      afterPullSeconds: Math.max(0, whoami.expiresInSeconds - seconds(units) - describeSeconds(ownReads) - params.tokenMarginSeconds),
+      withProposals: { seconds: seconds(units) + describeSeconds(ownReads) + kbPlan.refreshSeconds + templatesPlan.seconds, fits: seconds(units) + describeSeconds(ownReads) + kbPlan.refreshSeconds + templatesPlan.seconds + params.tokenMarginSeconds <= whoami.expiresInSeconds },
+    },
     // Where the KB is behind the tenant for the selected programs (F-491, redesigned 2026-10-08), priced as the
     // narrow refresh that closes it (one describe per program), with its inputs written beside this plan: the
     // manifest keys of every such program, and the list rows of the undocumented ones (what registers them).

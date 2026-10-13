@@ -1893,8 +1893,20 @@ try {
     const est = planned.summary.estimate.templates;
     const readJson = (p) => JSON.parse(readFileSync(p, "utf8"));
     check("TPL-1 plan: the templates the selected programs reference (their sends over the window, and their designs) are read from one cheap tenant-wide call with the base reads, and judged against the KB: missing (no doc), behind (the doc predates the template's last send month), unread (a never-clicked template whose doc carries no link-tracking reading) — priced at one fetch each, and the pull makes no template call of its own",
-      isDeepStrictEqual({ ...est, listFile: null, staleKeysFile: null, keysFile: null }, { source: "kb", referenced: 8, designOnly: 1, inKb: 5, missing: 3, behind: 1, unread: 1, planned: 5, seconds: 15, domain: TEMPLATES_DOMAIN, idField: "templateId", listFile: null, staleKeysFile: null, keysFile: null }) &&
+      isDeepStrictEqual({ ...est, listFile: null, staleKeysFile: null, keysFile: null }, { source: "kb", referenced: 8, designOnly: 1, inKb: 5, missing: 3, behind: 1, unread: 1, planned: 5, seconds: 15, secondsEach: 3, domain: TEMPLATES_DOMAIN, idField: "templateId", listFile: null, staleKeysFile: null, keysFile: null }) &&
         planned.argv.filter((a) => a.includes("rp") && a.includes("run")).some((a) => a.join(" ").includes('"EmailTemplateId"')) && planned.argv.every((a) => !a.join(" ").includes("email template")), est);
+    // F-507: the token's `fits` is the pull alone; `withProposals` prices the pull PLUS the re-documentation and the
+    // gap-fill the plan proposes, and `afterPullSeconds` is what a gap-fill has to fit — on a login the pull just fits,
+    // the proposals do not, and the skill's ask can say so before a budget is chosen.
+    {
+      const margin = resolveParams({}).tokenMarginSeconds;
+      const e0 = planned.summary.estimate;
+      const tight = pull({ kb: KB_GAP, phase: "plan", variant: { token: { state: "valid", seconds: e0.thisRun.seconds + margin + 5 } } });
+      const t = tight.summary.estimate;
+      check("F-507 the plan prices the gap-fill with the pull: on a login the pull alone fits with 5 s to spare, token.fits is true, token.afterPullSeconds is 5, token.withProposals.seconds is the pull plus the knowledge-base re-documentation plus the template gap-fill, and token.withProposals.fits is false; on a roomy login both fit",
+        t.token.fits === true && t.token.afterPullSeconds === 5 && t.token.withProposals.seconds === t.thisRun.seconds + t.kb.refreshSeconds + t.templates.seconds && t.templates.seconds === 15 && t.token.withProposals.fits === false &&
+          e0.token.fits === true && e0.token.withProposals.fits === true && e0.token.afterPullSeconds >= e0.token.withProposals.seconds - e0.thisRun.seconds, t.token);
+    }
     check("TPL-1 plan: its inputs are written beside plan.json in the shapes email-report's gap-fill commands take — the missing ids as [{<idField>: id}] for manifest upsert-batch --partial, the keys to mark stale (the behind docs and the unread ones), and every key in fetch order (missing first) for describe-batch --keys-file; nothing is written to the KB",
       est.listFile.endsWith(TEMPLATE_GAP_LIST_FILE) && est.staleKeysFile.endsWith(TEMPLATE_GAP_STALE_FILE) && est.keysFile.endsWith(TEMPLATE_GAP_KEYS_FILE) &&
         isDeepStrictEqual(readJson(est.listFile), [{ templateId: "tpl-nps-reminder" }, { templateId: "tpl-promo" }, { templateId: "tpl-unlisted" }]) && isDeepStrictEqual(readJson(est.staleKeysFile), [tplKey("tpl-welcome"), tplKey("tpl-day7")]) &&
@@ -1932,7 +1944,7 @@ try {
     const replanned = pull({ kb: KB_GAP, phase: "plan", runDir: planned.runDir });
     const est2 = replanned.summary.estimate.templates;
     check("TPL-1: the plan re-issued over the same run directory after the gap-fill reads the moved KB again (its stamp moved): no template missing, behind or unread, nothing planned, no file path",
-      isDeepStrictEqual(est2, { source: "kb", referenced: 8, designOnly: 1, inKb: 8, missing: 0, behind: 0, unread: 0, planned: 0, seconds: 0, domain: TEMPLATES_DOMAIN, idField: "templateId", listFile: null, staleKeysFile: null, keysFile: null }), est2);
+      isDeepStrictEqual(est2, { source: "kb", referenced: 8, designOnly: 1, inKb: 8, missing: 0, behind: 0, unread: 0, planned: 0, seconds: 0, secondsEach: 3, domain: TEMPLATES_DOMAIN, idField: "templateId", listFile: null, staleKeysFile: null, keysFile: null }), est2);
     const filled = pull({ kb: KB_GAP, runDir: planned.runDir });
     const F = filled.snapshot;
     const tpl = (id) => F.dimensions.templates.find((t) => t.id === id);
