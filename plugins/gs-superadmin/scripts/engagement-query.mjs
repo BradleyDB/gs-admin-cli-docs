@@ -653,6 +653,17 @@ export const REASONS = deepFreeze({
   "test-accounts-need-accounts": "Accounts named as test accounts are not left out: this filter works by email domain, and the pull holds no account data to subtract them with.",
   "templates-not-pulled": "Template content is not in this snapshot: it was made before template content was read from the knowledge base. Pull again to get it.",
   "templates-not-on-page": "Template text (subjects and bodies) and the keyword search are not part of this page.",
+  // Why an account timeline was not compared with a dashboard's rows, in whole or for a program (ACC-1, F-520).
+  "other-tenant": "The dashboard is another tenant's, so it holds none of this account's rows.",
+  "no-whole-month-in-both": "These days cover no whole month the dashboard holds, so there is no month to compare.",
+  "account-not-kept": "The dashboard did not keep this account: its customer lists did not select it, so it holds no row of its own for it.",
+  "account-not-kept-on-program": "The dashboard did not keep this account there: it holds no row of the account on the program over its window.",
+  "program-not-in-dashboard": "The program is not in the dashboard.",
+  "no-send-in-months-compared": "The dashboard kept this account there, but the account's sends on it fall only outside the whole months compared (the first, partial month of these days, or the provisional month), so there was nothing to compare.",
+  // Why a selective refresh holds no ranking for a cross-program customer list (F-521): it carries the last full
+  // ranking, and these have none to carry. A full pull ranks every list again.
+  "list-set-since": "This list was set after the full pull that ranked the others, and a pull that continues from an earlier one cannot rank it: a full pull (a dashboard's refresh with --full) ranks it over every account.",
+  "previous-not-ranked": "The pull this one continued from held no ranking of this list over every program, so there was none to keep: a full pull (a dashboard's refresh with --full) ranks it over every account.",
 });
 /** @param {?string} id @returns {string} the reason in words; an id the table lacks is shown as itself */
 export const reasonText = (id) => (id == null ? "" : REASONS[id] ?? `No value (${id}).`);

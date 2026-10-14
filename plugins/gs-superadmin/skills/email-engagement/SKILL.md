@@ -661,7 +661,9 @@ meanwhile. By exit code:
 
 `<checks line>` is "ok" when `reconciled` is true and no dashboard was named; "ok, and
 equal to the dashboard's own rows of this account" when `against.compared` is above 0;
-"not compared with the dashboard: <against.reason>" when `against.reason` is set; and
+"not compared with the dashboard: <againstText.reason>" when `against.reason` is set (with a
+dashboard named, add each `againstText.notCompared` entry after it as "<programs> program(s)
+not compared: <reason>"); and
 "FAILED: <the failed checks' ids>" when `reconciled` is false (then also say the figures are
 unreliable and suggest pulling again). Then stop. Only someone with a `gs-admin` login can
 run this; anyone else sees an account only through a dashboard page's one-account view.

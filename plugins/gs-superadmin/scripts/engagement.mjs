@@ -556,7 +556,7 @@ import { classifySchedule } from "./jo-report-audit-active.mjs";
 import {
   SOURCES, NON_CONTENT_LINK_RULES, SEND_MEASURES, T10_SCHEMA_VERSION, measuresCounted, rollUpTracking, openSnapshot, accountAvailability, healthAvailability, maskMessage,
   categoryTable, validateCategories, OTHER_CATEGORY, UNCLASSIFIED_CATEGORY, UNKNOWN_KIND, FAILURE_CATEGORIES, STEP_FAILURE_CATEGORIES, cronLastDue, QUIET_DUE_DAYS_DEFAULT, kindOf, isExpectedKind,
-  TIMELINE_MEASURES, timelineByMonth, runQuery,
+  TIMELINE_MEASURES, timelineByMonth, runQuery, reasonText,
 } from "./engagement-query.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -3287,10 +3287,39 @@ function cadenceRatios(units, selected) {
   return out;
 }
 /**
+ * The cross-program lists a selective refresh keeps (F-521). It holds whole-window figures only for the accounts
+ * already kept (every other account's carried months sit in the "all other accounts" row), so no ranking it could
+ * make is the one a full pull makes: it carries the last full ranking, each list as it was ranked and when, and the
+ * figures are counted again from the rows. A configured list the previous record does not hold as ranked (set since,
+ * or a record from before this rule, ranked over part of the programs) is not ranked, and says why — never an empty
+ * list read as a floor no account met.
+ * @param {?T10Snapshot} previous @param {Array<{kind: string, n: number, floor: number, per?: ?string}>} configured
+ * @returns {Array<{kind: string, n: number, floor: number, per: ?string, segment: ?string, keys: string[], rankedAt: ?string, carriedFrom: ?string, notRanked: ?string}>}
+ */
+function carriedLists(previous, configured) {
+  const prior = previous?.honesty?.accountSelection?.lists ?? [];
+  const same = (a, l) => a.kind === l.kind && a.n === l.n && a.floor === l.floor && (a.per ?? null) === (l.per ?? null);
+  // Ranked over every program: a record that says so (a full pull's, or one carried from it); anything else is not.
+  const ranked = (a) => a.notRanked == null && a.selectedFrom === "every program";
+  const out = [];
+  // In the order a full pull records them: the lists over every account, then the per-segment ones.
+  for (const l of [...configured.filter((x) => !x.per), ...configured.filter((x) => x.per)]) {
+    const matches = prior.filter((a) => same(a, l));
+    const base = { kind: l.kind, n: l.n, floor: l.floor, per: l.per ?? null };
+    if (!matches.length || !matches.every(ranked)) {
+      out.push({ ...base, segment: null, keys: [], rankedAt: null, carriedFrom: null, notRanked: matches.length ? "previous-not-ranked" : "list-set-since" });
+      continue;
+    }
+    for (const a of matches) out.push({ ...base, segment: a.segment ?? null, keys: [...a.kept], rankedAt: a.rankedAt ?? previous?.meta?.pulledAt ?? null, carriedFrom: previous?.meta?.pulledAt ?? null, notRanked: null });
+  }
+  return out;
+}
+/**
  * The account selection (R24 per program, and the cross-program lists, ruled 2026-10-05). A program carried from the
  * previous snapshot keeps the accounts that snapshot selected, so each one's row series stays whole across carried
  * and pulled months; ranking is redone on a full pull. The cross-program lists are ranked over every account row of
- * the programs pulled whole, and a kept account gets its own rows on every one of those programs it is on.
+ * every program on a full pull, and carried from the previous snapshot on a selective one (carriedLists, F-521); a
+ * kept account gets its own rows on every program it is on, carried or pulled whole.
  * @returns {{byProgram: Map<string, Set<string>>, lists: Array<*>, lowCadence: string[], ratios: Map<string, ?number>, across: Map<string, *>}}
  */
 function selectionFor({ params, units, selected, refresh, previous, attrs = new Map() }) {
@@ -3315,14 +3344,19 @@ function selectionFor({ params, units, selected, refresh, previous, attrs = new 
     }
   }
   // A per-segment list needs each account's company fields, which the names call reads for the KEPT accounts only:
-  // it is ranked in reduce over the kept accounts, after the names are read; the selection here takes the rest.
-  const lists = selectAccountsAcross(across, (params.accounts.lists ?? []).filter((l) => !l.per), { quietOnLowCadence: quiet, attrs });
-  const crossKeys = new Set(lists.flatMap((l) => l.keys));
+  // it is ranked in reduce over the kept accounts, after the names are read; the selection here takes the rest. A
+  // selective refresh carries every list, the per-segment ones too (carriedLists).
+  const configured = params.accounts.lists ?? [];
+  const lists = refresh.mode === "selective"
+    ? carriedLists(previous, configured)
+    : selectAccountsAcross(across, configured.filter((l) => !l.per), { quietOnLowCadence: quiet, attrs }).map((l) => ({ ...l, rankedAt: params.pulledAt ?? null, carriedFrom: null, notRanked: null }));
+  const crossKeys = new Set(lists.filter((l) => !l.per).flatMap((l) => l.keys));
   const byProgram = new Map();
   for (const p of selected.keys()) {
     const acc = totals.get(p) ?? new Map();
-    if (refresh.carriedPrograms.has(p)) byProgram.set(p, new Set([...(prev.get(p) ?? []), ...params.accounts.pinned.filter((k) => acc.has(k))]));
-    else byProgram.set(p, new Set([...selectAccounts(acc, params.accounts, { lowCadence: lowSet.has(p) }), ...[...crossKeys].filter((k) => acc.has(k))]));
+    const listed = [...crossKeys].filter((k) => acc.has(k));
+    if (refresh.carriedPrograms.has(p)) byProgram.set(p, new Set([...(prev.get(p) ?? []), ...params.accounts.pinned.filter((k) => acc.has(k)), ...listed]));
+    else byProgram.set(p, new Set([...selectAccounts(acc, params.accounts, { lowCadence: lowSet.has(p) }), ...listed]));
   }
   return { byProgram, lists, lowCadence, ratios, across };
 }
@@ -4049,8 +4083,9 @@ export function reduceEngagement(input) {
     months: windowMonths,
   };
   // The per-segment customer lists (S5), ranked over the KEPT accounts' summed measures with the fields just read.
+  // A selective refresh carried them with the rest (carriedLists, F-521).
   const keptAcross = new Map(accountKeys.filter((k) => acrossTotals.has(k)).map((k) => [k, acrossTotals.get(k)]));
-  const perSegmentLists = selectAccountsAcross(keptAcross, (params.accounts.lists ?? []).filter((l) => l.per), { attrs: attrsOf });
+  const perSegmentLists = refresh.mode === "selective" ? [] : selectAccountsAcross(keptAcross, (params.accounts.lists ?? []).filter((l) => l.per), { attrs: attrsOf }).map((l) => ({ ...l, rankedAt: pulledAt, carriedFrom: null, notRanked: null }));
 
   // ── Honesty and this snapshot's own caveats ──
   for (const u of of("classes")) {
@@ -4076,8 +4111,11 @@ export function reduceEngagement(input) {
     accountNames: { requested: params.accounts.names ? accountKeys.length : 0, resolved: namesResolved },
     // The account selection as made (S5): each cross-program list's kept accounts (a per-segment list per value), the
     // programs read as low cadence (about one send per contact) with every program's ratio, and the per-program rule.
+    // Each list (additive, F-521): rankedAt, the pull that ranked it over every program (this one on a full pull);
+    // carriedFrom, the snapshot a selective refresh carried it from (else null); notRanked, why a selective refresh
+    // holds no ranking for it ("list-set-since" | "previous-not-ranked"; then selectedFrom is null and kept empty).
     accountSelection: !params.accounts.pull ? null : {
-      lists: [...listSelection, ...perSegmentLists].map((l) => ({ kind: l.kind, n: l.n, floor: l.floor, per: l.per, segment: l.segment, kept: l.keys, selectedFrom: refresh.carriedPrograms.size ? "the programs pulled whole" : "every program" })),
+      lists: [...listSelection, ...perSegmentLists].map((l) => ({ kind: l.kind, n: l.n, floor: l.floor, per: l.per, segment: l.segment, kept: l.keys, selectedFrom: l.notRanked ? null : "every program", rankedAt: l.rankedAt, carriedFrom: l.carriedFrom, notRanked: l.notRanked })),
       lowCadencePrograms: lowCadence,
       cadenceRatio: Object.fromEntries([...cadenceRatioOf].map(([p, r]) => [p, r == null ? null : Math.round(r * 100) / 100])),
       lowCadenceRule: { maxRatio: LOW_CADENCE_MAX_RATIO, minDelivered: LOW_CADENCE_MIN_DELIVERED },
@@ -4401,13 +4439,17 @@ const addTimelineRow = (map, key, row) => {
 /**
  * The timeline against a dashboard snapshot's rows of the same account (ACC-1's reconciliation): per program and
  * month, over the months the timeline covers WHOLE and the snapshot holds, for the programs on which the snapshot
- * keeps the account's own rows (a dashboard keeps rows only for the accounts its lists selected). By recipient class
- * when both pulls split the classes the same way, else over every recipient. A month the snapshot still counted as
- * provisional drifts; a closed month must match on every measure. Both sides through the engine.
+ * keeps the account's own rows anywhere in its window (a dashboard keeps rows only for the accounts its lists
+ * selected). A timeline program is named in `notCompared` as one the dashboard did not keep the account on only when
+ * the snapshot holds no row of the account on it at all; one it kept, with no send on either side in the compared
+ * months (the timeline's days on it fall in the window's partial first month or the provisional month), is named
+ * `no-send-in-months-compared` (F-520). By recipient class when both pulls split the classes the same way, else over
+ * every recipient. A month the snapshot still counted as provisional drifts; a closed month must match on every
+ * measure. Both sides through the engine. The reasons' words are the engine's (`reasonText`).
  * @param {T10AccountTimeline} tl @param {T10Snapshot} snapshot
  * @returns {{check: ?*, against: *, measures: string[]}}
  */
-function reconcileWithDashboard(tl, snapshot) {
+export function reconcileWithDashboard(tl, snapshot) {
   const key = tl.dimensions.account.key;
   const against = { pulledAt: snapshot.meta.pulledAt, basis: /** @type {"class"|"all"} */ ("all"), compared: 0, notCompared: /** @type {Array<{programId: string, reason: string}>} */ ([]), reason: /** @type {?string} */ (null) };
   if (snapshot.meta.tenantHost !== tl.meta.tenantHost) return { check: null, against: { ...against, reason: "other-tenant" }, measures: [] };
@@ -4421,21 +4463,23 @@ function reconcileWithDashboard(tl, snapshot) {
   const accounts = accountAvailability(snapshot);
   if (!accounts.pulled) return { check: null, against: { ...against, reason: accounts.reason ?? "not-pulled" }, measures: [] };
   if (!months.length) return { check: null, against: { ...against, reason: "no-whole-month-in-both" }, measures: [] };
-  const onDashboard = runQuery(snapshot, { months, accounts: [key], accountBuckets: ["account"] }, { groupBy: ["program"], metrics: ["sent"] });
-  const kept = new Set(onDashboard.rows.map((r) => r.key.program));
+  // Two facts, never one (F-520): whether the dashboard KEPT the account on a program is read over the snapshot's
+  // whole window; whether there is anything to compare on it is read in the compared months, on either side.
+  const kept = new Set(runQuery(snapshot, { accounts: [key], accountBuckets: ["account"] }, { groupBy: ["program"], metrics: ["sent"] }).rows.map((r) => r.key.program));
   const dashboardPrograms = new Set(snapshot.dimensions.programs.map((p) => p.id));
+  const dash = runQuery(snapshot, { months, programs: [...kept], accounts: [key], accountBuckets: ["account"] }, { groupBy: dims, metrics: [...TIMELINE_MEASURES] });
+  const tlInMonths = timelineByMonth(tl).filter((r) => kept.has(r.programId) && months.includes(r.month));
+  const inMonths = new Set([...dash.rows.map((r) => r.key.program), ...tlInMonths.map((r) => r.programId)]);
   for (const p of tl.dimensions.programs.map((x) => x.id)) {
     if (!kept.has(p)) against.notCompared.push({ programId: p, reason: dashboardPrograms.has(p) ? "account-not-kept-on-program" : "program-not-in-dashboard" });
+    else if (!inMonths.has(p)) against.notCompared.push({ programId: p, reason: "no-send-in-months-compared" });
   }
   if (!kept.size) return { check: null, against: { ...against, reason: snapshot.dimensions.accounts.some((a) => a.key === key) ? "account-not-kept-on-program" : "account-not-kept" }, measures: [] };
-  const dash = runQuery(snapshot, { months, programs: [...kept], accounts: [key], accountBuckets: ["account"] }, { groupBy: dims, metrics: [...TIMELINE_MEASURES] });
+  if (!inMonths.size) return { check: null, against: { ...against, reason: "no-send-in-months-compared" }, measures: [] };
   const keyOf = (programId, month, cls) => JSON.stringify(against.basis === "class" ? [programId, month, cls] : [programId, month]);
   const dashRows = new Map(dash.rows.map((r) => [keyOf(r.key.program, r.key.month, r.key.recipientClass), Object.fromEntries(TIMELINE_MEASURES.map((k) => [k, r.cells[k].value]))]));
   const tlRows = new Map();
-  for (const r of timelineByMonth(tl)) {
-    if (!kept.has(r.programId) || !months.includes(r.month)) continue;
-    addTimelineRow(tlRows, keyOf(r.programId, r.month, r.recipientClass), r);
-  }
+  for (const r of tlInMonths) addTimelineRow(tlRows, keyOf(r.programId, r.month, r.recipientClass), r);
   const provisional = String(snapshot.meta.incompleteFrom).slice(0, 7);
   const check = { id: "matches-dashboard", ok: true, compared: 0, mismatches: 0, examples: /** @type {Array<*>} */ ([]), drift: 0, driftExamples: /** @type {Array<*>} */ ([]) };
   const measures = new Set();
@@ -4521,6 +4565,10 @@ export function timelineSummary(tl, outPath) {
     reconciled: tl.reconciliation.ok,
     reconciliation: tl.reconciliation.checks.map((c) => ({ id: c.id, ok: c.ok, compared: c.compared, mismatches: c.mismatches, drift: c.drift })),
     against: tl.reconciliation.against,
+    // The reasons in words (the engine's table), so a caller relays a sentence, never an id.
+    againstText: tl.reconciliation.against
+      ? { reason: tl.reconciliation.against.reason ? reasonText(tl.reconciliation.against.reason) : null, notCompared: [...new Set(tl.reconciliation.against.notCompared.map((n) => n.reason))].map((reason) => ({ reason: reasonText(reason), programs: tl.reconciliation.against.notCompared.filter((n) => n.reason === reason).length })) }
+      : null,
     excluded: tl.honesty.excluded,
     caveats: tl.caveats.map((c) => c.id),
   };
