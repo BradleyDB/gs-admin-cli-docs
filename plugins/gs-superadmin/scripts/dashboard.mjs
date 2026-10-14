@@ -1386,10 +1386,11 @@ function verbRefresh(ctx, slug, { full, healthOnly, planRun = null }) {
     if (redocumented.aborted?.reason === "auth") refuse(`the refresh stopped during re-documentation (${plural(redocumented.calls, "describe")} made): the login expired — run gs-admin login, then run refresh ${slug} again: it continues where it stopped; the last good pages are untouched${lock.takenOver ? `; a stale lock held by ${lock.takenOver.by ?? "unknown"} since ${lock.takenOver.at} was taken over` : ""}`, "token-expired", { ...takenOver, ...(abandoned ? { abandoned } : {}), redocumented });
     // The pull.
     const pulledRun = runAdapter(ctx, { spec, runId: basename(planned.runDir), phase: "all", previousPath, forceFull: full, healthOnly, lookbackDays: planned.lookbackDays });
+    // What the stop says is still needed is the adapter's remainder over the records as they stand (F-518), priced the
+    // way the resume's opening line is; never the plan's calls less this run's counts, which count unforeseen cuts.
     if (pulledRun.summary.status !== "ok") {
-      const c = pulledRun.summary.calls ?? { made: 0, reused: 0 };
-      const left = Math.max(0, estimate.thisRun.calls - c.made - c.reused);
-      stopped(pulledRun, left === 0 ? 0 : loginsFor(estimate.thisRun.calls ? (left / estimate.thisRun.calls) * estimate.thisRun.seconds : 0));
+      const left = pulledRun.summary.remaining ?? estimate.thisRun.remaining ?? null;
+      stopped(pulledRun, left == null ? null : left.calls === 0 ? 0 : loginsFor(left.seconds));
     }
     const pulled = reduceEngagement(loadRun(pulledRun.runDir, { previous: pulledRun.previous, cliVersion: ctx.catalog.meta?.cliVersion ?? null, pluginVersion: ctx.pluginVersion }));
     const previous = pulledRun.previous;

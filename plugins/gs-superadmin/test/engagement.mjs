@@ -528,6 +528,26 @@ try {
     const second = pull({ runDir: dir });
     check("…and stays resumable: the second run re-reads whoami, skips every call already answered, makes only the rest, and reduces to the baseline's facts",
       second.summary.status === "ok" && second.summary.calls.reused >= 12 && second.summary.calls.made + second.summary.calls.reused === base.summary.calls.made - base.summary.calls.retried + base.summary.calls.reused + 1 && second.argv[0][0] === "whoami" && isDeepStrictEqual(second.snapshot.facts, pull({}).snapshot.facts), [second.summary.calls, base.summary.calls]);
+    // F-518 (reopened at S5-V's fourth sitting): a run stopped on the login prices what is LEFT of the plan, at or
+    // below the whole, falling as calls land, also when the stop falls inside the account family after units were
+    // cut (a mass-send program-day at a small page forces cuts down to the address rung, every piece of which the
+    // estimator prices like the whole program-month). Each stop is a fresh run of the same plan, stopped later each time.
+    const small = { pageSize: 20 };
+    const mass = { massDay: true };
+    const whole = pull({ variant: mass, raw: small, phase: "plan" }).summary.estimate.thisRun;
+    const totalRp = rpRuns(pull({ variant: mass, raw: small }).argv).length;
+    const stops = [0.15, 0.3, 0.45, 0.55, 0.65, 0.75, 0.85, 0.95].map((f, i) => {
+      const runDir = join(ROOT, `f518-${i}`);
+      const stoppedRun = pull({ variant: mass, raw: small, runDir, faults: [{ match: "rp run", kind: "auth", skip: Math.floor(totalRp * f), times: 9999 }] });
+      const log = readFileSync(join(runDir, "fetch-log.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l));
+      const remaining = pull({ variant: mass, raw: small, runDir, phase: "plan" }).summary.estimate.thisRun.remaining;
+      return { status: stoppedRun.summary.status, made: stoppedRun.summary.calls.made, accountCut: log.some((r) => r.family === "account" && (r.truncated || r.status === "split")), remaining, atStop: stoppedRun.summary.remaining };
+    });
+    check("F-518 a stopped run's remainder is never above the whole and falls as calls land: eight stops of the same plan, later each time, some inside the account family after its units were cut, each priced at or below the plan, none above the stop before it, and below the whole once anything was made; the stop carries the same remainder the resume's plan prices",
+      whole.calls > 0 && stops.every((s) => s.status === "token-expired") && stops.some((s) => s.accountCut) &&
+        stops.every((s) => s.remaining.calls <= whole.calls && s.remaining.seconds <= whole.seconds && s.remaining.units <= whole.units && s.remaining.calls < whole.calls) &&
+        stops.every((s, i) => i === 0 || (s.remaining.calls <= stops[i - 1].remaining.calls && s.remaining.seconds <= stops[i - 1].remaining.seconds)) && stops.every((s) => isDeepStrictEqual(s.atStop, s.remaining)),
+      { whole: { calls: whole.calls, seconds: whole.seconds, units: whole.units }, stops: stops.map((s) => [s.made, s.accountCut, s.remaining.calls, s.remaining.seconds, s.remaining.units]) });
     let clock = 0;
     const short = pull({ variant: { token: { state: "valid", seconds: 60 } }, now: () => (clock += 5000) });
     check("a run that would outlast the token stops before the call that would cross it, and says so", short.summary.status === "token-expired" && /would expire/.test(short.summary.stopped) && short.argv.length < 12 && short.argv.length > 2, [short.summary, short.argv.length]);
