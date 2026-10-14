@@ -406,6 +406,15 @@ export const TEMPLATES_DOMAIN = "journey-email-templates";
 // Industry: the fictional tenant's own company field (S5: a spec may name company fields to read beside the name).
 export const ACCOUNT_INDUSTRIES = ["Software", "Retail", "Finance"];
 const ACCOUNTS = Array.from({ length: 12 }, (_, i) => ({ Gsid: `co-${pad(i + 1)}`, Name: `Acme Customer ${pad(i + 1)}`, Industry: ACCOUNT_INDUSTRIES[i % 3] }));
+// Company records no send names (ACC-1, the account timeline): a SECOND record named like co-05 (a duplicate company,
+// so the name is ambiguous and the lookup answers with a pick list), and an account nothing was ever sent to. Neither
+// is in any send, so no other fixture figure moves.
+export const DUPLICATE_NAME = "Acme Customer 05";
+export const QUIET_ACCOUNT = { Gsid: "co-14", Name: "Acme Dormant Account", Industry: "Retail" };
+const UNSENT_ACCOUNTS = [{ Gsid: "co-13", Name: DUPLICATE_NAME, Industry: "Finance" }, QUIET_ACCOUNT];
+// The hostileAccount variant's name for co-03 (it has sends on three programs): markup, quotes and a script end, which
+// every page must render inert.
+export const HOSTILE_ACCOUNT_NAME = `<img src=x onerror=alert(1)> "Acme" & 'Co' </script><script>alert(2)</script>`;
 const INTERNAL_PEOPLE = [
   { id: "pe-int-1", email: `ann@${INTERNAL_DOMAIN}` },
   { id: "pe-int-2", email: `raj@${INTERNAL_DOMAIN}` },
@@ -499,6 +508,7 @@ const CONTENT_KINDS = new Set(["content", "lookalike"]);
  *   outsiderFailures number — that many refused participants on the DRAFT program (never selected: no sends), all
  *                   refused this month — more than a sample page holds (F-484's class: a tenant-wide page is theirs)
  *   signals         true — six more Active, documented programs, one per health signal (see SIGNALS)
+ *   hostileAccount  true — co-03's company name is HOSTILE_ACCOUNT_NAME (markup and a script end; ACC-2)
  */
 export function buildTenant(variant = {}) {
   const log = [];
@@ -734,7 +744,8 @@ export function buildTenant(variant = {}) {
   }
   if (variant.noSurveyObject) delete schemas.survey_participant;
 
-  const tables = { email_log_v2: log, ao_emails: joLog, survey_participant: surveyRows, company: variant.massDay ? [...ACCOUNTS, ...BLAST_ACCOUNTS] : ACCOUNTS, ao_participants: [...participants.values()], ao_failed_participants: failedParticipants, ao_participant_source_configuration: sourceRows };
+  const companies = [...ACCOUNTS.map((a) => (variant.hostileAccount && a.Gsid === "co-03" ? { ...a, Name: HOSTILE_ACCOUNT_NAME } : a)), ...UNSENT_ACCOUNTS, ...(variant.massDay ? BLAST_ACCOUNTS : [])];
+  const tables = { email_log_v2: log, ao_emails: joLog, survey_participant: surveyRows, company: companies, ao_participants: [...participants.values()], ao_failed_participants: failedParticipants, ao_participant_source_configuration: sourceRows };
   const byGsid = Object.fromEntries(Object.entries(tables).map(([name, rows]) => [name, new Map(rows.map((r) => /** @type {[string, *]} */ ([r.Gsid, r])))]));
   const token = variant.token ?? { state: "valid", seconds: 3200 };
   return {

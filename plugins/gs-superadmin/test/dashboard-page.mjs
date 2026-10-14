@@ -31,13 +31,13 @@ import { fileURLToPath } from "node:url";
 import { isDeepStrictEqual } from "node:util";
 import vm from "node:vm";
 import { makeTempDir, removeTempDir, writeFiles, runNode } from "../../../test/rig.mjs";
-import { buildPage, pageModel, pageSnapshot, packTable, inlinedSources, pageFileName, aboutSettings, PAGE_BUDGET, TOKENS } from "../scripts/dashboard-page.mjs";
-import { createDashboard, mount, unpackSnapshot, unpackTable, csvCell, csvText, esc, LACKS, NOT_LACKS, NEEDS, COPY_LINES, ENTRY_COMMAND, HEALTH_DAY_OPTIONS, PAGE_MODEL_VERSION, cronWords } from "../scripts/dashboard-runtime.mjs";
+import { buildPage, pageModel, pageSnapshot, packTable, inlinedSources, pageFileName, aboutSettings, PAGE_BUDGET, TOKENS, buildTimelinePage, timelineModel, timelineFileName } from "../scripts/dashboard-page.mjs";
+import { createDashboard, mount, unpackSnapshot, unpackTable, csvCell, csvText, esc, LACKS, NOT_LACKS, NEEDS, COPY_LINES, ENTRY_COMMAND, HEALTH_DAY_OPTIONS, PAGE_MODEL_VERSION, cronWords, createTimeline, shellWord } from "../scripts/dashboard-runtime.mjs";
 import * as engine from "../scripts/engagement-query.mjs";
 import { openSpec, SPEC_DESCRIPTIONS, PRESETS, presetPanels, describeSpec, setPath, validateSpec } from "../scripts/dashboard-spec.mjs";
 import { coveredPath } from "../scripts/dashboard.mjs";
 import { applyGroups } from "../scripts/dashboard-groups.mjs";
-import { kbFiles, FIXTURE_BOUNCE_CATEGORIES } from "./fixtures/engagement/acme-tenant.mjs";
+import { kbFiles, FIXTURE_BOUNCE_CATEGORIES, HOSTILE_ACCOUNT_NAME } from "./fixtures/engagement/acme-tenant.mjs";
 import { HOW_TO_REFRESH_RULED_PARTS } from "./fixtures/engagement/ruled-text.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -1368,6 +1368,134 @@ try {
       isDeepStrictEqual(rowsOf(panelHtml(bare.html, "programs"), "thead")[0], ["Program", .../** @type {any} */ (PRESETS.admin.panels.find((p) => p.id === "programs")).columns.map((id) => engine.metric(id).label)]) && /data-panel="templates" data-type="templates"/.test(paneHtml(bare.html, "templates")) && lacksIn(paneHtml(bare.html, "templates")).length === 0 &&
         [...paneHtml(bare.html, "templates").matchAll(/<tr data-template="([^"]+)">/g)].map((m) => m[1]).join() === engine.templatesView(applyGroups(PULLED, SPEC_DEFAULTS.groups).snapshot, loadPage(bare.html).call(`app.filtersOf(app.defaultState())`)).rows.map((r) => r.templateId).join() &&
         loadPage(bare.html).call(`app.panels.length`) === presetPanels(SPEC_DEFAULTS.pages[0]).length);
+  }
+
+  // ══ The account timeline page and the one-account view (ACC-2) ═══════════
+  {
+    // The committed fixture timeline is the real producer's (the engagement suite writes it through the process).
+    const TL = engine.openTimeline(JSON.parse(readFileSync(join(HERE, "fixtures", "engagement", "timeline-acme.json"), "utf8")));
+    const tlBuild = (timeline, extra = {}) => buildTimelinePage({ timeline, ...SOURCES, slug: "program-health", kb: "acme-prod", ...extra });
+    const TLP = tlBuild(TL);
+    const tlPage = loadPage(TLP.html);
+    const scrub = (html) => markupOf(html).replace(/<script type="application\/json" id="gs-data">[\s\S]*?<\/script>/, "").replace(/<style>[\s\S]*?<\/style>/, "");
+    check("ACC-2 the timeline page is one self-contained file: the engine and the runtime inlined byte for byte, exactly three script elements (the data and the two modules), the file named for the account, and nothing that could reach the network",
+      tlPage.scripts.length === 2 && tlPage.scripts[0].startsWith(SOURCES.engineSource) && tlPage.scripts[1].startsWith(SOURCES.runtimeSource) && (TLP.html.match(/<script/g) ?? []).length === 3 &&
+        TLP.report.file === "account-co-01.html" && timelineFileName("a/b c") === "account-a_b_c.html" && !NO_NETWORK.test(TLP.html) && tlPage.call(`app.model.kind`) === "account-timeline" && TLP.report.megabytes < 1, TLP.report);
+    const model = timelineModel(TL, { slug: "program-health", kb: "acme-prod" });
+    const nodeApp = createTimeline(engine, model);
+    const TL_GOLDEN = GOLDEN_PAGE("timeline");
+    if (WRITE_GOLDEN) writeFileSync(TL_GOLDEN, tlPage.prerender ?? "");
+    check("ACC-2 golden: the timeline page's pre-rendered default view is the runtime's own default view (the page reads without JavaScript) and is byte for byte the committed golden (regenerate with --write-golden)",
+      tlPage.prerender === nodeApp.renderApp(nodeApp.defaultState()) && tlPage.prerender === readFileSync(TL_GOLDEN, "utf8"));
+    const first = TL.dimensions.programs[0].id;
+    /** @type {Array<[string, Object]>} */
+    const states = [["", {}], ["rc=external", { recipientClass: "external" }], [`p=${first}`, { programs: [first] }], [`p=${first}&rc=external`, { programs: [first], recipientClass: "external" }]];
+    check("ACC-2 every filter state the page draws is the engine's view: the page's inlined code, with no Node around it, answers each hash with exactly timelineView over the original timeline",
+      states.every(([hash, f]) => isDeepStrictEqual(tlPage.call(`app.viewOf(app.stateFromHash(${JSON.stringify(hash)}))`), plain(engine.timelineView(TL, { recipientClass: "all", ...f })))) &&
+        tlPage.call(`app.hashOf(app.stateFromHash("rc=external&junk=1"))`) === "rc=external", states.map(([h]) => h));
+    const view = engine.timelineView(TL);
+    const pre = tlPage.prerender;
+    check("ACC-2 the page shows what the plan asks: one lane per program, a mark per email and day sized by its sends and drawn by its state, the summary (sends, programs, the account's open rate against every recipient of the same programs), a program filter and the data-pulled line",
+      (pre.match(/<circle class="gs-svg-mark gs-mark-(opened|unopened|not-delivered)" cx=/g) ?? []).length === view.marks.length + 3 && (pre.match(/<circle class="gs-svg-mark gs-mark-[a-z-]+" cx="6" cy="6"/g) ?? []).length === 3 && view.lanes.every((l) => pre.includes(`>${esc(l.label.program)}<title>`)) &&
+        pre.includes(`<p class="gs-kpi-value">${esc(formatCell("sent", view.total.cells.sent))}`) && pre.includes(esc(formatCell("openRate", view.tenant.cells.openRate))) && pre.includes(`data-f="program"`) && pre.includes(`data-f="internal"`) &&
+        pre.includes(esc(engine.timelinePulledLine(TL).split(" from ")[0])) && rowsOf(panelHtml(pre, "sends")).length === view.marks.length && view.marks.some((m) => m.state === "opened") && view.marks.some((m) => m.state !== "opened"));
+    check("ACC-2 a mark's tooltip names its day, program, step (where the email sits on one step), subject (from the knowledge base) and counts",
+      view.marks.filter((m) => m.label.stepName && m.label.subject).every((m) => pre.includes(esc(`${m.key.day} · ${m.label.program} · step ${m.label.stepOrder}: ${m.label.stepName} · ${m.label.subject} · ${formatCell("sent", m.cells.sent)} sent`))) && view.marks.some((m) => m.label.stepName && m.label.subject));
+    const csv = parseCsv(tlPage.call(`app.csvOf(app.panels[0], app.stateFromHash("rc=external"), null).text`));
+    const ext = engine.timelineView(TL, { recipientClass: "external" });
+    check("ACC-2 Download current view (CSV) is the sends table as it stands: one line per mark of the filtered view, the engine's figures, the file named for the dashboard, the account and when the data was pulled",
+      isDeepStrictEqual(csv[0], ["Day", "Program", "Step", "Email", "Subject", "Sent", "Delivered", "Opened", "Open rate", "Bounced", "Provisional"]) && csv.length === 1 + ext.marks.length &&
+        ext.marks.every((m, i) => csv[i + 1][0] === m.key.day && csv[i + 1][5] === String(m.cells.sent.value) && csv[i + 1][2] === (m.label.stepName ? `step ${m.label.stepOrder}: ${m.label.stepName}` : "")) &&
+        tlPage.call(`app.csvOf(app.panels[0], app.defaultState(), null).filename`) === `program-health-account-co-01-${String(TL.meta.pulledAt).slice(0, 16).replace(/[^0-9T]/g, "")}.csv`, csv.slice(0, 3));
+    check("ACC-2 the About part says how to pull the timeline again: the account's own line by GSID with --kb, and that the page is not live",
+      pre.includes(esc(COPY_LINES.account("program-health", { id: "co-01" }, "acme-prod"))) && pre.includes("This page is not live") && pre.includes("--account-id co-01 --kb acme-prod"));
+    // No contact-level data: no address, person id or send id anywhere the page carries (its markup or its data).
+    check("ACC-2 no contact-level data appears anywhere in the page: its markup and its embedded data hold no address, no person id and no send id",
+      !/[\w.+-]+@[\w-]+\.[\w.]+/.test(scrub(TLP.html) + tlPage.data) && !/"pe-|"par-|log-\d{5}|jo-\d{5}/.test(scrub(TLP.html) + tlPage.data));
+    // Hostile names: the account's, a program's and a subject.
+    const evil = structuredClone(TL);
+    evil.dimensions.account.name = HOSTILE_ACCOUNT_NAME;
+    evil.dimensions.programs[0].name = `"><img src=x onerror=alert(1)>`;
+    evil.dimensions.templates[0].subject = `<script>alert(3)</script> =HYPERLINK("x")`;
+    const evilBuilt = tlBuild(evil);
+    const evilPage = loadPage(evilBuilt.html);
+    const evilMarkup = scrub(evilBuilt.html);
+    check("ACC-2 a hostile account, program or subject renders inert: three script elements still, no angle bracket in the embedded data, no tag a tenant string asked for outside the page's own scripts, each name there as text and read back exactly, and the CSV neutralises a formula",
+      (evilBuilt.html.match(/<script/g) ?? []).length === 3 && !/[<>&]/.test(evilPage.data) && !/<script|<img|onerror=alert/.test(evilMarkup.replace(/&lt;[\s\S]*?&gt;/g, "")) && evilMarkup.includes(esc(HOSTILE_ACCOUNT_NAME)) &&
+        evilBuilt.html.includes(`<title>Account timeline · &lt;img src=x onerror=alert(1)&gt;`) && evilPage.call(`app.timeline.dimensions.account.name`) === HOSTILE_ACCOUNT_NAME &&
+        parseCsv(evilPage.call(`app.csvOf(app.panels[0], app.defaultState(), null).text`)).slice(1).every((r) => !/^[=+\-@]/.test(r[4])), evilMarkup.match(/<(img|script)[\s>].{0,40}/)?.[0]);
+    // F-522: no chart label is shortened without its full text reachable (S4d's tips: hover, focus, click or tap). The
+    // judge reads the markup alone: any SVG <text> showing a proper prefix of a real name must sit in a group whose
+    // data-tip is that whole name, focusable, the full text drawn there; the CSS opens it on hover, focus and is-open.
+    const unesc = (x) => String(x).replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, "&");
+    const cutLabels = (markup, names) => {
+      const found = [];
+      for (const m of markup.matchAll(/<text\b[^>]*>([^<]*)/g)) {
+        const shown = unesc(m[1]).replace(/[…*†]+$/u, "");
+        const name = shown.length >= 4 ? names.find((n) => n !== shown && n.startsWith(shown)) : null;
+        if (!name) continue;
+        const before = markup.slice(0, m.index);
+        const open = before.lastIndexOf("<g ");
+        const group = open > before.lastIndexOf("</g>") ? markup.slice(open, markup.indexOf(">", open) + 1) : "";
+        const reachable = unesc(/data-tip="([^"]*)"/.exec(group)?.[1] ?? "") === name && /tabindex="0"/.test(group) && markup.slice(open, markup.indexOf("</g>", open)).includes('class="gs-svg-full"');
+        found.push({ shown, name, reachable });
+      }
+      return found;
+    };
+    const LONG = (i) => `Acme ${i} Quarterly Renewal Reminder Sequence for Enterprise Accounts`;
+    const longTl = structuredClone(TL);
+    longTl.dimensions.programs.forEach((p, i) => { p.name = LONG(i); });
+    const longTlPre = loadPage(tlBuild(longTl).html).prerender;
+    const longSnap = structuredClone(PULLED);
+    longSnap.dimensions.programs.forEach((p, i) => { p.name = LONG(i); });
+    const barSpec = specWith((s) => { s.pages[0].panels.push({ id: "by-program", tab: "engagement", type: "bar", title: "By program", query: { groupBy: ["program"], metrics: ["sent"] } }); });
+    const barMarkup = markupOf(build(barSpec, engine.openSnapshot(longSnap)).html);
+    const laneCuts = cutLabels(longTlPre, longTl.dimensions.programs.map((p) => p.name));
+    const tickCuts = cutLabels(panelHtml(barMarkup, "by-program") ?? "", longSnap.dimensions.programs.map((p) => p.name));
+    check("F-522 a chart label the renderer shortens keeps its full text reachable the way every tip is: the timeline's lane names and a bar chart's tick labels (a line panel is monthly) each sit in a focusable group whose data-tip is the whole name and whose full text is drawn in the chart, opened by hover, keyboard focus (focus-visible, so a second click or tap closes it) and is-open (the one click, tap and Enter toggle), in a chart that is then a group so the label is exposed; a label short enough is drawn whole in a chart that stays an image",
+      laneCuts.length === longTl.dimensions.programs.length && tickCuts.length >= 2 && [...laneCuts, ...tickCuts].every((c) => c.reachable) &&
+        /\.gs-svg-tipped:hover \.gs-svg-full,\.gs-svg-tipped:focus-visible \.gs-svg-full,\.gs-svg-tipped\.is-open \.gs-svg-full\{visibility:visible\}/.test(TLP.html) && !/\.gs-svg-tipped:focus[ ,{]/.test(TLP.html) &&
+        /<svg class="gs-chart gs-lanes"[^>]* role="group"/.test(longTlPre) && /<svg class="gs-chart"[^>]* role="group"/.test(panelHtml(barMarkup, "by-program") ?? "") && /<svg class="gs-chart gs-lanes"[^>]* role="img"/.test(pre) && /closest\?\.\("\[data-tab\],[^"]*\[data-tip\]"\)/.test(SOURCES.runtimeSource) &&
+        cutLabels(pre, TL.dimensions.programs.map((p) => p.name)).length === 0 && !pre.includes("gs-svg-tipped"),
+      { lanes: laneCuts.filter((c) => !c.reachable).slice(0, 3), ticks: tickCuts.filter((c) => !c.reachable).slice(0, 3), counts: [laneCuts.length, tickCuts.length] });
+    const empty = structuredClone(TL);
+    empty.facts.accountTimeline = [];
+    empty.facts.tenantByProgram = [];
+    empty.dimensions.programs = [];
+    empty.dimensions.templates = [];
+    const emptyPre = loadPage(tlBuild(empty).html).prerender;
+    check("ACC-2 an account nothing reached says so in words, with no empty table, no chart, no filter and no download",
+      emptyPre.includes(esc(`No Journey Orchestrator email reached this account in the last ${TL.meta.window.last}`)) && !/<table|<svg class="gs-chart|data-csv=|data-f="program"/.test(emptyPre));
+    check("ACC-2 the timeline's colours are tokens: its marks and its legend take their fill and stroke from the page's token block, never a literal",
+      /\.gs-mark-opened\{fill:var\(--series-1\)/.test(TLP.html) && /\.gs-mark-not-delivered\{fill:var\(--bg\);stroke:var\(--status-error\)/.test(TLP.html) && !/gs-svg-mark[^"]*" [^>]*(fill|stroke)="#/.test(pre));
+
+    // The one-account view on the admin page (the preset's panels over the fixture snapshot, which pulled accounts).
+    const ACC_P = build(SPEC_DEFAULTS, PULLED);
+    const accP = loadPage(ACC_P.html);
+    const accPanel = presetPanels(SPEC_DEFAULTS.pages[0]).find((p) => p.type === "account");
+    const kept = GOLD.dimensions.accounts[0].key;
+    const chosen = accP.call(`app.renderPanel(app.panels.find((p) => p.type === "account"), app.stateFromHash("a=${kept}"), null)`);
+    check("ACC-2 the one-account view, chosen: the account's months per program are the engine's own over that account's rows alone (never the other or no-company rows), with the line for its days by GSID and --kb beside the sentence that it needs a gs-admin login",
+      !!accPanel && isDeepStrictEqual(panelRun(accP, accPanel.id, `a=${kept}`), plain(runQuery(GOLD, { recipientClass: "all", accounts: [kept], accountBuckets: ["account"] }, accPanel.query))) &&
+        panelRun(accP, accPanel.id, `a=${kept}`).rows.length > 0 && chosen.includes(esc(COPY_LINES.account("program-health", { id: kept }, null))) && chosen.includes("needs a gs-admin login") && chosen.includes("<table"), chosen.slice(0, 300));
+    const unchosen = accP.call(`app.renderPanel(app.panels.find((p) => p.type === "account"), app.defaultState(), null)`);
+    check("ACC-2 the one-account view, nothing chosen: it says how to choose and carries the line by name for any other account, never a table of every account added up, and has nothing to download",
+      /Choose an account with the Account filter above/.test(unchosen) && unchosen.includes(esc(`--account-name ''`)) && !/<table|data-csv=/.test(unchosen) && accP.call(`app.csvOf(app.panels.find((p) => p.type === "account"), app.defaultState(), null)`) === null &&
+        accP.call(`app.run(app.panels.find((p) => p.type === "account"), app.defaultState()).rows.length`) === 0);
+    const viewCsv = parseCsv(accP.call(`app.csvOf(app.panels.find((p) => p.type === "account"), app.stateFromHash("a=${kept}"), null).text`));
+    check("ACC-2 the one-account view's download is the view: the chosen account's rows, the engine's figures", viewCsv.length === 1 + panelRun(accP, accPanel.id, `a=${kept}`).rows.length && viewCsv[0][0] === "Program" && viewCsv[0][2] === "Month");
+    const markup = markupOf(ACC_P.html);
+    const lists = ["most-engaged", "least-engaged", "most-bounced"].map((id) => panelHtml(markup, id) ?? "");
+    check("ACC-2 each account a customer list ranks carries View, which shows it in the one-account view (the click is wired in the one mount), and the account filter is in the bar on that tab",
+      lists.every((l) => (l.match(/data-act="account" data-account="co-\d\d"/g) ?? []).length === rowsOf(l).filter((r) => r[1] !== "").length) && lists.some((l) => l.includes("data-act=\"account\"")) &&
+        /act === "account"/.test(SOURCES.runtimeSource) && /data-f="account"/.test(markup) && accP.call(`app.clean({ ...app.defaultState(), account: "${kept}" }).account`) === kept);
+    const offView = panelHtml(markupOf(build(SPEC_DEFAULTS, OFF).html), accPanel.id) ?? "";
+    check("ACC-2 with accounts not pulled the one-account view shows the snapshot's own reason and how to add them, plus the line for any account by name (the timeline makes its own pull), never an empty list",
+      lacksIn(offView).join() === "accounts-off" && offView.includes(esc(`--account-name ''`)) && !/<table/.test(offView));
+    check("ACC-2 the leaders' page carries no account view (a leader cannot run the line)", !markupOf(EXEC_P.html).includes(`data-type="account"`) && !markupOf(build(SPEC_DEFAULTS, PULLED, "exec").html).includes(`data-type="account"`));
+    check("ACC-2 a copy line built from tenant data is shell-safe: a GSID stays a bare word, anything else is single-quoted with its quotes escaped, and the name line for any account ends at the empty quotes",
+      shellWord("co-01") === "co-01" && shellWord("Acme Corp") === "'Acme Corp'" && shellWord("O'Brien; rm -rf ~") === "'O'\\''Brien; rm -rf ~'" && shellWord("$(x)") === "'$(x)'" &&
+        COPY_LINES.account("ph", { id: "co-01" }, "acme-prod") === `${ENTRY_COMMAND} account ph --account-id co-01 --kb acme-prod` && COPY_LINES.account("ph", { name: null }, null) === `${ENTRY_COMMAND} account ph --account-name ''`);
   }
 } finally {
   removeTempDir(ROOT);

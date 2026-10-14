@@ -243,9 +243,13 @@ export function buildReport(snapshot, opts = {}) {
     if (lists.length) {
       const lowCadence = selection.lowCadencePrograms ?? [];
       parts.push("", `Across programs over the whole window, the accounts this pull kept: ${lists.map((l) => `the ${l.n} ${l.kind.replace("-", " ")}${l.floor > 0 ? ` (at least ${l.floor} delivered)` : ""}${l.per ? ` per ${l.per}` : ""}`).join("; ")}. Possible advocates, possible bad contacts or disengagement, possible bad contacts: never a verdict on a customer.${lowCadence.length ? ` On ${lowCadence.length} program(s) that send about once per contact, the least-engaged signal is at least ${selection.lowCadenceRule?.minDelivered ?? 3} delivered and no open.` : ""}`);
+      // A selective refresh carries the lists the last full pull ranked (F-521): said once, with when they were ranked.
+      const carriedAt = [...new Set(lists.filter((l) => l.carriedFrom && l.rankedAt).map((l) => l.rankedAt))];
+      if (carriedAt.length) parts.push("", `These lists were ranked by the full pull of ${carriedAt.join(" and ")}: this pull continued from an earlier one, kept the accounts those lists held and counted their figures again. A full pull (a dashboard's refresh with --full) ranks every account again.`);
       for (const l of lists) {
         const title = `${l.kind === "most-engaged" ? "Most engaged" : l.kind === "least-engaged" ? "Least engaged" : "Most bounced"} customers${l.per ? ` (${l.per}: ${l.segment})` : ""}`;
-        if (!l.kept.length) { parts.push("", `### ${title}`, "", "_No account met this list's floor._"); continue; }
+        if (l.notRanked) { parts.push("", `### ${title}`, "", `_Not ranked on this pull. ${reasonText(l.notRanked)}_`); continue; }
+        if (!l.kept.length) { parts.push("", `### ${title}`, "", `_No account met this list's floor${l.carriedFrom && l.rankedAt ? ` at the full pull of ${l.rankedAt}` : ""}._`); continue; }
         crossLists++;
         const sort = l.kind === "most-engaged" ? [{ metric: "openRate", dir: "desc" }, { metric: "delivered", dir: "desc" }] : l.kind === "least-engaged" ? [{ metric: "openRate", dir: "asc" }, { metric: "delivered", dir: "desc" }] : [{ metric: "bounced", dir: "desc" }];
         // The lists were selected over EVERY program, so their rows are read over every status (the recipient class

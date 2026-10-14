@@ -98,7 +98,7 @@ skill from the catalog below, e.g.:
 | [`/gs-superadmin:deprecate`](#deprecate-an-asset) | Walk an asset through the deprecation checklist | slash only |
 | [`/gs-superadmin:change-request`](#plan--execute-a-config-change) | Turn a ticket or request into a reviewable, KB-cited implementation plan | slash only |
 | [`/gs-superadmin:email-report`](#report-on-jo-emails--schedules) | Read-only Journey Orchestrator email & schedule reports (4 modes) | slash + natural language |
-| [`/gs-superadmin:email-engagement`](#report-on-email-engagement) | Read-only open-rate and engagement report across JO programs from the tenant's send log, and an engagement dashboard built once and pulled again by hand whenever new numbers are wanted | slash + natural language |
+| [`/gs-superadmin:email-engagement`](#report-on-email-engagement) | Read-only open-rate and engagement report across JO programs from the tenant's send log, an engagement dashboard built once and pulled again by hand whenever new numbers are wanted, and one account's email timeline by day | slash + natural language |
 | [`/gs-superadmin:deps-report`](#tenant-wide-dependency-search) | Tenant-wide "what depends on this object/field/connection?" impact analysis | slash + natural language |
 | [`/gs-superadmin:report-bug`](#report-a-cli-bug-upstream) | Capture a `gs-admin` CLI misbehavior as a vendor-ready bug report | slash only |
 
@@ -322,6 +322,7 @@ that program is the place; this skill is for the comparisons the UI cannot make.
 /gs-superadmin:email-engagement dashboard edit program-health
 /gs-superadmin:email-engagement dashboard list
 /gs-superadmin:email-engagement refresh program-health
+/gs-superadmin:email-engagement account 'Acme Corp' --last 6m
 ```
 
 Set a dashboard up once and pull it again when needed, instead of calling a skill for every
@@ -350,7 +351,9 @@ internal recipients), tabs (Engagement, Health, Templates, About), charts, sorta
 with a CSV download, and an About tab that opens with what the dashboard is and is generated
 from the dashboard's own settings. The header says when the data was pulled and how many
 days ago, and that the pages are not live: they change only when the dashboard is refreshed,
-by hand. Thirteen snapshots are kept beside them.
+by hand. Thirteen snapshots are kept beside them. The admin page also has a one-account view:
+pick an account the customer lists kept (or View beside its name in a list) to see its sends
+month by month, with the line that pulls its days.
 
 **Pulling again.** A refresh checks that the CLI is on the dashboard's tenant before any
 call (a production dashboard is never refreshed from a sandbox), says how many logins a
@@ -456,6 +459,19 @@ which dashboard folder a bare slug means. The pages' own copy lines carry it the
   dashboard opted in, and no internal domain or unsubscribe link values.
 - **A program's failure text** (the masked messages and the "Other" samples) is shown by
   `… health program-health --program <id>` in the terminal, never on a page.
+- **One account's timeline:** `/gs-superadmin:email-engagement account 'Acme Corp'` in a
+  session, or `… account program-health --account-id <GSID> --kb acme-prod` (the line the
+  admin page's one-account view offers to copy). It pulls that account's emails by program
+  and day over the last 90 days (`--last 6m`, up to `24m`, for longer) into a page of its
+  own: one lane per program, a mark per email and day, filled when opened, the account's open
+  rate beside every recipient of the same programs over the same days, a table with its CSV.
+  The account's contacts are added up and never named. A name that matches several accounts,
+  or none exactly, lists the candidates with their GSIDs and pulls nothing (exit 6): give the
+  GSID. With a dashboard named, its internal domains and test accounts decide who is internal,
+  the timeline is checked against the dashboard's own rows of that account, and the files sit
+  in `<slug>/dashboards/<name>/accounts/`; without one, in `<slug>/reports-adhoc/`. It needs
+  a `gs-admin` login, so only an admin can run it; anyone else sees an account only through the
+  page's one-account view.
 
 Everything the dashboard shows is in the workspace: the spec, the snapshots and the pages
 are tenant data under `<slug>/`, git-ignored like the rest of the knowledge base.
