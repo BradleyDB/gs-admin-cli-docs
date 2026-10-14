@@ -45,7 +45,7 @@ import { makeCliHelpers, readJsonFile, writeFileAtomicSync, isMainModule } from 
 import * as engine from "./engagement-query.mjs";
 import { openSpec, SPEC_DESCRIPTIONS, TABS, KNOBBED_PANEL_TYPES, presetPanels, pageDateDefault, pageTemplateContent, panelKnobs, describeSpec, kbDirOfSpecFile } from "./dashboard-spec.mjs";
 import { applyGroups, resolveGroups, programTraits, describeRule, modelNamesOf, UNGROUPED } from "./dashboard-groups.mjs";
-import { createDashboard, LACKS, PAGE_MODEL_VERSION } from "./dashboard-runtime.mjs";
+import { createDashboard, createTimeline, LACKS, PAGE_MODEL_VERSION, TIMELINE_MODEL_VERSION } from "./dashboard-runtime.mjs";
 import { DEFAULT_THEME, validateTheme, tokensCss } from "./dashboard-theme.mjs";
 
 /**
@@ -415,11 +415,32 @@ mark{background:var(--shade);color:inherit;padding:0 2px}
 .gs-foot{margin-top:24px;border-top:1px solid var(--line);padding-top:8px}
 .gs-foot summary{cursor:pointer;color:var(--muted)}
 [hidden]{display:none!important}
+.gs-filters-solo{border-top:1px solid var(--line);border-radius:var(--radius);margin-top:8px}
+.gs-lanes{max-width:1200px}
+.gs-svg-mark{stroke-width:1.5}
+.gs-mark-opened{fill:var(--series-1);stroke:var(--bg)}
+.gs-mark-unopened{fill:var(--series-2);stroke:var(--bg)}
+.gs-mark-not-delivered{fill:var(--bg);stroke:var(--status-error);stroke-width:2}
+.gs-swatch-svg{width:12px;height:12px;margin-right:5px;vertical-align:middle}
 @media (max-width:600px){body{padding:12px}.gs-kpi-value{font-size:22px}.gs-pop{position:fixed;left:12px;right:12px;top:auto;max-width:none;max-height:70vh;overflow:auto}.gs-f-reset{margin-left:0;padding-top:0}}
 @media print{.gs-tabs,.gs-f,.gs-tools,.gs-chips,.gs-fallback summary,.gs-notice-line{display:none}.gs-filters{border:0;background:none;padding:0}.gs-panel{break-inside:avoid}.gs-pane[hidden]{display:none!important}}
 `;
 const STYLE = TOKENS + STYLE_RULES;
 
+/**
+ * The one HTML document every page is (a dashboard page, an account timeline): the style sheet, the pre-rendered
+ * default view inside a disabled fieldset (its controls come alive when the script runs), the embedded data, the
+ * engine's bytes with the hand-over line, then the runtime's bytes and its start line. Nothing else; no file reference.
+ * @param {{title: string, style: string, noscript: string, prerender: string, data: string, engineSource: string, runtimeSource: string}} parts
+ *   title is already escaped for the title element
+ */
+const documentOf = ({ title, style, noscript, prerender, data, engineSource, runtimeSource }) =>
+  `<!doctype html>\n<html lang="en">\n<head>\n<meta charset="utf-8">\n<meta name="viewport" content="width=device-width, initial-scale=1">\n<title>${title}</title>\n<style>${style}</style>\n</head>\n<body>\n` +
+  `<noscript><p>This is the default view. ${noscript}</p></noscript>\n` +
+  `<fieldset id="gs-root" class="gs-root" disabled>${prerender}</fieldset>\n` +
+  `<script type="application/json" id="gs-data">${data}</script>\n` +
+  `<script type="module">\n${engineSource}\n;globalThis.__gsEngine = { ${Object.keys(engine).sort().join(", ")} };\n</script>\n` +
+  `<script type="module">\n${runtimeSource}\n;boot(globalThis);\n</script>\n</body>\n</html>\n`;
 /**
  * Build one page. Pure: the two inlined sources are passed in, and nothing is
  * read or written.
@@ -454,14 +475,7 @@ export function buildPage({ spec, snapshot, pageId, engineSource, runtimeSource,
   const data = jsonForScript(model);
   // The style sheet: the spec's theme (validated; a failing token already replaced) or the default, then the rules.
   const style = spec.theme ? tokensCss(validateTheme(spec.theme).theme) + STYLE_RULES : STYLE;
-  const head = `<!doctype html>\n<html lang="en">\n<head>\n<meta charset="utf-8">\n<meta name="viewport" content="width=device-width, initial-scale=1">\n<title>${escTitle(spec.title)} · ${escTitle(page.title)}</title>\n<style>${style}</style>\n</head>\n<body>\n`;
-  const html =
-    head +
-    `<noscript><p>This is the default view. Filters, tabs and downloads need JavaScript.</p></noscript>\n` +
-    `<fieldset id="gs-root" class="gs-root" disabled>${prerender}</fieldset>\n` +
-    `<script type="application/json" id="gs-data">${data}</script>\n` +
-    `<script type="module">\n${engineSource}\n;globalThis.__gsEngine = { ${Object.keys(engine).sort().join(", ")} };\n</script>\n` +
-    `<script type="module">\n${runtimeSource}\n;boot(globalThis);\n</script>\n</body>\n</html>\n`;
+  const html = documentOf({ title: `${escTitle(spec.title)} · ${escTitle(page.title)}`, style, noscript: "Filters, tabs and downloads need JavaScript.", prerender, data, engineSource, runtimeSource });
   const bytes = { total: bytesOf(html), data: bytesOf(data), engine: bytesOf(engineSource), runtime: bytesOf(runtimeSource), prerender: bytesOf(prerender), style: bytesOf(style) };
   const megabytes = Number((bytes.total / MB).toFixed(2));
   // Every packed table the page embeds, at any depth (the health five sit under facts.health), with its rows and
@@ -490,6 +504,56 @@ export function buildPage({ spec, snapshot, pageId, engineSource, runtimeSource,
   return { html: refused ? null : html, report: { page: page.id, preset: page.preset, file: pageFileName(page.id), written: false, bytes, megabytes, rows, tables, programs: snapshot.dimensions.programs.length, warning, refused } };
 }
 const escTitle = (v) => String(v).replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c]);
+
+// ── The account timeline page (ACC-2) ────────────────────────────────────────
+/** The file an account's timeline page is written to: one per account, the latest pull overwriting the last. */
+export const timelineFileName = (key) => `account-${String(key).replace(/[^A-Za-z0-9._-]/g, "_")}.html`;
+/**
+ * What an account timeline page embeds: the timeline (dimensions and facts packed as a dashboard page packs them),
+ * the look, and where its copy line points (the dashboard's slug and knowledge-base folder, when it has them).
+ * @param {*} timeline a T10AccountTimeline @param {{slug?: ?string, kb?: ?string, theme?: *}} [opts]
+ */
+export function timelineModel(timeline, { slug = null, kb = null, theme = null } = {}) {
+  const tl = engine.openTimeline(timeline);
+  const look = validateTheme(theme ?? null);
+  return {
+    v: TIMELINE_MODEL_VERSION,
+    kind: "account-timeline",
+    slug,
+    kb,
+    look: { custom: !!theme, logo: look.theme.logo, notes: look.notes, derivedDark: !!theme && look.derivedDark },
+    timeline: { ...tl, dimensions: packAll(tl.dimensions), facts: packAll(tl.facts) },
+  };
+}
+/**
+ * Build one account timeline page (ACC-2): self-contained, no request anywhere, every tenant string escaped, the
+ * default view pre-rendered by the runtime it inlines, the engine inlined byte for byte (the page recomputes a
+ * filtered view with timelineView). Pure: the two inlined sources are passed in, and nothing is read or written.
+ * @param {{timeline: *, engineSource: string, runtimeSource: string, slug?: ?string, kb?: ?string, theme?: *, budget?: {warnBytes: number, refuseExecBytes: number}}} args
+ * @returns {{html: string, report: {file: string, bytes: Object<string, number>, megabytes: number, rows: Object<string, number>, warning: ?string}}}
+ */
+export function buildTimelinePage({ timeline, engineSource, runtimeSource, slug = null, kb = null, theme = null, budget = PAGE_BUDGET }) {
+  for (const [name, source] of [["engagement-query.mjs", engineSource], ["dashboard-runtime.mjs", runtimeSource]]) {
+    if (/<\/script|<!--/i.test(source)) throw new Error(`account timeline page: ${name} holds text that would end the page's script element; it cannot be inlined as it is`);
+  }
+  const model = timelineModel(timeline, { slug, kb, theme });
+  let prerender;
+  try {
+    const app = createTimeline(engine, model);
+    prerender = app.renderApp(app.defaultState());
+  } catch (e) {
+    throw new Error(`account timeline page: ${e instanceof Error ? e.message : e}`);
+  }
+  const data = jsonForScript(model);
+  const style = theme ? tokensCss(validateTheme(theme).theme) + STYLE_RULES : STYLE;
+  const name = timeline.dimensions.account.name ?? timeline.dimensions.account.key;
+  const html = documentOf({ title: `Account timeline · ${escTitle(name)}`, style, noscript: "Filters and the download need JavaScript.", prerender, data, engineSource, runtimeSource });
+  const bytes = { total: bytesOf(html), data: bytesOf(data), engine: bytesOf(engineSource), runtime: bytesOf(runtimeSource), prerender: bytesOf(prerender), style: bytesOf(style) };
+  const megabytes = Number((bytes.total / MB).toFixed(2));
+  const warning = bytes.total > budget.warnBytes ? `the page is ${megabytes} MB, over the ${budget.warnBytes / MB} MB budget: it will be slow to open. Pull fewer days (--last).` : null;
+  const rows = { accountTimeline: timeline.facts.accountTimeline.length, tenantByProgram: timeline.facts.tenantByProgram.length };
+  return { html, report: { file: timelineFileName(timeline.dimensions.account.key), bytes, megabytes, rows, warning } };
+}
 
 /** The two files every page inlines, exactly as they are on disk. */
 export const inlinedSources = () => ({

@@ -30,7 +30,7 @@ import { join, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { isDeepStrictEqual } from "node:util";
 import { makeTempDir, removeTempDir, writeFiles, runNode } from "../../../test/rig.mjs";
-import { COSTS, COST_KINDS, ADAPTER_MAPPING, QUESTIONS, CLOSING_ASK, CLOSING_OPTIONS, askText, defaultAnswer, composeAnswer, defaultGroupRules, categoryCostText, changeCost, coveredPath, computeDelta, adapterParams, pullSecondsAfter, loginsFor, LOGIN_SECONDS, EXIT, KEEP_SNAPSHOTS, LOCK_STALE_MS, LOCK_FILE, STATE_FILE, SNAPSHOTS_DIR, PREVIEW_DIR, SUGGESTION_FILE } from "../scripts/dashboard.mjs";
+import { COSTS, COST_KINDS, ADAPTER_MAPPING, QUESTIONS, CLOSING_ASK, CLOSING_OPTIONS, askText, defaultAnswer, composeAnswer, defaultGroupRules, categoryCostText, changeCost, coveredPath, computeDelta, adapterParams, pullSecondsAfter, loginsFor, LOGIN_SECONDS, EXIT, KEEP_SNAPSHOTS, LOCK_STALE_MS, LOCK_FILE, STATE_FILE, SNAPSHOTS_DIR, PREVIEW_DIR, SUGGESTION_FILE, ACCOUNTS_DIR } from "../scripts/dashboard.mjs";
 import { resolveGroups, programTraits } from "../scripts/dashboard-groups.mjs";
 import { SPEC_DESCRIPTIONS, defaultSpec, openSpec, DEFAULT_ACCOUNT_LISTS } from "../scripts/dashboard-spec.mjs";
 import { HOW_TO_REFRESH_RULED } from "./fixtures/engagement/ruled-text.mjs";
@@ -504,6 +504,40 @@ try {
     again.code === EXIT.partial && againTwice.code === EXIT.partial && / in 2 runs so far/.test(againTwice.json?.error ?? "") && !/ in 2 runs so far/.test(again.json?.error ?? "") && recurringStatus?.failed?.[0]?.runs === 2 && answeredAtLast.code === 0 && !existsSync(join(dash(), STATE_FILE)),
     [again.json?.error, againTwice.json?.error, recurringStatus?.failed]);
 
+  // ══ An account's timeline (ACC-2): the dashboard's settings, its latest snapshot, a page of its own ══
+  {
+    const latest = readJson(join(dash(), SNAPSHOTS_DIR, snapshots().at(-1)));
+    const spec = openSpec(readJson(specFile()));
+    const kept = latest.dimensions.accounts.map((a) => a.key).find((k) => !spec.sources[0].params.testAccounts.includes(k) && latest.facts.byAccount.some((r) => r.accountKey === k && r.month === "2026-07" && r.sent > 0));
+    const before = argvLines().length;
+    const acct = run("account", [SLUG, "--account-id", kept]);
+    const made = argvLines().slice(before);
+    const page = join(dash(), ACCOUNTS_DIR, `account-${kept}.html`);
+    const matches = acct.json?.reconciliation?.find((c) => c.id === "matches-dashboard");
+    check("ACC-2 account <slug>: the tenant checked first (whoami), the adapter's account-history pull with the dashboard's recipient classes, a timeline file and a self-contained page beside the dashboard's pages, reconciled against its latest snapshot by recipient class — closed months equal",
+      acct.code === 0 && acct.json.mode === "account" && acct.json.account.key === kept && made[0] === "whoami" && existsSync(page) && existsSync(page.replace(/[.]html$/, ".json")) && acct.json.againstSnapshot === snapshots().at(-1) &&
+        matches?.ok === true && matches.compared > 0 && acct.json.against?.basis === "class" && isDeepStrictEqual(readJson(page.replace(/[.]html$/, ".json")).meta.params.internalDomains, spec.sources[0].params.internalDomains) &&
+        made.every((a) => a === "whoami" || /^--json (rp (run|schema)|jo p (list|describe)) /.test(a)) && readFileSync(page, "utf8").includes(`dashboard.mjs account ${SLUG} --account-id ${kept} --kb acme-prod`),
+      [kept, acct.json ?? acct.stderr.slice(-400)]);
+    check("ACC-2 the timeline page takes the dashboard's look (its theme's tokens and logo, when the dashboard has them) and names no contact", !spec.theme || (readFileSync(page, "utf8").includes(spec.theme.logo ?? "") && !/[\w.+-]+@[\w-]+\.[\w.]+/.test(readFileSync(page, "utf8").split('<script type="module">')[0])));
+    const pick = run("account", [SLUG, "--account-name", "Acme Customer 05"]);
+    check("ACC-2 a name two accounts share answers with a pick list and its own exit code: each candidate's GSID and sends over the same days, nothing pulled and no page written",
+      pick.code === EXIT["needs-pick"] && pick.json?.status === "needs-pick" && isDeepStrictEqual(pick.json.resolution?.candidates.map((c) => c.key), ["co-05", "co-13"]) && /pick one by its GSID/.test(pick.json.error) &&
+        !existsSync(join(dash(), ACCOUNTS_DIR, "account-co-13.html")), pick.json);
+    const flagged = run("account", [SLUG, "--account-id", kept, "--internal-domain", "other.example"]);
+    check("ACC-2 with a dashboard named its settings decide who is internal: a recipient-class flag beside it is refused, naming why", flagged.code === 1 && /decides who is internal/.test(flagged.json?.error ?? ""), flagged.json);
+    const beforeWrong = argvLines().length;
+    const wrongTenant = run("account", [SLUG, "--account-id", kept], { tenant: { ...TENANT, baseUrl: "https://acme--sbx.gainsightcloud.com" } });
+    check("ACC-2 the wrong tenant is refused before any tenant call, with its own exit code", wrongTenant.code === EXIT["wrong-tenant"] && argvLines().slice(beforeWrong).every((a) => a === "whoami"), wrongTenant.json);
+    const stopped = run("account", [SLUG, "--account-id", kept, "--last", "6m"], { env: { FAKE_FAULTS: JSON.stringify([{ match: "rp run", kind: "auth", skip: 2, times: 9999 }]) } });
+    const continued = run("account", [SLUG, "--account-id", kept, "--last", "6m"]);
+    check("ACC-2 a timeline pull the login runs out under stops with exit 3 and the same line continues it after a login, reusing what it had",
+      stopped.code === EXIT["token-expired"] && /run gs-admin login, then run the same line again/.test(stopped.json?.error ?? "") && continued.code === 0 && continued.json.calls.reused > 0 && continued.json.window.last === "6 months", [stopped.json, continued.json?.calls]);
+    const adhoc = run("account", ["--account-id", "co-14", "--internal-domain", "acme.com"]);
+    check("ACC-2 with no dashboard named the flags decide, the knowledge base's tenant is checked, nothing is reconciled, and the files go to reports-adhoc; an account nothing reached is a timeline of nothing, said",
+      adhoc.code === 0 && adhoc.json.slug === null && adhoc.json.sent === 0 && adhoc.json.against === null && existsSync(join(KB, "reports-adhoc", "account-co-14.html")) && /No Journey Orchestrator email reached this account/.test(readFileSync(join(KB, "reports-adhoc", "account-co-14.html"), "utf8")), adhoc.json ?? adhoc.stderr.slice(-300));
+  }
+
   // ══ An edit of the saved dashboard (F-516), the draft take-over, list, report, health, export and import ══
   const edit = run("new", [SLUG]);
   const asBen = common.slice(0, -2);
@@ -599,10 +633,11 @@ try {
     const prerender = pageText("admin").replace(/<script[\s\S]*?<\/script>/g, "");
     const lines = [...new Set([...prerender.matchAll(/data-copy="([^"]*)"/g)].map((m) => m[1].replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&")))];
     const fromWorkspace = (argv) => { const x = runNode(SCRIPT, [...argv, "--bin", FAKE, "--today", TODAY, "--by", "ana"], { cwd: WS, env: { ...process.env, FAKE_STATE: STATE, FAKE_TENANT: JSON.stringify(TENANT) } }); let json = null; try { json = JSON.parse(x.stdout); } catch { /* a stack */ } return { code: x.status, json, stderr: x.stderr }; };
-    const asArgv = (line) => line.replace(/^node \.gs-superadmin\/plugin\/scripts\/dashboard\.mjs /, "").replace("<program id>", "p-onboard").replace(/=$/, '=["example.com"]').split(" ");
+    // A fill line is run with its value put where the line says (a change line's value after `=`; the account line's name between its empty quotes, ACC-2).
+    const asArgv = (line) => line.replace(/^node \.gs-superadmin\/plugin\/scripts\/dashboard\.mjs /, "").replace("<program id>", "p-onboard").replace(/=$/, '=["example.com"]').split(" ").map((t, i, all) => (t === "''" && all[i - 1] === "--account-name" ? "Acme Customer 01" : t));
     const results = lines.map((line) => { const argv = asArgv(line); return { line, ...fromWorkspace(argv[0] === "change" ? [...argv, "--dry-run"] : argv) }; });
     const bare = fromWorkspace(asArgv(lines.find((l) => / refresh /.test(l))).filter((a, i, all) => !(a === "--kb" || all[i - 1] === "--kb")));
-    check("F-503 every copy line the admin page emits (the How to refresh line, every notice's change line, the health line) carries --kb <folder> and runs as drawn from the workspace folder with two tenant KB folders present (a change line as a dry run, the refresh and health lines for real); the same refresh line without --kb is refused naming the two folders, as the tester saw",
+    check("F-503 every copy line the admin page emits (the How to refresh line, every notice's change line, the health line, the account timeline's line) carries --kb <folder> and runs as drawn from the workspace folder with two tenant KB folders present (a change line as a dry run, the refresh and health lines for real); the same refresh line without --kb is refused naming the two folders, as the tester saw",
       lines.length >= 1 && lines.some((l) => / refresh acme-health --kb acme-prod$/.test(l)) && lines.every((l) => / --kb acme-prod$/.test(l)) && results.every((x) => x.code === 0 && x.json?.ok === true) && bare.code === 1 && /holds 2 tenant KB folders \(acme-prod, acme-sbx\)/.test(bare.json?.error ?? ""),
       results.map((x) => [x.line, x.code, x.json?.error ?? x.stderr?.slice(-200)]));
     rmSync(join(WS, "acme-sbx"), { recursive: true, force: true });

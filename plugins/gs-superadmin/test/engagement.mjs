@@ -36,6 +36,7 @@ import { STEP_REMAINDER,
   monthsBetween, ENGAGEMENT_READ_PATHS, joEngagementAdapter, readFailureReasons, healthDayWindow, HEALTH_PARTS, pickSchedule, isOneRunWindow, schemaFlags, NO_SCHEDULE,
   SAMPLES_PER_PROGRAM, SAMPLE_PROGRAM_CAP, SAMPLE_PAGE, MAX_PAGES, sampleTargets, matchCategory,
   templatesReferenced, templateGap, templateContentOf, TEMPLATE_GAP_LIST_FILE, TEMPLATE_GAP_STALE_FILE, TEMPLATE_GAP_KEYS_FILE,
+  resolveAccountParams, reduceAccountTimeline, loadAccountRun, parseLast, accountResolutionText,
 } from "../scripts/engagement.mjs";
 import { readLinkTracking } from "../scripts/doc-lib.mjs";
 // The T-10 read floor and the tables the adapter counts with live in the query
@@ -45,7 +46,7 @@ import {
   NON_CONTENT_LINK_RULES, SEND_MEASURES, T10_SCHEMA_VERSION, MASK_RULES, MASK_PROTECTED, MASK_MAX_LENGTH, maskMessage, healthAvailability, programHealth, HEALTH_LISTS, judgeHealth, dueDaysBefore, cronLastDue, validateCategories, FAILURE_CATEGORIES, STEP_FAILURE_CATEGORIES, QUIET_DUE_DAYS_DEFAULT, caveatText, FAILURE_KINDS, kindOf,
   LINK_READINGS, templateAvailability,
 } from "../scripts/engagement-query.mjs";
-import { buildTenant, answer, applyFaults, kbFiles, templatePayload, TEMPLATES_DOMAIN, FAULT_TEXT, OWN_SITE_UNSUBSCRIBE, BOUNCE_REASONS, FAILURE_REASONS, NULL_EMAIL_REASON, NULL_EMAIL_REASONS, UNKNOWN_REASON, UNKNOWN_STEP_REASON, FIXTURE_BOUNCE_CATEGORIES, FIXTURE_BOUNCE_KIND_CATEGORY, ACCOUNT_INDUSTRIES } from "./fixtures/engagement/acme-tenant.mjs";
+import { buildTenant, answer, applyFaults, kbFiles, templatePayload, TEMPLATES_DOMAIN, FAULT_TEXT, OWN_SITE_UNSUBSCRIBE, BOUNCE_REASONS, FAILURE_REASONS, NULL_EMAIL_REASON, NULL_EMAIL_REASONS, UNKNOWN_REASON, UNKNOWN_STEP_REASON, FIXTURE_BOUNCE_CATEGORIES, FIXTURE_BOUNCE_KIND_CATEGORY, ACCOUNT_INDUSTRIES, DUPLICATE_NAME, QUIET_ACCOUNT, HOSTILE_ACCOUNT_NAME } from "./fixtures/engagement/acme-tenant.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const PLUGIN = join(HERE, "..");
@@ -58,6 +59,10 @@ const WRITE_GOLDEN = process.argv.includes("--write-golden");
 
 let failures = 0;
 const ran = [];
+/** Whether calling fn throws an error whose message matches re. */
+const throwsMsg = (fn, re) => {
+  try { fn(); return false; } catch (e) { return re.test(e instanceof Error ? e.message : String(e)); }
+};
 function check(label, cond, detail) {
   ran.push(label);
   console.log(`${cond ? "PASS" : "FAIL"}  ${label}`);
@@ -1999,6 +2004,204 @@ try {
     check("templatesReferenced: the selected programs' rows over the window only, a send with no template id left out, and the latest month with a send per template", isDeepStrictEqual(ref.referenced, ["tpl-welcome"]) && ref.lastSend.get("tpl-welcome") === "2026-07", [ref.referenced, [...ref.lastSend]]);
   }
 
+  // ══ The account timeline (ACC-1): one account by day, over the same fictional tenant ══
+  // The oracle counts the tenant's own rows for the account (no query, no reducer); the timeline must equal it.
+  {
+    const TL_GOLDEN = join(HERE, "fixtures", "engagement", "timeline-acme.json");
+    const pullAccount = ({ variant = {}, raw = {}, faults = [], kb = true, runDir = null, against = null, now = undefined } = {}) => {
+      const tenant = buildTenant(variant);
+      const dir = runDir ?? join(ROOT, `acct-${++runSeq}`);
+      const argv = [];
+      const counts = {};
+      const transport = {
+        name: "fake", concurrency: 1,
+        run(req) {
+          argv.push(req.argv);
+          const r = applyFaults(faults, counts, req.argv) ?? answer(req.argv, tenant);
+          return { ok: r.status === 0, status: r.status, stdout: r.stdout, stderr: r.stderr ?? "", timedOut: false, ms: 0 };
+        },
+      };
+      const params = resolveAccountParams({ today: TODAY, pulledAt: PULLED_AT, internalDomains: ["acme.com"], ...raw });
+      mkdirSync(dir, { recursive: true });
+      if (!existsSync(join(dir, "run.json"))) writeFileSync(join(dir, "run.json"), JSON.stringify({ params }));
+      let summary = null;
+      let error = null;
+      try {
+        summary = fetchEngagement({ params, runDir: dir, transport, gate: GATE, kbDir: kb === true ? KB_DIR : kb || null, phase: "all", now });
+      } catch (e) {
+        error = e;
+      }
+      const timeline = summary?.status === "ok" && summary.resolution?.status === "resolved" ? reduceAccountTimeline(loadAccountRun(dir, { against, cliVersion: "fixture", pluginVersion: "fixture" })) : null;
+      return { tenant, params, summary, error, timeline, argv, runDir: dir };
+    };
+    const MEASURE_OF = { sent: () => true, delivered: (r) => r.IsSent === "YES" && r.IsBounced !== "YES", bounced: (r) => r.IsBounced === "YES", rejected: (r) => r.IsRejected === "YES", unsubscribed: (r) => r.IsUnsubscribed === "YES", spamComplaints: (r) => r.IsSpam === "YES", failed: (r) => r.IsBounced === "YES" || r.IsRejected === "YES", opened: (r) => r.IsOpened === "YES" };
+    const rowKey = (r) => JSON.stringify([r.day ?? "", r.programId, String(r.templateId), r.recipientClass]);
+    const order = (rows) => [...rows].sort((a, b) => (rowKey(a) < rowKey(b) ? -1 : rowKey(a) > rowKey(b) ? 1 : 0));
+    const inWindow = (r, w) => r.ExecutedDate.slice(0, 10) >= w.start && r.ExecutedDate.slice(0, 10) < w.endExclusive;
+    const jo = (r) => r.Source === "Advanced Outreach" && r.AddressType === "To";
+    /** The account's rows, counted straight: program × template × day × class, a deleted program's left out. */
+    const oracleTimeline = (tenant, key, w, { testAccount = false, domains = ["acme.com"] } = {}) => {
+      const out = new Map();
+      for (const r of tenant.tables.email_log_v2) {
+        if (r.GsCompanyId !== key || !jo(r) || !inWindow(r, w) || !tenant.describable.has(r.SourceId)) continue;
+        const cls = testAccount || domains.some((d) => r.LowerCaseEmailId.endsWith(`@${d}`)) ? "internal" : "external";
+        const k = JSON.stringify([r.SourceId, r.EmailTemplateId, r.ExecutedDate.slice(0, 10), cls]);
+        if (!out.has(k)) out.set(k, { programId: r.SourceId, templateId: r.EmailTemplateId, day: r.ExecutedDate.slice(0, 10), recipientClass: cls, ...Object.fromEntries(Object.keys(MEASURE_OF).map((m) => [m, 0])) });
+        for (const [m, is] of Object.entries(MEASURE_OF)) if (is(r)) out.get(k)[m]++;
+      }
+      return order([...out.values()]);
+    };
+    /** Every recipient of the given programs over the window, by class, counted straight. */
+    const oracleTenant = (tenant, programs, w, { domains = ["acme.com"], testAccounts = [] } = {}) => {
+      const out = new Map();
+      for (const r of tenant.tables.email_log_v2) {
+        if (!programs.has(r.SourceId) || !jo(r) || !inWindow(r, w)) continue;
+        const cls = testAccounts.includes(r.GsCompanyId) || domains.some((d) => r.LowerCaseEmailId.endsWith(`@${d}`)) ? "internal" : "external";
+        const k = JSON.stringify([r.SourceId, cls]);
+        if (!out.has(k)) out.set(k, { programId: r.SourceId, recipientClass: cls, ...Object.fromEntries(Object.keys(MEASURE_OF).map((m) => [m, 0])) });
+        for (const [m, is] of Object.entries(MEASURE_OF)) if (is(r)) out.get(k)[m]++;
+      }
+      return [...out.values()].sort((a, b) => a.programId.localeCompare(b.programId, "en") || a.recipientClass.localeCompare(b.recipientClass, "en"));
+    };
+    const byPair = (rows) => [...rows].sort((a, b) => a.programId.localeCompare(b.programId, "en") || a.recipientClass.localeCompare(b.recipientClass, "en"));
+    const rpArgs = (argv) => argv.filter((a) => a[1] === "rp" && a[2] === "run");
+    const objectOf = (a) => a[a.indexOf("--object") + 1];
+    const whereOf = (a) => (a.includes("--where-filters") ? JSON.parse(a[a.indexOf("--where-filters") + 1]).conditions : []);
+
+    const one = pullAccount({ raw: { account: { name: "Acme Customer 01" } } });
+    const w = one.params.window;
+    check("ACC-1 the account is found by its exact name: one call on the company object by Name EQ, then its sends by program, email and day, equal to a straight count of the tenant's rows for that account (the internal class by domain)",
+      one.summary?.resolution?.status === "resolved" && one.summary.resolution.match === "EQ" && one.timeline?.dimensions.account.key === "co-01" &&
+        rpArgs(one.argv).filter((a) => objectOf(a) === "company").length === 1 && whereOf(rpArgs(one.argv).find((a) => objectOf(a) === "company")).some((c) => c.leftOperand.fieldName === "Name" && c.operator === "EQ" && c.rightOperand.value === "Acme Customer 01") &&
+        isDeepStrictEqual(order(one.timeline.facts.accountTimeline), oracleTimeline(one.tenant, "co-01", w)) && one.timeline.facts.accountTimeline.some((r) => r.recipientClass === "internal") && one.timeline.facts.accountTimeline.some((r) => r.recipientClass === "external"),
+      [one.summary?.resolution, one.error?.message]);
+    const progs = new Set(one.timeline?.dimensions.programs.map((p) => p.id) ?? []);
+    check("ACC-1 the comparison is every recipient of the same programs over the same days, by class, equal to a straight count (and only those programs)",
+      progs.size > 1 && isDeepStrictEqual(byPair(one.timeline.facts.tenantByProgram), oracleTenant(one.tenant, progs, w)));
+    check("ACC-1 the lookback: 90 days unless asked, counted back from the pull's day inclusive; months by the calendar; at most 24 months; anything else refused",
+      isDeepStrictEqual(parseLast("90d", "2026-09-15"), { last: "90 days", days: 90, start: "2026-06-18", end: "2026-09-15", endExclusive: "2026-09-16" }) && isDeepStrictEqual(w, parseLast("90d", TODAY)) &&
+        parseLast("3m", "2026-09-15")?.start === "2026-06-16" && parseLast("1d", "2026-09-15")?.start === "2026-09-15" && parseLast("24m", "2026-09-15")?.start === "2024-09-16" &&
+        [parseLast("25m", "2026-09-15"), parseLast("731d", "2026-09-15"), parseLast("0d", "2026-09-15"), parseLast("90", "2026-09-15"), parseLast("abc", "2026-09-15")].every((x) => x === null) &&
+        throwsMsg(() => resolveAccountParams({ today: TODAY, account: { name: "x" }, last: "25m" }), /at most 24 months/) && throwsMsg(() => resolveAccountParams({ today: TODAY, account: {} }), /one of the two/) &&
+        throwsMsg(() => resolveAccountParams({ today: TODAY, account: { id: "co-01", name: "x" } }), /one of the two/) && throwsMsg(() => resolveAccountParams({ today: TODAY, account: { id: "co 01;rm" } }), /--account-id takes a company GSID/) && throwsMsg(() => resolveAccountParams({ today: TODAY, account: { id: "--kb" } }), /--account-id takes a company GSID/));
+    // A name two companies share (a duplicate record): a pick list, never a guess.
+    const twin = pullAccount({ raw: { account: { name: DUPLICATE_NAME } } });
+    const co05 = oracleTimeline(twin.tenant, "co-05", w).reduce((n, r) => n + r.sent, 0);
+    check("ACC-1 a name several accounts share is a pick list, never a guess: nothing about the account is pulled, and each candidate comes with its GSID and its sends over the same days",
+      twin.summary?.status === "ok" && twin.summary.resolution?.status === "pick" && twin.summary.resolution.match === "EQ" && twin.timeline === null &&
+        isDeepStrictEqual(twin.summary.resolution.candidates, [{ key: "co-05", name: DUPLICATE_NAME, sent: co05 }, { key: "co-13", name: DUPLICATE_NAME, sent: 0 }]) && co05 > 0 &&
+        !rpArgs(twin.argv).some((a) => whereOf(a).some((c) => c.leftOperand.fieldName === "GsCompanyId" && c.operator === "EQ")) && /2 accounts are named/.test(accountResolutionText(twin.summary.resolution) ?? ""),
+      twin.summary?.resolution);
+    const near = pullAccount({ raw: { account: { name: "Dormant" } } });
+    check("ACC-1 a name no account has exactly is looked up again by CONTAINS, and even ONE match there is a pick list, not the account",
+      near.summary?.resolution?.status === "pick" && near.summary.resolution.match === "CONTAINS" && isDeepStrictEqual(near.summary.resolution.candidates.map((c) => c.key), [QUIET_ACCOUNT.Gsid]) &&
+        rpArgs(near.argv).filter((a) => objectOf(a) === "company").map((a) => whereOf(a)[0].operator).join() === "EQ,CONTAINS" && /no account is named exactly/.test(accountResolutionText(near.summary.resolution) ?? ""), near.summary?.resolution);
+    const nobody = pullAccount({ raw: { account: { name: "Nobody Here" } } });
+    const noId = pullAccount({ raw: { account: { id: "co-99" } } });
+    check("ACC-1 an account that does not exist is said, by name and by GSID, and nothing is pulled",
+      nobody.summary?.resolution?.status === "not-found" && noId.summary?.resolution?.status === "not-found" && noId.summary.resolution.by === "id" && rpArgs(noId.argv).every((a) => objectOf(a) === "company") && /no account has the GSID co-99/.test(accountResolutionText(noId.summary.resolution) ?? ""));
+    const quiet = pullAccount({ raw: { account: { id: QUIET_ACCOUNT.Gsid } } });
+    check("ACC-1 an account with no sends in the window: a timeline with no rows and no programs, its checks hold over nothing, and no comparison call is made (there is no program to compare)",
+      quiet.timeline !== null && quiet.timeline.facts.accountTimeline.length === 0 && quiet.timeline.dimensions.programs.length === 0 && quiet.timeline.facts.tenantByProgram.length === 0 && quiet.timeline.reconciliation.ok === true &&
+        !rpArgs(quiet.argv).some((a) => a.join(" ").includes('"operator":"IN"') && objectOf(a) === "email_log_v2" && whereOf(a).some((c) => c.leftOperand.fieldName === "SourceId")), quiet.timeline?.reconciliation);
+    // The class toggle: the account named as a test account is internal whole.
+    const test = pullAccount({ raw: { account: { id: "co-01" }, testAccounts: ["co-01"] } });
+    check("ACC-1 an account named as a test account is internal whole: every row of it is internal, no domain call is made for it, the comparison's test classes are read (IN and the overlap with each domain), and a caveat says so",
+      test.timeline?.dimensions.account.testAccount === true && isDeepStrictEqual(order(test.timeline.facts.accountTimeline), oracleTimeline(test.tenant, "co-01", w, { testAccount: true })) && test.timeline.facts.accountTimeline.every((r) => r.recipientClass === "internal") &&
+        rpArgs(test.argv).filter((a) => whereOf(a).some((c) => c.leftOperand.fieldName === "GsCompanyId" && c.operator === "EQ")).length === 1 &&
+        isDeepStrictEqual(byPair(test.timeline.facts.tenantByProgram), oracleTenant(test.tenant, new Set(test.timeline.dimensions.programs.map((p) => p.id)), w, { testAccounts: ["co-01"] })) &&
+        test.timeline.caveats.some((c) => c.id === "timeline-test-account"));
+    const noDomain = pullAccount({ raw: { account: { id: "co-01" }, internalDomains: [] } });
+    check("ACC-1 with no internal domain named every row is external and a caveat says the classes are not configured",
+      noDomain.timeline?.facts.accountTimeline.every((r) => r.recipientClass === "external") && noDomain.timeline.caveats.some((c) => c.id === "recipient-class-not-configured") &&
+        isDeepStrictEqual(order(noDomain.timeline.facts.accountTimeline), oracleTimeline(noDomain.tenant, "co-01", w, { domains: [] })));
+    const year = pullAccount({ raw: { account: { id: "co-01" }, last: "12m" } });
+    const goneSent = year.tenant.tables.email_log_v2.filter((r) => r.GsCompanyId === "co-01" && r.SourceId === "p-gone" && jo(r) && inWindow(r, year.params.window)).length;
+    check("ACC-1 a deleted program's sends to the account (the list lacks it, and describe says not found) are left out, counted and said; an unlisted program the describe finds keeps its lane",
+      goneSent > 0 && isDeepStrictEqual(year.timeline?.honesty.excluded.deletedPrograms, { programs: 1, sent: goneSent }) && year.timeline.caveats.some((c) => c.id === "deleted-programs-excluded") &&
+        !year.timeline.facts.accountTimeline.some((r) => r.programId === "p-gone") && year.timeline.dimensions.programs.some((p) => p.id === "p-unlisted" && p.name === "Acme Unlisted Program") &&
+        isDeepStrictEqual(order(year.timeline.facts.accountTimeline), oracleTimeline(year.tenant, "co-01", year.params.window)));
+    check("ACC-1 subjects and step names come from the knowledge base (the step only where the template sits on one step), and without a KB the timeline says so and still counts every send",
+      one.timeline.dimensions.templates.some((t) => t.subject && t.subjectAsOf && t.uses.some((u) => u.stepCount === 1 && u.stepName)) && one.timeline.meta.templates.subjects === true &&
+        (() => { const bare = pullAccount({ raw: { account: { id: "co-01" } }, kb: false }); return bare.timeline.meta.templates.reason === "no-kb" && bare.timeline.dimensions.templates.every((t) => t.subject === null && t.uses.every((u) => u.stepCount === 0)) && isDeepStrictEqual(bare.timeline.facts, one.timeline.facts); })());
+    // Splits: a page this small cuts the account's day call by day, then by flag, then by the address rung.
+    const small = pullAccount({ raw: { account: { id: "co-01" }, pageSize: 2 } });
+    check("ACC-1 a full page is split (by day, by flag, by a character of the address) and the timeline is the same as unsplit",
+      small.summary?.calls.split > 0 && isDeepStrictEqual(small.timeline?.facts, (() => { const t = pullAccount({ raw: { account: { id: "co-01" } } }).timeline; return t?.facts; })()), small.summary?.calls);
+    // The token: a pull the login runs out under stops cleanly and the same run directory continues.
+    const dir = join(ROOT, "acct-resume");
+    const stoppedAcc = pullAccount({ raw: { account: { name: "Acme Customer 01" } }, runDir: dir, faults: [{ match: "rp run", kind: "auth", skip: 2, times: 9999 }] });
+    const resumedAcc = pullAccount({ raw: { account: { name: "Acme Customer 01" } }, runDir: dir });
+    check("ACC-1 a pull the token dies under stops cleanly (token-expired, no timeline) and the same run continues after a login, reusing what it had, to the same timeline",
+      stoppedAcc.summary?.status === "token-expired" && stoppedAcc.timeline === null && resumedAcc.summary?.status === "ok" && resumedAcc.summary.calls.reused >= 2 && isDeepStrictEqual(resumedAcc.timeline?.facts, one.timeline.facts), [stoppedAcc.summary?.status, resumedAcc.summary?.calls]);
+    check("ACC-1 reads only, through the gate: every call is a read the catalog and the gate allow (whoami, jo p list, rp schema, rp run, jo p describe), one family of rp run per purpose",
+      [...one.argv, ...twin.argv, ...year.argv].every((a) => GATE(a) === null) && [...one.argv, ...year.argv].every((a) => ["whoami", "jo", "rp"].includes(a[0] === "--json" ? a[1] : a[0])));
+    // Account is the finest grain: no address, person id or send id reaches the timeline or the run's payload files.
+    const files = readdirSync(join(one.runDir, "calls")).map((f) => readFileSync(join(one.runDir, "calls", f), "utf8"));
+    const tlText = JSON.stringify(one.timeline);
+    check("ACC-1 no contact-level data anywhere: the timeline and every payload the pull wrote carry no address, no person id and no send id (recipients are added up to the account)",
+      !/@/.test(tlText) && !/pe-\d|log-\d|jo-\d|par-/.test(tlText) && files.length > 5 && files.every((t) => !/[\w.+-]+@[\w-]+\.[\w.]+/.test(t) && !/"pe-|"log-\d|"par-/.test(t)), files.filter((t) => /@|"pe-/.test(t)).map((t) => t.slice(0, 200)));
+    const hostile = pullAccount({ variant: { hostileAccount: true }, raw: { account: { id: "co-03" } } });
+    check("ACC-1 a hostile company name is data: it is stored as it is (escaping is the page's), and its sends are counted like any other",
+      hostile.timeline?.dimensions.account.name === HOSTILE_ACCOUNT_NAME && isDeepStrictEqual(order(hostile.timeline.facts.accountTimeline), oracleTimeline(hostile.tenant, "co-03", w)));
+
+    // Reconciliation against a dashboard snapshot's rows of the same account.
+    const dash = pull({ kb: true }).snapshot;
+    const kept = dash.dimensions.accounts.find((a) => dash.facts.byAccount.some((r) => r.accountKey === a.key && r.month === "2026-07" && r.sent > 0))?.key;
+    const rec = pullAccount({ raw: { account: { id: kept } }, against: dash });
+    const recCheck = rec.timeline?.reconciliation.checks.find((c) => c.id === "matches-dashboard");
+    check("ACC-1 reconciliation: against a dashboard snapshot holding the account's rows, every program and whole month both cover matches on every measure and class (closed months), through the engine on both sides",
+      !!kept && recCheck?.ok === true && recCheck.compared > 0 && rec.timeline.reconciliation.ok === true && rec.timeline.reconciliation.against?.basis === "class" && rec.timeline.reconciliation.against.reason === null && rec.timeline.reconciliation.against.pulledAt === dash.meta.pulledAt,
+      [kept, rec.timeline?.reconciliation]);
+    const bumped = structuredClone(dash);
+    const julyRow = bumped.facts.byAccount.find((r) => r.accountKey === kept && r.month === "2026-07" && r.sent > 0);
+    julyRow.opened += 1;
+    const bad = pullAccount({ raw: { account: { id: kept } }, against: bumped });
+    const badCheck = bad.timeline?.reconciliation.checks.find((c) => c.id === "matches-dashboard");
+    check("ACC-1 reconciliation: a seeded difference in a closed month is a mismatch naming the program, month and measure, the timeline is flagged unreliable, and a caveat says so",
+      badCheck?.ok === false && badCheck.mismatches === 1 && badCheck.examples[0].programId === julyRow.programId && badCheck.examples[0].month === "2026-07" && isDeepStrictEqual(badCheck.examples[0].measures, ["opened"]) &&
+        bad.timeline.reconciliation.ok === false && bad.timeline.caveats.some((c) => c.id === "timeline-reconciliation-mismatch"), badCheck);
+    const provisional = structuredClone(bumped);
+    provisional.meta.incompleteFrom = "2026-07-01";
+    const drift = pullAccount({ raw: { account: { id: kept } }, against: provisional }).timeline?.reconciliation.checks.find((c) => c.id === "matches-dashboard");
+    check("ACC-1 reconciliation: the same difference in a month the dashboard still counted as provisional is drift, never a failure", drift?.ok === true && drift.drift === 1 && drift.mismatches === 0, drift);
+    const offDash = pull({ kb: true, raw: { accounts: { pull: false } } }).snapshot;
+    const off = pullAccount({ raw: { account: { id: kept } }, against: offDash }).timeline?.reconciliation;
+    // A dashboard keeping only R24's few per program: some account is kept on one program and not on another.
+    const thin = pull({ kb: true, raw: { accounts: { ...ACC, lists: [] } } }).snapshot;
+    const keptOn = (key) => new Set(thin.facts.byAccount.filter((r) => r.accountKey === key).map((r) => r.programId));
+    const partKey = thin.dimensions.accounts.map((a) => a.key).find((key) => one.tenant.tables.email_log_v2.some((r) => r.GsCompanyId === key && jo(r) && inWindow(r, w) && thin.dimensions.programs.some((p) => p.id === r.SourceId) && !keptOn(key).has(r.SourceId)));
+    const partial = pullAccount({ raw: { account: { id: partKey } }, against: thin }).timeline?.reconciliation;
+    const partialCheck = partial?.checks.find((c) => c.id === "matches-dashboard");
+    check("ACC-1 reconciliation says why it compared nothing or not everything: a dashboard with accounts off (its own marker), and the programs where the dashboard did not keep the account named, the rest compared and matching",
+      off?.against?.reason === "accounts-off" && !off.checks.some((c) => c.id === "matches-dashboard") && !!partKey &&
+        partial?.against?.notCompared.length > 0 && partial.against.notCompared.every((n) => n.reason === "account-not-kept-on-program" && !keptOn(partKey).has(n.programId)) && partialCheck?.ok === true && partialCheck.compared > 0,
+      [off?.against, partKey, partial?.against]);
+
+    // Through the real process: the golden timeline, a pick list's exit code, and the two transports agreeing.
+    const tlWs = join(ROOT, "ws-timeline");
+    mkdirSync(join(tlWs, ".gs-superadmin"), { recursive: true });
+    const acct = (extra, env = {}) => {
+      const r = runNode(ENGINE, ["account", "--workspace", tlWs, "--bin", FAKE, "--kb", KB_DIR, "--today", TODAY, "--pulled-at", PULLED_AT, "--internal-domain", "acme.com", ...extra], { env: { ...process.env, ...env } });
+      let json = null;
+      try { json = JSON.parse(r.stdout); } catch { /* failure path */ }
+      return { code: r.status, json, stderr: r.stderr };
+    };
+    const tlOut = join(ROOT, "timeline.json");
+    const proc = acct(["--account-name", "Acme Customer 01", "--run", "tl-golden", "--out", tlOut]);
+    const produced = proc.code === 0 ? JSON.parse(readFileSync(tlOut, "utf8")) : null;
+    const tlGolden = produced ? { ...produced, meta: { ...produced.meta, cliVersion: "fixture", pluginVersion: "fixture" } } : null;
+    if (WRITE_GOLDEN && tlGolden) writeFileSync(TL_GOLDEN, JSON.stringify(tlGolden, null, 1) + "\n");
+    check("ACC-1 through the real process: the account command exits 0 with a summary of counts and verdicts (never rows), and its timeline equals the committed fixture timeline (versions aside) and the in-process pull's",
+      proc.code === 0 && proc.json?.ok === true && proc.json.account?.key === "co-01" && proc.json.sent > 0 && !("facts" in proc.json) && isDeepStrictEqual(tlGolden, JSON.parse(readFileSync(TL_GOLDEN, "utf8"))) && isDeepStrictEqual(tlGolden?.facts, one.timeline.facts),
+      proc.json ?? proc.stderr.slice(-400));
+    const pick = acct(["--account-name", DUPLICATE_NAME, "--run", "tl-pick", "--out", join(ROOT, "pick.json")]);
+    check("ACC-1 through the real process: a pick list exits 6 with status needs-pick, the candidates and the sentence, and writes no timeline",
+      pick.code === 6 && pick.json?.status === "needs-pick" && pick.json.resolution?.candidates.length === 2 && /pick one by its GSID/.test(pick.json.error) && !existsSync(join(ROOT, "pick.json")), pick.json ?? pick.stderr.slice(-300));
+    const notOne = acct(["--account-id", "co-01", "--account-name", "x", "--out", join(ROOT, "x.json")]);
+    check("ACC-1 through the real process: an account named both ways is refused before any call", notOne.code === 1 && /one of the two/.test(notOne.stderr));
+  }
+
   // ── The ledger: every pitfall and every spike fact names its check ────────
   const LEDGER = {
     "pitfall: both bounds on a never-null date": "every date window has both bounds",
@@ -2039,6 +2242,7 @@ try {
     "(k): no last-send aggregate; silent programs come from day buckets": "HLT-1 last sends come from day buckets",
     "(k): a schedule's last-run result is exposed (read from the KB, as the schedule audit reads it)": "HLT-1 schedules: a schedule's configuration comes from the KB's program docs",
     "R17: rejected, unsubscribed and spam measures come from the send tables; the error rate's numerator is counted once per attempt": "HLT-1 send failures: an attempt flagged bounced AND rejected is ONE failure",
+    "(m): one account at day grain through email_log_v2 GsCompanyId EQ, program and template per send": "ACC-1 the account is found by its exact name",
   };
   for (const [what, label] of Object.entries(LEDGER)) {
     if (!ran.some((l) => l.startsWith(label))) {

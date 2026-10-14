@@ -61,7 +61,7 @@ import { makeTempDir, removeTempDir, writeFiles, runNode } from "../../../test/r
 import { parseJourneyDoc } from "../scripts/jo-report.mjs";
 import { STUB_MARKER } from "../scripts/doc-lib.mjs";
 import { isDeepStrictEqual } from "node:util";
-import { openSnapshot, accountAvailability, healthAvailability, templateAvailability, T10_SCHEMA_VERSION } from "../scripts/engagement-query.mjs";
+import { openSnapshot, openTimeline, accountAvailability, healthAvailability, templateAvailability, T10_SCHEMA_VERSION } from "../scripts/engagement-query.mjs";
 import { kbFiles, FIXTURE_BOUNCE_CATEGORIES } from "./fixtures/engagement/acme-tenant.mjs";
 import { openSpec, T11_SCHEMA_VERSION } from "../scripts/dashboard-spec.mjs";
 
@@ -739,6 +739,41 @@ try {
       check(at("openSnapshot admits it"), openSnapshot(s) === s);
     }
 
+    // ADDITIVE on T-10 (ACC-1, S6): the account timeline, a second snapshot KIND of the same producer. Pulled here through
+    // the real process (`engagement.mjs account`, the fake CLI behind --bin) and read beside the committed fixture timeline;
+    // key sets hand-spelled from the typedef. Nothing of the engagement snapshot's pin above moved for it.
+    const timelineOf = (run, extra) => {
+      const out = join(t10, `${run}.json`);
+      const r = runNode(ENGINE, ["account", "--workspace", join(t10, "ws"), "--bin", FAKE, "--kb", join(t10, "kb", "acme-prod"), "--today", "2026-09-15", "--pulled-at", "2026-09-15T09:00:00-07:00", "--internal-domain", "acme.com", "--run", run, "--out", out, ...extra]);
+      check(`T-10 timeline: the producer runs over the fixture tenant (${run})`, r.status === 0, r.stderr.slice(-400));
+      return r.status === 0 ? JSON.parse(readFileSync(out, "utf8")) : null;
+    };
+    const DAY = /^\d{4}-\d\d-\d\d$/;
+    const FLAG_MEASURES = MEASURES.filter((m) => m !== "clicked");
+    for (const [which, tl] of /** @type {Array<[string, *]>} */ ([["produced by name", timelineOf("t10-tl", ["--account-name", "Acme Customer 01"])], ["produced for an account with no sends", timelineOf("t10-tl-quiet", ["--account-id", "co-14"])], ["the committed fixture timeline", JSON.parse(readFileSync(join(HERE, "fixtures", "engagement", "timeline-acme.json"), "utf8"))]])) {
+      if (!tl) continue;
+      const at = (label) => `T-10 timeline (${which}): ${label}`;
+      const empty = tl.facts.accountTimeline.length === 0;
+      check(at("top level is exactly {schemaVersion 1, kind account-timeline, meta, dimensions, facts, honesty, reconciliation, caveats}; openTimeline admits it and openSnapshot refuses it"),
+        keys(tl) === list("schemaVersion", "kind", "meta", "dimensions", "facts", "honesty", "reconciliation", "caveats") && tl.schemaVersion === 1 && tl.kind === "account-timeline" && openTimeline(tl) === tl && (() => { try { openSnapshot(tl); return false; } catch { return true; } })(), keys(tl));
+      check(at("meta is exactly {source, params, pulledAt, timeZone, tenantHost, cliVersion, pluginVersion, window{last, days, start, end, endExclusive}, incompleteFrom, dateBasis{object email_log_v2, field ExecutedDate, grain day}, templates{subjects, reason}}"),
+        keys(tl.meta) === list("source", "params", "pulledAt", "timeZone", "tenantHost", "cliVersion", "pluginVersion", "window", "incompleteFrom", "dateBasis", "templates") && tl.meta.source === "jo-engagement" && /T\d\d:\d\d:\d\d[+-]\d\d:\d\d$/.test(tl.meta.pulledAt) &&
+          keys(tl.meta.window) === list("last", "days", "start", "end", "endExclusive") && [tl.meta.window.start, tl.meta.window.end, tl.meta.window.endExclusive, tl.meta.incompleteFrom].every((d) => DAY.test(d)) && count(tl.meta.window.days) &&
+          isDeepStrictEqual(tl.meta.dateBasis, { object: "email_log_v2", field: "ExecutedDate", grain: "day" }) && keys(tl.meta.templates) === "reason,subjects" && typeof tl.meta.templates.subjects === "boolean" &&
+          keys(tl.meta.params) === list("account", "last", "internalDomains", "testAccounts", "fields", "pageSize") && keys(tl.meta.params.account) === "id,name", tl.meta);
+      check(at("dimensions are exactly {account{key, name, testAccount}, programs[{id, name, statuses, model, modelName}], templates[{id, name, subject, subjectAsOf, uses[{programId, stepName, stepOrder, stepCount, asOf}]}]}"),
+        keys(tl.dimensions) === list("account", "programs", "templates") && keys(tl.dimensions.account) === list("key", "name", "testAccount") && typeof tl.dimensions.account.key === "string" && typeof tl.dimensions.account.testAccount === "boolean" &&
+          tl.dimensions.programs.every((p) => keys(p) === list("id", "name", "statuses", "model", "modelName") && Array.isArray(p.statuses)) &&
+          tl.dimensions.templates.every((t) => keys(t) === list("id", "name", "subject", "subjectAsOf", "uses") && t.uses.length > 0 && t.uses.every((u) => keys(u) === list("programId", "stepName", "stepOrder", "stepCount", "asOf") && count(u.stepCount))) &&
+          (empty ? tl.dimensions.programs.length === 0 && tl.dimensions.templates.length === 0 : tl.dimensions.programs.length > 0 && tl.dimensions.templates.length > 0), tl.dimensions.templates[0]);
+      check(at("facts are exactly {accountTimeline, tenantByProgram}: a timeline row is programId, templateId, day (a day), recipientClass and the eight flag measures (no clicked), a comparison row programId, recipientClass and the same eight; every measure a whole number, delivered plus bounced never above sent; no row is all zero"),
+        keys(tl.facts) === "accountTimeline,tenantByProgram" && tl.facts.accountTimeline.every((r) => keys(r) === list("programId", "templateId", "day", "recipientClass", ...FLAG_MEASURES) && DAY.test(r.day) && ["internal", "external"].includes(r.recipientClass) && FLAG_MEASURES.every((m) => count(r[m])) && r.delivered + r.bounced <= r.sent && FLAG_MEASURES.some((m) => r[m] > 0)) &&
+          tl.facts.tenantByProgram.every((r) => keys(r) === list("programId", "recipientClass", ...FLAG_MEASURES) && FLAG_MEASURES.every((m) => count(r[m]))) && (empty || (tl.facts.accountTimeline.length > 0 && tl.facts.tenantByProgram.length > 0)), tl.facts.accountTimeline[0]);
+      check(at("reconciliation is {ok, checks[{id, ok, compared, mismatches, examples, drift, driftExamples}], against} (against null when no dashboard was given); caveats are [{id, detail}]; no address or person id anywhere in it"),
+        keys(tl.reconciliation) === "against,checks,ok" && tl.reconciliation.against === null && tl.reconciliation.checks.every((c) => keys(c) === "compared,drift,driftExamples,examples,id,mismatches,ok" && c.ok === (c.mismatches === 0)) && tl.reconciliation.ok === tl.reconciliation.checks.every((c) => c.ok) &&
+          tl.caveats.every((c) => keys(c) === "detail,id") && !/[\w.+-]+@[\w-]+\.[\w.]+|"pe-\d/.test(JSON.stringify(tl)), tl.reconciliation);
+    }
+
     // The freeze itself: the version constant, the refusal, and the header that
     // carries the contract (a typedef that stops naming a pinned key is a
     // contract edit, and must arrive with this pin's own edit).
@@ -746,7 +781,9 @@ try {
     const engSrc = readFileSync(ENGINE, "utf8");
     const header = engSrc.slice(engSrc.indexOf("// ── T-10 ·"), engSrc.indexOf("// ── The source-adapter interface"));
     const named = (k) => new RegExp(`@property \\{[^\\n]*\\} \\[?${k}\\]?( |$)`, "m").test(header);
-    const PINNED = ["schemaVersion", "kind", "meta", "dimensions", "facts", "honesty", "reconciliation", "caveats", "byTemplate", "byStep", "byAccount", "responses", "responseParticipants", "uniques", "metricAvailability", "participantRecords", "accounts", "incompleteFrom", "pulledAt", "health", "bounceReasons", "participantFailures", "participantStates", "lastSends", "schedules", "failureSamples", "entrySamples", "sources", "admissions", "entryFailures", "stepFailures", ...MEASURES];
+    const PINNED = ["schemaVersion", "kind", "meta", "dimensions", "facts", "honesty", "reconciliation", "caveats", "byTemplate", "byStep", "byAccount", "responses", "responseParticipants", "uniques", "metricAvailability", "participantRecords", "accounts", "incompleteFrom", "pulledAt", "health", "bounceReasons", "participantFailures", "participantStates", "lastSends", "schedules", "failureSamples", "entrySamples", "sources", "admissions", "entryFailures", "stepFailures", ...MEASURES,
+      // The account timeline (ACC-1, additive): its own kind's typedef sits in the same header.
+      "accountTimeline", "tenantByProgram", "account", "programs", "templates", "window", "dateBasis"];
     check("T-10: the producer's header is marked FROZEN and names every pinned top-level key, table and measure", /FROZEN \(ENG-1, 2026-10-03\)/.test(header) && PINNED.every(named), PINNED.filter((k) => !named(k)));
     check("T-10: the header also states the adapter interface (plan / fetch / reduce) and the transport seam", /@typedef \{object\} EngagementSourceAdapter/.test(engSrc) && /@typedef \{object\} EngagementTransport/.test(engSrc));
   } finally {
