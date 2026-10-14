@@ -2772,3 +2772,56 @@ S6-V (2026-10-13 @ hb-20261013-02; feat/jo-dash-s6-account-timeline at 1c2754e, 
 - Guard-wiring: `gs-admin jo p pause --help` drew the guard's ask (the mutating command named, both tenants named, production flagged); Bradley pasted the rendered text and declined it.
 - Found beside the arms: F-521 (normal): a selective refresh records empty customer lists and the dashboard's report then says no account met any list's floor.
 Section status: OPEN — A0, A1, A3, A4, A5, A6 PASSED; A2 FAILED on its notCompared clause (F-520); A7's reuse half owed. Ruled by Bradley at the close: one S6 fix round on PR #48's branch takes F-520, F-521, F-522 and F-518, then an S6-V re-check sitting re-owes A2's clause and A7's reuse half beside the fixes' own arms; PR #48 stays unmerged until it passes.
+
+### Re-banked for the S6-V re-check after the S6 fix round (builder, 2026-10-13, feat/jo-dash-s6-fix merged into feat/jo-dash-s6-account-timeline @ hb-20261013-03; PR #48 unmerged)
+
+Owed by: the S6-V re-check sitting, in the consumer workspace with the plugin loaded from this branch (canary hb-20261013-03);
+the production tenant, reads only, one call at a time. What the fix round changed and why each arm exists: F-520 (the
+comparison's "kept" read over the snapshot's window), F-521 (a selective refresh carries the last full ranking of the
+customer lists), F-522 (a shortened chart label opens whole), F-518 (the remainder priced from each planned unit's own
+price), plus A7's reuse half, owed since S6-V. A0, A1, A3, A4, A5, A6 stand PASSED and are not re-run. No tenant data
+leaves the workspace.
+
+THIS LIST IS COMPLETE.
+
+- R1 (A2's notCompared clause, F-520). The same account 2 through the dashboard's copy line (`dashboard.mjs account v2
+  --account-id <GSID> --kb <kb>`). Pass bar: every program `against.notCompared` names is either one the snapshot holds
+  NO row of the account on (`account-not-kept-on-program`, read in `facts.byAccount`) or one it holds rows of whose
+  timeline days fall only outside the whole months compared (`no-send-in-months-compared`: the window's partial first
+  month or the provisional month); the three programs S6-V found read the second reason, not the first; the page's
+  About line "Against the dashboard" names each reason with its programs in words (never "did not keep this account
+  there" of a program it kept); the skill's checks line relays the same (the summary's `againstText`).
+- R2 (F-521, a lists-on dashboard). v2's latest snapshot is the PRE-FIX selective one (its lists recorded empty), so:
+  (1) `refresh v2 --full --kb <kb>` (a full pull: the lists ranked, each record `rankedAt` this pull, `carriedFrom`
+  null); (2) `refresh v2 --kb <kb>` (selective: read `meta.refresh.mode`); (3) `report v2 --kb <kb>`. Pass bar: the
+  selective snapshot's `honesty.accountSelection.lists[].kept` equal the full one's (same accounts, same order) with
+  `rankedAt` the full pull's time and `carriedFrom` set; the report prints the three lists' accounts under the sentence
+  "These lists were ranked by the full pull of …", and nowhere "No account met this list's floor" for a list whose
+  accounts are in the snapshot. If the full pull outlasts the login, R5 rides it. Optional, if Bradley wants it seen:
+  a selective refresh straight from the pre-fix snapshot reads each list "Not ranked on this pull" with the sentence
+  naming a full refresh (the state v2 is in now).
+- R3 (F-522, read by Bradley). On a timeline page whose programs carry names over 28 characters (account 2's, pulled
+  again by R1), and on a dashboard bar chart whose tick labels are cut. The presets' bar charts are by month (never
+  cut), so the bar chart is a panel by program on a SCRATCH copy, never v2 itself: `export v2 --out <file>
+  --with-snapshot`, `import --file <file> --slug <scratch>` (with `--snapshot` if the export wrote one apart),
+  `change <scratch> pages.0.panels=…` listing a bar panel grouped by program on the engagement tab and one panel for
+  each other tab that is on (the spec refuses a list that leaves an on tab with none; `--dry-run` says which, and its
+  printed consequence must read rebuild, no pull: stop if it says pull), open the scratch admin page; remove the
+  scratch dashboard at the close. Pass bar: hovering, focusing (Tab) or clicking / tapping a shortened label shows its whole
+  name over the chart; a second click or tap closes it; Escape or a click elsewhere closes it; Bradley reads both
+  ("the full name is reachable").
+- R4 (F-518, the resume line). Any pull of v2 that stops on the login and is resumed (R2's full refresh is the likely
+  one; else start one with a few minutes of login left). Pass bar: the stop's message says about N more logins (or
+  that every call is made) consistent with the run's `plan.json` `estimate.thisRun.remaining`; the resume's opening
+  stderr "continuing the refresh of v2 (run …): about N minutes of its M minutes remain …" has N at or below M, and N
+  below the stop before it when the same run is stopped twice. Read N, M and `remaining` against `thisRun` in the run
+  directory's plan.json.
+- R5 (A7's reuse half, owed since S6-V). A timeline pull through the dashboard (`dashboard.mjs account v2 --account-id
+  <GSID> --last 12m --kb <kb>`) started with a few MINUTES of login left (not seconds), so that answered data calls
+  are on disk when it stops on the login (exit 3); after `gs-admin login`, the same line continues the same run
+  directory to exit 0. Pass bar: the second run's summary `calls.reused` counts the answered data calls of the first
+  (above 1: the login check is always made afresh, so 1 is not a reuse), and its fetch log shows each of those ids
+  once as `ok` (not made again).
+
+Carried, not this section's: nothing (F-518 rides R4).
+Section status (re-banked): OPEN — R1–R5 owed at the S6-V re-check, hb-20261013-03.
