@@ -31,7 +31,7 @@ import { fileURLToPath } from "node:url";
 import { isDeepStrictEqual } from "node:util";
 import vm from "node:vm";
 import { makeTempDir, removeTempDir, writeFiles, runNode } from "../../../test/rig.mjs";
-import { buildPage, pageModel, pageSnapshot, packTable, inlinedSources, pageFileName, aboutSettings, PAGE_BUDGET, TOKENS, buildTimelinePage, timelineModel, timelineFileName } from "../scripts/dashboard-page.mjs";
+import { buildPage, pageModel, pageSnapshot, packTable, inlinedSources, pageFileName, aboutSettings, PAGE_BUDGET, TOKENS, buildTimelinePage, timelineModel, timelineFileName, buildDatasets, artifactContentOf, datasetsDirName } from "../scripts/dashboard-page.mjs";
 import { createDashboard, mount, unpackSnapshot, unpackTable, csvCell, csvText, esc, LACKS, NOT_LACKS, NEEDS, COPY_LINES, ENTRY_COMMAND, HEALTH_DAY_OPTIONS, PAGE_MODEL_VERSION, cronWords, createTimeline, shellWord } from "../scripts/dashboard-runtime.mjs";
 import * as engine from "../scripts/engagement-query.mjs";
 import { openSpec, SPEC_DESCRIPTIONS, PRESETS, presetPanels, describeSpec, setPath, validateSpec } from "../scripts/dashboard-spec.mjs";
@@ -108,6 +108,24 @@ const lacksIn = (html) => [...html.matchAll(/data-lack="([^"]+)"/g)].map((m) => 
 /** A page's markup without its inlined scripts, and the notices drawn in it. */
 const markupOf = (html) => html.replace(/<script type="module">\n[\s\S]*?<\/script>/g, "");
 const drawn = (html) => lacksIn(markupOf(html));
+const unesc = (x) => String(x).replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, "&");
+/** The SVG around a markup offset: from its opening tag to its closing one. */
+const svgAround = (markup, at) => { const start = markup.lastIndexOf("<svg", at); return start < 0 ? "" : markup.slice(start, markup.indexOf("</svg>", at) + 6); };
+/**
+ * F-522's overlay, read from the markup alone: the words of the full text keyed `key` in the overlay of the SVG
+ * around `at`, or null when there is none, or when the overlay is not the LAST thing the SVG draws (it must close
+ * right before </svg> and hold full texts only, so nothing is painted after an opened one).
+ */
+function overlayFullText(markup, at, key) {
+  if (key == null) return null;
+  const svg = svgAround(markup, at);
+  const o = svg.lastIndexOf('<g class="gs-svg-overlay"');
+  if (o < 0 || !svg.endsWith("</g></svg>")) return null;
+  const overlay = svg.slice(svg.indexOf(">", o) + 1, -"</g></svg>".length);
+  if (overlay.replace(/<text class="gs-svg-full" data-full-of="[^"]*" text-anchor="middle">(?:<tspan [^>]*>[^<]*<\/tspan>)+<\/text>/g, "") !== "") return null;
+  const full = new RegExp(`<text class="gs-svg-full" data-full-of="${key}"[^>]*>((?:<tspan [^>]*>[^<]*</tspan>)+)</text>`).exec(overlay)?.[1];
+  return full == null ? null : unesc([...full.matchAll(/<tspan [^>]*>([^<]*)<\/tspan>/g)].map((t) => t[1]).join(" "));
+}
 // Tags as a page writes them (lower case): a JSDoc type such as Object<string, …> in an inlined comment is not one. The
 // search form (TPL-2) is the one form a page holds, and it posts nowhere: its submit is read in the page.
 const NO_NETWORK = /\b(href|src|action|data|poster|formaction)\s*=\s*["']?\s*[hH][tT][tT][pP][sS]?:\/\/|url\(\s*["']?[hH][tT][tT][pP]|\bfetch\s*\(|XMLHttpRequest|WebSocket|EventSource|sendBeacon|(?<!\{)\bimport\s*\(|^\s*import\s|<link\b|<img\b|<iframe\b|<object\b|<embed\b|<form\b(?![^>]*data-search)|\ssrc=|url\(|@import|<base\b|http-equiv/m;
@@ -1424,21 +1442,23 @@ try {
       (evilBuilt.html.match(/<script/g) ?? []).length === 3 && !/[<>&]/.test(evilPage.data) && !/<script|<img|onerror=alert/.test(evilMarkup.replace(/&lt;[\s\S]*?&gt;/g, "")) && evilMarkup.includes(esc(HOSTILE_ACCOUNT_NAME)) &&
         evilBuilt.html.includes(`<title>Account timeline · &lt;img src=x onerror=alert(1)&gt;`) && evilPage.call(`app.timeline.dimensions.account.name`) === HOSTILE_ACCOUNT_NAME &&
         parseCsv(evilPage.call(`app.csvOf(app.panels[0], app.defaultState(), null).text`)).slice(1).every((r) => !/^[=+\-@]/.test(r[4])), evilMarkup.match(/<(img|script)[\s>].{0,40}/)?.[0]);
-    // F-522: no chart label is shortened without its full text reachable (S4d's tips: hover, focus, click or tap). The
-    // judge reads the markup alone: any SVG <text> showing a proper prefix of a real name must sit in a group whose
-    // data-tip is that whole name, focusable, the full text drawn there; the CSS opens it on hover, focus and is-open.
-    const unesc = (x) => String(x).replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, "&");
+    // F-522: no chart label is shortened without its full text reachable (S4d's tips: hover, focus, click or tap), and
+    // nothing is painted over an opened full text (the reopen at the S6-V re-check: SVG paints in document order, and a
+    // full text drawn inside its own group lay under every label drawn after it). The judge reads the markup alone:
+    // any SVG <text> showing a proper prefix of a real name must sit in a focusable group whose data-tip is that whole
+    // name and which names, by data-full, a full text in its chart's OVERLAY — the last element of the SVG, holding
+    // full texts only, so no element is painted after it — whose words are the whole name.
     const cutLabels = (markup, names) => {
       const found = [];
       for (const m of markup.matchAll(/<text\b[^>]*>([^<]*)/g)) {
+        if (/class="gs-svg-full"/.test(m[0])) continue;
         const shown = unesc(m[1]).replace(/[…*†]+$/u, "");
         const name = shown.length >= 4 ? names.find((n) => n !== shown && n.startsWith(shown)) : null;
         if (!name) continue;
         const before = markup.slice(0, m.index);
         const open = before.lastIndexOf("<g ");
         const group = open > before.lastIndexOf("</g>") ? markup.slice(open, markup.indexOf(">", open) + 1) : "";
-        const reachable = unesc(/data-tip="([^"]*)"/.exec(group)?.[1] ?? "") === name && /tabindex="0"/.test(group) && markup.slice(open, markup.indexOf("</g>", open)).includes('class="gs-svg-full"');
-        found.push({ shown, name, reachable });
+        found.push({ shown, name, reachable: unesc(/data-tip="([^"]*)"/.exec(group)?.[1] ?? "") === name && /tabindex="0"/.test(group) && overlayFullText(markup, m.index, /data-full="([^"]*)"/.exec(group)?.[1]) === name });
       }
       return found;
     };
@@ -1452,12 +1472,166 @@ try {
     const barMarkup = markupOf(build(barSpec, engine.openSnapshot(longSnap)).html);
     const laneCuts = cutLabels(longTlPre, longTl.dimensions.programs.map((p) => p.name));
     const tickCuts = cutLabels(panelHtml(barMarkup, "by-program") ?? "", longSnap.dimensions.programs.map((p) => p.name));
-    check("F-522 a chart label the renderer shortens keeps its full text reachable the way every tip is: the timeline's lane names and a bar chart's tick labels (a line panel is monthly) each sit in a focusable group whose data-tip is the whole name and whose full text is drawn in the chart, opened by hover, keyboard focus (focus-visible, so a second click or tap closes it) and is-open (the one click, tap and Enter toggle), in a chart that is then a group so the label is exposed; a label short enough is drawn whole in a chart that stays an image",
+    check("F-522 a chart label the renderer shortens keeps its full text reachable the way every tip is: the timeline's lane names and a bar chart's tick labels (a line panel is monthly) each sit in a focusable group whose data-tip is the whole name and whose full text is drawn in the chart's OVERLAY, the last layer of the SVG, so nothing is painted over it (mount shows it on hover, keyboard focus and is-open), in a chart that is then a group so the label is exposed; a label short enough is drawn whole in a chart that stays an image",
       laneCuts.length === longTl.dimensions.programs.length && tickCuts.length >= 2 && [...laneCuts, ...tickCuts].every((c) => c.reachable) &&
-        /\.gs-svg-tipped:hover \.gs-svg-full,\.gs-svg-tipped:focus-visible \.gs-svg-full,\.gs-svg-tipped\.is-open \.gs-svg-full\{visibility:visible\}/.test(TLP.html) && !/\.gs-svg-tipped:focus[ ,{]/.test(TLP.html) &&
-        /<svg class="gs-chart gs-lanes"[^>]* role="group"/.test(longTlPre) && /<svg class="gs-chart"[^>]* role="group"/.test(panelHtml(barMarkup, "by-program") ?? "") && /<svg class="gs-chart gs-lanes"[^>]* role="img"/.test(pre) && /closest\?\.\("\[data-tab\],[^"]*\[data-tip\]"\)/.test(SOURCES.runtimeSource) &&
+        /\.gs-svg-full\{visibility:hidden;/.test(TLP.html) && /\.gs-svg-full\.is-shown\{visibility:visible\}/.test(TLP.html) && !/\.gs-svg-tipped:focus[ ,{]/.test(TLP.html) &&
+        /<svg class="gs-chart gs-lanes"[^>]* role="group"/.test(longTlPre) && /<svg class="gs-chart[^"]*"[^>]* role="group"/.test(panelHtml(barMarkup, "by-program") ?? "") && /<svg class="gs-chart gs-lanes"[^>]* role="img"/.test(pre) && /closest\?\.\("\[data-tab\],[^"]*\[data-tip\]"\)/.test(SOURCES.runtimeSource) &&
         cutLabels(pre, TL.dimensions.programs.map((p) => p.name)).length === 0 && !pre.includes("gs-svg-tipped"),
       { lanes: laneCuts.filter((c) => !c.reachable).slice(0, 3), ticks: tickCuts.filter((c) => !c.reachable).slice(0, 3), counts: [laneCuts.length, tickCuts.length] });
+    // ══ F-524 and F-522 on a DENSE fixture (the S6-V re-check: the last F-522 check opened one label among few, which is
+    // how the overlap reached a real tenant): 200 programs with long names, two outliers near 3 × 10^5 sends, most
+    // under 10^4, a bar panel by program. The judges read the markup alone; headless Chrome measures the same page.
+    const DENSE_NAMES = ["Quarterly Renewal Reminder Sequence for Enterprise Accounts", "Onboarding Welcome Journey", "NPS Survey", "Product Adoption Nudges for Admin Users of the Analytics Module"];
+    const OUTLIERS = [17, 120];
+    const dense = (() => {
+      const g = structuredClone(generated({ programs: 200 }));
+      g.dimensions.programs.forEach((p, i) => { p.name = `Acme ${i} ${DENSE_NAMES[i % DENSE_NAMES.length]}`; });
+      const at = new Map(g.dimensions.programs.map((p, i) => [p.id, i]));
+      for (const r of g.facts.byTemplate) {
+        const i = at.get(r.programId);
+        // Eight rows a program (4 months × 2 classes): the outliers about 3 × 10^5 in all, the rest under 10^4, a few tiny.
+        const sent = OUTLIERS.includes(i) ? 37000 + i : i % 50 === 3 ? 1 : 10 + ((i * 37) % 1100);
+        Object.assign(r, { sent, delivered: sent, bounced: 0, rejected: 0, unsubscribed: 0, spamComplaints: 0, failed: 0, opened: Math.floor(sent / 3), clicked: 0 });
+      }
+      return engine.openSnapshot(g);
+    })();
+    const denseSpec = specWith((s) => { s.pages[0].statusDefault = null; s.pages[0].panels.push({ id: "by-program", tab: "engagement", type: "bar", title: "By program", query: { groupBy: ["program"], metrics: ["sent"] } }); });
+    const DENSE = build(denseSpec, dense);
+    const densePage = loadPage(DENSE.html);
+    const denseChart = (panelHtml(markupOf(DENSE.html), "by-program") ?? "").match(/<svg[\s\S]*?<\/svg>/)?.[0] ?? "";
+    const denseTotals = runQuery(applyGroups(dense, denseSpec.groups).snapshot, { recipientClass: "all" }, { groupBy: ["program"], metrics: ["sent"] }).rows;
+    /** Every text an SVG draws OUTSIDE its overlay, as an estimated box (11 px, a flat 6.2 per character; independent of the runtime's width table). */
+    const textBoxes = (svg) => [...svg.slice(0, svg.includes('<g class="gs-svg-overlay"') ? svg.indexOf('<g class="gs-svg-overlay"') : undefined).matchAll(/<text x="([\d.-]+)" y="([\d.-]+)" class="([^"]*)" text-anchor="(\w+)">([^<]*)/g)]
+      .map((m) => { const w = unesc(m[5]).length * 6.2; const x = Number(m[1]); const left = m[4] === "end" ? x - w : m[4] === "middle" ? x - w / 2 : x; return { left, right: left + w, top: Number(m[2]) - 9, bottom: Number(m[2]) + 2, text: unesc(m[5]) }; });
+    const overlaps = (boxes) => boxes.flatMap((a, i) => boxes.slice(i + 1).filter((b) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom).map((b) => [a.text, b.text])).slice(0, 4);
+    const bars = (svg) => [...svg.matchAll(/<rect class="gs-svg-bar([^"]*)"[^>]* width="([\d.]+)"[^>]*><title>([^<]*)<\/title>/g)].map((m) => ({ cut: m[1].includes("gs-svg-cut"), width: Number(m[2]), value: Number(unesc(m[3]).split(": Sent ")[1]?.replace(/[^\d.]/g, "")) }));
+    const denseBars = bars(denseChart);
+    check("F-524 a bar panel over 200 programs is drawn ACROSS: one row per program for the 25 largest by its figure, the names in a column of their own, and no two of the chart's texts (names, figures, axis ticks) overlap; the note says how many of the 200 are drawn, and all 200 are in the table underneath",
+      /class="gs-chart gs-bars-across"/.test(denseChart) && denseBars.length === 25 && overlaps(textBoxes(denseChart)).length === 0 && textBoxes(denseChart).length > 50 &&
+        (panelHtml(markupOf(DENSE.html), "by-program") ?? "").includes("The 25 largest by Sent of 200 are drawn") && rowsOf(panelHtml(markupOf(DENSE.html), "by-program") ?? "").length === 200,
+      { bars: denseBars.length, overlaps: overlaps(textBoxes(denseChart)) });
+    const outlierNames = OUTLIERS.map((i) => dense.dimensions.programs[i].name);
+    const outlierValues = denseTotals.filter((r) => outlierNames.includes(r.label.program)).map((r) => r.cells.sent.value);
+    const uncut = denseBars.filter((b) => !b.cut);
+    check("F-524 two mass sends do not flatten the rest: the two outliers run past the scale, cut by a break mark, with their figures written beside them; the scale fits the other bars (the largest uncut bar spans most of the axis), and every bar above zero is at least the minimum width",
+      denseBars.filter((b) => b.cut).length === 2 && (denseChart.match(/class="gs-svg-break"/g) ?? []).length === 2 && outlierValues.length === 2 && outlierValues.every((v) => denseChart.includes(`>${esc(formatCell("sent", { value: v }))}<`)) &&
+        Math.max(...uncut.map((b) => b.width)) >= 0.75 * Math.max(...denseBars.map((b) => b.width)) && denseBars.every((b) => !(b.value > 0) || b.width >= 2) && /2 bars run past the scale, cut by a break mark/.test(panelHtml(markupOf(DENSE.html), "by-program") ?? ""),
+      { cut: denseBars.filter((b) => b.cut).length, widths: denseBars.slice(0, 4), outlierValues });
+    // The outliers beside the tiniest programs (one send a row): without the outlier scale they would be a hundredth of a unit wide.
+    const tiny = dense.dimensions.programs.filter((_, i) => OUTLIERS.includes(i) || i % 50 === 3).map((p) => p.id);
+    const tinyChart = densePage.call(`app.renderPanel(app.panels.find((p) => p.id === "by-program"), app.stateFromHash(${JSON.stringify(`p=${tiny.join(",")}`)}), null)`).match(/<svg[\s\S]*?<\/svg>/)?.[0] ?? "";
+    // And a one-send program beside four ordinary ones, where no bar is an outlier, so only the minimum width keeps it visible.
+    const ordinary = denseTotals.filter((r) => !outlierNames.includes(r.label.program)).sort((a, b) => b.cells.sent.value - a.cells.sent.value).slice(0, 4).map((r) => r.key.program);
+    const narrowChart = densePage.call(`app.renderPanel(app.panels.find((p) => p.id === "by-program"), app.stateFromHash(${JSON.stringify(`p=${[...ordinary, dense.dimensions.programs[3].id].join(",")}`)}), null)`).match(/<svg[\s\S]*?<\/svg>/)?.[0] ?? "";
+    check("F-524 every bar with a figure above zero is drawn at least the minimum width: beside an outlier 37,000 times its size (the outliers and the four one-send programs selected), and beside four ordinary programs where no bar is an outlier (one send against about 8,800)",
+      bars(tinyChart).length === 6 && bars(tinyChart).every((b) => b.value > 0 && b.width >= 2) && bars(tinyChart).filter((b) => b.cut).length === 2 &&
+        bars(narrowChart).length === 5 && bars(narrowChart).every((b) => b.value > 0 && b.width >= 2) && !bars(narrowChart).some((b) => b.cut), [bars(tinyChart), bars(narrowChart)]);
+    const shownNames = textBoxes(denseChart).filter((b) => /…\*$|\*$/.test(b.text) && !/^\d/.test(b.text));
+    check("F-524 a category axis draws no provisional band (a band belongs to a month axis): a program whose figures include the provisional period is marked * beside its name, as the table marks it, and the note says what * means",
+      !/gs-svg-provisional/.test(denseChart) && shownNames.length === 25 && /\* Includes the provisional period/.test(panelHtml(markupOf(DENSE.html), "by-program") ?? ""), shownNames.length);
+    const denseCuts = cutLabels(panelHtml(markupOf(DENSE.html), "by-program") ?? "", dense.dimensions.programs.map((p) => p.name));
+    check("F-522 on the dense chart: every shortened name (most of the 25) keeps its whole name reachable in the chart's overlay, the last layer of the SVG, so an opened name has nothing painted over it",
+      denseCuts.length >= 15 && denseCuts.every((c) => c.reachable) && /<svg class="gs-chart gs-bars-across"[^>]* role="group"/.test(denseChart) &&
+        // With no script running the overlay cannot show: each shortened name still carries its whole name as a native title.
+        (denseChart.match(/<g class="gs-svg-tipped"[^>]*><text [^>]*>[^<]*<title>[^<]+<\/title><\/text><\/g>/g) ?? []).length === denseCuts.length, denseCuts.filter((c) => !c.reachable).slice(0, 2));
+    // A month axis longer than its room: 24 months.
+    const longWindow = generated({ programs: 3, months: 24 });
+    const monthChart = (panelHtml(markupOf(build(SPEC_DEFAULTS, longWindow).html), "sends-by-month") ?? "").match(/<svg[\s\S]*?<\/svg>/)?.[0] ?? "";
+    const monthTicks = textBoxes(monthChart).filter((b) => /^\d{4}-\d\d/.test(b.text));
+    const thinned = /Every (second|third|(\d+)th) month is labelled/.exec(panelHtml(markupOf(build(SPEC_DEFAULTS, longWindow).html), "sends-by-month") ?? "");
+    const every = thinned ? (thinned[1] === "second" ? 2 : thinned[1] === "third" ? 3 : Number(thinned[2])) : 1;
+    check("F-524 a month axis of 24 months labels every k-th month by the labels' room, counted back from the newest (which is always labelled), so no two labels overlap; the note says which",
+      every >= 2 && monthTicks.length === Math.ceil(24 / every) && monthTicks.at(-1).text.startsWith(longWindow.dimensions.months.at(-1)) && overlaps(textBoxes(monthChart)).length === 0,
+      { ticks: monthTicks.map((t) => t.text), overlaps: overlaps(textBoxes(monthChart)) });
+    // The overlay in a browser: mount shows the full text a label names while it is hovered, focused from the keyboard or opened.
+    {
+      const el = (attrs) => {
+        const cls = new Set();
+        const e = { attrs, cls, classList: { toggle: (c, on) => { if (on ?? !cls.has(c)) cls.add(c); else cls.delete(c); }, contains: (c) => cls.has(c), remove: (c) => cls.delete(c), add: (c) => cls.add(c) }, getAttribute: (k) => attrs[k] ?? null, hasAttribute: (k) => k in attrs, contains: (o) => o === e };
+        return e;
+      };
+      const fulls = [el({ "data-full-of": "0" }), el({ "data-full-of": "1" })];
+      const svgEl = { querySelector: (sel) => fulls.find((f) => sel === `[data-full-of="${f.attrs["data-full-of"]}"]`) ?? null };
+      const labels = [el({ "data-full": "0", "data-tip": "A" }), el({ "data-full": "1", "data-tip": "B" })];
+      for (const l of labels) { l.closest = (sel) => (sel === "svg" ? svgEl : l); l.matches = () => true; }
+      const l5 = {};
+      mount(createDashboard(engine, pageModel(SPEC_DEFAULTS, GOLD, SPEC_DEFAULTS.pages[0])), { disabled: true, innerHTML: null, addEventListener: (t, fn) => { l5[t] = fn; }, querySelectorAll: (sel) => (sel === ".gs-svg-tipped" ? labels : sel === "[data-tip].is-open" ? labels.filter((l) => l.cls.has("is-open")) : []), querySelector: () => null }, { document: {}, localStorage: { getItem: () => null, setItem: () => {} }, location: { hash: "" }, history: { replaceState: () => {} }, addEventListener: () => {}, Date: { now: () => 0 } });
+      const shown = () => fulls.map((f) => f.cls.has("is-shown")).join();
+      l5.pointerover?.({ target: labels[0] });
+      const onHover = shown() === "true,false" && labels[0].cls.has("is-lit");
+      l5.pointerout?.({ relatedTarget: null });
+      const offHover = shown() === "false,false" && !labels[0].cls.has("is-lit");
+      l5.focusin?.({ target: labels[1] });
+      const onFocus = shown() === "false,true";
+      l5.focusout?.({});
+      labels[1].matches = () => false;
+      l5.focusin?.({ target: labels[1] });
+      const clickFocus = shown() === "false,false";
+      l5.click({ target: labels[0] });
+      const onClick = shown() === "true,false";
+      l5.click({ target: { closest: () => null } });
+      check("F-522 in a browser: the full text a shortened label names in the overlay is shown while the label is hovered, while it has keyboard focus (focus-visible: a mouse click's focus alone does not show it) and while it is opened by a click, tap or Enter; leaving, blurring or a click elsewhere hides it",
+        onHover && offHover && onFocus && clickFocus && onClick && shown() === "false,false", { onHover, offHover, onFocus, clickFocus, onClick, end: shown() });
+    }
+    // PUB-3 (the artifact target, fix ii): inside a claude.ai artifact the CSV save goes through the downloads
+    // capability; anywhere else (no window.claude, or a view that cannot run it) the browser saves a Blob as before.
+    {
+      const csvRun = (claude) => {
+        const l6 = {};
+        const saved = [];
+        const blobs = [];
+        const g = { document: { createElement: () => ({ click() {}, remove() {} }), body: { appendChild() {} } }, localStorage: { getItem: () => null, setItem: () => {} }, location: { hash: "" }, history: { replaceState: () => {} }, addEventListener: () => {}, Date: { now: () => 0 }, URL: { createObjectURL: (b) => { blobs.push(b); return "blob:x"; }, revokeObjectURL() {} }, Blob: class { constructor(parts) { this.parts = parts; } }, setTimeout: () => {} };
+        if (claude) g.claude = claude(saved);
+        const app = createDashboard(engine, pageModel(SPEC_DEFAULTS, GOLD, SPEC_DEFAULTS.pages[1]));
+        mount(app, { disabled: true, innerHTML: null, addEventListener: (t, fn) => { l6[t] = fn; }, querySelectorAll: () => [], querySelector: () => null }, g);
+        const id = app.panels.find((p) => app.csvOf(p, app.defaultState(), null))?.id;
+        const button = { textContent: "Download", hasAttribute: (k) => k === "data-csv", getAttribute: (k) => (k === "data-csv" ? id : null) };
+        l6.click({ target: { closest: () => button } });
+        return { saved, blobs, button, id };
+      };
+      const outside = csvRun(null);
+      const inside = csvRun((saved) => ({ use: async (name) => (name === "downloads" ? Object.freeze({ save: async (req) => { saved.push(req); return { status: "saved" }; } }) : null) }));
+      const unserved = csvRun(() => ({ use: async () => null }));
+      const declined = csvRun(() => ({ use: async () => ({ save: async () => { throw { code: "declined", message: "no" }; } }) }));
+      await new Promise((r) => setTimeout(r, 20));
+      check("PUB-3 the CSV save: with no window.claude (file://, a shared folder) the browser saves a Blob at once; inside an artifact it goes through claude.use(\"downloads\").save with the panel's file name and the text after a BOM, and no Blob; a view where the capability resolves null falls back to the Blob; a declined save says nothing",
+        !!outside.id && outside.blobs.length === 1 && outside.saved.length === 0 && inside.blobs.length === 0 && inside.saved.length === 1 && /\.csv$/.test(inside.saved[0].filename) && inside.saved[0].data.startsWith(String.fromCharCode(0xfeff)) && unserved.blobs.length === 1 && declined.button.textContent === "Download",
+        { outside: outside.blobs.length, inside: inside.saved.map((s) => s.filename), unserved: unserved.blobs.length });
+    }
+    // PUB-3, the dataset emitter: one file per panel of the leaders' page, each the page's own Download CSV of the
+    // default view with the pull's time as a last column, and a definitions file; account rows never on a page that
+    // may not name accounts.
+    {
+      const execPage = SPEC_ACCOUNTS.pages.find((p) => p.preset === "exec");
+      const snap = applyGroups(PULLED, SPEC_ACCOUNTS.groups).snapshot;
+      const files = buildDatasets({ spec: SPEC_ACCOUNTS, snapshot: snap, pageId: execPage.id, kb: "acme-prod" });
+      const app = createDashboard(engine, pageModel(SPEC_ACCOUNTS, snap, execPage, { kb: "acme-prod" }));
+      const state = app.defaultState();
+      const expected = app.panels.map((p) => ({ p, csv: app.csvOf(p, state, null) })).filter((x) => x.csv);
+      const byName = new Map(files.map((f) => [f.name, f.text]));
+      const asRows = (t) => parseCsv(t.replace(/^\uFEFF/, ""));
+      const pulledAt = String(PULLED.meta.pulledAt);
+      const tablesEqual = expected.every(({ p, csv }) => {
+        const got = asRows(byName.get(`${p.id}.csv`) ?? "");
+        const want = parseCsv(csv.text);
+        return got.length === want.length && got[0].at(-1) === "Data pulled" && got.slice(1).every((r) => r.at(-1) === pulledAt) && isDeepStrictEqual(got.map((r) => r.slice(0, -1)), want);
+      });
+      const defs = asRows(byName.get("definitions.csv") ?? "");
+      const everyAccount = PULLED.dimensions.accounts.map((a) => a.name).filter(Boolean);
+      check("PUB-3 the dataset emitter: one CSV per panel of the leaders' page (stable names, <panel>.csv) holding exactly that panel's Download CSV of the default view (one aggregation path) with a last \"Data pulled\" column; a definitions file whose first row is when the data was pulled, then the filters in force, the account-names setting, each figure's meaning and the caveats; no account name anywhere on a page that may not name accounts",
+        files.length === expected.length + 1 && tablesEqual && isDeepStrictEqual(defs[0], ["Kind", "Name", "Text"]) && isDeepStrictEqual(defs[1], ["pulled", "Data pulled", `${PULLED.meta.pulledAt}${PULLED.meta.timeZone ? ` (${PULLED.meta.timeZone})` : ""}`]) &&
+          defs.some((r) => r[0] === "filter" && r[1] === "Months") && defs.some((r) => r[0] === "privacy" && /no account rows/.test(r[2])) && defs.some((r) => r[0] === "metric" && r[1] === engine.metric("openRate").label) && defs.some((r) => r[0] === "caveat") &&
+          !files.some((f) => everyAccount.some((n) => f.text.includes(n))) && files.every((f) => f.text.startsWith("\uFEFF")) && datasetsDirName("program-health-leaders.html") === "program-health-leaders-data",
+        { names: files.map((f) => f.name), defs: defs.slice(0, 3) });
+      // The artifact form: the page's title and style, then its body; no second document; it still boots.
+      const execBuilt = build(SPEC_DEFAULTS, PULLED, "exec");
+      const content = artifactContentOf(execBuilt.html);
+      const booted = loadPage(`<!doctype html><html><head><meta charset=utf8></head><body>${content}</body></html>`);
+      check("PUB-3 the artifact form of a page: its <title> and <style> first, then everything its body holds, with no doctype, html, head or body of its own (the artifact tool adds its own); derived from the one document template, it refuses anything else; inside another document it boots and draws the same default view",
+        /^<title>[^<]+<\/title>\n<style>/.test(content) && !/<!doctype|<html\b|<head>|<body\b|<\/body>|<\/html>/i.test(content) && execBuilt.html.includes(content.slice(content.indexOf("<noscript>"))) &&
+          throwsWith(() => artifactContentOf("<html><body>x</body></html>"), /not a page this builder wrote/) && typeof booted.call("app.renderApp(app.defaultState(), null)") === "string" && booted.call("app.renderApp(app.defaultState(), null)") === loadPage(execBuilt.html).call("app.renderApp(app.defaultState(), null)"),
+        content.slice(0, 160));
+    }
     const empty = structuredClone(TL);
     empty.facts.accountTimeline = [];
     empty.facts.tenantByProgram = [];

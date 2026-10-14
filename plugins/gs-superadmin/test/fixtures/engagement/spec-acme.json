@@ -288,8 +288,13 @@
     "ownerNote": "Run on the first Monday."
   },
   "publish": {
-    "target": "none",
-    "config": {}
+    "target": "file-copy",
+    "config": {
+      "to": "leaders",
+      "file": "program-health-leaders.html",
+      "datedCopies": false,
+      "datasets": true
+    }
   },
   "native": {
     "reports": []

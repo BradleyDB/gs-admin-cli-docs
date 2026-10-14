@@ -177,7 +177,8 @@
  * @property {T11Page[]} pages
  * @property {{maxAgeDays: number}} freshness      a page older than this shows a stale banner
  * @property {{cadence: "weekly"|"monthly"|"quarterly"|"manual", ownerNote: ?string}} refresh
- * @property {{target: "none", config: Object<string, never>}} publish   "none" until a publishing path exists
+ * @property {T11Publish} publish   where the leaders' copy goes after a refresh (PUB-3, additive in S7: the targets
+ *   file-copy and claude-artifact beside none)
  * @property {{reports: Array<{panel: string, reportId: string, name?: string}>}} native   reports created in Gainsight from this spec
  * @property {import("./dashboard-theme.mjs").Theme} [theme]   the pages' look (additive, UX-1, S4d): brand-facing token
  *   values only — text and surface colours (light, and dark or derived), chart series colours, a system font stack, a
@@ -216,6 +217,36 @@ export const TABS = Object.freeze({
   templates: "Templates: each email's performance, content and keyword search",
   about: "About: definitions, how to use the page, this dashboard's settings and where the data came from",
 });
+/**
+ * Where the leaders' copy goes (T-11 `publish`; PUB-3, ruled 2026-10-13 at X1 and 2026-10-14 at S7's kickoff).
+ *   - "none": the pages stay in the workspace; config {}.
+ *   - "file-copy" (the default): the leaders' page is copied after every successful refresh and rebuild into a
+ *     folder, under the same file name every time. config {to, file, datedCopies, datasets}: `to` names a TARGET,
+ *     never a folder — the folder is per machine, in the workspace's own settings
+ *     (`.gs-superadmin/publish-targets.json`, written by `dashboard.mjs publish-target`), so a spec holds no machine
+ *     path and exports cleanly; `file` is a bare file name ending .html; `datedCopies` adds a copy named with the
+ *     pull's date beside it (off by default); `datasets` writes the page's tables as CSV files in a data folder
+ *     beside it (on by default).
+ *   - "claude-artifact": the refresh writes the page in an artifact's content form, and the skill publishes it as a
+ *     claude.ai artifact (only Claude can). config {url}: the artifact's link once published (null before), so the
+ *     same link is updated each time.
+ * @typedef {{target: "none", config: {}} | {target: "file-copy", config: {to: string, file: string, datedCopies: boolean, datasets: boolean}} | {target: "claude-artifact", config: {url: ?string}}} T11Publish
+ */
+export const PUBLISH_TARGETS = Object.freeze({
+  none: "the workspace only",
+  "file-copy": "a shared folder, the same file each time",
+  "claude-artifact": "a claude.ai artifact link",
+});
+/** A publish target's NAME (the folder is the machine's): letters, digits, dot, dash, underscore, at most 40. */
+export const PUBLISH_TARGET_NAME_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,39}$/;
+/** The leaders' copy's file name: bare (no folder), ending .html. */
+export const PUBLISH_FILE_RE = /^[A-Za-z0-9][A-Za-z0-9 ._-]{0,115}\.html$/;
+const ARTIFACT_URL_RE = /^https:\/\/claude\.ai\/(?:code\/)?artifact\/[A-Za-z0-9_-]{6,64}$/;
+/**
+ * The default publish setting: the shared folder named "leaders", the file named after the dashboard.
+ * @param {string} slug @returns {T11Publish}
+ */
+export const defaultPublish = (slug) => ({ target: /** @type {"file-copy"} */ ("file-copy"), config: { to: "leaders", file: `${slug}-leaders.html`, datedCopies: false, datasets: true } });
 export const CADENCES = Object.freeze({ weekly: "every week", monthly: "every month", quarterly: "every quarter", manual: "only when someone asks" });
 // How stale a page may be before its banner shows, from the cadence (ruled 2026-10-05, DSH-1 item 3): a typed
 // value wins; the entry command's cadence question fills freshness from this unless freshness was answered.
@@ -372,7 +403,7 @@ export function defaultSpec({ slug, title = null, owner = null, tenantHost }) {
     pages: /** @type {T11Page[]} */ (/** @type {unknown} */ ([pageOf("admin", "admin", "Admin"), pageOf("exec", "exec", "Leadership")])),
     freshness: { maxAgeDays: FRESHNESS_BY_CADENCE.monthly },
     refresh: { cadence: "monthly", ownerNote: null },
-    publish: { target: "none", config: {} },
+    publish: defaultPublish(slug),
     native: { reports: [] },
   };
 }
@@ -484,7 +515,15 @@ export const SPEC_DESCRIPTIONS = Object.freeze([
   // when the data was pulled instead of showing a staleness banner. The About tab does not list these two.
   { covers: ["freshness.maxAgeDays"], label: "Freshness", say: (s) => [`${plural(s.freshness.maxAgeDays, "day")}; not read by the pages, which say when their data was pulled instead.`] },
   { covers: ["refresh.cadence", "refresh.ownerNote"], label: "Refresh", say: (s) => [`${CADENCES[s.refresh.cadence] ?? s.refresh.cadence}; not read: refreshes are run by hand, whenever new numbers are wanted.${s.refresh.ownerNote ? ` ${s.refresh.ownerNote}` : ""}`] },
-  { covers: ["publish.target", "publish.config"], label: "Publishing", say: (s) => [s.publish.target === "none" ? "Not published anywhere: the pages are files in the workspace." : `Published to ${s.publish.target}.`] },
+  {
+    covers: ["publish.target", "publish.config", "publish.config.to", "publish.config.file", "publish.config.datedCopies", "publish.config.datasets", "publish.config.url"], label: "Publishing",
+    say: (s) => {
+      const c = /** @type {any} */ (s.publish.config);
+      if (s.publish.target === "file-copy") return [`After every refresh and rebuild the leaders' page is copied, as ${c.file} (the same file each time), into the shared folder this machine names "${c.to}".${c.datedCopies ? " A copy named with the pull's date is kept beside it." : ""}${c.datasets ? " Its tables go beside it as CSV files, with a definitions file." : ""}`];
+      if (s.publish.target === "claude-artifact") return [`The leaders' page is published as a claude.ai artifact after a refresh, by Claude (one short session)${c.url ? `, at ${c.url}` : "; not yet published"}.`];
+      return ["Not published anywhere: the pages are files in the workspace."];
+    },
+  },
   { covers: ["native.reports[]"], label: "Gainsight reports", say: (s) => [`${plural(s.native.reports.length, "report")} created in Gainsight from this dashboard.`] },
   // The look (UX-1, additive): what the theme sets and what the validator replaced, in words; the About tab shows it.
   {
@@ -776,8 +815,23 @@ export function validateSpec(input) {
     text(s.refresh.ownerNote, "refresh.ownerNote", { nullable: true, max: 600 });
   }
   if (obj(s.publish, "publish")) {
-    if (s.publish.target !== "none") bad("publish.target", `must be "none": no publishing path exists yet`);
-    if (!isObj(s.publish.config) || Object.keys(s.publish.config).length) bad("publish.config", "must be an empty object while the target is none");
+    const t = s.publish.target;
+    const c = s.publish.config;
+    const exactly = (keys) => isObj(c) && Object.keys(c).length === keys.length && keys.every((k) => Object.hasOwn(c, k));
+    if (!(t in PUBLISH_TARGETS)) bad("publish.target", `must be one of ${Object.keys(PUBLISH_TARGETS).join(", ")}`);
+    else if (t === "none") { if (!isObj(c) || Object.keys(c).length) bad("publish.config", "must be an empty object while the target is none"); }
+    else if (t === "file-copy") {
+      if (!exactly(["to", "file", "datedCopies", "datasets"])) bad("publish.config", "must be {to, file, datedCopies, datasets} for a file-copy target");
+      else {
+        if (typeof c.to !== "string" || !PUBLISH_TARGET_NAME_RE.test(c.to)) bad("publish.config.to", "must be a target's NAME (letters, digits, dot, dash or underscore, at most 40), never a folder: the folder is set on each machine with dashboard.mjs publish-target <name> <folder>");
+        if (typeof c.file !== "string" || !PUBLISH_FILE_RE.test(c.file)) bad("publish.config.file", "must be a bare file name ending .html (no folder): the folder is the target's");
+        if (typeof c.datedCopies !== "boolean") bad("publish.config.datedCopies", "must be true or false");
+        if (typeof c.datasets !== "boolean") bad("publish.config.datasets", "must be true or false");
+      }
+    } else if (t === "claude-artifact") {
+      if (!exactly(["url"])) bad("publish.config", "must be {url} for a claude-artifact target (url null until the first publish)");
+      else if (c.url !== null && (typeof c.url !== "string" || !ARTIFACT_URL_RE.test(c.url))) bad("publish.config.url", "must be null or a claude.ai artifact link (https://claude.ai/artifact/<id>)");
+    }
   }
   if (obj(s.native, "native")) {
     if (!Array.isArray(s.native.reports)) bad("native.reports", "must be a list");

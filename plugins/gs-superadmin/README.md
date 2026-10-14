@@ -335,8 +335,8 @@ test accounts (company records, by name or GSID, never addresses), the unsubscri
 health settings, the look (brand guidelines as a file or pasted values; a logo from a local
 PNG or JPEG), the tabs per page with the minutes the Health tab adds, the customer lists
 (off by default, with their cost) and, when they are on, whether the leaders' page may carry
-them with names and how the lists are built, step detail with its minutes, and the
-tenant's own expected failure reasons. It closes with one step: the full refresh's calls
+them with names and how the lists are built, step detail with its minutes, the
+tenant's own expected failure reasons, and where the leaders' copy goes. It closes with one step: the full refresh's calls
 and minutes against your login, and the choice to save and refresh now, run a dry run
 first (preview pages on real data), save only, or go back. Every option is a plain choice;
 a value an option needs (a date, a number of months, a list of names) is asked for on its
@@ -453,10 +453,59 @@ which dashboard folder a bare slug means. The pages' own copy lines carry it the
   --with-snapshot --kb acme-prod`, then on their machine `… import --file handover.json --kb
   acme-prod`: their first pull is selective, with a change against yours. No lock is shared
   across machines.
-- **The leaders' copy** is `latest-exec.html`: copy the file into a shared folder. SharePoint,
-  OneDrive and Teams download an HTML file rather than show it, so a leader opens it in two
-  clicks (download, open); it is current each time. It holds no account rows unless the
-  dashboard opted in, and no internal domain or unsubscribe link values.
+- **The leaders' copy** is the leaders' page, `latest-exec.html`. It holds no account rows
+  unless the dashboard opted in, and no internal domain or unsubscribe link values. It goes
+  where the dashboard's `publish` setting says: the interview asks, and `change` sets it.
+
+  *A shared folder, the default.* Every successful refresh and rebuild copies it into a
+  folder synced to your machine (OneDrive, SharePoint, a network share), as
+  `<dashboard>-leaders.html`, the SAME file every time: a leader bookmarks that one file,
+  or the folder, once, and it is current after each refresh. Beside it, in
+  `<dashboard>-leaders-data/`, go its tables as CSV files and a `definitions.csv` (what each
+  figure means, the caveats, the filters, when the data was pulled), overwritten the same
+  way. A refresh that fails or stops copies nothing: the folder keeps the last copy, as the
+  workspace keeps the last pages. A copy that fails (the folder gone, a file locked by the
+  sync) is said in the summary and leaves the workspace's pages as they are. The refresh's
+  summary, and the scheduled run's log, say where the copy went.
+
+  The folder lives on your machine, not in the dashboard: the dashboard names a target
+  (`leaders`), and one line maps it to the folder, once per machine. A backup refresher who
+  imports the dashboard runs it on theirs; until then each refresh says the copy was
+  skipped and why.
+
+  ```bash
+  node .gs-superadmin/plugin/scripts/dashboard.mjs publish-target leaders 'C:\path\to\OneDrive - Acme\Leadership' --kb acme-prod
+  ```
+
+  Opening it: from File Explorer (or Finder) the synced file opens in the browser and works
+  whole, filters, tabs and Download CSV included; on the OneDrive website it opened as a
+  preview with an "open" option, no download step, where this was measured. SharePoint and
+  Teams were not measured: they may download an HTML file rather than show it, and a leader
+  then opens it in two clicks (download, open). Dated copies beside the same-name file are
+  an option, off by default: `change program-health publish.config.datedCopies=true --kb
+  acme-prod`.
+
+  *A claude.ai artifact, the second target*
+  (`change program-health 'publish={"target":"claude-artifact","config":{"url":null}}' --kb
+  acme-prod`): a private link that people in your organization open with their Claude
+  account once you share it from the artifact's Share menu. Only Claude can publish one:
+  after a refresh, `/gs-superadmin:email-engagement publish program-health` in a Claude Code
+  session publishes the page (one short session) and updates the same link each time.
+  Inside the artifact, Download CSV asks the viewer to confirm the save; a filtered view
+  cannot be bookmarked there (the address bar keeps no filters).
+
+  *Monthly by default, with your refresh, and by hand.* Each refresh publishes the leaders'
+  copy (on demand or the scheduled recipe above); this line publishes it on its own, with
+  no pull:
+
+  ```bash
+  node .gs-superadmin/plugin/scripts/dashboard.mjs publish program-health --kb acme-prod
+  ```
+
+  *What it costs.* Viewers pay nothing: the leaders' copy is a file or a page of files, so
+  opening it runs no query and no session; the publish is one short Claude session for an
+  artifact target and nothing for a file copy. The interview is one Claude session; a
+  refresh is `gs-admin` calls only.
 - **A program's failure text** (the masked messages and the "Other" samples) is shown by
   `… health program-health --program <id>` in the terminal, never on a page.
 - **One account's timeline:** `/gs-superadmin:email-engagement account 'Acme Corp'` in a

@@ -1,6 +1,6 @@
 ---
 description: Read-only Journey Orchestrator email engagement from the tenant's send log, for comparisons across programs and periods — "every program that sent since a date", which programs have low open rates, the cross-program customer lists (most engaged, least engaged, most bounced) — as a one-off report or as a dashboard built once and pulled again by hand whenever new numbers are wanted. Use when asked "how are our email programs performing", "which programs have low open rates", "which customers aren't opening our emails", "build (or edit) a dashboard of our email engagement", "update the engagement dashboard" (/gs-superadmin:email-engagement refresh <slug>), or "what have we emailed this customer" (one account's timeline by day). For ONE program's numbers, Gainsight's own analytics page for that program is the place; this skill is for the comparisons the UI cannot make. Pairs with email-report, which says what the emails say and when they run. Writes a markdown report, optionally CSVs/XLSX, or self-contained HTML pages. Never mutates the tenant.
-argument-hint: "report [--name p]… [--ids-file f] [--sent-since d] [--from YYYY-MM] [--to YYYY-MM] [--internal-domain d]… [--unsubscribe-link l]… [--test-account id]… [--accounts] [--step-detail] [--previous f] [--snapshot f] [--by-template] [--exclude-internal] [--include-paused|--all] [--csv] [--xlsx] [--slug name] | dashboard new <slug> [--fast-path] | dashboard edit <slug> | dashboard list | /gs-superadmin:email-engagement refresh <slug> [--full] [--health-only] | account [<dash>] '<name>' [--last Nd|Nm]"
+argument-hint: "report [--name p]… [--ids-file f] [--sent-since d] [--from YYYY-MM] [--to YYYY-MM] [--internal-domain d]… [--unsubscribe-link l]… [--test-account id]… [--accounts] [--step-detail] [--previous f] [--snapshot f] [--by-template] [--exclude-internal] [--include-paused|--all] [--csv] [--xlsx] [--slug name] | dashboard new <slug> [--fast-path] | dashboard edit <slug> | dashboard list | /gs-superadmin:email-engagement refresh <slug> [--full] [--health-only] | publish <slug> | account [<dash>] '<name>' [--last Nd|Nm]"
 # model-invocable by design (no disable-model-invocation): a plain "open rate for program X" routes to `report` (email-report precedent)
 ---
 
@@ -18,7 +18,9 @@ How Journey Orchestrator emails performed, read from the tenant's send log. Its 
   at a time), saves its spec, and pulls it; the pages are self-contained HTML files, one
   per audience, with global filters and tabs.
 - **/gs-superadmin:email-engagement refresh <slug>** — pulls a saved dashboard again and
-  rebuilds its pages, with no model in the loop.
+  rebuilds its pages, with no model in the loop; the leaders' copy is published at its end.
+- **publish <slug>** — publishes the leaders' copy of a saved dashboard as its pages stand,
+  with no pull: into the shared folder the dashboard names, or as a claude.ai artifact.
 - **account '<name>'** — one account's emails by program and day over the last N days or
   months, in a page of its own (its contacts added up, never named).
 
@@ -58,8 +60,9 @@ Each is a one-line reminder; the full rule lives where the pointer says.
 First argument: the mode. `report` when the ask is a plain question about open rates,
 engagement or email performance across programs; `dashboard` when the user wants a
 dashboard built, changed or listed; the pull-again mode when a saved dashboard should be
-brought up to date (`/gs-superadmin:email-engagement refresh <slug>`); `account` when the ask is
-what one customer was sent.
+brought up to date (`/gs-superadmin:email-engagement refresh <slug>`); `publish` when the
+leaders' copy should be published again without a pull ("publish the leaders' page", "put
+it on the artifact"); `account` when the ask is what one customer was sent.
 
 Pull flags (report mode) — passed to the pull script exactly as written here (steps R2
 and R3):
@@ -113,8 +116,8 @@ matches (or use `--slug`). If no workspace manifest exists, tell the user to run
 `/gs-superadmin:setup` first and stop. If `whoami` does not show `Token: valid`, ask the
 user to run `gs-admin login`, then continue.
 
-Then go to the mode's steps: R (report), D (dashboard), P (the pull-again mode), or A (one
-account's timeline).
+Then go to the mode's steps: R (report), D (dashboard), P (the pull-again mode), L (publish
+the leaders' copy), or A (one account's timeline).
 
 ---
 
@@ -521,8 +524,8 @@ node .gs-superadmin/plugin/scripts/dashboard.mjs answer <dash> <question id> <va
 `estimate yes` confirms the cost the summary quotes (its `token` is the login as read at
 that moment, with `loginsNeeded`); on `no` the summary says which setting to answer again.
 
-By exit code on any verb: `3` is the login (ask for `gs-admin login`, then re-issue the
-same command); `5` is the wrong tenant (the CLI is on another tenant than the dashboard's:
+By exit code on any verb: `3` is the login (ask for `gs-admin login`, then run the line in
+the summary's `remedy.line` when it has one, else the same command); `5` is the wrong tenant (the CLI is on another tenant than the dashboard's:
 say both and stop); `4` is a stopped pull (`error` names the call that failed and says the
 next run retries it: re-issue once); `1` is a refusal (show `error`).
 
@@ -585,15 +588,22 @@ nothing else with `gs-admin` meanwhile. By exit code:
 - `3` — the login expired, before the pull or during it. A pull longer than one login is
   expected and keeps every call it made: relay the summary's `error` (it says how many
   calls were made and about how many more logins the pull needs), ask the user to run
-  `gs-admin login` (a browser flow they complete by hand), then re-issue the same command;
-  it continues where it stopped, and the last good pages are untouched.
+  `gs-admin login` (a browser flow they complete by hand), then run the summary's
+  `remedy.line` exactly as written (it carries this run's own `--full` or
+  `--health-only`, which the pull needs to continue); it continues where it stopped, and
+  the last good pages are untouched.
 - `4` — a call failed: `error` names the call (its family, the programs it covered, the
   cause, and in how many runs it has failed so far) and says the next run retries it.
-  Re-issue once; if it exits 4 again, report `error` (a cause that recurs run after run is
-  the server's, not a transient); the pages are untouched.
+  Run the summary's `remedy.line` once; if it exits 4 again, report `error` (a cause that
+  recurs run after run is the server's, not a transient); the pages are untouched.
 - `5` — the CLI is on another tenant than the dashboard's: say both tenants and stop.
-- `1` — refused (another pull of it is running, its holder and time named; or the
-  script's own reason): relay `error` and stop.
+- `1` — refused (another pull of it is running, its holder and time named; an earlier pull
+  stopped with other flags and waits, its `remedy.line` the one to run; or the script's own
+  reason): relay `error` and stop.
+
+On exit 0 the summary's `publish` says what became of the leaders' copy; relay it with the
+final report's Leaders line, and when its `target` is `claude-artifact` and `ready` is
+true, do step L2 now.
 
 ```
 ✓ /gs-superadmin:email-engagement refresh <dash> complete
@@ -602,11 +612,52 @@ nothing else with `gs-admin` meanwhile. By exit code:
   Knowledge base: <redocumented.programs.documented> programs and <redocumented.templates.documented> templates documented; <redocumented.programs.remaining + redocumented.templates.remaining> left for next time
   Change:      <delta line>
   Pages:       <pages>
+  Leaders:     <leaders line>
 ```
 
+`<leaders line>` follows step L's rule for the summary's `publish`.
 `<delta line>` is "first pull, nothing to compare with" when `delta` is null; otherwise
 `since <delta.previousPulledAt> over <delta.closedMonths> closed month(s)`. `<pages>` lists
 each page's path, one per line in the same indentation. Then stop.
+
+---
+
+## L — the leaders' copy (`publish <dash>`, and after every pull)
+
+The leaders' page goes where the dashboard's `publish` setting says, with no pull. Every
+pull and rebuild publishes it at its end; this step does it on its own, for a monthly
+publish by hand or after a setting changed:
+
+```
+node .gs-superadmin/plugin/scripts/dashboard.mjs publish <dash> --kb <slug>
+```
+
+Read the summary's `publish` and say it in one line (the final report's Leaders line):
+
+- `target` `file-copy`, `published` true — "copied to `<file>` (the same file each
+  time)", plus the dated copy and the data folder (`datasets.folder`, its CSV files) when
+  present. A leader opens that one file, or the folder, whenever they want the latest.
+- `target` `file-copy`, `published` false — relay `why` as written. With a `remedy`,
+  the folder is not set on this computer: ask the user for the folder's full path (a
+  OneDrive, SharePoint or network folder synced to this computer), then run the
+  `remedy.line` with `<folder>` replaced by it, single-quoted, and then `publish` again.
+  The folder is kept on this computer only, never in the dashboard.
+- `target` `claude-artifact` with `ready` true — step L2.
+- `target` `none` — "kept in the workspace only".
+
+### L2 — Publish the artifact (only Claude can; the scripts never do)
+
+Publish the file the summary names (`publish.file`) with the Artifact tool, once:
+`file_path` that file, `title` the summary's `publish.title`, `capabilities` exactly
+the summary's `publish.capabilities` (`{"downloads": true}`: without it the page's
+Download CSV is refused inside the artifact), and `url` the summary's `publish.url` when
+it is set, so the same link is updated and the leaders' bookmark holds. When `publish.url`
+was null, record the new link once with the line the summary's `next` names (a
+`change` of `publish.config.url`: a rebuild with no pull, which writes the artifact file again but publishes nothing, since only this step can); never publish a
+second time in the same request. Say what the artifact is: a private link, opened by
+people in the organization with their Claude account once it is shared with them from the
+artifact's Share menu; a filtered view cannot be bookmarked there (the address bar keeps no
+filters); the cost is this one short session, and viewers pay nothing.
 
 ---
 
