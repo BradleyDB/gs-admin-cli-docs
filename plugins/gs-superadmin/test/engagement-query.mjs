@@ -755,6 +755,59 @@ try {
           bare.openSnapshot(GOLD) === GOLD && bare.accountAvailability(OFF).reason === "accounts-off" && JSON.stringify(bare.silentPrograms(GOLD)) === JSON.stringify(Q.silentPrograms(GOLD)) && bare.healthAvailability(GOLD).pulled === true &&
           bare.maskMessage("to bo@c02.example.com") === "to <email>");
     }
+
+    // ── The account timeline (ACC-1, ACC-2): its read floor and its one view ──
+    // The committed fixture timeline is the real producer's (the engagement suite writes it through the process).
+    const TL = Q.openTimeline(JSON.parse(readFileSync(join(HERE, "fixtures", "engagement", "timeline-acme.json"), "utf8")));
+    const sum = (rows) => Object.fromEntries(Q.TIMELINE_MEASURES.map((k) => [k, rows.reduce((n, r) => n + r[k], 0)]));
+    const rate = (s) => (s.delivered ? s.opened / s.delivered : null);
+    const all = Q.timelineView(TL);
+    const allSums = sum(TL.facts.accountTimeline);
+    check("timelineView: with no filter the totals are straight sums of the timeline's rows, the open rate is opened ÷ delivered (the registry's rule), and the comparison is the straight sum of the tenant rows",
+      Q.TIMELINE_MEASURES.join() === "sent,delivered,bounced,rejected,unsubscribed,spamComplaints,failed,opened" && all.total.cells.sent.value === allSums.sent && all.total.cells.delivered.value === allSums.delivered && all.total.cells.opened.value === allSums.opened &&
+        all.total.cells.bounced.value === allSums.bounced && all.total.cells.openRate.value === rate(allSums) && all.tenant.cells.openRate.value === rate(sum(TL.facts.tenantByProgram)) && allSums.sent > 0,
+      [all.total, allSums]);
+    const marksOracle = (rows) => {
+      const m = new Map();
+      for (const r of rows) {
+        const k = JSON.stringify([r.programId, r.templateId, r.day]);
+        m.set(k, [...(m.get(k) ?? []), r]);
+      }
+      return m;
+    };
+    const om = marksOracle(TL.facts.accountTimeline);
+    check("timelineView: one mark per program, email and day (both classes added), in day order; its state is opened when any send was opened, unopened when delivered and none opened, not-delivered otherwise; provisional from incompleteFrom",
+      all.marks.length === om.size && all.marks.every((mk, i) => {
+        const rows = om.get(JSON.stringify([mk.key.program, mk.key.template, mk.key.day]));
+        const s = sum(rows);
+        return !!rows && mk.cells.sent.value === s.sent && mk.cells.openRate.value === rate(s) && mk.state === (s.opened > 0 ? "opened" : s.delivered > 0 ? "unopened" : "not-delivered") && mk.incomplete === (mk.key.day >= TL.meta.incompleteFrom) && (i === 0 || all.marks[i - 1].key.day <= mk.key.day);
+      }) && new Set(all.marks.map((m) => m.state)).size >= 2, all.marks.slice(0, 3));
+    const external = Q.timelineView(TL, { recipientClass: "external" });
+    const firstProgram = TL.dimensions.programs[0].id;
+    const oneProgram = Q.timelineView(TL, { programs: [firstProgram] });
+    check("timelineView: the recipients filter keeps one class on both sides (the account's rows and the comparison), and the program filter keeps one lane and says how many it hides",
+      external.total.cells.sent.value === sum(TL.facts.accountTimeline.filter((r) => r.recipientClass === "external")).sent && external.tenant.cells.sent.value === sum(TL.facts.tenantByProgram.filter((r) => r.recipientClass === "external")).sent && external.total.cells.sent.value < all.total.cells.sent.value &&
+        oneProgram.lanes.length === 1 && oneProgram.lanes[0].key.program === firstProgram && oneProgram.scope.hiddenByFilter === TL.dimensions.programs.length - 1 && oneProgram.total.cells.sent.value === sum(TL.facts.accountTimeline.filter((r) => r.programId === firstProgram)).sent &&
+        oneProgram.lanes[0].tenant.sent.value === sum(TL.facts.tenantByProgram.filter((r) => r.programId === firstProgram)).sent && throws(() => Q.timelineView(TL, { recipientClass: /** @type {*} */ ("test") }), /recipientClass must be/));
+    const dark = { ...TL, facts: { ...TL.facts, accountTimeline: TL.facts.accountTimeline.map((r) => ({ ...r, delivered: 0, opened: 0 })) } };
+    const darkView = Q.timelineView(dark);
+    check("timelineView: a rate on nothing delivered is null with its reason, never 0%, and such a mark is not-delivered",
+      darkView.total.cells.openRate.value === null && darkView.total.cells.openRate.why === "zero-denominator" && darkView.marks.every((m) => m.state === "not-delivered") && Q.formatCell("openRate", darkView.total.cells.openRate) === NO_VALUE);
+    const months = Q.timelineByMonth(TL);
+    check("timelineByMonth: the rows added up by program, month and class, exactly (what a dashboard's account rows of the same account hold)",
+      months.length > 0 && months.every((m) => isDeepStrictEqual(Q.TIMELINE_MEASURES.map((k) => m[k]), Q.TIMELINE_MEASURES.map((k) => sum(TL.facts.accountTimeline.filter((r) => r.programId === m.programId && r.recipientClass === m.recipientClass && r.day.startsWith(m.month)))[k]))) &&
+        months.reduce((n, m) => n + m.sent, 0) === allSums.sent);
+    check("openTimeline is the loud reader of the second snapshot kind: a timeline of another version, an engagement snapshot or a non-object is refused naming T-10, and openSnapshot refuses a timeline",
+      Q.openTimeline(TL) === TL && throws(() => Q.openTimeline({ ...TL, schemaVersion: 2 }), /schemaVersion 2 is not 1 .*\(T-10\)/) && throws(() => Q.openTimeline(GOLD), /kind "engagement" is not "account-timeline"/) &&
+        throws(() => Q.openTimeline([]), /not an object/) && throws(() => openSnapshot(TL), /kind "account-timeline" is not "engagement"/));
+    const caveatIds = Q.timelineCaveats(TL).map((c) => c.id);
+    const flagged = Q.timelineCaveats({ ...TL, caveats: [...TL.caveats, { id: "timeline-reconciliation-mismatch", detail: { pulledAt: "x", mismatches: 2, measures: ["opened"] } }] });
+    check("a timeline's data-pulled line names when, from where, the days and the provisional day; its caveats carry its own (a reconciliation failure first), the provisional days, the open rate's, and that recipients are added up to the account",
+      Q.timelinePulledLine(TL) === `Data pulled ${TL.meta.pulledAt} from ${TL.meta.tenantHost}. Days ${TL.meta.window.start} to ${TL.meta.window.end} (the last ${TL.meta.window.last}); sends on or after ${TL.meta.incompleteFrom} are provisional (opens keep arriving).` &&
+        ["incomplete-period", "opens-are-pixel-loads", "delivered-small-groups", "account-timeline-grain", "timeline-tenant-comparison", "status-is-today"].every((id) => caveatIds.includes(id)) && TL.caveats.every((c) => caveatIds.includes(c.id)) &&
+        flagged[0].id === "timeline-reconciliation-mismatch" && /RECONCILIATION FAILED .* 2 program-month\(s\) .*opened/.test(flagged[0].text), caveatIds);
+    if (bare) check("browser-safe: the timeline's view, reader and caveats computed by the module's bytes with no Node around them equal the module's own",
+      JSON.stringify(bare.timelineView(TL, { recipientClass: "external" })) === JSON.stringify(external) && bare.openTimeline(TL) === TL && JSON.stringify(bare.timelineCaveats(TL)) === JSON.stringify(Q.timelineCaveats(TL)));
   }
 } finally {
   removeTempDir(ROOT);

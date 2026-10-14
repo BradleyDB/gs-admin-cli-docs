@@ -112,9 +112,10 @@
  * @typedef {object} T11Panel                     a panel is a QUERY for the engine (R2), or one of the typed views (the health four, DSH-4, ruled 2026-10-05; the templates view, TPL-2)
  * @property {string} id
  * @property {"engagement"|"health"|"templates"} tab
- * @property {"kpi"|"bar"|"line"|"table"|"watchlist"|"health-silent"|"health-reasons"|"health-schedules"|"health-one-time"|"templates"} type
- *   kpi, bar, line, table and watchlist take a `query` (the engine's shape, checked per type: a kpi groups by
- *   nothing, a line by month alone, a bar by one dimension, a watchlist by account); the four health-* types take
+ * @property {"kpi"|"bar"|"line"|"table"|"watchlist"|"account"|"health-silent"|"health-reasons"|"health-schedules"|"health-one-time"|"templates"} type
+ *   kpi, bar, line, table, watchlist and account take a `query` (the engine's shape, checked per type: a kpi groups by
+ *   nothing, a line by month alone, a bar by one dimension, a watchlist by account, an account view (additive, ACC-2:
+ *   ONE account the viewer picks, from the accounts the page carries) by program and month); the four health-* types take
  *   `knobs` instead, each type its own few (HEALTH_PANEL_TYPES; additive, S4b; absent or empty takes the
  *   defaults), and sit on the health tab; the templates type (additive, TPL-2) takes `knobs` too
  *   (TEMPLATE_PANEL_TYPES) and sits on the templates tab
@@ -242,6 +243,7 @@ export const PANEL_TYPES = Object.freeze({
   line: "a monthly trend",
   table: "a table",
   watchlist: "a ranked short list of accounts across programs, with each account's programs underneath",
+  account: "one account at a time, picked from the accounts the page carries (with the line for its day-by-day timeline beside it), as a table",
   "health-silent": "program health: every Active program's signals and the one list it lands on, with the no-send threshold adjustable in the page",
   "health-reasons": "why sends and participants fail, by category, each against its usual, with expected failures (business rules working) behind a toggle",
   "health-schedules": "each program's schedule as the knowledge base documents it, with the day it is as of and a stale mark",
@@ -266,7 +268,7 @@ export const TEMPLATE_PANEL_TYPES = Object.freeze({
 });
 // Every knobbed type (a typed view: knobs, no query), with the tab each sits on.
 export const KNOBBED_PANEL_TYPES = Object.freeze({ ...Object.fromEntries(Object.entries(HEALTH_PANEL_TYPES).map(([k, v]) => [k, { tab: "health", ...v }])), ...TEMPLATE_PANEL_TYPES });
-export const QUERY_PANEL_TYPES = Object.freeze(["kpi", "bar", "line", "table", "watchlist"]);
+export const QUERY_PANEL_TYPES = Object.freeze(["kpi", "bar", "line", "table", "watchlist", "account"]);
 /** A knobbed panel's knobs (a health view's, the templates view's) with the spec's defaults filled in. */
 export const panelKnobs = (spec, panel) => Object.fromEntries(Object.entries(KNOBBED_PANEL_TYPES[panel.type].knobs).map(([k, d]) => [k, panel.knobs?.[k] ?? d.default(spec)]));
 // The default panels (DSH-4, Bradley's choice A of 2026-10-09): what a page shows when its spec lists none. The
@@ -301,6 +303,10 @@ export const PRESETS = Object.freeze({
       ACCOUNT_LIST("most-bounced", "Most bounced customers", { metric: "bounced", dir: "desc" }, { metric: "bounced", gt: 0 }),
       ...HEALTH_PANELS,
       TEMPLATES_PANEL,
+      // The in-page account view (ACC-2), drawn on the Engagement tab after the customer lists (a tab draws its panels in
+      // this order): an account the lists kept, month by month, with no pull; its days are the account timeline's, a
+      // pull of its own whose line the view carries. Last in the list, so every earlier panel keeps its place.
+      { id: "account-view", tab: "engagement", type: "account", title: "One account, month by month", query: { groupBy: ["program", "month"], metrics: ["sent", "delivered", "opened", "openRate", "bounced"] } },
     ]),
   },
   exec: {
@@ -728,7 +734,7 @@ export function validateSpec(input) {
         }
         continue;
       }
-      if ("knobs" in pn) bad(`${pat}.knobs`, `is not a field of a ${pn.type} panel: knobs belong to the typed views (${Object.keys(KNOBBED_PANEL_TYPES).join(", ")})`);
+      if ("knobs" in pn) bad(`${pat}.knobs`, `is not a field of ${/^[aeiou]/.test(pn.type) ? "an" : "a"} ${pn.type} panel: knobs belong to the typed views (${Object.keys(KNOBBED_PANEL_TYPES).join(", ")})`);
       const q = pn.query;
       if (!obj(q, `${pat}.query`)) continue;
       for (const k of Object.keys(q)) if (!["groupBy", "metrics", "sort", "having", "limit"].includes(k)) bad(`${pat}.query.${k}`, "is not a field of a query (groupBy, metrics, sort, having, limit)");
@@ -741,6 +747,7 @@ export function validateSpec(input) {
         if (pn.type === "line" && groupBy.join() !== "month") bad(`${pat}.query.groupBy`, 'must be ["month"] on a line panel: a monthly trend');
         if (pn.type === "bar" && groupBy.length !== 1) bad(`${pat}.query.groupBy`, "must name exactly one dimension on a bar panel: one bar group per value");
         if (pn.type === "watchlist" && !["account", "program,account"].includes(groupBy.join())) bad(`${pat}.query.groupBy`, 'must be ["account"] (across programs) or ["program", "account"] on a watchlist panel');
+        if (pn.type === "account" && !["program,month", "month", "program"].includes(groupBy.join())) bad(`${pat}.query.groupBy`, 'must be ["program", "month"], ["month"] or ["program"] on an account panel: one account is the view, its programs and months the rows');
       }
       const metrics = Array.isArray(q.metrics) ? q.metrics : [];
       if (!metrics.length) bad(`${pat}.query.metrics`, "must list at least one metric");

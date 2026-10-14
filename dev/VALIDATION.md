@@ -2706,3 +2706,130 @@ S5-V first sitting (2026-10-12 @ hb-20261011-02; the fast-path dashboard's R1 sn
 - K5 CLEARED: on the saved dashboard, `metrics {"clicks": false}` left the draft's admin page with 17 panels carrying no click metric and the leaders' page 6; `metrics default` emptied both to the preset's with the note "every optional metric shown"; with the admin page's panels changed by hand through `change` (the preset minus one engagement panel), both answers kept its 16 panels and the note named `change <slug> pages.0.panels=[]` (the literal `<slug>` is F-512 (c)), while the preset-derived leaders' page followed the answers (6, then the preset's).
 - K4 bar moved with F-511 (builder, 2026-10-12 @ hb-20261012-01): the category-cost quote now lives on the tabs question alone ("The 56 bounce categories in the workspace's category file cost 336 counted calls a refresh …" after Health's minutes and the shared-pull sentence); the failure-settings question no longer carries it, and the internal-domains and test-accounts asks say "a few minutes per domain / per test account" instead of counted calls. Already CLEARED on the figures at the first sitting; the second sitting reads the sentence on the tabs question at I7 and owes nothing else here.
 Section status: CLEARED (first sitting); the two-day case a blind spot. F-502, F-503 and F-504 flip FIXED → VERIFIED on the bus with these as their live half.
+
+## ACC — the account timeline and the in-page account view on a real tenant (banked 2026-10-13, builder, Session S6 @ hb-20261013-02; verdict at S6-V)
+
+Owed by: S6-V, its own session (the tail's batching, ruled 2026-10-12, withdrawn 2026-10-13), in the consumer
+workspace with the plugin loaded from this branch; the production tenant,
+reads only (the timeline issues only the adapter's reads: `whoami`, `jo p list`, `rp schema`, `rp run`, and
+`jo p describe` for a program the list lacks; every one catalogued non-mutating, so the guard asks on none of them).
+Token: hb-20261013-02. Why it is banked: the account path was built against the stand-in CLI. Whether the server takes EQ and
+CONTAINS on the company object's `Name` (and with what letter case), what a real account's day rows cost, and whether a
+timeline equals a real dashboard's rows of the same account need a real tenant. No tenant data leaves the workspace:
+the picks, the timelines and the pages stay under the KB folder.
+
+THIS LIST IS COMPLETE (the same rule as above).
+
+Pick before the first call (kept in the workspace, never here): two accounts of the dashboard the S5-V sittings kept
+(v2) that its customer lists KEPT, each with sends in the last 90 days on two or more programs (one of them sent to by
+an internal recipient, if one exists); one company name the tenant holds on two or more company records, if Bradley
+knows one; one account with no JO send in the last 90 days.
+
+- A0 (measured first, before anything rests on it: Bradley's rule, operators per object and field). `rp schema
+  --object company` declares `Name` filterable; one `rp run` on `company` with `Name EQ '<an exact name>'` returns that
+  account; one with `Name CONTAINS '<a fragment>'` returns the accounts holding it; the same two in another letter case
+  say whether each operator folds case. Pass bar: both operators run (no refusal); the case behaviour of each recorded in
+  SPIKE-NOTES as a one-line addendum (no values). If CONTAINS is refused, the timeline's no-exact-match path fails
+  loudly: log a finding, do not guess a fix.
+- A1 (two timelines: `/gs-superadmin:email-engagement account '<account 1>'` by name, and `… dashboard.mjs account v2
+  --account-id <account 2's GSID> --kb <kb>` through the dashboard). Pass bar: each exits 0; the summary's `sent`,
+  `programs` and `window` (90 days to today); each page opens from file:// in a browser with its lanes, marks, summary
+  and table; the data-pulled line names the pull's time and tenant; the account's open rate stands beside "every
+  recipient of these programs over the same days"; wall time and the number of calls recorded (order 10 calls).
+- A2 (reconciliation against the dashboard's facts: the second timeline of A1, run with the dashboard named). Pass
+  bar: `against.reason` null, `against.basis` class, `matches-dashboard` ok with `compared` above 0, every closed whole
+  month the two hold equal on sent, delivered, opened and bounced per program and class; a program named in
+  `notCompared` is one the dashboard's selection did not keep the account on (read its `honesty.accountSelection`); then
+  three direct counts of the account on one program and one closed month (email_log_v2, the standing filters,
+  GsCompanyId EQ the GSID, ExecutedDate inside the month) equal the timeline's month row.
+- A3 (the in-page account view against the timeline). On v2's admin page, View beside account 2 in a customer list (or
+  the Account filter): the one-account view shows it month by month; for every whole month inside the timeline's days
+  its rows equal the timeline's per program (sum of days); its copy line is `… account v2 --account-id <GSID> --kb <kb>`
+  and runs as drawn from the workspace folder (that is A1's second run); the sentence beside it says the line needs a
+  gs-admin login. The leaders' page has no account view.
+- A4 (no guess). The duplicated name (if one exists) and a fragment no account carries exactly: each exits 6 with a
+  pick list naming every candidate's GSID and sends, and nothing beyond the company search and one count was called
+  (the fetch log). A GSID that does not exist exits 6 saying so.
+- A5 (account is the finest grain). In A1's run directories and timeline files and pages: no address (a search for `@`
+  followed by a domain), no person or participant id, no send id. Pass bar: none found.
+- A6 (escaping and the account with no sends). The no-send account's page says nothing reached it, with no table and
+  no chart; a page for an account whose name holds an ampersand, quote or angle bracket (if the tenant has one) renders
+  the name as text.
+- A7 (resume). One timeline pull stopped on an expired login (start it with a few minutes left, or after the hour) exits
+  3 and the same line after `gs-admin login` continues it (the summary's `calls.reused` above 0).
+
+Carried, not this section's: F-518 (polish, OPEN) rides the tail's first fix round, with S8's kickoff as its fail-safe.
+Section status (banked): OPEN — owed at S6-V.
+S6-V (2026-10-13 @ hb-20261013-02; feat/jo-dash-s6-account-timeline at 1c2754e, clean and level; a terminal in the workspace with --plugin-dir, canary matched; production, reads only, one call at a time; picks chosen by the tester from the kept dashboard's lists at Bradley's request, kept in the workspace):
+- A0 PASSED: `rp schema --object company` declares `Name` STRING, filterable; EQ on an exact name returned that name's records (the name is held by two records — it became A4's duplicated case), and the same name in lower case returned the same two; CONTAINS on a fragment returned 20 records, the same 20 in lower case; CONTAINS on the full name 3; STARTS_WITH 12. Both operators fold letter case. SPIKE-NOTES addendum written (no values). Probe fault, recorded: the tester's first row counter read a `data.records` envelope on a bare-array payload and printed 0 for every call after the first, which read as "CONTAINS matches nothing" for six calls until a control on the adapter's own successful lookup exposed it; every count above is recounted from the payload files.
+- A1 PASSED: account 1 by name through the skill's account command, no dashboard: exit 0, 90 days to today, 264 sent, 9 programs, 10 templates, 8 calls (one timeout retried, answered), 88 s; account 2 by GSID through the dashboard's copy line: exit 0, 1188 sent, 13 programs, 18 templates, 14 calls, 96 s. Both pages open from file:// in headless Chrome with the script running (the root fieldset enabled): lanes, marks (13 and 22) with tooltips, the summary tiles, one table (15 and 24 rows), the data-pulled line naming the time and the tenant, the account's open rate beside "every recipient of these programs over the same days" (each its own denominator). Bradley read both program lists ("seems fine"); independently, every program the dashboard shows sending to the account in the whole months is on its timeline and no timeline program is absent from the dashboard's rows for those months. Hover: each mark reads day, program, step, the template's subject and the counts; 18 of 18 subjects on account 2's page equal their KB template docs, each with its as-of day. Bradley's note on the page: F-522 (polish).
+- A2 PASSED on its figures, FAILED on its notCompared clause: `against.reason` null, `basis` class, `matches-dashboard` ok with `compared` 11 and 0 mismatches; an independent recount from the timeline file and the snapshot (the two whole months, per program and class) gave 11 equal, 0 different; three direct counts of the account on one program and one closed month (email_log_v2, the standing filters, GsCompanyId EQ, ExecutedDate inside the month) read sent, delivered and opened equal to the timeline's month row. `notCompared` named 3 programs as `account-not-kept-on-program`; the snapshot holds the account's rows on all 3 (their timeline days fall in the window's partial first month or the provisional month): F-520 (normal).
+- A3 PASSED: v2's pages predated S6 (built 13:38, the feature commit 17:44) and were rebuilt (`rebuild`, no call); on the admin page with the account chosen (the hash's `a=`), the one-account view reads month by month; 11 of 11 whole-month cells equal the timeline per program (sum of days); its copy line is the exact command A1's second run made (exit 0); the sentence beside it says the line needs a gs-admin login. The leaders' page has no account view (its About's settings text names the admin page's panel, the S4b behaviour).
+- A4 PASSED: the duplicated name exited 6 with both records (GSID and sends over the days), match EQ, nothing pulled; a fragment exited 6 with its one candidate, match CONTAINS; a GSID that does not exist exited 6 "no account has the GSID …; nothing was pulled". The fetch logs hold the preliminaries (whoami, the program list, two schema reads), the company search and at most one count: no send row read. A name that is itself a company's exact name resolves to that account (a fragment of other names is not a pick list then): correct by the rule, noted.
+- A5 PASSED: 93 files (seven account run directories, A7's included, and three timeline files and pages, account 2's as rewritten by A7's 12-month pull) searched: no address, no person or participant id field, no send id; the hits were field names in the two schema reads, the word "Email" in step names, and the inlined engine's source; each page's embedded data block has 0.
+- A6 PASSED: the no-send account's page says no Journey Orchestrator email reached it in the 90 days, with no chart and no table; an account name with an ampersand is `&` in the data and `&amp;` in the markup, read as text. Not tried: a name with a quote or an angle bracket.
+- A7 HALF MEASURED: a 12-month timeline of account 2 through the dashboard, started with 47 seconds of login left, stopped with exit 3, status token-expired, "the login ran out before the pull did … run gs-admin login, then run the same line again; it continues where it stopped" (two calls: the login check answered, the program list stopped); after Bradley's login the same line continued the SAME run directory (one fetch log, both runs) to exit 0 in 204 s: 17 calls made, one account-tenant call timed out twice and was split and answered, 25 programs, internal-within-all, account-within-tenant and matches-dashboard ok (45 compared, 0 mismatches). The summary's `calls.reused` read 1, but it is NOT a call carried across the login: the first run answered only the login check, which every run makes afresh, so no answered data call was on disk to reuse (a reuse is counted only for a record on disk when its unit is reached). The bar's intent (answered calls not made again after a login) is UNMEASURED: a probe-timing fault, the stopping pull started too late. Owed at the re-check sitting.
+- Guard-wiring: `gs-admin jo p pause --help` drew the guard's ask (the mutating command named, both tenants named, production flagged); Bradley pasted the rendered text and declined it.
+- Found beside the arms: F-521 (normal): a selective refresh records empty customer lists and the dashboard's report then says no account met any list's floor.
+Section status: OPEN — A0, A1, A3, A4, A5, A6 PASSED; A2 FAILED on its notCompared clause (F-520); A7's reuse half owed. Ruled by Bradley at the close: one S6 fix round on PR #48's branch takes F-520, F-521, F-522 and F-518, then an S6-V re-check sitting re-owes A2's clause and A7's reuse half beside the fixes' own arms; PR #48 stays unmerged until it passes.
+
+### Re-banked for the S6-V re-check after the S6 fix round (builder, 2026-10-13, feat/jo-dash-s6-fix merged into feat/jo-dash-s6-account-timeline @ hb-20261013-03; PR #48 unmerged)
+
+Owed by: the S6-V re-check sitting, in the consumer workspace with the plugin loaded from this branch (canary hb-20261013-03);
+the production tenant, reads only, one call at a time. What the fix round changed and why each arm exists: F-520 (the
+comparison's "kept" read over the snapshot's window), F-521 (a selective refresh carries the last full ranking of the
+customer lists), F-522 (a shortened chart label opens whole), F-518 (the remainder priced from each planned unit's own
+price), plus A7's reuse half, owed since S6-V. A0, A1, A3, A4, A5, A6 stand PASSED and are not re-run. No tenant data
+leaves the workspace.
+
+THIS LIST IS COMPLETE.
+
+- R1 (A2's notCompared clause, F-520). The same account 2 through the dashboard's copy line (`dashboard.mjs account v2
+  --account-id <GSID> --kb <kb>`). Pass bar: every program `against.notCompared` names is either one the snapshot holds
+  NO row of the account on (`account-not-kept-on-program`, read in `facts.byAccount`) or one it holds rows of whose
+  timeline days fall only outside the whole months compared (`no-send-in-months-compared`: the window's partial first
+  month or the provisional month); the three programs S6-V found read the second reason, not the first; the page's
+  About line "Against the dashboard" names each reason with its programs in words (never "did not keep this account
+  there" of a program it kept); the skill's checks line relays the same (the summary's `againstText`).
+- R2 (F-521, a lists-on dashboard). v2's latest snapshot is the PRE-FIX selective one (its lists recorded empty), so:
+  (1) `refresh v2 --full --kb <kb>` (a full pull: the lists ranked, each record `rankedAt` this pull, `carriedFrom`
+  null); (2) `refresh v2 --kb <kb>` (selective: read `meta.refresh.mode`); (3) `report v2 --kb <kb>`. Pass bar: the
+  selective snapshot's `honesty.accountSelection.lists[].kept` equal the full one's (same accounts, same order) with
+  `rankedAt` the full pull's time and `carriedFrom` set; the report prints the three lists' accounts under the sentence
+  "These lists were ranked by the full pull of …", and nowhere "No account met this list's floor" for a list whose
+  accounts are in the snapshot. If the full pull outlasts the login, R5 rides it. Optional, if Bradley wants it seen:
+  a selective refresh straight from the pre-fix snapshot reads each list "Not ranked on this pull" with the sentence
+  naming a full refresh (the state v2 is in now).
+- R3 (F-522, read by Bradley). On a timeline page whose programs carry names over 28 characters (account 2's, pulled
+  again by R1), and on a dashboard bar chart whose tick labels are cut. The presets' bar charts are by month (never
+  cut), so the bar chart is a panel by program on a SCRATCH copy, never v2 itself: `export v2 --out <file>
+  --with-snapshot`, `import --file <file> --slug <scratch>` (with `--snapshot` if the export wrote one apart),
+  `change <scratch> pages.0.panels=…` listing a bar panel grouped by program on the engagement tab and one panel for
+  each other tab that is on (the spec refuses a list that leaves an on tab with none; `--dry-run` says which, and its
+  printed consequence must read rebuild, no pull: stop if it says pull), open the scratch admin page; remove the
+  scratch dashboard at the close. Pass bar: hovering, focusing (Tab) or clicking / tapping a shortened label shows its whole
+  name over the chart; a second click or tap closes it; Escape or a click elsewhere closes it; Bradley reads both
+  ("the full name is reachable").
+- R4 (F-518, the resume line). Any pull of v2 that stops on the login and is resumed (R2's full refresh is the likely
+  one; else start one with a few minutes of login left). Pass bar: the stop's message says about N more logins (or
+  that every call is made) consistent with the run's `plan.json` `estimate.thisRun.remaining`; the resume's opening
+  stderr "continuing the refresh of v2 (run …): about N minutes of its M minutes remain …" has N at or below M, and N
+  below the stop before it when the same run is stopped twice. Read N, M and `remaining` against `thisRun` in the run
+  directory's plan.json.
+- R5 (A7's reuse half, owed since S6-V). A timeline pull through the dashboard (`dashboard.mjs account v2 --account-id
+  <GSID> --last 12m --kb <kb>`) started with a few MINUTES of login left (not seconds), so that answered data calls
+  are on disk when it stops on the login (exit 3); after `gs-admin login`, the same line continues the same run
+  directory to exit 0. Pass bar: the second run's summary `calls.reused` counts the answered data calls of the first
+  (above 1: the login check is always made afresh, so 1 is not a reuse), and its fetch log shows each of those ids
+  once as `ok` (not made again).
+
+Carried, not this section's: nothing (F-518 rides R4).
+Section status (re-banked): OPEN — R1–R5 owed at the S6-V re-check, hb-20261013-03.
+S6-V re-check (2026-10-13 21:06 to 2026-10-14 00:28 @ hb-20261013-03; feat/jo-dash-s6-account-timeline at 6471f8c, clean and level; a terminal in the workspace with --plugin-dir, canary matched; production, reads only, one call at a time, three logins; the pass bar stated before each arm):
+- R1 PASSED (F-520 VERIFIED): account 2 through the copy line, exit 0 (1 made, 14 reused: S6-V's same-day directory, the same data under the fixed comparison); `matches-dashboard` ok 11/0; the three programs read `no-send-in-months-compared`, confirmed from the two files (held by the snapshot; timeline days only in the partial first month or the provisional month); the About line names them with the kept-there reason; `againstText` carries the same group for the skill's checks line.
+- R2 PASSED (F-521 VERIFIED): the full refresh ranked 25/25/25 (`rankedAt` that pull, `carriedFrom` null); the selective refresh after it (2 months pulled, 11 carried) recorded the same three lists exactly (kind, n, floor, per, segment, the same accounts in the same order) with `rankedAt` the full pull's and `carriedFrom` its snapshot; the report printed the three lists of 25 under "These lists were ranked by the full pull of …" and no floor-miss line. The optional not-ranked arm not run.
+- R3 PASSED on the timeline's lanes (Bradley: hover shows the whole name, click opens and closes, Escape closes; "functional if not super pretty", plan backlog LTR-22) and FAILED on the bar chart: a scratch import with a bar panel by program (`change` printed rebuild only; no pull) — the opened name's second wrapped line is painted under the later tick labels (F-522 REOPENED), and the chart is unreadable at 197 rows: labels, scale, provisional stripes (F-524, normal, Bradley's tier). The scratch dashboard removed at the close.
+- R4 PASSED (F-518 VERIFIED): the full refresh's stop said "about 1 more login"; its resume "about 34 minutes of its 67 minutes remain … enough for it" (`remaining` 2007 s of 4012) and completed in that login; the selective refresh's stop the same, its resume "about 18 minutes of its 44" (1067 s of 2614), completed. The resume run as the first stop printed it was refused for the missing --full: F-523 (polish).
+- R5 PASSED (A7's reuse half): a 12-month timeline through the dashboard started with 125 s of login left stopped (exit 3) after 13 answered calls, 9 of them data calls; after the login the same line continued the same run directory to exit 0 in 12 s with `calls.made` 2 and `calls.reused` 13, each answered id once `ok` in the fetch log (only the login check twice). A7's finished directory of S6-V was moved aside first, or the pull would have reused it whole and never stopped.
+- Guard-wiring: the pause ask rendered (command named, both tenants, production flagged); Bradley declined.
+Section status: CLEARED with one arm carried — R1, R2, R4, R5 PASSED and A0, A1, A3–A6 stood; R3's bar-chart half FAILED and is carried, on Bradley's ruling at the re-check, as S7's kickoff fix batch (F-522 reopened, F-524, with F-523), re-checked at S7-V with no pull. PR #48 merges on this sitting.

@@ -1,0 +1,579 @@
+{
+ "schemaVersion": 1,
+ "kind": "account-timeline",
+ "meta": {
+  "source": "jo-engagement",
+  "params": {
+   "account": {
+    "id": null,
+    "name": "Acme Customer 01"
+   },
+   "last": "90d",
+   "internalDomains": [
+    "acme.com"
+   ],
+   "testAccounts": [],
+   "fields": [],
+   "pageSize": 5000
+  },
+  "pulledAt": "2026-09-15T09:00:00-07:00",
+  "timeZone": null,
+  "tenantHost": "acme.gainsightcloud.com",
+  "cliVersion": "fixture",
+  "pluginVersion": "fixture",
+  "window": {
+   "last": "90 days",
+   "days": 90,
+   "start": "2026-06-18",
+   "end": "2026-09-15",
+   "endExclusive": "2026-09-16"
+  },
+  "incompleteFrom": "2026-09-01",
+  "dateBasis": {
+   "object": "email_log_v2",
+   "field": "ExecutedDate",
+   "grain": "day"
+  },
+  "templates": {
+   "subjects": true,
+   "reason": null
+  }
+ },
+ "dimensions": {
+  "account": {
+   "key": "co-01",
+   "name": "Acme Customer 01",
+   "testAccount": false
+  },
+  "programs": [
+   {
+    "id": "p-nps",
+    "name": "Acme NPS Survey",
+    "statuses": [
+     "PROCESSING"
+    ],
+    "model": "CSAT_SURVEY_V2",
+    "modelName": "CSAT Survey"
+   },
+   {
+    "id": "p-onboard",
+    "name": "Acme Onboarding Chain",
+    "statuses": [
+     "PROCESSING"
+    ],
+    "model": "DRIPV2",
+    "modelName": "Email Chain"
+   },
+   {
+    "id": "p-unlisted",
+    "name": "Acme Unlisted Program",
+    "statuses": [
+     "PROCESSING"
+    ],
+    "model": "DRIPV2",
+    "modelName": "Email Chain"
+   }
+  ],
+  "templates": [
+   {
+    "id": "tpl-day7",
+    "name": "Acme Day 7",
+    "subject": "Day 7: how is it going?",
+    "subjectAsOf": "2026-09-02",
+    "uses": [
+     {
+      "programId": "p-onboard",
+      "stepName": "Day 7 check-in",
+      "stepOrder": 2,
+      "stepCount": 1,
+      "asOf": "2026-09-01T00:00:00.000Z"
+     }
+    ]
+   },
+   {
+    "id": "tpl-nps",
+    "name": "Acme NPS Request",
+    "subject": "How is {Product Name} working for you?",
+    "subjectAsOf": "2026-09-01",
+    "uses": [
+     {
+      "programId": "p-nps",
+      "stepName": "Survey email",
+      "stepOrder": 1,
+      "stepCount": 1,
+      "asOf": "2026-08-20T00:00:00.000Z"
+     }
+    ]
+   },
+   {
+    "id": "tpl-unlisted",
+    "name": "Acme Unlisted",
+    "subject": null,
+    "subjectAsOf": null,
+    "uses": [
+     {
+      "programId": "p-unlisted",
+      "stepName": null,
+      "stepOrder": null,
+      "stepCount": 0,
+      "asOf": null
+     }
+    ]
+   },
+   {
+    "id": "tpl-welcome",
+    "name": "Acme Welcome",
+    "subject": "Welcome to Acme",
+    "subjectAsOf": "2026-08-20",
+    "uses": [
+     {
+      "programId": "p-onboard",
+      "stepName": "Welcome",
+      "stepOrder": 1,
+      "stepCount": 1,
+      "asOf": "2026-09-01T00:00:00.000Z"
+     }
+    ]
+   }
+  ]
+ },
+ "facts": {
+  "accountTimeline": [
+   {
+    "programId": "p-onboard",
+    "templateId": "tpl-day7",
+    "day": "2026-06-18",
+    "recipientClass": "internal",
+    "sent": 1,
+    "delivered": 1,
+    "bounced": 0,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 0,
+    "opened": 1
+   },
+   {
+    "programId": "p-onboard",
+    "templateId": "tpl-welcome",
+    "day": "2026-06-23",
+    "recipientClass": "internal",
+    "sent": 1,
+    "delivered": 0,
+    "bounced": 1,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 1,
+    "opened": 1
+   },
+   {
+    "programId": "p-onboard",
+    "templateId": "tpl-day7",
+    "day": "2026-06-25",
+    "recipientClass": "external",
+    "sent": 1,
+    "delivered": 1,
+    "bounced": 0,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 0,
+    "opened": 0
+   },
+   {
+    "programId": "p-onboard",
+    "templateId": "tpl-day7",
+    "day": "2026-06-26",
+    "recipientClass": "external",
+    "sent": 1,
+    "delivered": 0,
+    "bounced": 1,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 1,
+    "opened": 0
+   },
+   {
+    "programId": "p-nps",
+    "templateId": "tpl-nps",
+    "day": "2026-07-07",
+    "recipientClass": "external",
+    "sent": 1,
+    "delivered": 1,
+    "bounced": 0,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 0,
+    "opened": 0
+   },
+   {
+    "programId": "p-onboard",
+    "templateId": "tpl-day7",
+    "day": "2026-07-10",
+    "recipientClass": "internal",
+    "sent": 1,
+    "delivered": 1,
+    "bounced": 0,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 0,
+    "opened": 0
+   },
+   {
+    "programId": "p-onboard",
+    "templateId": "tpl-welcome",
+    "day": "2026-07-15",
+    "recipientClass": "internal",
+    "sent": 1,
+    "delivered": 1,
+    "bounced": 0,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 0,
+    "opened": 1
+   },
+   {
+    "programId": "p-onboard",
+    "templateId": "tpl-day7",
+    "day": "2026-07-17",
+    "recipientClass": "external",
+    "sent": 1,
+    "delivered": 1,
+    "bounced": 0,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 0,
+    "opened": 1
+   },
+   {
+    "programId": "p-onboard",
+    "templateId": "tpl-day7",
+    "day": "2026-07-18",
+    "recipientClass": "external",
+    "sent": 1,
+    "delivered": 1,
+    "bounced": 0,
+    "rejected": 0,
+    "unsubscribed": 1,
+    "spamComplaints": 0,
+    "failed": 0,
+    "opened": 1
+   },
+   {
+    "programId": "p-onboard",
+    "templateId": "tpl-welcome",
+    "day": "2026-07-22",
+    "recipientClass": "external",
+    "sent": 1,
+    "delivered": 1,
+    "bounced": 0,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 0,
+    "opened": 0
+   },
+   {
+    "programId": "p-onboard",
+    "templateId": "tpl-welcome",
+    "day": "2026-07-23",
+    "recipientClass": "external",
+    "sent": 1,
+    "delivered": 1,
+    "bounced": 0,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 0,
+    "opened": 1
+   },
+   {
+    "programId": "p-unlisted",
+    "templateId": "tpl-unlisted",
+    "day": "2026-08-01",
+    "recipientClass": "external",
+    "sent": 1,
+    "delivered": 1,
+    "bounced": 0,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 0,
+    "opened": 0
+   },
+   {
+    "programId": "p-onboard",
+    "templateId": "tpl-day7",
+    "day": "2026-08-02",
+    "recipientClass": "internal",
+    "sent": 1,
+    "delivered": 1,
+    "bounced": 0,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 0,
+    "opened": 1
+   },
+   {
+    "programId": "p-onboard",
+    "templateId": "tpl-welcome",
+    "day": "2026-08-07",
+    "recipientClass": "internal",
+    "sent": 1,
+    "delivered": 1,
+    "bounced": 0,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 0,
+    "opened": 0
+   },
+   {
+    "programId": "p-onboard",
+    "templateId": "tpl-day7",
+    "day": "2026-08-09",
+    "recipientClass": "external",
+    "sent": 1,
+    "delivered": 1,
+    "bounced": 0,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 0,
+    "opened": 1
+   },
+   {
+    "programId": "p-onboard",
+    "templateId": "tpl-day7",
+    "day": "2026-08-10",
+    "recipientClass": "external",
+    "sent": 1,
+    "delivered": 1,
+    "bounced": 0,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 0,
+    "opened": 0
+   },
+   {
+    "programId": "p-onboard",
+    "templateId": "tpl-welcome",
+    "day": "2026-08-14",
+    "recipientClass": "external",
+    "sent": 1,
+    "delivered": 1,
+    "bounced": 0,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 0,
+    "opened": 1
+   },
+   {
+    "programId": "p-onboard",
+    "templateId": "tpl-welcome",
+    "day": "2026-08-15",
+    "recipientClass": "external",
+    "sent": 1,
+    "delivered": 1,
+    "bounced": 0,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 0,
+    "opened": 1
+   },
+   {
+    "programId": "p-unlisted",
+    "templateId": "tpl-unlisted",
+    "day": "2026-08-27",
+    "recipientClass": "external",
+    "sent": 1,
+    "delivered": 1,
+    "bounced": 0,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 0,
+    "opened": 1
+   },
+   {
+    "programId": "p-onboard",
+    "templateId": "tpl-day7",
+    "day": "2026-09-01",
+    "recipientClass": "external",
+    "sent": 1,
+    "delivered": 1,
+    "bounced": 0,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 0,
+    "opened": 0
+   },
+   {
+    "programId": "p-onboard",
+    "templateId": "tpl-day7",
+    "day": "2026-09-02",
+    "recipientClass": "external",
+    "sent": 1,
+    "delivered": 1,
+    "bounced": 0,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 0,
+    "opened": 1
+   },
+   {
+    "programId": "p-onboard",
+    "templateId": "tpl-welcome",
+    "day": "2026-09-06",
+    "recipientClass": "external",
+    "sent": 1,
+    "delivered": 1,
+    "bounced": 0,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 0,
+    "opened": 1
+   },
+   {
+    "programId": "p-onboard",
+    "templateId": "tpl-welcome",
+    "day": "2026-09-07",
+    "recipientClass": "external",
+    "sent": 1,
+    "delivered": 1,
+    "bounced": 0,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 0,
+    "opened": 0
+   }
+  ],
+  "tenantByProgram": [
+   {
+    "programId": "p-nps",
+    "recipientClass": "external",
+    "sent": 12,
+    "delivered": 11,
+    "bounced": 1,
+    "rejected": 0,
+    "unsubscribed": 1,
+    "spamComplaints": 0,
+    "failed": 1,
+    "opened": 7
+   },
+   {
+    "programId": "p-onboard",
+    "recipientClass": "external",
+    "sent": 119,
+    "delivered": 104,
+    "bounced": 9,
+    "rejected": 6,
+    "unsubscribed": 2,
+    "spamComplaints": 2,
+    "failed": 15,
+    "opened": 73
+   },
+   {
+    "programId": "p-onboard",
+    "recipientClass": "internal",
+    "sent": 6,
+    "delivered": 5,
+    "bounced": 1,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 1,
+    "opened": 4
+   },
+   {
+    "programId": "p-unlisted",
+    "recipientClass": "external",
+    "sent": 6,
+    "delivered": 6,
+    "bounced": 0,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 0,
+    "opened": 4
+   }
+  ]
+ },
+ "honesty": {
+  "rows": {
+   "seen": 48,
+   "parsed": 48,
+   "unreadable": 0
+  },
+  "excluded": {
+   "deletedPrograms": {
+    "programs": 0,
+    "sent": 0
+   }
+  },
+  "noTemplateId": {
+   "sent": 0
+  },
+  "lookup": {
+   "by": "name",
+   "asked": "Acme Customer 01"
+  },
+  "calls": {
+   "answered": 10,
+   "split": 0,
+   "retried": 0
+  }
+ },
+ "reconciliation": {
+  "ok": true,
+  "checks": [
+   {
+    "id": "internal-within-all",
+    "ok": true,
+    "compared": 23,
+    "mismatches": 0,
+    "examples": [],
+    "drift": 0,
+    "driftExamples": []
+   },
+   {
+    "id": "account-within-tenant",
+    "ok": true,
+    "compared": 3,
+    "mismatches": 0,
+    "examples": [],
+    "drift": 0,
+    "driftExamples": []
+   }
+  ],
+  "against": null
+ },
+ "caveats": [
+  {
+   "id": "step-names-as-of",
+   "detail": {
+    "oldest": "2026-08-20T00:00:00.000Z"
+   }
+  },
+  {
+   "id": "timeline-subjects-current",
+   "detail": {
+    "oldest": "2026-08-20"
+   }
+  }
+ ]
+}

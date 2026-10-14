@@ -45,6 +45,10 @@
 //                 would read as a formula is neutralised (R27).
 //   unpackSnapshot    the embedded data (columnar, ids through dictionaries)
 //                 back into the T-10 shape the engine reads.
+//   createTimeline  the second page kind (ACC-2): one account's timeline by
+//                 program and day over timelineView, sharing this file's
+//                 escaper, CSV builder, panel sections and mount; boot picks
+//                 the kind from the embedded model.
 //   mount         the only code that touches a document: listeners on the
 //                 page's root, column choices in localStorage (wrapped in
 //                 try/catch), the file download, the clock the header's age
@@ -60,6 +64,55 @@ export const PAGE_MODEL_VERSION = 3;
 const HTML_ESCAPES = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
 /** Every tenant string reaches a page through this. */
 export const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => HTML_ESCAPES[c]);
+
+// ── A chart label, shortened only with its full text reachable (F-522) ───────
+// The one place a chart shortens a label. S4d ruled that a hint opens on hover,
+// focus, click or tap through data-tip (the native <title> is invisible in the
+// app's pane and on touch); an SVG element draws no CSS ::after, so a shortened
+// label is a focusable group carrying data-tip whose full text is drawn in the
+// chart itself, wrapped, on a halo of the page colour, hidden until the group is
+// hovered, focused or opened (the one tip toggle in mount sets `is-open`). The
+// caller draws the label after the marks, so the full text lies over them.
+// `room` is the box the full text may take: its left edge and width in the
+// chart's units, how wide a line may run (the box's width unless narrower), and
+// whether the lines stack down from the label or up to it.
+const SVG_CHAR_PX = 6.2; // an 11 px label's average advance: wraps the full text and keeps it inside the chart
+export const wrapWords = (text, perLine) => {
+  const lines = [];
+  let line = "";
+  for (const word of String(text).split(/\s+/).filter(Boolean)) {
+    for (let w = word; w.length; ) {
+      const room = line ? perLine - line.length - 1 : perLine;
+      if (w.length <= room) { line = line ? `${line} ${w}` : w; w = ""; }
+      else if (!line) { lines.push(w.slice(0, perLine)); w = w.slice(perLine); }
+      else { lines.push(line); line = ""; }
+    }
+  }
+  if (line) lines.push(line);
+  return lines.length ? lines : [""];
+};
+// A chart is an image to assistive technology (role img: its children are presentational) unless it holds a label
+// one can focus to read whole; then it is a group, so that label is exposed.
+export const svgRole = (labels) => (labels.some((l) => l.startsWith("<g ")) ? "group" : "img");
+/**
+ * @param {{x: number, y: number, text: string, max: number, cls: string, anchor?: string, suffix?: string, title?: string, room: {left: number, width: number, lineWidth?: number, stack: "down"|"up"}}} o
+ * @returns {string} an SVG <text>, or, when the text is longer than `max`, the group that keeps it whole
+ */
+export function svgLabel({ x, y, text, max, cls, anchor = "start", suffix = "", title = "", room }) {
+  const full = String(text);
+  const titled = title ? `<title>${esc(title)}</title>` : "";
+  if (full.length <= max) return `<text x="${x}" y="${y}" class="gs-svg-${cls}" text-anchor="${anchor}">${esc(full + suffix)}${titled}</text>`;
+  const perLine = Math.max(8, Math.floor(Math.min(room.lineWidth ?? room.width, room.width) / SVG_CHAR_PX));
+  const lines = wrapWords(full, perLine);
+  const half = (Math.max(...lines.map((l) => l.length)) * SVG_CHAR_PX) / 2;
+  // Centred on the label where the box allows it, else pulled in from the box's edge.
+  const cx = Math.min(Math.max(x, room.left + half), room.left + room.width - half);
+  const first = room.stack === "up" ? y - 14 * (lines.length - 1) : y;
+  const spans = lines.map((l, i) => `<tspan x="${cx.toFixed(1)}" y="${first + 14 * i}">${esc(l)}</tspan>`).join("");
+  return `<g class="gs-svg-tipped" data-tip="${esc(full)}" tabindex="0" role="button" aria-label="${esc(full)}">` +
+    `<text x="${x}" y="${y}" class="gs-svg-${cls} gs-svg-short" text-anchor="${anchor}">${esc(`${full.slice(0, max - 1)}…${suffix}`)}${titled}</text>` +
+    `<text class="gs-svg-full" text-anchor="middle">${spans}</text></g>`;
+}
 
 // ── What a page can lack (DSH-2, ruled 2026-10-04; the health rows DSH-4) ────
 // `reason` is an id of the engine's REASONS, where the wording lives.
@@ -108,6 +161,14 @@ export const NOT_LACKS = Object.freeze({
   "too-large": "the pull's row budget, not a setting",
   "all-time": "the object carries no date; a tooltip says so on the figure",
   "not-filterable": "the tenant's object allows no filter on the reason field",
+  "other-tenant": "a timeline's comparison with a dashboard: the two pulls' tenants",
+  "no-whole-month-in-both": "a timeline's comparison with a dashboard: the timeline's days",
+  "account-not-kept": "a timeline's comparison with a dashboard: the dashboard's customer lists",
+  "account-not-kept-on-program": "a timeline's comparison with a dashboard: the dashboard's customer lists",
+  "program-not-in-dashboard": "a timeline's comparison with a dashboard: the dashboard's programs",
+  "no-send-in-months-compared": "a timeline's comparison with a dashboard: where the account's sends fall in the days",
+  "list-set-since": "a report's customer list after a selective refresh: only a full pull ranks it",
+  "previous-not-ranked": "a report's customer list after a selective refresh: only a full pull ranks it",
 });
 
 export const NEEDS = Object.freeze({
@@ -124,10 +185,24 @@ export const ENTRY_COMMAND = "node .gs-superadmin/plugin/scripts/dashboard.mjs";
 // holds two tenants refuses the verb without it, and the folder's NAME is not a machine path, so the page may carry it.
 // A page built with no folder known (the page builder run by hand) omits the flag.
 const kbFlag = (kb) => (kb ? ` --kb ${kb}` : "");
+/**
+ * One word for a shell line: as it is when it holds only letters, digits and `. _ - / : @`, else in single quotes (a
+ * quote inside closes the quotes, adds an escaped quote and opens them again, so the shell joins it back). A copy
+ * line built from tenant data (an account's GSID or
+ * name) is pasted into a shell, so nothing in it may read as shell syntax.
+ * @param {unknown} v
+ */
+export const shellWord = (v) => {
+  const s = String(v ?? "");
+  return /^[A-Za-z0-9._\-/:@]+$/.test(s) ? s : `'${s.split("'").join(`'${"\\"}''`)}'`;
+};
 export const COPY_LINES = Object.freeze({
   change: (slug, path, value, kb = null) => `${ENTRY_COMMAND} change ${slug} ${path}=${value}${kbFlag(kb)}`,
   refresh: (slug, kb = null) => `${ENTRY_COMMAND} refresh ${slug}${kbFlag(kb)}`,
   health: (slug, programId, kb = null) => `${ENTRY_COMMAND} health ${slug} --program ${programId}${kbFlag(kb)}`,
+  // An account's timeline by day (ACC-2): a pull of its own, which a static page cannot make. By the account's GSID
+  // when the page carries the account; by its name otherwise (the line ends at the name's quotes: put the name there).
+  account: (slug, account, kb = null) => `${ENTRY_COMMAND} account ${slug} ${account.id != null ? `--account-id ${shellWord(account.id)}` : `--account-name ${account.name != null ? shellWord(account.name) : "''"}`}${kbFlag(kb)}`,
 });
 /** The skill's slash command that runs the same refresh (house rule 18: the mode is never written bare). */
 export const REFRESH_SLASH = (slug) => `/gs-superadmin:email-engagement refresh ${slug}`;
@@ -175,6 +250,13 @@ export function csvCell(v) {
 }
 /** @param {string[]} headers @param {Array<Array<*>>} rows @returns {string} */
 export const csvText = (headers, rows) => [headers, ...rows].map((r) => r.map(csvCell).join(",")).join("\r\n") + "\r\n";
+
+/** A panel's export as the page saves it: its file name and its text, through the one builder. Every page kind's csvOf ends here. */
+const csvFile = (filename, headers, rows) => ({ filename, text: csvText(headers, rows) });
+/** The download button of a panel with rows (R27; the label ruled 2026-10-11), on every page kind. */
+const csvButtonFor = (panelId) => `<button type="button" data-csv="${esc(panelId)}">Download current view (CSV)</button>`;
+/** A panel's section, on every page kind: its id and type ride the element, so a page's own checks can find each one. */
+const panelSection = (id, type, body) => `<section class="gs-panel" data-panel="${esc(id)}" data-type="${esc(type)}">${body}</section>`;
 
 // ── The embedded data, back into the T-10 shape ──────────────────────────────
 // A packed table is {n, c: {column: values}}. A column is a plain list, or
@@ -256,7 +338,9 @@ export function createDashboard(engine, model) {
   const tabs = page.tabs;
   const panels = page.panels;
   const isHealthPanel = (panel) => HEALTH_TYPES.includes(panel.type);
-  const usesAccounts = (panel) => (panel.query?.groupBy ?? []).includes("account");
+  // A panel reads the account grain when it groups by account, or is the one-account view (ACC-2).
+  const usesAccounts = (panel) => panel.type === "account" || (panel.query?.groupBy ?? []).includes("account");
+  const accountPanel = panels.find((p) => p.type === "account") ?? null;
   const accountData = engine.accountAvailability(snapshot);
   const accountChoices = accountData.pulled ? [...snapshot.dimensions.accounts].sort((a, b) => cmpText(a.name ?? a.key, b.name ?? b.key)) : [];
   // The snapshot's own marker that no internal domain was named for the pull.
@@ -464,6 +548,8 @@ export function createDashboard(engine, model) {
     let f = filtersOf(state);
     if (usesAccounts(panel) && state.account) f = { ...f, accounts: [state.account] };
     if (panel.type === "watchlist") f = { ...f, accountBuckets: ["account"] };
+    // The one-account view (ACC-2): the chosen account's own rows, or none until one is chosen (never every account added up).
+    if (panel.type === "account") f = { ...f, accounts: state.account ? [state.account] : [], accountBuckets: ["account"] };
     // A viewer's sort (ruled 2026-10-11) replaces the panel's own order for this call; the engine still sorts.
     const sort = state.so?.[panel.id];
     const query = sort ? { ...panel.query, sort: [(panel.query.groupBy ?? []).includes(sort[0]) ? { dim: sort[0], dir: sort[1] } : { metric: sort[0], dir: sort[1] }] } : panel.query;
@@ -576,7 +662,7 @@ export function createDashboard(engine, model) {
   const open = (panel, tools = "", sub = "") => `<section class="gs-panel" data-panel="${esc(panel.id)}" data-type="${esc(panel.type)}"><div class="gs-panel-head"><h2>${esc(panel.title)}</h2>${sub ? `<span class="gs-panel-sub">${sub}</span>` : ""}${tools ? `<div class="gs-tools">${tools}</div>` : ""}</div>`;
   const close = "</section>";
   // The download is the panel as it stands (R27): the filters, the shown columns, every row; the label says so (ruled 2026-10-11).
-  const csvButton = (panel) => `<button type="button" data-csv="${esc(panel.id)}">Download current view (CSV)</button>`;
+  const csvButton = (panel) => csvButtonFor(panel.id);
   /** A line under a panel's title saying the basis it is judged on, where that is not the filtered time period. */
   const basisLine = (text) => `<p class="gs-basis">${text}</p>`;
 
@@ -714,7 +800,8 @@ export function createDashboard(engine, model) {
       parts.push(`<line class="gs-svg-grid" x1="${left}" y1="${y}" x2="${w - right}" y2="${y}"/>`, svgText(left - 6, y + 4, tickLabel(v, rate), "tick", "end"));
     }
     parts.push(`<line class="gs-svg-axis" x1="${left}" y1="${top + plotH}" x2="${w - right}" y2="${top + plotH}"/>`);
-    rows.forEach((r, i) => parts.push(svgText(xMid(i), h - bottom + 18, `${dim === "month" ? monthLabel(r.key[dim]) : String(dimText(dim, r) ?? "(none)").slice(0, 14)}${r.incomplete ? "*" : ""}${r.carried ? "†" : ""}`, "tick", "middle")));
+    // The ticks are drawn last (after the bars and lines), so a shortened one's full text lies over them (F-522).
+    const ticks = rows.map((r, i) => svgLabel({ x: xMid(i), y: h - bottom + 18, text: dim === "month" ? monthLabel(r.key[dim]) : String(dimText(dim, r) ?? "(none)"), max: 14, cls: "tick", anchor: "middle", suffix: `${r.incomplete ? "*" : ""}${r.carried ? "†" : ""}`, room: { left: 4, width: w - 8, lineWidth: 160, stack: "up" } }));
     const drawn = series.filter((s) => s.drawn);
     // Every point and every bar carries its value (ruled 2026-10-11) while the chart is small enough to read that way;
     // past 16 points per series the labels fall back to the last point, the hover and the table.
@@ -760,7 +847,7 @@ export function createDashboard(engine, model) {
     }
     function r(i) { return rows[i].key[dim] ?? dimText(dim, rows[i]) ?? "(none)"; }
     const legend = series.length > 1 ? `<ul class="gs-legend">${series.map((s) => `<li><span class="gs-swatch" style="background:var(--series-${s.i + 1})"></span>${esc(s.label)}${s.state === "not-tracked" ? ` <span class="gs-not-tracked">${esc(engine.NOT_TRACKED)}</span>` : s.state === "unknown" ? ` <span class="gs-mark gs-unknown">${esc(engine.UNKNOWN_MARK)}</span>` : ""}</li>`).join("")}</ul>` : "";
-    const svg = `<svg class="gs-chart" viewBox="0 0 ${w} ${h}" role="img" aria-label="${esc(panel.title)}">${parts.join("")}</svg>`;
+    const svg = `<svg class="gs-chart" viewBox="0 0 ${w} ${h}" role="${svgRole(ticks)}" aria-label="${esc(panel.title)}">${parts.join("")}${ticks.join("")}</svg>`;
     const notes = whyNotes(rows, ids);
     // A trend that starts after the first month shown: the figure was not counted before (the one definition boundary a snapshot can hold).
     for (const s of series) {
@@ -784,6 +871,8 @@ export function createDashboard(engine, model) {
     for (const d of detail?.rows ?? []) under.set(d.key.account, [...(under.get(d.key.account) ?? []), d]);
     return under;
   };
+  /** The button that shows an account in the one-account view (ACC-2): only where the page has that view. */
+  const viewAccountButton = (key) => (accountPanel && key != null && accountChoices.some((a) => a.key === key) ? ` <button type="button" class="gs-chip gs-text" data-act="account" data-account="${esc(key)}" title="Show this account month by month, with the line for its day-by-day timeline">View</button>` : "");
   const renderWatchlistPanel = (panel, state) => {
     const result = run(panel, state);
     if (result.unavailable) return `${open(panel)}${renderNotice(lackFacts(result.unavailable.reason))}${close}`;
@@ -800,7 +889,7 @@ export function createDashboard(engine, model) {
     const body = result.rows.map((row) => {
       const own = under.get(row.key.account) ?? [];
       const sub = own.map((d) => `<tr class="gs-sub"><td>${esc(d.label.program ?? d.key.program)}${badges(d.label.statuses)}</td><td></td>${cols.map((id) => metricCell(id, d.cells[id])).join("")}</tr>`).join("");
-      return `<tr><td>${esc(row.label.account ?? row.key.account)}${mark(row)}</td><td class="gs-num">${own.length}</td>${cols.map((id) => metricCell(id, row.cells[id])).join("")}</tr>${sub}`;
+      return `<tr><td>${esc(row.label.account ?? row.key.account)}${mark(row)}${viewAccountButton(row.key.account)}</td><td class="gs-num">${own.length}</td>${cols.map((id) => metricCell(id, row.cells[id])).join("")}</tr>${sub}`;
     }).join("");
     const notes = whyNotes(result.rows, cols);
     return `${open(panel, csvButton(panel))}<div class="gs-scroll"><table><thead>${head}</thead><tbody>${body}</tbody></table></div>${result.rows.length ? "" : `<p class="gs-note">No account clears the floor under the current filters.</p>`}${rank}${notesBlock(notes)}${close}`;
@@ -1011,9 +1100,37 @@ export function createDashboard(engine, model) {
     return `${open(panel, columnsTool(panel, cols, !!ui?.open?.[panel.id]) + csvButton(panel))}${basis}${search}${found}${drawer}<div class="gs-scroll"><table><thead>${head}</thead><tbody>${body}</tbody><tfoot>${totalRow}</tfoot></table></div>${none}${noTemplate}${notesBlock(notes)}${close}`;
   };
 
+  // ── The one-account view (ACC-2): an embedded account month by month, and the line for its days ──
+  /**
+   * What the timeline command is, beside its line (ACC-2; ruled 2026-10-04): it is a pull of its own, so it needs a
+   * gs-admin login, and only an admin can run it; anyone else sees a company only here, and only when the dashboard
+   * pulled its accounts. A leaders' page gets no line (it cannot be run from there).
+   */
+  const timelineLine = (account) => {
+    if (!howTo) return "";
+    const line = COPY_LINES.account(model.slug, account, model.kb);
+    const what = account.id != null
+      ? "Day by day, for this account: the line below pulls its emails by program and day over the last 90 days into a page of its own (add --last 6m, or up to 24m, for longer)."
+      : "Day by day, for any account: the line below pulls an account's emails by program and day into a page of its own; put the account's name between the quotes (a name that matches several accounts lists them, each with its GSID, and pulls nothing).";
+    return `<div class="gs-notice gs-notice-compact" role="note" data-timeline-line><p class="gs-notice-what">${esc(what)}</p>${renderLine(line)}<p class="gs-notice-how">${esc("The line needs a gs-admin login, so only an admin can run it. Anyone else sees an account only through this view, month by month, and only for the accounts this page carries.")}</p></div>`;
+  };
+  const renderAccountPanel = (panel, state, ui) => {
+    const result = run(panel, state);
+    if (result.unavailable) return `${open(panel)}${renderNotice(lackFacts(result.unavailable.reason))}${timelineLine({ id: null, name: null })}${close}`;
+    const chosen = accountChoices.find((a) => a.key === state.account) ?? null;
+    if (!chosen) {
+      return `${open(panel)}<p class="gs-note">${esc(`Choose an account with the Account filter above, or View beside a name in a customer list, to see its sends month by month. This page carries ${plural(accountChoices.length, "account")}: the ones the customer lists kept. For any other account, use the line below.`)}</p>${timelineLine({ id: null, name: null })}${close}`;
+    }
+    const cols = visibleCols(panel, ui);
+    const notes = whyNotes(result.rows, cols);
+    const none = !result.rows.length ? `<p class="gs-note">${esc(`${chosen.name ?? chosen.key} has no send under the current filters.`)}</p>` : "";
+    return `${open(panel, columnsTool(panel, cols, !!ui?.open?.[panel.id]) + csvButton(panel), esc(chosen.name ?? chosen.key))}${tableOf(panel, result, cols)}${none}${timelineLine({ id: chosen.key, name: chosen.name })}${notesBlock(notes)}${close}`;
+  };
+
   const renderPanel = (panel, state, ui) => {
     switch (panel.type) {
       case "kpi": return renderKpiPanel(panel, state);
+      case "account": return renderAccountPanel(panel, state, ui);
       case "line": case "bar": return renderChartPanel(panel, state, ui);
       case "watchlist": return renderWatchlistPanel(panel, state);
       case "health-silent": return renderHealthSilent(panel, state);
@@ -1060,10 +1177,11 @@ export function createDashboard(engine, model) {
         ]),
       ]);
     } else {
+      if (panel.type === "account" && !state.account) return null;
       const result = run(panel, state);
       if (result.unavailable) return null;
       const dims = panel.query.groupBy ?? [];
-      const cols = panel.type === "table" ? visibleCols(panel, ui) : panel.query.metrics;
+      const cols = panel.type === "table" || panel.type === "account" ? visibleCols(panel, ui) : panel.query.metrics;
       const figures = (row) => figuresOf(cols, row.cells);
       const statusText = (row) => (row.label.statuses ?? []).map(engine.statusLabel).join(", ");
       if (isCrossProgram(panel)) {
@@ -1081,7 +1199,7 @@ export function createDashboard(engine, model) {
         rows = dims.length ? result.rows.map(line) : result.total ? [line(result.total)] : [];
       }
     }
-    return { filename, text: csvText(headers, rows) };
+    return csvFile(filename, headers, rows);
   };
 
   // ── The filter bar: one row under the tab strip, for the current tab ───────
@@ -1251,7 +1369,9 @@ export function createDashboard(engine, model) {
       ...(templatesPanel ? [templateData.content
         ? `The Templates tab lists each email with its performance; open an email to see the programs that send it (and their steps and variants with step detail); the column headings sort it. Search finds the emails whose subject or body holds your words (any of them, or all of them, as whole words or not) and shows where; Text opens an email's current text in place, which is the text as the knowledge base holds it, not necessarily what was sent, and the table says whether it was edited after its last send.`
         : `The Templates tab lists each email with its performance; open an email to see the programs that send it; the column headings sort it. This page carries no email text.`] : []),
-      ...(panels.some(usesAccounts) ? [`An account's history over days needs a pull of its own: the account timeline command, which needs a gs-admin login. Anyone else sees a company only through this page's account lists.`] : []),
+      ...(panels.some(usesAccounts) ? [accountPanel
+        ? `The one-account view shows an account the customer lists kept, month by month: choose it with the Account filter, or View beside its name in a list. An account's emails day by day need a pull of their own: the account timeline line under the view, which needs a gs-admin login, so only an admin can run it. Anyone else sees a company only through this page.`
+        : `An account's history over days needs a pull of its own: the account timeline command, which needs a gs-admin login. Anyone else sees a company only through this page's account lists.`] : []),
     ];
     section("how", "How to use this page", `<ul>${how.map((h) => `<li>${esc(h)}</li>`).join("")}</ul>`);
     // Definitions: every metric the page shows, from the registry (the glossary adds the parts a rate divides).
@@ -1398,12 +1518,270 @@ export function cronWords(expr) {
   return sentence.charAt(0).toUpperCase() + sentence.slice(1);
 }
 
+// ── The account timeline page (ACC-2) ────────────────────────────────────────
+// One account's emails by program and day, in one self-contained page: one lane per program, a mark per email and day
+// (sized by how many sends, filled when opened, plain when delivered and not opened, a ring when nothing was
+// delivered), the summary against every recipient of the same programs, the marks as a table with its CSV, and an
+// About part. Every figure is the engine's (timelineView); this code lays it out. The same mount() wires it: its
+// state, hash, program picker, recipients switch, tips and download are the dashboard page's.
+export const TIMELINE_MODEL_VERSION = 1;
+// The lane chart's frame (hand-drawn SVG, every colour a token).
+const LANES = Object.freeze({ w: 900, left: 190, right: 16, top: 30, lane: 34, bottom: 30 });
+/**
+ * An account timeline page, ready to render and to answer for any filter state.
+ * @param {*} engine engagement-query.mjs: the imported module, or the page's inlined copy
+ * @param {*} model what the builder embedded (TIMELINE_MODEL_VERSION)
+ */
+export function createTimeline(engine, model) {
+  if (!model || model.kind !== "account-timeline" || model.v !== TIMELINE_MODEL_VERSION) throw new Error(`account timeline page: its data is of version ${JSON.stringify(model?.v)}, and this page reads version ${TIMELINE_MODEL_VERSION} — build the page again`);
+  const tl = engine.openTimeline(unpackSnapshot(model.timeline));
+  const account = tl.dimensions.account;
+  const programs = [...tl.dimensions.programs].sort((a, b) => cmpText(a.name ?? a.id, b.name ?? b.id) || cmpText(a.id, b.id));
+  const programIds = new Set(programs.map((p) => p.id));
+  const domains = tl.meta.params?.internalDomains ?? [];
+  // The recipients switch means something only when the pull split the classes: internal domains, or the account itself
+  // named as a test account (every send internal).
+  const classes = domains.length > 0 || account.testAccount;
+  const panels = Object.freeze([{ id: "sends", type: "timeline-table", title: "Every send, by day" }]);
+  const days = tl.meta.window;
+
+  // ── State: the programs kept and whether internal recipients count; the hash holds ids only ──
+  const firstState = () => ({ programs: null, external: false });
+  const clean = (s) => {
+    const picked = s.programs ? [...new Set(s.programs.filter((id) => programIds.has(id)))] : null;
+    return { programs: picked && picked.length === programs.length ? null : picked, external: !!s.external && classes };
+  };
+  const defaultState = () => clean(firstState());
+  const hashOf = (state) => {
+    const parts = [];
+    const ids = (list) => list.map(encodeURIComponent).join(",");
+    if (state.programs) {
+      const keep = new Set(state.programs);
+      const left = programs.filter((p) => !keep.has(p.id)).map((p) => p.id);
+      parts.push(state.programs.length <= left.length ? `p=${ids(state.programs)}` : `px=${ids(left)}`);
+    }
+    if (state.external) parts.push("rc=external");
+    return parts.join("&");
+  };
+  const stateFromHash = (hash) => {
+    const s = defaultState();
+    for (const pair of String(hash ?? "").replace(/^#/, "").split("&")) {
+      const cut = pair.indexOf("=");
+      if (cut < 1) continue;
+      const [k, raw] = [pair.slice(0, cut), pair.slice(cut + 1)];
+      let list;
+      try {
+        list = raw === "" ? [] : raw.split(",").map(decodeURIComponent);
+      } catch {
+        continue;
+      }
+      if (k === "p") s.programs = list;
+      else if (k === "px") s.programs = programs.map((p) => p.id).filter((id) => !list.includes(id));
+      else if (k === "rc") s.external = raw === "external";
+    }
+    return clean(s);
+  };
+  const filtersOf = (state) => ({ recipientClass: state.external ? "external" : "all", ...(state.programs ? { programs: state.programs } : {}) });
+  // One repaint asks for the view twice (the summary line and the panes): the last one is kept by its filters.
+  let lastView = { key: "", view: null };
+  const viewOf = (state) => {
+    const f = filtersOf(state);
+    const key = JSON.stringify(f);
+    if (lastView.key !== key || !lastView.view) lastView = { key, view: engine.timelineView(tl, f) };
+    return lastView.view;
+  };
+  const programMatches = (term) => {
+    const t = String(term ?? "").trim().toLowerCase();
+    return programs.map((p) => !t || String(p.name ?? "").toLowerCase().includes(t) || String(p.id).toLowerCase().includes(t));
+  };
+  const fmt = (id, cell) => (cell.value == null ? engine.NO_VALUE : engine.formatCell(id, cell));
+  const tip = (text, body, cls = "gs-mark") => `<span class="${cls}" data-tip="${esc(text)}" title="${esc(text)}" tabindex="0" role="button" aria-label="${esc(text)}">${body}</span>`;
+  const stepText = (label) => (label.stepName ? `${label.stepOrder != null ? `step ${label.stepOrder}: ` : ""}${label.stepName}` : null);
+  const STATE_WORDS = Object.freeze({ opened: "opened", unopened: "delivered, not opened", "not-delivered": "not delivered (bounced or rejected)" });
+
+  // ── The filter bar: the programs that sent to the account, and the recipients switch ──
+  const renderCount = (state) => `${plural(programs.length, "program")} sent to this account, ${state.programs ? state.programs.length : programs.length} selected`;
+  const renderProgramList = (state) => {
+    const keep = state.programs ? new Set(state.programs) : null;
+    return programs.map((p) => `<label class="gs-prog"><input type="checkbox" data-f="program" value="${esc(p.id)}"${attr("checked", !keep || keep.has(p.id))}> <span class="gs-prog-name">${esc(p.name ?? p.id)}</span> ${p.statuses.map((x) => `<span class="gs-badge">${esc(engine.statusLabel(x))}</span>`).join("")}</label>`).join("");
+  };
+  const renderSummary = (state) => {
+    const v = viewOf(state);
+    return `${esc(renderCount(state))}. ${plural(v.scope.programsWithSends, "program")} with sends shown; ${state.external ? "external recipients only" : "every recipient"}.`;
+  };
+  const renderFilters = (state) => {
+    if (!programs.length) return "";
+    const filter = (title, control, extra = "") => `<div class="gs-f"><span class="gs-f-title">${esc(title)}</span><div class="gs-f-control">${control}</div>${extra}</div>`;
+    const parts = [
+      filter("Programs",
+        `<details class="gs-picker gs-pop-host" data-picker><summary class="gs-btn"><span class="gs-count" data-region="count">${renderCount(state)}</span> &#9662;</summary>` +
+          `<div class="gs-pop"><p class="gs-pop-head">Every program that sent to this account in these days</p><div class="gs-picker-tools"><input type="search" data-f="search" placeholder="Search programs" aria-label="Search programs"> <button type="button" data-act="all">Select all</button> <button type="button" data-act="none">Select none</button></div>` +
+          `<div class="gs-proglist" data-region="proglist">${renderProgramList(state)}</div></div></details>`),
+      filter("Recipients", `<label class="gs-switch"><input type="checkbox" role="switch" data-f="internal"${attr("checked", !state.external)}${attr("disabled", !classes)} aria-checked="${!state.external}"> <span>Include internal recipients</span></label>`,
+        classes ? "" : `<span class="gs-pointer">${esc("No internal domain was named for this pull: every recipient counts as external.")}</span>`),
+      `<div class="gs-f gs-f-reset"><button type="button" data-act="reset">Reset filters</button></div>`,
+      `<p class="gs-bar-summary" data-region="summary">${renderSummary(state)}</p>`,
+    ];
+    return parts.join("");
+  };
+
+  // ── The summary: the account's figures, and the same programs' figures for everyone ──
+  const renderTiles = (v) => {
+    const tile = (label, body, sub = "") => `<div class="gs-kpi"><p class="gs-kpi-label">${esc(label)}</p><p class="gs-kpi-value">${body}</p>${sub}</div>`;
+    const incomplete = v.total.incomplete ? `<sup>${tip(`Includes the provisional days: sends on or after ${tl.meta.incompleteFrom}, where opens are still arriving.`, "*")}</sup>` : "";
+    const rate = v.total.cells.openRate;
+    const tenantRate = v.tenant.cells.openRate;
+    const versus = `<p class="gs-kpi-usual">Every recipient of these programs over the same days: ${esc(fmt("openRate", tenantRate))} <span class="gs-muted">(${esc(fmt("delivered", v.tenant.cells.delivered))} delivered)</span></p>`;
+    return `<div class="gs-kpis">` +
+      tile("Sends", `${esc(fmt("sent", v.total.cells.sent))}${incomplete}`, `<p class="gs-kpi-context">to this account's contacts, added up</p>`) +
+      tile("Programs", esc(String(v.scope.programsWithSends)), `<p class="gs-kpi-context">that sent to it in these days</p>`) +
+      tile("Delivered", esc(fmt("delivered", v.total.cells.delivered)), `<p class="gs-kpi-context">${esc(fmt("bounced", v.total.cells.bounced))} bounced</p>`) +
+      tile("Open rate", `<span${rate.value == null && rate.why ? ` title="${esc(engine.reasonText(rate.why))}"` : ""}>${esc(fmt("openRate", rate))}</span>${incomplete}`, versus) +
+      `</div>`;
+  };
+
+  // ── The lanes: one per program, a mark per email and day ──
+  const dayIndex = (day) => Math.round((Date.UTC(...dayParts(day)) - Date.UTC(...dayParts(days.start))) / MS_PER_DAY);
+  const renderLanes = (v) => {
+    const { w, left, right, top, lane, bottom } = LANES;
+    const plotW = w - left - right;
+    const h = top + lane * Math.max(1, v.lanes.length) + bottom;
+    const span = Math.max(1, days.days);
+    const xOf = (day) => left + ((dayIndex(day) + 0.5) / span) * plotW;
+    const parts = [];
+    // The provisional days shaded behind the marks (R4), labelled once.
+    if (tl.meta.incompleteFrom <= days.end) {
+      const x0 = left + (Math.max(0, dayIndex(tl.meta.incompleteFrom)) / span) * plotW;
+      parts.push(`<rect class="gs-svg-provisional" x="${x0.toFixed(1)}" y="${top}" width="${(left + plotW - x0).toFixed(1)}" height="${lane * Math.max(1, v.lanes.length)}"><title>Provisional days</title></rect>`);
+      parts.push(`<text x="${((x0 + left + plotW) / 2).toFixed(1)}" y="${top - 6}" class="gs-svg-tick" text-anchor="middle">provisional</text>`);
+    }
+    // A tick at the first day of every month the window crosses.
+    for (let i = 0; i < span; i++) {
+      const day = addDayText(days.start, i);
+      if (i !== 0 && !day.endsWith("-01")) continue;
+      const x = left + (i / span) * plotW;
+      parts.push(`<line class="gs-svg-grid" x1="${x.toFixed(1)}" y1="${top}" x2="${x.toFixed(1)}" y2="${h - bottom}"/>`, `<text x="${x.toFixed(1)}" y="${h - bottom + 16}" class="gs-svg-tick" text-anchor="start">${esc(day.slice(0, 7))}</text>`);
+    }
+    // The lane names are drawn after the marks, so a shortened one's full text lies over them (F-522).
+    const names = [];
+    v.lanes.forEach((l, i) => {
+      const y = top + lane * i + lane / 2;
+      parts.push(`<line class="gs-svg-axis" x1="${left}" y1="${y}" x2="${w - right}" y2="${y}"/>`);
+      const name = String(l.label.program ?? l.key.program);
+      names.push(svgLabel({ x: left - 8, y: y + 4, text: name, max: 28, cls: "label", anchor: "end", title: `${name}: ${fmt("sent", l.cells.sent)} sent, open rate ${fmt("openRate", l.cells.openRate)} (every recipient of the program over these days: ${fmt("openRate", l.tenant.openRate)})`, room: { left: 4, width: w - 8, stack: "down" } }));
+    });
+    const laneOf = new Map(v.lanes.map((l, i) => [l.key.program, i]));
+    for (const m of v.marks) {
+      const y = top + lane * laneOf.get(m.key.program) + lane / 2;
+      const r = Math.min(12, 3 + 2 * Math.sqrt(m.cells.sent.value ?? 0));
+      const text = [m.key.day, m.label.program ?? m.key.program, stepText(m.label), m.label.subject ?? m.label.template ?? m.key.template ?? "(no template)",
+        `${fmt("sent", m.cells.sent)} sent, ${fmt("delivered", m.cells.delivered)} delivered, ${fmt("opened", m.cells.opened)} opened, ${fmt("bounced", m.cells.bounced)} bounced`, STATE_WORDS[m.state]].filter(Boolean).join(" · ");
+      parts.push(`<circle class="gs-svg-mark gs-mark-${m.state}" cx="${xOf(m.key.day).toFixed(1)}" cy="${y}" r="${r.toFixed(1)}"><title>${esc(text)}</title></circle>`);
+    }
+    const legend = `<ul class="gs-legend">${Object.entries(STATE_WORDS).map(([k, words]) => `<li><svg class="gs-swatch-svg" viewBox="0 0 12 12" aria-hidden="true"><circle class="gs-svg-mark gs-mark-${k}" cx="6" cy="6" r="4.5"/></svg>${esc(words)}</li>`).join("")}<li>${esc("A larger mark is more sends that day")}</li></ul>`;
+    return `${legend}<svg class="gs-chart gs-lanes" viewBox="0 0 ${w} ${h}" role="${svgRole(names)}" aria-label="${esc(`One lane per program, a mark per email and day, ${days.start} to ${days.end}`)}">${parts.join("")}${names.join("")}</svg>`;
+  };
+
+  // ── The marks as a table (the chart's fallback, and what the CSV exports) ──
+  const renderTable = (v) => {
+    const head = `<tr><th scope="col">Day</th><th scope="col">Program</th><th scope="col">Step</th><th scope="col">Email</th>${engine.TIMELINE_METRICS.map((id) => `<th scope="col" class="gs-num">${esc(engine.metric(id).label)}</th>`).join("")}</tr>`;
+    const body = v.marks.map((m) => `<tr><td class="gs-nowrap">${esc(m.key.day)}${m.incomplete ? `<sup>${tip("Provisional: opens on this day's sends are still arriving.", "*")}</sup>` : ""}</td><td>${esc(m.label.program ?? m.key.program)}</td><td>${esc(stepText(m.label) ?? "")}</td><td>${esc(m.label.subject ?? m.label.template ?? m.key.template ?? "(no template)")}${m.label.subject && m.label.template ? ` <span class="gs-muted">(${esc(m.label.template)})</span>` : ""}</td>${engine.TIMELINE_METRICS.map((id) => `<td class="gs-num">${esc(fmt(id, m.cells[id]))}</td>`).join("")}</tr>`).join("");
+    const total = `<tr><td colspan="4">Everything the filters keep</td>${engine.TIMELINE_METRICS.map((id) => `<td class="gs-num">${esc(fmt(id, v.total.cells[id]))}</td>`).join("")}</tr>`;
+    return `<div class="gs-scroll"><table><thead>${head}</thead><tbody>${body}</tbody><tfoot>${total}</tfoot></table></div>`;
+  };
+  const csvOf = (panel, state) => {
+    if (panel.id !== "sends") return null;
+    const v = viewOf(state);
+    const pulled = String(tl.meta.pulledAt).slice(0, 16).replace(/[^0-9T]/g, "");
+    const value = (id, cell) => (cell.value == null ? "" : id === "openRate" ? Number(cell.value.toFixed(4)) : cell.value);
+    const headers = ["Day", "Program", "Step", "Email", "Subject", ...engine.TIMELINE_METRICS.map((id) => engine.metric(id).label), "Provisional"];
+    const rows = v.marks.map((m) => [m.key.day, m.label.program ?? m.key.program, stepText(m.label) ?? "", m.label.template ?? m.key.template ?? "", m.label.subject ?? "", ...engine.TIMELINE_METRICS.map((id) => value(id, m.cells[id])), m.incomplete ? "yes" : ""]);
+    return csvFile(`${model.slug ? `${model.slug}-` : ""}account-${account.key}-${pulled}.csv`, headers, rows);
+  };
+
+  // ── The page ──
+  const renderPanes = (state) => {
+    const v = viewOf(state);
+    const empty = !tl.facts.accountTimeline.length;
+    const head = (title, tools = "") => `<div class="gs-panel-head"><h2>${esc(title)}</h2>${tools ? `<div class="gs-tools">${tools}</div>` : ""}</div>`;
+    if (empty) return panelSection("lanes", "timeline-lanes", `<p class="gs-note">${esc(`No Journey Orchestrator email reached this account in the last ${days.last} (${days.start} to ${days.end}).`)}</p>`);
+    const none = !v.marks.length ? `<p class="gs-note">Nothing matches the current filters.</p>` : "";
+    return panelSection("summary", "timeline-summary", head("This account, these days") + renderTiles(v)) +
+      panelSection("lanes", "timeline-lanes", head("By program and day") + (v.marks.length ? renderLanes(v) : "") + none) +
+      panelSection(panels[0].id, panels[0].type, head(panels[0].title, csvButtonFor(panels[0].id)) + renderTable(v) + none);
+  };
+  const caveats = engine.timelineCaveats(tl);
+  const renderAbout = () => {
+    const entries = engine.glossary([...engine.TIMELINE_METRICS], null);
+    const defs = `<dl class="gs-defs">${entries.map((e) => `<dt data-metric="${esc(e.id)}">${esc(e.label)}</dt><dd>${esc(e.definition)} <span class="gs-muted">Calculation: ${esc(e.calculation)}${e.zeroDenominator ? ` ${esc(e.zeroDenominator)}` : "."} Read from ${esc(e.object)}, ${esc(e.fields)}; filters ${esc(e.filters.join("; ") || "none")}; date field ${esc(e.dateField)}, by day.</span></dd>`).join("")}</dl>`;
+    const rec = tl.reconciliation;
+    const against = rec.against;
+    const checks = rec.checks.map((c) => `${c.id}: ${c.ok ? "ok" : `${c.mismatches} mismatch(es)`} over ${c.compared}${c.drift ? `, ${c.drift} in a provisional month` : ""}`).join("; ");
+    // Each reason a program was left out says itself, with the programs it covers (F-520: one sentence for every
+    // reason said "the dashboard did not keep this account there" of programs it kept). The engine groups them.
+    const leftOut = engine.notComparedGroups(against, programs).map((g) => `${plural(g.programs.length, "program")} not compared (${g.programs.join(", ")}): ${g.text}`).join(" ");
+    const prov = [
+      ["Account", `${account.name ?? "(no name)"} (GSID ${account.key})${account.testAccount ? ", named as a test account" : ""}`],
+      ["Pulled at", `${tl.meta.pulledAt}${tl.meta.timeZone ? ` (${tl.meta.timeZone})` : ""}`], ["Tenant", tl.meta.tenantHost],
+      ["Days", `${days.start} to ${days.end} (the last ${days.last})`], ["Provisional from", tl.meta.incompleteFrom],
+      ["Internal recipients", domains.length ? `addresses ending in ${domains.map((d) => `@${d}`).join(" or ")}${account.testAccount ? ", and every send to this account" : ""}` : account.testAccount ? "every send to this account (a test account)" : "none named: every recipient counts as external"],
+      ["Subjects and step names", tl.meta.templates.subjects ? "from the knowledge base, as of each doc's date" : engine.reasonText(tl.meta.templates.reason)],
+      ["Checks", checks],
+      ["Against the dashboard", against ? (against.reason ? `not compared with the dashboard pulled ${against.pulledAt}. ${engine.reasonText(against.reason)}${leftOut ? ` ${leftOut}` : ""}` : `the account's rows in the dashboard pulled ${against.pulledAt}, ${plural(against.compared, "program-month")} compared${against.basis === "class" ? " by recipient class" : " over every recipient"}.${leftOut ? ` ${leftOut}` : ""}`) : "not compared (pulled on its own)"],
+      ["Versions", `CLI ${tl.meta.cliVersion ?? "unknown"}, plugin ${tl.meta.pluginVersion ?? "unknown"}, schema ${tl.schemaVersion}`],
+    ];
+    const line = COPY_LINES.account(model.slug ?? "<slug>", { id: account.key, name: account.name }, model.kb);
+    const again = model.slug
+      ? `<p>${esc("This page is not live. To pull it again, run this line in a terminal in the workspace folder after gs-admin login (a login lasts about an hour):")}</p><p class="gs-notice-line"><code>${esc(line)}</code> <button type="button" data-copy="${esc(line)}">Copy</button></p>`
+      : `<p>${esc("This page is not live: ask for the account's timeline again (/gs-superadmin:email-engagement account) to pull it again; it needs a gs-admin login.")}</p>`;
+    const how = !tl.facts.accountTimeline.length ? ["Nothing reached this account in these days, so there is nothing to filter or download. A longer lookback (--last, up to 24 months) may find older sends."] : [
+      "Each lane is a program that sent to this account in these days; each mark is one email on one day, as large as the sends it was, filled when at least one was opened, plain when delivered and none opened, a ring when none was delivered. Hover or tap a mark for its program, step, subject and counts.",
+      "The Programs filter keeps the lanes you choose; the Recipients switch leaves out internal recipients. The address bar keeps the filters, so a view can be bookmarked; Reset filters clears them.",
+      "Download current view (CSV) exports the sends table as it stands. The summary's open rate stands beside every recipient of the same programs over the same days.",
+    ];
+    return `<section class="gs-about" id="about"><h2>About this page</h2><ul>${how.map((h) => `<li>${esc(h)}</li>`).join("")}</ul><h3>Definitions</h3>${defs}<h3>Where the data came from</h3><dl class="gs-prov">${prov.map(([k, x]) => `<dt>${esc(k)}</dt><dd>${esc(x)}</dd>`).join("")}</dl><h3>Pulling it again</h3>${again}</section>`;
+  };
+  let clock = null;
+  const renderAge = () => {
+    const now = typeof clock === "function" ? clock() : null;
+    const pulled = Date.parse(tl.meta.pulledAt);
+    if (now == null || !Number.isFinite(pulled)) return "";
+    const ageDays = Math.floor((now - pulled) / MS_PER_DAY);
+    return `, ${ageDays <= 0 ? "today" : ageDays === 1 ? "1 day ago" : `${ageDays} days ago`},`;
+  };
+  const renderPulled = () => {
+    const line = engine.timelinePulledLine(tl);
+    const cut = line.indexOf(" from ");
+    return `${cut > 0 ? `${esc(line.slice(0, cut))}<span data-region="age">${renderAge()}</span>${esc(line.slice(cut))}` : esc(line)} This page is not live: it changes only when the timeline is pulled again.`;
+  };
+  const renderLogo = () => (model.look?.logo ? `<${"img"} class="gs-logo" ${"src"}="${esc(model.look.logo)}" alt="">` : "");
+  const renderApp = (state) =>
+    `<header class="gs-head">${renderLogo()}<h1>${esc(`Account timeline: ${account.name ?? account.key}`)}</h1>` +
+    `<p class="gs-sub">${esc(`Every Journey Orchestrator email to this account (GSID ${account.key}) over the last ${days.last}, ${days.start} to ${days.end}, by program and day. Its contacts are added up and never named.`)}</p>` +
+    `<p class="gs-pulled">${renderPulled()}</p></header>` +
+    (tl.reconciliation.ok ? "" : `<div class="gs-banner gs-banner-health" role="status" data-banner="reconciliation">${esc(caveats.find((c) => c.id === "timeline-reconciliation-mismatch" || c.id === "reconciliation-mismatch")?.text ?? "A reconciliation check failed: treat these figures as unreliable.")}</div>`) +
+    `<section class="gs-filters gs-filters-solo" data-region="filters" aria-label="Filters">${renderFilters(state)}</section>` +
+    `<div class="gs-panes" data-region="panes">${renderPanes(state)}</div>` +
+    renderAbout() +
+    `<footer class="gs-foot"><details class="gs-caveats-foot" open><summary>Caveats (${caveats.length})</summary><ul class="gs-caveats">${caveats.map((c) => `<li data-caveat="${esc(c.id)}">${esc(c.text)}</li>`).join("")}</ul></details></footer>`;
+
+  return {
+    model, timeline: tl, programs, panels, defaultState, clean, hashOf, stateFromHash, filtersOf, viewOf, programMatches, csvOf, renderApp, caveats,
+    colsKey: (panelId) => `gs-timeline.${account.key}.${panelId}.columns`,
+    /** @param {?(() => number)} fn the clock the header's age reads (null = no clock, no age) */
+    setClock: (fn) => { clock = fn; },
+    regions: { filters: renderFilters, summary: renderSummary, panes: renderPanes, count: renderCount, proglist: renderProgramList, age: renderAge },
+  };
+}
+/** A day text N days after another (UTC arithmetic). */
+const addDayText = (day, n) => new Date(Date.UTC(...dayParts(day)) + n * MS_PER_DAY).toISOString().slice(0, 10);
+
 // ── In a browser ─────────────────────────────────────────────────────────────
 const BOM = String.fromCharCode(0xfeff);
 /**
  * Wire a page: listeners on its root, the viewer's column choices, the hash,
  * the clock the header's age reads.
- * @param {ReturnType<typeof createDashboard>} app @param {*} root the page's root element @param {*} g the window
+ * @param {ReturnType<typeof createDashboard> | ReturnType<typeof createTimeline>} app @param {*} root the page's root element @param {*} g the window
  */
 export function mount(app, root, g) {
   const doc = g.document;
@@ -1596,6 +1974,13 @@ export function mount(app, root, g) {
       if (act === "running") { state = app.clean({ ...state, statuses: ["PROCESSING"] }); commit(["filters", "summary", "panes"]); return; }
       if (act === "every-status") { state = app.clean({ ...state, statuses: null }); commit(["filters", "summary", "panes"]); return; }
       if (act === "sort-default") { const so = { ...state.so }; delete so[t.getAttribute("data-panel")]; state = app.clean({ ...state, so }); commit(["panes"]); return; }
+      if (act === "account") {
+        // View beside an account in a customer list (ACC-2): the one-account view shows it, and the page moves there.
+        state = app.clean({ ...state, account: t.getAttribute("data-account") });
+        commit(["filters", "panes"]);
+        root.querySelector('[data-type="account"]')?.scrollIntoView?.({ block: "start" });
+        return;
+      }
       // All or none of the programs the search shows.
       for (const label of all(".gs-prog")) if (!label.hidden) label.querySelector("input").checked = act === "all";
       state = app.clean({ ...state, programs: pickedPrograms() });
@@ -1648,14 +2033,16 @@ export function mount(app, root, g) {
 }
 
 /**
- * A page's start: read its embedded data, build the dashboard on the inlined
- * engine, and wire the document when there is one to wire.
+ * A page's start: read its embedded data, build the dashboard (or the account
+ * timeline) on the inlined engine, and wire the document when there is one to wire.
  * @param {*} g the global object of the page
  */
 export function boot(g) {
   const holder = g.document?.getElementById?.("gs-data");
   if (!holder || !g.__gsEngine) return null;
-  const app = createDashboard(g.__gsEngine, JSON.parse(holder.textContent));
+  // Two page kinds share this file and its mount: a dashboard page, and an account timeline (ACC-2).
+  const model = JSON.parse(holder.textContent);
+  const app = model?.kind === "account-timeline" ? createTimeline(g.__gsEngine, model) : createDashboard(g.__gsEngine, model);
   g.__gsDashboard = app;
   const root = g.document.getElementById("gs-root");
   if (root?.addEventListener) mount(app, root, g);

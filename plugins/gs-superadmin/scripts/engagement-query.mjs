@@ -653,9 +653,34 @@ export const REASONS = deepFreeze({
   "test-accounts-need-accounts": "Accounts named as test accounts are not left out: this filter works by email domain, and the pull holds no account data to subtract them with.",
   "templates-not-pulled": "Template content is not in this snapshot: it was made before template content was read from the knowledge base. Pull again to get it.",
   "templates-not-on-page": "Template text (subjects and bodies) and the keyword search are not part of this page.",
+  // Why an account timeline was not compared with a dashboard's rows, in whole or for a program (ACC-1, F-520).
+  "other-tenant": "The dashboard is another tenant's, so it holds none of this account's rows.",
+  "no-whole-month-in-both": "These days cover no whole month the dashboard holds, so there is no month to compare.",
+  "account-not-kept": "The dashboard did not keep this account: its customer lists did not select it, so it holds no row of its own for it.",
+  "account-not-kept-on-program": "The dashboard did not keep this account there: it holds no row of the account on the program over its window.",
+  "program-not-in-dashboard": "The program is not in the dashboard.",
+  "no-send-in-months-compared": "The dashboard kept this account there, but the account's sends on it fall only outside the whole months compared (the first, partial month of these days, or the provisional month), so there was nothing to compare.",
+  // Why a selective refresh holds no ranking for a cross-program customer list (F-521): it carries the last full
+  // ranking, and these have none to carry. A full pull ranks every list again.
+  "list-set-since": "This list was set after the full pull that ranked the others, and a pull that continues from an earlier one cannot rank it: a full pull (a dashboard's refresh with --full) ranks it over every account.",
+  "previous-not-ranked": "The pull this one continued from held no ranking of this list over every program, so there was none to keep: a full pull (a dashboard's refresh with --full) ranks it over every account.",
 });
 /** @param {?string} id @returns {string} the reason in words; an id the table lacks is shown as itself */
 export const reasonText = (id) => (id == null ? "" : REASONS[id] ?? `No value (${id}).`);
+/**
+ * The programs a timeline's dashboard comparison left out, grouped by why (F-520): one group per reason, its words and
+ * the programs' names, the whole comparison's own reason left out (it is said once, as the comparison's). The one
+ * grouping the timeline page and the account summary both read, so the two say the same.
+ * @param {?{reason: ?string, notCompared: Array<{programId: string, reason: string}>}} against
+ * @param {Array<{id: string, name?: ?string}>} programs the timeline's programs
+ * @returns {Array<{reason: string, text: string, programs: string[]}>}
+ */
+export function notComparedGroups(against, programs) {
+  if (!against) return [];
+  const nameOf = new Map(programs.map((p) => [p.id, p.name ?? p.id]));
+  const left = against.notCompared.filter((n) => n.reason !== against.reason);
+  return [...new Set(left.map((n) => n.reason))].map((reason) => ({ reason, text: reasonText(reason), programs: left.filter((n) => n.reason === reason).map((n) => nameOf.get(n.programId) ?? n.programId) }));
+}
 
 // In the order a status list reads best: what is running first.
 export const STATUS_LABELS = deepFreeze({ PROCESSING: "Active", PAUSE: "Paused", NEW: "Draft", STOP: "Stopped" });
@@ -703,6 +728,18 @@ const STEP_DIMS = ["step", "variant"];
 
 const cmp = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
 const has = (list, v) => !list || list.includes(v);
+/**
+ * A rate's cell from its numerator's and denominator's: the ONE rate rule, which runQuery and the account timeline
+ * (timelineView) both compute with. The numerator's tracking state rides along; null, never 0, on a zero denominator.
+ * @param {EngagementCell} num @param {EngagementCell} den
+ * @returns {EngagementCell}
+ */
+function rateCell(num, den) {
+  const state = num.state ? { state: num.state } : {};
+  if (num.value == null) return { value: null, ...state, why: num.why };
+  if (!den.value) return { value: null, ...state, why: "zero-denominator" };
+  return { value: num.value / den.value, ...state };
+}
 /**
  * The programs the global filters keep, and how many the status filter hides:
  * the ONE reading of the program filters, which runQuery and every view share.
@@ -897,15 +934,7 @@ export function runQuery(snapshot, filters, query) {
 
   const cellOf = (def, g, isTotal) => {
     if (def.kind === "count") return def.tracking === "clicks" ? clicksOf(g) : g.absent.has(def.id) ? { value: null, why: "measure-not-in-snapshot" } : { value: g.sums[def.id] };
-    if (def.kind === "rate") {
-      const num = cellOf(metric(def.numerator), g, isTotal);
-      const den = cellOf(metric(def.denominator), g, isTotal);
-      const state = num.state ? { state: num.state } : {};
-      if (num.value == null) return { value: null, ...state, why: num.why };
-      // Null, never 0, on a zero denominator.
-      if (!den.value) return { value: null, ...state, why: "zero-denominator" };
-      return { value: num.value / den.value, ...state };
-    }
+    if (def.kind === "rate") return rateCell(cellOf(metric(def.numerator), g, isTotal), cellOf(metric(def.denominator), g, isTotal));
     if (def.kind === "distinct") return uniquesOf(def, g, isTotal);
     return responsesOf(def, g, isTotal);
   };
@@ -2100,6 +2129,12 @@ export const CAVEATS = Object.freeze({
   "template-content-behind": (d) => `${d.behind} template doc(s) were read before the month of the template's last send, so the text may predate what was sent. The next gap-fill reads them again.`,
   "template-link-readings-missing": (d) => `${d.count} never-clicked template(s) have no link-tracking reading in the knowledge base (their docs predate it), so their click tracking reads unknown. The next gap-fill reads them again.`,
   "test-accounts-not-on-steps": (d) => `${d.accounts} test account(s) are counted as internal recipients in the template and account tables, not in the step table: the step log carries no company link, so its internal figures are by email domain alone.`,
+  // The account timeline (ACC-1, ACC-2): its own snapshot kind's caveats.
+  "account-timeline-grain": () => "Every figure is per account: the sends to the account's contacts are added up by program, email and day, and no contact is named. A mark is every send of one email to the account on one day; its size is how many sends that was.",
+  "timeline-tenant-comparison": () => "The comparison open rate is every recipient of the same programs over the same days, this account's sends included, under the same recipients filter.",
+  "timeline-test-account": () => "This account is named as a test account, so every send to it counts as internal: with internal recipients left out, nothing is shown.",
+  "timeline-subjects-current": (d) => `Subjects are each template's CURRENT subject as the knowledge base holds it${d.oldest ? ` (the oldest doc is as of ${d.oldest})` : ""}, not necessarily what was sent.`,
+  "timeline-reconciliation-mismatch": (d) => `RECONCILIATION FAILED against the dashboard snapshot pulled ${d.pulledAt}: ${d.mismatches} program-month(s) of this account differ in closed months (${list(d.measures ?? [])}). Treat these figures as unreliable and pull again before using them.`,
   // From the honesty counts.
   "cc-copies-excluded": (d) => `${d.count} CC copies are left out: only "To" recipients are counted.`,
   "other-sources-excluded": (d) => `${d.count} email(s) sent by other Gainsight features are left out: only Journey Orchestrator sends are counted.`,
@@ -2164,5 +2199,158 @@ export function caveatsFor(snapshot, metricIds, { health = false, templates = fa
  */
 export function dataPulledLine(snapshot) {
   const m = snapshot.meta;
-  return `Data pulled ${m.pulledAt}${m.timeZone ? ` (${m.timeZone})` : ""} from ${m.tenantHost}. Window ${m.window.from} to ${m.window.to}; ${provisionalText(m)}.`;
+  return `${pulledFrom(m)} Window ${m.window.from} to ${m.window.to}; ${provisionalText(m)}.`;
+}
+/** When and from where a pull was made: the one wording both snapshot kinds' data-pulled lines open with. */
+const pulledFrom = (m) => `Data pulled ${m.pulledAt}${m.timeZone ? ` (${m.timeZone})` : ""} from ${m.tenantHost}.`;
+
+// ── The account timeline (ACC-1, ACC-2; additive on T-10, S6) ────────────────
+// A second snapshot KIND the adapter writes (`engagement.mjs account`): one
+// account's sends at DAY grain over the last N days or months, by program and
+// email, recipients added up to the account (no contact is named anywhere),
+// and the same programs' sends to every recipient over the same days beside
+// them. Its shape is frozen with T-10 at the producer (engagement.mjs's
+// header); this is its read floor and its one aggregation path: the timeline
+// page recomputes a filtered view with these functions, and the adapter
+// reconciles the timeline against a dashboard's account rows with them.
+export const TIMELINE_KIND = "account-timeline";
+// The measures a timeline row carries: every send measure counted from the flags (clicked needs link detail, which a
+// timeline does not read).
+export const TIMELINE_MEASURES = Object.freeze(SEND_MEASURES.filter((id) => !!metric(id).counts));
+// What a timeline view computes for every mark, lane and total.
+export const TIMELINE_METRICS = Object.freeze(["sent", "delivered", "opened", "openRate", "bounced"]);
+/**
+ * The loud reader of an account timeline file: schemaVersion 1 and kind "account-timeline", or a refusal. An
+ * engagement snapshot is refused here, and a timeline is refused by openSnapshot.
+ * @param {unknown} json a parsed timeline file
+ * @returns {import("./engagement.mjs").T10AccountTimeline}
+ */
+export function openTimeline(json) {
+  const s = /** @type {any} */ (json);
+  if (!s || typeof s !== "object" || Array.isArray(s)) throw new Error("account timeline: not an object — refusing to read it (T-10)");
+  if (s.schemaVersion !== T10_SCHEMA_VERSION)
+    throw new Error(`account timeline: schemaVersion ${JSON.stringify(s.schemaVersion)} is not ${T10_SCHEMA_VERSION} — refusing to read it (T-10); pull it again with this plugin version, or update the plugin`);
+  if (s.kind !== TIMELINE_KIND) throw new Error(`account timeline: kind ${JSON.stringify(s.kind)} is not "${TIMELINE_KIND}" — refusing to read it (T-10)`);
+  return s;
+}
+const timelineSums = () => Object.fromEntries(TIMELINE_MEASURES.map((k) => [k, 0]));
+const addTimeline = (sums, row) => {
+  for (const k of TIMELINE_MEASURES) sums[k] += row[k] ?? 0;
+};
+/** @returns {EngagementCell} one metric over added-up measures, by the registry's rule (a rate through rateCell) */
+function timelineCell(id, sums) {
+  const def = metric(id);
+  if (def.kind === "rate") return rateCell(timelineCell(def.numerator, sums), timelineCell(def.denominator, sums));
+  if (!TIMELINE_MEASURES.includes(id)) throw new Error(`account timeline: "${id}" is not a measure a timeline carries (${TIMELINE_MEASURES.join(", ")})`);
+  return { value: sums[id] };
+}
+const timelineCells = (sums) => Object.fromEntries(TIMELINE_METRICS.map((id) => [id, timelineCell(id, sums)]));
+/**
+ * The account timeline as a page draws it, for one filter state: one mark per program, email and day (its state
+ * opened, unopened — delivered, none opened — or not-delivered), one lane per program, the totals, and the same
+ * programs' sends to every recipient (the comparison), each through the registry's metrics.
+ * @param {import("./engagement.mjs").T10AccountTimeline} tl
+ * @param {{programs?: ?string[], recipientClass?: "all"|"external"|"internal"}} [filters]
+ */
+export function timelineView(tl, filters = {}) {
+  const cls = filters.recipientClass ?? "all";
+  if (!["all", "external", "internal"].includes(cls)) throw new Error(`account timeline: recipientClass must be all, external or internal (got "${cls}")`);
+  const keep = filters.programs ? new Set(filters.programs) : null;
+  const programs = tl.dimensions.programs;
+  const programById = new Map(programs.map((p) => [p.id, p]));
+  const templateById = new Map(tl.dimensions.templates.map((t) => [t.id, t]));
+  const keptIds = new Set(programs.filter((p) => !keep || keep.has(p.id)).map((p) => p.id));
+  const holds = (r) => keptIds.has(r.programId) && (cls === "all" || r.recipientClass === cls);
+  const marks = new Map();
+  const lanes = new Map();
+  const total = timelineSums();
+  for (const r of tl.facts.accountTimeline) {
+    if (!holds(r)) continue;
+    const k = JSON.stringify([r.programId, r.templateId ?? null, r.day]);
+    if (!marks.has(k)) marks.set(k, { programId: r.programId, templateId: r.templateId ?? null, day: r.day, sums: timelineSums() });
+    addTimeline(marks.get(k).sums, r);
+    if (!lanes.has(r.programId)) lanes.set(r.programId, { sums: timelineSums(), marks: new Set() });
+    addTimeline(lanes.get(r.programId).sums, r);
+    lanes.get(r.programId).marks.add(k);
+    addTimeline(total, r);
+  }
+  const tenantLanes = new Map();
+  const tenant = timelineSums();
+  for (const r of tl.facts.tenantByProgram) {
+    if (!holds(r)) continue;
+    if (!tenantLanes.has(r.programId)) tenantLanes.set(r.programId, timelineSums());
+    addTimeline(tenantLanes.get(r.programId), r);
+    addTimeline(tenant, r);
+  }
+  const programName = (id) => programById.get(id)?.name ?? null;
+  const byName = (a, b) => cmp(String(programName(a) ?? a).toLowerCase(), String(programName(b) ?? b).toLowerCase()) || cmp(a, b);
+  const markRows = [...marks.values()]
+    .sort((a, b) => cmp(a.day, b.day) || byName(a.programId, b.programId) || cmp(String(a.templateId), String(b.templateId)))
+    .map((m) => {
+      const t = m.templateId == null ? null : templateById.get(m.templateId);
+      // The step name and order only where the template sits on exactly one step of that program (R21).
+      const use = t?.uses.find((u) => u.programId === m.programId && u.stepCount === 1) ?? null;
+      return {
+        key: { program: m.programId, template: m.templateId, day: m.day },
+        label: { program: programName(m.programId), template: t?.name ?? null, subject: t?.subject ?? null, stepName: use?.stepName ?? null, stepOrder: use?.stepOrder ?? null },
+        cells: timelineCells(m.sums),
+        state: m.sums.opened > 0 ? "opened" : m.sums.delivered > 0 ? "unopened" : "not-delivered",
+        incomplete: m.day >= tl.meta.incompleteFrom,
+      };
+    });
+  const laneRows = [...lanes.keys()].sort(byName).map((id) => ({
+    key: { program: id },
+    label: { program: programName(id), statuses: programById.get(id)?.statuses ?? [] },
+    cells: timelineCells(lanes.get(id).sums),
+    tenant: timelineCells(tenantLanes.get(id) ?? timelineSums()),
+    marks: lanes.get(id).marks.size,
+  }));
+  return {
+    window: tl.meta.window,
+    marks: markRows,
+    lanes: laneRows,
+    total: { cells: timelineCells(total), incomplete: markRows.some((m) => m.incomplete) },
+    tenant: { cells: timelineCells(tenant) },
+    scope: { programs: keptIds.size, programsWithSends: laneRows.length, hiddenByFilter: programs.length - keptIds.size },
+  };
+}
+/**
+ * The timeline added up by program, month and recipient class: what a dashboard snapshot's account rows of the same
+ * account hold, so the adapter can reconcile the two (ACC-1).
+ * @param {import("./engagement.mjs").T10AccountTimeline} tl
+ * @returns {Array<*>} {programId, month, recipientClass} and the timeline's measures
+ */
+export function timelineByMonth(tl) {
+  const out = new Map();
+  for (const r of tl.facts.accountTimeline) {
+    const k = JSON.stringify([r.programId, r.day.slice(0, 7), r.recipientClass]);
+    if (!out.has(k)) out.set(k, { programId: r.programId, month: r.day.slice(0, 7), recipientClass: r.recipientClass, ...timelineSums() });
+    addTimeline(out.get(k), r);
+  }
+  return [...out.values()].sort((a, b) => cmp(a.programId, b.programId) || cmp(a.month, b.month) || cmp(a.recipientClass, b.recipientClass));
+}
+/** The "data pulled" line of a timeline (R4): when, from where, the days it covers, and what is provisional. */
+export function timelinePulledLine(tl) {
+  const m = tl.meta;
+  return `${pulledFrom(m)} Days ${m.window.start} to ${m.window.end} (the last ${m.window.last}); sends on or after ${m.incompleteFrom} are provisional (opens keep arriving).`;
+}
+/**
+ * The caveats of a timeline output: its own (a reconciliation failure first), the provisional days, the caveats of
+ * the metrics it shows, and what holds for every timeline.
+ * @param {import("./engagement.mjs").T10AccountTimeline} tl
+ * @returns {Array<{id: string, text: string}>}
+ */
+export function timelineCaveats(tl) {
+  const out = [];
+  const push = (id, detail = {}) => {
+    if (!out.some((c) => c.id === id)) out.push({ id, text: caveatText(id, detail) });
+  };
+  const own = [...tl.caveats].sort((a, b) => Number(b.id === "timeline-reconciliation-mismatch") - Number(a.id === "timeline-reconciliation-mismatch"));
+  for (const c of own) push(c.id, c.detail);
+  push("incomplete-period", { from: tl.meta.incompleteFrom });
+  for (const id of TIMELINE_METRICS) for (const c of metric(id).caveats) push(c);
+  push("account-timeline-grain");
+  push("timeline-tenant-comparison");
+  push("status-is-today");
+  return out;
 }
