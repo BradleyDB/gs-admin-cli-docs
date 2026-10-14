@@ -2706,3 +2706,56 @@ S5-V first sitting (2026-10-12 @ hb-20261011-02; the fast-path dashboard's R1 sn
 - K5 CLEARED: on the saved dashboard, `metrics {"clicks": false}` left the draft's admin page with 17 panels carrying no click metric and the leaders' page 6; `metrics default` emptied both to the preset's with the note "every optional metric shown"; with the admin page's panels changed by hand through `change` (the preset minus one engagement panel), both answers kept its 16 panels and the note named `change <slug> pages.0.panels=[]` (the literal `<slug>` is F-512 (c)), while the preset-derived leaders' page followed the answers (6, then the preset's).
 - K4 bar moved with F-511 (builder, 2026-10-12 @ hb-20261012-01): the category-cost quote now lives on the tabs question alone ("The 56 bounce categories in the workspace's category file cost 336 counted calls a refresh …" after Health's minutes and the shared-pull sentence); the failure-settings question no longer carries it, and the internal-domains and test-accounts asks say "a few minutes per domain / per test account" instead of counted calls. Already CLEARED on the figures at the first sitting; the second sitting reads the sentence on the tabs question at I7 and owes nothing else here.
 Section status: CLEARED (first sitting); the two-day case a blind spot. F-502, F-503 and F-504 flip FIXED → VERIFIED on the bus with these as their live half.
+
+## ACC — the account timeline and the in-page account view on a real tenant (banked 2026-10-13, builder, Session S6 @ hb-20261013-02; verdict at the tail's batched round)
+
+Owed by: the tail's batched verdict round (S6-V folded with S7-V and S8-V, ruled 2026-10-12); the production tenant,
+reads only (the timeline issues only the adapter's reads: `whoami`, `jo p list`, `rp schema`, `rp run`, and
+`jo p describe` for a program the list lacks; every one catalogued non-mutating, so the guard asks on none of them).
+Token: hb-20261013-02. Why it is banked: the account path was built against the stand-in CLI. Whether the server takes EQ and
+CONTAINS on the company object's `Name` (and with what letter case), what a real account's day rows cost, and whether a
+timeline equals a real dashboard's rows of the same account need a real tenant. No tenant data leaves the workspace:
+the picks, the timelines and the pages stay under the KB folder.
+
+THIS LIST IS COMPLETE (the same rule as above).
+
+Pick before the first call (kept in the workspace, never here): two accounts of the dashboard the S5-V sittings kept
+(v2) that its customer lists KEPT, each with sends in the last 90 days on two or more programs (one of them sent to by
+an internal recipient, if one exists); one company name the tenant holds on two or more company records, if Bradley
+knows one; one account with no JO send in the last 90 days.
+
+- A0 (measured first, before anything rests on it: Bradley's rule, operators per object and field). `rp schema
+  --object company` declares `Name` filterable; one `rp run` on `company` with `Name EQ '<an exact name>'` returns that
+  account; one with `Name CONTAINS '<a fragment>'` returns the accounts holding it; the same two in another letter case
+  say whether each operator folds case. Pass bar: both operators run (no refusal); the case behaviour of each recorded in
+  SPIKE-NOTES as a one-line addendum (no values). If CONTAINS is refused, the timeline's no-exact-match path fails
+  loudly: log a finding, do not guess a fix.
+- A1 (two timelines: `/gs-superadmin:email-engagement account '<account 1>'` by name, and `… dashboard.mjs account v2
+  --account-id <account 2's GSID> --kb <kb>` through the dashboard). Pass bar: each exits 0; the summary's `sent`,
+  `programs` and `window` (90 days to today); each page opens from file:// in a browser with its lanes, marks, summary
+  and table; the data-pulled line names the pull's time and tenant; the account's open rate stands beside "every
+  recipient of these programs over the same days"; wall time and the number of calls recorded (order 10 calls).
+- A2 (reconciliation against the dashboard's facts: the second timeline of A1, run with the dashboard named). Pass
+  bar: `against.reason` null, `against.basis` class, `matches-dashboard` ok with `compared` above 0, every closed whole
+  month the two hold equal on sent, delivered, opened and bounced per program and class; a program named in
+  `notCompared` is one the dashboard's selection did not keep the account on (read its `honesty.accountSelection`); then
+  three direct counts of the account on one program and one closed month (email_log_v2, the standing filters,
+  GsCompanyId EQ the GSID, ExecutedDate inside the month) equal the timeline's month row.
+- A3 (the in-page account view against the timeline). On v2's admin page, View beside account 2 in a customer list (or
+  the Account filter): the one-account view shows it month by month; for every whole month inside the timeline's days
+  its rows equal the timeline's per program (sum of days); its copy line is `… account v2 --account-id <GSID> --kb <kb>`
+  and runs as drawn from the workspace folder (that is A1's second run); the sentence beside it says the line needs a
+  gs-admin login. The leaders' page has no account view.
+- A4 (no guess). The duplicated name (if one exists) and a fragment no account carries exactly: each exits 6 with a
+  pick list naming every candidate's GSID and sends, and nothing beyond the company search and one count was called
+  (the fetch log). A GSID that does not exist exits 6 saying so.
+- A5 (account is the finest grain). In A1's run directories and timeline files and pages: no address (a search for `@`
+  followed by a domain), no person or participant id, no send id. Pass bar: none found.
+- A6 (escaping and the account with no sends). The no-send account's page says nothing reached it, with no table and
+  no chart; a page for an account whose name holds an ampersand, quote or angle bracket (if the tenant has one) renders
+  the name as text.
+- A7 (resume). One timeline pull stopped on an expired login (start it with a few minutes left, or after the hour) exits
+  3 and the same line after `gs-admin login` continues it (the summary's `calls.reused` above 0).
+
+Carried, not this section's: F-518 (polish, OPEN) rides the tail's first fix round and this batched round (R12).
+Section status: OPEN — banked; owed at the tail's batched verdict round.
