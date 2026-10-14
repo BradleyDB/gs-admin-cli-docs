@@ -30,7 +30,7 @@ import { join, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { isDeepStrictEqual } from "node:util";
 import { makeTempDir, removeTempDir, writeFiles, runNode } from "../../../test/rig.mjs";
-import { COSTS, COST_KINDS, ADAPTER_MAPPING, QUESTIONS, CLOSING_ASK, CLOSING_OPTIONS, askText, defaultAnswer, composeAnswer, defaultGroupRules, categoryCostText, changeCost, coveredPath, computeDelta, adapterParams, pullSecondsAfter, loginsFor, LOGIN_SECONDS, EXIT, KEEP_SNAPSHOTS, LOCK_STALE_MS, LOCK_FILE, STATE_FILE, SNAPSHOTS_DIR, PREVIEW_DIR, SUGGESTION_FILE, ACCOUNTS_DIR } from "../scripts/dashboard.mjs";
+import { COSTS, COST_KINDS, ADAPTER_MAPPING, QUESTIONS, CLOSING_ASK, CLOSING_OPTIONS, askText, defaultAnswer, composeAnswer, defaultGroupRules, categoryCostText, changeCost, coveredPath, computeDelta, adapterParams, pullSecondsAfter, loginsFor, LOGIN_SECONDS, EXIT, KEEP_SNAPSHOTS, LOCK_STALE_MS, LOCK_FILE, STATE_FILE, SNAPSHOTS_DIR, PREVIEW_DIR, SUGGESTION_FILE, ACCOUNTS_DIR, PUBLISH_TARGETS_FILE, PUBLISH_DIR } from "../scripts/dashboard.mjs";
 import { resolveGroups, programTraits } from "../scripts/dashboard-groups.mjs";
 import { SPEC_DESCRIPTIONS, defaultSpec, openSpec, DEFAULT_ACCOUNT_LISTS } from "../scripts/dashboard-spec.mjs";
 import { HOW_TO_REFRESH_RULED } from "./fixtures/engagement/ruled-text.mjs";
@@ -63,9 +63,12 @@ const KB = join(WS, "acme-prod");
 const WS2 = join(ROOT, "ws2");
 const KB2 = join(WS2, "acme-prod");
 const STATE = join(ROOT, "fake-state");
+// A folder standing for a synced shared folder (PUB-3's file-copy target), outside the workspace.
+const SHARE = join(ROOT, "leaders-share");
 writeFiles(WS, { ".gs-superadmin/.keep": "", ...kbFiles("acme-prod", { cadence: true, signals: true }), "brand/logo.png": Buffer.from(PNG, "base64") });
 writeFiles(WS2, { ".gs-superadmin/.keep": "", ...kbFiles("acme-prod", { cadence: true, signals: true }) });
 mkdirSync(STATE, { recursive: true });
+mkdirSync(SHARE, { recursive: true });
 const TENANT = { cadence: true, signals: true };
 const common = ["--workspace", WS, "--kb", KB, "--bin", FAKE, "--today", TODAY, "--by", "ana"];
 const run = (verb, args = [], { env = {}, tenant = TENANT, flags = common } = {}) => {
@@ -148,7 +151,7 @@ try {
       disagree.length === 0 && (() => { const b = base(); const a = structuredClone(b); a.pages[1].tabs.find((t) => t.id === "templates").enabled = true; const h = structuredClone(b); h.pages[0].tabs.find((t) => t.id === "health").enabled = false; return changeCost(b, a).consequence === "rebuild" && changeCost(b, h).consequence === "pull"; })(), disagree);
     const ids = QUESTIONS.map((x) => x.id);
     check("the questions table, as ruled 2026-10-12 (F-511): the tenant statement, programs, window, grouping, the recipients three, the failure settings, the look, the tabs, the customer lists then the leaders' names then the lists' detail, step detail, the expected reasons, the three action rows of the closing step; ids unique; purpose, audiences, cadence and metrics gone; exactly two judgment nodes (grouping, look); every answerable question has an apply and a default",
-      isDeepStrictEqual(ids, ["tenant", "programs", "window", "grouping", "internal-domains", "test-accounts", "unsubscribe-links", "failure-settings", "look", "tabs", "customer-lists", "leader-names", "customer-list-detail", "step-detail", "expected-reasons", "dry-run", "estimate", "save"]) &&
+      isDeepStrictEqual(ids, ["tenant", "programs", "window", "grouping", "internal-domains", "test-accounts", "unsubscribe-links", "failure-settings", "look", "tabs", "customer-lists", "leader-names", "customer-list-detail", "step-detail", "expected-reasons", "leaders-copy", "dry-run", "estimate", "save"]) &&
         isDeepStrictEqual(QUESTIONS.filter((x) => x.judgment).map((x) => x.id), ["grouping", "look"]) && QUESTIONS.every((x) => typeof x.options === "function" && typeof x.kind === "string") &&
         QUESTIONS.filter((x) => !["preflight", "action"].includes(x.kind)).every((x) => typeof x.apply === "function" && x.default !== undefined), ids);
     const asks = Object.fromEntries(QUESTIONS.map((x) => [x.id, askText(x, PLAN_CTX)]));
@@ -180,7 +183,7 @@ try {
     const placeholders = QUESTIONS.flatMap((x) => (x.judgment ? [] : x.options(PLAN_CTX).filter((o) => o.id.includes("<")).map((o) => ({ q: x.id, id: o.id, followUps: o.followUps }))));
     check("placeholder options (ruling 6): every option whose id holds a <key> carries one follow-up per key, each with its own ask and kind, on programs, window, internal domains, test accounts, unsubscribe links, failure settings, tabs (one per page and tab), the lists' detail and the expected reasons; a judgment node's options carry none (the prose composes)",
       placeholders.length >= 12 && placeholders.every((p) => Array.isArray(p.followUps) && p.followUps.length > 0 && [...p.id.matchAll(/<([^>]+)>/g)].every((m) => p.followUps.some((f) => f.key === m[1])) && p.followUps.every((f) => typeof f.ask === "string" && f.ask.length > 8 && ["text", "list", "number", "boolean"].includes(f.kind))) &&
-        isDeepStrictEqual([...new Set(placeholders.map((p) => p.q))], ["programs", "window", "internal-domains", "test-accounts", "unsubscribe-links", "failure-settings", "tabs", "customer-list-detail", "expected-reasons"]) && option("tabs", "{", PLAN_CTX).followUps.length === 4 && q("grouping").options(PLAN_CTX).every((o) => !o.followUps),
+        isDeepStrictEqual([...new Set(placeholders.map((p) => p.q))], ["programs", "window", "internal-domains", "test-accounts", "unsubscribe-links", "failure-settings", "tabs", "customer-list-detail", "expected-reasons", "leaders-copy"]) && option("tabs", "{", PLAN_CTX).followUps.length === 4 && q("grouping").options(PLAN_CTX).every((o) => !o.followUps),
       placeholders.map((p) => [p.q, p.id, p.followUps?.map((f) => f.key)]));
     check("F-511 instance 21: one follow-up per value an option NEEDS — the test accounts are two options (GSIDs, names), each with its one follow-up, plus none; an admin who gives GSIDs is never asked for names",
       isDeepStrictEqual(q("test-accounts").options(PLAN_CTX).map((o) => o.followUps?.map((f) => f.key) ?? null), [["ids"], ["names"], null]) && q("test-accounts").options(PLAN_CTX)[0].text === "Give their company GSIDs" && placeholders.every((p) => p.followUps.length === [...p.id.matchAll(/<([^>]+)>/g)].length));
@@ -342,6 +345,20 @@ try {
   check("step detail's ask quotes its minutes from the plan; the expected reasons name the six shipped ones and take a wording through the list follow-up, or none",
     stepQ.json?.question?.id === "step-detail" && /On this tenant it adds about \d+ minutes? to each refresh/.test(stepQ.json.question.ask) && reasonsQ.json?.question?.id === "expected-reasons" && /Already in the participant list; Unique criteria already met; Met the advanced criteria; Unsubscribed from a category; On the global opt-out; Opted out at the send step/.test(reasonsQ.json.question.ask) &&
       added.code === 0 && isDeepStrictEqual(reasonsAfterAdd, ["Custom wording of this tenant"]) && isDeepStrictEqual(readJson(draftFile()).spec.sources[0].params.expectedReasons, []), [stepQ.json?.question?.ask, added.json]);
+  // The leaders' copy (PUB-3/PUB-4): asked last among the settings; a folder given is the MACHINE's, written to the
+  // workspace's publish targets through its one writer, never to the spec; a folder that is not there is refused.
+  const copyQ = run("next", [SLUG]);
+  const missingFolder = run("answer", [SLUG, "leaders-copy", `folder:${join(ROOT, "no-such-folder")}`]);
+  const asArtifact = run("answer", [SLUG, "leaders-copy", "artifact"]);
+  const draftArtifact = readJson(draftFile()).spec.publish;
+  const toFolder = run("answer", [SLUG, "leaders-copy", composeAnswer(copyQ.json?.question?.options?.[0] ?? { id: "" }, { folder: SHARE })]);
+  const targets = existsSync(join(WS, ".gs-superadmin", PUBLISH_TARGETS_FILE)) ? readJson(join(WS, ".gs-superadmin", PUBLISH_TARGETS_FILE)) : null;
+  const draftPublish = readJson(draftFile()).spec.publish;
+  check("PUB-3 the leaders' copy question: asked after the expected reasons, the shared folder first (the default: set later), the artifact link and the workspace only beside it, with the cost sentence (viewers pay nothing); a folder given is written to the workspace's publish targets (the machine's), the spec naming only the target and the file; a folder that is not there is refused with nothing written; the artifact answer sets the artifact target with no link yet",
+    copyQ.json?.question?.id === "leaders-copy" && isDeepStrictEqual(copyQ.json.question.options.map((o) => o.id), ["folder:<folder>", "folder-later", "artifact", "none"]) && /Viewers pay nothing either way: the leaders' copy is a file, so opening it runs no query and no session\.$/.test(copyQ.json.question.ask) &&
+      missingFolder.code === 1 && /does not exist or is not a folder/.test(missingFolder.json?.error ?? "") && asArtifact.code === 0 && isDeepStrictEqual(draftArtifact, { target: "claude-artifact", config: { url: null } }) &&
+      toFolder.code === 0 && toFolder.json.publishTarget?.name === "leaders" && targets?.targets?.leaders?.folder === resolve(SHARE) && isDeepStrictEqual(draftPublish, { target: "file-copy", config: { to: "leaders", file: `${SLUG}-leaders.html`, datedCopies: false, datasets: true } }) && !JSON.stringify(readJson(draftFile()).spec).includes("leaders-share"),
+    [copyQ.json?.question?.options, missingFolder.json, draftArtifact, toFolder.json, targets, draftPublish]);
   const callsBeforeClosing = argvLines().length;
   const closing = run("next", [SLUG]);
   check("the closing step (ruling 19): once every setting is answered, next returns the first action row WITH the closing block: the ruled ask priced on the exact settings (a new plan, since the pull-affecting answers moved), the login's remaining minutes read now, and the four options with the action answers each stands for",
@@ -429,7 +446,7 @@ try {
   // says how many more logins it needs; the stale lock it took over is recorded in that refusal (the first sitting's note).
   const shortLogin = run("refresh", [SLUG], { tenant: { ...TENANT, token: { state: "valid", seconds: 60 } }, env: { FAKE_FAULTS: JSON.stringify([{ match: "rp run", kind: "auth", skip: 30, times: 9999 }]) } });
   check("F-513 a pull longer than the login is NOT refused at the gate: it starts (stderr says it will take more logins), stops cleanly on the token with exit 3 after the calls it could make, names the login to run and that the next run continues it, says about how many more logins, and keeps its run resumable; the stale lock it took over is recorded in the refusal and released; no snapshot",
-    shortLogin.code === EXIT["token-expired"] && shortLogin.json?.status === "token-expired" && /the refresh stopped after \d+ calls this run/.test(shortLogin.json.error) && /run gs-admin login, then run refresh acme-health again: it continues where it stopped/.test(shortLogin.json.error) && /about \d+ more logins? of an hour to finish/.test(shortLogin.json.error) &&
+    shortLogin.code === EXIT["token-expired"] && shortLogin.json?.status === "token-expired" && /the refresh stopped after \d+ calls this run/.test(shortLogin.json.error) && /run gs-admin login, then run `node .gs-superadmin.plugin.scripts.dashboard.mjs refresh acme-health --kb acme-prod` again: it continues where it stopped/.test(shortLogin.json.error) && /about \d+ more logins? of an hour to finish/.test(shortLogin.json.error) &&
       /will run as far as the login allows \(about \d+ logins? of an hour in all\)/.test(shortLogin.stderr) && isDeepStrictEqual(shortLogin.json.lockTakenOver, { by: "ben", at: staleAt }) && /a stale lock held by ben since/.test(shortLogin.json.error) && /took over a stale refresh lock of "acme-health" held by ben since/.test(shortLogin.stderr) && !existsSync(join(dash(), LOCK_FILE)) && existsSync(join(dash(), STATE_FILE)) && snapshots().length === 3, shortLogin.json);
   writeFileSync(join(dash(), LOCK_FILE), JSON.stringify({ by: "ben", at: staleAt, pid: 1 }));
   const stale = run("refresh", [SLUG]);
@@ -487,7 +504,7 @@ try {
   };
   const partialStatus = timedOut.code === EXIT.partial && existsSync(join(dash(), STATE_FILE)) ? runStatus() : null;
   check("F-519: a refresh stopped on an unsplittable timeout exits 4 (partial, resumable) and its message says WHAT failed (the family, a server timeout), that the next run retries it, and has no empty slot; the run's status names the call with the run it failed in; the pages and the snapshots are untouched",
-    timedOut.code === EXIT.partial && timedOut.json?.status === "partial" && /the refresh stopped after \d+ calls this run( \(\d+ reused from before\))?: 1 call failed: resp-participants timed out on the server twice \(a server timeout\) — run refresh acme-health again: it retries what failed and continues where it stopped; the last good pages are untouched/.test(timedOut.json.error) &&
+    timedOut.code === EXIT.partial && timedOut.json?.status === "partial" && /the refresh stopped after \d+ calls this run( \(\d+ reused from before\))?: 1 call failed: resp-participants timed out on the server twice \(a server timeout\) — run `node .gs-superadmin.plugin.scripts.dashboard.mjs refresh acme-health --kb acme-prod` again: it retries what failed and continues where it stopped; the last good pages are untouched/.test(timedOut.json.error) &&
       !/partial —  run/.test(timedOut.json.error) && partialStatus?.status === "partial" && partialStatus.failed.length === 1 && partialStatus.failed[0].family === "resp-participants" && partialStatus.failed[0].kind === "timeout" && partialStatus.failed[0].runs === 1 && snapshots().length === countBeforeTimeout,
     [timedOut.json?.error, partialStatus?.failed]);
   const retried = run("refresh", [SLUG], { env: { FAKE_FAULTS: JSON.stringify([{ match: UNSPLITTABLE, kind: "timeout", times: 3 }]) } });
@@ -503,6 +520,57 @@ try {
   check("F-519: a timeout that recurs across runs is reported as recurring — the second partial stop says the call failed in 2 runs so far, and the status's entry counts the same; a later run on which the server answers completes it",
     again.code === EXIT.partial && againTwice.code === EXIT.partial && / in 2 runs so far/.test(againTwice.json?.error ?? "") && !/ in 2 runs so far/.test(again.json?.error ?? "") && recurringStatus?.failed?.[0]?.runs === 2 && answeredAtLast.code === 0 && !existsSync(join(dash(), STATE_FILE)),
     [again.json?.error, againTwice.json?.error, recurringStatus?.failed]);
+
+  // ══ F-523: every remedy line the entry command prints runs AS PRINTED ══
+  // The class: a remedy line no check executes can name a command the same tool refuses (a stopped --full refresh
+  // printed "run refresh <x> again", which the tool then refused for want of --full). So each stop and refusal this
+  // suite can provoke is provoked, the line between backticks in its message is read out (it must equal the
+  // summary's `remedy.line`), and that line is RUN — its words as printed, from the workspace folder, after the
+  // "login" (the fault removed) — with only the stand-in's harness flags added. A line the tool then refuses fails.
+  {
+    const harness = ["--workspace", WS, "--bin", FAKE, "--today", TODAY, "--by", "ana"];
+    const printed = (out) => /`(node \.gs-superadmin\/plugin\/scripts\/dashboard\.mjs [^`]+)`/.exec(out.json?.error ?? "")?.[1] ?? null;
+    const runPrinted = (line) => {
+      const words = line.split(" ");
+      if (words.some((w) => /['"\\$]/.test(w)) || words[0] !== "node") return { code: -1, json: null };
+      const r = runNode(SCRIPT, [...words.slice(2), ...harness], { cwd: WS, env: { ...process.env, FAKE_STATE: STATE, FAKE_TENANT: JSON.stringify(TENANT) } });
+      let json = null;
+      try { json = JSON.parse(r.stdout); } catch { /* a stack trace */ }
+      return { code: r.status, json };
+    };
+    const cases = [];
+    const record = (name, out, { login, flags }) => {
+      const line = printed(out);
+      const ran = line ? runPrinted(line) : { code: -1, json: null };
+      cases.push({ name, stopped: out.code, line, same: line === out.json?.remedy?.line, login: out.json?.remedy?.login === login, flags: flags.every((f) => line?.split(" ").includes(f)) && line?.includes("--kb acme-prod"), ranCode: ran.code, ranError: ran.json?.error ?? null });
+    };
+    rmSync(join(STATE, "faults.json"), { force: true });
+    // 1. The stop on the token, mid-pull, of a --full refresh (the instance F-523 reported).
+    const tokenStop = run("refresh", [SLUG, "--full"], { env: { FAKE_FAULTS: JSON.stringify([{ match: "rp run", kind: "auth", skip: 6, times: 9999 }]) } });
+    // 2. While it waits, a refresh without the flag is refused naming the run: its remedy carries the run's flag.
+    const waiting = run("refresh", [SLUG]);
+    record("waiting to resume", waiting, { login: false, flags: ["--full"] });
+    record("the stop on the token (--full)", tokenStop, { login: true, flags: ["--full"] });
+    // 3. The partial stop (a call that fails twice) of a --health-only refresh.
+    rmSync(join(STATE, "faults.json"), { force: true });
+    const partial = run("refresh", [SLUG, "--health-only"], { env: { FAKE_FAULTS: JSON.stringify([{ match: UNSPLITTABLE, kind: "timeout", times: 2 }]) } });
+    record("the partial stop (--health-only)", partial, { login: false, flags: ["--health-only"] });
+    // 4. The stop during re-documentation: a program documented before its last edit, and the login dying under its describe.
+    const m = readJson(join(KB, "_manifest.json"));
+    m.inventory["journey/p-behind"].last_verified = "2020-01-01T00:00:00.000Z";
+    writeFileSync(join(KB, "_manifest.json"), JSON.stringify(m, null, 2));
+    rmSync(join(STATE, "faults.json"), { force: true });
+    const redoc = run("refresh", [SLUG, "--full"], { env: { FAKE_FAULTS: JSON.stringify([{ match: "jo p describe --id p-behind", kind: "auth", times: 9999 }]) } });
+    record("the stop during re-documentation (--full)", redoc, { login: true, flags: ["--full"] });
+    // 5. The refusal before any call, on a login already expired (the budget gate's place since F-513: whoami's token).
+    const expiredLogin = run("refresh", [SLUG, "--health-only"], { tenant: { ...TENANT, token: { state: "expired" } } });
+    record("the refusal on an expired login (--health-only)", expiredLogin, { login: true, flags: ["--health-only"] });
+    rmSync(join(STATE, "faults.json"), { force: true });
+    check("F-523 every remedy the refresh prints runs AS PRINTED: the waiting-to-resume refusal, the stop on the token, the partial stop, the stop during re-documentation and the refusal on an expired login each print the full line in backticks (the entry command, --kb and the run's own flags), equal to the summary's remedy.line, with login said where a login comes first; and each line, run as printed from the workspace folder after the login, is accepted and finishes (exit 0)",
+      waiting.code === 1 && tokenStop.code === EXIT["token-expired"] && partial.code === EXIT.partial && redoc.code === EXIT["token-expired"] && /re-documentation/.test(redoc.json?.error ?? "") && expiredLogin.code === EXIT["token-expired"] &&
+        cases.length === 5 && cases.every((c) => c.line && c.same && c.login && c.flags && c.ranCode === 0),
+      { cases, codes: [waiting.code, tokenStop.code, partial.code, redoc.code, expiredLogin.code], redoc: redoc.json?.error });
+  }
 
   // ══ An account's timeline (ACC-2): the dashboard's settings, its latest snapshot, a page of its own ══
   {
@@ -550,7 +618,7 @@ try {
   const callsBeforeEdit = argvLines().length;
   const editNext = run("next", [SLUG], { flags: [...asBen, "--by", "ben"] });
   check("F-516 new over a saved spec → next goes to the closing step with nothing re-asked: every setting marked answered (programs through expected-reasons), the first question returned is an action row with the closing block, the step says nothing changed and offers no refresh (close the edit, a dry run, go back), and no plan was made for it (no call)",
-    edit.json.answered.length === 14 && edit.json.answered.includes("programs") && edit.json.answered.includes("expected-reasons") && !edit.json.answered.includes("tenant") && edit.json.next === "dry-run" && editNext.code === 0 && editNext.json.question?.id === "dry-run" && editNext.json.closing && /^Ready to save this edit\. Nothing changed against the saved dashboard\. Refreshes are manual/.test(editNext.json.closing.ask) &&
+    edit.json.answered.length === 15 && edit.json.answered.includes("programs") && edit.json.answered.includes("leaders-copy") && !edit.json.answered.includes("tenant") && edit.json.next === "dry-run" && editNext.code === 0 && editNext.json.question?.id === "dry-run" && editNext.json.closing && /^Ready to save this edit\. Nothing changed against the saved dashboard\. Refreshes are manual/.test(editNext.json.closing.ask) &&
       isDeepStrictEqual(editNext.json.closing.options.map((o) => o.id), ["dry-run", "save-only", "go-back"]) && editNext.json.closing.options[1].text === "Close the edit (nothing changed)" && editNext.json.progress.remaining === 3 && argvLines().slice(callsBeforeEdit).every((a) => a === "whoami"), [edit.json, editNext.json?.closing, argvLines().slice(callsBeforeEdit)]);
   const backTo = run("next", [SLUG, "--question", "tabs"], { flags: [...asBen, "--by", "ben"] });
   const retabbed = run("answer", [SLUG, "tabs", composeAnswer(backTo.json.question.options[1], { "admin.health": "yes", "admin.templates": "no", "exec.health": "no", "exec.templates": "no" })], { flags: [...asBen, "--by", "ben"] });
@@ -592,7 +660,7 @@ try {
   const imported = run("import", ["--file", join(ROOT, "handover", "acme-health.json")], { flags: ["--workspace", WS2, "--kb", KB2, "--bin", FAKE, "--today", TODAY, "--by", "cy"] });
   const rebuilt = run("rebuild", [SLUG], { flags: ["--workspace", WS2, "--kb", KB2, "--bin", FAKE, "--today", TODAY, "--by", "cy"] });
   const status2 = run("status", [SLUG], { flags: ["--workspace", WS2, "--kb", KB2, "--bin", FAKE, "--today", TODAY, "--by", "cy"] });
-  check("import on a second workspace of the same tenant: the spec and the snapshot land, the pages rebuild from it with no pull, and status reads the carried pull", imported.code === 0 && imported.json.snapshot != null && rebuilt.code === 0 && rebuilt.json.pages.length === 2 && status2.json?.lastPull?.pulledAt === answeredAtLast.json.pull.pulledAt, [imported.json, rebuilt.json, status2.json?.lastPull]);
+  check("import on a second workspace of the same tenant: the spec and the snapshot land, the pages rebuild from it with no pull, and status reads the carried pull", imported.code === 0 && imported.json.snapshot != null && rebuilt.code === 0 && rebuilt.json.pages.length === 2 && status2.json?.lastPull?.pulledAt === readJson(join(dash(), SNAPSHOTS_DIR, snapshots().at(-1))).meta.pulledAt, [imported.json, rebuilt.json, status2.json?.lastPull]);
   const wrongImport = run("import", ["--file", join(ROOT, "handover", "acme-health.json")], { flags: ["--workspace", WS2, "--kb", KB2, "--bin", FAKE, "--today", TODAY] });
   check("import never overwrites silently: the same slug again is refused without --replace", wrongImport.code === 1 && /already saved here/.test(wrongImport.json?.error ?? ""), wrongImport.json);
 
@@ -643,6 +711,94 @@ try {
     rmSync(join(WS, "acme-sbx"), { recursive: true, force: true });
   }
 
+  // ══ PUB-3: the leaders' copy, published (offline: a temp folder stands for the synced shared folder) ══
+  {
+    const shared = join(SHARE, `${SLUG}-leaders.html`);
+    const dataDir = join(SHARE, `${SLUG}-leaders-data`);
+    const csvRows = (t) => t.replace(/^\uFEFF/, "").split("\r\n").filter(Boolean);
+    const pub1 = refresh.json?.publish;
+    // Later pulls have published since the first refresh: the folder holds the latest pull's files.
+    const latestPulledAt = readJson(join(dash(), SNAPSHOTS_DIR, snapshots().at(-1))).meta.pulledAt;
+    check("PUB-3 file-copy, the default: the save's first refresh copied the leaders' page into the folder this machine maps \"leaders\" to, under the spec's file name, byte for byte the workspace's latest-exec.html; the summary and stderr say where; the tables went beside it as CSV files with a definitions file, each table's rows ending in the pull's time",
+      pub1?.target === "file-copy" && pub1.published === true && pub1.file === shared && existsSync(shared) && readFileSync(shared, "utf8") === pageText("exec") && new RegExp(`the leaders' copy was published: .*${SLUG}-leaders\\.html \\(the same file each time\\)`).test(refresh.stderr) &&
+        existsSync(join(dataDir, "definitions.csv")) && pub1.datasets?.files?.length >= 3 && pub1.datasets.files.every((f) => existsSync(join(dataDir, f))) &&
+        pub1.datasets.files.filter((f) => f !== "definitions.csv").every((f) => { const rows = csvRows(readFileSync(join(dataDir, f), "utf8")); return rows[0].endsWith(",Data pulled") && rows.slice(1).every((r) => r.endsWith(`,${latestPulledAt}`)); }) &&
+        csvRows(readFileSync(join(dataDir, "definitions.csv"), "utf8"))[1].startsWith(`pulled,Data pulled,${latestPulledAt}`),
+      [pub1, refresh.stderr.split("\n").filter((l) => l.includes("leaders' copy"))]);
+    // The same name, every time: a second pull overwrites it, and nothing else appears in the folder.
+    const before = readdirSync(SHARE).sort();
+    const again = run("rebuild", [SLUG]);
+    check("PUB-3 the same file every time: a rebuild publishes again, overwriting the same file name (the folder holds the same names as before, and the file is the new page), never a new file per update",
+      again.code === 0 && again.json.publish?.published === true && isDeepStrictEqual(readdirSync(SHARE).sort(), before) && before.length === 2 && readFileSync(shared, "utf8") === pageText("exec"), [before, readdirSync(SHARE), again.json?.publish]);
+    // A failed or stopped refresh copies nothing: the shared copy is the one before (a marker planted in it stays, so a
+    // copy of the unchanged pages would show too).
+    const sharedBefore = "<!-- the copy before the stopped refresh -->";
+    writeFileSync(shared, sharedBefore);
+    rmSync(join(STATE, "faults.json"), { force: true });
+    const stoppedPull = run("refresh", [SLUG, "--full"], { env: { FAKE_FAULTS: JSON.stringify([{ match: "rp run", kind: "auth", skip: 4, times: 9999 }]) } });
+    const sharedAfterStop = readFileSync(shared, "utf8");
+    rmSync(join(STATE, "faults.json"), { force: true });
+    const finished = run("refresh", [SLUG, "--full"]);
+    check("PUB-3 a stopped refresh copies nothing (the shared copy is byte for byte the one before, and the stop's summary carries no publish); the refresh that finishes it publishes",
+      stoppedPull.code === EXIT["token-expired"] && stoppedPull.json?.publish === undefined && sharedAfterStop === sharedBefore && finished.code === 0 && finished.json.publish?.published === true && readFileSync(shared, "utf8") === pageText("exec"),
+      [stoppedPull.code, finished.json?.publish]);
+    // A copy that fails leaves the workspace's pages untouched, and says so: the destination file is a folder (a lock stands in).
+    const pagesBefore = { admin: pageText("admin"), exec: pageText("exec") };
+    rmSync(shared, { force: true });
+    mkdirSync(shared);
+    const failed = run("publish", [SLUG]);
+    check("PUB-3 a copy that fails (here the destination cannot be replaced) is said in the summary and on stderr, names the fix, leaves no temporary file, and the workspace's pages are byte for byte untouched",
+      failed.code === 0 && failed.json.publish?.published === false && /a copy into .* failed \(E[A-Z]+: /.test(failed.json.publish.why ?? "") && /dashboard\.mjs publish acme-health --kb acme-prod/.test(failed.json.publish.why) &&
+        pageText("admin") === pagesBefore.admin && pageText("exec") === pagesBefore.exec && !readdirSync(SHARE).some((f) => f.includes(".tmp-")) && /the leaders' copy: .*failed/.test(failed.stderr),
+      [failed.json?.publish, readdirSync(SHARE)]);
+    rmSync(shared, { recursive: true, force: true });
+    // The manual publish (R8): the pages as they stand, no call.
+    const callsBeforePublish = argvLines().length;
+    const manual = run("publish", [SLUG]);
+    check("PUB-3 the manual publish copies the pages as they stand with no gs-admin call at all (no whoami either: nothing is read from the tenant)",
+      manual.code === 0 && manual.json.publish?.published === true && readFileSync(shared, "utf8") === pageText("exec") && argvLines().length === callsBeforePublish, manual.json);
+    // Dated copies beside it, an option off by default; changing a publish setting publishes at once, with no pull and no rebuild.
+    const dated = run("change", [SLUG, "publish.config.datedCopies=true"]);
+    const datedName = `${SLUG}-leaders-${String(readJson(join(dash(), SNAPSHOTS_DIR, snapshots().at(-1))).meta.pulledAt).slice(0, 10)}.html`;
+    check("PUB-3 dated copies (off by default): turning them on is a rebuild (no pull), which publishes at its end, and the copy named with the pull's date sits beside the same-name file",
+      dated.code === 0 && dated.json.consequence === "rebuild" && dated.json.done?.kind === "rebuild" && dated.json.done.publish?.dated === join(SHARE, datedName) && existsSync(join(SHARE, datedName)) && existsSync(shared), [dated.json?.consequence, dated.json?.done]);
+    run("change", [SLUG, "publish.config.datedCopies=false"]);
+    rmSync(join(SHARE, datedName), { force: true });
+    // No folder on this machine (a backup refresher's workspace before they set one): the refresh finishes and says why.
+    const noTarget = run("publish", [SLUG], { flags: ["--workspace", WS, "--kb", KB, "--bin", FAKE, "--today", TODAY, "--by", "ana"], env: {} });
+    const targetsFile = join(WS, ".gs-superadmin", PUBLISH_TARGETS_FILE);
+    const savedTargets = readFileSync(targetsFile, "utf8");
+    rmSync(targetsFile);
+    const unmapped = run("publish", [SLUG]);
+    writeFileSync(targetsFile, "{ not json");
+    const malformed = run("publish", [SLUG]);
+    writeFileSync(targetsFile, savedTargets);
+    // A data file of a panel removed since is pruned, in the workspace and in the shared folder.
+    for (const d of [dataDir, join(dash(), "latest-exec-data")]) writeFileSync(join(d, "a-removed-panel.csv"), "old");
+    const pruned = run("publish", [SLUG]);
+    check("PUB-3 a publish never refuses: a malformed publish-targets file is said (exit 0, not published, the pages untouched); and a data file no panel writes any more is removed from both data folders on the next publish",
+      malformed.code === 0 && malformed.json.publish?.published === false && /could not be published/.test(malformed.json.publish.why ?? "") &&
+        pruned.code === 0 && pruned.json.publish?.published === true && !existsSync(join(dataDir, "a-removed-panel.csv")) && !existsSync(join(dash(), "latest-exec-data", "a-removed-panel.csv")) && existsSync(join(dataDir, "definitions.csv")), [malformed.json, pruned.json?.publish]);
+    check("PUB-3 with no folder set for the target on this machine, nothing is copied and the summary says why, with the line that sets one (publish-target leaders <folder>) as its remedy",
+      noTarget.code === 0 && unmapped.code === 0 && unmapped.json.publish?.published === false && /no folder is set for the publish target "leaders" on this computer/.test(unmapped.json.publish.why) && unmapped.json.publish.remedy?.line === "node .gs-superadmin/plugin/scripts/dashboard.mjs publish-target leaders <folder> --kb acme-prod", unmapped.json?.publish);
+    const listed = run("publish-target", []);
+    const badTarget = run("publish-target", ["../escape", SHARE]);
+    check("PUB-3 publish-target lists the machine's targets, and refuses a name that is not a plain name",
+      listed.code === 0 && listed.json.targets?.leaders?.folder === resolve(SHARE) && badTarget.code === 1 && /a publish target's name is letters/.test(badTarget.json?.error ?? ""), [listed.json, badTarget.json]);
+    // The artifact target: the page in an artifact's content form for the skill to publish (no LLM in the runner).
+    const toArtifact = run("change", [SLUG, 'publish={"target":"claude-artifact","config":{"url":null}}']);
+    const artifactFile = join(dash(), PUBLISH_DIR, "latest-exec.artifact.html");
+    const content = existsSync(artifactFile) ? readFileSync(artifactFile, "utf8") : "";
+    check("PUB-3 claude-artifact: the runner writes the leaders' page in an artifact's content form (its title and style first, then the page's body: no doctype, html, head or body of its own, so the artifact does not nest a document), with the capability the page needs (downloads) and what Claude does next; nothing is copied to the folder",
+      toArtifact.code === 0 && toArtifact.json.done?.publish?.target === "claude-artifact" && toArtifact.json.done.publish.file === artifactFile && /^<title>[^<]+<\/title>\n<style>/.test(content) && !/<!doctype|<html\b|<head>|<body\b|<\/body>|<\/html>/i.test(content) &&
+        content.includes('<fieldset id="gs-root"') && (content.match(/<script type="module">/g) ?? []).length === 2 && pageText("exec").includes(content.slice(content.indexOf("<noscript>"))) && isDeepStrictEqual(toArtifact.json.done.publish.capabilities, { downloads: true }) && /\/gs-superadmin:email-engagement publish acme-health/.test(toArtifact.json.done.publish.next),
+      [toArtifact.json?.done?.publish, content.slice(0, 120)]);
+    const withUrl = run("change", [SLUG, 'publish.config.url="https://claude.ai/artifact/AbCdEf123456"']);
+    const backToFolder = run("change", [SLUG, `publish=${JSON.stringify({ target: "file-copy", config: { to: "leaders", file: `${SLUG}-leaders.html`, datedCopies: false, datasets: true } })}`]);
+    check("PUB-3 the artifact's link, once recorded, is what the next publish updates; and the target goes back to the shared folder the same way (each a rebuild, no pull)",
+      withUrl.code === 0 && withUrl.json.done?.publish?.url === "https://claude.ai/artifact/AbCdEf123456" && backToFolder.code === 0 && backToFolder.json.done?.publish?.published === true, [withUrl.json?.done, backToFolder.json?.done]);
+  }
+
   // ══ Retention; the fast path (F-512); refusals ════════════════════════════
   {
     const dir = join(dash(), SNAPSHOTS_DIR);
@@ -655,7 +811,7 @@ try {
   const fastNext = run("next", ["quick"]);
   const quick = readJson(draftFile("quick")).spec;
   check("the fast path (F-512): next answers every question but the closing step with the question's own default, through its own apply, and arrives at the closing step with the plan made on the way: the programs are those that sent in the last 90 days (not every program), the window the default, the recipients three none, the look skipped (never asked twice), no customer lists, no step detail; the leaders' names and the lists' detail skipped (lists off)",
-    fast.code === 0 && fast.json.fastPath === true && fastNext.code === 0 && fastNext.json?.question?.id === "dry-run" && fastNext.json.closing?.options?.length === 4 && isDeepStrictEqual(fastNext.json.defaulted, ["programs", "window", "grouping", "internal-domains", "test-accounts", "unsubscribe-links", "failure-settings", "look", "tabs", "customer-lists", "step-detail", "expected-reasons"]) && isDeepStrictEqual(fastNext.json.progress.skipped, ["leader-names", "customer-list-detail"]) &&
+    fast.code === 0 && fast.json.fastPath === true && fastNext.code === 0 && fastNext.json?.question?.id === "dry-run" && fastNext.json.closing?.options?.length === 4 && isDeepStrictEqual(fastNext.json.defaulted, ["programs", "window", "grouping", "internal-domains", "test-accounts", "unsubscribe-links", "failure-settings", "look", "tabs", "customer-lists", "step-detail", "expected-reasons", "leaders-copy"]) && isDeepStrictEqual(fastNext.json.progress.skipped, ["leader-names", "customer-list-detail"]) &&
       quick.sources[0].params.selector.sentSince === "90d" && quick.sources[0].params.windowMonths === 13 && isDeepStrictEqual(quick.sources[0].params.internalDomains, []) && quick.accounts.pull === false && quick.sources[0].params.stepDetail === false && !quick.theme && readJson(draftFile("quick")).answered.includes("look"), [fastNext.json?.defaulted, fastNext.json?.progress, quick.sources?.[0]?.params?.selector]);
   check("the fast path's grouping is the characteristic rules the proposal leads with: Recurring / One-off at the top level, each model among the selected programs beneath, so the standard dashboard is grouped (F-512 b); the rules are written through the writer",
     quick.groups.rules.length >= 3 && isDeepStrictEqual(quick.groups.rules.slice(0, 2).map((x) => [x.level, x.characteristic, x.is, x.label]), [["supergroup", "recurring", true, "Recurring"], ["supergroup", "recurring", false, "One-off"]]) && quick.groups.rules.slice(2).every((x) => x.level === "group" && x.characteristic === "model" && typeof x.is === "string" && typeof x.label === "string") && quick.groups.rules.some((x) => x.is === "DRIPV2" && x.label === "Email Chain"), quick.groups);
@@ -668,7 +824,8 @@ try {
     if (a.code !== 0) console.log(`      (quick2 ${x.id}: ${a.json?.error ?? a.stderr?.slice(-200)})`);
   }
   const quick2 = readJson(draftFile("quick2")).spec;
-  const strip = (s) => { const { slug: _s, title: _t, ...rest } = s; return rest; };
+  // The leaders' copy's file is named after the dashboard (two dashboards may share a folder): the slug apart, it too.
+  const strip = (s) => { const { slug: _s, title: _t, ...rest } = s; return JSON.parse(JSON.stringify(rest).split(`"${s.slug}-leaders.html"`).join('"<slug>-leaders.html"')); };
   check("the fast-path spec EQUALS the spec of answering every question with its default by hand (one source for a default, never two), the slug and title apart",
     isDeepStrictEqual(strip(quick), strip(quick2)), [JSON.stringify(strip(quick)).slice(0, 400), JSON.stringify(strip(quick2)).slice(0, 400)]);
   const questionsVerb = run("questions", []);

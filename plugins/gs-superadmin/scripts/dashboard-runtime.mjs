@@ -71,8 +71,14 @@ export const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => HTML_ESCAPE
 // app's pane and on touch); an SVG element draws no CSS ::after, so a shortened
 // label is a focusable group carrying data-tip whose full text is drawn in the
 // chart itself, wrapped, on a halo of the page colour, hidden until the group is
-// hovered, focused or opened (the one tip toggle in mount sets `is-open`). The
-// caller draws the label after the marks, so the full text lies over them.
+// hovered, focused or opened (the one tip toggle in mount sets `is-open`).
+// SVG paints in document order and has no z-index, so a full text drawn inside
+// its own group lay UNDER every label drawn after it (F-522, reopened at the
+// S6-V re-check: the second wrapped line under the next ticks). The full text is
+// therefore drawn in the chart's OVERLAY, a layer the caller puts LAST in the
+// SVG (`svgOverlay`), so nothing is painted after it; the group names its full
+// text by `data-full`, and mount shows the one it names (`is-shown`) while the
+// group is hovered, focused from the keyboard or opened.
 // `room` is the box the full text may take: its left edge and width in the
 // chart's units, how wide a line may run (the box's width unless narrower), and
 // whether the lines stack down from the label or up to it.
@@ -93,15 +99,24 @@ export const wrapWords = (text, perLine) => {
 };
 // A chart is an image to assistive technology (role img: its children are presentational) unless it holds a label
 // one can focus to read whole; then it is a group, so that label is exposed.
-export const svgRole = (labels) => (labels.some((l) => l.startsWith("<g ")) ? "group" : "img");
+export const svgRole = (labels) => (labels.some((l) => l.label.startsWith("<g ")) ? "group" : "img");
+/** The overlay of a chart's labels: every shortened label's full text, drawn LAST so nothing lies over it (F-522). */
+export const svgOverlay = (labels) => {
+  const fulls = labels.map((l) => l.full).filter(Boolean);
+  return fulls.length ? `<g class="gs-svg-overlay" aria-hidden="true">${fulls.join("")}</g>` : "";
+};
 /**
- * @param {{x: number, y: number, text: string, max: number, cls: string, anchor?: string, suffix?: string, title?: string, room: {left: number, width: number, lineWidth?: number, stack: "down"|"up"}}} o
- * @returns {string} an SVG <text>, or, when the text is longer than `max`, the group that keeps it whole
+ * @param {{x: number, y: number, text: string, max: number, cls: string, key: string|number, anchor?: string, suffix?: string, title?: string, room: {left: number, width: number, lineWidth?: number, stack: "down"|"up"}}} o
+ *   `key` names the label within its chart (its full text in the overlay carries the same key)
+ * @returns {{label: string, full: string}} the label (an SVG <text>, or, when the text is longer than `max`, the
+ *   group that keeps it whole) and its full text for the overlay ("" when the label is drawn whole)
  */
-export function svgLabel({ x, y, text, max, cls, anchor = "start", suffix = "", title = "", room }) {
+export function svgLabel({ x, y, text, max, cls, key, anchor = "start", suffix = "", title = "", room }) {
   const full = String(text);
-  const titled = title ? `<title>${esc(title)}</title>` : "";
-  if (full.length <= max) return `<text x="${x}" y="${y}" class="gs-svg-${cls}" text-anchor="${anchor}">${esc(full + suffix)}${titled}</text>`;
+  // A shortened label always carries a native <title> (the whole name when the caller gave none): with no script
+  // running, the overlay cannot be shown, and the browser's own tooltip still reads it whole (S7 review).
+  const titled = title || full.length > max ? `<title>${esc(title || full)}</title>` : "";
+  if (full.length <= max) return { label: `<text x="${x}" y="${y}" class="gs-svg-${cls}" text-anchor="${anchor}">${esc(full + suffix)}${titled}</text>`, full: "" };
   const perLine = Math.max(8, Math.floor(Math.min(room.lineWidth ?? room.width, room.width) / SVG_CHAR_PX));
   const lines = wrapWords(full, perLine);
   const half = (Math.max(...lines.map((l) => l.length)) * SVG_CHAR_PX) / 2;
@@ -109,9 +124,19 @@ export function svgLabel({ x, y, text, max, cls, anchor = "start", suffix = "", 
   const cx = Math.min(Math.max(x, room.left + half), room.left + room.width - half);
   const first = room.stack === "up" ? y - 14 * (lines.length - 1) : y;
   const spans = lines.map((l, i) => `<tspan x="${cx.toFixed(1)}" y="${first + 14 * i}">${esc(l)}</tspan>`).join("");
-  return `<g class="gs-svg-tipped" data-tip="${esc(full)}" tabindex="0" role="button" aria-label="${esc(full)}">` +
-    `<text x="${x}" y="${y}" class="gs-svg-${cls} gs-svg-short" text-anchor="${anchor}">${esc(`${full.slice(0, max - 1)}…${suffix}`)}${titled}</text>` +
-    `<text class="gs-svg-full" text-anchor="middle">${spans}</text></g>`;
+  return {
+    label: `<g class="gs-svg-tipped" data-tip="${esc(full)}" data-full="${esc(key)}" tabindex="0" role="button" aria-label="${esc(full)}">` +
+      `<text x="${x}" y="${y}" class="gs-svg-${cls} gs-svg-short" text-anchor="${anchor}">${esc(`${full.slice(0, max - 1)}…${suffix}`)}${titled}</text></g>`,
+    full: `<text class="gs-svg-full" data-full-of="${esc(key)}" text-anchor="middle">${spans}</text>`,
+  };
+}
+// A label's drawn width in a chart's units, at 11 px: digits and capitals wider, punctuation narrower than the
+// average advance. What the axis thins its labels by (F-524), so two labels never share the same room.
+const NARROW = new Set([..."-.,:;'|!ilIjft()[] "]);
+export function labelWidth(text) {
+  let width = 0;
+  for (const c of String(text)) width += NARROW.has(c) ? 3.6 : /[0-9]/.test(c) ? 6.1 : /[A-Z]/.test(c) ? 7.3 : SVG_CHAR_PX;
+  return width;
 }
 
 // ── What a page can lack (DSH-2, ruled 2026-10-04; the health rows DSH-4) ────
@@ -750,6 +775,13 @@ export function createDashboard(engine, model) {
 
   // ── Charts: hand-drawn SVG, every colour a token, a table underneath ───────
   const CHART = { w: 640, h: 260, left: 56, right: 16, top: 16, bottom: 44 };
+  // A category axis drawn across (F-524): a row per category, the names in a column of their own, room for each
+  // bar's figure after it. Not frozen: how many bars, when a bar is an outlier, the narrowest bar.
+  const CATEGORY_CHART = { w: 640, top: 8, row: 22, bottom: 24, labelW: 200, valueW: 64, right: 8 };
+  const CATEGORY_BARS_MAX = 25;
+  const OUTLIER_RATIO = 4;
+  const OUTLIERS_MAX = 3;
+  const MIN_BAR = 2;
   const niceMax = (max, rate) => {
     if (!(max > 0)) return rate ? 0.1 : 1;
     if (rate) return Math.min(1, Math.ceil(max * 10) / 10);
@@ -777,6 +809,9 @@ export function createDashboard(engine, model) {
       const state = cells.every((c) => c.value == null && c.why === "not-tracked") ? "not-tracked" : cells.some((c) => c.state === "unknown") ? "unknown" : "tracked";
       return { id, i, label: engine.metric(id).label, cells, state, drawn: state !== "not-tracked" && cells.some((c) => c.value != null) };
     });
+    // A bar panel over anything but months is a CATEGORY axis: programs, groups, emails, by the hundred, with
+    // long names and a skewed spread. It is drawn its own way (F-524).
+    if (panel.type === "bar" && dim !== "month") return renderCategoryBars(panel, result, series, rate, ui);
     const values = series.filter((s) => s.drawn).flatMap((s) => s.cells.map((c) => c.value).filter((v) => v != null));
     const max = niceMax(values.length ? Math.max(...values) : 0, rate);
     const { w, h, left, right, top, bottom } = CHART;
@@ -800,8 +835,13 @@ export function createDashboard(engine, model) {
       parts.push(`<line class="gs-svg-grid" x1="${left}" y1="${y}" x2="${w - right}" y2="${y}"/>`, svgText(left - 6, y + 4, tickLabel(v, rate), "tick", "end"));
     }
     parts.push(`<line class="gs-svg-axis" x1="${left}" y1="${top + plotH}" x2="${w - right}" y2="${top + plotH}"/>`);
-    // The ticks are drawn last (after the bars and lines), so a shortened one's full text lies over them (F-522).
-    const ticks = rows.map((r, i) => svgLabel({ x: xMid(i), y: h - bottom + 18, text: dim === "month" ? monthLabel(r.key[dim]) : String(dimText(dim, r) ?? "(none)"), max: 14, cls: "tick", anchor: "middle", suffix: `${r.incomplete ? "*" : ""}${r.carried ? "†" : ""}`, room: { left: 4, width: w - 8, lineWidth: 160, stack: "up" } }));
+    // The month ticks are drawn after the bars and lines. A label is drawn only where it has room: past the months
+    // the axis holds side by side, every k-th is labelled, counted back from the last month so the newest always
+    // is (F-524: no two labels share the same room); every month keeps its figure in its tooltip and the table.
+    const tickText = (r) => `${monthLabel(r.key[dim])}${r.incomplete ? "*" : ""}${r.carried ? "†" : ""}`;
+    const widest = Math.max(0, ...rows.map((r) => labelWidth(tickText(r))));
+    const every = Math.max(1, Math.ceil((widest + 4) / slot));
+    const ticks = rows.flatMap((r, i) => ((n - 1 - i) % every === 0 ? [{ label: svgText(xMid(i), h - bottom + 18, tickText(r), "tick", "middle"), full: "" }] : []));
     const drawn = series.filter((s) => s.drawn);
     // Every point and every bar carries its value (ruled 2026-10-11) while the chart is small enough to read that way;
     // past 16 points per series the labels fall back to the last point, the hover and the table.
@@ -846,9 +886,17 @@ export function createDashboard(engine, model) {
       });
     }
     function r(i) { return rows[i].key[dim] ?? dimText(dim, rows[i]) ?? "(none)"; }
+    const svg = `<svg class="gs-chart" viewBox="0 0 ${w} ${h}" role="${svgRole(ticks)}" aria-label="${esc(panel.title)}">${parts.join("")}${ticks.map((t) => t.label).join("")}</svg>`;
+    return chartFrame(panel, result, series, ui, svg, every > 1 ? [`<p class="gs-note">Every ${every === 2 ? "second" : every === 3 ? "third" : `${every}th`} month is labelled, to leave each label its room; each bar's month is in its tooltip and in the table.</p>`] : []);
+  };
+  /** A chart's frame: the legend before the plot, the plot, a "nothing here" line, the table underneath, the notes. */
+  const chartFrame = (panel, result, series, ui, svg, extra = []) => {
+    const rows = result.rows;
+    const ids = panel.query.metrics;
+    const drawn = series.filter((s) => s.drawn);
+    const r = (i) => rows[i].key[panel.query.groupBy[0]] ?? dimText(panel.query.groupBy[0], rows[i]) ?? "(none)";
     const legend = series.length > 1 ? `<ul class="gs-legend">${series.map((s) => `<li><span class="gs-swatch" style="background:var(--series-${s.i + 1})"></span>${esc(s.label)}${s.state === "not-tracked" ? ` <span class="gs-not-tracked">${esc(engine.NOT_TRACKED)}</span>` : s.state === "unknown" ? ` <span class="gs-mark gs-unknown">${esc(engine.UNKNOWN_MARK)}</span>` : ""}</li>`).join("")}</ul>` : "";
-    const svg = `<svg class="gs-chart" viewBox="0 0 ${w} ${h}" role="${svgRole(ticks)}" aria-label="${esc(panel.title)}">${parts.join("")}${ticks.join("")}</svg>`;
-    const notes = whyNotes(rows, ids);
+    const notes = [...extra, ...whyNotes(rows, ids)];
     // A trend that starts after the first month shown: the figure was not counted before (the one definition boundary a snapshot can hold).
     for (const s of series) {
       const first = s.cells.findIndex((c) => c.value != null);
@@ -858,6 +906,77 @@ export function createDashboard(engine, model) {
     const fallback = `<details class="gs-fallback"${attr("open", !!ui?.open?.[`${panel.id}:table`])} data-fallback="${esc(panel.id)}"><summary>As a table</summary>${tableOf(panel, result, ids)}</details>`;
     // The legend reads before the plot, so a reader knows the series before the lines.
     return `${open(panel, csvButton(panel))}${legend}${svg}${none}${fallback}${notesBlock(notes)}${close}`;
+  };
+  /**
+   * A bar panel over a CATEGORY axis (F-524; the builder's design call). The vertical chart was drawn for a short
+   * month axis: one slot, one tick and one provisional band per row, on a linear scale to the largest bar. Over 200
+   * programs that is a smear of overlapping names, two mass sends flatten every other bar, and the band falls in
+   * stripes. So a category axis is drawn ACROSS:
+   *   - one row per category, its name in a column of its own on the left (shortened past its room, the full name
+   *     reachable through svgLabel's overlay), so names never share a line;
+   *   - the largest CATEGORY_BARS_MAX rows by the first figure (or in the panel's own sort when it has one); the rest
+   *     are in the table underneath and the CSV, and a note says how many are not drawn. No "all others" bar: that
+   *     would be a sum outside the engine (house rule 11);
+   *   - the scale fits the bars that are not OUTLIERS: when the largest bars are each OUTLIER_RATIO times or more the
+   *     next one (at most OUTLIERS_MAX of them), they run to the end of the axis cut by a break mark, and every bar,
+   *     cut or not, has its figure written beside it, so the outliers' values are said and the small bars stay
+   *     visible; a bar above zero is never narrower than MIN_BAR;
+   *   - no provisional band (a band belongs to a month axis): a category whose figures include the provisional
+   *     period is marked * beside its name, as the table marks it.
+   */
+  const renderCategoryBars = (panel, result, series, rate, ui) => {
+    const dim = panel.query.groupBy[0];
+    const drawn = series.filter((s) => s.drawn);
+    const lead = drawn[0] ?? series[0];
+    const order = result.rows.map((row, i) => ({ row, i }));
+    // Layout, not aggregation: which of the engine's rows are drawn first. A panel with its own sort keeps it.
+    if (!panel.query.sort?.length && lead) order.sort((a, b) => (lead.cells[b.i].value ?? -Infinity) - (lead.cells[a.i].value ?? -Infinity) || a.i - b.i);
+    const shown = order.slice(0, CATEGORY_BARS_MAX);
+    const values = drawn.flatMap((s) => shown.map(({ i }) => s.cells[i].value).filter((v) => v != null && v > 0)).sort((a, b) => b - a);
+    // The outliers: the largest k bars, k at most OUTLIERS_MAX, the k-th at least OUTLIER_RATIO times the (k+1)-th.
+    let fitTo = values[0] ?? 0;
+    if (!rate) for (let k = Math.min(OUTLIERS_MAX, values.length - 1); k >= 1; k--) if (values[k - 1] >= OUTLIER_RATIO * values[k]) { fitTo = values[k]; break; }
+    const max = niceMax(fitTo, rate);
+    const { w, top, row, bottom, labelW, valueW, right } = CATEGORY_CHART;
+    const plotW = w - labelW - valueW - right;
+    const h = top + row * Math.max(1, shown.length) + bottom;
+    const xOf = (v) => labelW + Math.min(1, v / max) * plotW;
+    const parts = [];
+    for (let k = 0; k <= 4; k++) {
+      const x = labelW + (plotW / 4) * k;
+      parts.push(`<line class="gs-svg-grid" x1="${x}" y1="${top}" x2="${x}" y2="${h - bottom}"/>`, svgText(x, h - bottom + 16, tickLabel((max / 4) * k, rate), "tick", "middle"));
+    }
+    parts.push(`<line class="gs-svg-axis" x1="${labelW}" y1="${top}" x2="${labelW}" y2="${h - bottom}"/>`);
+    const barH = Math.min(14, (row - 6) / Math.max(1, drawn.length));
+    let cut = 0;
+    shown.forEach(({ row: r, i }, slot) => {
+      const y0 = top + row * slot + (row - barH * drawn.length) / 2;
+      drawn.forEach((s, si) => {
+        const c = s.cells[i];
+        if (c.value == null) return;
+        const y = y0 + si * barH;
+        const over = c.value > max;
+        const width = c.value > 0 ? Math.max(MIN_BAR, xOf(c.value) - labelW) : 0;
+        const name = dimText(dim, r) ?? "(none)";
+        if (width) parts.push(`<rect class="gs-svg-bar${over ? " gs-svg-cut" : ""}" style="fill:var(--series-${s.i + 1})" x="${labelW}" y="${y.toFixed(1)}" width="${width.toFixed(1)}" height="${(barH - 2).toFixed(1)}" rx="2"><title>${esc(`${name}: ${s.label} ${fmt(s.id, c.value)}${over ? " (past the scale)" : ""}`)}</title></rect>`);
+        // A bar past the scale is cut near its end by a break mark (two strokes of the page colour).
+        if (over) {
+          cut += 1;
+          const bx = labelW + plotW - 14;
+          parts.push(`<path class="gs-svg-break" d="M${bx},${(y + barH).toFixed(1)}l5,-${(barH + 0).toFixed(1)}M${bx + 5},${(y + barH).toFixed(1)}l5,-${(barH + 0).toFixed(1)}"/>`);
+        }
+        // Every bar's figure beside it: the cut ones say what the axis does not.
+        parts.push(svgText((labelW + width + 4).toFixed(1), (y + barH - 4).toFixed(1), fmt(s.id, c.value), "value", "start"));
+      });
+    });
+    // The names, after the bars; their full texts in the overlay, after everything (F-522).
+    const names = shown.map(({ row: r }, slot) => svgLabel({ x: labelW - 8, y: top + row * slot + row / 2 + 4, text: String(dimText(dim, r) ?? "(none)"), max: Math.floor((labelW - 12) / SVG_CHAR_PX), cls: "tick", key: slot, anchor: "end", suffix: `${r.incomplete ? "*" : ""}${r.carried ? "†" : ""}`, room: { left: 4, width: w - 8, lineWidth: 320, stack: "down" } }));
+    const svg = `<svg class="gs-chart gs-bars-across" viewBox="0 0 ${w} ${h}" role="${svgRole(names)}" aria-label="${esc(panel.title)}">${parts.join("")}${names.map((l) => l.label).join("")}${svgOverlay(names)}</svg>`;
+    const extra = [];
+    if (result.rows.length > shown.length) extra.push(`<p class="gs-note">The ${shown.length} ${panel.query.sort?.length ? "first in this panel's order" : `largest by ${lead.label}`} of ${result.rows.length} are drawn; every one is in the table underneath and in the download.</p>`);
+    if (cut) extra.push(`<p class="gs-note">${cut === 1 ? "One bar runs" : `${cut} bars run`} past the scale, cut by a break mark: ${cut === 1 ? "its figure is" : "their figures are"} written beside ${cut === 1 ? "it" : "them"}, and the scale fits the other bars.</p>`);
+    if (shown.some(({ row: r }) => r.incomplete)) extra.push(`<p class="gs-note">* Includes the provisional period: sends on or after ${esc(snapshot.meta.incompleteFrom)}, where opens are still arriving.</p>`);
+    return chartFrame(panel, result, series, ui, svg, extra);
   };
 
   // ── The watch list: accounts ranked across programs, each account's programs underneath ──
@@ -1142,13 +1261,14 @@ export function createDashboard(engine, model) {
     }
   };
   /**
-   * The panel's current view as a CSV: the active filters, the visible
+   * The panel's current view as a table: the active filters, the visible
    * columns and every row, the cross-program watch list's per-program rows
    * included (R27: the export is the view). Null when the panel has no
-   * table to export.
-   * @returns {?{filename: string, text: string}}
+   * table to export. `csvOf` writes it as the file; the leaders' copy's
+   * data folder (PUB-3) takes the same table and adds the pull's time.
+   * @returns {?{filename: string, headers: Array<string>, rows: Array<Array<*>>}}
    */
-  const csvOf = (panel, state, ui) => {
+  const csvTableOf = (panel, state, ui) => {
     // The data-pulled time rides in the file's name (R4).
     const pulled = String(snapshot.meta.pulledAt).slice(0, 16).replace(/[^0-9T]/g, "");
     const filename = `${model.slug}-${page.id}-${panel.id}-${pulled}.csv`;
@@ -1199,7 +1319,12 @@ export function createDashboard(engine, model) {
         rows = dims.length ? result.rows.map(line) : result.total ? [line(result.total)] : [];
       }
     }
-    return csvFile(filename, headers, rows);
+    return { filename, headers, rows };
+  };
+  /** The panel's current view as a CSV file (the Download button's). @returns {?{filename: string, text: string}} */
+  const csvOf = (panel, state, ui) => {
+    const t = csvTableOf(panel, state, ui);
+    return t && csvFile(t.filename, t.headers, t.rows);
   };
 
   // ── The filter bar: one row under the tab strip, for the current tab ───────
@@ -1417,6 +1542,26 @@ export function createDashboard(engine, model) {
     const toc = `<ul class="gs-toc">${sections.map((s) => `<li><a href="#about-${s.id}">${esc(s.title)}</a></li>`).join("")}</ul>`;
     return `<section class="gs-about"><h2>About this page</h2><p>${what}</p>${purpose}<p>${esc(engine.dataPulledLine(snapshot))}</p>${toc}</section>` + sections.map((s) => `<section class="gs-about" id="about-${s.id}"><h2>${esc(s.title)}</h2>${s.body}</section>`).join("");
   };
+  /**
+   * The definitions that travel with the leaders' copy's tables (PUB-3, the dataset emitter): when the data was
+   * pulled (first), the filters the view is in, whether account names are carried, what each figure means and the
+   * caveats — read from the registry calls the About tab makes, never written here. Rows of [kind, name, text].
+   * @param {*} state
+   */
+  const definitionsOf = (state) => {
+    const m = snapshot.meta;
+    const rows = [
+      ["pulled", "Data pulled", `${m.pulledAt}${m.timeZone ? ` (${m.timeZone})` : ""}`],
+      ["pulled", "Data pulled, in words", engine.dataPulledLine(snapshot)],
+      ["filter", "Months", `${state.from} to ${state.to}`],
+      ["filter", "Statuses", state.statuses ? state.statuses.map(engine.statusLabel).join(", ") : "every status"],
+      ["filter", "Recipients", state.external ? "external recipients only" : "every recipient"],
+      ["privacy", "Account names", accountData.pulled ? "the customer lists, with account names" : "none: these files carry no account rows"],
+    ];
+    for (const e of engine.glossary(metricIds(), snapshot)) rows.push(["metric", e.label, `${e.definition} Calculation: ${e.calculation}${e.zeroDenominator ? ` ${e.zeroDenominator}` : ""}`]);
+    for (const c of caveats()) rows.push(["caveat", c.id, c.text]);
+    return { headers: ["Kind", "Name", "Text"], rows };
+  };
   const renderPane = (tab, state, ui) => {
     // An offered tab is an invitation: its pane is the notice, and nothing else.
     if (tab.state === "offered") return renderNotice(lackFacts("tab-off", { held: !!tab.held, tab: tab.index }), { heading: tab.meaning });
@@ -1445,7 +1590,7 @@ export function createDashboard(engine, model) {
   return {
     model, snapshot, programs, panels, tabs, supergroups, groups, healthDayChoices,
     defaultState, clean, hashOf, stateFromHash, filtersOf, run, scopeOf, programMatches,
-    lackFacts, renderNotice, renderTablePanel, renderPanel, renderDrawer, visibleCols, csvOf, colsKey, renderApp, renderAbout, renderAge, renderPulled, renderHealthBanner, caveats,
+    lackFacts, renderNotice, renderTablePanel, renderPanel, renderDrawer, visibleCols, csvOf, csvTableOf, definitionsOf, colsKey, renderApp, renderAbout, renderAge, renderPulled, renderHealthBanner, caveats,
     /** @param {?(() => number)} fn the clock the header's age reads (null = no clock, no age) */
     setClock: (fn) => { clock = fn; },
     regions: { filters: renderFilters, summary: renderSummary, tabs: renderTabs, panes: renderPanes, count: renderCount, proglist: renderProgramList, groupOptions: renderGroupOptions, age: renderAge, statusSummary: renderStatusSummary },
@@ -1662,13 +1807,13 @@ export function createTimeline(engine, model) {
       const x = left + (i / span) * plotW;
       parts.push(`<line class="gs-svg-grid" x1="${x.toFixed(1)}" y1="${top}" x2="${x.toFixed(1)}" y2="${h - bottom}"/>`, `<text x="${x.toFixed(1)}" y="${h - bottom + 16}" class="gs-svg-tick" text-anchor="start">${esc(day.slice(0, 7))}</text>`);
     }
-    // The lane names are drawn after the marks, so a shortened one's full text lies over them (F-522).
+    // The lane names are drawn after the marks, and a shortened one's full text in the overlay after everything (F-522).
     const names = [];
     v.lanes.forEach((l, i) => {
       const y = top + lane * i + lane / 2;
       parts.push(`<line class="gs-svg-axis" x1="${left}" y1="${y}" x2="${w - right}" y2="${y}"/>`);
       const name = String(l.label.program ?? l.key.program);
-      names.push(svgLabel({ x: left - 8, y: y + 4, text: name, max: 28, cls: "label", anchor: "end", title: `${name}: ${fmt("sent", l.cells.sent)} sent, open rate ${fmt("openRate", l.cells.openRate)} (every recipient of the program over these days: ${fmt("openRate", l.tenant.openRate)})`, room: { left: 4, width: w - 8, stack: "down" } }));
+      names.push(svgLabel({ x: left - 8, y: y + 4, text: name, max: 28, cls: "label", key: i, anchor: "end", title: `${name}: ${fmt("sent", l.cells.sent)} sent, open rate ${fmt("openRate", l.cells.openRate)} (every recipient of the program over these days: ${fmt("openRate", l.tenant.openRate)})`, room: { left: 4, width: w - 8, stack: "down" } }));
     });
     const laneOf = new Map(v.lanes.map((l, i) => [l.key.program, i]));
     for (const m of v.marks) {
@@ -1679,7 +1824,7 @@ export function createTimeline(engine, model) {
       parts.push(`<circle class="gs-svg-mark gs-mark-${m.state}" cx="${xOf(m.key.day).toFixed(1)}" cy="${y}" r="${r.toFixed(1)}"><title>${esc(text)}</title></circle>`);
     }
     const legend = `<ul class="gs-legend">${Object.entries(STATE_WORDS).map(([k, words]) => `<li><svg class="gs-swatch-svg" viewBox="0 0 12 12" aria-hidden="true"><circle class="gs-svg-mark gs-mark-${k}" cx="6" cy="6" r="4.5"/></svg>${esc(words)}</li>`).join("")}<li>${esc("A larger mark is more sends that day")}</li></ul>`;
-    return `${legend}<svg class="gs-chart gs-lanes" viewBox="0 0 ${w} ${h}" role="${svgRole(names)}" aria-label="${esc(`One lane per program, a mark per email and day, ${days.start} to ${days.end}`)}">${parts.join("")}${names.join("")}</svg>`;
+    return `${legend}<svg class="gs-chart gs-lanes" viewBox="0 0 ${w} ${h}" role="${svgRole(names)}" aria-label="${esc(`One lane per program, a mark per email and day, ${days.start} to ${days.end}`)}">${parts.join("")}${names.map((n) => n.label).join("")}${svgOverlay(names)}</svg>`;
   };
 
   // ── The marks as a table (the chart's fallback, and what the CSV exports) ──
@@ -1907,7 +2052,7 @@ export function mount(app, root, g) {
     if (ev.key === "Enter" || ev.key === " ") {
       // A focused tip opens and closes from the keyboard.
       const t = ev.target?.closest?.("[data-tip]");
-      if (t) { ev.preventDefault?.(); t.classList?.toggle?.("is-open"); return; }
+      if (t) { ev.preventDefault?.(); t.classList?.toggle?.("is-open"); syncFull(); return; }
     }
     if (ev.key !== "Escape") return;
     closeTips();
@@ -1921,13 +2066,47 @@ export function mount(app, root, g) {
     closePopovers(inside);
   });
   // A tip (a mark, an ⓘ) opens on click or tap as well as on hover and focus; a click elsewhere or Escape closes it.
-  const closeTips = (except = null) => { for (const el of all("[data-tip].is-open")) if (el !== except) el.classList?.remove?.("is-open"); };
+  const closeTips = (except = null) => { for (const el of all("[data-tip].is-open")) if (el !== except) el.classList?.remove?.("is-open"); syncFull(); };
+  // A shortened chart label's full text sits in its chart's overlay, drawn last (F-522): it is shown while its label
+  // is hovered, focused from the keyboard (focus-visible, so a click's focus does not hold it open) or opened, by the
+  // one function every such change calls. The label's own short text is hidden under it (is-lit).
+  let hovered = null;
+  let focused = null;
+  function syncFull() {
+    for (const grp of all(".gs-svg-tipped")) {
+      const on = grp === hovered || grp === focused || !!grp.classList?.contains?.("is-open");
+      grp.classList?.toggle?.("is-lit", on);
+      grp.closest?.("svg")?.querySelector?.(`[data-full-of="${grp.getAttribute?.("data-full")}"]`)?.classList?.toggle?.("is-shown", on);
+    }
+  }
+  root.addEventListener("pointerover", (ev) => {
+    const t = ev.target?.closest?.(".gs-svg-tipped") ?? null;
+    if (t !== hovered) { hovered = t; syncFull(); }
+  });
+  root.addEventListener("pointerout", (ev) => {
+    if (hovered && !hovered.contains?.(ev.relatedTarget ?? null)) { hovered = null; syncFull(); }
+  });
+  root.addEventListener("focusin", (ev) => {
+    const t = ev.target?.closest?.(".gs-svg-tipped") ?? null;
+    let visible = true;
+    try { visible = t?.matches?.(":focus-visible") ?? true; } catch { /* a browser without :focus-visible: a focus shows it */ }
+    focused = t && visible ? t : null;
+    syncFull();
+  });
+  root.addEventListener("focusout", () => { if (focused) { focused = null; syncFull(); } });
+  // The page's CSV save (R27). Inside a claude.ai artifact the viewer refuses a page's own downloads unless the page
+  // declares the `downloads` capability (PUB-3; X1 measured "File downloads aren't available for this artifact"):
+  // there the save goes through claude.use("downloads"), whose save the viewer confirms. Anywhere else (file://, a
+  // shared folder, a web host) the page has no `window.claude`, and the browser saves a Blob as before; a view that
+  // cannot run the capability resolves null, and the Blob save is tried.
+  const downloads = typeof g.claude?.use === "function" ? Promise.resolve().then(() => g.claude.use("downloads")).catch(() => null) : null;
   root.addEventListener("click", (ev) => {
     const t = ev.target?.closest?.("[data-tab],[data-act],[data-csv],[data-copy],[data-open-template],[data-tsort],[data-expand],[data-sort],[data-tip]");
     if (!t) { closeTips(); return; }
     if (t.hasAttribute("data-tip")) {
       closeTips(t);
       t.classList?.toggle?.("is-open");
+      syncFull();
       return;
     }
     closeTips();
@@ -1990,14 +2169,21 @@ export function mount(app, root, g) {
       const out = panel && app.csvOf(panel, state, ui);
       if (!out) return;
       // Built in the page from the embedded data: a file the browser saves, with no request to anywhere.
-      const url = g.URL.createObjectURL(new g.Blob([BOM + out.text], { type: "text/csv;charset=utf-8" }));
-      const a = doc.createElement("a");
-      a.href = url;
-      a.download = out.filename;
-      doc.body.appendChild(a);
-      a.click();
-      a.remove();
-      g.setTimeout(() => g.URL.revokeObjectURL(url), 1000);
+      const blobSave = () => {
+        const url = g.URL.createObjectURL(new g.Blob([BOM + out.text], { type: "text/csv;charset=utf-8" }));
+        const a = doc.createElement("a");
+        a.href = url;
+        a.download = out.filename;
+        doc.body.appendChild(a);
+        a.click();
+        a.remove();
+        g.setTimeout(() => g.URL.revokeObjectURL(url), 1000);
+      };
+      if (!downloads) { blobSave(); return; }
+      // The viewer may decline, or have a prompt open already: nothing to say then. Any other refusal says so on the button.
+      downloads.then((d) => (d ? d.save({ filename: out.filename, data: BOM + out.text }).catch((err) => {
+        if (err?.code !== "declined" && err?.code !== "rate_limited") t.textContent = "Download not available here";
+      }) : blobSave()));
     } else {
       const line = t.getAttribute("data-copy");
       Promise.resolve()
