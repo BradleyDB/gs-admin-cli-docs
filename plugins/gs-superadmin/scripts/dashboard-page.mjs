@@ -382,8 +382,8 @@ tfoot td{font-weight:600}
 .gs-svg-label{fill:var(--fg);font-size:11px;font-family:var(--font)}
 .gs-svg-tipped{cursor:help}
 .gs-svg-full{visibility:hidden;pointer-events:none;fill:var(--fg);font-size:11px;font-family:var(--font);paint-order:stroke;stroke:var(--bg);stroke-width:4px;stroke-linejoin:round}
-.gs-svg-tipped:hover .gs-svg-full,.gs-svg-tipped:focus .gs-svg-full,.gs-svg-tipped.is-open .gs-svg-full{visibility:visible}
-.gs-svg-tipped:hover .gs-svg-short,.gs-svg-tipped:focus .gs-svg-short,.gs-svg-tipped.is-open .gs-svg-short{fill-opacity:0}
+.gs-svg-tipped:hover .gs-svg-full,.gs-svg-tipped:focus-visible .gs-svg-full,.gs-svg-tipped.is-open .gs-svg-full{visibility:visible}
+.gs-svg-tipped:hover .gs-svg-short,.gs-svg-tipped:focus-visible .gs-svg-short,.gs-svg-tipped.is-open .gs-svg-short{fill-opacity:0}
 .gs-svg-line{fill:none;stroke-width:2;stroke-linejoin:round;stroke-linecap:round}
 .gs-svg-ring{fill:var(--bg)}
 .gs-svg-dot{stroke-width:2}

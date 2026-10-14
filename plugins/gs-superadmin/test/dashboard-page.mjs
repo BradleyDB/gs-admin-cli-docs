@@ -1452,9 +1452,10 @@ try {
     const barMarkup = markupOf(build(barSpec, engine.openSnapshot(longSnap)).html);
     const laneCuts = cutLabels(longTlPre, longTl.dimensions.programs.map((p) => p.name));
     const tickCuts = cutLabels(panelHtml(barMarkup, "by-program") ?? "", longSnap.dimensions.programs.map((p) => p.name));
-    check("F-522 a chart label the renderer shortens keeps its full text reachable the way every tip is: the timeline's lane names and a bar chart's tick labels (a line panel is monthly) each sit in a focusable group whose data-tip is the whole name and whose full text is drawn in the chart, opened by hover, focus and is-open (the one click, tap and Enter toggle); a label short enough is drawn whole",
+    check("F-522 a chart label the renderer shortens keeps its full text reachable the way every tip is: the timeline's lane names and a bar chart's tick labels (a line panel is monthly) each sit in a focusable group whose data-tip is the whole name and whose full text is drawn in the chart, opened by hover, keyboard focus (focus-visible, so a second click or tap closes it) and is-open (the one click, tap and Enter toggle), in a chart that is then a group so the label is exposed; a label short enough is drawn whole in a chart that stays an image",
       laneCuts.length === longTl.dimensions.programs.length && tickCuts.length >= 2 && [...laneCuts, ...tickCuts].every((c) => c.reachable) &&
-        /\.gs-svg-tipped:hover \.gs-svg-full,\.gs-svg-tipped:focus \.gs-svg-full,\.gs-svg-tipped\.is-open \.gs-svg-full\{visibility:visible\}/.test(TLP.html) && /closest\?\.\("\[data-tab\],[^"]*\[data-tip\]"\)/.test(SOURCES.runtimeSource) &&
+        /\.gs-svg-tipped:hover \.gs-svg-full,\.gs-svg-tipped:focus-visible \.gs-svg-full,\.gs-svg-tipped\.is-open \.gs-svg-full\{visibility:visible\}/.test(TLP.html) && !/\.gs-svg-tipped:focus[ ,{]/.test(TLP.html) &&
+        /<svg class="gs-chart gs-lanes"[^>]* role="group"/.test(longTlPre) && /<svg class="gs-chart"[^>]* role="group"/.test(panelHtml(barMarkup, "by-program") ?? "") && /<svg class="gs-chart gs-lanes"[^>]* role="img"/.test(pre) && /closest\?\.\("\[data-tab\],[^"]*\[data-tip\]"\)/.test(SOURCES.runtimeSource) &&
         cutLabels(pre, TL.dimensions.programs.map((p) => p.name)).length === 0 && !pre.includes("gs-svg-tipped"),
       { lanes: laneCuts.filter((c) => !c.reachable).slice(0, 3), ticks: tickCuts.filter((c) => !c.reachable).slice(0, 3), counts: [laneCuts.length, tickCuts.length] });
     const empty = structuredClone(TL);

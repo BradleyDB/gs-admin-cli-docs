@@ -1389,6 +1389,8 @@ function verbRefresh(ctx, slug, { full, healthOnly, planRun = null }) {
     // What the stop says is still needed is the adapter's remainder over the records as they stand (F-518), priced the
     // way the resume's opening line is; never the plan's calls less this run's counts, which count unforeseen cuts.
     if (pulledRun.summary.status !== "ok") {
+      // A stop before the adapter's plan point carries none: it made no planned unit yet, so the remainder the plan
+      // priced just before is still the remainder (only the cheap preliminaries, never in the plan's units, were made).
       const left = pulledRun.summary.remaining ?? estimate.thisRun.remaining ?? null;
       stopped(pulledRun, left == null ? null : left.calls === 0 ? 0 : loginsFor(left.seconds));
     }
