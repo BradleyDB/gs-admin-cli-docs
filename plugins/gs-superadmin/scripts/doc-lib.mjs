@@ -2769,7 +2769,13 @@ export function writeFileAtomicSync(target, data) {
   mkdirSync(dirname(target), { recursive: true });
   const tmp = `${target}.tmp-${process.pid}`;
   writeFileSync(tmp, data);
-  replaceFileSync(tmp, target);
+  try {
+    replaceFileSync(tmp, target);
+  } catch (e) {
+    // A replace that fails (the target locked, or a folder) leaves no temporary file behind (S7 review).
+    try { unlinkSync(tmp); } catch { /* already gone */ }
+    throw e;
+  }
 }
 export function removeFileSync(path) {
   withWindowsFsRetry(() => unlinkSync(path));

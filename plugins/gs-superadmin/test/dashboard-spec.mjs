@@ -101,7 +101,7 @@ try {
         isDeepStrictEqual(d.accounts, { pull: false, busiest: 0, lowEngagement: 0, mostBounces: 0, lowEngagementMinDelivered: 10, lists: [{ kind: "most-engaged", n: 25, floor: 10 }, { kind: "least-engaged", n: 25, floor: 10 }, { kind: "most-bounced", n: 25, floor: 0 }], fields: [] }) &&
         isDeepStrictEqual(d.kb, { redocument: { enabled: true, cap: 50 } }) && FRESHNESS_BY_CADENCE.monthly === 45 &&
         d.health.silentDays === 30 && d.freshness.maxAgeDays === 45 && d.refresh.cadence === "monthly" && isDeepStrictEqual(d.pages.map((p) => [p.preset, p.statusDefault, p.dateDefault, p.tabs.filter((t) => t.enabled).map((t) => t.id).join(), p.panels.length]), [["admin", null, "window", "engagement,health,templates,about", 0], ["exec", null, "closed-months", "engagement,about", 0]]) &&
-        d.pages[1].accountNames === false && d.publish.target === "none" && validateSpec(d).problems.length === 0);
+        d.pages[1].accountNames === false && isDeepStrictEqual(d.publish, { target: "file-copy", config: { to: "leaders", file: `${d.slug}-leaders.html`, datedCopies: false, datasets: true } }) && validateSpec(d).problems.length === 0);
     // The presets' own panels (DSH-4, choice A of 2026-10-09): valid as specs, every on tab given at least one, the health set shared.
     const withPreset = (i) => { const s = structuredClone(d); s.pages[i].panels = structuredClone(presetPanels(d.pages[i])); return s; };
     const adminPanels = presetPanels(d.pages[0]);
@@ -191,7 +191,10 @@ try {
       [[["pages.1.panels", [{ ...PANELS[1], id: "h" }]]], /pages\[1\]\.panels\[0\]\.tab is the health tab, which this page has turned off/],
       [[["groups.rules.0.kind", "regex"]], /groups\.rules\[0\]\.kind must be one of/],
       [[["refresh.ownerNote", "C:\\Users\\someone\\notes.txt"]], /refresh\.ownerNote holds a path on this machine/],
-      [[["publish", { target: "share", config: { dir: ["", "home", "shared-drive", "dashboards"].join("/") } }]], /publish\.config\.dir holds a path on this machine|publish\.target must be "none"/],
+      [[["publish.config.to", ["", "home", "shared-drive", "dashboards"].join("/")]], /publish\.config\.to holds a path on this machine/],
+      [[["publish.config.file", "C:\\Users\\someone\\OneDrive\\leaders.html"]], /publish\.config\.file holds a path on this machine/],
+      [[["publish", { target: "share", config: {} }]], /publish\.target must be one of none, file-copy, claude-artifact/],
+      [[["publish", { target: "claude-artifact", config: { url: "https://example.com/x" } }]], /publish\.config\.url must be null or a claude\.ai artifact link/],
       [[["accounts.busiest", -1]], /accounts\.busiest must be a whole number from 0/],
       [[["slug", "other"]], /slug cannot be changed with set/],
       [[["tenantHost", "evil.example.com"]], /tenantHost cannot be changed/],

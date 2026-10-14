@@ -102,7 +102,7 @@
 // Zero dependencies — Node built-ins only.
 // ─────────────────────────────────────────────────────────────────────────────
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, unlinkSync, copyFileSync } from "node:fs";
-import { basename, dirname, join, resolve } from "node:path";
+import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -110,15 +110,15 @@ import { makeCliHelpers, findWorkspaceDir, findWorkspaceCatalog, makeCommandReso
 import { printable } from "./journal-lib.mjs";
 import {
   specStore, SpecRefusal, holderName, openSpec, SPEC_DESCRIPTIONS, PRESETS, TABS, DEFAULT_ACCOUNT_LISTS, defaultSpec,
-  accountLists, accountFields, kbSettings, windowOf, presetPanels,
+  accountLists, accountFields, kbSettings, windowOf, presetPanels, PUBLISH_TARGET_NAME_RE, defaultPublish,
 } from "./dashboard-spec.mjs";
 import {
   resolveParams, prepareRun, runParamsMoved, fetchEngagement, reduceEngagement, loadRun, cliTransport, makeGate, parseWhoami, addMonths, monthsBetween, pickSchedule, describedProgram, EngagementRefusal, ROW_READERS, rpRunArgv, buildQuery,
   resolveAccountParams, reduceAccountTimeline, loadAccountRun, accountResolutionText, timelineSummary,
 } from "./engagement.mjs";
 import { applyGroups, programTraitsOf, suggestionTable } from "./dashboard-groups.mjs";
-import { buildPage, buildTimelinePage, inlinedSources, pageFileName } from "./dashboard-page.mjs";
-import { COPY_LINES, HOW_TO_REFRESH_TEXT } from "./dashboard-runtime.mjs";
+import { buildPage, buildTimelinePage, inlinedSources, pageFileName, buildDatasets, datasetsDirName, artifactContentOf } from "./dashboard-page.mjs";
+import { COPY_LINES, ENTRY_COMMAND, HOW_TO_REFRESH_TEXT } from "./dashboard-runtime.mjs";
 import { writeReport, ReportRefusal } from "./engagement-report.mjs";
 import * as engine from "./engagement-query.mjs";
 import { validateTheme, readLogo, LOGO_MAX_BYTES } from "./dashboard-theme.mjs";
@@ -130,6 +130,11 @@ const DESCRIBE_BATCH_SCRIPT = join(here, "describe-batch.mjs");
 export const EXIT = Object.freeze({ ok: 0, failed: 1, "token-expired": 3, partial: 4, "wrong-tenant": 5, "needs-pick": 6 });
 // Files this command owns, inside the dashboard's folder (beside the spec writer's two).
 export const SNAPSHOTS_DIR = "snapshots";
+// Where the leaders' copy goes (PUB-3): the per-machine map of a publish target's NAME to a folder, in the
+// workspace's own settings (git-ignored with the rest of .gs-superadmin/; ruled 2026-10-14: a spec holds no machine
+// path). Its one writer is `publish-target`. The artifact form of the leaders' page sits in PUBLISH_DIR.
+export const PUBLISH_TARGETS_FILE = "publish-targets.json";
+export const PUBLISH_DIR = "publish";
 export const PREVIEW_DIR = "preview";
 export const REPORTS_DIR = "reports";
 // An account's timeline (ACC-2): its page and its file, one per account, beside the dashboard's pages (or in the
@@ -257,6 +262,7 @@ export const COSTS = Object.freeze(Object.fromEntries(SPEC_DESCRIPTIONS.flatMap(
   return [path, kind];
 })));
 // health.silentDays reaches the pull as the lookback's floor AND is the page's starting threshold: a change costs a pull.
+// A publish setting is a rebuild (PUB-3): every rebuild publishes, and the rebuild keeps the About tab's Publishing line true.
 const COST_RANK = { identity: 0, "in-page": 1, rebuild: 2, reselect: 3, pull: 4 };
 /** A real path of a spec (`sources[0].params.internalDomains[1]`) → the SPEC_DESCRIPTIONS path that covers it. */
 export function coveredPath(realPath) {
@@ -688,6 +694,30 @@ export const QUESTIONS = Object.freeze([
       return { sets: [["sources.0.params.expectedReasons", listValue(typeof s === "string" && s.startsWith("add:") ? s.slice(4).trim() : s)]] };
     },
   },
+  // Where the leaders' copy goes (PUB-3/PUB-4, ruled 2026-10-13 at X1: a synced shared folder by default; a claude.ai
+  // artifact the second target). The folder is the MACHINE's (ruled 2026-10-14): an answer with a folder writes the
+  // workspace's publish-targets file through its one writer, never the spec. The fast path keeps the shared-folder
+  // target with no folder yet, and every refresh then says so with the line that sets one.
+  {
+    id: "leaders-copy", kind: "choice", path: "publish.target", judgment: false, default: "folder-later",
+    ask: "Where should the leaders' page go after each refresh? By default the refresh copies it into a shared folder you name, such as a OneDrive, SharePoint or network folder synced to this computer, overwriting the same file every time, so a leader bookmarks one file or the folder once; its tables go beside it as CSV files. A refresh that fails or stops copies nothing and leaves the last copy where it was. The folder is kept on this computer only, never in the dashboard, so an exported dashboard carries no path. You can instead publish it as a claude.ai artifact: a private link that people in your organization open with their Claude account, published by Claude in one short session after each refresh, where a filtered view cannot be bookmarked. Or keep it in the workspace only. Viewers pay nothing either way: the leaders' copy is a file, so opening it runs no query and no session.",
+    options: () => [
+      { id: "folder:<folder>", text: "A shared folder: give it now", followUps: [{ key: "folder", kind: "text", ask: "The folder's full path on this computer (it must exist)." }] },
+      { id: "folder-later", text: "A shared folder, set later (the default)" },
+      { id: "artifact", text: "A claude.ai artifact link" },
+      { id: "none", text: "The workspace only" },
+    ],
+    apply: (v, ctx) => {
+      const s = String(v).trim();
+      const folderCopy = defaultPublish(ctx.spec.slug);
+      const keep = ctx.spec.publish.target === "file-copy" ? ctx.spec.publish : folderCopy;
+      if (s === "none") return { sets: [["publish", { target: "none", config: {} }]] };
+      if (s === "artifact") return { sets: [["publish", { target: "claude-artifact", config: { url: ctx.spec.publish.target === "claude-artifact" ? ctx.spec.publish.config.url : null } }]] };
+      if (s === "folder-later") return { sets: [["publish", keep]], notes: [`the leaders' copy goes to the shared folder named "${keep.config.to}" once this computer has one: ${ENTRY_COMMAND} publish-target ${keep.config.to} <folder>${ctx.kb ? ` --kb ${ctx.kb}` : ""}`] };
+      if (s.startsWith("folder:")) return { sets: [["publish", keep]], publishTarget: { name: keep.config.to, folder: s.slice(7).trim() } };
+      return refuse(`leaders-copy: answer folder:<folder>, folder-later, artifact or none (got "${printable(s, 40)}")`);
+    },
+  },
   // The closing step (ruling 19): three action rows the script keeps, which the skill presents as ONE step from the
   // `closing` block `next` returns beside them (the ruled ask, the four options and the answers each one stands for).
   {
@@ -802,13 +832,22 @@ const lockState = (ctx, slug) => {
   return { held: true, by: held.by ?? null, at: held.at ?? null, stale: !Number.isFinite(age) || age >= LOCK_STALE_MS, run: held.run ?? null };
 };
 // ── The tenant and the token, before any call ────────────────────────────────
-function preflight(ctx, spec, { owner = "this dashboard" } = {}) {
+/**
+ * The refresh line a stopped or refused refresh prints as its remedy (F-523): the entry command's own line with
+ * `--kb` and THE RUN'S FLAGS, so the line runs as printed. The refusal also carries it as `remedy {login, line}`,
+ * and the entry-command suite executes every remedy it can provoke.
+ */
+export const refreshRemedy = (ctx, slug, { full = false, healthOnly = false } = {}) => `${COPY_LINES.refresh(slug, basename(ctx.kbDir))}${full ? " --full" : ""}${healthOnly ? " --health-only" : ""}`;
+const remedyOf = (line, login) => ({ remedy: { login, line } });
+/** Any other verb's line, as a remedy prints it: the entry command, the words, `--kb` (F-523). */
+const entryLine = (ctx, ...words) => `${ENTRY_COMMAND} ${words.join(" ")} --kb ${basename(ctx.kbDir)}`;
+function preflight(ctx, spec, { owner = "this dashboard", again = null } = {}) {
   const r = ctx.live().run({ id: "whoami", argv: ["whoami"], timeoutMs: 60000 });
   if (!r.ok) refuse(`gs-admin whoami failed: ${r.stderr.trim() || `exit ${r.status}`}`);
   const who = parseWhoami(r.stdout);
   if (!who.host) refuse("whoami shows no Base URL — the CLI has no tenant selected");
   if (who.host !== spec.tenantHost) refuse(`the CLI is on ${who.host}, and ${owner} belongs to ${spec.tenantHost} — switch tenants (gs-admin config --base-url …) or pick the ${owner === "this dashboard" ? "dashboard" : "knowledge base"} of that tenant; nothing was called`, "wrong-tenant");
-  if (who.tokenState !== "valid") refuse(`whoami reports the token as ${who.tokenState} — run \`gs-admin login\`, then run this again`, "token-expired");
+  if (who.tokenState !== "valid") refuse(`whoami reports the token as ${who.tokenState} — run \`gs-admin login\`, then run ${again ? `\`${again}\`` : "this"} again`, "token-expired", again ? remedyOf(again, true) : {});
   return who;
 }
 function categoriesFor(ctx) {
@@ -961,7 +1000,151 @@ function rebuildFrom(ctx, { spec, snapshotPath, previousPath, outDir }) {
   const { snapshot, resolution } = applyGroups(pulled, spec.groups, { previous });
   const delta = computeDelta(spec, snapshot, previous);
   const pages = buildPages(ctx, { spec, snapshot, delta, outDir });
-  return { pages, ungrouped: resolution.line, delta: delta ? { previousPulledAt: delta.previousPulledAt, closedMonths: delta.closedMonths.length, programs: delta.programs } : null, pulledAt: snapshot.meta.pulledAt };
+  return { pages, ungrouped: resolution.line, delta: delta ? { previousPulledAt: delta.previousPulledAt, closedMonths: delta.closedMonths.length, programs: delta.programs } : null, pulledAt: snapshot.meta.pulledAt, publish: publishLeaders(ctx, { spec, snapshot }) };
+}
+
+// ── The leaders' copy, published (PUB-3; ruled 2026-10-13 at X1, 2026-10-14 at S7's kickoff) ──────────────────
+// Script-only and LLM-free: the runner publishes after the pages are written, never before, and only reads them, so
+// a publish that fails never touches the workspace's latest-*.html. A failed or stopped refresh never reaches this.
+//   none             nothing;
+//   file-copy        the leaders' page copied into the folder this machine maps the target's NAME to, under the
+//                    spec's file name, the SAME name every time (written beside it under a temporary name, then
+//                    renamed over it, so a synced folder never holds half a file); with `datedCopies` a copy named
+//                    with the pull's date beside it; with `datasets` the page's tables as CSV files in a data folder
+//                    beside it (written in the workspace first, then copied the same way);
+//   claude-artifact  the leaders' page written in an artifact's content form for the skill to publish (only Claude
+//                    can), with the link to update when one was recorded.
+/** @returns {{targets: Object<string, {folder: string}>}} the workspace's publish targets ({} when none is set) */
+function readPublishTargets(ctx) {
+  const file = join(ctx.wsDir, ".gs-superadmin", PUBLISH_TARGETS_FILE);
+  const raw = readJsonOr(file, null);
+  if (raw == null) return { targets: {} };
+  if (!raw || typeof raw !== "object" || !raw.targets || typeof raw.targets !== "object") refuse(`${file} must be {"targets": {"<name>": {"folder": "<path>"}}}: write it with publish-target <name> <folder>`);
+  return { targets: raw.targets };
+}
+/** The ONE writer of the publish targets (A-10): a target's name and an existing folder on this machine. */
+function writePublishTarget(ctx, name, folder) {
+  if (!PUBLISH_TARGET_NAME_RE.test(String(name ?? ""))) refuse(`a publish target's name is letters, digits, dot, dash or underscore, at most 40 (got "${printable(String(name ?? ""), 40)}")`);
+  const f = String(folder ?? "").trim();
+  if (!f || !isAbsolute(f)) refuse(`the folder for "${name}" must be a full path on this computer (got "${printable(f, 120)}")`);
+  let isDir = false;
+  try { isDir = statSync(f).isDirectory(); } catch { /* missing: said below */ }
+  if (!isDir) refuse(`the folder for "${name}" does not exist or is not a folder: ${f} — create it (or let the sync client create it) first`);
+  const file = join(ctx.wsDir, ".gs-superadmin", PUBLISH_TARGETS_FILE);
+  const { targets } = readPublishTargets(ctx);
+  const next = { targets: { ...targets, [name]: { folder: resolve(f) } } };
+  writeJson(file, next);
+  return { name, folder: resolve(f), file };
+}
+/**
+ * Copy a file into a folder through the one atomic-write primitive (written beside the destination under a temporary
+ * name, then put in its place; a failed replace removes its temporary file), so a synced folder never holds half a file.
+ */
+function copyInto(src, dir, name) {
+  const dest = join(dir, name);
+  writeFileAtomicSync(dest, readFileSync(src));
+  return dest;
+}
+/** Remove the CSV files a data folder holds that this publish did not write (a panel removed since): ours by its name. */
+function pruneDataFolder(dir, keep) {
+  for (const f of existsSync(dir) ? readdirSync(dir) : []) if (/\.csv$/i.test(f) && !keep.includes(f)) rmSync(join(dir, f), { force: true });
+}
+const copyFault = (e) => (e && typeof e === "object" && "code" in e ? `${e.code}: ${e instanceof Error ? e.message : e}` : String(e));
+/**
+ * Publish the leaders' page(s) of a dashboard as its spec says, from the pages as they stand in the workspace.
+ * Never refuses: a publish that cannot be made, for any reason (a malformed targets file included), is said in what it
+ * returns and on stderr, and the pull, the snapshot and the pages it follows stand (S7 review).
+ * @param {*} ctx @param {{spec: *, snapshot: *}} args the snapshot the pages were built from (its groups applied)
+ */
+function publishLeaders(ctx, args) {
+  try {
+    return publishLeadersOrThrow(ctx, args);
+  } catch (e) {
+    const why = `the leaders' copy could not be published: ${e instanceof Error ? e.message : String(e)}; the pages in the workspace are untouched`;
+    ctx.log(why);
+    return { target: args.spec.publish?.target ?? "none", published: false, why };
+  }
+}
+function publishLeadersOrThrow(ctx, { spec, snapshot }) {
+  const pub = spec.publish ?? { target: "none", config: {} };
+  const leaders = spec.pages.filter((pg) => pg.preset === "exec");
+  const dir = dirOf(ctx, spec.slug);
+  if (pub.target === "none" || !leaders.length) return { target: pub.target, published: false, why: pub.target === "none" ? "the dashboard publishes nowhere: its pages are files in the workspace" : "the dashboard has no leaders' page" };
+  const page = leaders[0];
+  const local = join(dir, pageFileName(page.id));
+  if (!existsSync(local)) return { target: pub.target, published: false, why: `no leaders' page to publish yet (${local}): run \`${refreshRemedy(ctx, spec.slug)}\` first` };
+  if (pub.target === "claude-artifact") {
+    // Fix (i) of X1's two: the page's CONTENT, never its whole document, so the artifact does not nest a document.
+    const outDir = join(dir, PUBLISH_DIR);
+    mkdirSync(outDir, { recursive: true });
+    const file = join(outDir, pageFileName(page.id).replace(/\.html$/, ".artifact.html"));
+    writeFileAtomicSync(file, artifactContentOf(readFileSync(local, "utf8")));
+    const url = pub.config.url ?? null;
+    ctx.log(`the leaders' page is ready to publish as a claude.ai artifact: ${file} (/gs-superadmin:email-engagement publishes it${url ? ` to ${url}` : ""})`);
+    return { target: "claude-artifact", published: false, ready: true, file, url, title: `${spec.title} · ${page.title}`, capabilities: { downloads: true }, next: `Claude publishes this file as a claude.ai artifact (one short session): /gs-superadmin:email-engagement publish ${spec.slug}${url ? `; it updates ${url}` : "; record the new link afterwards with " + entryLine(ctx, "change", spec.slug, `'publish.config.url="<link>"'`)}` };
+  }
+  // file-copy
+  const c = pub.config;
+  const folder = readPublishTargets(ctx).targets[c.to]?.folder ?? null;
+  const setLine = entryLine(ctx, "publish-target", c.to, "<folder>");
+  if (!folder) {
+    const why = `no folder is set for the publish target "${c.to}" on this computer: set one with \`${setLine}\` (the folder stays on this computer; the dashboard names only "${c.to}")`;
+    ctx.log(`the leaders' copy was not published: ${why}`);
+    return { target: "file-copy", to: c.to, published: false, why, remedy: { login: false, line: setLine } };
+  }
+  let isDir = false;
+  try { isDir = statSync(folder).isDirectory(); } catch { /* said below */ }
+  if (!isDir) {
+    const why = `the folder for "${c.to}" is not there: ${folder} — is the synced folder still on this computer? Set another with \`${setLine}\`; the pages in the workspace are untouched`;
+    ctx.log(`the leaders' copy was not published: ${why}`);
+    return { target: "file-copy", to: c.to, folder, published: false, why };
+  }
+  // The data folder is written in the workspace first (an admin can open it there too), all files or none, and only
+  // when there is somewhere to copy it; a file of a panel removed since is pruned here and in the shared folder.
+  let datasets = null;
+  if (c.datasets) {
+    const files = buildDatasets({ spec, snapshot, pageId: page.id, kb: basename(ctx.kbDir) });
+    const localData = join(dir, datasetsDirName(pageFileName(page.id)));
+    mkdirSync(localData, { recursive: true });
+    for (const f of files) writeFileAtomicSync(join(localData, f.name), f.text);
+    pruneDataFolder(localData, files.map((f) => f.name));
+    datasets = { local: localData, files: files.map((f) => f.name) };
+  }
+  const out = { target: "file-copy", to: c.to, folder, file: join(folder, c.file), published: false, dated: null, datasets: null, why: null };
+  try {
+    copyInto(local, folder, c.file);
+    out.published = true;
+    if (c.datedCopies) out.dated = copyInto(local, folder, c.file.replace(/\.html$/i, `-${String(snapshot.meta.pulledAt).slice(0, 10)}.html`));
+    if (datasets) {
+      const destData = join(folder, datasetsDirName(c.file));
+      mkdirSync(destData, { recursive: true });
+      for (const name of datasets.files) copyInto(join(datasets.local, name), destData, name);
+      pruneDataFolder(destData, datasets.files);
+      out.datasets = { folder: destData, files: datasets.files };
+    }
+  } catch (e) {
+    out.why = `${out.published ? "the page was copied, but " : ""}a copy into ${folder} failed (${copyFault(e)}): a file locked by the sync client, or the folder moved; the pages in the workspace are untouched — run \`${entryLine(ctx, "publish", spec.slug)}\` to try again`;
+    ctx.log(`the leaders' copy: ${out.why}`);
+    return out;
+  }
+  ctx.log(`the leaders' copy was published: ${out.file} (the same file each time)${out.dated ? `, and ${out.dated}` : ""}${out.datasets ? `, with ${out.datasets.files.length} CSV files in ${out.datasets.folder}` : ""}`);
+  return out;
+}
+/** Publish the pages as they stand, with no pull and no rebuild (the manual publish, R8; a publish setting's change). */
+function publishNow(ctx, slug, spec) {
+  const latest = latestSnapshotPath(ctx, slug);
+  if (!latest) return { publish: { target: spec.publish.target, published: false, why: `no snapshot of "${slug}" yet: run \`${refreshRemedy(ctx, slug)}\` first` } };
+  const { snapshot } = applyGroups(openSnapshotFile(latest), spec.groups);
+  return { publish: publishLeaders(ctx, { spec, snapshot }) };
+}
+function verbPublish(ctx, slug) {
+  const spec = savedSpec(ctx, slug);
+  return { ok: true, mode: "publish", slug, ...publishNow(ctx, slug, spec) };
+}
+function verbPublishTarget(ctx, positional) {
+  const [name, ...rest] = positional;
+  if (!name) return { ok: true, mode: "publish-target", file: join(ctx.wsDir, ".gs-superadmin", PUBLISH_TARGETS_FILE), targets: readPublishTargets(ctx).targets };
+  return { ok: true, mode: "publish-target", ...writePublishTarget(ctx, name, rest.join(" ")) };
 }
 
 // ── The verbs ────────────────────────────────────────────────────────────────
@@ -1034,7 +1217,7 @@ function ensurePlan(ctx, slug, ictx, { exact = false } = {}) {
   preflight(ctx, spec);
   const runId = stableRunId(ctx, spec, "plan");
   const r = runAdapter(ctx, { spec, runId, phase: "plan", previousPath: null });
-  if (r.summary.status !== "ok") refuse(`the plan did not finish: ${r.summary.stopped ?? r.summary.status} — ${r.summary.status === "token-expired" ? "run gs-admin login, then ask for the next question again" : "ask for the next question again; if it fails again, the failed list is in the run directory"}`, r.summary.status === "token-expired" ? "token-expired" : "partial");
+  if (r.summary.status !== "ok") refuse(`the plan did not finish: ${r.summary.stopped ?? r.summary.status} — ${r.summary.status === "token-expired" ? `run gs-admin login, then ask for the next question again: \`${entryLine(ctx, "next", slug)}\`` : `ask for the next question again (\`${entryLine(ctx, "next", slug)}\`); if it fails again, the failed list is in the run directory`}`, r.summary.status === "token-expired" ? "token-expired" : "partial", remedyOf(entryLine(ctx, "next", slug), r.summary.status === "token-expired"));
   // The program list and the sends per program, from the plan's own reads: what the grouping proposal is made from.
   // The traits are the ones the rules resolve over at the pull (F-515 b): the same schedule reading and the same
   // months-with-sends rule the reducer applies, so the proposal's counts are the page's.
@@ -1176,6 +1359,8 @@ function applyAnswer(ctx, slug, q, value, ictx) {
   const choices = q.options(ictx);
   if (q.kind === "choice" && !choices.some((o) => o.id === String(value).trim()) && !choices.some((o) => o.id.includes("<") && String(value).trim().startsWith(o.id.split("<")[0].replace(/:$/, "")))) refuse(`"${printable(String(value), 40)}" is not one of the options: ${choices.map((o) => o.id).join(", ")}`);
   const r = q.apply(value, ictx);
+  // A folder given for the leaders' copy is the MACHINE's: written to the workspace's publish targets, never the spec.
+  const target = r.publishTarget ? writePublishTarget(ctx, r.publishTarget.name, r.publishTarget.folder) : null;
   const sets = (r.sets ?? []).filter(([, v]) => v !== undefined);
   // A value of undefined clears the field (the theme back to the default): the writer removes it.
   const unset = (r.sets ?? []).filter(([, v]) => v === undefined).map(([p]) => p);
@@ -1186,7 +1371,7 @@ function applyAnswer(ctx, slug, q, value, ictx) {
     if (e instanceof SpecRefusal) refuse(`${q.id}: ${e.message}`);
     throw e;
   }
-  return { set: sets.map(([p]) => p), notes: [...(r.notes ?? []), ...(d.notes ?? [])], ...(r.replaced ? { replaced: r.replaced } : {}) };
+  return { set: sets.map(([p]) => p), notes: [...(r.notes ?? []), ...(d.notes ?? [])], ...(r.replaced ? { replaced: r.replaced } : {}), ...(target ? { publishTarget: target } : {}) };
 }
 function verbAnswer(ctx, slug, id, value) {
   const q = questionById(id);
@@ -1221,7 +1406,7 @@ function verbAction(ctx, slug, q, value, ictx) {
     preflight(ctx, spec);
     const runId = stableRunId(ctx, spec, "preview");
     const r = runAdapter(ctx, { spec, runId, phase: "all", previousPath: null, preview: true });
-    if (r.summary.status !== "ok") refuse(`the dry run did not finish: ${r.summary.stopped ?? r.summary.status}; answer dry-run yes again to resume it`, r.summary.status === "token-expired" ? "token-expired" : "partial");
+    if (r.summary.status !== "ok") refuse(`the dry run did not finish: ${r.summary.stopped ?? r.summary.status}; answer dry-run yes again to resume it: \`${entryLine(ctx, "answer", slug, "dry-run", "yes")}\``, r.summary.status === "token-expired" ? "token-expired" : "partial", remedyOf(entryLine(ctx, "answer", slug, "dry-run", "yes"), r.summary.status === "token-expired"));
     const pulled = reduceEngagement(loadRun(r.runDir, { cliVersion: ctx.catalog.meta?.cliVersion ?? null, pluginVersion: ctx.pluginVersion }));
     const previewDir = join(dirOf(ctx, slug), PREVIEW_DIR);
     mkdirSync(previewDir, { recursive: true });
@@ -1267,7 +1452,7 @@ function doConsequence(ctx, slug, spec, consequence) {
   if (consequence === "pull") return { kind: "refresh", ...verbRefresh(ctx, slug, { full: false, healthOnly: false }) };
   if (consequence === "reselect") return { kind: "reselect", ...reselectFromRun(ctx, slug, spec) };
   const files = snapshotFiles(ctx, slug);
-  return files.length ? { kind: "rebuild", ...rebuildFrom(ctx, { spec, snapshotPath: files.at(-1), previousPath: files.at(-2) ?? null, outDir: dirOf(ctx, slug) }) } : { kind: "rebuild", done: false, why: `no snapshot yet: run refresh ${slug}` };
+  return files.length ? { kind: "rebuild", ...rebuildFrom(ctx, { spec, snapshotPath: files.at(-1), previousPath: files.at(-2) ?? null, outDir: dirOf(ctx, slug) }) } : { kind: "rebuild", done: false, why: `no snapshot yet: run \`${refreshRemedy(ctx, slug)}\`` };
 }
 /** The last plan this dashboard made (null until one exists): the minutes of a full refresh and the longest schedule period come from it. */
 function lastPlan(ctx, slug) {
@@ -1318,7 +1503,7 @@ function verbRefresh(ctx, slug, { full, healthOnly, planRun = null }) {
   const spec = savedSpec(ctx, slug);
   const dir = dirOf(ctx, slug);
   // The tenant and the token, before any call, before the lock.
-  const who = preflight(ctx, spec);
+  const who = preflight(ctx, spec, { again: refreshRemedy(ctx, slug, { full, healthOnly }) });
   let state = readJsonOr(join(dir, STATE_FILE), null);
   const previousPath = latestSnapshotPath(ctx, slug);
   const runsRoot = join(ctx.wsDir, ".gs-superadmin", "tmp", "engagement");
@@ -1340,7 +1525,10 @@ function verbRefresh(ctx, slug, { full, healthOnly, planRun = null }) {
   // A refresh that stopped (token, a failed call) resumes its run: the same run id, the same previous snapshot.
   const resuming = state && state.previousPath === previousPath && state.full === full && state.healthOnly === healthOnly;
   // A stopped run is resumed with the flags it was started with, never silently abandoned for a new one.
-  if (state && !resuming && state.previousPath === previousPath) refuse(`a stopped refresh of "${slug}" (run ${state.run}, started ${state.startedAt} by ${state.by}${state.full ? ", --full" : ""}${state.healthOnly ? ", --health-only" : ""}) is waiting to resume: run it again with the same flags, or remove ${join(dir, STATE_FILE)} to start over`);
+  if (state && !resuming && state.previousPath === previousPath) {
+    const again = refreshRemedy(ctx, slug, { full: !!state.full, healthOnly: !!state.healthOnly });
+    refuse(`a stopped refresh of "${slug}" (run ${state.run}, started ${state.startedAt} by ${state.by}${state.full ? ", --full" : ""}${state.healthOnly ? ", --health-only" : ""}) is waiting to resume: run it again with the same flags, \`${again}\`, or remove ${join(dir, STATE_FILE)} to start over`, "failed", remedyOf(again, false));
+  }
   // The interview's plan continues as this run (the save's first refresh): the run keeps the plan's own directory and
   // prepareRun resumes it, so the plan's cheap calls are reused instead of made again (nothing is renamed).
   const continuesPlan = planRun && !resuming && !previousPath && !full && !healthOnly && existsSync(join(runsRoot, planRun, "plan.json"));
@@ -1364,8 +1552,9 @@ function verbRefresh(ctx, slug, { full, healthOnly, planRun = null }) {
       // A partial stop says what failed and that the next run retries it (F-519): the family, the programs the call
       // named, the cause and the runs it has failed in; never an empty slot.
       const why = code === "partial" ? failedText(r.summary.failed) : r.summary.stopped ?? r.summary.status;
-      const next = code === "failed" ? "" : ` — ${code === "token-expired" ? "run gs-admin login, then " : ""}run refresh ${slug} again: it ${code === "partial" ? "retries what failed and " : ""}continues where it stopped; the last good pages are untouched`;
-      refuse(`the ${healthOnly ? "health-only " : ""}refresh stopped${made}: ${why}${next}${more}${lock.takenOver ? `; a stale lock held by ${lock.takenOver.by ?? "unknown"} since ${lock.takenOver.at} was taken over` : ""}`, code, { ...takenOver, ...(abandoned ? { abandoned } : {}) });
+      const again = refreshRemedy(ctx, slug, { full, healthOnly });
+      const next = code === "failed" ? "" : ` — ${code === "token-expired" ? "run gs-admin login, then " : ""}run \`${again}\` again: it ${code === "partial" ? "retries what failed and " : ""}continues where it stopped; the last good pages are untouched`;
+      refuse(`the ${healthOnly ? "health-only " : ""}refresh stopped${made}: ${why}${next}${more}${lock.takenOver ? `; a stale lock held by ${lock.takenOver.by ?? "unknown"} since ${lock.takenOver.at} was taken over` : ""}`, code, { ...takenOver, ...(abandoned ? { abandoned } : {}), ...(code === "failed" ? {} : remedyOf(again, code === "token-expired")) });
     };
     if (planned.summary.status !== "ok") stopped(planned);
     const estimate = planned.summary.estimate;
@@ -1383,7 +1572,10 @@ function verbRefresh(ctx, slug, { full, healthOnly, planRun = null }) {
     // Re-documentation first (the fetch then re-reads the moved knowledge base: the run's KB copy is stamped). A login
     // that dies under it is the same stop as one that dies under the pull: exit 3, resumable, "log in, then run again".
     const redocumented = redocument(ctx, { spec, estimate, runDir: planned.runDir });
-    if (redocumented.aborted?.reason === "auth") refuse(`the refresh stopped during re-documentation (${plural(redocumented.calls, "describe")} made): the login expired — run gs-admin login, then run refresh ${slug} again: it continues where it stopped; the last good pages are untouched${lock.takenOver ? `; a stale lock held by ${lock.takenOver.by ?? "unknown"} since ${lock.takenOver.at} was taken over` : ""}`, "token-expired", { ...takenOver, ...(abandoned ? { abandoned } : {}), redocumented });
+    if (redocumented.aborted?.reason === "auth") {
+      const again = refreshRemedy(ctx, slug, { full, healthOnly });
+      refuse(`the refresh stopped during re-documentation (${plural(redocumented.calls, "describe")} made): the login expired — run gs-admin login, then run \`${again}\` again: it continues where it stopped; the last good pages are untouched${lock.takenOver ? `; a stale lock held by ${lock.takenOver.by ?? "unknown"} since ${lock.takenOver.at} was taken over` : ""}`, "token-expired", { ...takenOver, ...(abandoned ? { abandoned } : {}), redocumented, ...remedyOf(again, true) });
+    }
     // The pull.
     const pulledRun = runAdapter(ctx, { spec, runId: basename(planned.runDir), phase: "all", previousPath, forceFull: full, healthOnly, lookbackDays: planned.lookbackDays });
     // What the stop says is still needed is the adapter's remainder over the records as they stand (F-518), priced the
@@ -1406,6 +1598,8 @@ function verbRefresh(ctx, slug, { full, healthOnly, planRun = null }) {
     const delta = computeDelta(spec, snapshot, previous);
     const pages = buildPages(ctx, { spec, snapshot, delta, outDir: dir });
     rmSync(join(dir, STATE_FILE), { force: true });
+    // The leaders' copy, after the pages are written and the run is closed: a publish that fails is said, never undone.
+    const published = publishLeaders(ctx, { spec, snapshot });
     return {
       ok: true, mode: "refresh", slug, status: "ok", run: basename(pulledRun.runDir), resumed: !!resuming, full, healthOnly, budget, ...(abandoned ? { abandoned } : {}),
       pull: { mode: snapshot.meta.refresh.mode, why: snapshot.meta.refresh.why, pulledAt: snapshot.meta.pulledAt, programs: snapshot.dimensions.programs.length, calls: pulledRun.summary.calls, reconciled: snapshot.reconciliation.ok, health: engine.healthAvailability(snapshot).pulled, accounts: engine.accountAvailability(snapshot).pulled, lookbackDays: planned.lookbackDays, lookbackDerivedFrom: planned.lookbackDerivedFrom ?? null },
@@ -1414,6 +1608,7 @@ function verbRefresh(ctx, slug, { full, healthOnly, planRun = null }) {
       pages: pages.map((p) => ({ page: p.page, path: p.path, megabytes: p.megabytes, warning: p.warning })),
       lockTakenOver: lock.takenOver ? { by: lock.takenOver.by, at: lock.takenOver.at } : null,
       caveats: snapshot.caveats.map((c) => c.id),
+      publish: published,
     };
   } finally {
     lock.release();
@@ -1422,9 +1617,9 @@ function verbRefresh(ctx, slug, { full, healthOnly, planRun = null }) {
 function verbRebuild(ctx, slug) {
   const spec = savedSpec(ctx, slug);
   const files = snapshotFiles(ctx, slug);
-  if (!files.length) refuse(`no snapshot of "${slug}" yet — run refresh ${slug} first`);
+  if (!files.length) refuse(`no snapshot of "${slug}" yet — run \`${refreshRemedy(ctx, slug)}\` first`, "failed", remedyOf(refreshRemedy(ctx, slug), false));
   const r = rebuildFrom(ctx, { spec, snapshotPath: files.at(-1), previousPath: files.at(-2) ?? null, outDir: dirOf(ctx, slug) });
-  return { ok: true, mode: "rebuild", slug, pulledAt: r.pulledAt, ungrouped: r.ungrouped, delta: r.delta, pages: r.pages.map((p) => ({ page: p.page, path: p.path, megabytes: p.megabytes, warning: p.warning })) };
+  return { ok: true, mode: "rebuild", slug, pulledAt: r.pulledAt, ungrouped: r.ungrouped, delta: r.delta, pages: r.pages.map((p) => ({ page: p.page, path: p.path, megabytes: p.megabytes, warning: p.warning })), publish: r.publish };
 }
 /** A re-selection of the customer lists over the last run directory's rows (ruled 2026-10-05): reduce again with the new lists, no pull. */
 function reselectFromRun(ctx, slug, spec) {
@@ -1447,7 +1642,7 @@ function reselectFromRun(ctx, slug, spec) {
   writeFileAtomicSync(latest, JSON.stringify(snapshot));
   const delta = computeDelta(spec, snapshot, previous);
   const pages = buildPages(ctx, { spec, snapshot, delta, outDir: dirOf(ctx, slug) });
-  return { done: true, snapshot: latest, lists: snapshot.honesty?.accountSelection?.lists?.map((l) => ({ kind: l.kind, kept: l.kept.length })) ?? [], pages: pages.map((p) => ({ page: p.page, path: p.path })) };
+  return { done: true, publish: publishLeaders(ctx, { spec, snapshot }), snapshot: latest, lists: snapshot.honesty?.accountSelection?.lists?.map((l) => ({ kind: l.kind, kept: l.kept.length })) ?? [], pages: pages.map((p) => ({ page: p.page, path: p.path })) };
 }
 function verbChange(ctx, slug, pairs, dryRun) {
   const saved = savedSpec(ctx, slug);
@@ -1514,7 +1709,7 @@ export function pullSecondsAfter(plan, before, after) {
 function verbReport(ctx, slug, opt, argv) {
   savedSpec(ctx, slug); // a saved dashboard, or the refusal naming the draft
   const latest = latestSnapshotPath(ctx, slug);
-  if (!latest) refuse(`no snapshot of "${slug}" yet — run refresh ${slug} first`);
+  if (!latest) refuse(`no snapshot of "${slug}" yet — run \`${refreshRemedy(ctx, slug)}\` first`, "failed", remedyOf(refreshRemedy(ctx, slug), false));
   const snapshot = openSnapshotFile(latest);
   const ageDays = Math.floor((ctx.nowMs - Date.parse(snapshot.meta.pulledAt)) / 86400000);
   const reportDir = join(dirOf(ctx, slug), REPORTS_DIR);
@@ -1534,7 +1729,7 @@ function verbExport(ctx, slug, opt, argv) {
   let snapshot = null;
   if (argv.includes("--with-snapshot")) {
     const latest = latestSnapshotPath(ctx, slug);
-    if (!latest) refuse(`no snapshot of "${slug}" to export beside the spec — run refresh ${slug} first, or export without --with-snapshot`);
+    if (!latest) refuse(`no snapshot of "${slug}" to export beside the spec — run \`${refreshRemedy(ctx, slug)}\` first, or export without --with-snapshot`, "failed", remedyOf(refreshRemedy(ctx, slug), false));
     snapshot = r.out.replace(/\.json$/i, "") + ".snapshot.json";
     copyFileSync(latest, snapshot);
   }
@@ -1560,7 +1755,7 @@ function verbHealth(ctx, slug, opt) {
   if (!programId) refuse("health needs --program <id>");
   savedSpec(ctx, slug);
   const latest = latestSnapshotPath(ctx, slug);
-  if (!latest) refuse(`no snapshot of "${slug}" yet — run refresh ${slug} first`);
+  if (!latest) refuse(`no snapshot of "${slug}" yet — run \`${refreshRemedy(ctx, slug)}\` first`, "failed", remedyOf(refreshRemedy(ctx, slug), false));
   const s = openSnapshotFile(latest);
   const program = s.dimensions.programs.find((p) => p.id === programId);
   if (!program) refuse(`no program ${programId} in the latest snapshot of "${slug}"`);
@@ -1625,10 +1820,11 @@ function verbAccount(ctx, slug, opt, argv) {
 
 // ── CLI ──────────────────────────────────────────────────────────────────────
 const USAGE =
-  "usage: dashboard.mjs <new|next|answer|change|save|list|status|refresh|rebuild|report|export|import|health|account|costs|questions> [<slug>] [...] " +
+  "usage: dashboard.mjs <new|next|answer|change|save|list|status|refresh|rebuild|publish|publish-target|report|export|import|health|account|costs|questions> [<slug>] [...] " +
+  "[publish-target: [<target name> <folder>]] " +
   "[account: (--account-id <GSID> | --account-name <name>) [--last <Nd|Nm>] (with no <slug>: [--internal-domain <d>]... [--test-account <id>]... [--account-field <f>]...)] " +
   "[--kb <tenant KB folder>] [--workspace <dir>] [--bin <gs-admin entry>] [--by <holder>] [--take-over] [--today YYYY-MM-DD] [next: --question <id>]";
-const VERBS = ["new", "next", "answer", "change", "save", "list", "status", "refresh", "rebuild", "report", "export", "import", "health", "account", "costs", "questions"];
+const VERBS = ["new", "next", "answer", "change", "save", "list", "status", "refresh", "rebuild", "publish", "publish-target", "report", "export", "import", "health", "account", "costs", "questions"];
 async function main() {
   const [verb, ...rest] = process.argv.slice(2);
   const helpers = makeCliHelpers("dashboard.mjs", rest);
@@ -1663,6 +1859,8 @@ async function main() {
       case "status": out = verbStatus(ctx, needSlug()); break;
       case "refresh": out = verbRefresh(ctx, needSlug(), { full: rest.includes("--full"), healthOnly: rest.includes("--health-only") }); break;
       case "rebuild": out = verbRebuild(ctx, needSlug()); break;
+      case "publish": out = verbPublish(ctx, needSlug()); break;
+      case "publish-target": out = verbPublishTarget(ctx, positional); break;
       case "report": out = verbReport(ctx, needSlug(), opt, rest); break;
       case "export": out = verbExport(ctx, needSlug(), opt, rest); break;
       case "import": out = verbImport(ctx, opt, rest); break;
