@@ -5,6 +5,38 @@ marketplace doesn't pin versions — users get main — so entries describe what
 user who updates, not internal refactors. Entries before 0.8.0 were reconstructed from git
 history when this file was introduced.
 
+## 0.52.0 — 2026-10-13
+
+One account's email timeline (ACC-1, ACC-2): what a customer was sent, by program and day,
+in a page of its own; and a one-account view on the dashboard's admin page.
+
+- **`/gs-superadmin:email-engagement account '<name>' [--last 6m]`**, and the entry
+  command's `dashboard.mjs account [<dashboard>] (--account-id <GSID> | --account-name
+  <name>)`: the account's sends over the last 90 days (up to 24 months), read one call at a
+  time after the tenant and the login are checked, by program, email and day, with the same
+  programs' sends to every recipient over the same days beside them. The page: one lane per
+  program, a mark per email and day sized by its sends and drawn as opened, delivered and not
+  opened, or not delivered; the account's open rate against everyone's; a program filter and
+  the internal-recipients switch; the sends as a table with its CSV; the data-pulled line; an
+  About part with the definitions and the line to pull it again. Self-contained, no request
+  anywhere, every name escaped.
+- **Account is the finest grain.** The account's contacts are added up and never named: no
+  address, person or send id reaches the timeline, its payload files or its page.
+- **A name is never guessed.** One exact match is the account; several, or none exact (a
+  contains search then), answer with a pick list of the candidates with their GSIDs and sends,
+  and nothing is pulled (exit 6).
+- **Checked against the dashboard.** Named with a dashboard, the dashboard's internal domains
+  and test accounts decide who is internal, and the timeline is reconciled with that
+  dashboard's latest pull of the same account per program and whole month (closed months
+  must match; a provisional month drifts; a program the dashboard did not keep the account on
+  is named, never counted as a pass).
+- **The admin page's one-account view:** an account the customer lists kept, month by month,
+  chosen with the Account filter or View beside its name in a list, with the copyable line for
+  its timeline by day (it needs a `gs-admin` login; the page says so). With accounts not pulled
+  it says why and how to add them.
+- The account timeline is a second snapshot kind of the engagement adapter, additive on its
+  contract; nothing in the engagement snapshot changed.
+
 ## 0.51.0 — 2026-10-12
 
 The engagement dashboard's entry command and the interview that builds a dashboard (PUB-1,

@@ -12,6 +12,13 @@
 //   fetch   every call, one at a time, one payload file per call; resumable
 //   reduce  fetched files → the snapshot; a pure function of the run directory
 //   run     plan, fetch and reduce in order
+//   account one account's sends by day over the last N days or months (ACC-1):
+//           the account found by its GSID or its name (several matches, or
+//           none exact, is a pick list and never a guess), its sends by
+//           program, email and day, the same programs' sends to everyone
+//           beside them, reduced to an ACCOUNT TIMELINE (a second snapshot
+//           kind, additive on T-10), reconciled against a dashboard
+//           snapshot's rows of the same account when one is given
 //
 // What the code enforces, so no caller has to remember it (each has a named
 // test in test/engagement.mjs; the measurements behind them were taken on
@@ -448,6 +455,64 @@
  *   calls minutes apart can disagree without anything being wrong.
  * @property {Array<{id: string, detail: Object<string, *>}>} caveats   this snapshot's own; metric caveats live with the metric definitions
  */
+/**
+ * ADDITIVE on T-10 (ACC-1, S6, 2026-10-13): the ACCOUNT TIMELINE, a second snapshot KIND this adapter writes
+ * (`engagement.mjs account`), beside the engagement snapshot; nothing of the engagement snapshot changed. One
+ * account's sends at DAY grain (ExecutedDate) over the last N days or months, by program and email: recipients are
+ * added up to the account, and no contact name, address or recipient id reaches it (account is the finest grain).
+ * Beside them, the same programs' sends to EVERY recipient over the same days: the comparison a timeline's open rate
+ * stands beside. The measures are T10FlagMeasures (every send measure but clicked, which needs link detail a
+ * timeline does not read); internal and external rows are split as in the engagement snapshot (the internal class is
+ * the internal domains' sends, and every send to an account named as a test account). Read it through openTimeline
+ * (engagement-query.mjs), never directly; timelineView is its one aggregation path.
+ *
+ * @typedef {Omit<T10SendMeasures, "clicked">} T10FlagMeasures
+ * @typedef {T10FlagMeasures & {programId: string, templateId: ?string, day: string, recipientClass: RecipientClass}} T10TimelineRow
+ *   one program × email × day × class with a non-zero measure; day is YYYY-MM-DD, the ExecutedDate day
+ * @typedef {T10FlagMeasures & {programId: string, recipientClass: RecipientClass}} T10TimelineTenantRow
+ *   every recipient of one program over the timeline's days, by class: the comparison
+ *
+ * @typedef {object} T10TimelineFacts
+ * @property {T10TimelineRow[]} accountTimeline   empty when nothing reached the account in the window
+ * @property {T10TimelineTenantRow[]} tenantByProgram   the programs of accountTimeline only
+ *
+ * @typedef {object} T10TimelineDimensions
+ * @property {{key: string, name: ?string, testAccount: boolean, attrs?: Object<string, *>}} account
+ *   key is the company's Gsid; testAccount is whether it was named as a test account (every send internal); attrs
+ *   the company fields asked for (--account-field), absent when none was
+ * @property {Array<{id: string, name: ?string, statuses: string[], model: ?string, modelName: ?string}>} programs
+ *   the programs that sent to the account in the window (a deleted one is left out and counted in honesty)
+ * @property {Array<{id: string, name: ?string, subject: ?string, subjectAsOf: ?string, uses: Array<{programId: string, stepName: ?string, stepOrder: ?number, stepCount: number, asOf: ?string}>}>} templates
+ *   the emails the account received; subject is the template's CURRENT subject from the knowledge base, tokens
+ *   rendered as their labels, as of subjectAsOf (null without a doc or a KB); uses as on the engagement snapshot
+ *
+ * @typedef {object} T10TimelineMeta
+ * @property {"jo-engagement"} source
+ * @property {Object<string, *>} params            the run's parameters, echoed
+ * @property {string} pulledAt                    ISO 8601 with a UTC offset
+ * @property {?string} timeZone
+ * @property {string} tenantHost
+ * @property {?string} cliVersion
+ * @property {?string} pluginVersion
+ * @property {{last: string, days: number, start: string, end: string, endExclusive: string}} window
+ *   the last N days or months ("90 days", "3 months"), counted back from the pull's day (end, inclusive)
+ * @property {string} incompleteFrom              sends on or after this day are provisional
+ * @property {{object: string, field: string, grain: "day"}} dateBasis
+ * @property {{subjects: boolean, reason: ?string}} templates   whether subjects and step names were read from a
+ *   knowledge base (reason "no-kb" when the pull ran without one)
+ *
+ * @typedef {object} T10AccountTimeline
+ * @property {1} schemaVersion
+ * @property {"account-timeline"} kind
+ * @property {T10TimelineMeta} meta
+ * @property {T10TimelineDimensions} dimensions
+ * @property {T10TimelineFacts} facts
+ * @property {Object<string, *>} honesty           what was seen, left out and could not be read
+ * @property {{ok: boolean, checks: Array<{id: string, ok: boolean, compared: number, mismatches: number, examples: Array<Object<string, *>>, drift: number, driftExamples: Array<Object<string, *>>}>, against: ?{pulledAt: string, basis: "class"|"all", compared: number, notCompared: Array<{programId: string, reason: string}>, reason: ?string}}} reconciliation
+ *   the timeline's own checks, and, when the pull was given a dashboard snapshot, the account's rows there per
+ *   program × month (against): closed months must match, a provisional month drifts
+ * @property {Array<{id: string, detail: Object<string, *>}>} caveats
+ */
 
 // ── The source-adapter interface ("JO first, pluggable") ─────────────────────
 /**
@@ -491,6 +556,7 @@ import { classifySchedule } from "./jo-report-audit-active.mjs";
 import {
   SOURCES, NON_CONTENT_LINK_RULES, SEND_MEASURES, T10_SCHEMA_VERSION, measuresCounted, rollUpTracking, openSnapshot, accountAvailability, healthAvailability, maskMessage,
   categoryTable, validateCategories, OTHER_CATEGORY, UNCLASSIFIED_CATEGORY, UNKNOWN_KIND, FAILURE_CATEGORIES, STEP_FAILURE_CATEGORIES, cronLastDue, QUIET_DUE_DAYS_DEFAULT, kindOf, isExpectedKind,
+  TIMELINE_MEASURES, timelineByMonth, runQuery,
 } from "./engagement-query.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -509,6 +575,12 @@ const SERVER_PAGE_MAX = 5000;
 // An IN list this long was measured to work; nothing longer was tried.
 const IN_BATCH = 50;
 const NAME_BATCH = 200;
+// The most accounts a pick list shows (ACC-1): a name matching more is asked again, narrower; the lookup reads one more
+// row than this, so "more than this" is known, never guessed.
+export const ACCOUNT_PICK_MAX = 25;
+// The account timeline's lookback (ACC-1 defaults): 90 days unless asked, at most 24 months.
+export const TIMELINE_DEFAULT_LAST = "90d";
+export const TIMELINE_MAX_MONTHS = 24;
 // `jo p list --limit 1000` returned a whole tenant in one page; a loop still
 // paging after this many has an envelope it cannot read.
 const MAX_LIST_PAGES = 100;
@@ -858,6 +930,11 @@ export const ROW_READERS = Object.freeze({
   "health-step-total": (row) => ({ programId: str(cellValue(row[col.field(PARTICIPANTS, PARTICIPANT_SRC.programField)])), month: cellMonth(row[col.month(PARTICIPANTS, PARTICIPANT_SRC.dateField)]), n: cellNumber(row[col.count(PARTICIPANTS)]) }),
   "health-step-cat": (row) => ({ programId: str(cellValue(row[col.field(PARTICIPANTS, PARTICIPANT_SRC.programField)])), month: cellMonth(row[col.month(PARTICIPANTS, PARTICIPANT_SRC.dateField)]), n: cellNumber(row[col.count(PARTICIPANTS)]) }),
   "health-step-state": (row) => ({ programId: str(cellValue(row[col.field(PARTICIPANTS, PARTICIPANT_SRC.programField)])), month: cellMonth(row[col.month(PARTICIPANTS, PARTICIPANT_SRC.dateField)]), n: cellNumber(row[col.count(PARTICIPANTS)]) }),
+  // The account timeline (ACC-1). The lookup shares the names call's reader (a company row: Gsid, Name, the fields asked for).
+  "account-lookup": (row, fields = []) => ROW_READERS["account-names"](row, fields),
+  "account-pick": (row) => ({ key: str(cellValue(row[col.hop(PATH.company)])), n: cellNumber(row[col.count(LOG)]) }),
+  "account-days": (row) => ({ programId: str(cellValue(row[col.field(LOG, LOG_SRC.programField)])), templateId: str(cellValue(row[col.field(LOG, LOG_SRC.templateField)])), templateName: str(cellValue(row[col.field(LOG, "EmailTemplateName")])), day: cellDay(row[col.day(LOG, LOG_SRC.dateField)]), n: cellNumber(row[col.count(LOG)]), flags: logFlags(row) }),
+  "account-tenant": (row) => ({ programId: str(cellValue(row[col.field(LOG, LOG_SRC.programField)])), n: cellNumber(row[col.count(LOG)]), flags: logFlags(row) }),
 });
 
 // ── Queries, as data ─────────────────────────────────────────────────────────
@@ -1090,6 +1167,28 @@ const FAMILIES = {
     object: PARTICIPANTS, split: ["programs"], health: "stepFailures",
     query: (d) => ({ group: [{ name: PARTICIPANT_SRC.programField }, byMonth(PARTICIPANT_SRC.dateField)], show: [countOf], where: [cond(PARTICIPANT_SRC.stateField, "EQ", d.category.state), ...datedWhere(PARTICIPANT_SRC, d), ...programsIn(PARTICIPANT_SRC, d)] }),
   },
+  // ── The account timeline (ACC-1, S6) ──
+  // The company search: by the Gsid (IN, the shape the names call reads), or by Name: EQ first, then CONTAINS when
+  // nothing matches exactly (both through the schema's filterable flag, like every filter). ONE page, never split
+  // (onePage): a search matching more accounts than a pick list shows says so and asks for a narrower name. The
+  // entry command's test-account lookup builds its query here too, so a name is looked up one way everywhere.
+  "account-lookup": {
+    object: COMPANY, split: [], onePage: ACCOUNT_PICK_MAX + 1,
+    query: (d) => ({ group: [], show: [{ name: "Gsid" }, { name: "Name" }, ...(d.fields ?? []).map((name) => ({ name }))], where: [d.by === "id" ? cond("Gsid", "IN", [d.value]) : cond("Name", d.match, d.value)] }),
+  },
+  // A pick list's candidates' sends over the timeline's days, through the company lookup (a candidate with none has no row).
+  "account-pick": { object: LOG, split: ["day"], query: (d) => ({ group: [PATH.company], show: [countOf], where: [...logWhere(d), cond(COMPANY_FIELD, "IN", d.keys)] }) },
+  // The account's sends by program, email and DAY, with every flag: the recipients added up to the account (the company
+  // is a FILTER here, never a group-by, so no lookup decides whether a send is counted).
+  "account-days": {
+    object: LOG, split: ["day", "flags", "address"], flags: cutFlags(LOG_SRC),
+    query: (d) => ({ group: [logProgram, logTemplate, { name: "EmailTemplateName" }, { name: LOG_SRC.dateField, summarize: "Day" }, ...LOG_FLAGS.map((name) => ({ name }))], show: [countOf], where: [...logWhere(d), cond(COMPANY_FIELD, "EQ", d.account)] }),
+  },
+  // Every recipient of the same programs over the same days, by program, with every flag: the comparison.
+  "account-tenant": {
+    object: LOG, split: ["programs", "day", "flags", "address"], flags: cutFlags(LOG_SRC),
+    query: (d) => ({ group: [logProgram, ...LOG_FLAGS.map((name) => ({ name }))], show: [countOf], where: logWhere(d) }),
+  },
 };
 const isHealth = (d) => !!FAMILIES[d.family]?.health;
 const bouncedOnly = () => cond(LOG_SRC.flags.bounced.field, "EQ", LOG_SRC.flags.bounced.value);
@@ -1233,7 +1332,8 @@ export function schemaFlags(payload) {
 }
 
 // A sample unit reads one page of at most SAMPLE_PAGE rows.
-const unitPageSize = (d, pageSize) => (FAMILIES[d.family]?.sample ? Math.min(pageSize, SAMPLE_PAGE) : pageSize);
+// A one-page read (the account lookup) asks for its own page: the rows it shows, and one more to know there are more.
+const unitPageSize = (d, pageSize) => (FAMILIES[d.family]?.sample ? Math.min(pageSize, SAMPLE_PAGE) : FAMILIES[d.family]?.onePage ?? pageSize);
 function unitArgv(d, pageSize) {
   if (d.family === "whoami") return ["whoami"];
   if (d.family === "programs") return ["--json", "jo", "p", "list", "--limit", "1000", "--page", String(d.page)];
@@ -1500,6 +1600,85 @@ export function resolveParams(raw) {
 }
 /** The clock a pull is stamped with when its fact calls start: the local time with its offset, and the zone. */
 export const stampClock = (ms) => ({ pulledAt: localIsoWithOffset(new Date(ms)), timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone ?? null });
+
+/**
+ * `--last <Nd | Nm>` → the timeline's days (ACC-1): the last N days, or the last N months, ending on `today`
+ * (inclusive). At most TIMELINE_MAX_MONTHS months back; null when the value names no lookback.
+ * @param {unknown} spec
+ * @param {string} today YYYY-MM-DD
+ * @returns {?{last: string, days: number, start: string, end: string, endExclusive: string}}
+ */
+export function parseLast(spec, today) {
+  const v = String(spec ?? "").trim();
+  const d = /^(\d+)d$/.exec(v);
+  const m = /^(\d+)m$/.exec(v);
+  const n = Number((d ?? m)?.[1] ?? 0);
+  if (!(d || m) || n < 1) return null;
+  const end = today;
+  const endExclusive = addDays(today, 1);
+  // N months back: the same day N months earlier (clamped to that month's last day), the day after it the first one.
+  const start = d ? addDays(endExclusive, -n) : addDays(/** @type {string} */ (parseSentSince(`${n}m`, today)), 1);
+  const earliest = addDays(/** @type {string} */ (parseSentSince(`${TIMELINE_MAX_MONTHS}m`, today)), 1);
+  if (start < earliest) return null;
+  return { last: `${n} ${d ? (n === 1 ? "day" : "days") : n === 1 ? "month" : "months"}`, days: daysBetween(start, endExclusive), start, end, endExclusive };
+}
+/**
+ * The parameters of an account-history pull (ACC-1): the account (by its GSID or its name), the lookback, the
+ * recipient classes as the engagement pull takes them (internal domains, test accounts, normalized by resolveParams,
+ * the one normalizer), the company fields a pick list shows, and the call budget. The engagement pull's switches the
+ * shared fetch loop reads (step detail, the account grain, health) are off: this path makes none of those calls.
+ * @param {*} raw
+ */
+export function resolveAccountParams(raw) {
+  const base = resolveParams({ today: raw.today, internalDomains: raw.internalDomains, testAccounts: raw.testAccounts, accounts: { fields: raw.fields }, pageSize: raw.pageSize, timeoutMs: raw.timeoutMs, pulledAt: raw.pulledAt, timeZone: raw.timeZone });
+  const id = raw.account?.id == null ? null : String(raw.account.id).trim();
+  const name = raw.account?.name == null ? null : String(raw.account.name).trim();
+  if (!id === !name) throw new Error("name the account by its GSID (--account-id) or by its name (--account-name), one of the two");
+  if (id != null && !/^[A-Za-z0-9_][A-Za-z0-9_.-]{0,63}$/.test(id)) throw new Error(`--account-id takes a company GSID (letters, digits, . _ -, never first a . or -) — got "${printable(id, 60)}"`);
+  if (name != null && (!name || name.length > 200)) throw new Error("--account-name takes the company's name, 1 to 200 characters");
+  const lastSpec = raw.last ?? TIMELINE_DEFAULT_LAST;
+  const window = parseLast(lastSpec, base.today);
+  if (!window) throw new Error(`--last takes a day count (90d) or a month count (3m), at most ${TIMELINE_MAX_MONTHS} months back — got "${printable(String(lastSpec), 40)}"`);
+  return {
+    kind: "account-history",
+    today: base.today,
+    account: { id, name },
+    lastSpec: String(lastSpec),
+    window,
+    internalDomains: base.internalDomains,
+    testAccounts: base.testAccounts,
+    fields: base.accounts.fields,
+    // The current month is provisional, as on every engagement output (opens keep arriving).
+    incompleteFrom: monthStart(base.today.slice(0, 7)),
+    pageSize: base.pageSize,
+    maxPages: base.maxPages,
+    timeoutMs: base.timeoutMs,
+    tokenMarginSeconds: base.tokenMarginSeconds,
+    pulledAt: base.pulledAt,
+    timeZone: base.timeZone,
+    // The engagement pull's switches, off: the shared fetch loop's first phase reads them.
+    stepDetail: false,
+    accounts: { pull: false, names: false, fields: base.accounts.fields },
+    health: { pull: false },
+  };
+}
+
+/**
+ * Stamp the pull time, once, when a run's first fact call is about to be made (F-482), and keep it with the run: a
+ * resume continues under the same stamp, and a plan alone stamps nothing. The engagement pull and the account
+ * timeline both stamp here.
+ * @param {*} params @param {string} runDir @param {() => number} now
+ */
+function stampRun(params, runDir, now) {
+  if (params.pulledAt != null) return;
+  Object.assign(params, { ...stampClock(now()), ...(params.timeZone ? { timeZone: params.timeZone } : {}) });
+  const runFile = join(runDir, "run.json");
+  if (existsSync(runFile)) {
+    const run = readJsonFile(runFile);
+    run.params = { ...run.params, pulledAt: params.pulledAt, timeZone: params.timeZone };
+    writeFileAtomicSync(runFile, JSON.stringify(run, null, 2));
+  }
+}
 
 /** A file of ids, one per line. Another tool may have written it with CRLF. */
 export function parseIdList(text) {
@@ -2246,7 +2425,7 @@ export function fetchEngagement(ctx) {
         }
         const rows = Array.isArray(payload) ? payload.length : null;
         // As long as the page: the server cut it and said nothing. A sample is one page by design.
-        const truncated = isRpRun(d) && !FAMILIES[d.family]?.sample && rows != null && rows >= params.pageSize;
+        const truncated = isRpRun(d) && !FAMILIES[d.family]?.sample && !FAMILIES[d.family]?.onePage && rows != null && rows >= params.pageSize;
         say(truncated ? "ok, a full page: it will be split" : "ok");
         // What must not reach disk is taken out here: a click's IP and URL, and the names in an error message.
         if (FAMILIES[d.family]?.sanitize && Array.isArray(payload)) {
@@ -2376,7 +2555,8 @@ export function fetchEngagement(ctx) {
     pages.push(payload);
     if (!listHasMore(payload, page)) break;
   }
-  const objects = [LOG, SURVEY, ...(params.stepDetail ? [JO_LOG] : []), ...(params.accounts.pull && params.accounts.names ? [COMPANY] : [])];
+  // An account-history pull reads the delivery log and the company object only (ACC-1).
+  const objects = params.kind === "account-history" ? [LOG, COMPANY] : [LOG, SURVEY, ...(params.stepDetail ? [JO_LOG] : []), ...(params.accounts.pull && params.accounts.names ? [COMPANY] : [])];
   for (const object of objects) {
     const got = runUnit({ family: "schema", object });
     if (got.length) readSchema(object, load(got[0]));
@@ -2394,6 +2574,9 @@ export function fetchEngagement(ctx) {
   if (stop || failed.length) return conclude({ whoami });
   if (!types.get(LOG)) throw new EngagementRefusal(`${LOG} has no schema on this tenant — the delivery log cannot be read`);
   if (params.stepDetail && !types.get(JO_LOG)) throw new EngagementRefusal(`${JO_LOG} has no schema on this tenant — step detail cannot be pulled`);
+  // The account timeline (ACC-1) shares this first phase (the token, the tenant check, the program list, the schemas)
+  // and the one call runner; its own calls follow.
+  if (params.kind === "account-history") return accountHistoryCalls({ params, runDir, kbDir, whoami, pages, runUnit, rowsOf, load, conclude, stopped: () => !!stop || failed.length > 0, now, onCall });
   const surveyAvailable = !!types.get(SURVEY);
 
   const whole = monthWindow(params.window.from, params.window.to);
@@ -2645,15 +2828,7 @@ export function fetchEngagement(ctx) {
 
   // Phase C: the facts. The pull time is stamped HERE, when the first fact call is about to be made (F-482),
   // and kept with the run: a resume continues under the same stamp, and a plan alone stamps nothing.
-  if (params.pulledAt == null) {
-    Object.assign(params, { ...stampClock(now()), ...(params.timeZone ? { timeZone: params.timeZone } : {}) });
-    const runFile = join(runDir, "run.json");
-    if (existsSync(runFile)) {
-      const run = readJsonFile(runFile);
-      run.params = { ...run.params, pulledAt: params.pulledAt, timeZone: params.timeZone };
-      writeFileAtomicSync(runFile, JSON.stringify(run, null, 2));
-    }
-  }
+  stampRun(params, runDir, now);
   const accountRecs = [];
   for (const d of units) {
     if (isHealth(d)) continue; // Phase E
@@ -2712,6 +2887,95 @@ export function fetchEngagement(ctx) {
     }
   }
   return conclude({ whoami, estimate, programs });
+}
+
+// ── The account timeline's calls (ACC-1) ─────────────────────────────────────
+/**
+ * An account-history pull after the shared first phase (the token, the tenant check, the program list, the
+ * schemas): find the account, then its sends by program, email and day, then the same programs' sends to every
+ * recipient over the same days. Every call goes through the fetch loop's one runner: the gate, the schema check,
+ * the retry and the splits, resume by the call's id, the token's deadline.
+ *
+ * The account is found by its GSID, or by its name: an exact match (EQ) that finds ONE account is it; one that finds
+ * several, or none (then CONTAINS), answers with a PICK LIST, each candidate with its sends over the same days, and
+ * nothing more is pulled. A name is never guessed.
+ * @param {*} ctx the fetch loop's runner and what its first phase read
+ */
+function accountHistoryCalls({ params, runDir, kbDir, whoami, pages, runUnit, rowsOf, load, conclude, stopped, now }) {
+  const window = { start: params.window.start, end: params.window.endExclusive };
+  const fields = params.fields ?? [];
+  const asked = params.account.id ?? params.account.name;
+  const by = params.account.id ? "id" : "name";
+  /** One page of the company search: the accounts it found, and whether there were more than a pick list shows. */
+  const lookup = (match, value) => {
+    const recs = runUnit({ family: "account-lookup", by, match, value, fields });
+    if (!recs.length) return null;
+    return { rows: load(recs[0]).map((row) => ROW_READERS["account-lookup"](row, fields)).filter((a) => a.key), more: (recs[0].rows ?? 0) > ACCOUNT_PICK_MAX };
+  };
+  const notFound = (match) => conclude({ whoami, resolution: { status: "not-found", by, asked, match, more: false, candidates: [] } });
+  let found = lookup(by === "id" ? "IN" : "EQ", asked);
+  if (!found) return conclude({ whoami });
+  let match = by === "id" ? "IN" : "EQ";
+  if (by === "name" && !found.rows.length) {
+    found = lookup("CONTAINS", asked);
+    if (!found) return conclude({ whoami });
+    match = "CONTAINS";
+  }
+  if (!found.rows.length) return notFound(match);
+  if (by === "name" && (match === "CONTAINS" || found.rows.length > 1)) {
+    // Several accounts, or none named exactly so: a pick list, never a guess.
+    const shown = [...found.rows].sort((a, b) => cmpKey(String(a.name ?? "").toLowerCase(), String(b.name ?? "").toLowerCase()) || cmpKey(a.key, b.key)).slice(0, ACCOUNT_PICK_MAX);
+    const sends = new Map();
+    for (const u of rowsOf(runUnit({ family: "account-pick", cls: "all", window, keys: shown.map((a) => a.key) }))) {
+      for (const row of u.rows) {
+        const r = ROW_READERS["account-pick"](row);
+        if (r.key != null) sends.set(r.key, (sends.get(r.key) ?? 0) + (r.n ?? 0));
+      }
+    }
+    if (stopped()) return conclude({ whoami });
+    const candidates = shown.map((a) => ({ key: a.key, name: a.name, ...(fields.length ? { attrs: a.attrs } : {}), sent: sends.get(a.key) ?? 0 }));
+    return conclude({ whoami, resolution: { status: "pick", by, asked, match, more: found.more, candidates } });
+  }
+  const account = found.rows[0];
+  const testAccount = params.testAccounts.includes(account.key);
+  stampRun(params, runDir, now);
+  const resolved = { status: "resolved", by, asked, match, account: { key: account.key, name: account.name }, testAccount };
+
+  // The account's sends by program, email and day; the internal class by domain (an account named as a test account
+  // is internal whole, so it needs no domain call).
+  const dayUnits = rowsOf(runUnit({ family: "account-days", cls: "all", window, account: account.key }));
+  if (!testAccount) for (const domain of params.internalDomains) if (!stopped()) dayUnits.push(...rowsOf(runUnit({ family: "account-days", cls: "internal", domain, window, account: account.key })));
+  if (stopped()) return conclude({ whoami, resolution: resolved });
+
+  // The programs that sent to it: a program the list lacks is described before it is called deleted.
+  const listed = listedPrograms(pages);
+  const sentRows = dayUnits.filter((u) => u.cls === "all").flatMap((u) => u.rows.map((row) => ROW_READERS["account-days"](row)));
+  const programIds = [...new Set(sentRows.map((r) => r.programId).filter(Boolean))].sort(cmpKey);
+  const kept = [];
+  for (const id of programIds) {
+    if (listed.has(id)) { kept.push(id); continue; }
+    const got = runUnit({ family: "describe", programId: id });
+    if (!got.length) return conclude({ whoami, resolution: resolved });
+    if (!got[0].notFound) kept.push(id);
+  }
+
+  // Every recipient of the same programs over the same days, by class: the comparison.
+  const tenant = (cls, extra = {}) => batches(kept).map((programs) => ({ family: "account-tenant", cls, window, programs, ...extra }));
+  const tenantUnits = [
+    ...tenant("all"),
+    ...params.internalDomains.flatMap((domain) => tenant("internal", { domain })),
+    ...(params.testAccounts.length ? [...tenant("test", { testAccounts: params.testAccounts }), ...params.internalDomains.flatMap((domain) => tenant("test-internal", { domain, testAccounts: params.testAccounts }))] : []),
+  ];
+  for (const u of tenantUnits) {
+    if (stopped()) break;
+    runUnit(u);
+  }
+  // The emails' subjects and step names, from the knowledge base (kept with the run: reduce reads the file).
+  if (kbDir && !stopped()) {
+    const templateIds = [...new Set(sentRows.map((r) => r.templateId).filter(Boolean))].sort(cmpKey);
+    writeFileAtomicSync(join(runDir, "kb-steps.json"), JSON.stringify(readKbSteps(kbDir, params.today, { templateIds, programIds: [] })));
+  }
+  return conclude({ whoami, resolution: resolved });
 }
 
 // Step names and order per program, from the KB's program docs through the one
@@ -2788,6 +3052,19 @@ export function templateGap({ referenced, lastSend, templates, clicked }) {
     else if (!clicked.has(id) && doc.linkTracking == null) out.unread.push(id);
   }
   return out;
+}
+/**
+ * One template's place in one program's design (R21): its step name and order when it sits on exactly ONE step of
+ * that program, how many steps it is on (0 = no design in the KB), and the doc's date the name is as of (null with no
+ * design). The engagement snapshot's template rows and the account timeline's read it this one way.
+ * @param {string} templateId @param {string} programId @param {?*} kbSteps readKbSteps' output, or null without a KB
+ * @returns {{programId: string, stepName: ?string, stepOrder: ?number, stepCount: number, asOf: ?string}}
+ */
+export function templateUse(templateId, programId, kbSteps) {
+  const design = kbSteps?.programs?.[programId];
+  const steps = (design ?? []).filter((s) => s.templateIds.includes(templateId));
+  const one = steps.length === 1 ? steps[0] : null;
+  return { programId, stepName: one?.stepName ?? null, stepOrder: one?.order ?? null, stepCount: steps.length, asOf: design ? kbSteps?.schedules?.[programId]?.asOf ?? null : null };
 }
 /**
  * One template's content for the snapshot (T10TemplateContent; TPL-1): the
@@ -3733,11 +4010,7 @@ export function reduceEngagement(input) {
   const templates = templateIds.map((id) => ({
     id,
     name: pickName(tplNames.get(id)) ?? prevTemplates.get(id)?.name ?? null,
-    uses: [...new Set(byTemplate.filter((r) => r.templateId === id).map((r) => r.programId))].sort(cmpKey).map((programId) => {
-      const steps = (design[programId] ?? []).filter((s) => s.templateIds.includes(id));
-      const one = steps.length === 1 ? steps[0] : null;
-      return { programId, stepName: one?.stepName ?? null, stepOrder: one?.order ?? null, stepCount: steps.length, asOf: design[programId] ? docAsOf(programId) : null };
-    }),
+    uses: [...new Set(byTemplate.filter((r) => r.templateId === id).map((r) => r.programId))].sort(cmpKey).map((programId) => templateUse(id, programId, kbSteps)),
     lastSendMonth: lastSendOf.get(id) ?? null,
     // The template's current text from the KB doc (TPL-1), tokens rendered; null without a doc, and without a KB.
     content: kbSteps ? templateContentOf(kbSteps.templates?.[id], lastSendOf.get(id) ?? null) : null,
@@ -3949,6 +4222,310 @@ export function loadRun(runDir, opts = {}) {
   };
 }
 
+// ── The account timeline: reduce (ACC-1) ─────────────────────────────────────
+/**
+ * The account an account-history run is about, decided again from the lookup's own rows exactly as the fetch decided
+ * it: by its GSID, or the ONE exact match of its name. Anything else is refused: a pick list is the fetch's answer.
+ * @param {*} params @param {Array<*>} units
+ */
+function timelineAccount(params, units) {
+  const fields = params.fields ?? [];
+  const by = params.account.id ? "id" : "name";
+  const rows = units.filter((u) => u.family === "account-lookup" && u.by === by && (by === "id" || u.match === "EQ")).flatMap((u) => u.rows.map((row) => ROW_READERS["account-lookup"](row, fields))).filter((a) => a.key);
+  const keys = [...new Set(rows.map((a) => a.key))];
+  if (keys.length !== 1) throw new Error(`account timeline reduce: the run's lookup found ${keys.length} account(s) for ${by === "id" ? `GSID ${params.account.id}` : `the name "${printable(params.account.name, 80)}"`} — a timeline is made for exactly one; a pick list is the pull's answer, never a guess`);
+  return rows.find((a) => a.key === keys[0]);
+}
+/**
+ * An account-history run directory → its account timeline (T10AccountTimeline). Pure: no clock, no file, no call.
+ * Given a dashboard snapshot (`against`), the timeline is also reconciled with that snapshot's rows of the same
+ * account, through the engine (runQuery on the dashboard's side, timelineByMonth on the timeline's).
+ * @param {{params: *, whoami: *, programPages: Array<*>, describes: Map<string, *>, units: Array<*>, kbSteps?: *, against?: ?T10Snapshot, calls?: *, cliVersion?: ?string, pluginVersion?: ?string}} input
+ * @returns {T10AccountTimeline}
+ */
+export function reduceAccountTimeline(input) {
+  const { params, whoami, programPages, describes, units, kbSteps = null, against = null, calls = {}, cliVersion = null, pluginVersion = null } = input;
+  if (typeof params.pulledAt !== "string") throw new Error("account timeline reduce: the run carries no pull time — its calls for the account never started");
+  const account = timelineAccount(params, units);
+  const testAccount = params.testAccounts.includes(account.key);
+  const listed = listedPrograms(programPages);
+  const rowStats = { seen: 0, parsed: 0, unreadable: 0 };
+  const known = (id) => (listed.has(id) ? listed.get(id) : describes.has(id) ? describes.get(id) : undefined);
+  const programIds = new Set();
+  const deleted = { programs: new Set(), sent: 0 };
+  // The account's rows: program × email × day, the all slot and the internal slot (the domain calls).
+  const cells = new Map();
+  const names = new Map();
+  let noTemplateSent = 0;
+  for (const u of units.filter((x) => x.family === "account-days")) {
+    for (const row of u.rows) {
+      rowStats.seen++;
+      const { programId: p, templateId: t, templateName: name, day, n, flags } = ROW_READERS["account-days"](row);
+      if (p == null || day == null || n == null) { rowStats.unreadable++; continue; }
+      rowStats.parsed++;
+      const program = known(p);
+      if (program === undefined) throw new Error(`account timeline reduce: program ${p} sent to the account but was neither listed nor described — the pull is incomplete`);
+      if (program === null) {
+        if (u.cls === "all") { deleted.programs.add(p); deleted.sent += n; }
+        continue;
+      }
+      programIds.add(p);
+      addFlags(cellOf(cells, [p, t, day])[slotOf(u.cls)], n, flags);
+      if (u.cls !== "all") continue;
+      if (t == null) noTemplateSent += n;
+      else if (name) names.set(t, (names.get(t) ?? new Map()).set(name, (names.get(t)?.get(name) ?? 0) + n));
+    }
+  }
+  const flagOnly = (m) => Object.fromEntries(TIMELINE_MEASURES.map((k) => [k, m[k]]));
+  const minus = (a, b) => Object.fromEntries(TIMELINE_MEASURES.map((k) => [k, a[k] - b[k]]));
+  const nonZero = (m) => TIMELINE_MEASURES.some((k) => m[k] !== 0);
+  const byDay = (a, b) => cmpKey(a.day ?? "", b.day ?? "") || cmpKey(a.programId, b.programId) || cmpKey(String(a.templateId), String(b.templateId)) || cmpKey(a.recipientClass, b.recipientClass);
+  const accountTimeline = [];
+  let classOver = 0;
+  for (const { key: [programId, templateId, day], all, internal } of cells.values()) {
+    // An account named as a test account is internal whole (S3b: test accounts join the internal class).
+    const inside = testAccount ? flagOnly(all) : flagOnly(internal);
+    const outside = minus(flagOnly(all), inside);
+    if (TIMELINE_MEASURES.some((k) => outside[k] < 0)) classOver++;
+    if (nonZero(inside)) accountTimeline.push({ programId, templateId, day, recipientClass: "internal", ...inside });
+    if (nonZero(outside)) accountTimeline.push({ programId, templateId, day, recipientClass: "external", ...outside });
+  }
+  accountTimeline.sort(byDay);
+
+  // The comparison: every recipient of the same programs over the same days, by class.
+  const tenantCells = new Map();
+  for (const u of units.filter((x) => x.family === "account-tenant")) {
+    for (const row of u.rows) {
+      rowStats.seen++;
+      const { programId: p, n, flags } = ROW_READERS["account-tenant"](row);
+      if (p == null || n == null) { rowStats.unreadable++; continue; }
+      rowStats.parsed++;
+      if (!programIds.has(p)) continue;
+      addFlags(cellOf(tenantCells, [p])[slotOf(u.cls)], n * signOf(u.cls), flags);
+    }
+  }
+  const tenantByProgram = [];
+  for (const { key: [programId], all, internal } of tenantCells.values()) {
+    const inside = flagOnly(internal);
+    const outside = minus(flagOnly(all), inside);
+    if (nonZero(inside)) tenantByProgram.push({ programId, recipientClass: "internal", ...inside });
+    if (nonZero(outside)) tenantByProgram.push({ programId, recipientClass: "external", ...outside });
+  }
+  tenantByProgram.sort((a, b) => cmpKey(a.programId, b.programId) || cmpKey(a.recipientClass, b.recipientClass));
+
+  // ── Dimensions ──
+  const programs = [...programIds].sort(cmpKey).map((id) => {
+    const p = known(id);
+    return { id, name: p.name, statuses: p.statuses, model: p.model, modelName: p.modelName };
+  });
+  const pickName = (m) => [...(m ?? [])].sort((a, b) => b[1] - a[1] || cmpKey(a[0], b[0]))[0]?.[0] ?? null;
+  const templateIds = [...new Set(accountTimeline.map((r) => r.templateId).filter((t) => t != null))].sort(cmpKey);
+  const templates = templateIds.map((id) => {
+    // The subject as the knowledge base holds it now, tokens as their labels (TPL-1's renderer); null without a doc.
+    const content = kbSteps ? templateContentOf(kbSteps.templates?.[id], null) : null;
+    return {
+      id, name: pickName(names.get(id)), subject: content?.subject ?? null, subjectAsOf: content?.asOf ?? null,
+      uses: [...new Set(accountTimeline.filter((r) => r.templateId === id).map((r) => r.programId))].sort(cmpKey).map((programId) => templateUse(id, programId, kbSteps)),
+    };
+  });
+  const days = params.window;
+  const timeline = {
+    schemaVersion: /** @type {1} */ (T10_SCHEMA_VERSION),
+    kind: /** @type {"account-timeline"} */ ("account-timeline"),
+    meta: {
+      source: /** @type {"jo-engagement"} */ ("jo-engagement"),
+      params: { account: { id: params.account.id, name: params.account.name }, last: params.lastSpec, internalDomains: params.internalDomains, testAccounts: params.testAccounts, fields: params.fields, pageSize: params.pageSize },
+      pulledAt: params.pulledAt,
+      timeZone: params.timeZone ?? null,
+      tenantHost: whoami.host,
+      cliVersion,
+      pluginVersion,
+      window: { last: days.last, days: days.days, start: days.start, end: days.end, endExclusive: days.endExclusive },
+      incompleteFrom: params.incompleteFrom,
+      dateBasis: { object: LOG, field: LOG_SRC.dateField, grain: /** @type {"day"} */ ("day") },
+      templates: kbSteps ? { subjects: true, reason: null } : { subjects: false, reason: "no-kb" },
+    },
+    dimensions: {
+      account: { key: account.key, name: account.name, testAccount, ...((params.fields ?? []).length ? { attrs: account.attrs } : {}) },
+      programs,
+      templates,
+    },
+    facts: { accountTimeline, tenantByProgram },
+    honesty: {
+      rows: rowStats,
+      excluded: { deletedPrograms: { programs: deleted.programs.size, sent: deleted.sent } },
+      noTemplateId: { sent: noTemplateSent },
+      lookup: { by: params.account.id ? "id" : "name", asked: params.account.id ?? params.account.name },
+      calls,
+    },
+    reconciliation: /** @type {*} */ (null),
+    caveats: /** @type {Array<{id: string, detail: Object<string, *>}>} */ ([]),
+  };
+
+  // ── Reconciliation: the timeline's own two checks, then the dashboard's rows of the same account ──
+  const accountAll = new Map();
+  for (const r of accountTimeline) addTimelineRow(accountAll, r.programId, r);
+  const tenantAll = new Map();
+  for (const r of tenantByProgram) addTimelineRow(tenantAll, r.programId, r);
+  const overTenant = [...accountAll].filter(([p, m]) => TIMELINE_MEASURES.some((k) => m[k] > (tenantAll.get(p)?.[k] ?? 0)));
+  const check = (id, compared, bad, examples = []) => ({ id, ok: bad === 0, compared, mismatches: bad, examples: examples.slice(0, 5), drift: 0, driftExamples: [] });
+  const checks = [
+    // An internal figure larger than the all-recipients one: a class call that counted something twice.
+    check("internal-within-all", cells.size, classOver),
+    // The account's sends are some of the tenant's: never more, on any program or measure.
+    check("account-within-tenant", accountAll.size, overTenant.length, overTenant.map(([programId]) => ({ programId }))),
+  ];
+  const vsDashboard = against ? reconcileWithDashboard(timeline, against) : null;
+  if (vsDashboard?.check) checks.push(vsDashboard.check);
+  timeline.reconciliation = { ok: checks.every((c) => c.ok), checks, against: vsDashboard?.against ?? null };
+
+  // ── Caveats: this timeline's own ──
+  const caveats = timeline.caveats;
+  if (!params.internalDomains.length && !testAccount) caveats.push({ id: "recipient-class-not-configured", detail: {} });
+  if (testAccount) caveats.push({ id: "timeline-test-account", detail: {} });
+  if (deleted.programs.size) caveats.push({ id: "deleted-programs-excluded", detail: { programs: deleted.programs.size, sent: deleted.sent } });
+  if (noTemplateSent) caveats.push({ id: "no-template-id", detail: { sent: noTemplateSent } });
+  const oldest = (xs) => xs.filter(Boolean).sort()[0] ?? null;
+  const stepAsOf = oldest(templates.flatMap((t) => t.uses.map((u) => u.asOf)));
+  if (stepAsOf) caveats.push({ id: "step-names-as-of", detail: { oldest: stepAsOf } });
+  if (templates.some((t) => t.subject != null)) caveats.push({ id: "timeline-subjects-current", detail: { oldest: oldest(templates.map((t) => t.subjectAsOf)) } });
+  if (!checks.filter((c) => c.id !== "matches-dashboard").every((c) => c.ok)) caveats.push({ id: "reconciliation-mismatch", detail: { checks: checks.filter((c) => !c.ok && c.id !== "matches-dashboard").map((c) => c.id) } });
+  if (vsDashboard?.check && !vsDashboard.check.ok) caveats.push({ id: "timeline-reconciliation-mismatch", detail: { pulledAt: against?.meta.pulledAt, mismatches: vsDashboard.check.mismatches, measures: vsDashboard.measures } });
+  return /** @type {T10AccountTimeline} */ (timeline);
+}
+const addTimelineRow = (map, key, row) => {
+  const m = map.get(key) ?? Object.fromEntries(TIMELINE_MEASURES.map((k) => [k, 0]));
+  for (const k of TIMELINE_MEASURES) m[k] += row[k];
+  map.set(key, m);
+};
+/**
+ * The timeline against a dashboard snapshot's rows of the same account (ACC-1's reconciliation): per program and
+ * month, over the months the timeline covers WHOLE and the snapshot holds, for the programs on which the snapshot
+ * keeps the account's own rows (a dashboard keeps rows only for the accounts its lists selected). By recipient class
+ * when both pulls split the classes the same way, else over every recipient. A month the snapshot still counted as
+ * provisional drifts; a closed month must match on every measure. Both sides through the engine.
+ * @param {T10AccountTimeline} tl @param {T10Snapshot} snapshot
+ * @returns {{check: ?*, against: *, measures: string[]}}
+ */
+function reconcileWithDashboard(tl, snapshot) {
+  const key = tl.dimensions.account.key;
+  const against = { pulledAt: snapshot.meta.pulledAt, basis: /** @type {"class"|"all"} */ ("all"), compared: 0, notCompared: /** @type {Array<{programId: string, reason: string}>} */ ([]), reason: /** @type {?string} */ (null) };
+  if (snapshot.meta.tenantHost !== tl.meta.tenantHost) return { check: null, against: { ...against, reason: "other-tenant" }, measures: [] };
+  const sameList = (a, b) => JSON.stringify([...(a ?? [])].sort()) === JSON.stringify([...(b ?? [])].sort());
+  against.basis = sameList(snapshot.meta.params?.internalDomains, tl.meta.params.internalDomains) && sameList(snapshot.meta.params?.testAccounts, tl.meta.params.testAccounts) ? "class" : "all";
+  const w = tl.meta.window;
+  // Months the timeline covers whole, that the snapshot holds.
+  const months = snapshot.dimensions.months.filter((m) => `${m}-01` >= w.start && `${addMonths(m, 1)}-01` <= w.endExclusive);
+  const dims = against.basis === "class" ? ["program", "month", "recipientClass"] : ["program", "month"];
+  // A dashboard that pulled no accounts holds no row to compare: its own marker says why.
+  const accounts = accountAvailability(snapshot);
+  if (!accounts.pulled) return { check: null, against: { ...against, reason: accounts.reason ?? "not-pulled" }, measures: [] };
+  if (!months.length) return { check: null, against: { ...against, reason: "no-whole-month-in-both" }, measures: [] };
+  const onDashboard = runQuery(snapshot, { months, accounts: [key], accountBuckets: ["account"] }, { groupBy: ["program"], metrics: ["sent"] });
+  const kept = new Set(onDashboard.rows.map((r) => r.key.program));
+  const dashboardPrograms = new Set(snapshot.dimensions.programs.map((p) => p.id));
+  for (const p of tl.dimensions.programs.map((x) => x.id)) {
+    if (!kept.has(p)) against.notCompared.push({ programId: p, reason: dashboardPrograms.has(p) ? "account-not-kept-on-program" : "program-not-in-dashboard" });
+  }
+  if (!kept.size) return { check: null, against: { ...against, reason: snapshot.dimensions.accounts.some((a) => a.key === key) ? "account-not-kept-on-program" : "account-not-kept" }, measures: [] };
+  const dash = runQuery(snapshot, { months, programs: [...kept], accounts: [key], accountBuckets: ["account"] }, { groupBy: dims, metrics: [...TIMELINE_MEASURES] });
+  const keyOf = (programId, month, cls) => JSON.stringify(against.basis === "class" ? [programId, month, cls] : [programId, month]);
+  const dashRows = new Map(dash.rows.map((r) => [keyOf(r.key.program, r.key.month, r.key.recipientClass), Object.fromEntries(TIMELINE_MEASURES.map((k) => [k, r.cells[k].value]))]));
+  const tlRows = new Map();
+  for (const r of timelineByMonth(tl)) {
+    if (!kept.has(r.programId) || !months.includes(r.month)) continue;
+    addTimelineRow(tlRows, keyOf(r.programId, r.month, r.recipientClass), r);
+  }
+  const provisional = String(snapshot.meta.incompleteFrom).slice(0, 7);
+  const check = { id: "matches-dashboard", ok: true, compared: 0, mismatches: 0, examples: /** @type {Array<*>} */ ([]), drift: 0, driftExamples: /** @type {Array<*>} */ ([]) };
+  const measures = new Set();
+  for (const k of new Set([...dashRows.keys(), ...tlRows.keys()])) {
+    const a = tlRows.get(k);
+    const b = dashRows.get(k);
+    check.compared++;
+    const differ = TIMELINE_MEASURES.filter((m) => (a?.[m] ?? 0) !== (b?.[m] ?? 0));
+    if (!differ.length) continue;
+    const [programId, month, recipientClass] = JSON.parse(k);
+    const example = { programId, month, ...(recipientClass ? { recipientClass } : {}), measures: differ, timeline: a ?? null, dashboard: b ?? null };
+    if (month >= provisional) {
+      check.drift++;
+      if (check.driftExamples.length < 5) check.driftExamples.push(example);
+    } else {
+      check.mismatches++;
+      for (const m of differ) measures.add(m);
+      if (check.examples.length < 5) check.examples.push(example);
+    }
+  }
+  check.ok = check.mismatches === 0;
+  against.compared = check.compared;
+  return { check, against, measures: [...measures].sort() };
+}
+/**
+ * An account-history run directory → reduceAccountTimeline's input. Refuses a run that did not finish, or that
+ * answered with a pick list.
+ * @param {string} runDir
+ * @param {{against?: ?T10Snapshot, cliVersion?: ?string, pluginVersion?: ?string}} [opts]
+ */
+export function loadAccountRun(runDir, opts = {}) {
+  const status = readJsonFile(join(runDir, "status.json"));
+  if (status.status !== "ok") throw new Error(`account timeline reduce: the run at ${runDir} is not complete (status ${status.status}) — run it again to resume`);
+  const { params } = readJsonFile(join(runDir, "run.json"));
+  if (params.kind !== "account-history") throw new Error(`account timeline reduce: the run at ${runDir} is not an account-history pull`);
+  const { records } = readFetchLog(runDir);
+  const ok = [...records.values()].filter((r) => r.status === "ok" && !r.truncated);
+  const read = (r) => (r.file.endsWith(".txt") ? readFileSync(join(runDir, r.file), "utf8") : readJsonFile(join(runDir, r.file)));
+  const one = (family) => ok.filter((r) => r.family === family);
+  const kbPath = join(runDir, "kb-steps.json");
+  return {
+    params,
+    whoami: parseWhoami(read(one("whoami")[0])),
+    programPages: one("programs").sort((a, b) => a.page - b.page).map(read),
+    describes: new Map(one("describe").map((r) => [r.programId, r.notFound ? null : describedProgram(read(r))])),
+    units: ok.filter((r) => ["account-lookup", "account-days", "account-tenant"].includes(r.family)).map((r) => ({ ...r, rows: read(r) })),
+    kbSteps: existsSync(kbPath) ? readJsonFile(kbPath) : null,
+    against: opts.against ?? null,
+    calls: { answered: ok.length, split: [...records.values()].filter((r) => r.truncated || r.status === "split").length, retried: [...records.values()].filter((r) => r.attempt > 1).length },
+    cliVersion: opts.cliVersion ?? null,
+    pluginVersion: opts.pluginVersion ?? null,
+  };
+}
+/**
+ * A pick list or an account not found, in words (null once the account is found): the adapter's CLI and the entry
+ * command say the same sentence.
+ * @param {?*} r the fetch summary's resolution
+ * @returns {?string}
+ */
+export function accountResolutionText(r) {
+  if (!r || r.status === "resolved") return null;
+  const asked = printable(String(r.asked ?? ""), 80);
+  if (r.status === "not-found") return r.by === "id" ? `no account has the GSID ${asked}; nothing was pulled` : `no account's name is or contains "${asked}": check the spelling, or give the account's GSID; nothing was pulled`;
+  const shown = `${r.candidates.length}${r.more ? ` (more match: give a longer part of the name)` : ""}`;
+  return r.match === "EQ"
+    ? `${r.candidates.length} accounts are named "${asked}": pick one by its GSID; nothing was pulled`
+    : `no account is named exactly "${asked}"; ${shown} contain it: pick one by its GSID; nothing was pulled`;
+}
+/** What a caller is told about a timeline: the account, counts and verdicts, never rows. */
+export function timelineSummary(tl, outPath) {
+  const sent = tl.facts.accountTimeline.reduce((n, r) => n + r.sent, 0);
+  return {
+    ok: true,
+    out: outPath,
+    kind: tl.kind,
+    pulledAt: tl.meta.pulledAt,
+    account: { key: tl.dimensions.account.key, name: tl.dimensions.account.name, testAccount: tl.dimensions.account.testAccount },
+    window: tl.meta.window,
+    sent,
+    programs: tl.dimensions.programs.length,
+    templates: tl.dimensions.templates.length,
+    rows: { accountTimeline: tl.facts.accountTimeline.length, tenantByProgram: tl.facts.tenantByProgram.length },
+    reconciled: tl.reconciliation.ok,
+    reconciliation: tl.reconciliation.checks.map((c) => ({ id: c.id, ok: c.ok, compared: c.compared, mismatches: c.mismatches, drift: c.drift })),
+    against: tl.reconciliation.against,
+    excluded: tl.honesty.excluded,
+    caveats: tl.caveats.map((c) => c.id),
+  };
+}
+
 // The T-10 read floor (openSnapshot, clickAvailability, readClicked,
 // accountAvailability, programClickAvailability, readResponses) lives in
 // engagement-query.mjs, the module every reader of a snapshot loads. This file
@@ -4021,8 +4598,10 @@ const USAGE =
   "[--name <program-name-or-id>]... [--ids-file <file>] [--sent-since <date|Nd|Nm>] [--internal-domain <domain>]... [--unsubscribe-link <link|host>]... [--test-account <company id>]... [--step-detail] " +
   "[--accounts [--account-list <kind>[:<n>[:<floor>[:<per field>]]]]... [--no-account-lists] [--account-field <company field>]... [--accounts-busiest <N>] [--accounts-low <N>] [--accounts-bounce <N>]] " +
   "[--health [--health-lookback-days <N>] [--failure-categories <file.json>] [--expected-reason <text>]... [--sample-programs <N>] [--quiet-due-days <N>]] " +
-  "[--page-size <N>] [--max-pages <N>] [--previous <snapshot.json>] [--full] [--out <snapshot.json>]  |  engagement.mjs reduce --run-dir <dir> --out <snapshot.json> [--previous <file>] [--link-settings <file>]";
-const EXIT = { ok: 0, failed: 1, "token-expired": 3, partial: 4 };
+  "[--page-size <N>] [--max-pages <N>] [--previous <snapshot.json>] [--full] [--out <snapshot.json>]  |  engagement.mjs reduce --run-dir <dir> --out <snapshot.json> [--previous <file>] [--link-settings <file>]  |  " +
+  "engagement.mjs account (--account-id <company GSID> | --account-name <name>) [--last <Nd|Nm>] [--internal-domain <domain>]... [--test-account <company id>]... [--account-field <company field>]... [--kb <slugDir>] [--against <engagement snapshot.json>] --out <timeline.json>";
+// 6: the account was not found by GSID, or a name matched several accounts or none exactly (a pick list): nothing was pulled.
+const EXIT = { ok: 0, failed: 1, "token-expired": 3, partial: 4, "needs-pick": 6 };
 
 async function main() {
   const [mode, ...argv] = process.argv.slice(2);
@@ -4030,7 +4609,7 @@ async function main() {
   const { opt, finish } = helpers;
   /** @type {import("./doc-lib.mjs").FailFn} */
   const fail = helpers.fail;
-  if (!["plan", "fetch", "reduce", "run"].includes(mode)) fail(USAGE);
+  if (!["plan", "fetch", "reduce", "run", "account"].includes(mode)) fail(USAGE);
   const all = (name) => argv.flatMap((t, i) => (t === name && argv[i + 1] !== undefined ? [argv[i + 1]] : []));
   const int = (name) => (opt(name) === undefined ? undefined : Number(opt(name)));
   const readSnapshot = (path) => {
@@ -4066,6 +4645,53 @@ async function main() {
   if (!wsDir || !existsSync(join(wsDir, ".gs-superadmin"))) fail("no gs-superadmin workspace here (no .gs-superadmin/ in this directory or above it) — run from a workspace or pass --workspace <dir>");
   const catalog = findWorkspaceCatalog(wsDir, join(here, "..", "reference", "catalog.json"));
   if (!catalog) fail("no catalog found (workspace or bundled) — cannot verify the adapter's commands are read-only; refusing");
+  if (mode === "account") {
+    // The account timeline (ACC-1): the account, the lookback and the recipient classes; one call at a time through the
+    // same runner and gate; a pick list (several matches, or none exact) or an unknown GSID pulls nothing (exit 6).
+    const rawAccount = (today) => ({
+      today, account: { id: opt("--account-id") ?? null, name: opt("--account-name") ?? null }, last: opt("--last"),
+      internalDomains: all("--internal-domain"), testAccounts: all("--test-account"), fields: all("--account-field"),
+      pageSize: int("--page-size"), timeoutMs: int("--timeout-ms"), pulledAt: opt("--pulled-at"), timeZone: opt("--time-zone"),
+    });
+    let aparams;
+    try {
+      aparams = resolveAccountParams(rawAccount(opt("--today")));
+    } catch (e) {
+      fail(e instanceof Error ? e.message : String(e));
+    }
+    const out = opt("--out") ? resolve(opt("--out")) : null;
+    if (!out) fail(`account needs --out <timeline.json> — ${USAGE}`);
+    const againstPath = opt("--against") ? resolve(opt("--against")) : null;
+    const against = againstPath ? readSnapshot(againstPath) : null;
+    const runId = opt("--run") ?? `account-${stampClock(Date.now()).pulledAt.replace(/[^0-9]/g, "").slice(0, 14)}`;
+    let runDir;
+    try {
+      ({ runDir, params: aparams } = prepareRun({ wsDir, runId, params: aparams, previousPath: null, cliVersion: catalog.meta?.cliVersion ?? null, todayGiven: opt("--today") !== undefined, reparams: (today) => resolveAccountParams(rawAccount(today)) }));
+    } catch (e) {
+      fail(e instanceof Error ? e.message : String(e));
+    }
+    const kbDir = opt("--kb") ? resolve(opt("--kb")) : null;
+    if (kbDir && !existsSync(kbDir)) fail(`--kb ${opt("--kb")}: directory not found`);
+    let summary;
+    try {
+      summary = fetchEngagement({
+        params: aparams, runDir, kbDir, phase: "all",
+        transport: cliTransport({ cliArgv: resolveCliArgv({ binOpt: opt("--bin"), fail }) }),
+        gate: makeGate({ catalog, hooksDir: join(here, "..", "hooks") }),
+        onCall: (line) => console.error(`engagement.mjs: ${line}`),
+      });
+    } catch (e) {
+      if (e instanceof EngagementRefusal) fail(e.message);
+      throw e;
+    }
+    const head = { mode, runDir, status: summary.status, calls: summary.calls, failed: summary.failed, ...(summary.stopped ? { stopped: summary.stopped } : {}), resolution: summary.resolution ?? null };
+    if (summary.status !== "ok") await finish({ ok: false, ...head }, EXIT[summary.status] ?? EXIT.failed);
+    const said = accountResolutionText(summary.resolution);
+    if (said) await finish({ ok: false, ...head, status: "needs-pick", error: said }, EXIT["needs-pick"]);
+    const timeline = reduceAccountTimeline(loadAccountRun(runDir, { against, cliVersion: catalog.meta?.cliVersion ?? null, pluginVersion }));
+    writeFileAtomicSync(out, JSON.stringify(timeline));
+    await finish({ ...head, ...timelineSummary(timeline, out) });
+  }
   const idsFile = opt("--ids-file");
   const pinFile = opt("--pin-accounts-file");
   // A flag that shapes the account grain says nothing while the grain is off: refuse it rather than drop it.

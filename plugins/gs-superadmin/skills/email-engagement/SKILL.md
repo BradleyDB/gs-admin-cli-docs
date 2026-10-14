@@ -1,12 +1,12 @@
 ---
-description: Read-only Journey Orchestrator email engagement from the tenant's send log, for comparisons across programs and periods — "every program that sent since a date", which programs have low open rates, the cross-program customer lists (most engaged, least engaged, most bounced) — as a one-off report or as a dashboard built once and pulled again by hand whenever new numbers are wanted. Use when asked "how are our email programs performing", "which programs have low open rates", "which customers aren't opening our emails", "build (or edit) a dashboard of our email engagement", or "update the engagement dashboard" (/gs-superadmin:email-engagement refresh <slug>). For ONE program's numbers, Gainsight's own analytics page for that program is the place; this skill is for the comparisons the UI cannot make. Pairs with email-report, which says what the emails say and when they run. Writes a markdown report, optionally CSVs/XLSX, or self-contained HTML pages. Never mutates the tenant.
-argument-hint: "report [--name p]… [--ids-file f] [--sent-since d] [--from YYYY-MM] [--to YYYY-MM] [--internal-domain d]… [--unsubscribe-link l]… [--test-account id]… [--accounts] [--step-detail] [--previous f] [--snapshot f] [--by-template] [--exclude-internal] [--include-paused|--all] [--csv] [--xlsx] [--slug name] | dashboard new <slug> [--fast-path] | dashboard edit <slug> | dashboard list | /gs-superadmin:email-engagement refresh <slug> [--full] [--health-only]"
+description: Read-only Journey Orchestrator email engagement from the tenant's send log, for comparisons across programs and periods — "every program that sent since a date", which programs have low open rates, the cross-program customer lists (most engaged, least engaged, most bounced) — as a one-off report or as a dashboard built once and pulled again by hand whenever new numbers are wanted. Use when asked "how are our email programs performing", "which programs have low open rates", "which customers aren't opening our emails", "build (or edit) a dashboard of our email engagement", "update the engagement dashboard" (/gs-superadmin:email-engagement refresh <slug>), or "what have we emailed this customer" (one account's timeline by day). For ONE program's numbers, Gainsight's own analytics page for that program is the place; this skill is for the comparisons the UI cannot make. Pairs with email-report, which says what the emails say and when they run. Writes a markdown report, optionally CSVs/XLSX, or self-contained HTML pages. Never mutates the tenant.
+argument-hint: "report [--name p]… [--ids-file f] [--sent-since d] [--from YYYY-MM] [--to YYYY-MM] [--internal-domain d]… [--unsubscribe-link l]… [--test-account id]… [--accounts] [--step-detail] [--previous f] [--snapshot f] [--by-template] [--exclude-internal] [--include-paused|--all] [--csv] [--xlsx] [--slug name] | dashboard new <slug> [--fast-path] | dashboard edit <slug> | dashboard list | /gs-superadmin:email-engagement refresh <slug> [--full] [--health-only] | account [<dash>] '<name>' [--last Nd|Nm]"
 # model-invocable by design (no disable-model-invocation): a plain "open rate for program X" routes to `report` (email-report precedent)
 ---
 
 # /gs-superadmin:email-engagement
 
-How Journey Orchestrator emails performed, read from the tenant's send log. Four modes:
+How Journey Orchestrator emails performed, read from the tenant's send log. Its modes:
 
 - **report** — pulls the send log for a period into one snapshot file, then writes a
   report from it: a headline by status, one row per program (sent, unique recipients,
@@ -19,6 +19,8 @@ How Journey Orchestrator emails performed, read from the tenant's send log. Four
   per audience, with global filters and tabs.
 - **/gs-superadmin:email-engagement refresh <slug>** — pulls a saved dashboard again and
   rebuilds its pages, with no model in the loop.
+- **account '<name>'** — one account's emails by program and day over the last N days or
+  months, in a page of its own (its contacts added up, never named).
 
 `/gs-superadmin:email-report` answers what the emails say and when they run, from the KB.
 This skill answers how they performed, from the send log. **For one program's own
@@ -56,7 +58,8 @@ Each is a one-line reminder; the full rule lives where the pointer says.
 First argument: the mode. `report` when the ask is a plain question about open rates,
 engagement or email performance across programs; `dashboard` when the user wants a
 dashboard built, changed or listed; the pull-again mode when a saved dashboard should be
-brought up to date (`/gs-superadmin:email-engagement refresh <slug>`).
+brought up to date (`/gs-superadmin:email-engagement refresh <slug>`); `account` when the ask is
+what one customer was sent.
 
 Pull flags (report mode) — passed to the pull script exactly as written here (steps R2
 and R3):
@@ -110,7 +113,8 @@ matches (or use `--slug`). If no workspace manifest exists, tell the user to run
 `/gs-superadmin:setup` first and stop. If `whoami` does not show `Token: valid`, ask the
 user to run `gs-admin login`, then continue.
 
-Then go to the mode's steps: R (report), D (dashboard), or P (the pull-again mode).
+Then go to the mode's steps: R (report), D (dashboard), P (the pull-again mode), or A (one
+account's timeline).
 
 ---
 
@@ -603,3 +607,61 @@ nothing else with `gs-admin` meanwhile. By exit code:
 `<delta line>` is "first pull, nothing to compare with" when `delta` is null; otherwise
 `since <delta.previousPulledAt> over <delta.closedMonths> closed month(s)`. `<pages>` lists
 each page's path, one per line in the same indentation. Then stop.
+
+---
+
+## A — one account's timeline (`/gs-superadmin:email-engagement account '<name>'`)
+
+Every Journey Orchestrator email one account received over the last N days or months, by
+program and day, in a page of its own. Use it when the user asks what a customer was sent
+("what have we emailed Acme Corp lately?", "show me Acme's email history"). The account is
+the finest grain: its contacts are added up and never named, and no contact-level ask is
+answered here. Check the login first (step 1); then:
+
+```
+node .gs-superadmin/plugin/scripts/dashboard.mjs account --account-name '<name>' --kb <slug>
+```
+
+Substitute `<name>` with the company's name as the user gave it, single-quoted (rule canon:
+operating model, shell quoting); when the user gave the company's GSID instead, write
+`--account-id <gsid>` in place of `--account-name '<name>'`. Add `--last <Nd|Nm>` when the
+user named a period (`--last 6m`; 90 days unless asked, at most 24 months). When the ask
+names a saved dashboard (or came from a dashboard page's copied line), put its name right
+after `account` (`account <dash> --account-id …`): the dashboard then decides who is
+internal, the timeline is checked against the dashboard's latest pull of the same account,
+and the page sits beside the dashboard's pages. Without a dashboard, pass the company's
+own domains and test accounts the way the report mode does (`--internal-domain`,
+`--test-account`), when the user named them.
+
+Start it in the background and wait for it to finish; do nothing else with `gs-admin`
+meanwhile. By exit code:
+
+- `0` — relay the summary: `account.name`, `window` (its `last`, `start` and `end`), `sent`,
+  `programs`, `reconciled` (and, when a dashboard was named, `against`: compared, or the
+  reason it was not), and the `page` path.
+- `6` — the name matched several accounts, or none exactly (`resolution.candidates`, each
+  with its `key` and its `sent` over the same days; empty when nothing matched). Nothing was
+  pulled and nothing is guessed: show the candidates as a numbered list (name, GSID, sends)
+  and ask which one; then re-issue the command with `--account-id <the chosen key>`.
+- `3` — the login expired: relay `error`, ask the user to run `gs-admin login`, then
+  re-issue the same command; it continues where it stopped.
+- `4` — a call failed: relay `error`, re-issue once, then report.
+- `5` — the CLI is on another tenant than the knowledge base's (or the dashboard's): say
+  both tenants and stop.
+- `1` — refused: relay `error` and stop.
+
+```
+✓ /gs-superadmin:email-engagement account complete
+  Account:   <account.name> (<account.key>)
+  Days:      <window.start> to <window.end> (the last <window.last>)
+  Sends:     <sent> from <programs> program(s)
+  Checks:    <checks line>
+  Page:      <page>
+```
+
+`<checks line>` is "ok" when `reconciled` is true and no dashboard was named; "ok, and
+equal to the dashboard's own rows of this account" when `against.compared` is above 0;
+"not compared with the dashboard: <against.reason>" when `against.reason` is set; and
+"FAILED: <the failed checks' ids>" when `reconciled` is false (then also say the figures are
+unreliable and suggest pulling again). Then stop. Only someone with a `gs-admin` login can
+run this; anyone else sees an account only through a dashboard page's one-account view.

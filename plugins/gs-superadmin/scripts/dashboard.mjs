@@ -54,6 +54,14 @@
 //   health <slug> --program <id>
 //                        a program's masked messages and the "Other" samples,
 //                        to the terminal (never a page)
+//   account [<slug>] (--account-id <GSID> | --account-name <name>) [--last <Nd|Nm>]
+//                        one account's emails by program and day (ACC-2): the
+//                        adapter's account-history pull (90 days unless asked,
+//                        at most 24 months), a timeline file and a page of its
+//                        own; with a dashboard named, its recipient classes and
+//                        look, reconciled against its latest snapshot; a name
+//                        matching several accounts, or none exactly, is a pick
+//                        list (exit 6) and pulls nothing
 //   costs | questions    the two tables, as data, for a reader (the asks and
 //                        options with the ruled placeholder letters where a
 //                        figure comes from the plan)
@@ -63,7 +71,7 @@
 // --today YYYY-MM-DD, --now <ISO>.
 //
 // Exit codes: 0 ok · 1 refused or failed · 3 token-expired (resumable) ·
-// 4 partial (resumable) · 5 wrong-tenant.
+// 4 partial (resumable) · 5 wrong-tenant · 6 needs-pick (account: a pick list).
 //
 // What the code enforces:
 //   - The tenant: before any call, `whoami`'s host must equal the spec's
@@ -104,9 +112,12 @@ import {
   specStore, SpecRefusal, holderName, openSpec, SPEC_DESCRIPTIONS, PRESETS, TABS, DEFAULT_ACCOUNT_LISTS, defaultSpec,
   accountLists, accountFields, kbSettings, windowOf, presetPanels,
 } from "./dashboard-spec.mjs";
-import { resolveParams, prepareRun, runParamsMoved, fetchEngagement, reduceEngagement, loadRun, cliTransport, makeGate, parseWhoami, addMonths, monthsBetween, pickSchedule, describedProgram, EngagementRefusal, ROW_READERS, rpRunArgv } from "./engagement.mjs";
+import {
+  resolveParams, prepareRun, runParamsMoved, fetchEngagement, reduceEngagement, loadRun, cliTransport, makeGate, parseWhoami, addMonths, monthsBetween, pickSchedule, describedProgram, EngagementRefusal, ROW_READERS, rpRunArgv, buildQuery,
+  resolveAccountParams, reduceAccountTimeline, loadAccountRun, accountResolutionText, timelineSummary,
+} from "./engagement.mjs";
 import { applyGroups, programTraitsOf, suggestionTable } from "./dashboard-groups.mjs";
-import { buildPage, inlinedSources, pageFileName } from "./dashboard-page.mjs";
+import { buildPage, buildTimelinePage, inlinedSources, pageFileName } from "./dashboard-page.mjs";
 import { COPY_LINES, HOW_TO_REFRESH_TEXT } from "./dashboard-runtime.mjs";
 import { writeReport, ReportRefusal } from "./engagement-report.mjs";
 import * as engine from "./engagement-query.mjs";
@@ -115,11 +126,15 @@ import { validateTheme, readLogo, LOGO_MAX_BYTES } from "./dashboard-theme.mjs";
 const here = dirname(fileURLToPath(import.meta.url));
 const MANIFEST_SCRIPT = join(here, "manifest.mjs");
 const DESCRIBE_BATCH_SCRIPT = join(here, "describe-batch.mjs");
-export const EXIT = Object.freeze({ ok: 0, failed: 1, "token-expired": 3, partial: 4, "wrong-tenant": 5 });
+// 6 (ACC-2): the account was not found by its GSID, or its name matched several accounts or none exactly — a pick list; nothing was pulled.
+export const EXIT = Object.freeze({ ok: 0, failed: 1, "token-expired": 3, partial: 4, "wrong-tenant": 5, "needs-pick": 6 });
 // Files this command owns, inside the dashboard's folder (beside the spec writer's two).
 export const SNAPSHOTS_DIR = "snapshots";
 export const PREVIEW_DIR = "preview";
 export const REPORTS_DIR = "reports";
+// An account's timeline (ACC-2): its page and its file, one per account, beside the dashboard's pages (or in the
+// knowledge base's reports-adhoc folder when no dashboard is named).
+export const ACCOUNTS_DIR = "accounts";
 export const LOCK_FILE = "refresh.lock";
 export const STATE_FILE = "refresh-state.json";
 export const INTERVIEW_FILE = "interview-state.json";
@@ -787,12 +802,12 @@ const lockState = (ctx, slug) => {
   return { held: true, by: held.by ?? null, at: held.at ?? null, stale: !Number.isFinite(age) || age >= LOCK_STALE_MS, run: held.run ?? null };
 };
 // ── The tenant and the token, before any call ────────────────────────────────
-function preflight(ctx, spec) {
+function preflight(ctx, spec, { owner = "this dashboard" } = {}) {
   const r = ctx.live().run({ id: "whoami", argv: ["whoami"], timeoutMs: 60000 });
   if (!r.ok) refuse(`gs-admin whoami failed: ${r.stderr.trim() || `exit ${r.status}`}`);
   const who = parseWhoami(r.stdout);
   if (!who.host) refuse("whoami shows no Base URL — the CLI has no tenant selected");
-  if (who.host !== spec.tenantHost) refuse(`the CLI is on ${who.host}, and this dashboard belongs to ${spec.tenantHost} — switch tenants (gs-admin config --base-url …) or pick the dashboard of that tenant; nothing was called`, "wrong-tenant");
+  if (who.host !== spec.tenantHost) refuse(`the CLI is on ${who.host}, and ${owner} belongs to ${spec.tenantHost} — switch tenants (gs-admin config --base-url …) or pick the ${owner === "this dashboard" ? "dashboard" : "knowledge base"} of that tenant; nothing was called`, "wrong-tenant");
   if (who.tokenState !== "valid") refuse(`whoami reports the token as ${who.tokenState} — run \`gs-admin login\`, then run this again`, "token-expired");
   return who;
 }
@@ -1076,7 +1091,8 @@ function loadRunLightly(runDir, today) {
 }
 function lookupCompany(ctx, spec, name) {
   preflight(ctx, spec);
-  const argv = rpRunArgv({ object: "company", group: [], show: [{ name: "Gsid" }, { name: "Name" }], where: [{ leftOperand: { fieldName: "Name" }, operator: "EQ", rightOperand: { value: name } }] }, 50);
+  // The adapter's one company search (ACC-1's account-lookup family): a name is looked up one way everywhere.
+  const argv = rpRunArgv(buildQuery({ family: "account-lookup", by: "name", match: "EQ", value: name }), 50);
   const refusal = ctx.gate(argv);
   if (refusal) refuse(refusal);
   const r = ctx.live().run({ id: "lookup", argv, timeoutMs: 120000 });
@@ -1556,11 +1572,60 @@ function verbHealth(ctx, slug, opt) {
   };
 }
 
+/**
+ * An account's timeline (ACC-2): one account's emails by program and day, pulled on demand (a static page cannot
+ * pull), reduced, and built into a page of its own. With a dashboard named, the dashboard's recipient classes and
+ * company fields decide the pull, its latest snapshot is what the timeline is reconciled against, its look is the
+ * page's, and the files sit beside its pages; without one, the flags decide and the files go to reports-adhoc. The
+ * tenant is checked before any call; the pull is the adapter's, one call at a time, resumable after a login. A name
+ * that matches several accounts, or none exactly, is a pick list (exit 6): nothing is pulled and nothing guessed.
+ */
+function verbAccount(ctx, slug, opt, argv) {
+  const spec = slug ? savedSpec(ctx, slug) : null;
+  const given = ["--internal-domain", "--test-account", "--account-field"].filter((f) => argv.includes(f));
+  if (spec && given.length) refuse(`${given.join(", ")}: the dashboard "${slug}" decides who is internal and which company fields are read; leave the flags out, or name no dashboard`);
+  if (spec) preflight(ctx, spec);
+  else {
+    let host = null;
+    try { host = new URL(ctx.identity?.baseUrl).host.toLowerCase(); } catch { /* no tenant recorded: refused below */ }
+    if (!host) refuse(`the knowledge base ${basename(ctx.kbDir)} records no tenant (its manifest has no baseUrl) — run /gs-superadmin:setup`);
+    preflight(ctx, { tenantHost: host }, { owner: `the knowledge base ${basename(ctx.kbDir)}` });
+  }
+  const all = (name) => argv.flatMap((t, i) => (t === name && argv[i + 1] !== undefined ? [argv[i + 1]] : []));
+  const raw = (today) => ({
+    today, account: { id: opt("--account-id") ?? null, name: opt("--account-name") ?? null }, last: opt("--last"),
+    internalDomains: spec ? src(spec).internalDomains : all("--internal-domain"), testAccounts: spec ? src(spec).testAccounts : all("--test-account"),
+    fields: spec ? accountFields(spec) : all("--account-field"),
+  });
+  let params;
+  try { params = resolveAccountParams(raw(ctx.today)); } catch (e) { refuse(e instanceof Error ? e.message : String(e)); }
+  // The same line run again (after a login) continues the same run; another account, lookback or day is a new one.
+  const runId = `${slug ? `dash-${slug}` : "adhoc"}-account-${sha({ account: params.account, last: params.lastSpec, internalDomains: params.internalDomains, testAccounts: params.testAccounts, fields: params.fields, today: params.today })}`;
+  const prepared = prepareRun({ wsDir: ctx.wsDir, runId, params, previousPath: null, cliVersion: ctx.catalog.meta?.cliVersion ?? null, todayGiven: ctx.todayGiven, reparams: (today) => resolveAccountParams(raw(today)) });
+  const summary = fetchEngagement({ params: prepared.params, runDir: prepared.runDir, kbDir: ctx.kbDir, phase: "all", transport: ctx.live(), gate: ctx.gate, onCall: (line) => ctx.log(`account ${line}`) });
+  if (summary.status === "token-expired") refuse(`the login ran out before the pull did (${summary.stopped ?? "the token expired"}): run gs-admin login, then run the same line again; it continues where it stopped`, "token-expired", { calls: summary.calls });
+  if (summary.status !== "ok") refuse(`${failedText(summary.failed)}: run the same line again; it retries the call and continues`, "partial", { calls: summary.calls, failed: summary.failed });
+  const said = accountResolutionText(summary.resolution);
+  if (said) refuse(said, "needs-pick", { resolution: summary.resolution });
+  const againstPath = spec ? latestSnapshotPath(ctx, slug) : null;
+  const timeline = reduceAccountTimeline(loadAccountRun(prepared.runDir, { against: againstPath ? openSnapshotFile(againstPath) : null, cliVersion: ctx.catalog.meta?.cliVersion ?? null, pluginVersion: ctx.pluginVersion }));
+  const outDir = spec ? join(dirOf(ctx, slug), ACCOUNTS_DIR) : join(ctx.kbDir, "reports-adhoc");
+  mkdirSync(outDir, { recursive: true });
+  const built = buildTimelinePage({ timeline, ...inlinedSources(), slug: slug ?? null, kb: basename(ctx.kbDir), theme: spec?.theme ?? null });
+  const page = join(outDir, built.report.file);
+  const file = join(outDir, built.report.file.replace(/[.]html$/, ".json"));
+  writeFileAtomicSync(file, JSON.stringify(timeline));
+  writeFileAtomicSync(page, built.html);
+  if (built.report.warning) ctx.log(`account timeline page: ${built.report.warning}`);
+  return { ...timelineSummary(timeline, file), mode: "account", slug: slug ?? null, page, megabytes: built.report.megabytes, againstSnapshot: againstPath ? basename(againstPath) : null, calls: summary.calls };
+}
+
 // ── CLI ──────────────────────────────────────────────────────────────────────
 const USAGE =
-  "usage: dashboard.mjs <new|next|answer|change|save|list|status|refresh|rebuild|report|export|import|health|costs|questions> [<slug>] [...] " +
+  "usage: dashboard.mjs <new|next|answer|change|save|list|status|refresh|rebuild|report|export|import|health|account|costs|questions> [<slug>] [...] " +
+  "[account: (--account-id <GSID> | --account-name <name>) [--last <Nd|Nm>] (with no <slug>: [--internal-domain <d>]... [--test-account <id>]... [--account-field <f>]...)] " +
   "[--kb <tenant KB folder>] [--workspace <dir>] [--bin <gs-admin entry>] [--by <holder>] [--take-over] [--today YYYY-MM-DD] [next: --question <id>]";
-const VERBS = ["new", "next", "answer", "change", "save", "list", "status", "refresh", "rebuild", "report", "export", "import", "health", "costs", "questions"];
+const VERBS = ["new", "next", "answer", "change", "save", "list", "status", "refresh", "rebuild", "report", "export", "import", "health", "account", "costs", "questions"];
 async function main() {
   const [verb, ...rest] = process.argv.slice(2);
   const helpers = makeCliHelpers("dashboard.mjs", rest);
@@ -1599,6 +1664,7 @@ async function main() {
       case "export": out = verbExport(ctx, needSlug(), opt, rest); break;
       case "import": out = verbImport(ctx, opt, rest); break;
       case "health": out = verbHealth(ctx, needSlug(), opt); break;
+      case "account": out = verbAccount(ctx, slug ?? null, opt, rest); break;
       default: fail(USAGE);
     }
     await finish(out);
