@@ -45,7 +45,7 @@ import { makeCliHelpers, readJsonFile, writeFileAtomicSync, isMainModule } from 
 import * as engine from "./engagement-query.mjs";
 import { openSpec, SPEC_DESCRIPTIONS, TABS, KNOBBED_PANEL_TYPES, presetPanels, pageDateDefault, pageTemplateContent, panelKnobs, describeSpec, kbDirOfSpecFile } from "./dashboard-spec.mjs";
 import { applyGroups, resolveGroups, programTraits, describeRule, modelNamesOf, UNGROUPED } from "./dashboard-groups.mjs";
-import { createDashboard, createTimeline, LACKS, PAGE_MODEL_VERSION, TIMELINE_MODEL_VERSION } from "./dashboard-runtime.mjs";
+import { createDashboard, createTimeline, csvText, LACKS, PAGE_MODEL_VERSION, TIMELINE_MODEL_VERSION } from "./dashboard-runtime.mjs";
 import { DEFAULT_THEME, validateTheme, tokensCss } from "./dashboard-theme.mjs";
 
 /**
@@ -382,8 +382,9 @@ tfoot td{font-weight:600}
 .gs-svg-label{fill:var(--fg);font-size:11px;font-family:var(--font)}
 .gs-svg-tipped{cursor:help}
 .gs-svg-full{visibility:hidden;pointer-events:none;fill:var(--fg);font-size:11px;font-family:var(--font);paint-order:stroke;stroke:var(--bg);stroke-width:4px;stroke-linejoin:round}
-.gs-svg-tipped:hover .gs-svg-full,.gs-svg-tipped:focus-visible .gs-svg-full,.gs-svg-tipped.is-open .gs-svg-full{visibility:visible}
-.gs-svg-tipped:hover .gs-svg-short,.gs-svg-tipped:focus-visible .gs-svg-short,.gs-svg-tipped.is-open .gs-svg-short{fill-opacity:0}
+.gs-svg-full.is-shown{visibility:visible}
+.gs-svg-tipped.is-lit .gs-svg-short{fill-opacity:0}
+.gs-svg-break{fill:none;stroke:var(--bg);stroke-width:2}
 .gs-svg-line{fill:none;stroke-width:2;stroke-linejoin:round;stroke-linecap:round}
 .gs-svg-ring{fill:var(--bg)}
 .gs-svg-dot{stroke-width:2}
@@ -438,13 +439,28 @@ const STYLE = TOKENS + STYLE_RULES;
  * @param {{title: string, style: string, noscript: string, prerender: string, data: string, engineSource: string, runtimeSource: string}} parts
  *   title is already escaped for the title element
  */
+const DOC_HEAD = `<!doctype html>\n<html lang="en">\n<head>\n<meta charset="utf-8">\n<meta name="viewport" content="width=device-width, initial-scale=1">\n`;
+const DOC_BODY = `</head>\n<body>\n`;
+const DOC_END = `</body>\n</html>\n`;
 const documentOf = ({ title, style, noscript, prerender, data, engineSource, runtimeSource }) =>
-  `<!doctype html>\n<html lang="en">\n<head>\n<meta charset="utf-8">\n<meta name="viewport" content="width=device-width, initial-scale=1">\n<title>${title}</title>\n<style>${style}</style>\n</head>\n<body>\n` +
+  `${DOC_HEAD}<title>${title}</title>\n<style>${style}</style>\n${DOC_BODY}` +
   `<noscript><p>This is the default view. ${noscript}</p></noscript>\n` +
   `<fieldset id="gs-root" class="gs-root" disabled>${prerender}</fieldset>\n` +
   `<script type="application/json" id="gs-data">${data}</script>\n` +
   `<script type="module">\n${engineSource}\n;globalThis.__gsEngine = { ${Object.keys(engine).sort().join(", ")} };\n</script>\n` +
-  `<script type="module">\n${runtimeSource}\n;boot(globalThis);\n</script>\n</body>\n</html>\n`;
+  `<script type="module">\n${runtimeSource}\n;boot(globalThis);\n</script>\n${DOC_END}`;
+/**
+ * A built page in the form a claude.ai artifact takes (PUB-3, the claude-artifact target; X1 measured it): the
+ * artifact tool wraps what it publishes in a document of its own, so a page published whole nests a second doctype,
+ * html, head and body inside the artifact's. The content form is the page's `<title>` and `<style>` first, then
+ * everything its body holds, and nothing else; derived from the ONE document template above, so the two never drift.
+ * @param {string} html a page documentOf wrote
+ * @returns {string}
+ */
+export function artifactContentOf(html) {
+  if (!html.startsWith(DOC_HEAD) || !html.endsWith(DOC_END) || html.split(DOC_BODY).length !== 2) throw new Error("dashboard page: not a page this builder wrote, so it has no artifact form");
+  return html.slice(DOC_HEAD.length, html.length - DOC_END.length).replace(DOC_BODY, "");
+}
 /**
  * Build one page. Pure: the two inlined sources are passed in, and nothing is
  * read or written.
@@ -506,6 +522,36 @@ export function buildPage({ spec, snapshot, pageId, engineSource, runtimeSource,
   const refused = page.preset === "exec" && bytes.total > budget.refuseExecBytes ? `the page is ${megabytes} MB, over the ${budget.refuseExecBytes / MB} MB a leaders' page may be; it was not written.${mostly} ${remedy}` : null;
   const warning = !refused && bytes.total > budget.warnBytes ? `the page is ${megabytes} MB, over the ${budget.warnBytes / MB} MB budget: it will be slow to open and to filter.${mostly} ${remedy}` : null;
   return { html: refused ? null : html, report: { page: page.id, preset: page.preset, file: pageFileName(page.id), written: false, bytes, megabytes, rows, tables, programs: snapshot.dimensions.programs.length, warning, refused } };
+}
+/** The folder beside the leaders' copy that holds its tables (PUB-3): the copy's file name without .html, then -data. */
+export const datasetsDirName = (file) => `${String(file).replace(/\.html$/i, "")}-data`;
+/**
+ * The leaders' copy's tables as CSV files (PUB-3, the dataset emitter; ruled 2026-10-14 at S7's kickoff): one file
+ * per panel of the page at its own grain, in the page's default view, through the runtime's own CSV builder (the
+ * figures are the page's: nothing is aggregated twice), each row with a last "Data pulled" column; and a
+ * definitions file (the pull first, then the filters in force, whether account names are carried, every figure's
+ * meaning, the caveats). The names are stable (`<panel>.csv`, `definitions.csv`), so each pull overwrites the
+ * last. A page that may not name accounts has no account rows to write (the page's own copy of the snapshot).
+ * Pure: nothing is read or written.
+ * @param {{spec: T11Spec, snapshot: T10Snapshot, pageId: string, kb?: ?string}} args the snapshot with its groups applied
+ * @returns {Array<{name: string, text: string}>}
+ */
+export function buildDatasets({ spec, snapshot, pageId, kb = null }) {
+  const page = spec.pages.find((pg) => pg.id === pageId);
+  if (!page) throw new Error(`dashboard page: the spec has no page "${pageId}"`);
+  const app = createDashboard(engine, pageModel(spec, snapshot, page, { kb }));
+  const state = app.defaultState();
+  const pulled = String(snapshot.meta.pulledAt);
+  const BOM = String.fromCharCode(0xfeff);
+  const files = [];
+  for (const panel of app.panels) {
+    const t = app.csvTableOf(panel, state, null);
+    if (!t) continue;
+    files.push({ name: `${String(panel.id).replace(/[^A-Za-z0-9._-]/g, "_")}.csv`, text: BOM + csvText([...t.headers, "Data pulled"], t.rows.map((r) => [...r, pulled])) });
+  }
+  const d = app.definitionsOf(state);
+  files.push({ name: "definitions.csv", text: BOM + csvText(d.headers, d.rows) });
+  return files;
 }
 const escTitle = (v) => String(v).replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c]);
 

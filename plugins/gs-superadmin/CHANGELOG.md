@@ -5,6 +5,58 @@ marketplace doesn't pin versions — users get main — so entries describe what
 user who updates, not internal refactors. Entries before 0.8.0 were reconstructed from git
 history when this file was introduced.
 
+## 0.53.0 — 2026-10-14
+
+The leaders' copy, published (PUB-3, PUB-4): by default into a synced shared folder after
+every refresh, or as a claude.ai artifact; and a bar chart that stays readable over hundreds
+of programs.
+
+- **A shared folder, by default.** A dashboard's leaders' page is copied, at the end of every
+  successful refresh and rebuild, into a folder you name (a OneDrive, SharePoint or network
+  folder synced to your machine), under the SAME file name every time, so a leader bookmarks
+  one file or the folder once. A refresh that fails or stops copies nothing and leaves the
+  last copy where it was; a copy that fails (the folder gone, a file locked by the sync) is
+  said in the summary and never touches the pages in the workspace. The summary prints where
+  the copy went. Dated copies beside it are an option, off by default.
+- **The folder lives on your machine, not in the dashboard.** A dashboard names a target
+  (`leaders` by default) and a file name; `dashboard.mjs publish-target leaders <folder>`
+  maps the target to a folder in the workspace's own settings, so an exported dashboard
+  still carries no path. A backup refresher who imports it sets their own folder; until then
+  each refresh says the copy was skipped and why.
+- **The numbers beside the page.** With the shared folder, each table of the leaders' page is
+  also written as a CSV in a data folder beside it (the headline, the months, the groups,
+  the top and bottom programs) plus a definitions file (what each figure means, the
+  caveats, the filters in force, whether account names are carried), overwritten under the
+  same names each pull; every table has a "Data pulled" column, and the definitions file
+  opens with the pull's date and time. Built by the page's own CSV builder, so the figures
+  are the page's.
+- **Publish without pulling:** `dashboard.mjs publish <dashboard>` copies the pages as they
+  are, for a monthly publish by hand.
+- **A claude.ai artifact, the second target.** With `publish.target` `claude-artifact`, the
+  refresh writes the leaders' page in the form an artifact takes (its title and style, then
+  the page, never a second document inside the artifact's), and
+  `/gs-superadmin:email-engagement` publishes it in one short Claude session after the pull,
+  updating the same link each time. Inside the artifact, Download CSV asks the viewer to
+  confirm the save (the artifact's downloads permission); everywhere else it saves as before.
+  A viewer needs a Claude account in your organization; a filtered view cannot be bookmarked
+  there.
+- **The interview asks where the leaders' copy goes** (a shared folder now or later, an
+  artifact link, or the workspace only), and `change` sets it later; changing it rebuilds
+  the pages (no pull) and publishes there at once.
+- **A bar chart by program, readable.** A bar panel over programs, groups or emails is drawn
+  across: one row per name, the names in a column of their own, the 25 largest by the
+  figure (every row stays in the table underneath and the download); a mass send that would
+  flatten the rest runs past the scale with a break mark and its figure written beside it;
+  no bar above zero is drawn thinner than visible; the provisional period is marked beside a
+  name, never as stripes. A month axis labels every second or third month when the months
+  would not fit side by side.
+- **A shortened name opens on top.** The whole name of a shortened chart label is drawn over
+  everything else in the chart, never under the labels after it.
+- **Every stop says the exact line to run.** A refresh that stops on the login, on a failed
+  call or during re-documentation, or that is refused while an earlier one waits, prints the
+  full command with `--kb` and its own flags (`--full`, `--health-only`), and that line,
+  run as printed, continues it.
+
 ## 0.52.0 — 2026-10-13
 
 One account's email timeline (ACC-1, ACC-2): what a customer was sent, by program and day,
