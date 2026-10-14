@@ -2707,9 +2707,10 @@ S5-V first sitting (2026-10-12 @ hb-20261011-02; the fast-path dashboard's R1 sn
 - K4 bar moved with F-511 (builder, 2026-10-12 @ hb-20261012-01): the category-cost quote now lives on the tabs question alone ("The 56 bounce categories in the workspace's category file cost 336 counted calls a refresh …" after Health's minutes and the shared-pull sentence); the failure-settings question no longer carries it, and the internal-domains and test-accounts asks say "a few minutes per domain / per test account" instead of counted calls. Already CLEARED on the figures at the first sitting; the second sitting reads the sentence on the tabs question at I7 and owes nothing else here.
 Section status: CLEARED (first sitting); the two-day case a blind spot. F-502, F-503 and F-504 flip FIXED → VERIFIED on the bus with these as their live half.
 
-## ACC — the account timeline and the in-page account view on a real tenant (banked 2026-10-13, builder, Session S6 @ hb-20261013-02; verdict at the tail's batched round)
+## ACC — the account timeline and the in-page account view on a real tenant (banked 2026-10-13, builder, Session S6 @ hb-20261013-02; verdict at S6-V)
 
-Owed by: the tail's batched verdict round (S6-V folded with S7-V and S8-V, ruled 2026-10-12); the production tenant,
+Owed by: S6-V, its own session (the tail's batching, ruled 2026-10-12, withdrawn 2026-10-13), in the consumer
+workspace with the plugin loaded from this branch; the production tenant,
 reads only (the timeline issues only the adapter's reads: `whoami`, `jo p list`, `rp schema`, `rp run`, and
 `jo p describe` for a program the list lacks; every one catalogued non-mutating, so the guard asks on none of them).
 Token: hb-20261013-02. Why it is banked: the account path was built against the stand-in CLI. Whether the server takes EQ and
@@ -2757,5 +2758,5 @@ knows one; one account with no JO send in the last 90 days.
 - A7 (resume). One timeline pull stopped on an expired login (start it with a few minutes left, or after the hour) exits
   3 and the same line after `gs-admin login` continues it (the summary's `calls.reused` above 0).
 
-Carried, not this section's: F-518 (polish, OPEN) rides the tail's first fix round and this batched round (R12).
-Section status: OPEN — banked; owed at the tail's batched verdict round.
+Carried, not this section's: F-518 (polish, OPEN) rides the tail's first fix round, with S8's kickoff as its fail-safe.
+Section status: OPEN — banked; owed at S6-V.
