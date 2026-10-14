@@ -2466,6 +2466,12 @@ export function fetchEngagement(ctx) {
 
   /** What a unit that came back full, or timed out twice, is cut into: null when nothing is left to cut on. */
   const cutsOf = (d, rec) => (rec.status === "split" && FAMILIES[d.family]?.timeoutSplit === false ? null : splitUnit(d));
+  // What a resume reuses, in one place (runUnit runs by it, the plan's remainder prices by it, F-518). A prior answer
+  // on disk is reused as it stands. A prior "split" record is reused only as the DECISION to cut the unit (its halves
+  // carry the attempts); for a unit with nothing left to cut on, that record was a failed attempt, and the resume makes
+  // the call afresh — a failed record is never reused either: the next run IS the retry (F-519: a timed-out
+  // unsplittable call was replayed as final on every resume, stranding the refresh for good).
+  const reusable = (d, prior) => !!prior && ((prior.status === "ok" && existsSync(join(runDir, prior.file))) || (prior.status === "split" && !!cutsOf(d, prior)));
   /** Run one unit, splitting as needed. Returns the ok, complete leaf records. */
   const runUnit = (d) => {
     if (stop) return [];
@@ -2473,11 +2479,7 @@ export function fetchEngagement(ctx) {
     const id = unitId(d, argv);
     const prior = records.get(id);
     let rec;
-    // A prior answer on disk is reused as it stands. A prior "split" record is reused only as the DECISION to cut the
-    // unit (its halves carry the attempts); for a unit with nothing left to cut on, that record was a failed attempt,
-    // and the resume makes the call afresh — a failed record is never reused either: the next run IS the retry (F-519:
-    // a timed-out unsplittable call was replayed as final on every resume, stranding the refresh for good).
-    if (prior && ((prior.status === "ok" && existsSync(join(runDir, prior.file))) || (prior.status === "split" && cutsOf(d, prior)))) {
+    if (reusable(d, prior)) {
       counts.reused++;
       rec = prior;
     } else rec = execute(d, id, argv, prior);
@@ -2509,9 +2511,14 @@ export function fetchEngagement(ctx) {
     for (const f of failed.splice(before)) (healthUnread[part] ??= []).push({ family: f.family, kind: f.kind });
     return got;
   };
+  // Once the plan is made: what is left of it, priced over the records as they stand (F-518). A stop carries it, so
+  // what a stopped run says it still needs is priced the same way as the resume's opening line, never the plan's
+  // calls less this run's counts (which count the cuts the plan did not foresee).
+  /** @type {?() => {calls: number, seconds: number, units: number}} */
+  let remainingNow = null;
   const conclude = (extra) => {
     const status = stop ? stop.reason : failed.length ? "partial" : "ok";
-    const summary = { status, ...(stop ? { stopped: stop.detail } : {}), calls: counts, failed, health: { unread: healthUnread }, pulledAt: params.pulledAt, ...extra };
+    const summary = { status, ...(stop ? { stopped: stop.detail } : {}), calls: counts, failed, health: { unread: healthUnread }, pulledAt: params.pulledAt, ...(stop && remainingNow ? { remaining: remainingNow() } : {}), ...extra };
     writeFileAtomicSync(join(runDir, "status.json"), JSON.stringify({ status, phase, failed, health: { unread: healthUnread }, calls: counts }, null, 2));
     return summary;
   };
@@ -2673,18 +2680,27 @@ export function fetchEngagement(ctx) {
   // Calls and seconds include the splits a program-month too large for a page will force.
   const calls = (list) => estimateCalls(list, base, params.pageSize);
   const seconds = (list) => estimateSeconds(list, base, params.pageSize);
-  // What this run still has to make (F-518): on a resume, the planned units whose answers are not all on disk — a
-  // unit answered whole, or cut into halves every one of which is answered, costs nothing more. The remainder is what
-  // the login must cover; a fresh run's remainder is the whole run.
-  const remainingOf = (u) => {
+  // What this run still has to make (F-518, redesigned at its reopen): each planned unit's own price, less the calls
+  // already made in its split tree. A piece of a cut unit is never priced afresh: the estimator prices a unit by its
+  // programs and months, so a day, flag or address piece of a mass-send month would be priced like the whole month,
+  // and the remainder rose ABOVE the whole (S5-V's fourth sitting). Priced from the whole, it can never exceed it, and
+  // it falls with every call that lands; while anything in a unit's tree is still to make, at least one call is left.
+  // A fresh run's remainder is the whole run.
+  const progressOf = (u) => {
     const rec = records.get(unitId(u, unitArgv(u, params.pageSize)));
-    if (!rec) return [u];
-    if (rec.status === "ok" && !rec.truncated) return existsSync(join(runDir, rec.file)) ? [] : [u];
-    // A unit already cut is priced by the halves still unanswered, never whole again (the review of 2026-10-13).
-    const kids = cutsOf(u, rec);
-    return kids ? kids.flatMap(remainingOf) : [u];
+    if (!reusable(u, rec)) return { made: 0, open: true };
+    const kids = rec.status === "ok" && !rec.truncated ? null : cutsOf(u, rec);
+    // Answered whole, or a full page with nothing left to cut on (that failure is recorded, never made again).
+    if (!kids) return { made: 1, open: false };
+    return kids.map(progressOf).reduce((a, b) => ({ made: a.made + b.made, open: a.open || b.open }), { made: 1, open: false });
   };
-  const remainingUnits = units.flatMap(remainingOf);
+  const remainingParts = () => units.map((u) => {
+    const p = progressOf(u);
+    const whole = { calls: calls([u]), seconds: seconds([u]) };
+    const left = p.open ? Math.min(whole.calls, Math.max(1, whole.calls - p.made)) : 0;
+    return { open: p.open, calls: left, seconds: whole.calls ? (whole.seconds * left) / whole.calls : 0 };
+  });
+  const remainderOf = (parts, extraCalls, extraSeconds) => ({ calls: parts.reduce((n, r) => n + r.calls, 0) + extraCalls, seconds: Math.round(parts.reduce((n, r) => n + r.seconds, 0)) + extraSeconds, units: parts.filter((r) => r.open).length });
   // The per-program samples (F-484), priced from the count-first reads: how many selected programs have
   // refusals in the window (read above) and how many have uncategorised bounces (from the bounce count-first
   // read: every bounce, until the categories are counted), against the cap; what the cap leaves out, and what
@@ -2766,7 +2782,7 @@ export function fetchEngagement(ctx) {
       calls: calls(units) + ownReads, seconds: seconds(units) + describeSeconds(ownReads), units: units.length, byFamily: { ...familyCounts(units, base, params.pageSize), ...(ownReads ? sampleFamilies : {}) },
       // The part not yet made (F-518): a resumed run's price is this, never the whole plan's. The samples are counted
       // whole (they are picked after the counts), so a resume's remainder is an upper bound.
-      remaining: { calls: calls(remainingUnits) + ownReads, seconds: seconds(remainingUnits) + describeSeconds(ownReads), units: remainingUnits.length },
+      remaining: remainderOf(remainingParts(), ownReads, describeSeconds(ownReads)),
     },
     full: { calls: calls(fullUnits) + ownReads, seconds: seconds(fullUnits) + describeSeconds(ownReads) },
     stepDetail: { on: params.stepDetail, addsCalls: calls(withStep) - calls(without), addsSeconds: seconds(withStep) - seconds(without) },
@@ -2823,6 +2839,7 @@ export function fetchEngagement(ctx) {
   }
   // `selectedIds`: the programs this pull selects (the selector applied, deleted ones out), so a reader of the plan
   // (the dashboard interview's group proposal, F-515) works over exactly the set the reducer will.
+  remainingNow = () => remainderOf(remainingParts(), ownReads, describeSeconds(ownReads));
   writeFileAtomicSync(join(runDir, "plan.json"), JSON.stringify({ estimate, programs, selectedIds, refresh: { ...refresh, carriedPrograms: [...refresh.carriedPrograms] } }, null, 2));
   if (phase === "plan") return conclude({ whoami, estimate, programs });
 
