@@ -2833,3 +2833,57 @@ S6-V re-check (2026-10-13 21:06 to 2026-10-14 00:28 @ hb-20261013-03; feat/jo-da
 - R5 PASSED (A7's reuse half): a 12-month timeline through the dashboard started with 125 s of login left stopped (exit 3) after 13 answered calls, 9 of them data calls; after the login the same line continued the same run directory to exit 0 in 12 s with `calls.made` 2 and `calls.reused` 13, each answered id once `ok` in the fetch log (only the login check twice). A7's finished directory of S6-V was moved aside first, or the pull would have reused it whole and never stopped.
 - Guard-wiring: the pause ask rendered (command named, both tenants, production flagged); Bradley declined.
 Section status: CLEARED with one arm carried — R1, R2, R4, R5 PASSED and A0, A1, A3–A6 stood; R3's bar-chart half FAILED and is carried, on Bradley's ruling at the re-check, as S7's kickoff fix batch (F-522 reopened, F-524, with F-523), re-checked at S7-V with no pull. PR #48 merges on this sitting.
+
+## PUB-3 / PUB-4 — the leaders' copy published from a real dashboard (a shared folder, a claude.ai artifact) and the kickoff batch's charts, on a scratch import with no pull (banked 2026-10-14, builder, Session S7 @ hb-20261014-01; verdict at S7-V)
+
+Owed by: S7-V, its own session, in the consumer workspace with the plugin loaded from feat/jo-dash-s7-publish (a
+terminal in the workspace with --plugin-dir, canary matched). No pull is needed for any arm: every one runs on a
+SCRATCH import of the kept dashboard v2 made with its snapshot (`export v2 --out <file> --with-snapshot`, `import --file
+<file> --slug <scratch>`), so no tenant call is made beyond the tester's own `whoami` (Bradley's aim: a round well
+under four hours; the plan's LTR-9 sizing note). Token: hb-20261014-01. Why it is banked: the file-copy target was built against
+a temp folder and the artifact target's publish is a skill step only a Claude session can make; a synced folder, the
+OneDrive website, the artifact viewer and Bradley's eye are not on the builder's machine. Tenant data stays in the
+workspace and in the test folder Bradley names; the artifact is private, titled `[VAL-TEST] …`, and deleted at cleanup
+unless Bradley keeps it.
+
+THIS LIST IS COMPLETE (the same rule as above).
+
+- K0 (the kickoff batch by eye, about five minutes; F-524's repro, F-522's reopen). On the scratch: `change <scratch>
+  'pages.0.panels=[{"id":"b","tab":"engagement","type":"bar","title":"By program","query":{"groupBy":["program"],"metrics":["sent"]}},{"id":"h","tab":"health","type":"health-schedules","title":"S","knobs":{"staleAfterDays":30}}]'
+  --kb <kb>` (prints rebuild only), open the scratch admin page. Pass bar (Bradley's eye): the bar panel is drawn across
+  with the names in a column, no two labels overlap; 25 rows drawn with the note naming how many of how many; the
+  mass sends run past the scale with a break mark and their figures beside them, every other bar visible; no stripes:
+  a provisional name carries *; hover, click and Tab to a shortened name: the whole name shows over everything, no
+  label or bar over it (its second line included); narrowing the months to one keeps it readable. The lanes (optional: a
+  timeline page is built at its pull, so this one costs a short account pull, about ten reads): `account <scratch>
+  --account-id <a GSID with long program names> --kb <kb>`, hover and click a long lane name: shown whole, nothing over
+  it. F-523 is held offline by the class
+  check (no live stop is needed); a stop met during the round is read against it (the printed line runs as printed).
+- P1 (the shared folder, Bradley's condition: "how to get the file there and update to that location"). Bradley names a
+  test folder inside his synced OneDrive (a `VAL-TEST-s7` subfolder). `dashboard.mjs publish-target leaders '<folder>'
+  --kb <kb>`, then `dashboard.mjs publish <scratch> --kb <kb>`. Pass bar: the summary prints the destination;
+  `<scratch>-leaders.html` and `<scratch>-leaders-data/` (the CSVs and `definitions.csv`) are in the folder; from File
+  Explorer the file opens in the browser and works whole (filters, tabs, column toggles, Download CSV); on the OneDrive
+  website: record what it shows (preview with "open", or a download), and whether the preview runs the filters. A
+  second `publish` (or a `rebuild`) replaces the SAME file (one file in the folder, its modified time moved, OneDrive
+  shows one item, no "(1)" copy). One CSV opened in Excel: the last column "Data pulled", the definitions file's first
+  row the pull's time. The dashboard's spec holds no path (read `spec.json`: `publish.config.to` is "leaders").
+- P2 (a failure leaves the pages). Rename the test folder; `publish <scratch>`: exit 0, the summary says the folder is
+  not there and how to set another; `latest-*.html` in the workspace unchanged (their modified times); rename it back.
+- P3 (the artifact: one short Claude session). `change <scratch> 'publish={"target":"claude-artifact","config":{"url":null}}'
+  --kb <kb>` (publish-cost: no pull, no rebuild), then `/gs-superadmin:email-engagement publish <scratch>` in the
+  session. Pass bar: the skill publishes the summary's file with `capabilities {downloads: true}` and records the new
+  link through `change … publish.config.url=…`, publishing once; Bradley opens it signed in: the page reads as the
+  local one (one title, no doubled document: the frame's source has one doctype), the data-pulled line, the months
+  filter, About and a column toggle work; Download CSV asks him to confirm and saves a file; the address bar does not
+  keep filters (recorded, the known limit). A second `publish` in a new ask updates the SAME link (the version moves,
+  the URL does not). Optional: a viewer outside the org sees the sign-in wall.
+- P4 (the interview's new question, Bradley's read of its wording): `node .gs-superadmin/plugin/scripts/dashboard.mjs
+  questions` and read the `leaders-copy` ask and its four options aloud. Pass bar: Bradley rules the wording (as
+  drafted, or his edits, applied by the builder at the fix round), the F-511 practice.
+- P5 (optional: SharePoint or Teams, if Bradley has one to hand): open the copy from there and record download vs
+  preview (the README states it as unmeasured).
+
+Cleanup at the close: the scratch dashboard and its pages, the test folder in OneDrive, the `leaders` entry in
+`.gs-superadmin/publish-targets.json`, the export file; the `[VAL-TEST]` artifact deleted unless Bradley keeps it.
+Section status (banked): OPEN — owed at S7-V.
