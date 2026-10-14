@@ -36,15 +36,16 @@ import { STEP_REMAINDER,
   monthsBetween, ENGAGEMENT_READ_PATHS, joEngagementAdapter, readFailureReasons, healthDayWindow, HEALTH_PARTS, pickSchedule, isOneRunWindow, schemaFlags, NO_SCHEDULE,
   SAMPLES_PER_PROGRAM, SAMPLE_PROGRAM_CAP, SAMPLE_PAGE, MAX_PAGES, sampleTargets, matchCategory,
   templatesReferenced, templateGap, templateContentOf, TEMPLATE_GAP_LIST_FILE, TEMPLATE_GAP_STALE_FILE, TEMPLATE_GAP_KEYS_FILE,
-  resolveAccountParams, reduceAccountTimeline, loadAccountRun, parseLast, accountResolutionText,
+  resolveAccountParams, reduceAccountTimeline, loadAccountRun, parseLast, accountResolutionText, reconcileWithDashboard,
 } from "../scripts/engagement.mjs";
 import { readLinkTracking } from "../scripts/doc-lib.mjs";
+import { buildReport } from "../scripts/engagement-report.mjs";
 // The T-10 read floor and the tables the adapter counts with live in the query
 // module (ENG-4); the adapter imports them, and so does this suite.
 import {
   openSnapshot, readClicked, clickAvailability, programClickAvailability, accountAvailability, readResponses,
   NON_CONTENT_LINK_RULES, SEND_MEASURES, T10_SCHEMA_VERSION, MASK_RULES, MASK_PROTECTED, MASK_MAX_LENGTH, maskMessage, healthAvailability, programHealth, HEALTH_LISTS, judgeHealth, dueDaysBefore, cronLastDue, validateCategories, FAILURE_CATEGORIES, STEP_FAILURE_CATEGORIES, QUIET_DUE_DAYS_DEFAULT, caveatText, FAILURE_KINDS, kindOf,
-  LINK_READINGS, templateAvailability,
+  LINK_READINGS, templateAvailability, reasonText,
 } from "../scripts/engagement-query.mjs";
 import { buildTenant, answer, applyFaults, kbFiles, templatePayload, TEMPLATES_DOMAIN, FAULT_TEXT, OWN_SITE_UNSUBSCRIBE, BOUNCE_REASONS, FAILURE_REASONS, NULL_EMAIL_REASON, NULL_EMAIL_REASONS, UNKNOWN_REASON, UNKNOWN_STEP_REASON, FIXTURE_BOUNCE_CATEGORIES, FIXTURE_BOUNCE_KIND_CATEGORY, ACCOUNT_INDUSTRIES, DUPLICATE_NAME, QUIET_ACCOUNT, HOSTILE_ACCOUNT_NAME } from "./fixtures/engagement/acme-tenant.mjs";
 
@@ -1053,6 +1054,28 @@ try {
     const opened = (s, m) => s.facts.byTemplate.filter((r) => r.month === m).reduce((x, r) => x + r.opened, 0);
     check("carried months keep the counts of the pull that made them: opens arriving after it are not captured (the caveat's subject), while the re-pulled months do capture theirs",
       opened(late, "2026-03") === opened(prev, "2026-03") && opened(lateFull, "2026-03") > opened(late, "2026-03") && opened(late, "2026-08") === opened(lateFull, "2026-08"));
+
+    // F-521: a selective refresh over unchanged data records the full refresh's lists (carried, with when they were
+    // ranked), and the report prints them; never an empty list read as a floor no account met.
+    const listsOf = (s) => s.honesty.accountSelection.lists.map((l) => [l.kind, l.n, l.floor, l.per, l.segment, l.kept]);
+    const again = pull({ previous: JSON.parse(JSON.stringify(F)) }).snapshot;
+    const againLists = again.honesty.accountSelection.lists;
+    const watchOf = (s) => buildReport(s, { all: true }).sections.find((x) => x.startsWith("## Account watch list")) ?? "";
+    check("F-521 a selective refresh over unchanged data records the full refresh's customer lists: the same kept accounts in the same order, said to be ranked by the full pull and carried from it, and the report prints them with no floor-miss line",
+      again.meta.refresh.mode === "selective" && isDeepStrictEqual(listsOf(again), listsOf(F)) && againLists.length === 3 && againLists.every((l) => l.kept.length > 0 && l.selectedFrom === "every program" && l.rankedAt === F.meta.pulledAt && l.carriedFrom === F.meta.pulledAt && l.notRanked === null) &&
+        F.honesty.accountSelection.lists.every((l) => l.rankedAt === F.meta.pulledAt && l.carriedFrom === null && l.notRanked === null) && sameMap(totals(again, "byAccount"), totals(F, "byAccount")) &&
+        !/No account met/.test(watchOf(again)) && watchOf(again).includes(`ranked by the full pull of ${F.meta.pulledAt}`) && isDeepStrictEqual(buildReport(again, { all: true }).counts.crossProgramLists, buildReport(F, { all: true }).counts.crossProgramLists) && buildReport(F, { all: true }).counts.crossProgramLists === 3,
+      [listsOf(again).map((l) => l[5].length), againLists.map((l) => [l.rankedAt, l.carriedFrom, l.notRanked])]);
+    // The record carried from: a previous record that ranked over part of the programs (the code before F-521), and a list set since.
+    const legacy = JSON.parse(JSON.stringify(F));
+    for (const l of legacy.honesty.accountSelection.lists) { l.kept = []; l.selectedFrom = "the programs pulled whole"; delete l.rankedAt; delete l.carriedFrom; delete l.notRanked; }
+    const fromLegacy = pull({ previous: legacy }).snapshot;
+    const moreLists = { ...ACC, lists: [{ kind: "most-engaged", n: 25, floor: 10 }, { kind: "least-engaged", n: 25, floor: 10 }, { kind: "most-bounced", n: 25, floor: 0 }, { kind: "most-bounced", n: 5, floor: 0 }] };
+    const setSince = pull({ previous: JSON.parse(JSON.stringify(F)), raw: { accounts: moreLists } }).snapshot;
+    check("F-521 a list a selective refresh has no ranking to carry for is recorded not ranked, with why, and the report says so and how to rank it, never 'No account met this list's floor': a record ranked over part of the programs, and a list set since the full pull (the others still carried)",
+      fromLegacy.meta.refresh.mode === "selective" && fromLegacy.honesty.accountSelection.lists.every((l) => l.notRanked === "previous-not-ranked" && l.kept.length === 0 && l.selectedFrom === null) && !/No account met/.test(watchOf(fromLegacy)) && watchOf(fromLegacy).includes(reasonText("previous-not-ranked")) &&
+        setSince.meta.refresh.mode === "selective" && setSince.honesty.accountSelection.lists.filter((l) => l.notRanked === "list-set-since").length === 1 && setSince.honesty.accountSelection.lists.filter((l) => l.carriedFrom === F.meta.pulledAt && l.kept.length > 0).length === 3 && watchOf(setSince).includes(reasonText("list-set-since")),
+      [fromLegacy.honesty.accountSelection.lists, setSince.honesty.accountSelection.lists.map((l) => [l.kind, l.n, l.notRanked])]);
 
     const partialPrev = JSON.parse(JSON.stringify(pull({ variant: { cutoff: "2026-08-16" }, raw: { today: "2026-08-15", pulledAt: "2026-08-15T09:00:00-07:00", ids: ["p-onboard", "p-nps", "p-renew", "p-pilot", "p-unlisted"] } }).snapshot));
     const grown = pull({ previous: partialPrev });
@@ -2177,6 +2200,36 @@ try {
       off?.against?.reason === "accounts-off" && !off.checks.some((c) => c.id === "matches-dashboard") && !!partKey &&
         partial?.against?.notCompared.length > 0 && partial.against.notCompared.every((n) => n.reason === "account-not-kept-on-program" && !keptOn(partKey).has(n.programId)) && partialCheck?.ok === true && partialCheck.compared > 0,
       [off?.against, partKey, partial?.against]);
+    // F-520: "kept" is read over the snapshot's window, "compared" in the whole months. A crafted pair over `rec`:
+    // the timeline's sends on one held program moved into the window's partial first month, on another into the
+    // provisional month, and the dashboard's rows of the account on both moved out of the compared months (still
+    // held, in its first month); a third program's rows of the account removed from the dashboard (truly unkept).
+    const tlW = rec.timeline.meta.window;
+    const cmpMonths = dash.dimensions.months.filter((m) => `${m}-01` >= tlW.start && `${m}-01` < tlW.end.slice(0, 7) + "-01");
+    const heldOn = [...new Set(dash.facts.byAccount.filter((r) => r.accountKey === kept && cmpMonths.includes(r.month) && r.sent > 0).map((r) => r.programId))].filter((p) => rec.timeline.dimensions.programs.some((x) => x.id === p));
+    const [early, late, gone] = heldOn;
+    const craft = (moves, drop = []) => {
+      const tl = structuredClone(rec.timeline);
+      for (const r of tl.facts.accountTimeline) if (moves[r.programId]) r.day = moves[r.programId];
+      const snap = structuredClone(dash);
+      snap.facts.byAccount = snap.facts.byAccount.filter((r) => !(r.accountKey === kept && drop.includes(r.programId)));
+      for (const r of snap.facts.byAccount) if (r.accountKey === kept && moves[r.programId] && cmpMonths.includes(r.month)) r.month = snap.dimensions.months[0];
+      return reconcileWithDashboard(tl, snap);
+    };
+    const moved = craft({ [early]: tlW.start, [late]: tlW.end });
+    const dropped = craft({}, [gone]);
+    const reasonOf = (res, p) => res.against.notCompared.filter((n) => n.programId === p).map((n) => n.reason).join();
+    check("F-520 a program the dashboard holds the account on, whose timeline sends fall only in the partial first month or the provisional month, is named no-send-in-months-compared (never not kept), the rest compared and matching; a program with no row of the account at all is still account-not-kept-on-program",
+      heldOn.length >= 3 && !tlW.start.endsWith("-01") && reasonOf(moved, early) === "no-send-in-months-compared" && reasonOf(moved, late) === "no-send-in-months-compared" && reasonOf(moved, gone) === "" &&
+        moved.check?.ok === true && moved.check.compared > 0 && moved.against.reason === null && moved.against.notCompared.length === 2 && /kept this account there, but/.test(reasonText("no-send-in-months-compared")) &&
+        reasonOf(dropped, gone) === "account-not-kept-on-program" && dropped.against.notCompared.length === 1 && dropped.check?.ok === true && dropped.check.compared > 0,
+      [heldOn, tlW, moved.against, dropped.against]);
+    const allMoves = Object.fromEntries(rec.timeline.dimensions.programs.map((p) => [p.id, tlW.end]));
+    const whole = craft(allMoves);
+    const unkept = (() => { const snap = structuredClone(dash); snap.facts.byAccount = snap.facts.byAccount.filter((r) => r.accountKey !== kept); snap.dimensions.accounts = snap.dimensions.accounts.filter((a) => a.key !== kept); return reconcileWithDashboard(rec.timeline, snap); })();
+    check("F-520 the whole account: a timeline with no send in the compared months on an account the dashboard keeps is no-send-in-months-compared, with no check; an account the dashboard holds no row of is still account-not-kept",
+      whole.check === null && whole.against.reason === "no-send-in-months-compared" && whole.against.notCompared.every((n) => n.reason === "no-send-in-months-compared" || n.reason === "program-not-in-dashboard") &&
+        unkept.check === null && unkept.against.reason === "account-not-kept", [whole.against, unkept.against]);
 
     // Through the real process: the golden timeline, a pick list's exit code, and the two transports agreeing.
     const tlWs = join(ROOT, "ws-timeline");

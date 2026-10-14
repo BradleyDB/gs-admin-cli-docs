@@ -65,6 +65,52 @@ const HTML_ESCAPES = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'
 /** Every tenant string reaches a page through this. */
 export const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => HTML_ESCAPES[c]);
 
+// ── A chart label, shortened only with its full text reachable (F-522) ───────
+// The one place a chart shortens a label. S4d ruled that a hint opens on hover,
+// focus, click or tap through data-tip (the native <title> is invisible in the
+// app's pane and on touch); an SVG element draws no CSS ::after, so a shortened
+// label is a focusable group carrying data-tip whose full text is drawn in the
+// chart itself, wrapped, on a halo of the page colour, hidden until the group is
+// hovered, focused or opened (the one tip toggle in mount sets `is-open`). The
+// caller draws the label after the marks, so the full text lies over them.
+// `room` is the box the full text may take: its left edge and width in the
+// chart's units, how wide a line may run (the box's width unless narrower), and
+// whether the lines stack down from the label or up to it.
+const SVG_CHAR_PX = 6.2; // an 11 px label's average advance: wraps the full text and keeps it inside the chart
+export const wrapWords = (text, perLine) => {
+  const lines = [];
+  let line = "";
+  for (const word of String(text).split(/\s+/).filter(Boolean)) {
+    for (let w = word; w.length; ) {
+      const room = line ? perLine - line.length - 1 : perLine;
+      if (w.length <= room) { line = line ? `${line} ${w}` : w; w = ""; }
+      else if (!line) { lines.push(w.slice(0, perLine)); w = w.slice(perLine); }
+      else { lines.push(line); line = ""; }
+    }
+  }
+  if (line) lines.push(line);
+  return lines.length ? lines : [""];
+};
+/**
+ * @param {{x: number, y: number, text: string, max: number, cls: string, anchor?: string, suffix?: string, title?: string, room: {left: number, width: number, lineWidth?: number, stack: "down"|"up"}}} o
+ * @returns {string} an SVG <text>, or, when the text is longer than `max`, the group that keeps it whole
+ */
+export function svgLabel({ x, y, text, max, cls, anchor = "start", suffix = "", title = "", room }) {
+  const full = String(text);
+  const titled = title ? `<title>${esc(title)}</title>` : "";
+  if (full.length <= max) return `<text x="${x}" y="${y}" class="gs-svg-${cls}" text-anchor="${anchor}">${esc(full + suffix)}${titled}</text>`;
+  const perLine = Math.max(8, Math.floor(Math.min(room.lineWidth ?? room.width, room.width) / SVG_CHAR_PX));
+  const lines = wrapWords(full, perLine);
+  const half = (Math.max(...lines.map((l) => l.length)) * SVG_CHAR_PX) / 2;
+  // Centred on the label where the box allows it, else pulled in from the box's edge.
+  const cx = Math.min(Math.max(x, room.left + half), room.left + room.width - half);
+  const first = room.stack === "up" ? y - 14 * (lines.length - 1) : y;
+  const spans = lines.map((l, i) => `<tspan x="${cx.toFixed(1)}" y="${first + 14 * i}">${esc(l)}</tspan>`).join("");
+  return `<g class="gs-svg-tipped" data-tip="${esc(full)}" tabindex="0" role="button" aria-label="${esc(full)}">` +
+    `<text x="${x}" y="${y}" class="gs-svg-${cls} gs-svg-short" text-anchor="${anchor}">${esc(`${full.slice(0, max - 1)}…${suffix}`)}${titled}</text>` +
+    `<text class="gs-svg-full" text-anchor="middle">${spans}</text></g>`;
+}
+
 // ── What a page can lack (DSH-2, ruled 2026-10-04; the health rows DSH-4) ────
 // `reason` is an id of the engine's REASONS, where the wording lives.
 // `needs`: "pull" (a refresh that reads the tenant again), "rebuild" (the
@@ -112,6 +158,14 @@ export const NOT_LACKS = Object.freeze({
   "too-large": "the pull's row budget, not a setting",
   "all-time": "the object carries no date; a tooltip says so on the figure",
   "not-filterable": "the tenant's object allows no filter on the reason field",
+  "other-tenant": "a timeline's comparison with a dashboard: the two pulls' tenants",
+  "no-whole-month-in-both": "a timeline's comparison with a dashboard: the timeline's days",
+  "account-not-kept": "a timeline's comparison with a dashboard: the dashboard's customer lists",
+  "account-not-kept-on-program": "a timeline's comparison with a dashboard: the dashboard's customer lists",
+  "program-not-in-dashboard": "a timeline's comparison with a dashboard: the dashboard's programs",
+  "no-send-in-months-compared": "a timeline's comparison with a dashboard: where the account's sends fall in the days",
+  "list-set-since": "a report's customer list after a selective refresh: only a full pull ranks it",
+  "previous-not-ranked": "a report's customer list after a selective refresh: only a full pull ranks it",
 });
 
 export const NEEDS = Object.freeze({
@@ -743,7 +797,8 @@ export function createDashboard(engine, model) {
       parts.push(`<line class="gs-svg-grid" x1="${left}" y1="${y}" x2="${w - right}" y2="${y}"/>`, svgText(left - 6, y + 4, tickLabel(v, rate), "tick", "end"));
     }
     parts.push(`<line class="gs-svg-axis" x1="${left}" y1="${top + plotH}" x2="${w - right}" y2="${top + plotH}"/>`);
-    rows.forEach((r, i) => parts.push(svgText(xMid(i), h - bottom + 18, `${dim === "month" ? monthLabel(r.key[dim]) : String(dimText(dim, r) ?? "(none)").slice(0, 14)}${r.incomplete ? "*" : ""}${r.carried ? "†" : ""}`, "tick", "middle")));
+    // The ticks are drawn last (after the bars and lines), so a shortened one's full text lies over them (F-522).
+    const ticks = rows.map((r, i) => svgLabel({ x: xMid(i), y: h - bottom + 18, text: dim === "month" ? monthLabel(r.key[dim]) : String(dimText(dim, r) ?? "(none)"), max: 14, cls: "tick", anchor: "middle", suffix: `${r.incomplete ? "*" : ""}${r.carried ? "†" : ""}`, room: { left: 4, width: w - 8, lineWidth: 160, stack: "up" } }));
     const drawn = series.filter((s) => s.drawn);
     // Every point and every bar carries its value (ruled 2026-10-11) while the chart is small enough to read that way;
     // past 16 points per series the labels fall back to the last point, the hover and the table.
@@ -789,7 +844,7 @@ export function createDashboard(engine, model) {
     }
     function r(i) { return rows[i].key[dim] ?? dimText(dim, rows[i]) ?? "(none)"; }
     const legend = series.length > 1 ? `<ul class="gs-legend">${series.map((s) => `<li><span class="gs-swatch" style="background:var(--series-${s.i + 1})"></span>${esc(s.label)}${s.state === "not-tracked" ? ` <span class="gs-not-tracked">${esc(engine.NOT_TRACKED)}</span>` : s.state === "unknown" ? ` <span class="gs-mark gs-unknown">${esc(engine.UNKNOWN_MARK)}</span>` : ""}</li>`).join("")}</ul>` : "";
-    const svg = `<svg class="gs-chart" viewBox="0 0 ${w} ${h}" role="img" aria-label="${esc(panel.title)}">${parts.join("")}</svg>`;
+    const svg = `<svg class="gs-chart" viewBox="0 0 ${w} ${h}" role="img" aria-label="${esc(panel.title)}">${parts.join("")}${ticks.join("")}</svg>`;
     const notes = whyNotes(rows, ids);
     // A trend that starts after the first month shown: the figure was not counted before (the one definition boundary a snapshot can hold).
     for (const s of series) {
@@ -1604,11 +1659,13 @@ export function createTimeline(engine, model) {
       const x = left + (i / span) * plotW;
       parts.push(`<line class="gs-svg-grid" x1="${x.toFixed(1)}" y1="${top}" x2="${x.toFixed(1)}" y2="${h - bottom}"/>`, `<text x="${x.toFixed(1)}" y="${h - bottom + 16}" class="gs-svg-tick" text-anchor="start">${esc(day.slice(0, 7))}</text>`);
     }
+    // The lane names are drawn after the marks, so a shortened one's full text lies over them (F-522).
+    const names = [];
     v.lanes.forEach((l, i) => {
       const y = top + lane * i + lane / 2;
       parts.push(`<line class="gs-svg-axis" x1="${left}" y1="${y}" x2="${w - right}" y2="${y}"/>`);
       const name = String(l.label.program ?? l.key.program);
-      parts.push(`<text x="${left - 8}" y="${y + 4}" class="gs-svg-label" text-anchor="end">${esc(name.length > 28 ? `${name.slice(0, 27)}…` : name)}<title>${esc(`${name}: ${fmt("sent", l.cells.sent)} sent, open rate ${fmt("openRate", l.cells.openRate)} (every recipient of the program over these days: ${fmt("openRate", l.tenant.openRate)})`)}</title></text>`);
+      names.push(svgLabel({ x: left - 8, y: y + 4, text: name, max: 28, cls: "label", anchor: "end", title: `${name}: ${fmt("sent", l.cells.sent)} sent, open rate ${fmt("openRate", l.cells.openRate)} (every recipient of the program over these days: ${fmt("openRate", l.tenant.openRate)})`, room: { left: 4, width: w - 8, stack: "down" } }));
     });
     const laneOf = new Map(v.lanes.map((l, i) => [l.key.program, i]));
     for (const m of v.marks) {
@@ -1619,7 +1676,7 @@ export function createTimeline(engine, model) {
       parts.push(`<circle class="gs-svg-mark gs-mark-${m.state}" cx="${xOf(m.key.day).toFixed(1)}" cy="${y}" r="${r.toFixed(1)}"><title>${esc(text)}</title></circle>`);
     }
     const legend = `<ul class="gs-legend">${Object.entries(STATE_WORDS).map(([k, words]) => `<li><svg class="gs-swatch-svg" viewBox="0 0 12 12" aria-hidden="true"><circle class="gs-svg-mark gs-mark-${k}" cx="6" cy="6" r="4.5"/></svg>${esc(words)}</li>`).join("")}<li>${esc("A larger mark is more sends that day")}</li></ul>`;
-    return `${legend}<svg class="gs-chart gs-lanes" viewBox="0 0 ${w} ${h}" role="img" aria-label="${esc(`One lane per program, a mark per email and day, ${days.start} to ${days.end}`)}">${parts.join("")}</svg>`;
+    return `${legend}<svg class="gs-chart gs-lanes" viewBox="0 0 ${w} ${h}" role="img" aria-label="${esc(`One lane per program, a mark per email and day, ${days.start} to ${days.end}`)}">${parts.join("")}${names.join("")}</svg>`;
   };
 
   // ── The marks as a table (the chart's fallback, and what the CSV exports) ──
@@ -1657,6 +1714,13 @@ export function createTimeline(engine, model) {
     const rec = tl.reconciliation;
     const against = rec.against;
     const checks = rec.checks.map((c) => `${c.id}: ${c.ok ? "ok" : `${c.mismatches} mismatch(es)`} over ${c.compared}${c.drift ? `, ${c.drift} in a provisional month` : ""}`).join("; ");
+    // Each reason a program was left out says itself, with the programs it covers (F-520: one sentence for every
+    // reason said "the dashboard did not keep this account there" of programs it kept).
+    const nameOf = new Map(programs.map((p) => [p.id, p.name ?? p.id]));
+    const leftOut = (list) => [...new Set(list.map((n) => n.reason))].map((reason) => {
+      const ids = list.filter((n) => n.reason === reason).map((n) => nameOf.get(n.programId) ?? n.programId);
+      return `${plural(ids.length, "program")} not compared (${ids.join(", ")}): ${engine.reasonText(reason)}`;
+    }).join(" ");
     const prov = [
       ["Account", `${account.name ?? "(no name)"} (GSID ${account.key})${account.testAccount ? ", named as a test account" : ""}`],
       ["Pulled at", `${tl.meta.pulledAt}${tl.meta.timeZone ? ` (${tl.meta.timeZone})` : ""}`], ["Tenant", tl.meta.tenantHost],
@@ -1664,7 +1728,7 @@ export function createTimeline(engine, model) {
       ["Internal recipients", domains.length ? `addresses ending in ${domains.map((d) => `@${d}`).join(" or ")}${account.testAccount ? ", and every send to this account" : ""}` : account.testAccount ? "every send to this account (a test account)" : "none named: every recipient counts as external"],
       ["Subjects and step names", tl.meta.templates.subjects ? "from the knowledge base, as of each doc's date" : engine.reasonText(tl.meta.templates.reason)],
       ["Checks", checks],
-      ["Against the dashboard", against ? (against.reason ? `not compared: ${against.reason}` : `the account's rows in the dashboard pulled ${against.pulledAt}, ${plural(against.compared, "program-month")} compared${against.basis === "class" ? " by recipient class" : " over every recipient"}${against.notCompared.length ? `; ${plural(against.notCompared.length, "program")} not compared (the dashboard did not keep this account there)` : ""}`) : "not compared (pulled on its own)"],
+      ["Against the dashboard", against ? (against.reason ? `not compared with the dashboard pulled ${against.pulledAt}. ${engine.reasonText(against.reason)}${against.notCompared.some((n) => n.reason !== against.reason) ? ` ${leftOut(against.notCompared.filter((n) => n.reason !== against.reason))}` : ""}` : `the account's rows in the dashboard pulled ${against.pulledAt}, ${plural(against.compared, "program-month")} compared${against.basis === "class" ? " by recipient class" : " over every recipient"}.${against.notCompared.length ? ` ${leftOut(against.notCompared)}` : ""}`) : "not compared (pulled on its own)"],
       ["Versions", `CLI ${tl.meta.cliVersion ?? "unknown"}, plugin ${tl.meta.pluginVersion ?? "unknown"}, schema ${tl.schemaVersion}`],
     ];
     const line = COPY_LINES.account(model.slug ?? "<slug>", { id: account.key, name: account.name }, model.kb);

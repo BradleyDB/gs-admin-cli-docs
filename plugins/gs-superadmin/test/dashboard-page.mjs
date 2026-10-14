@@ -1424,6 +1424,39 @@ try {
       (evilBuilt.html.match(/<script/g) ?? []).length === 3 && !/[<>&]/.test(evilPage.data) && !/<script|<img|onerror=alert/.test(evilMarkup.replace(/&lt;[\s\S]*?&gt;/g, "")) && evilMarkup.includes(esc(HOSTILE_ACCOUNT_NAME)) &&
         evilBuilt.html.includes(`<title>Account timeline · &lt;img src=x onerror=alert(1)&gt;`) && evilPage.call(`app.timeline.dimensions.account.name`) === HOSTILE_ACCOUNT_NAME &&
         parseCsv(evilPage.call(`app.csvOf(app.panels[0], app.defaultState(), null).text`)).slice(1).every((r) => !/^[=+\-@]/.test(r[4])), evilMarkup.match(/<(img|script)[\s>].{0,40}/)?.[0]);
+    // F-522: no chart label is shortened without its full text reachable (S4d's tips: hover, focus, click or tap). The
+    // judge reads the markup alone: any SVG <text> showing a proper prefix of a real name must sit in a group whose
+    // data-tip is that whole name, focusable, the full text drawn there; the CSS opens it on hover, focus and is-open.
+    const unesc = (x) => String(x).replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, "&");
+    const cutLabels = (markup, names) => {
+      const found = [];
+      for (const m of markup.matchAll(/<text\b[^>]*>([^<]*)/g)) {
+        const shown = unesc(m[1]).replace(/[…*†]+$/u, "");
+        const name = shown.length >= 4 ? names.find((n) => n !== shown && n.startsWith(shown)) : null;
+        if (!name) continue;
+        const before = markup.slice(0, m.index);
+        const open = before.lastIndexOf("<g ");
+        const group = open > before.lastIndexOf("</g>") ? markup.slice(open, markup.indexOf(">", open) + 1) : "";
+        const reachable = unesc(/data-tip="([^"]*)"/.exec(group)?.[1] ?? "") === name && /tabindex="0"/.test(group) && markup.slice(open, markup.indexOf("</g>", open)).includes('class="gs-svg-full"');
+        found.push({ shown, name, reachable });
+      }
+      return found;
+    };
+    const LONG = (i) => `Acme ${i} Quarterly Renewal Reminder Sequence for Enterprise Accounts`;
+    const longTl = structuredClone(TL);
+    longTl.dimensions.programs.forEach((p, i) => { p.name = LONG(i); });
+    const longTlPre = loadPage(tlBuild(longTl).html).prerender;
+    const longSnap = structuredClone(PULLED);
+    longSnap.dimensions.programs.forEach((p, i) => { p.name = LONG(i); });
+    const barSpec = specWith((s) => { s.pages[0].panels.push({ id: "by-program", tab: "engagement", type: "bar", title: "By program", query: { groupBy: ["program"], metrics: ["sent"] } }); });
+    const barMarkup = markupOf(build(barSpec, engine.openSnapshot(longSnap)).html);
+    const laneCuts = cutLabels(longTlPre, longTl.dimensions.programs.map((p) => p.name));
+    const tickCuts = cutLabels(panelHtml(barMarkup, "by-program") ?? "", longSnap.dimensions.programs.map((p) => p.name));
+    check("F-522 a chart label the renderer shortens keeps its full text reachable the way every tip is: the timeline's lane names and a bar chart's tick labels (a line panel is monthly) each sit in a focusable group whose data-tip is the whole name and whose full text is drawn in the chart, opened by hover, focus and is-open (the one click, tap and Enter toggle); a label short enough is drawn whole",
+      laneCuts.length === longTl.dimensions.programs.length && tickCuts.length >= 2 && [...laneCuts, ...tickCuts].every((c) => c.reachable) &&
+        /\.gs-svg-tipped:hover \.gs-svg-full,\.gs-svg-tipped:focus \.gs-svg-full,\.gs-svg-tipped\.is-open \.gs-svg-full\{visibility:visible\}/.test(TLP.html) && /closest\?\.\("\[data-tab\],[^"]*\[data-tip\]"\)/.test(SOURCES.runtimeSource) &&
+        cutLabels(pre, TL.dimensions.programs.map((p) => p.name)).length === 0 && !pre.includes("gs-svg-tipped"),
+      { lanes: laneCuts.filter((c) => !c.reachable).slice(0, 3), ticks: tickCuts.filter((c) => !c.reachable).slice(0, 3), counts: [laneCuts.length, tickCuts.length] });
     const empty = structuredClone(TL);
     empty.facts.accountTimeline = [];
     empty.facts.tenantByProgram = [];

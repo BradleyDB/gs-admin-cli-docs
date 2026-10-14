@@ -5048,7 +5048,10 @@
       "co-03",
       "co-06"
      ],
-     "selectedFrom": "every program"
+     "selectedFrom": "every program",
+     "rankedAt": "2026-09-15T09:00:00-07:00",
+     "carriedFrom": null,
+     "notRanked": null
     },
     {
      "kind": "least-engaged",
@@ -5068,7 +5071,10 @@
       "co-08",
       "co-05"
      ],
-     "selectedFrom": "every program"
+     "selectedFrom": "every program",
+     "rankedAt": "2026-09-15T09:00:00-07:00",
+     "carriedFrom": null,
+     "notRanked": null
     },
     {
      "kind": "most-bounced",
@@ -5087,7 +5093,10 @@
       "co-05",
       "co-08"
      ],
-     "selectedFrom": "every program"
+     "selectedFrom": "every program",
+     "rankedAt": "2026-09-15T09:00:00-07:00",
+     "carriedFrom": null,
+     "notRanked": null
     }
    ],
    "lowCadencePrograms": [
