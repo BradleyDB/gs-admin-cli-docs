@@ -28,14 +28,26 @@ in a page of its own; and a one-account view on the dashboard's admin page.
 - **Checked against the dashboard.** Named with a dashboard, the dashboard's internal domains
   and test accounts decide who is internal, and the timeline is reconciled with that
   dashboard's latest pull of the same account per program and whole month (closed months
-  must match; a provisional month drifts; a program the dashboard did not keep the account on
-  is named, never counted as a pass).
+  must match; a provisional month drifts; a program left out is named with why: the dashboard
+  holds no row of the account on it, or it kept the account there but the account's sends on it
+  fall only in the first, partial month of the days or the provisional month).
 - **The admin page's one-account view:** an account the customer lists kept, month by month,
   chosen with the Account filter or View beside its name in a list, with the copyable line for
   its timeline by day (it needs a `gs-admin` login; the page says so). With accounts not pulled
   it says why and how to add them.
+- **A program's whole name on a chart.** A name a chart shortens (a timeline's lanes, a bar
+  chart's labels) opens whole over the chart on hover, keyboard focus, click or tap, like
+  every other hint on the page; a second click or tap closes it.
+- **The customer lists after a refresh that continues an earlier pull.** It keeps the lists
+  the last full pull ranked, says when they were ranked, and counts their figures again; the
+  report no longer says that no account met a list's floor while the accounts are there. A
+  list that pull did not rank says so, and that a full refresh (`refresh <slug> --full`)
+  ranks it.
+- **What a stopped refresh still needs.** The resume's opening line and the stop's "more
+  logins" price what is left of the pull: never more than the whole, falling as calls land.
 - The account timeline is a second snapshot kind of the engagement adapter, additive on its
-  contract; nothing in the engagement snapshot changed.
+  contract. The engagement snapshot gains three additive fields on each customer list's
+  record (when it was ranked, where it was carried from, why it was not ranked).
 
 ## 0.51.0 — 2026-10-12
 

@@ -91,6 +91,9 @@ export const wrapWords = (text, perLine) => {
   if (line) lines.push(line);
   return lines.length ? lines : [""];
 };
+// A chart is an image to assistive technology (role img: its children are presentational) unless it holds a label
+// one can focus to read whole; then it is a group, so that label is exposed.
+export const svgRole = (labels) => (labels.some((l) => l.startsWith("<g ")) ? "group" : "img");
 /**
  * @param {{x: number, y: number, text: string, max: number, cls: string, anchor?: string, suffix?: string, title?: string, room: {left: number, width: number, lineWidth?: number, stack: "down"|"up"}}} o
  * @returns {string} an SVG <text>, or, when the text is longer than `max`, the group that keeps it whole
@@ -844,7 +847,7 @@ export function createDashboard(engine, model) {
     }
     function r(i) { return rows[i].key[dim] ?? dimText(dim, rows[i]) ?? "(none)"; }
     const legend = series.length > 1 ? `<ul class="gs-legend">${series.map((s) => `<li><span class="gs-swatch" style="background:var(--series-${s.i + 1})"></span>${esc(s.label)}${s.state === "not-tracked" ? ` <span class="gs-not-tracked">${esc(engine.NOT_TRACKED)}</span>` : s.state === "unknown" ? ` <span class="gs-mark gs-unknown">${esc(engine.UNKNOWN_MARK)}</span>` : ""}</li>`).join("")}</ul>` : "";
-    const svg = `<svg class="gs-chart" viewBox="0 0 ${w} ${h}" role="img" aria-label="${esc(panel.title)}">${parts.join("")}${ticks.join("")}</svg>`;
+    const svg = `<svg class="gs-chart" viewBox="0 0 ${w} ${h}" role="${svgRole(ticks)}" aria-label="${esc(panel.title)}">${parts.join("")}${ticks.join("")}</svg>`;
     const notes = whyNotes(rows, ids);
     // A trend that starts after the first month shown: the figure was not counted before (the one definition boundary a snapshot can hold).
     for (const s of series) {
@@ -1676,7 +1679,7 @@ export function createTimeline(engine, model) {
       parts.push(`<circle class="gs-svg-mark gs-mark-${m.state}" cx="${xOf(m.key.day).toFixed(1)}" cy="${y}" r="${r.toFixed(1)}"><title>${esc(text)}</title></circle>`);
     }
     const legend = `<ul class="gs-legend">${Object.entries(STATE_WORDS).map(([k, words]) => `<li><svg class="gs-swatch-svg" viewBox="0 0 12 12" aria-hidden="true"><circle class="gs-svg-mark gs-mark-${k}" cx="6" cy="6" r="4.5"/></svg>${esc(words)}</li>`).join("")}<li>${esc("A larger mark is more sends that day")}</li></ul>`;
-    return `${legend}<svg class="gs-chart gs-lanes" viewBox="0 0 ${w} ${h}" role="img" aria-label="${esc(`One lane per program, a mark per email and day, ${days.start} to ${days.end}`)}">${parts.join("")}${names.join("")}</svg>`;
+    return `${legend}<svg class="gs-chart gs-lanes" viewBox="0 0 ${w} ${h}" role="${svgRole(names)}" aria-label="${esc(`One lane per program, a mark per email and day, ${days.start} to ${days.end}`)}">${parts.join("")}${names.join("")}</svg>`;
   };
 
   // ── The marks as a table (the chart's fallback, and what the CSV exports) ──
@@ -1715,12 +1718,8 @@ export function createTimeline(engine, model) {
     const against = rec.against;
     const checks = rec.checks.map((c) => `${c.id}: ${c.ok ? "ok" : `${c.mismatches} mismatch(es)`} over ${c.compared}${c.drift ? `, ${c.drift} in a provisional month` : ""}`).join("; ");
     // Each reason a program was left out says itself, with the programs it covers (F-520: one sentence for every
-    // reason said "the dashboard did not keep this account there" of programs it kept).
-    const nameOf = new Map(programs.map((p) => [p.id, p.name ?? p.id]));
-    const leftOut = (list) => [...new Set(list.map((n) => n.reason))].map((reason) => {
-      const ids = list.filter((n) => n.reason === reason).map((n) => nameOf.get(n.programId) ?? n.programId);
-      return `${plural(ids.length, "program")} not compared (${ids.join(", ")}): ${engine.reasonText(reason)}`;
-    }).join(" ");
+    // reason said "the dashboard did not keep this account there" of programs it kept). The engine groups them.
+    const leftOut = engine.notComparedGroups(against, programs).map((g) => `${plural(g.programs.length, "program")} not compared (${g.programs.join(", ")}): ${g.text}`).join(" ");
     const prov = [
       ["Account", `${account.name ?? "(no name)"} (GSID ${account.key})${account.testAccount ? ", named as a test account" : ""}`],
       ["Pulled at", `${tl.meta.pulledAt}${tl.meta.timeZone ? ` (${tl.meta.timeZone})` : ""}`], ["Tenant", tl.meta.tenantHost],
@@ -1728,7 +1727,7 @@ export function createTimeline(engine, model) {
       ["Internal recipients", domains.length ? `addresses ending in ${domains.map((d) => `@${d}`).join(" or ")}${account.testAccount ? ", and every send to this account" : ""}` : account.testAccount ? "every send to this account (a test account)" : "none named: every recipient counts as external"],
       ["Subjects and step names", tl.meta.templates.subjects ? "from the knowledge base, as of each doc's date" : engine.reasonText(tl.meta.templates.reason)],
       ["Checks", checks],
-      ["Against the dashboard", against ? (against.reason ? `not compared with the dashboard pulled ${against.pulledAt}. ${engine.reasonText(against.reason)}${against.notCompared.some((n) => n.reason !== against.reason) ? ` ${leftOut(against.notCompared.filter((n) => n.reason !== against.reason))}` : ""}` : `the account's rows in the dashboard pulled ${against.pulledAt}, ${plural(against.compared, "program-month")} compared${against.basis === "class" ? " by recipient class" : " over every recipient"}.${against.notCompared.length ? ` ${leftOut(against.notCompared)}` : ""}`) : "not compared (pulled on its own)"],
+      ["Against the dashboard", against ? (against.reason ? `not compared with the dashboard pulled ${against.pulledAt}. ${engine.reasonText(against.reason)}${leftOut ? ` ${leftOut}` : ""}` : `the account's rows in the dashboard pulled ${against.pulledAt}, ${plural(against.compared, "program-month")} compared${against.basis === "class" ? " by recipient class" : " over every recipient"}.${leftOut ? ` ${leftOut}` : ""}`) : "not compared (pulled on its own)"],
       ["Versions", `CLI ${tl.meta.cliVersion ?? "unknown"}, plugin ${tl.meta.pluginVersion ?? "unknown"}, schema ${tl.schemaVersion}`],
     ];
     const line = COPY_LINES.account(model.slug ?? "<slug>", { id: account.key, name: account.name }, model.kb);

@@ -556,7 +556,7 @@ import { classifySchedule } from "./jo-report-audit-active.mjs";
 import {
   SOURCES, NON_CONTENT_LINK_RULES, SEND_MEASURES, T10_SCHEMA_VERSION, measuresCounted, rollUpTracking, openSnapshot, accountAvailability, healthAvailability, maskMessage,
   categoryTable, validateCategories, OTHER_CATEGORY, UNCLASSIFIED_CATEGORY, UNKNOWN_KIND, FAILURE_CATEGORIES, STEP_FAILURE_CATEGORIES, cronLastDue, QUIET_DUE_DAYS_DEFAULT, kindOf, isExpectedKind,
-  TIMELINE_MEASURES, timelineByMonth, runQuery, reasonText,
+  TIMELINE_MEASURES, timelineByMonth, runQuery, reasonText, notComparedGroups,
 } from "./engagement-query.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -2514,7 +2514,7 @@ export function fetchEngagement(ctx) {
   // Once the plan is made: what is left of it, priced over the records as they stand (F-518). A stop carries it, so
   // what a stopped run says it still needs is priced the same way as the resume's opening line, never the plan's
   // calls less this run's counts (which count the cuts the plan did not foresee).
-  /** @type {?() => {calls: number, seconds: number, units: number}} */
+  /** @type {(() => {calls: number, seconds: number, units: number}) | null} */
   let remainingNow = null;
   const conclude = (extra) => {
     const status = stop ? stop.reason : failed.length ? "partial" : "ok";
@@ -2701,6 +2701,8 @@ export function fetchEngagement(ctx) {
     return { open: p.open, calls: left, seconds: whole.calls ? (whole.seconds * left) / whole.calls : 0 };
   });
   const remainderOf = (parts, extraCalls, extraSeconds) => ({ calls: parts.reduce((n, r) => n + r.calls, 0) + extraCalls, seconds: Math.round(parts.reduce((n, r) => n + r.seconds, 0)) + extraSeconds, units: parts.filter((r) => r.open).length });
+  // The one remainder: the plan prices it now, and a stop prices it again over the records as they stand then. The
+  // samples are counted whole (picked after the counts), so it is an upper bound.
   // The per-program samples (F-484), priced from the count-first reads: how many selected programs have
   // refusals in the window (read above) and how many have uncategorised bounces (from the bounce count-first
   // read: every bounce, until the categories are counted), against the cap; what the cap leaves out, and what
@@ -2776,13 +2778,15 @@ export function fetchEngagement(ctx) {
     staleKeysFile: tplGap.behind.length + tplGap.unread.length ? join(runDir, TEMPLATE_GAP_STALE_FILE) : null,
     keysFile: tplKeys.length ? join(runDir, TEMPLATE_GAP_KEYS_FILE) : null,
   };
+  const priceRemaining = () => remainderOf(remainingParts(), ownReads, describeSeconds(ownReads));
+  remainingNow = priceRemaining;
   const estimate = {
     mode: refresh.mode, why: refresh.why,
     thisRun: {
       calls: calls(units) + ownReads, seconds: seconds(units) + describeSeconds(ownReads), units: units.length, byFamily: { ...familyCounts(units, base, params.pageSize), ...(ownReads ? sampleFamilies : {}) },
       // The part not yet made (F-518): a resumed run's price is this, never the whole plan's. The samples are counted
       // whole (they are picked after the counts), so a resume's remainder is an upper bound.
-      remaining: remainderOf(remainingParts(), ownReads, describeSeconds(ownReads)),
+      remaining: priceRemaining(),
     },
     full: { calls: calls(fullUnits) + ownReads, seconds: seconds(fullUnits) + describeSeconds(ownReads) },
     stepDetail: { on: params.stepDetail, addsCalls: calls(withStep) - calls(without), addsSeconds: seconds(withStep) - seconds(without) },
@@ -2839,7 +2843,6 @@ export function fetchEngagement(ctx) {
   }
   // `selectedIds`: the programs this pull selects (the selector applied, deleted ones out), so a reader of the plan
   // (the dashboard interview's group proposal, F-515) works over exactly the set the reducer will.
-  remainingNow = () => remainderOf(remainingParts(), ownReads, describeSeconds(ownReads));
   writeFileAtomicSync(join(runDir, "plan.json"), JSON.stringify({ estimate, programs, selectedIds, refresh: { ...refresh, carriedPrograms: [...refresh.carriedPrograms] } }, null, 2));
   if (phase === "plan") return conclude({ whoami, estimate, programs });
 
@@ -3316,6 +3319,10 @@ function cadenceRatios(units, selected) {
 function carriedLists(previous, configured) {
   const prior = previous?.honesty?.accountSelection?.lists ?? [];
   const same = (a, l) => a.kind === l.kind && a.n === l.n && a.floor === l.floor && (a.per ?? null) === (l.per ?? null);
+  // Whether the list was set when the previous pull was made is that pull's own params echo, never inferred from its
+  // records: a per-segment list over an empty pool records no segment at all (selectAccountsAcross emits one record per
+  // segment), and it was set all the same.
+  const setThen = (l) => (previous?.meta?.params?.accounts?.lists ?? []).some((a) => same(a, l));
   // Ranked over every program: a record that says so (a full pull's, or one carried from it); anything else is not.
   const ranked = (a) => a.notRanked == null && a.selectedFrom === "every program";
   const out = [];
@@ -3323,8 +3330,10 @@ function carriedLists(previous, configured) {
   for (const l of [...configured.filter((x) => !x.per), ...configured.filter((x) => x.per)]) {
     const matches = prior.filter((a) => same(a, l));
     const base = { kind: l.kind, n: l.n, floor: l.floor, per: l.per ?? null };
+    // A per-segment list set then with no segment then: carried as it was, with none (what a full pull records).
+    if (!matches.length && l.per && setThen(l) && prior.some(ranked)) continue;
     if (!matches.length || !matches.every(ranked)) {
-      out.push({ ...base, segment: null, keys: [], rankedAt: null, carriedFrom: null, notRanked: matches.length ? "previous-not-ranked" : "list-set-since" });
+      out.push({ ...base, segment: null, keys: [], rankedAt: null, carriedFrom: null, notRanked: setThen(l) ? "previous-not-ranked" : "list-set-since" });
       continue;
     }
     for (const a of matches) out.push({ ...base, segment: a.segment ?? null, keys: [...a.kept], rankedAt: a.rankedAt ?? previous?.meta?.pulledAt ?? null, carriedFrom: previous?.meta?.pulledAt ?? null, notRanked: null });
@@ -3335,8 +3344,9 @@ function carriedLists(previous, configured) {
  * The account selection (R24 per program, and the cross-program lists, ruled 2026-10-05). A program carried from the
  * previous snapshot keeps the accounts that snapshot selected, so each one's row series stays whole across carried
  * and pulled months; ranking is redone on a full pull. The cross-program lists are ranked over every account row of
- * every program on a full pull, and carried from the previous snapshot on a selective one (carriedLists, F-521); a
- * kept account gets its own rows on every program it is on, carried or pulled whole.
+ * every program on a full pull, and carried from the previous snapshot on a selective one (carriedLists, F-521); an
+ * account those lists keep gets its own rows on every program it is on, carried or pulled whole (a per-segment list
+ * is ranked over the kept accounts' rows after the names are read, and gives its accounts no rows of their own).
  * @returns {{byProgram: Map<string, Set<string>>, lists: Array<*>, lowCadence: string[], ratios: Map<string, ?number>, across: Map<string, *>}}
  */
 function selectionFor({ params, units, selected, refresh, previous, attrs = new Map() }) {
@@ -4582,9 +4592,10 @@ export function timelineSummary(tl, outPath) {
     reconciled: tl.reconciliation.ok,
     reconciliation: tl.reconciliation.checks.map((c) => ({ id: c.id, ok: c.ok, compared: c.compared, mismatches: c.mismatches, drift: c.drift })),
     against: tl.reconciliation.against,
-    // The reasons in words (the engine's table), so a caller relays a sentence, never an id.
+    // The reasons in words, grouped as the page groups them (the engine's notComparedGroups), so a caller relays the
+    // page's sentences with the programs' names, never an id.
     againstText: tl.reconciliation.against
-      ? { reason: tl.reconciliation.against.reason ? reasonText(tl.reconciliation.against.reason) : null, notCompared: [...new Set(tl.reconciliation.against.notCompared.map((n) => n.reason))].map((reason) => ({ reason: reasonText(reason), programs: tl.reconciliation.against.notCompared.filter((n) => n.reason === reason).length })) }
+      ? { reason: tl.reconciliation.against.reason ? reasonText(tl.reconciliation.against.reason) : null, notCompared: notComparedGroups(tl.reconciliation.against, tl.dimensions.programs).map((g) => ({ reason: g.text, programs: g.programs })) }
       : null,
     excluded: tl.honesty.excluded,
     caveats: tl.caveats.map((c) => c.id),

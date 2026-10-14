@@ -667,6 +667,20 @@ export const REASONS = deepFreeze({
 });
 /** @param {?string} id @returns {string} the reason in words; an id the table lacks is shown as itself */
 export const reasonText = (id) => (id == null ? "" : REASONS[id] ?? `No value (${id}).`);
+/**
+ * The programs a timeline's dashboard comparison left out, grouped by why (F-520): one group per reason, its words and
+ * the programs' names, the whole comparison's own reason left out (it is said once, as the comparison's). The one
+ * grouping the timeline page and the account summary both read, so the two say the same.
+ * @param {?{reason: ?string, notCompared: Array<{programId: string, reason: string}>}} against
+ * @param {Array<{id: string, name?: ?string}>} programs the timeline's programs
+ * @returns {Array<{reason: string, text: string, programs: string[]}>}
+ */
+export function notComparedGroups(against, programs) {
+  if (!against) return [];
+  const nameOf = new Map(programs.map((p) => [p.id, p.name ?? p.id]));
+  const left = against.notCompared.filter((n) => n.reason !== against.reason);
+  return [...new Set(left.map((n) => n.reason))].map((reason) => ({ reason, text: reasonText(reason), programs: left.filter((n) => n.reason === reason).map((n) => nameOf.get(n.programId) ?? n.programId) }));
+}
 
 // In the order a status list reads best: what is running first.
 export const STATUS_LABELS = deepFreeze({ PROCESSING: "Active", PAUSE: "Paused", NEW: "Draft", STOP: "Stopped" });
