@@ -3087,3 +3087,69 @@ Results (builder close-out, 2026-10-14 @ hb-20261014-04; feat/jo-dash-f528-withd
 - C3 PASSED locally: test/dashboard.mjs 124/124, test/dashboard-native.mjs 23/23; CI on PR #52 at the merge, named in the
   close-out comment on dev.
 Section status: CLEARED — F-528 VERIFIED (builder, the verdict of record for the role-inversion fix).
+
+## R12-A — the release gate's fixes (banked 2026-10-15, builder, R12 fix round A @ <token>; verdict at the R12-A verdict round)
+
+Owed by: the R12-A verdict round, in the consumer workspace with the plugin loaded from `dev` once PR (R12-A) is merged
+(a terminal in the workspace with --plugin-dir, canary <token> matched). NO PULL: every arm runs on the stand-in, on the
+repo's suites, or on a SCRATCH import of the kept dashboard (digital-outreach-health-v2: `export … --with-snapshot`, then
+`import --file … --slug r12a-scratch`), never on the kept dashboard itself. The only tenant call allowed is `whoami`; arm
+V7's account lines are optional and read the tenant (a login), and are skipped without one (say so). The publish arms
+point a NEW publish target at a temp folder (`publish-target r12a-temp <a new empty folder>` and
+`change r12a-scratch 'publish.config.to="r12a-temp"'`), never the leaders' shared folder. Token: <token>. Why it is
+banked: the fixes are judged by the suites, but three of them change what an admin reads (the change summary's words,
+the tiles, the skill's route), and no suite reads skill prose.
+
+THIS LIST IS COMPLETE.
+
+- V1 (F-529 narrow, on the scratch import). `change r12a-scratch accounts.lists=[{"kind":"most-bounced","n":5,"floor":0}]
+  --kb <kb> --dry-run`, then the same line without `--dry-run`. Pass bar: `consequenceText` says the pages are rebuilt
+  with no pull and the changed lists are ranked at the next full refresh, with the line `… refresh r12a-scratch --kb <kb>
+  --full` and the reason (a routine refresh, or the rows no longer in the workspace: an import carries no run
+  directory); the change exits 0 with `done.ranked` false, `done.rebuilt` true and `done.text` saying the same in a
+  sentence; the scratch's admin page is rebuilt (its file time moves) and no call is made (nothing pulled).
+  Read `done.text` to Bradley: is it what an admin should read? (Running the `--full` line is NOT part of this round: it
+  is a pull.) Then `new r12a-scratch`, `next r12a-scratch --question customer-list-detail`, answer it with one size
+  changed, `next r12a-scratch`: the closing ask says the same, and its first option reads "Save and rebuild the pages now
+  (no pull; the customer lists are ranked at the next full refresh)"; close with `save-only` answers (or discard the
+  draft).
+- V2 (F-531, the tile, on the scratch import with no pull). `rebuild r12a-scratch`, open the admin page in a browser.
+  Pass bar: each count tile's change reads against the usual over the closed months shown, with "(over the N closed
+  months shown; the current month is left out until it closes)"; pick only the last closed month in the filter bar: the
+  change is that month against the usual, with no note; pick only the current month: "no closed month shown to compare
+  with it". The Health tab's bounce-reason table's Change column reads "(closed months)". Bradley's eye: in the default
+  whole-window view the change now reads level (the window's closed months ARE the usual): keep that, or rule another
+  default comparison (the builder's call was closed months, stated in F-531's Fix note).
+- V3 (F-532 / F-540, on the scratch import, the temp target). (a) The import of V1's setup said
+  `publishRenamed` (to `r12a-scratch-leaders.html`). (b) `change r12a-scratch
+  'publish.config.file="digital-outreach-health-v2-leaders.html"' --kb <kb>`: refused, naming the kept dashboard,
+  nothing saved. (c) `publish r12a-scratch`, then `change r12a-scratch 'publish.config.file="r12a-renamed.html"'`: the
+  summary's `done.publish.noLongerUpdated` names the earlier page and its data folder, both still in the temp folder.
+  (d) Into the temp target's data folder drop a file `other-dashboard.csv`, then `publish r12a-scratch`: it is still there
+  (the prune removes only what this dashboard wrote). (e) An import with `--snapshot` pointing at a file that is not a
+  snapshot (any JSON file): refused "nothing was imported", and no new dashboard folder.
+- V4 (the stand-in suites, run once in the repo at the merged dev). `node plugins/gs-superadmin/test/dashboard.mjs`,
+  `test/engagement-query.mjs`, `test/dashboard-page.mjs`, `test/jo-report.mjs`, `test/engagement-report.mjs`. Pass bar: all
+  pass; read the R12-A checks by name (F-529 ×6, F-531, F-532 ×4, F-533, F-534, F-535 ×2, F-537, F-538, F-539, F-540, F-543,
+  F-544, F-547 ×2) and that each provokes its section's reported scenario (the Judge lines on the bus).
+- V5 (F-547, a CSV opened). `node .gs-superadmin/plugin/scripts/dashboard.mjs report r12a-scratch --kb <kb> --csv-dir
+  <a temp folder>`; open `engagement-programs.csv` in Excel. Pass bar: it opens with no formula warning; a cell that
+  starts with `-` (the "--" placeholders, if any) shows as text. Optional: the jo-report goldens' apostrophes read by
+  Bradley as acceptable in Excel.
+- V6 (the changed skill walked once: email-engagement is model-invocable, so the tester invokes it). Ask "what's the
+  open rate for <a program the scratch dashboard does not hold — one that last sent before its window>?". Pass bar: the
+  skill runs `dashboard list` (reads `holds`), the dashboard report, then says the program is not on the dashboard (its
+  selection or window) and goes on to the plan with `--name <that program>`, stopping at the plan's ask (decline it; the
+  plan itself is a handful of cheap reads: run it only with a login, else stop before it and say so). Then ask about a
+  program the dashboard holds but whose status is Paused, if the scratch holds one: the report re-run with
+  `--include-paused`. If the scratch snapshot is older than 7 days, the ask prices the routine pull from
+  `refreshMinutes` (or, null, the null wording with `fullRefreshMinutes`). With `--csv`, the report line carries
+  `--csv-dir`. Read the exit-4 rule (F-533), the R2 describe-batch line (F-538) and mode A's two new rules (F-539) as
+  written.
+- V7 (F-539, optional, a login). `account r12a-scratch --account-id <a GSID> --kb <kb>` on a scratch whose snapshot was
+  removed (`rm -r <kb>/dashboards/r12a-scratch/snapshots`): the summary's `againstSnapshot` is null and the skill's
+  Checks line reads "ok; not compared with the dashboard: it has no pull yet"; `--account-id co-nobody`: exit 6 with no
+  candidates, the skill relays `error` and asks for the spelling or the GSID.
+
+Cleanup: `rm -r <kb>/dashboards/r12a-scratch`, the temp folders, and the `r12a-temp` publish target
+(`.gs-superadmin/publish-targets.json`: remove the key by hand or leave it pointing at the deleted folder).
