@@ -153,6 +153,24 @@ Under test: dev · hb-20261015-03 · 2026-10-15
 Blind spots (hb-20261015-03): a post-release re-stamp after 0.54.0 (tag [v]0.54.0 at bb95a20), not a round: nothing new is under test; dev carries only the test-rig fix (PR #56, judged by its 3-OS run) and the deferred F-530/F-548 (Session B) and polish F-536/F-541/F-542/F-545/F-546
 
 
+<!-- builder 2026-10-15 (Session B — F-548 redesign round HANDED OFF — UNMERGED, riding feat/f548-ranking-every-refresh (PR #57 to dev, open); F-548 and F-530 (both normal) OPEN -> FIXED on that branch, re-opened from DEFERRED (past 0.54.0) by their defers' trigger; token hb-20261015-04; plugin 0.55.0; no number claimed; next free F-549):
+     Kickoff: no open PR to dev; no OPEN polish (F-536, F-541, F-542, F-545, F-546 stay DEFERRED past 0.54.0, auto, and
+       block the next release ceremony as the skill says: carried, not in this round).
+     Step 1 (measured, then ruled): the account store measured offline on the kept dashboard's full run directory
+       (15,436 accounts, 185,675 cells, 4.56 MB plain JSON; the full pull's lists reproduced in order); Bradley ruled
+       BUILD, plain JSON (no zipped file), one store for the latest snapshot only (F-548's Measured: and Ruling: lines).
+     Built: every refresh ranks the customer lists over every account and month (stored months + pulled months); a list
+       change ranks from the store with no pull (F-529's narrow path replaced); a 0.54.0 snapshot is continued by one
+       full pull, said and priced, no hand step; the page's list panels show the pull's ranking (F-530); T-10 additive
+       (meta.accountStore). Redesign: carry-the-last-ranking (F-521) replaced.
+     Judge: engagement 384, dashboard 146, dashboard-page 214, engagement-report 56, contract-conformance 318; 13
+       mutants KILLED pred:KILL (M7 after its check was strengthened); /code-review medium 6 findings (3 fixed, 2
+       polish skipped, 1 no change); local battery on a temp worktree (quoted on the branch's Fix note).
+     Owed: the verdict round, LIVE on the kept dashboard (VALIDATION § F-548 — ranking on every refresh, L0-L4: the
+       migration first, then a full and a selective pull, about two hours; a list change on a scratch import; the
+       skill's changed lines walked). Ordering: nothing pending re-arranges what is verified.
+-->
+
 <!-- builder 2026-10-15 ([v]0.54.0 RELEASED — post-release housekeeping; R12, the JO-dashboards release, one folded entry; next free F-549):
      Payload: email engagement, from a one-off report to a dashboard refreshed with one command — the new
        /gs-superadmin:email-engagement skill (report, dashboards from an interview, refresh with no model in the loop,
