@@ -3208,21 +3208,21 @@ Results (builder close-out, 2026-10-15, fix/r12a-v-f534-held-words at e1c2c1f; n
   after the amendment (validate-plugin run 38770931304, docs-drift run 38770931245; CLEAN).
 Section status: CLEARED — F-534 VERIFIED (builder, the verdict of record).
 
-## F-548 — ranking on every refresh (banked 2026-10-15, builder, Session B @ <token>; verdict at the F-548 verdict round)
+## F-548 — ranking on every refresh (banked 2026-10-15, builder, Session B @ hb-20261015-04; verdict at the F-548 verdict round)
 
 Owed by: the F-548 verdict round, in the consumer workspace (Gainsight_Workspace) with the plugin loaded from the branch
-under test (a terminal in the workspace with --plugin-dir, canary <token> matched). LIVE: about two hours of pulls on
+under test (a terminal in the workspace with --plugin-dir, canary hb-20261015-04 matched). LIVE: about two hours of pulls on
 the KEPT dashboard (digital-outreach-health-v2), production, reads only, one call at a time, as many logins as the pulls
 take (the runner checkpoints across them). Order matters: L1 runs while the kept dashboard's latest snapshot is still
 the one 0.54.0 made (no account store beside it, no meta.accountStore), so the migration arm is first. L3 runs on a
-SCRATCH import (f548-scratch), never a list change on the kept dashboard. Token: <token>. Why it is banked: the suites
+SCRATCH import (f548-scratch), never a list change on the kept dashboard. Token: hb-20261015-04. Why it is banked: the suites
 judge the store over the fixture tenant and the stand-in; what only the kept dashboard can show is the migration on a
 real 0.54.0 snapshot, the store's real size and time, a selective refresh's lists against a full one's on real data,
 and the skill relaying the new words (no suite reads skill prose).
 
 THIS LIST IS COMPLETE.
 
-- L0 (provenance). `git -C <repo> status -sb` on the branch under test; the dev-canary token equals <token>. Before any
+- L0 (provenance). `git -C <repo> status -sb` on the branch under test; the dev-canary token equals hb-20261015-04. Before any
   pull: the kept dashboard's latest snapshot has no `meta.accountStore` and no `<stamp>.accounts.json` beside it in
   `acme-prod/dashboards/digital-outreach-health-v2/snapshots/`. Record its three lists' kept counts (25/25/25).
 - L1 (the migration, the full pull; the skill walk). In the tester session, invoke `/gs-superadmin:email-engagement`
