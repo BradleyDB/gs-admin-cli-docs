@@ -236,6 +236,12 @@ jobs:
       # import, over the fictional tenant and the stand-in CLI.
       - name: Dashboard entry-command fixtures (dashboard.mjs)
         run: node plugins/gs-superadmin/test/dashboard.mjs
+      # Native Gainsight reports (NAT-1, NAT-2): each panel's verdict by hand,
+      # the payloads against the report domain's rules, the create and update
+      # lines read back as a shell reads them, and a saved report read back
+      # through the stand-in CLI equal to a straight count.
+      - name: Dashboard native-report fixtures (dashboard-native.mjs)
+        run: node plugins/gs-superadmin/test/dashboard-native.mjs
       # Executes the frozen T-1/T-2 contracts against produced artifacts
       # (GP-B5 DS-18): manifest verbs in a temp workspace, bundled catalog
       # key sets.

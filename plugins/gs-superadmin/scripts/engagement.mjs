@@ -1401,11 +1401,12 @@ export class EngagementRefusal extends Error {}
 /**
  * (argv) → null when the command may run, else why not. Built on the shared
  * gate (doc-lib assertReadOnlyCommand): unresolved, catalog-mutating,
- * ask-override, read-shape and write-endpoint checks, in that order.
- * @param {{catalog: *, hooksDir: string}} args
+ * ask-override, read-shape and write-endpoint checks, in that order. `readPaths` is the command set the caller may
+ * run (the adapter's own by default; the native-report verbs pass theirs, NAT-2), every one catalogued non-mutating.
+ * @param {{catalog: *, hooksDir: string, readPaths?: Set<string>, shapeNoun?: string, runsNoun?: string}} args
  * @returns {(argv: string[]) => ?string}
  */
-export function makeGate({ catalog, hooksDir }) {
+export function makeGate({ catalog, hooksDir, readPaths = ENGAGEMENT_READ_PATHS, shapeNoun = "one of the engagement adapter's reads", runsNoun = "the engagement adapter's read-only pulls" }) {
   const resolver = makeCommandResolver(catalog);
   return (argv) => {
     const { cmd, rest } = resolver.resolveTokens(argv);
@@ -1413,9 +1414,9 @@ export function makeGate({ catalog, hooksDir }) {
       assertReadOnlyCommand({
         matched: cmd, rest, hooksDir, printable,
         fail: (msg) => { throw new EngagementRefusal(msg); },
-        isRead: (_verb, matched) => ENGAGEMENT_READ_PATHS.has(matched?.path),
-        shapeNoun: "one of the engagement adapter's reads",
-        runsNoun: "the engagement adapter's read-only pulls",
+        isRead: (_verb, matched) => readPaths.has(matched?.path),
+        shapeNoun,
+        runsNoun,
       });
       return null;
     } catch (e) {

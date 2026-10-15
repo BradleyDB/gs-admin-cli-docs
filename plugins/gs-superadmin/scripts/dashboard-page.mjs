@@ -526,12 +526,19 @@ export function buildPage({ spec, snapshot, pageId, engineSource, runtimeSource,
 /** The folder beside the leaders' copy that holds its tables (PUB-3): the copy's file name without .html, then -data. */
 export const datasetsDirName = (file) => `${String(file).replace(/\.html$/i, "")}-data`;
 /**
+ * A dataset file's name: the dashboard's name, then the part (a panel's id, or `definitions`), so one file dragged
+ * out of its folder still says which dashboard it belongs to (ruled 2026-10-14 at S7-V). Stable: each pull
+ * overwrites the same names.
+ */
+export const datasetFileName = (dashboard, part) => `${String(dashboard).replace(/[^A-Za-z0-9._-]/g, "_")}-${String(part).replace(/[^A-Za-z0-9._-]/g, "_")}.csv`;
+/**
  * The leaders' copy's tables as CSV files (PUB-3, the dataset emitter; ruled 2026-10-14 at S7's kickoff): one file
  * per panel of the page at its own grain, in the page's default view, through the runtime's own CSV builder (the
  * figures are the page's: nothing is aggregated twice), each row with a last "Data pulled" column; and a
  * definitions file (the pull first, then the filters in force, whether account names are carried, every figure's
- * meaning, the caveats). The names are stable (`<panel>.csv`, `definitions.csv`), so each pull overwrites the
- * last. A page that may not name accounts has no account rows to write (the page's own copy of the snapshot).
+ * meaning, the caveats). The names are stable and carry the dashboard's name (`<dashboard>-<panel>.csv`,
+ * `<dashboard>-definitions.csv`: datasetFileName), so each pull overwrites the last. A page that may not name
+ * accounts has no account rows to write (the page's own copy of the snapshot).
  * Pure: nothing is read or written.
  * @param {{spec: T11Spec, snapshot: T10Snapshot, pageId: string, kb?: ?string}} args the snapshot with its groups applied
  * @returns {Array<{name: string, text: string}>}
@@ -547,10 +554,11 @@ export function buildDatasets({ spec, snapshot, pageId, kb = null }) {
   for (const panel of app.panels) {
     const t = app.csvTableOf(panel, state, null);
     if (!t) continue;
-    files.push({ name: `${String(panel.id).replace(/[^A-Za-z0-9._-]/g, "_")}.csv`, text: BOM + csvText([...t.headers, "Data pulled"], t.rows.map((r) => [...r, pulled])) });
+    // A panel whose id is "definitions" must not take the definitions file's name.
+    files.push({ name: datasetFileName(spec.slug, panel.id === "definitions" ? "panel-definitions" : panel.id), text: BOM + csvText([...t.headers, "Data pulled"], t.rows.map((r) => [...r, pulled])) });
   }
   const d = app.definitionsOf(state);
-  files.push({ name: "definitions.csv", text: BOM + csvText(d.headers, d.rows) });
+  files.push({ name: datasetFileName(spec.slug, "definitions"), text: BOM + csvText(d.headers, d.rows) });
   return files;
 }
 const escTitle = (v) => String(v).replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c]);

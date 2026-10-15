@@ -5,6 +5,50 @@ marketplace doesn't pin versions — users get main — so entries describe what
 user who updates, not internal refactors. Entries before 0.8.0 were reconstructed from git
 history when this file was introduced.
 
+## 0.54.0 — 2026-10-14
+
+Native Gainsight reports from a dashboard (NAT-1, NAT-2), and four fixes to the leaders'
+copy and the page's marks.
+
+- **Native reports, planned.** `dashboard.mjs native-plan <dashboard>` says, for every
+  panel of both pages, whether Gainsight's own reports can carry it: native (every figure),
+  partial (the figures a report cannot carry left out, each with its reason), or not native
+  with the reason (step names, the customer lists, the dashboard's program groups, the
+  health tables, the email text, survey participants, content-link clicks, the distinct
+  counts). For each report it prints the exact `gs-admin rp create` line, read against the
+  tenant's own schema first (a field the delivery log lacks, or a filter on a picklist, is
+  refused rather than guessed). Two panels that would save the same report share one.
+- **What you add in the Gainsight UI.** The CLI cannot author a rate or a conditional
+  column, so a report saves one count (Sent, or a single count's own filter), and the plan
+  gives, for each other figure, the calculated column to add (its condition, from the
+  dashboard's own definitions: Delivered is "went out and did not bounce") and, for each
+  rate, the formula (Open rate = Opened ÷ Delivered, empty on nothing delivered). The
+  page's months, programs, status and internal recipients are Gainsight dashboard filters
+  you set in the UI; the plan says which.
+- **Created one at a time, each behind the guard.** `/gs-superadmin:email-engagement native
+  <dashboard>` shows the plan, asks once, then issues every `rp create` (and `rp update` for
+  a changed panel) as its own command, so the mutation guard asks for each; no script ever
+  runs one. `native-record` reads each new report's id back by its exact name and records it
+  in the dashboard (with a fingerprint, so a re-run skips what is unchanged and updates what
+  moved); `native-verify` reads every report back through `rp run-saved`. `--test-prefix` names
+  every report `ZZ|TEST|…` for a sandbox try-out. The CLI cannot delete a report: the skill
+  lists every id it created, and the plan lists recorded reports no panel needs any more,
+  for removal in the UI.
+- **The claude.ai artifact is no longer offered** for the leaders' copy. A Claude session
+  must read the whole page before it can publish it as an artifact, and a real leaders' page
+  takes several turns to read, every publish. The interview offers a shared folder or the
+  workspace only; a dashboard already set to the artifact keeps working through the skill.
+- **A copy that fails part-way says so.** When a file in the shared folder cannot be
+  replaced (a CSV open in Excel), the summary now reads `published: false` and names the
+  files that were replaced and the ones that still hold the previous copy; the exit code
+  stays 0, as before.
+- **The leaders' CSV files carry the dashboard's name** (`<dashboard>-<table>.csv`,
+  `<dashboard>-definitions.csv`), so a file dragged out of its folder still says where it
+  came from. Files under the old names are removed at the next publish.
+- **Every mark a tab shows is explained at its foot.** The † (months carried forward from
+  an earlier pull) is now explained in the tab's "About these figures" beside the *, and a
+  bar chart whose names carry a † says what it means under the chart.
+
 ## 0.53.0 — 2026-10-14
 
 The leaders' copy, published (PUB-3, PUB-4): by default into a synced shared folder after
