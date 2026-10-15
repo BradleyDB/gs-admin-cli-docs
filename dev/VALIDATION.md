@@ -2903,13 +2903,13 @@ S7-V (2026-10-14 12:30 to 14:15 @ hb-20261014-01; feat/jo-dash-s7-publish at cb7
 - Noted, not logged: the page did not work when opened from inside a zip archive (Bradley, earlier the same day; not a delivery path, cause unmeasured).
 Section status: CLEARED with one arm stopped — Setup, K0, P1, P2 PASSED, P4 ruled, P5 skipped; P3 STOPPED by the platform limit (F-526, the offer withdrawn at S8, artifact support backlogged); F-522, F-523, F-524 VERIFIED; F-525 (normal), F-526 (normal) and F-527 (polish) logged and routed to S8's kickoff batch with the CSV-name ruling.
 
-## S7-V batch — F-525, F-526, F-527 and the dataset-name prefix on a scratch import, with no pull (banked 2026-10-14, builder, Session S8 @ TOKEN; verdict at S8-V)
+## S7-V batch — F-525, F-526, F-527 and the dataset-name prefix on a scratch import, with no pull (banked 2026-10-14, builder, Session S8 @ hb-20261014-02; verdict at S8-V)
 
 Owed by: S8-V, in the consumer workspace with the plugin loaded from feat/jo-dash-s8-native (a terminal in the
 workspace with --plugin-dir, canary matched). NO PULL and NO tenant call beyond the tester's own `whoami`: every arm
 runs on a SCRATCH import of the kept dashboard v2 made with its snapshot, as S7-V did: `export v2 --out <file>
 --with-snapshot --kb <kb>`, then `import --file <file> --snapshot <snap> --slug <scratch> --kb <kb>` (the export's hint
-names the `--snapshot`; S7-V found the line without it). Token: TOKEN. Why it is banked: the batch was built on the
+names the `--snapshot`; S7-V found the line without it). Token: hb-20261014-02. Why it is banked: the batch was built on the
 fictional fixtures; Bradley's eye on a real tab foot, the interview's real wording and a real synced folder are not on
 the builder's machine. Tenant data stays in the workspace and the test folder Bradley names.
 
@@ -2946,12 +2946,12 @@ Cleanup at the close: the scratch dashboard and its pages, the test folder's con
 `.gs-superadmin/publish-targets.json`, the export file.
 Section status (banked): OPEN — owed at S8-V.
 
-## NAT-2 — native Gainsight reports created from a dashboard, on the SANDBOX only (banked 2026-10-14, builder, Session S8 @ TOKEN; verdict at S8-V)
+## NAT-2 — native Gainsight reports created from a dashboard, on the SANDBOX only (banked 2026-10-14, builder, Session S8 @ hb-20261014-02; verdict at S8-V)
 
 Owed by: S8-V, in the consumer workspace with the plugin loaded from feat/jo-dash-s8-native (a terminal in the
 workspace with --plugin-dir, canary matched). SANDBOX ONLY: `rp create` and `rp update` are mutating and write
 reports into the tenant; production is never used for this section. Every report is named `ZZ|TEST|…` (the
-`--test-prefix` flag). Token: TOKEN. Why it is banked: the build ran offline against the stand-in CLI, whose `rp create`
+`--test-prefix` flag). Token: hb-20261014-02. Why it is banked: the build ran offline against the stand-in CLI, whose `rp create`
 / `describe` / `run-saved` are modelled on the CLI's report handler at the pin; what `rp create` prints, the server's
 acceptance of each payload, the UI's calculated-column grammar and run-saved's real labels are unmeasured.
 
