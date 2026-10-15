@@ -801,7 +801,9 @@ try {
     // with it). The report, the page and the About tab say the same list: the three accounts, in the record's order.
     const three = structuredClone(PULLED);
     const least = three.honesty.accountSelection.lists.find((l) => l.kind === "least-engaged");
-    Object.assign(least, { n: 3, floor: 3, kept: least.kept.slice(0, 3) });
+    // The record's order reversed: an order no sort of the figures gives, so the page and the report are held to the
+    // record itself, never to a sort that happens to agree with it.
+    Object.assign(least, { n: 3, floor: 3, kept: least.kept.slice(0, 3).reverse() });
     three.meta.params.accounts.lists = three.meta.params.accounts.lists.map((l) => (l.kind === "least-engaged" ? { ...l, n: 3, floor: 3 } : l));
     const threePage = build(specWith((s) => { s.pages[0].panels = []; s.pages[0].statusDefault = null; s.accounts.lists = three.meta.params.accounts.lists; }), three);
     const threeRows = anyRows(panelHtml(threePage.html, "least-engaged")).slice(1).filter((row) => row[1] !== "").map((row) => row[0].replace(/View$/, "").trim());
