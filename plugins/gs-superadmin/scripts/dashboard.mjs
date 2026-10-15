@@ -1921,7 +1921,7 @@ function reselectReadiness(ctx, slug) {
  * contract: detected, priced and said, with no hand step): its latest snapshot has accounts and no account store of its
  * own (made before the store, or the store gone). Null when it has one, or holds no accounts. The adapter's decideRefresh
  * makes the same decision at the pull; this is the runner saying it before (a list change, the report's offer).
- * @param {T10Snapshot} snapshot @param {string} snapshotPath
+ * @param {*} snapshot the latest snapshot (T-10) @param {string} snapshotPath
  */
 function storeGap(snapshot, snapshotPath) {
   if (!engine.accountAvailability(snapshot).pulled || accountStoreFits(readAccountStore(accountStorePath(snapshotPath)), snapshot)) return null;

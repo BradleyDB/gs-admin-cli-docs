@@ -426,7 +426,7 @@ try {
     purposed.code === 0 && purposed.json.consequence === "rebuild" && pageText("admin").includes(`<p class="gs-purpose">Which programs need attention this month.</p>`) && argvLines().length === callsBeforeChange, purposed.json);
   const relisted = run("change", [SLUG, 'accounts.lists=[{"kind":"most-bounced","n":2,"floor":0}]']);
   const snapshot1b = openSnapshot(readJson(join(dash(), SNAPSHOTS_DIR, snap1[0])));
-  check("change (the customer lists): a re-selection over the last run directory's rows (reduce again, no pull): the snapshot's selection record now holds the one list of 2 and the pages are rebuilt",
+  check("change (the customer lists): a re-selection from the account store beside the last pull (F-548: no pull, no run directory): the snapshot's selection record now holds the one list of 2 and the pages are rebuilt",
     relisted.code === 0 && relisted.json.consequence === "reselect" && relisted.json.done.done === true && isDeepStrictEqual(relisted.json.done.lists, [{ kind: "most-bounced", kept: 2 }]) && argvLines().length === callsBeforeChange && snapshot1b.honesty.accountSelection.lists.length === 1 && snapshot1b.honesty.accountSelection.lists[0].kept.length === 2, relisted.json);
   // The last plan is the one the latest snapshot was pulled from (its run directory, the derived-lookback one), never
   // the preview's or an older plan's.

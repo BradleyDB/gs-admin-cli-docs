@@ -2370,7 +2370,7 @@ const isRpRun = (d) => d.family in FAMILIES;
  * `<runDir>/calls/`, and a call whose file is already there is not made again.
  * Stops cleanly (status "token-expired") when the next call would outlast the
  * token or the CLI says the token died; the run directory stays resumable.
- * @param {{params: *, runDir: string, transport: EngagementTransport, gate: (argv: string[]) => ?string, kbDir?: ?string, previous?: ?T10Snapshot, phase?: "plan"|"all", now?: () => number, onCall?: (line: string) => void}} ctx
+ * @param {{params: *, runDir: string, transport: EngagementTransport, gate: (argv: string[]) => ?string, kbDir?: ?string, previous?: ?T10Snapshot, previousStore?: ?AccountStore, phase?: "plan"|"all", now?: () => number, onCall?: (line: string) => void}} ctx
  * @returns {*} the fetch summary (also written to `<runDir>/status.json`)
  */
 export function fetchEngagement(ctx) {
@@ -3469,7 +3469,7 @@ function selectionFor({ params, units, selected, refresh, carry = new Map() }) {
  * external row is then 0), for the pulled months only (a carried month's was heard by the pull that made it).
  * @param {Array<Map<string, *>>} tables @param {Map<string, Set<string>>} selection
  * @param {(programId: string, month: string) => {provenance: RowProvenance, pulledAt: string}} provenanceOf
- * @param {?(d: *) => void} [onDeficit]
+ * @param {?((d: *) => void)} [onDeficit]
  */
 function accountRowsOf(tables, selection, provenanceOf, onDeficit = null) {
   const buckets = new Map();
@@ -4359,6 +4359,7 @@ export function reduceWithStore(input) {
   if (checks.some((c) => c.drift)) caveats.push({ id: "incomplete-period-drift", detail: { from: params.incompleteFrom, checks: checks.filter((c) => c.drift).map((c) => ({ id: c.id, drift: c.drift })) } });
 
   const facts = { byTemplate, ...(byStep ? { byStep } : {}), byAccount, responses, responseParticipants, uniques, health: healthFacts };
+  /** @type {T10Snapshot} */
   const snapshot = {
     schemaVersion: T10_SCHEMA_VERSION,
     kind: "engagement",
