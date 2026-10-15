@@ -3024,3 +3024,64 @@ S8-V (2026-10-14 @ hb-20261014-02; feat/jo-dash-s8-native at 5d74a44, clean and 
 - Guard-wiring: the ten real mutating lines (above), each ask rendered and approved; the tenant switch was typed by Bradley.
 - Cleanup done: the sandbox dashboard folder (spec, `native/`, plan and verify payloads; the sandbox KB had no `dashboards/` before this round), the closing step's run directory, the session's scratch payloads.
 Section status: CLEARED with one arm failed — N0, N2, N3, N5, N6 PASSED, N1 read (F-528), N4 FAILED (F-528's second instance: the UI steps cannot be performed; counts by a pivot, no rate in a report). F-528 (normal, OPEN) gates the release, not the merge (the S6-V and S7-V precedent). Ruled at the close (Bradley): PR #51 merges on green CI; mode N is WITHDRAWN as an offer for now (F-526's pattern; code, verbs and T-11's `native` kept), native reports backlogged with the measured routes (plan LTR-26) — the withdrawal is F-528's fix round.
+
+## F-528 — the withdrawal read (banked 2026-10-14, builder, F-528 fix round @ hb-20261014-03; verdict at F-528-V)
+
+Owed by: F-528-V, in the consumer workspace with the plugin loaded from feat/jo-dash-f528-withdraw-native (a terminal in
+the workspace with --plugin-dir, canary matched). NO PULL and NO tenant call: nothing here reads the tenant. Token:
+hb-20261014-03. Why it is banked: the withdrawal is prose (a skill mode, two READMEs, a CHANGELOG entry), and no suite runs
+skill prose; the check (W3) reads the text, but only a walk shows what the skill does when asked.
+
+THIS LIST IS COMPLETE.
+
+- W1 (the skill read and walked once; email-engagement is model-invocable, so the tester invokes it). Read the skill's
+  description, argument hint, mode list, ground rules and Arguments. Then ask the session for native reports
+  ("make Gainsight reports from the program-health dashboard"). Pass bar: the skill says native Gainsight reports are
+  not offered in this release (Gainsight's report builder cannot finish them) and stops, with no `native-plan` run and
+  no `rp create` line; the description ends "Never mutates the tenant."; no mode N anywhere in the skill.
+- W2 (the READMEs and the CHANGELOG read). The plugin README's email-engagement section ("Never mutates the tenant." with
+  no exception) and its dashboard section (no native-reports recipe); the repo README's email-engagement bullet (no
+  native clause); the CHANGELOG's 0.54.0 entry (its title names no native reports; the one line saying the verbs ship
+  in the entry command but are not offered, F-528). Pass bar: no shipped prose offers native reports; Bradley rules
+  the wording.
+- W3 (the check's run). `node plugins/gs-superadmin/test/dashboard.mjs` in the repo. Pass bar: the "F-528 native
+  reports are not offered" check passes (and the suite with it); the native suite (`test/dashboard-native.mjs`) still
+  passes (the code is kept).
+
+Results (F-528-V, 2026-10-14 @ hb-20261014-03, tester; feat/jo-dash-f528-withdraw-native at d9677b2, clean and level;
+canary matched; no tenant call):
+- W1 PASSED: the skill invoked by the tester session with "make native Gainsight reports from the digital-outreach-health
+  dashboard" replied that native Gainsight reports made from a dashboard are not offered in this release (Gainsight's
+  report builder cannot finish them) and stopped: no `native-plan`, no `rp create`, no command at all. The description
+  ends "Never mutates the tenant."; no `## N`, no `native` in the hint or the mode list, the ground rule "Read-only
+  tenant." with no exception; the skill's only "native" is the Arguments sentence.
+- W2 FAILED: the plugin README's dashboard section, its email-engagement sentence ("Never mutates the tenant."), the repo
+  README's bullet and the CHANGELOG's 0.54.0 entry (title "Four fixes to the leaders' copy and the page's marks.", the one
+  not-offered bullet) match the bar; but the plugin README's skill catalog row for email-engagement still reads "(its
+  panels also creatable as Gainsight reports, each behind the guard)" — an offer the withdrawal missed (added by the S8
+  commit; no "native" in it). Bradley's wording ruling not asked: the section goes back to the builder first.
+- W3 PASSED as a run, not as a judge: `test/dashboard.mjs` 124/124 (the F-528 check PASS), `test/dashboard-native.mjs`
+  23/23 — with the catalog row present. The tester's own mutant (Step 1's router restored to "N (native Gainsight
+  reports)") SURVIVED, predicted: the check reads chosen spans, not the router or the Arguments.
+Section status: OPEN — W1 and W3 passed, W2 failed; F-528 REOPENED (bus, first reopen). Owed at the next verdict round:
+  W1–W3 again, Bradley's wording read included.
+
+Re-banked 2026-10-14 (tester, role inversion on Bradley's word; the fix at cc83ea6, F-528's second Fix line): the verdict
+of record is the BUILDER's, at the close-out (the tester authored this fix and may not verify it). Owed by the builder:
+- C1 (the differential). Revert each -U0 prose hunk of 1f7593a (the skill, both READMEs, the CHANGELOG) and cc83ea6's row
+  hunk alone on the branch and run the committed F-528 check: every one fails it, on its own clause. Pass bar: 13 of 13.
+- C2 (the read). The plugin README's skill-table row for email-engagement carries no Gainsight-reports clause; W1's skill
+  reply stands (the skill is unchanged since F-528-V). Bradley's wording read of W2: DONE 2026-10-14 at F-528-V (the
+  four places quoted to him as they stand at hb-20261014-04): "fine as is, i can probably clean later if needed" — the
+  wording stands; nothing owed on it at the close-out.
+- C3 (the run). `test/dashboard.mjs` (the F-528 check included) and `test/dashboard-native.mjs` pass; CI green on PR #52.
+
+Results (builder close-out, 2026-10-14 @ hb-20261014-04; feat/jo-dash-f528-withdraw-native at 531a9b5, clean and level):
+- C1 PASSED: 13 of 13 hunks KILLED pred:KILL, each on its own clause (the builder's harness: the committed F-528 block run
+  verbatim, predictions written first, the tree asserted clean after each); the builder's sibling probe S1 (the row's offer
+  reworded with neither key word) SURVIVED pred:SURVIVE, a limit of any word-keyed check, recorded on the bus, not logged.
+- C2 PASSED: the skill-table row reads its pre-S8 words; the differential against 2268d66 finds no surviving S8 line about
+  native reports in the skill, either README or the CHANGELOG; the wording read stands (Bradley, above).
+- C3 PASSED locally: test/dashboard.mjs 124/124, test/dashboard-native.mjs 23/23; CI on PR #52 at the merge, named in the
+  close-out comment on dev.
+Section status: CLEARED — F-528 VERIFIED (builder, the verdict of record for the role-inversion fix).
