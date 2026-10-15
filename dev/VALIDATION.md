@@ -3047,3 +3047,21 @@ THIS LIST IS COMPLETE.
 - W3 (the check's run). `node plugins/gs-superadmin/test/dashboard.mjs` in the repo. Pass bar: the "F-528 native
   reports are not offered" check passes (and the suite with it); the native suite (`test/dashboard-native.mjs`) still
   passes (the code is kept).
+
+Results (F-528-V, 2026-10-14 @ hb-20261014-03, tester; feat/jo-dash-f528-withdraw-native at d9677b2, clean and level;
+canary matched; no tenant call):
+- W1 PASSED: the skill invoked by the tester session with "make native Gainsight reports from the digital-outreach-health
+  dashboard" replied that native Gainsight reports made from a dashboard are not offered in this release (Gainsight's
+  report builder cannot finish them) and stopped: no `native-plan`, no `rp create`, no command at all. The description
+  ends "Never mutates the tenant."; no `## N`, no `native` in the hint or the mode list, the ground rule "Read-only
+  tenant." with no exception; the skill's only "native" is the Arguments sentence.
+- W2 FAILED: the plugin README's dashboard section, its email-engagement sentence ("Never mutates the tenant."), the repo
+  README's bullet and the CHANGELOG's 0.54.0 entry (title "Four fixes to the leaders' copy and the page's marks.", the one
+  not-offered bullet) match the bar; but the plugin README's skill catalog row for email-engagement still reads "(its
+  panels also creatable as Gainsight reports, each behind the guard)" — an offer the withdrawal missed (added by the S8
+  commit; no "native" in it). Bradley's wording ruling not asked: the section goes back to the builder first.
+- W3 PASSED as a run, not as a judge: `test/dashboard.mjs` 124/124 (the F-528 check PASS), `test/dashboard-native.mjs`
+  23/23 — with the catalog row present. The tester's own mutant (Step 1's router restored to "N (native Gainsight
+  reports)") SURVIVED, predicted: the check reads chosen spans, not the router or the Arguments.
+Section status: OPEN — W1 and W3 passed, W2 failed; F-528 REOPENED (bus, first reopen). Owed at the next verdict round:
+  W1–W3 again, Bradley's wording read included.
