@@ -3182,10 +3182,10 @@ the closing step's pre-flight needed one) V6's plan and V7's two account lines):
 Section status: OPEN on F-534 only (fixed by the tester's role inversion the same day; the close-out below owes the
 verdict of record); the twelve other sections VERIFIED on the bus.
 
-## R12-A-V close-out — the builder's verdict on the tester's F-534 role-inversion fix (banked 2026-10-15, tester, @ <token>)
+## R12-A-V close-out — the builder's verdict on the tester's F-534 role-inversion fix (banked 2026-10-15, tester, @ hb-20261015-02)
 
 Owed by: the BUILDER (the tester authored the fix and may not verify it), on fix/r12a-v-f534-held-words before its PR
-merges. No tenant call. Token: <token>.
+merges. No tenant call. Token: hb-20261015-02.
 
 THIS LIST IS COMPLETE.
 
