@@ -3941,8 +3941,10 @@ What: Class, in one sentence: a reselect reports the lists re-ranked because the
 Repro: stand-in workspace (test/dashboard.mjs's first ~388 lines): save, first refresh, a plain `refresh` (selective), then `change <dash> accounts.lists=[{"kind":"most-bounced","n":3,"floor":0}]`: exit 0, done true; the snapshot's list has kept 0, notRanked list-set-since. The suite tests reselect only on a full first snapshot (test/dashboard.mjs ~421).
 Expected: a list change ranks the lists it promises or says plainly that a full pull is needed and prices it; done reflects what was ranked; a reselect that cannot run rebuilds the other changes; no uncaught error on a run directory in plan phase.
 Routing: the R12 fix round, before the recut.
+Ruling: 2026-10-15 (Bradley, R12 release gate, after the cross-round read: F-521 settled that a ranking is made only at a full pull; the S5 reselect promise was never revisited) — split by scope. Fix round A ships the NARROW honest fix: when the latest pull was full, reselect re-ranks as today; when it was selective, `change` saves the list, re-ranks nothing, says plainly that the list is ranked at the next full refresh (`refresh <dash> --full`), and reports done truthfully; instance (2) (a reselect that cannot run) rebuilds the other changed settings; instance (3) (a run directory in plan phase) is a refusal, never a stack trace. The ROOT (a list re-ranked on every refresh) is F-548, DEFERRED past 0.54.0 to session B; when B lands, this narrow path is replaced.
+Routing: R12 fix round A, before the 0.54.0 recut.
 
-## F-530 — OPEN
+## F-530 — DEFERRED (past 0.54.0)
 Reported: 2026-10-14 (builder, R12 release-gate review, verifier reproduced over test/fixtures/engagement/snapshot-acme.json)
 Severity: normal — a reader of the admin page acts on a customer list that is not the one the dashboard says it holds
 Class: consumer-parity
@@ -3950,6 +3952,7 @@ What: Class, in one sentence: the customer-list rule has two consumers, the repo
 Repro: set the snapshot's selection record (or the spec through `change`) to least-engaged n 3 floor 3, build both: the report lists three accounts, the page's panel under the same title lists all ten in its preset order.
 Expected: the page's list panels take n, floor, per and the kept set from the same source as the report, so the two and the About tab agree.
 Routing: the R12 fix round, before the recut.
+Defer: 2026-10-15 (Bradley, R12 release gate) - past 0.54.0. Why not now: it bites only when an admin changes a list from its defaults (25, at least 10 delivered), and its natural fix (the page reads the pull's kept set) belongs to F-548's redesign of where list membership comes from. Reopen: session B (F-548), the fast follow after 0.54.0.
 
 ## F-531 — OPEN
 Reported: 2026-10-14 (builder, R12 release-gate review, verifier reproduced over snapshot-acme with the current month scaled to day 2)
@@ -3958,6 +3961,7 @@ What: Class, in one sentence: the headline tiles' change divides a sum that incl
 Repro: snapshot-acme with the current month's sends scaled to 2/30, the admin page's default view: Sent "0.76x the usual"; closed months only: 1.00.
 Expected: the change compares like with like (closed months against closed months, or the partial month pro-rated and said), and the tile says which.
 Routing: the R12 fix round, before the recut.
+Routing: 2026-10-15 (Bradley, R12) — R12 fix round A, before the 0.54.0 recut.
 
 ## F-532 — OPEN
 Reported: 2026-10-14 (builder, R12 release-gate review, verifier reproduced in a scratch workspace)
@@ -3966,6 +3970,7 @@ What: Class, in one sentence: a dashboard's shared-folder destination is not own
 Repro: draft and save renewals, export, import with --slug renewals-emea: both specs hold {"to":"leaders","file":"renewals-leaders.html","datasets":true}.
 Expected: an imported or copied dashboard gets its own file name (or the import says it shares one and refuses or asks); the prune removes only files this dashboard wrote; a publish change names the old copy it no longer updates.
 Routing: the R12 fix round, before the recut.
+Routing: 2026-10-15 (Bradley, R12) — R12 fix round A, before the 0.54.0 recut.
 
 ## F-533 — OPEN
 Reported: 2026-10-14 (builder, R12 release-gate review, verifier traced dashboard.mjs and the skill)
@@ -3974,6 +3979,7 @@ What: Class, in one sentence: the skill's exit-4 rule re-issues the verb instead
 Repro: on the stand-in, a pull-priced `change` that stops partial (exit 4), then the same `change` again: exit 0, "nothing changed".
 Expected: exit 4 runs remedy.line once, as step P does.
 Routing: the R12 fix round, before the recut.
+Routing: 2026-10-15 (Bradley, R12) — R12 fix round A, before the 0.54.0 recut.
 
 ## F-534 — OPEN
 Reported: 2026-10-14 (builder, R12 release-gate review, verifier traced the skill against dashboard.mjs, dashboard-spec.mjs and engagement-report.mjs)
@@ -3982,6 +3988,7 @@ What: Class, in one sentence: R2 ("a dashboard answers first") routes on facts t
 Repro: a default fast-path dashboard; ask the skill for a program outside its 90 days: R2 runs the dashboard report, unmatchedNames [], no "not held" statement.
 Expected: the route checks the named programs against what the dashboard holds (the report's rows or a list field that carries the selection) and falls back to a pull or says so; the ask prices the selective refresh; the CSV flags reach the dashboard report.
 Routing: the R12 fix round, before the recut.
+Routing: 2026-10-15 (Bradley, R12) — R12 fix round A, before the 0.54.0 recut.
 
 ## F-535 — OPEN
 Reported: 2026-10-14 (builder, R12 release-gate review, verifier traced dashboard.mjs)
@@ -3990,6 +3997,7 @@ What: Class, in one sentence: a dashboard's run directories are found by a name 
 Repro: two dashboards renewals and renewals-emea, renewals saved with no refresh, renewals-emea refreshed: `change renewals health.silentDays=60 --dry-run` quotes renewals-emea's plan.
 Expected: a run directory is matched to its dashboard exactly (the slug then a separator no slug contains, or a record inside the run).
 Routing: the R12 fix round, before the recut.
+Routing: 2026-10-15 (Bradley, R12) — R12 fix round A, before the 0.54.0 recut.
 
 ## F-536 — OPEN
 Reported: 2026-10-14 (builder, R12 release-gate review, verifier reproduced in Git Bash, PowerShell 5.1 and cmd)
@@ -4004,24 +4012,28 @@ Severity: polish — a loud, recoverable failure (verifier: normal, it breaks th
 What: dashboard-spec.mjs's "must be a month that has started" check compares a since month to the literal 2100-12, so a future since month (an interview typo, 2026-12 for 2025-12) is saved; the dry run, the save's pull and every refresh then die in engagement.mjs resolveParams with an uncaught Error and a stack trace naming --from/--to flags the user never typed.
 Repro: interview window since:2026-12 on 2026-10-14, save and refresh.
 Expected: refused at the window answer and in adapterParams as a refusal naming sources[0].params.window.from.
+Routing: 2026-10-15 (Bradley, R12) — R12 fix round A (folded polish), before the 0.54.0 recut.
 
 ## F-538 — OPEN
 Reported: 2026-10-14 (builder, R12 release-gate review, verifier traced)
 Severity: polish — rare (a legacy manifest with no recorded journey describeCommand); the refusal names its remedy
 What: the skill's R2 narrow re-documentation line runs describe-batch with no --command, which refuses when the journey domain has no recorded describeCommand; dashboard.mjs's own redocument passes --command explicitly.
 Expected: the skill's line passes the same --command as the script twin.
+Routing: 2026-10-15 (Bradley, R12) — R12 fix round A (folded polish), before the 0.54.0 recut.
 
 ## F-539 — OPEN
 Reported: 2026-10-14 (builder, R12 release-gate review, verifier traced)
 Severity: polish — the model improvises a line that is not false
 What: mode A's Checks-line rules cover no named dashboard with no pull yet (against and againstText null, reconciled true: no rule applies), and an unknown GSID (exit 6, empty candidates) is told to "ask which one" from an empty list.
 Expected: one rule for a named dashboard with no snapshot; on empty candidates relay `error` and ask for the spelling or the GSID.
+Routing: 2026-10-15 (Bradley, R12) — R12 fix round A (folded polish), before the 0.54.0 recut.
 
 ## F-540 — OPEN
 Reported: 2026-10-14 (builder, R12 release-gate review, verifier reproduced)
 Severity: polish — needs a wrong-tenant or corrupt snapshot beside a valid spec; the replaced spec is kept as .previous
 What: dashboard.mjs verbImport writes the spec (importSpec) before the snapshot is opened and its tenant checked, so a refused snapshot exits "not imported" with the spec already written (replaced under --replace).
 Expected: check the snapshot first, or say the spec was written.
+Routing: 2026-10-15 (Bradley, R12) — R12 fix round A (folded polish), before the 0.54.0 recut.
 
 ## F-541 — OPEN
 Reported: 2026-10-14 (builder, R12 release-gate review, verifier reproduced; unreachable for a released user: no dashboard code was ever released before this version)
@@ -4040,12 +4052,14 @@ Reported: 2026-10-14 (builder, R12 release-gate review, verifier reproduced)
 Severity: polish — needs a same-day hand edit of failure-categories.json, which no doc mentions
 What: stableRunId leaves the failure categories out of the interview plan's run id while runAdapter passes them, so editing the categories the same day after the plan makes prepareRun refuse "pass the same flags … or a new --run", a remedy dashboard.mjs cannot run (refresh abandons such a run correctly).
 Expected: the categories are in the run id, or the interview abandons the stale plan as refresh does.
+Routing: 2026-10-15 (Bradley, R12) — R12 fix round A (folded polish), before the 0.54.0 recut.
 
 ## F-544 — OPEN
 Reported: 2026-10-14 (builder, R12 release-gate review, verifier reproduced the sort)
 Severity: polish — low reach (a clock moving back past the gap between two refreshes: the repeated DST hour, westward travel); the verifier tiered the misorder normal-low-reach, the numbers it shows are silently the older pull's
 What: snapshots are named from the local pulledAt with the offset dropped and ordered by name (cmpKey), so a clock that moves back makes the older pull "latest" (rebuild, status, report, the delta and the next refresh's previous read it); the collision suffix sorts before the plain name; an import from a zone east can outrank newer local pulls; pruneSnapshots trims by name and can then delete the snapshot just written.
 Expected: order snapshots by the parsed pulledAt instant (or a UTC-derived name).
+Routing: 2026-10-15 (Bradley, R12) — R12 fix round A (folded polish), before the 0.54.0 recut.
 
 ## F-545 — OPEN
 Reported: 2026-10-14 (builder, R12 release-gate review, verifier traced)
@@ -4064,3 +4078,11 @@ Reported: 2026-10-14 (builder, R12 /security-review: one candidate, filtered —
 Severity: polish — hardening: a formula payload in a template subject, program or account name needs Gainsight content-edit rights, an admin's --csv export opened in Excel, and a click past Excel's own warnings
 What: engagement-report.mjs writes its CSVs through jo-report.mjs's toCsv / csvCell, which quote delimiters but do not neutralise a leading = + - @; the dashboard runtime's own csvCell has that guard (FORMULA_START), so the plugin defends one export and not the other. Email-report's CSVs on main share the gap.
 Expected: one formula guard in jo-report.mjs's csvCell (covering every report CSV), or the report reuses the runtime's.
+Routing: 2026-10-15 (Bradley, R12) — R12 fix round A (folded polish), before the 0.54.0 recut.
+
+## F-548 — DEFERRED (past 0.54.0)
+Reported: 2026-10-15 (builder, R12 release gate — Bradley's question at F-529's ruling: with lists on, does a routine refresh update them?)
+Severity: normal — with customer lists on, list membership is frozen at the last full pull: a routine (selective) refresh updates the kept accounts' figures but never who is on a list, so current membership costs a full pull every time (on the kept dashboard about 67 minutes against a selective refresh's 44)
+What: Class, in one sentence: the cross-program lists are ranked only from data a full pull holds and the snapshot then folds away. A full pull reads every account's figures for every month, ranks, and keeps per-account rows only for the kept (listed, pinned) accounts; every other account's months become one "all other accounts" row per program and month. A selective refresh re-reads every account for the months it pulls (account units are planned per program per pulled month for all accounts), but the older months of the non-kept accounts are gone, so it cannot rank and carries the last full ranking (F-521, by design: rankedAt and carriedFrom say so). F-529's reselect is the same limit met at edit time.
+Expected: the snapshot (or a sidecar beside the pages, never embedded in a page) keeps compact per-account totals by program and month for every account, so every refresh re-ranks exactly: stored months plus pulled months give the full pull's ranking (the judge: over unchanged data, a selective refresh's lists equal a full pull's, kind, n, floor, per, segment, kept, in order); a list change re-ranks from the store at no pull; the low-cadence quiet rule (per program) and per-segment lists (company fields for newly listed accounts) are kept. Contract: a 0.54.0 snapshot without the store is detected and the next refresh goes full, priced and said, with no hand step and no refusal. The store's size is measured on the kept dashboard's run directories before building, and the design stops if it is prohibitive.
+Defer: 2026-10-15 (Bradley, R12 release gate) - past 0.54.0. Why not now: shipping 0.54.0 sooner is worth more than current membership on routine refreshes — a day-1 adopter's build is a full pull, most will not refresh for a month, the staleness is dated on the page and stated in the release notes, and the cost of waiting is one extra full refresh after session B. Reopen: session B, the fast follow after the 0.54.0 release (with F-530 and F-529's root).
