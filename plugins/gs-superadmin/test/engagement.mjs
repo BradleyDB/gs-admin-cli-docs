@@ -31,12 +31,13 @@ import { fileURLToPath } from "node:url";
 import { isDeepStrictEqual } from "node:util";
 import { makeTempDir, removeTempDir, writeFiles, runNode } from "../../../test/rig.mjs";
 import { STEP_REMAINDER,
-  fetchEngagement, reduceEngagement, loadRun, resolveParams, makeGate, parseWhoami, parseSentSince, parseIdList,
+  fetchEngagement, reduceEngagement, reduceWithStore, loadRun, resolveParams, makeGate, parseWhoami, parseSentSince, parseIdList,
   expectedCalls, classifyFailure, classifyLink, readLinkClicks, parseUnsubscribeLink, validateQuery, buildQuery, splitUnit, selectAccounts, selectAccountsAcross, parseAccountListFlag, LOW_CADENCE_MAX_RATIO, LOW_CADENCE_MIN_DELIVERED, decideClickState,
   monthsBetween, ENGAGEMENT_READ_PATHS, joEngagementAdapter, readFailureReasons, healthDayWindow, HEALTH_PARTS, pickSchedule, isOneRunWindow, schemaFlags, NO_SCHEDULE,
   SAMPLES_PER_PROGRAM, SAMPLE_PROGRAM_CAP, SAMPLE_PAGE, MAX_PAGES, sampleTargets, matchCategory,
   templatesReferenced, templateGap, templateContentOf, TEMPLATE_GAP_LIST_FILE, TEMPLATE_GAP_STALE_FILE, TEMPLATE_GAP_KEYS_FILE,
   resolveAccountParams, reduceAccountTimeline, loadAccountRun, parseLast, accountResolutionText, reconcileWithDashboard,
+  rankFromStore, accountStoreText, decodeAccountStore,
 } from "../scripts/engagement.mjs";
 import { readLinkTracking } from "../scripts/doc-lib.mjs";
 import { buildReport } from "../scripts/engagement-report.mjs";
@@ -100,7 +101,15 @@ const PULLED_AT = "2026-09-15T09:00:00-07:00";
  * @param {{variant?: *, raw?: *, faults?: Array<*>, previous?: *, kb?: boolean|string, phase?: "all"|"plan", runDir?: ?string, now?: () => number, gate?: (argv: string[]) => ?string, linkSettings?: *}} [opts]
  *   kb: true for the suite's KB, or a KB directory
  */
-function pull({ variant = {}, raw = {}, faults = [], previous = null, kb = false, phase = "all", runDir = null, now, gate = GATE, linkSettings = null } = {}) {
+// The account store a pull writes beside its snapshot (F-548) rides on the snapshot object here, out of sight of
+// JSON and of deep-equality (a non-enumerable symbol): a later pull given that snapshot (or copyOf it) as its previous
+// gets its store with it, as a dashboard's refresh reads the store beside the latest snapshot file.
+const STORE = Symbol("account store");
+const withStore = (snapshot, store) => (snapshot && typeof snapshot === "object" ? Object.defineProperty(snapshot, STORE, { value: store ?? null, enumerable: false, configurable: true }) : snapshot);
+const storeOf = (snapshot) => snapshot?.[STORE] ?? null;
+/** A deep copy of a snapshot that keeps its store (the suite's JSON copies, which drop the symbol, go through here). */
+const copyOf = (s) => withStore(JSON.parse(JSON.stringify(s)), storeOf(s));
+function pull({ variant = {}, raw = {}, faults = [], previous = null, previousStore = storeOf(previous), kb = false, phase = "all", runDir = null, now, gate = GATE, linkSettings = null } = {}) {
   const tenant = buildTenant(variant);
   const dir = runDir ?? join(ROOT, `run-${++runSeq}`);
   const argv = [];
@@ -125,17 +134,18 @@ function pull({ variant = {}, raw = {}, faults = [], previous = null, kb = false
   let summary = null;
   let error = null;
   try {
-    summary = fetchEngagement({ params, runDir: dir, transport, gate, kbDir: kb === true ? KB_DIR : kb || null, previous, phase, now, onCall: (line) => progress.push(line) });
+    summary = fetchEngagement({ params, runDir: dir, transport, gate, kbDir: kb === true ? KB_DIR : kb || null, previous, previousStore, phase, now, onCall: (line) => progress.push(line) });
   } catch (e) {
     error = e;
   }
   let snapshot = null;
   let input = null;
   if (summary?.status === "ok" && phase === "all") {
-    input = loadRun(dir, { previous, linkSettings, cliVersion: "fixture", pluginVersion: "fixture" });
-    snapshot = reduceEngagement(input);
+    input = loadRun(dir, { previous, previousStore, linkSettings, cliVersion: "fixture", pluginVersion: "fixture" });
+    const reduced = reduceWithStore(input);
+    snapshot = withStore(reduced.snapshot, reduced.store);
   }
-  return { tenant, params, summary, error, snapshot, input, argv, progress, runDir: dir };
+  return { tenant, params, summary, error, snapshot, store: storeOf(snapshot), input, argv, progress, runDir: dir };
 }
 
 // ── The oracle: straight counts over the fixture's rows ──────────────────────
@@ -610,7 +620,7 @@ try {
       "tpl-unlisted": { reading: "unreadable", asOf: "2026-09-01" },
     };
     const five = pull({ linkSettings }).snapshot;
-    const R = JSON.parse(JSON.stringify(five));
+    const R = copyOf(five);
     const row = (t, f = (_row) => true) => R.facts.byTemplate.find((r) => r.templateId === t && f(r));
     check("R19 fixture 1: content-link clicks in the period → tracked, and the count is the count", clickAvailability(R, "tpl-welcome").state === "tracked" && readClicked(R, row("tpl-welcome", (r) => r.clicked > 0)).value > 0);
     const hist = pull({ variant: { noClicksFrom: "2025-12-01" }, linkSettings }).snapshot;
@@ -703,11 +713,11 @@ try {
     check("F-470: a mailto link to a named host is never counted as a link the input named", readLinkClicks('[{"url":"mailto:cs@acme.com","clickedCount":1}]', ["acme.com"]).byInput === 0 && readLinkClicks('[{"url":"https://www.acme.com/x","clickedCount":1}]', ["acme.com"]).byInput === 1);
     {
       // A run directory written before the input existed: its parameters have no list at all.
-      const old = loadRun(pull({ previous: JSON.parse(JSON.stringify(pull({ variant: { cutoff: "2026-08-16" }, raw: { today: "2026-08-15", pulledAt: "2026-08-15T09:00:00-07:00" } }).snapshot)) }).runDir, {});
-      const prevAgain = JSON.parse(JSON.stringify(pull({ variant: { cutoff: "2026-08-16" }, raw: { today: "2026-08-15", pulledAt: "2026-08-15T09:00:00-07:00" } }).snapshot));
+      const old = loadRun(pull({ previous: copyOf(pull({ variant: { cutoff: "2026-08-16" }, raw: { today: "2026-08-15", pulledAt: "2026-08-15T09:00:00-07:00" } }).snapshot) }).runDir, {});
+      const prevAgain = copyOf(pull({ variant: { cutoff: "2026-08-16" }, raw: { today: "2026-08-15", pulledAt: "2026-08-15T09:00:00-07:00" } }).snapshot);
       delete old.params.unsubscribeLinks;
       delete prevAgain.meta.params.unsubscribeLinks;
-      check("F-470: parameters with no unsubscribe list at all read as none, not as a change: a selective pull still reduces as selective", reduceEngagement({ ...old, previous: prevAgain }).meta.refresh.mode === "selective");
+      check("F-470: parameters with no unsubscribe list at all read as none, not as a change: a selective pull still reduces as selective", reduceEngagement({ ...old, previous: prevAgain, previousStore: storeOf(prevAgain) }).meta.refresh.mode === "selective");
     }
     const two = resolveParams({ today: TODAY, unsubscribeLinks: ["www.acme.com/mail-settings?x=1", "links.example.net", "https://WWW.acme.com/mail-settings/"] }).unsubscribeLinks;
     check("F-470: the input repeats; values are normalized, de-duplicated and sorted, so the same links in any spelling are the same run", isDeepStrictEqual(two, ["links.example.net", "www.acme.com/mail-settings"]));
@@ -717,14 +727,14 @@ try {
       check(`F-470: resolveParams refuses an --unsubscribe-link that names no web host (${JSON.stringify(bad)})`, /--unsubscribe-link takes a link or a host/.test(msg), msg);
     }
     // A change to the input forces a full refresh, and click evidence classified under the old input is not carried.
-    const prevOwn = JSON.parse(JSON.stringify(pull({ variant: { ...variant, cutoff: "2026-08-16" }, raw: { today: "2026-08-15", pulledAt: "2026-08-15T09:00:00-07:00" } }).snapshot));
+    const prevOwn = copyOf(pull({ variant: { ...variant, cutoff: "2026-08-16" }, raw: { today: "2026-08-15", pulledAt: "2026-08-15T09:00:00-07:00" } }).snapshot);
     const same = pull({ variant, previous: prevOwn }).snapshot;
     const changed = pull({ variant, raw: { unsubscribeLinks: INPUT }, previous: prevOwn }).snapshot;
     check("F-470: a change to the unsubscribe links forces a full refresh, and says so (carried months were classified under the old input)",
       same.meta.refresh.mode === "selective" && changed.meta.refresh.mode === "full" && /unsubscribe links changed/.test(changed.meta.refresh.why) && changed.facts.byTemplate.every((r) => r.provenance === "pulled") && isDeepStrictEqual(changed.facts, B.facts), changed.meta.refresh);
     check("F-470: click evidence classified under the old input is not carried: the template the previous snapshot called tracked on unsubscribe clicks reads unknown after the change, and tracked while the input is unchanged",
       clickAvailability(prevOwn, "tpl-prefs").state === "tracked" && clickAvailability(same, "tpl-prefs").state === "tracked" && clickAvailability(changed, "tpl-prefs").state === "unknown" && isDeepStrictEqual(changed.meta.metricAvailability, B.meta.metricAvailability));
-    const back = pull({ variant, previous: JSON.parse(JSON.stringify(B)), phase: "plan" }).summary.estimate;
+    const back = pull({ variant, previous: copyOf(B), phase: "plan" }).summary.estimate;
     check("F-470: dropping the input is a change too: a snapshot pulled with it is not carried into a run without it", back.mode === "full" && /unsubscribe links changed/.test(back.why), back);
   }
 
@@ -884,7 +894,7 @@ try {
     const afterPlan = callsAfterPlan(full);
     check("F-476: plan prices the splits it will meet: on a tenant with a mass-send day the estimated calls are within 2x of the calls the facts actually took, and above the count of unsplit units",
       planned.calls > planned.units && within(planned.calls, afterPlan) && planned.byFamily.account > flat.summary.estimate.thisRun.byFamily.account + 3 && planned.seconds > flat.summary.estimate.thisRun.seconds, [planned, afterPlan, full.summary.calls]);
-    const prev = JSON.parse(JSON.stringify(pull({ variant: { cutoff: "2026-08-16" }, raw: { ...raw, today: "2026-08-15", pulledAt: "2026-08-15T09:00:00-07:00" } }).snapshot));
+    const prev = copyOf(pull({ variant: { cutoff: "2026-08-16" }, raw: { ...raw, today: "2026-08-15", pulledAt: "2026-08-15T09:00:00-07:00" } }).snapshot);
     const sel = pull({ variant: { massDay: true, massMonth: "2026-09" }, raw, previous: prev });
     const selPlanned = sel.summary.estimate.thisRun;
     const selActual = callsAfterPlan(sel);
@@ -914,8 +924,8 @@ try {
         N.honesty.noCompanyLink.sent === null && N.honesty.accountNames.requested === 0 && isDeepStrictEqual(S.meta.accounts, { pulled: true, reason: null }) && !S.caveats.some((c) => c.id === "accounts-not-pulled"));
     // Everything that is not about the account grain, compared whole: no list of tables to keep in step.
     const sansAccounts = (snap) => {
-      const c = JSON.parse(JSON.stringify(snap));
-      c.facts.byAccount = []; c.dimensions.accounts = []; c.meta.accounts = null; c.meta.params.accounts = null;
+      const c = copyOf(snap);
+      c.facts.byAccount = []; c.dimensions.accounts = []; c.meta.accounts = null; c.meta.accountStore = null; c.meta.params.accounts = null;
       c.honesty.noCompanyLink = null; c.honesty.accountNames = null; c.honesty.accountSelection = null; c.honesty.calls = null; c.honesty.rows = null;
       c.reconciliation.checks = c.reconciliation.checks.filter((k) => k.id !== "accounts-sum-to-program").map((k) => (k.id === "internal-within-all" ? { ...k, compared: null } : k));
       c.caveats = c.caveats.filter((k) => k.id !== "accounts-not-pulled");
@@ -929,11 +939,11 @@ try {
         base.summary.estimate.accounts.addsCalls > 0 && base.summary.estimate.accounts.addsSeconds > 0 && base.summary.estimate.thisRun.calls - off.summary.estimate.thisRun.calls === base.summary.estimate.accounts.addsCalls &&
         base.summary.estimate.thisRun.seconds - off.summary.estimate.thisRun.seconds === base.summary.estimate.accounts.addsSeconds, [off.summary.estimate.accounts, base.summary.estimate.accounts]);
     const AUG = { today: "2026-08-15", pulledAt: "2026-08-15T09:00:00-07:00" };
-    const prevOff = JSON.parse(JSON.stringify(pull({ variant: { cutoff: "2026-08-16" }, raw: { ...AUG, ...OFF } }).snapshot));
+    const prevOff = copyOf(pull({ variant: { cutoff: "2026-08-16" }, raw: { ...AUG, ...OFF } }).snapshot);
     const later = pull({ previous: prevOff });
     // The judge of "correct": the same month's snapshot WITH accounts, refreshed in full. Both remember the same
     // click history (a click month that has left the window), so the two must agree on everything but the stated reason.
-    const prevOn = JSON.parse(JSON.stringify(pull({ variant: { cutoff: "2026-08-16" }, raw: AUG }).snapshot));
+    const prevOn = copyOf(pull({ variant: { cutoff: "2026-08-16" }, raw: AUG }).snapshot);
     const first = pull({ previous: prevOn, raw: { forceFull: true } });
     const sansRefresh = (snap) => ({ ...snap, meta: { ...snap.meta, refresh: { ...snap.meta.refresh, why: null } } });
     check("accounts can be ADDED on a later pass: turning them on over a snapshot that holds none is a full refresh that says what it did, and the snapshot equals a full refresh over the same month's snapshot WITH accounts",
@@ -957,7 +967,7 @@ try {
     const offOtherCounts = pull({ previous: prevOff, raw: { accounts: { ...ACC, pull: false, busiest: 9 } }, phase: "plan" }).summary.estimate;
     check("with accounts off the selection numbers decide nothing: changing one does not force a full refresh", offOtherCounts.mode === "selective", offOtherCounts.why);
     const dropped = pull({ previous: prevOn, raw: OFF, phase: "plan" }).summary.estimate;
-    const legacy = JSON.parse(JSON.stringify(prevOn));
+    const legacy = copyOf(prevOn);
     delete legacy.meta.accounts;
     delete legacy.meta.params.accounts.pull;
     const overLegacy = pull({ previous: legacy });
@@ -1040,7 +1050,7 @@ try {
   // ── Selective refresh ─────────────────────────────────────────────────────
   {
     const prevPull = pull({ variant: { cutoff: "2026-08-16" }, raw: { today: "2026-08-15", pulledAt: "2026-08-15T09:00:00-07:00" } });
-    const prev = JSON.parse(JSON.stringify(prevPull.snapshot));
+    const prev = copyOf(prevPull.snapshot);
     const full = pull({});
     const sel = pull({ previous: prev });
     const F = full.snapshot;
@@ -1067,7 +1077,7 @@ try {
     check("click evidence survives the carry: a template last clicked in a carried month is still tracked, every state equals the full refresh's, and the evidence reaches back to a month that has left the window",
       clickAvailability(L, "tpl-promo").state === "tracked" && isDeepStrictEqual(stateOf(L), stateOf(F)) && clickAvailability(L, "tpl-welcome").evidence.clickHistory.firstMonth === "2025-08" && clickAvailability(F, "tpl-welcome").evidence.clickHistory.firstMonth === "2025-09");
     const sameAccounts = (s) => [...new Set(s.facts.byAccount.filter((r) => r.bucket === "account" && r.programId === "p-onboard").map((r) => r.accountKey))].sort();
-    check("a carried program keeps the accounts the previous snapshot selected, so each account's row series is whole across carried and pulled months", isDeepStrictEqual(sameAccounts(L), sameAccounts(prev)) && L.dimensions.accounts.every((a) => a.name));
+    check("a carried program keeps the accounts a full pull keeps (F-548: selected over its whole window, the carried months from the store), each with its whole row series across carried and pulled months, named", isDeepStrictEqual(sameAccounts(L), sameAccounts(F)) && L.dimensions.accounts.every((a) => a.name) && L.facts.byAccount.some((r) => r.bucket === "account" && r.programId === "p-onboard" && r.provenance === "carried"));
 
     const late = pull({ variant: { lateOpens: true }, previous: prev }).snapshot;
     const lateFull = pull({ variant: { lateOpens: true } }).snapshot;
@@ -1075,33 +1085,74 @@ try {
     check("carried months keep the counts of the pull that made them: opens arriving after it are not captured (the caveat's subject), while the re-pulled months do capture theirs",
       opened(late, "2026-03") === opened(prev, "2026-03") && opened(lateFull, "2026-03") > opened(late, "2026-03") && opened(late, "2026-08") === opened(lateFull, "2026-08"));
 
-    // F-521: a selective refresh over unchanged data records the full refresh's lists (carried, with when they were
-    // ranked), and the report prints them; never an empty list read as a floor no account met.
+    // F-548 (the judge, redesigned from F-521's carry): every refresh ranks the customer lists over every account and
+    // month, the carried months from the account store beside the previous snapshot. Over unchanged data a selective
+    // refresh's lists, account rows and kept accounts equal a full pull's; over changed data, a full pull's over the
+    // same data; a list change ranked from the store equals a full pull with the new lists.
     const listsOf = (s) => s.honesty.accountSelection.lists.map((l) => [l.kind, l.n, l.floor, l.per, l.segment, l.kept]);
-    const again = pull({ previous: JSON.parse(JSON.stringify(F)) }).snapshot;
-    const againLists = again.honesty.accountSelection.lists;
+    const rowsOf = (s) => s.facts.byAccount.map(({ provenance, pulledAt, ...r }) => r);
     const watchOf = (s) => buildReport(s, { all: true }).sections.find((x) => x.startsWith("## Account watch list")) ?? "";
-    check("F-521 a selective refresh over unchanged data records the full refresh's customer lists: the same kept accounts in the same order, said to be ranked by the full pull and carried from it, and the report prints them with no floor-miss line",
-      again.meta.refresh.mode === "selective" && isDeepStrictEqual(listsOf(again), listsOf(F)) && againLists.length === 3 && againLists.every((l) => l.kept.length > 0 && l.selectedFrom === "every program" && l.rankedAt === F.meta.pulledAt && l.carriedFrom === F.meta.pulledAt && l.notRanked === null) &&
-        F.honesty.accountSelection.lists.every((l) => l.rankedAt === F.meta.pulledAt && l.carriedFrom === null && l.notRanked === null) && sameMap(totals(again, "byAccount"), totals(F, "byAccount")) &&
-        !/No account met/.test(watchOf(again)) && watchOf(again).includes(`ranked by the full pull of ${F.meta.pulledAt}`) && isDeepStrictEqual(buildReport(again, { all: true }).counts.crossProgramLists, buildReport(F, { all: true }).counts.crossProgramLists) && buildReport(F, { all: true }).counts.crossProgramLists === 3,
-      [listsOf(again).map((l) => l[5].length), againLists.map((l) => [l.rankedAt, l.carriedFrom, l.notRanked])]);
-    // The record carried from: a previous record that ranked over part of the programs (the code before F-521), and a list set since.
-    const legacy = JSON.parse(JSON.stringify(F));
-    for (const l of legacy.honesty.accountSelection.lists) { l.kept = []; l.selectedFrom = "the programs pulled whole"; delete l.rankedAt; delete l.carriedFrom; delete l.notRanked; }
-    const fromLegacy = pull({ previous: legacy }).snapshot;
-    const moreLists = { ...ACC, lists: [{ kind: "most-engaged", n: 25, floor: 10 }, { kind: "least-engaged", n: 25, floor: 10 }, { kind: "most-bounced", n: 25, floor: 0 }, { kind: "most-bounced", n: 5, floor: 0 }] };
-    const setSince = pull({ previous: JSON.parse(JSON.stringify(F)), raw: { accounts: moreLists } }).snapshot;
-    check("F-521 a list a selective refresh has no ranking to carry for is recorded not ranked, with why, and the report says so and how to rank it, never 'No account met this list's floor': a record ranked over part of the programs, and a list set since the full pull (the others still carried)",
-      fromLegacy.meta.refresh.mode === "selective" && fromLegacy.honesty.accountSelection.lists.every((l) => l.notRanked === "previous-not-ranked" && l.kept.length === 0 && l.selectedFrom === null) && !/No account met/.test(watchOf(fromLegacy)) && watchOf(fromLegacy).includes(reasonText("previous-not-ranked")) &&
-        setSince.meta.refresh.mode === "selective" && setSince.honesty.accountSelection.lists.filter((l) => l.notRanked === "list-set-since").length === 1 && setSince.honesty.accountSelection.lists.filter((l) => l.carriedFrom === F.meta.pulledAt && l.kept.length > 0).length === 3 && watchOf(setSince).includes(reasonText("list-set-since")),
-      [fromLegacy.honesty.accountSelection.lists, setSince.honesty.accountSelection.lists.map((l) => [l.kind, l.n, l.notRanked])]);
+    const again = pull({ previous: copyOf(F) }).snapshot;
+    const againLists = again.honesty.accountSelection.lists;
+    check("F-548 over unchanged data a selective refresh RANKS the customer lists and they equal a full pull's (kind, n, floor, per, segment, kept, in order), each ranked by this pull and carried from nothing; its account rows (every bucket, class and measure) and kept accounts equal the full pull's, with carried months among them; the report prints the lists with no carried line",
+      again.meta.refresh.mode === "selective" && isDeepStrictEqual(listsOf(again), listsOf(F)) && againLists.length === 3 && againLists.every((l) => l.kept.length > 0 && l.selectedFrom === "every program" && l.rankedAt === again.meta.pulledAt && l.carriedFrom === null && l.notRanked === null) &&
+        isDeepStrictEqual(rowsOf(again), rowsOf(F)) && isDeepStrictEqual(again.dimensions.accounts, F.dimensions.accounts) && again.facts.byAccount.some((r) => r.provenance === "carried") &&
+        !/ranked by the full pull/.test(watchOf(again)) && !/No account met/.test(watchOf(again)) && buildReport(again, { all: true }).counts.crossProgramLists === 3,
+      [listsOf(again).map((l) => l[5].length), listsOf(F).map((l) => l[5].length)]);
+    check("F-548 a refresh a month after its previous pull (carried months from that pull's store, two months pulled) holds a full pull's lists and account rows: the selection is the full pull's, never the previous pull's",
+      L.meta.refresh.mode === "selective" && isDeepStrictEqual(listsOf(L), listsOf(F)) && isDeepStrictEqual(rowsOf(L), rowsOf(F)) && !isDeepStrictEqual(listsOf(prev), listsOf(F)), [listsOf(L).map((l) => l[5]), listsOf(prev).map((l) => l[5])]);
+    const CHANGED = { recentUnopened: true };
+    const moved = pull({ variant: CHANGED, previous: copyOf(F) }).snapshot;
+    const movedFull = pull({ variant: CHANGED }).snapshot;
+    check("F-548 over CHANGED data (no send of the pulled months opened) a selective refresh's lists and account rows equal a full pull's over the same data, and the lists moved from the previous pull's: membership follows the data, which a carried ranking never did",
+      moved.meta.refresh.mode === "selective" && isDeepStrictEqual(listsOf(moved), listsOf(movedFull)) && isDeepStrictEqual(rowsOf(moved), rowsOf(movedFull)) && !isDeepStrictEqual(listsOf(movedFull), listsOf(F)),
+      [listsOf(moved).map((l) => l[5]), listsOf(movedFull).map((l) => l[5]), listsOf(F).map((l) => l[5])]);
+    const SEG = { ...ACC, fields: ["Industry"], lists: [{ kind: "most-engaged", n: 2, floor: 1 }, { kind: "least-engaged", n: 2, floor: 1, per: "Industry" }] };
+    const segFull = pull({ raw: { accounts: SEG } }).snapshot;
+    const segAgain = pull({ raw: { accounts: SEG }, variant: CHANGED, previous: copyOf(segFull) }).snapshot;
+    const segMovedFull = pull({ raw: { accounts: SEG }, variant: CHANGED }).snapshot;
+    check("F-548 per-segment lists are ranked on a selective refresh too, over the kept accounts with the company fields the names call read for them (the newly listed ones included): equal to a full pull's over the same data, every segment",
+      segAgain.meta.refresh.mode === "selective" && isDeepStrictEqual(listsOf(segAgain), listsOf(segMovedFull)) && segAgain.honesty.accountSelection.lists.filter((l) => l.per === "Industry").length > 1 && segAgain.dimensions.accounts.every((a) => a.attrs && "Industry" in a.attrs),
+      [listsOf(segAgain), listsOf(segMovedFull)]);
+    // The migration (Bradley's contract): a snapshot with no store is continued by one full pull, priced and said, with
+    // no hand step and no refusal; then the next refresh is selective again.
+    const pre548 = withStore(copyOf(F), null);
+    delete pre548.meta.accountStore;
+    const migrated = pull({ previous: pre548 });
+    const migratedPlan = pull({ previous: pre548, phase: "plan" }).summary.estimate;
+    const gone = pull({ previous: withStore(copyOf(F), null), phase: "plan" }).summary.estimate;
+    const notItsOwn = pull({ previous: withStore(copyOf(F), storeOf(prev)), phase: "plan" }).summary.estimate;
+    const afterMigration = pull({ previous: copyOf(migrated.snapshot) }).snapshot;
+    check("F-548 migration: a snapshot made before the account store is continued by ONE full pull, said ('the customer lists need one full pull to start ranking on every refresh') and priced (the plan's this-run estimate is the full pull's), never a refusal; it writes a store, and the next refresh is selective again",
+      migrated.error == null && migrated.snapshot.meta.refresh.mode === "full" && /the customer lists need one full pull to start ranking on every refresh/.test(migrated.snapshot.meta.refresh.why) &&
+        migratedPlan.mode === "full" && migratedPlan.thisRun.calls === migratedPlan.full.calls && /start ranking on every refresh/.test(migratedPlan.why) &&
+        migrated.store != null && afterMigration.meta.refresh.mode === "selective" && isDeepStrictEqual(listsOf(afterMigration), listsOf(F)),
+      [migrated.snapshot?.meta.refresh, migratedPlan.mode, migratedPlan.why]);
+    check("F-548 a store gone (the snapshot names one, none is given) or not the snapshot's own (another pull's) is the same one full pull, said as such",
+      gone.mode === "full" && /account store .* missing or is not that snapshot's/.test(gone.why) && notItsOwn.mode === "full" && /missing or is not that snapshot's/.test(notItsOwn.why), [gone.why, notItsOwn.why]);
+    // F-529's root: a list change ranked from the store with no pull, over a SELECTIVE latest pull (the case the narrow path could not rank).
+    const NEW_LISTS = [{ kind: "most-bounced", n: 3, floor: 0 }, { kind: "least-engaged", n: 2, floor: 3 }];
+    const reranked = rankFromStore({ snapshot: again, store: storeOf(again), lists: NEW_LISTS });
+    const fullNew = pull({ raw: { accounts: { ...ACC, lists: NEW_LISTS } } }).snapshot;
+    check("F-548 (F-529's root) a list change over a selective latest pull is ranked from its account store with no pull, and equals a full pull with the new lists over the same data: the lists, the account rows and the kept accounts; the pull's list echo is the new lists; the reconciliation is untouched",
+      isDeepStrictEqual(listsOf(reranked.snapshot), listsOf(fullNew)) && isDeepStrictEqual(rowsOf(reranked.snapshot), rowsOf(fullNew)) && isDeepStrictEqual(reranked.snapshot.dimensions.accounts.map((a) => a.key), fullNew.dimensions.accounts.map((a) => a.key)) &&
+        isDeepStrictEqual(reranked.snapshot.meta.params.accounts.lists, NEW_LISTS) && isDeepStrictEqual(reranked.snapshot.reconciliation, again.reconciliation) && reranked.snapshot.facts.byAccount.some((r) => r.provenance === "carried") &&
+        reranked.newlyKept.every((k) => reranked.snapshot.dimensions.accounts.find((a) => a.key === k).name === null) && !isDeepStrictEqual(listsOf(reranked.snapshot), listsOf(again)),
+      [listsOf(reranked.snapshot), listsOf(fullNew), reranked.newlyKept]);
+    const segChange = rankFromStore({ snapshot: segFull, store: storeOf(segFull), lists: [...SEG.lists, { kind: "most-bounced", n: 2, floor: 0, per: "Tier" }] });
+    check("F-548 a list change naming a company field the pull did not read ranks the rest and records that list not ranked (field-not-read) with the engine's sentence in the report, never every account under (none); rankFromStore refuses a store that is not the snapshot's",
+      segChange.snapshot.honesty.accountSelection.lists.some((l) => l.per === "Tier" && l.notRanked === "field-not-read" && l.kept.length === 0) && watchOf(segChange.snapshot).includes(reasonText("field-not-read")) &&
+        (() => { try { rankFromStore({ snapshot: F, store: storeOf(prev), lists: NEW_LISTS }); return false; } catch (e) { return /not this snapshot's/.test(e.message); } })(),
+      segChange.snapshot.honesty.accountSelection.lists.map((l) => [l.kind, l.per, l.notRanked]));
+    const storeText = accountStoreText(storeOf(F));
+    check("F-548 the account store is plain JSON, one cell per line (a file a person or a session reads), and reads back to the same cells; the snapshot records its size",
+      storeText.split(String.fromCharCode(10)).length > storeOf(F).cells.length && isDeepStrictEqual(JSON.parse(storeText), storeOf(F)) && isDeepStrictEqual([...decodeAccountStore(JSON.parse(storeText)).keys()].sort(), [...decodeAccountStore(storeOf(F)).keys()].sort()) && storeOf(F).pulledAt === F.meta.pulledAt && F.meta.accountStore.cells === storeOf(F).cells.length);
 
-    const partialPrev = JSON.parse(JSON.stringify(pull({ variant: { cutoff: "2026-08-16" }, raw: { today: "2026-08-15", pulledAt: "2026-08-15T09:00:00-07:00", ids: ["p-onboard", "p-nps", "p-renew", "p-pilot", "p-unlisted"] } }).snapshot));
+    const partialPrev = copyOf(pull({ variant: { cutoff: "2026-08-16" }, raw: { today: "2026-08-15", pulledAt: "2026-08-15T09:00:00-07:00", ids: ["p-onboard", "p-nps", "p-renew", "p-pilot", "p-unlisted"] } }).snapshot);
     const grown = pull({ previous: partialPrev });
     check("a program new to the snapshot is pulled for its whole window while the others are carried, and the totals still equal a full refresh",
       grown.snapshot.meta.refresh.mode === "selective" && grown.snapshot.meta.refresh.fullPrograms === 1 && sameMap(totals(grown.snapshot, "byTemplate"), totals(F, "byTemplate")) && sameMap(totals(grown.snapshot, "byAccount"), totals(F, "byAccount")) && grown.snapshot.facts.byTemplate.filter((r) => r.programId === "p-promo").every((r) => r.provenance === "pulled"), grown.snapshot.meta.refresh);
-    const stale = JSON.parse(JSON.stringify(pull({ variant: { cutoff: "2026-06-16" }, raw: { today: "2026-06-15", pulledAt: "2026-06-15T09:00:00-07:00" } }).snapshot));
+    const stale = copyOf(pull({ variant: { cutoff: "2026-06-16" }, raw: { today: "2026-06-15", pulledAt: "2026-06-15T09:00:00-07:00" } }).snapshot);
     const skipped = pull({ previous: stale }).snapshot;
     check("a skipped refresh re-pulls from the month the previous snapshot was pulled in, not only the horizon: that month was incomplete when it was pulled, and the months after it never were",
       isDeepStrictEqual(skipped.meta.refresh.pulledMonths, ["2026-06", "2026-07", "2026-08", "2026-09"]) && sameMap(totals(skipped, "byTemplate"), totals(F, "byTemplate")) && sameMap(totals(skipped, "byAccount"), totals(F, "byAccount")), skipped.meta.refresh);
@@ -1114,7 +1165,7 @@ try {
       [{ raw: { from: "2025-06" } }, /starts later/],
     ].map(([o, re]) => [pull({ ...o, previous: prev, phase: "plan" }).summary.estimate, re]);
     check("a previous snapshot the new pull cannot extend forces a full refresh, and the reason is stated: forced, domains changed, unsubscribe links changed, step detail changed, selection changed, window reaches further back", reasons.every(([e, re]) => e.mode === "full" && re.test(e.why)), reasons.map(([e]) => e.why));
-    const older = JSON.parse(JSON.stringify(prev));
+    const older = copyOf(prev);
     for (const c of older.reconciliation.checks) { delete c.drift; delete c.driftExamples; }
     const dated = pull({ previous: older, phase: "plan" }).summary.estimate;
     check("a snapshot built under earlier metric definitions (before Delivered changed and the no-company-link sends were read) is never carried from", dated.mode === "full" && /earlier metric definitions/.test(dated.why), dated);
@@ -1845,7 +1896,7 @@ try {
     const otherList = pull({ kb: true, previous: earlier.snapshot, raw: { health: { pull: true } }, phase: "plan" }).summary.estimate;
     check("HLT-1 a changed category list forces a full refresh and says so: rows counted under one list never sit beside rows counted under another (a snapshot whose bounce reasons were read as text, before categories, is such a list)",
       otherList.mode === "full" && /bounce-reason categories changed/.test(otherList.why) && (() => {
-        const textEra = JSON.parse(JSON.stringify(earlier.snapshot));
+        const textEra = copyOf(earlier.snapshot);
         delete textEra.meta.params.health.categories;
         return /bounce-reason categories changed/.test(pull({ kb: true, previous: textEra, phase: "plan" }).summary.estimate.why);
       })(), otherList.why);
@@ -1854,7 +1905,7 @@ try {
     const afterOld = pull({ kb: true, previous: old });
     check("HLT-1 refresh: a previous snapshot made before failures were counted (no health marker, no failed on its rows) is never carried from — a full refresh that says why, with a failure count on every row",
       afterOld.snapshot?.meta.refresh.mode === "full" && /before send failures and health facts were counted/.test(afterOld.snapshot.meta.refresh.why) && afterOld.snapshot.facts.byTemplate.every((r) => Number.isInteger(r.failed)) && isDeepStrictEqual(afterOld.snapshot.facts.byTemplate, S.facts.byTemplate));
-    const noPrevReasons = { ...earlier.snapshot, meta: { ...earlier.snapshot.meta, health: { ...earlier.snapshot.meta.health, parts: { ...earlier.snapshot.meta.health.parts, bounceReasons: { pulled: false, reason: "call-failed", basis: "window" } } } }, facts: { ...earlier.snapshot.facts, health: { ...earlier.snapshot.facts.health, bounceReasons: [] } } };
+    const noPrevReasons = withStore({ ...earlier.snapshot, meta: { ...earlier.snapshot.meta, health: { ...earlier.snapshot.meta.health, parts: { ...earlier.snapshot.meta.health.parts, bounceReasons: { pulled: false, reason: "call-failed", basis: "window" } } } }, facts: { ...earlier.snapshot.facts, health: { ...earlier.snapshot.facts.health, bounceReasons: [] } } }, storeOf(earlier.snapshot));
     const gap = pull({ kb: true, previous: noPrevReasons });
     check("HLT-1 selective refresh: when the previous snapshot read no bounce reasons the carried months have none to give, so the part is not read (not-in-previous) and empty — never a table that silently lacks its older months",
       gap.snapshot?.meta.refresh.mode === "selective" && isDeepStrictEqual(healthAvailability(gap.snapshot).parts.bounceReasons, { pulled: false, reason: "not-in-previous", basis: "window" }) && gap.snapshot.facts.health.bounceReasons.length === 0);
@@ -1919,7 +1970,7 @@ try {
     check("the calls: one IN call per family and span for the test accounts, and one overlap call per internal domain (ENDS_WITH the domain AND IN the accounts); the ids are sorted and de-duplicated so the same set in any order is the same run; nothing names an address",
       inCalls.length >= 6 && inCalls.some((a) => !flag(a, "--where-filters").includes("ENDS_WITH")) && inCalls.some((a) => flag(a, "--where-filters").includes('"ENDS_WITH","rightOperand":{"value":"@acme.com"}')) &&
         inCalls.every((a) => flag(a, "--where-filters").includes('"value":["co-01","co-05"]')) && isDeepStrictEqual(T.meta.params.testAccounts, TEST) && isDeepStrictEqual(T.honesty.testAccounts, { accounts: 2, sent: testSends.length }), inCalls.length);
-    const prevNone = JSON.parse(JSON.stringify(pull({ kb: true, variant: { cutoff: "2026-08-16" }, raw: { today: "2026-08-15", pulledAt: "2026-08-15T09:00:00-07:00" } }).snapshot));
+    const prevNone = copyOf(pull({ kb: true, variant: { cutoff: "2026-08-16" }, raw: { today: "2026-08-15", pulledAt: "2026-08-15T09:00:00-07:00" } }).snapshot);
     const changed = pull({ kb: true, previous: prevNone, raw: { testAccounts: TEST }, phase: "plan" }).summary.estimate;
     const stepsToo = pull({ kb: true, raw: { testAccounts: TEST, stepDetail: true } }).snapshot;
     check("a change to the test accounts forces a full refresh and says so (they are a different class split); with step detail the step table is by domain alone and a caveat says why; without domains or test accounts nobody is internal",
