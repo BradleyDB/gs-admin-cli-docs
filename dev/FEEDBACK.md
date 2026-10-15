@@ -3933,7 +3933,7 @@ Verified: 2026-10-14 (builder, the close-out of F-528-V @ hb-20261014-04 — the
   Each kill's detail names its own clause (repoReadme, entry, readme, skill, rule). C2: the row reads exactly its pre-S8 words (5fa4620, line 101); the skill is unchanged since F-528-V, so W1's walk stands; Bradley's wording read is recorded above. The builder's own pass over the differential against the S8 commit 2268d66: 53 lines S8 added still stand in the skill (24), the plugin README (12), the repo README (2) and the CHANGELOG (15), and none names native reports, Gainsight reports, the report builder or rp create / rp update. `git diff --stat dev...HEAD -- plugins/gs-superadmin/scripts` is empty. C3: test/dashboard.mjs 124/124 (the F-528 check PASS) and test/dashboard-native.mjs 23/23 at 531a9b5; CI on PR #52 at the merge: see the close-out comment on dev. S1 is a property of any word-keyed check, not a shipped offer: the check guards against the withdrawn statements coming back, and the differential plus a reader is the judge of any NEW wording. The check is this mechanism's second round (the two-rounds valve), so it is not tuned a third time; S1 is recorded here, not logged.
 Verdict: VERIFIED.
 
-## F-529 — OPEN
+## F-529 — FIXED
 Reported: 2026-10-14 (builder, R12 release-gate review: /code-review medium over origin/main..dev scoped to the plugin's scripts, skills and hooks; finder + opus verifier, reproduced with the stand-in CLI)
 Severity: normal — a decision is made wrong: `change` reports the customer lists ranked when they are not, and names a no-pull remedy that does not rank them
 Class: outcome-from-proxy
@@ -3943,6 +3943,16 @@ Expected: a list change ranks the lists it promises or says plainly that a full 
 Routing: the R12 fix round, before the recut.
 Ruling: 2026-10-15 (Bradley, R12 release gate, after the cross-round read: F-521 settled that a ranking is made only at a full pull; the S5 reselect promise was never revisited) — split by scope. Fix round A ships the NARROW honest fix: when the latest pull was full, reselect re-ranks as today; when it was selective, `change` saves the list, re-ranks nothing, says plainly that the list is ranked at the next full refresh (`refresh <dash> --full`), and reports done truthfully; instance (2) (a reselect that cannot run) rebuilds the other changed settings; instance (3) (a run directory in plan phase) is a refusal, never a stack trace. The ROOT (a list re-ranked on every refresh) is F-548, DEFERRED past 0.54.0 to session B; when B lands, this narrow path is replaced.
 Routing: R12 fix round A, before the 0.54.0 recut.
+Fix: 2026-10-15 (builder) — (feat/r12-fix-a, PR #53, <token>) — the NARROW fix as ruled. Class, in one sentence: a change reported the lists re-ranked because the reduce ran, not because a list was ranked; the outcome now comes from what the reduce can rank over. dashboard.mjs reselectReadiness decides it once, read by every reader: ranked now only when the latest snapshot's meta.refresh.mode is "full" AND its run directory (matched by the exact pulledAt among this dashboard's own runs, F-535) is a finished pull (status ok, phase all); otherwise reselectFromRun ranks nothing, rebuilds the pages from the latest snapshot so every other changed setting of the same change lands (instance 2), and returns done false, ranked false, rebuilt, why (a routine refresh; the rows gone; a run directory not a finished pull — instance 3 is now this refusal, never loadRun's stack), fullRefreshMinutes, remedy.line = `refresh <dash> --kb <kb> --full` and a one-sentence done.text. The same readiness words change's consequenceText (dry run included), the edit's closing ask and its first option ("Save and rebuild the pages now (no pull; the customer lists are ranked at the next full refresh)"), and COST_KINDS.reselect. Root-cause cost named: none here — the root (a list re-ranked on every refresh) is F-548, deferred to session B, and this narrow path is replaced when B lands. Pick up: /reload-plugins.
+Judge: the stand-in suite provokes the reported scenario, not this fix's list: a routine (selective) refresh, then a list change with a title change in the same command (test/dashboard.mjs "F-529 a list change over a SELECTIVE latest pull": the snapshot's lists byte-equal before and after, the title on the page, no call), then the remedy line RUN AS PRINTED from the workspace folder, whose full refresh ranks the changed list over every program; over a full pull the change still ranks; instance (3) by rewriting the full pull's status.json to phase plan (exit 0, no stack in stderr); instance (2) by moving the run directory away; the edit screen walked through new / next --question / answer / next / save.
+Mutation copy-out — sweep (source: each guard or branch this round's fixes added, reverted or weakened one at a time, plus the old behaviour the finding reported — the fixes' own arms, a vacuity check, not closure); predictions written to C:/m/predictions.txt before the first run; each mutant on its own copy of the plugin, the named suites run:
+    M1  reselectReadiness: the full-pull guard removed (a selective pull re-reduced)   KILLED pred:KILL
+    M2  reselectReadiness: the finished-pull status check removed                       KILLED pred:KILL
+    M3  the not-ranked branch rebuilds nothing                                          KILLED pred:KILL
+    M4  the edit's first option always "rank the customer lists again"                  KILLED pred:KILL
+    M5  change's consequenceText back to the old ranked-again text                      KILLED pred:KILL
+  (the first sweep's "exit 1" kills were a harness fault — the copy lacked the repo README the F-528 check reads, so the suite died at its last check — and are not counted: every kill above names its failing check; the unmutated suites 143/143, 144, 212, 56.)
+Sibling sweep: Class outcome-from-proxy's recipe, one read per outcome-writing field a list change emits: `done.done` (now: the lists were ranked; was: the reduce ran), `done.ranked` and `done.rebuilt` (new, each from its own signal: the reduce over a full run, the pages written), `consequenceText` and the edit's closing ask and first option (from reselectReadiness, not from the cost kind), the save-only `hint` (a sibling not handed: it said "rebuild <slug> when ready" for a list change, and a rebuild never ranks — now it says the lists are ranked at the next full refresh, with the line), the change summary's `saved` (unchanged: the spec was saved). The refresh summary's `pull.mode` and the snapshot's rankedAt / carriedFrom already said which pull ranked (F-521).
 
 ## F-530 — DEFERRED (past 0.54.0)
 Reported: 2026-10-14 (builder, R12 release-gate review, verifier reproduced over test/fixtures/engagement/snapshot-acme.json)
@@ -3954,7 +3964,7 @@ Expected: the page's list panels take n, floor, per and the kept set from the sa
 Routing: the R12 fix round, before the recut.
 Defer: 2026-10-15 (Bradley, R12 release gate) - past 0.54.0. Why not now: it bites only when an admin changes a list from its defaults (25, at least 10 delivered), and its natural fix (the page reads the pull's kept set) belongs to F-548's redesign of where list membership comes from. Reopen: session B (F-548), the fast follow after 0.54.0.
 
-## F-531 — OPEN
+## F-531 — FIXED
 Reported: 2026-10-14 (builder, R12 release-gate review, verifier reproduced over snapshot-acme with the current month scaled to day 2)
 Severity: normal — every count tile on the admin page's default view shows a drop that did not happen early in a month
 What: Class, in one sentence: the headline tiles' change divides a sum that includes the provisional month by a month count that includes it, against a usual measured over closed months only. engagement-query.mjs: change = value / months / usual where months = scope.months.length; the admin preset's dateDefault "window" keeps the provisional month. On day 2 the fixture's Sent tile reads 0.76x the usual while every closed month equals it (about 0.92x over a 12-month window). The tile's * explains late opens, not the divisor. DSH-4 D0 ruled the usual (the window's finished months), not the numerator.
@@ -3962,8 +3972,15 @@ Repro: snapshot-acme with the current month's sends scaled to 2/30, the admin pa
 Expected: the change compares like with like (closed months against closed months, or the partial month pro-rated and said), and the tile says which.
 Routing: the R12 fix round, before the recut.
 Routing: 2026-10-15 (Bradley, R12) — R12 fix round A, before the 0.54.0 recut.
+Fix: 2026-10-15 (builder) — (feat/r12-fix-a, PR #53, <token>) — Class, in one sentence: a change against the usual compared a sum that holds the provisional month, divided by a month count that counts it, with a usual over closed months only. engagement-query.mjs kpiView now computes the change over the CLOSED months the view keeps (the provisional month left out; a view with no closed month has no change) and returns change.months {closed, provisionalLeftOut}; the tile says it: "(over the N closed months shown; the current month is left out until it closes)", or "no closed month shown to compare with it". My call between the ruling's two (closed months, or the provisional month pro-rated and said): closed months — pro-rating a month whose opens are still arriving reads a drop the tile's * already warns about. Consequence for Bradley's eye (VALIDATION V2): in the default whole-window view the change now reads level, because the window's closed months ARE the usual. Siblings fixed the same way: a rate tile (points over the closed months), and the Health tab's bounce-reason Change column (healthReasonsView: the closed months of the period, changeMonths returned, the column says "(closed months)"). Golden page regenerated. Pick up: /reload-plugins; rebuild a dashboard to see it.
+Judge: a differential against the reported formula on the reported day: the fixture with the current month's sends (and bounce counts) scaled to 2/30, as on day 2 — the old divisor reads below 0.95 there (asserted, the reported drop), the new change reads exactly level over the whole window, a closed month alone reads its own ratio, the provisional month alone has no change, a rate's change is 0 points, every bounce category's change is 1 (test/engagement-query.mjs "F-531 day 2 of a month"); the page's golden carries the tile's words.
+Mutation copy-out — sweep (source: each guard or branch this round's fixes added, reverted or weakened one at a time, plus the old behaviour the finding reported — the fixes' own arms, a vacuity check, not closure); predictions written to C:/m/predictions.txt before the first run; each mutant on its own copy of the plugin, the named suites run:
+    M18 kpiView's change back to value / months (provisional month in)                  KILLED pred:KILL
+    M19 the bounce category change back to the period's count / months                  KILLED pred:KILL
+    M20 the tile's basis note removed                                                   KILLED pred:KILL
+Sibling sweep: every change-against-the-usual the engine computes (grep usual over engagement-query.mjs): kpiView (counts and rates), healthReasonsView bounces (the categories and Other) — both fixed; computeDelta (dashboard.mjs) already compares closed months both pulls hold; the participant refusals and step failures carry no change against a usual.
 
-## F-532 — OPEN
+## F-532 — FIXED
 Reported: 2026-10-14 (builder, R12 release-gate review, verifier reproduced in a scratch workspace)
 Severity: normal — leaders read another dashboard's numbers under their bookmarked page and title, by a path the CLI's own refusal suggests
 What: Class, in one sentence: a dashboard's shared-folder destination is not owned by that dashboard. dashboard-spec.mjs importSpec --slug rewrites only spec.slug and keeps publish.config (file "<oldslug>-leaders.html", to "leaders"), and nothing refuses two specs sharing a target and file; dashboard.mjs pruneDataFolder deletes every *.csv in <file>-data the current publish did not write (the comment says "ours by its name"; no slug-prefix check). So export renewals, import as renewals-emea (the refusal's "or --slug <other> to import beside it"): each refresh overwrites the leaders' renewals-leaders.html with the other dashboard and deletes the other's CSVs; a leader's Save As copy in that synced folder is deleted at the next publish. Instance on the same mechanism (polish alone): changing publish.config.file, .to or datasets true→false leaves the old page and its CSVs in the shared folder, never updated again and not named in the publish result.
@@ -3971,8 +3988,19 @@ Repro: draft and save renewals, export, import with --slug renewals-emea: both s
 Expected: an imported or copied dashboard gets its own file name (or the import says it shares one and refuses or asks); the prune removes only files this dashboard wrote; a publish change names the old copy it no longer updates.
 Routing: the R12 fix round, before the recut.
 Routing: 2026-10-15 (Bradley, R12) — R12 fix round A, before the 0.54.0 recut.
+Fix: 2026-10-15 (builder) — (feat/r12-fix-a, PR #53, <token>) — Class, in one sentence: a dashboard's shared-folder destination was not owned by the dashboard. dashboard-spec.mjs: no two saved specs of a KB share a file-copy target and file (case-blind, as the folder is), refused at setDraft when a publish path is set and at save, naming the other dashboard; importSpec under another --slug renames the exported dashboard's default file to the new slug's (and any file another dashboard publishes to), said as publishRenamed (the import summary carries its sentence). dashboard.mjs: a publish record beside the spec (published.json: the page, the data folder and its files, written when a copy is whole) — the shared folder's prune removes only data files the last publish of THIS dashboard wrote and this one does not (the workspace's own data folder is still pruned whole); a copy the last publish wrote that this one does not replace (the file renamed, another target, data files switched off, the target moved off the folder) is named in publish.noLongerUpdated with a note and left in place. Pick up: /reload-plugins.
+Judge: the stand-in walk provokes the reported path: export, then import with --slug as the refusal suggests (the import renames and says so), the clash refused for the exact and the upper-cased name, a file planted in the shared data folder survives a publish while the workspace's is pruned, the leaders' Health tab switched on then off (its data files leave the shared folder), one of them made unremovable (the copy stays whole and says so), and the file renamed twice (each publish names the copy it stopped updating) — test/dashboard.mjs PUB-3 and F-532 checks.
+Mutation copy-out — sweep (source: each guard or branch this round's fixes added, reverted or weakened one at a time, plus the old behaviour the finding reported — the fixes' own arms, a vacuity check, not closure); predictions written to C:/m/predictions.txt before the first run; each mutant on its own copy of the plugin, the named suites run:
+    M10 import keeps the exported dashboard's file (no rename)                          KILLED pred:KILL
+    M11 publishClash never finds a clash                                                KILLED pred:KILL
+    M12 the clash compared case-sensitively                                             KILLED pred:KILL
+    M13 the shared data folder pruned of every CSV this publish did not write           KILLED pred:KILL
+    M14 noLongerUpdated names nothing                                                   KILLED pred:KILL
+  (M11's first edit did not parse — a mutant fault, rewritten with the same intent before its counted run.)
+  (the first sweep's "exit 1" kills were a harness fault — the copy lacked the repo README the F-528 check reads, so the suite died at its last check — and are not counted: every kill above names its failing check; the unmutated suites 143/143, 144, 212, 56.)
+Sibling sweep: every writer into the shared folder (copyInto's three callers: the page, the dated copy, the data files) and every remover (the prune), read: only the prune removed, now record-bound; the dated copies accumulate by design and are not "old copies". Not reachable from one KB: two workspaces mapping one target name to one folder (each workspace's targets are its own); recorded as a blind spot, not fixed.
 
-## F-533 — OPEN
+## F-533 — FIXED
 Reported: 2026-10-14 (builder, R12 release-gate review, verifier traced dashboard.mjs and the skill)
 Severity: normal — following the skill, the model relays "nothing changed" while the pull it started never ran
 What: Class, in one sentence: the skill's exit-4 rule re-issues the verb instead of running the summary's remedy.line. skills/email-engagement/SKILL.md "By exit code on any verb" says re-issue once on 4; a pull started by `change` (a pull-priced setting) or `answer <dash> save yes` carries the refresh line in remedy.line. Re-issuing `change` finds the saved spec already holding the value and exits 0 saved:false done:null "nothing changed"; re-issuing `answer … save yes` meets "no draft … start one with new" (the save removed the draft). Exit 3's rule and step P already use remedy.line.
@@ -3980,8 +4008,14 @@ Repro: on the stand-in, a pull-priced `change` that stops partial (exit 4), then
 Expected: exit 4 runs remedy.line once, as step P does.
 Routing: the R12 fix round, before the recut.
 Routing: 2026-10-15 (Bradley, R12) — R12 fix round A, before the 0.54.0 recut.
+Fix: 2026-10-15 (builder) — (feat/r12-fix-a, PR #53, <token>) — Class, in one sentence: the skill's exit-4 rule re-issued the verb instead of running the summary's remedy. skills/email-engagement/SKILL.md "By exit code on any verb": 4 now runs `remedy.line` once, exactly as written, as step P does, and says why the verb is never re-issued (a change or answer … save yes has already saved); a second 4 reports error. Pick up: /reload-plugins.
+Judge: the stand-in provokes the reported scenario through the real process (test/dashboard.mjs "F-533"): a pull-priced change stopped by an unsplittable timeout exits 4 with the refresh line as remedy.line; re-issuing the change answers "nothing changed" (the reported failure), and the remedy line run as printed finishes the pull (resumed). The prose itself is judged by the verdict round's walk (VALIDATION § R12-A V6).
+Mutation copy-out — sweep (source: each guard or branch this round's fixes added, reverted or weakened one at a time, plus the old behaviour the finding reported — the fixes' own arms, a vacuity check, not closure); predictions written to C:/m/predictions.txt before the first run; each mutant on its own copy of the plugin, the named suites run:
+    M26 the exit-4 rule restored to "re-issue the same verb once"                       SURVIVED pred:SURVIVE
+  (no suite executes skill prose: the walk judges it.)
+Sibling sweep: every exit-4 rule in the skill: R2's plan (re-issue the plan: idempotent, correct), R3's pull, step P (remedy.line already), mode A (re-issue the account line: it continues its own run, and its summary carries no remedy.line) — none other re-issues a verb that saved.
 
-## F-534 — OPEN
+## F-534 — FIXED
 Reported: 2026-10-14 (builder, R12 release-gate review, verifier traced the skill against dashboard.mjs, dashboard-spec.mjs and engagement-report.mjs)
 Severity: normal — the dashboard route can answer for a program the dashboard does not hold, and prices the refresh it offers several-fold too high
 What: Class, in one sentence: R2 ("a dashboard answers first") routes on facts the summaries it reads do not carry. (1) `dashboard list` returns no selection or window, so "whose programs cover the question" cannot be judged, and the unmatchedNames R2 says to read is the dashboard's own selector names that matched nothing (always [] on a sent-90d dashboard), never the program asked about: a program that last sent five months ago is silently absent; a Paused program held but hidden by status reads "not held". (2) The stale-snapshot ask quotes refreshMinutes = the last plan's FULL estimate for a refresh that is selective, and has no wording for null. (3) Polish instance: R2's report line passes no --csv-dir, so --csv / --xlsx on this route return csvDir null and R5 has nothing to convert.
@@ -3989,8 +4023,15 @@ Repro: a default fast-path dashboard; ask the skill for a program outside its 90
 Expected: the route checks the named programs against what the dashboard holds (the report's rows or a list field that carries the selection) and falls back to a pull or says so; the ask prices the selective refresh; the CSV flags reach the dashboard report.
 Routing: the R12 fix round, before the recut.
 Routing: 2026-10-15 (Bradley, R12) — R12 fix round A, before the 0.54.0 recut.
+Fix: 2026-10-15 (builder) — (feat/r12-fix-a, PR #53, <token>) — Class, in one sentence: R2 routed on facts the summaries it read did not carry. (1) My call, stated: the dashboard report's summary carries `held` (the pull's time, window, selection in words, and every program with id, name, statuses and `shown` under the report's status filter), and `dashboard list` carries `holds` (time, window, selection, count) per dashboard; R2 checks every program the question names against held.programs — held and shown: answer; held, not shown: re-run with --include-paused or --all; not held: say so, naming what the dashboard holds, then plan with --name for those, or stop; unmatchedNames is said to be the dashboard's own selector names. (2) refreshMinutes is the ROUTINE refresh's price (the last plan's thisRun when that plan was selective; refreshSeconds beside it), null after only a full pull, with fullRefreshMinutes and the skill's wording for null. (3) The R2 report line appends --csv-dir with --csv / --xlsx, as R4 does, so R5 converts. Pick up: /reload-plugins.
+Judge: test/dashboard.mjs "F-534": after a routine refresh, the report's refreshSeconds equals that refresh's plan's thisRun (below the full pull's), fullRefreshMinutes the full pull's, held's shown count equals the report's own programsShown with at least one program hidden by status, --csv-dir writes the CSVs, and list's holds counts the snapshot's programs. The route's prose is judged by the walk (VALIDATION V6).
+Mutation copy-out — sweep (source: each guard or branch this round's fixes added, reverted or weakened one at a time, plus the old behaviour the finding reported — the fixes' own arms, a vacuity check, not closure); predictions written to C:/m/predictions.txt before the first run; each mutant on its own copy of the plugin, the named suites run:
+    M23 refreshMinutes priced from the full pull                                        KILLED pred:KILL
+    M24 held.programs all shown                                                         KILLED pred:KILL
+  (M23 first SURVIVED, a MISMATCH: on the stand-in both prices round to 9 minutes; the summary gained refreshSeconds and the check reads it — 9848260 — and M23, same intent, was killed on the re-run.)
+Sibling sweep: every summary field R2 and R6 read (list, report: pulledAt, snapshotAgeDays, refreshMinutes, unmatchedNames, counts, csvDir) against what each now carries; the plain report's own unmatchedNames stays (it is right there: the user's --name values).
 
-## F-535 — OPEN
+## F-535 — FIXED
 Reported: 2026-10-14 (builder, R12 release-gate review, verifier traced dashboard.mjs)
 Severity: normal — a change can be priced and run from another dashboard's plan
 What: Class, in one sentence: a dashboard's run directories are found by a name prefix another dashboard's slug can extend. dashboard.mjs lastPlan filters with startsWith(`dash-${slug}-`), and slugs allow hyphens, so renewals also matches dash-renewals-emea-*. With no run directory of its own for the latest pull (saved and not yet refreshed, an import, tmp cleaned), the by-clock fallback takes the other dashboard's plan: changeCost's longestPeriodDays (a health.silentDays raise priced as a rebuild when it needs a pull) and the minutes quoted. Reselect is not affected (it matches pulledAt exactly).
@@ -3998,6 +4039,12 @@ Repro: two dashboards renewals and renewals-emea, renewals saved with no refresh
 Expected: a run directory is matched to its dashboard exactly (the slug then a separator no slug contains, or a record inside the run).
 Routing: the R12 fix round, before the recut.
 Routing: 2026-10-15 (Bradley, R12) — R12 fix round A, before the 0.54.0 recut.
+Fix: 2026-10-15 (builder) — (feat/r12-fix-a, PR #53, <token>) — Class, in one sentence: a dashboard's run directories were found by a name prefix another slug can extend. dashboard.mjs runOwner reads a run directory's owner back from its name by the one grammar its constructors write (dash-<slug>-<core>[-<n>][-lb<days>][-<n>], the core plan-/preview-/account-<10 hex> or a pull's stamp; the slug is the longest head whose rest is exactly one core and suffixes, and no suffix holds a core, so the reading is exact); pullRunDirs (this dashboard's pull and plan runs) serves lastPlan and the re-selection. lastPlan now matches the latest snapshot's run by its exact pulledAt (was a name stamp). Sibling fixed, not handed: lastPlan's by-clock fallback also took the dashboard's own ACCOUNT-timeline plans (dash-<slug>-account-…) — the kind filter leaves them out. Pick up: /reload-plugins.
+Judge: a differential over the real artifacts — every run directory the stand-in walk created reads back to a dashboard of the KB with a known kind (test/dashboard.mjs "F-535 every run directory …"; it caught my first grammar, which took the collision suffix only after -lb while freshName puts it before: dash-acme-health-20260915T180000-2-lb91), plus the reported scenario: a dashboard "acme" saved with no pull beside a refreshed "acme-health" prices a change from no plan.
+Mutation copy-out — sweep (source: each guard or branch this round's fixes added, reverted or weakened one at a time, plus the old behaviour the finding reported — the fixes' own arms, a vacuity check, not closure); predictions written to C:/m/predictions.txt before the first run; each mutant on its own copy of the plugin, the named suites run:
+    M6  ownership by name prefix (startsWith dash-<slug>-)                              KILLED pred:KILL
+    M7  the grammar without the collision suffix before -lb                             KILLED pred:KILL
+Sibling sweep: every reader of the engagement tmp root in dashboard.mjs (git grep "tmp", "engagement"): lastPlan, reselect, verbRefresh (by the state file's exact run id), interviewContext (by the state's run id), runAdapter's callers (they name ids, never scan) — the two scanners now read runOwner.
 
 ## F-536 — OPEN
 Reported: 2026-10-14 (builder, R12 release-gate review, verifier reproduced in Git Bash, PowerShell 5.1 and cmd)
@@ -4006,34 +4053,54 @@ What: the no-internal-domain copy line ends at `sources.0.params.internalDomains
 Repro: paste the page's line in PowerShell 5.1 and type ["acme.com"] after the =: refused.
 Expected: the printed line carries a value form that survives each shell (a pre-quoted pair, or a value read from a file / stdin), and the refusal's advice runs as given.
 
-## F-537 — OPEN
+## F-537 — FIXED
 Reported: 2026-10-14 (builder, R12 release-gate review, verifier reproduced)
 Severity: polish — a loud, recoverable failure (verifier: normal, it breaks the module's "a refusal, never a stack" rule)
 What: dashboard-spec.mjs's "must be a month that has started" check compares a since month to the literal 2100-12, so a future since month (an interview typo, 2026-12 for 2025-12) is saved; the dry run, the save's pull and every refresh then die in engagement.mjs resolveParams with an uncaught Error and a stack trace naming --from/--to flags the user never typed.
 Repro: interview window since:2026-12 on 2026-10-14, save and refresh.
 Expected: refused at the window answer and in adapterParams as a refusal naming sources[0].params.window.from.
 Routing: 2026-10-15 (Bradley, R12) — R12 fix round A (folded polish), before the 0.54.0 recut.
+Fix: 2026-10-15 (builder) — (feat/r12-fix-a, PR #53, <token>) — Class, in one sentence: a window whose first month has not started reached the adapter's window check as an uncaught Error. dashboard.mjs adapterParams refuses a since or fixed window starting after this month, naming sources[0].params.window.from and the line to change it; the window question's answer refuses it at the answer; change refuses before saving (the draft discarded). Sibling not handed: a FIXED window starting after this month (no stack, but a pull of months with no data) is refused the same way. Also found: changeCost judged a tab change's health cost by calling adapterParams on a hard-coded day, which would now throw for any since window starting after it — replaced by one predicate (healthPulled) read by adapterParams, changeCost and pullSecondsAfter. Pick up: /reload-plugins.
+Judge: test/dashboard.mjs "F-537": the reported answer through change on 2026-09-15 — refused with the named setting, exit 1, no stack in stderr, the spec byte-equal, no draft — and the window question's apply refusing since:2027-01 while accepting a fixed window in the past.
+Mutation copy-out — sweep (source: each guard or branch this round's fixes added, reverted or weakened one at a time, plus the old behaviour the finding reported — the fixes' own arms, a vacuity check, not closure); predictions written to C:/m/predictions.txt before the first run; each mutant on its own copy of the plugin, the named suites run:
+    M16 adapterParams' not-started guard removed                                        KILLED pred:KILL
+    M17 the window answer's not-started guard removed                                   KILLED pred:KILL
+Sibling sweep: every validator of a window (dashboard-spec validateSpec, the window question, adapterParams, engagement resolveParams): the spec writer has no day, so the day-bound rule lives in adapterParams, which every pull and plan passes through.
 
-## F-538 — OPEN
+## F-538 — FIXED
 Reported: 2026-10-14 (builder, R12 release-gate review, verifier traced)
 Severity: polish — rare (a legacy manifest with no recorded journey describeCommand); the refusal names its remedy
 What: the skill's R2 narrow re-documentation line runs describe-batch with no --command, which refuses when the journey domain has no recorded describeCommand; dashboard.mjs's own redocument passes --command explicitly.
 Expected: the skill's line passes the same --command as the script twin.
 Routing: 2026-10-15 (Bradley, R12) — R12 fix round A (folded polish), before the 0.54.0 recut.
+Fix: 2026-10-15 (builder) — (feat/r12-fix-a, PR #53, <token>) — Class, in one sentence: the skill's line drifted from its script twin. SKILL.md R2's describe-batch line passes --command "gs-admin --json jo p describe --id {id}" --doc-mode program, as dashboard.mjs redocument does. Pick up: /reload-plugins.
+Judge: test/dashboard.mjs "F-538" reads the twin's --command and --doc-mode from dashboard.mjs's redocument source and requires them on the skill's line — never restated in the test.
+Mutation copy-out — sweep (source: each guard or branch this round's fixes added, reverted or weakened one at a time, plus the old behaviour the finding reported — the fixes' own arms, a vacuity check, not closure); predictions written to C:/m/predictions.txt before the first run; each mutant on its own copy of the plugin, the named suites run:
+    M25 the skill's describe-batch line without --command                               KILLED pred:KILL
+Sibling sweep: the skill's other describe-batch line (templates, R2) already passed --command and --doc-mode template, as the twin does.
 
-## F-539 — OPEN
+## F-539 — FIXED
 Reported: 2026-10-14 (builder, R12 release-gate review, verifier traced)
 Severity: polish — the model improvises a line that is not false
 What: mode A's Checks-line rules cover no named dashboard with no pull yet (against and againstText null, reconciled true: no rule applies), and an unknown GSID (exit 6, empty candidates) is told to "ask which one" from an empty list.
 Expected: one rule for a named dashboard with no snapshot; on empty candidates relay `error` and ask for the spelling or the GSID.
 Routing: 2026-10-15 (Bradley, R12) — R12 fix round A (folded polish), before the 0.54.0 recut.
+Fix: 2026-10-15 (builder) — (feat/r12-fix-a, PR #53, <token>) — Class, in one sentence: mode A's rules left two summaries with no rule. SKILL.md mode A: a named dashboard with no pull yet (againstSnapshot null) reads "ok; not compared with the dashboard: it has no pull yet"; exit 6 with empty candidates relays error and asks for the exact spelling or the GSID. Pick up: /reload-plugins.
+Judge: test/dashboard.mjs "F-539": the account verb named with a dashboard that has no snapshot returns againstSnapshot null, and an unknown GSID exits 6 with no candidates and an error to relay — the fields the rules read; the prose by the walk (VALIDATION V7, optional with a login).
+Mutation copy-out — vacuity check, no mutants: the change is prose only and its check asserts the summary's fields, which this round did not change.
+Sibling sweep: mode A's Checks-line rules against every against / reconciled combination the summary can carry (no dashboard; a dashboard with no pull; compared; a reason; notCompared; reconciled false) — each now has a rule.
 
-## F-540 — OPEN
+## F-540 — FIXED
 Reported: 2026-10-14 (builder, R12 release-gate review, verifier reproduced)
 Severity: polish — needs a wrong-tenant or corrupt snapshot beside a valid spec; the replaced spec is kept as .previous
 What: dashboard.mjs verbImport writes the spec (importSpec) before the snapshot is opened and its tenant checked, so a refused snapshot exits "not imported" with the spec already written (replaced under --replace).
 Expected: check the snapshot first, or say the spec was written.
 Routing: 2026-10-15 (Bradley, R12) — R12 fix round A (folded polish), before the 0.54.0 recut.
+Fix: 2026-10-15 (builder) — (feat/r12-fix-a, PR #53, <token>) — Class, in one sentence: import wrote the spec before the snapshot beside it was checked. importSpec takes a beforeWrite check run after every check and before any write; verbImport opens the snapshot and checks its tenant there, so a refused or unreadable snapshot (a sibling not handed: a file that is not a snapshot) leaves nothing written, under --replace included; the imported snapshot takes a fresh name when one of its stamp exists. Pick up: /reload-plugins.
+Judge: test/dashboard.mjs "F-540" (another tenant's snapshot under --replace: the saved spec byte-equal) and the F-532 import check's first half (a snapshot that cannot be opened: "nothing was imported").
+Mutation copy-out — sweep (source: each guard or branch this round's fixes added, reverted or weakened one at a time, plus the old behaviour the finding reported — the fixes' own arms, a vacuity check, not closure); predictions written to C:/m/predictions.txt before the first run; each mutant on its own copy of the plugin, the named suites run:
+    M15 the snapshot checked after the spec is written                                  KILLED pred:KILL
+Sibling sweep: every other import write (the snapshot copy, the .previous copy): both after the check now.
 
 ## F-541 — OPEN
 Reported: 2026-10-14 (builder, R12 release-gate review, verifier reproduced; unreachable for a released user: no dashboard code was ever released before this version)
@@ -4047,19 +4114,32 @@ Severity: polish — bounded (one restart per rise of the derived lookback); the
 What: on a resume after re-documentation moved the KB stamp, the derived health lookback can rise (30 → 90) and the pull moves to a fresh -lb<N> run directory with nothing reused, while the resume line still says "the calls already made are reused".
 Expected: the resume says it starts the pull again and why, or carries the answered calls the new lookback does not change.
 
-## F-543 — OPEN
+## F-543 — FIXED
 Reported: 2026-10-14 (builder, R12 release-gate review, verifier reproduced)
 Severity: polish — needs a same-day hand edit of failure-categories.json, which no doc mentions
 What: stableRunId leaves the failure categories out of the interview plan's run id while runAdapter passes them, so editing the categories the same day after the plan makes prepareRun refuse "pass the same flags … or a new --run", a remedy dashboard.mjs cannot run (refresh abandons such a run correctly).
 Expected: the categories are in the run id, or the interview abandons the stale plan as refresh does.
 Routing: 2026-10-15 (Bradley, R12) — R12 fix round A (folded polish), before the 0.54.0 recut.
+Fix: 2026-10-15 (builder) — (feat/r12-fix-a, PR #53, <token>) — Class, in one sentence: a parameter that reaches the pull was left out of a key that names the run. stableRunId and the interview's planKeys both take the tenant's failure categories, so a category file edited the same day names a new plan; the save's first refresh never resumes a plan made without them. Pick up: /reload-plugins.
+Judge: test/dashboard.mjs "F-543": a fast-path draft planned, the category file written, then dry-run no / estimate yes / save yes — the first refresh completes, never "pass the same flags".
+Mutation copy-out — sweep (source: each guard or branch this round's fixes added, reverted or weakened one at a time, plus the old behaviour the finding reported — the fixes' own arms, a vacuity check, not closure); predictions written to C:/m/predictions.txt before the first run; each mutant on its own copy of the plugin, the named suites run:
+    M9  categories out of stableRunId only (planKeys keeps them)                        SURVIVED pred:SURVIVE
+    M9b categories out of stableRunId AND planKeys (the reported state)                 KILLED pred:KILL
+  (M9 survives as predicted: the interview re-plans by planKeys and the save starts a fresh run; either key alone closes the reported path, so both carry them.)
+  (the first sweep's "exit 1" kills were a harness fault — the copy lacked the repo README the F-528 check reads, so the suite died at its last check — and are not counted: every kill above names its failing check; the unmutated suites 143/143, 144, 212, 56.)
+Sibling sweep: every key built from adapterParams in dashboard.mjs (stableRunId, planKeys, the account run id): the account timeline's id is built from its own resolved params, which carry no categories.
 
-## F-544 — OPEN
+## F-544 — FIXED
 Reported: 2026-10-14 (builder, R12 release-gate review, verifier reproduced the sort)
 Severity: polish — low reach (a clock moving back past the gap between two refreshes: the repeated DST hour, westward travel); the verifier tiered the misorder normal-low-reach, the numbers it shows are silently the older pull's
 What: snapshots are named from the local pulledAt with the offset dropped and ordered by name (cmpKey), so a clock that moves back makes the older pull "latest" (rebuild, status, report, the delta and the next refresh's previous read it); the collision suffix sorts before the plain name; an import from a zone east can outrank newer local pulls; pruneSnapshots trims by name and can then delete the snapshot just written.
 Expected: order snapshots by the parsed pulledAt instant (or a UTC-derived name).
 Routing: 2026-10-15 (Bradley, R12) — R12 fix round A (folded polish), before the 0.54.0 recut.
+Fix: 2026-10-15 (builder) — (feat/r12-fix-a, PR #53, <token>) — Class, in one sentence: snapshots were ordered by a name that drops the offset. snapshotFiles orders by the instant meta.pulledAt parses to (read once per file version: path, mtime and size), a same-instant pair by name with the collision suffix last; latest, previous, the delta, retention and lastPlan follow it. Sibling not handed: lastPlan matched its run by the name's stamp — now the exact pulledAt. Pick up: /reload-plugins.
+Judge: test/dashboard.mjs "F-544": a snapshot an hour newer than the newest, named so it sorts first, is the one status reads; the retention check (13 kept) runs over the same order.
+Mutation copy-out — sweep (source: each guard or branch this round's fixes added, reverted or weakened one at a time, plus the old behaviour the finding reported — the fixes' own arms, a vacuity check, not closure); predictions written to C:/m/predictions.txt before the first run; each mutant on its own copy of the plugin, the named suites run:
+    M8  snapshots ordered by name, not by the pulledAt instant                          KILLED pred:KILL
+Sibling sweep: every reader of the snapshots folder (snapshotFiles' callers, verbImport's write): all through snapshotFiles.
 
 ## F-545 — OPEN
 Reported: 2026-10-14 (builder, R12 release-gate review, verifier traced)
@@ -4073,12 +4153,18 @@ Severity: polish — self-healing (a lost mark is re-documented next refresh); n
 What: the refresh lock is per dashboard, but re-documentation writes the KB-wide _manifest.json (manifest.mjs has no lock), so two dashboards of one KB refreshed at once can lose each other's documented / stale marks. The same property holds for every manifest writer.
 Expected: a KB-level lock around re-documentation, or the manifest's writes made merge-safe.
 
-## F-547 — OPEN
+## F-547 — FIXED
 Reported: 2026-10-14 (builder, R12 /security-review: one candidate, filtered — highest severity Low; the same unguarded writer ships on main through email-report)
 Severity: polish — hardening: a formula payload in a template subject, program or account name needs Gainsight content-edit rights, an admin's --csv export opened in Excel, and a click past Excel's own warnings
 What: engagement-report.mjs writes its CSVs through jo-report.mjs's toCsv / csvCell, which quote delimiters but do not neutralise a leading = + - @; the dashboard runtime's own csvCell has that guard (FORMULA_START), so the plugin defends one export and not the other. Email-report's CSVs on main share the gap.
 Expected: one formula guard in jo-report.mjs's csvCell (covering every report CSV), or the report reuses the runtime's.
 Routing: 2026-10-15 (Bradley, R12) — R12 fix round A (folded polish), before the 0.54.0 recut.
+Fix: 2026-10-15 (builder) — (feat/r12-fix-a, PR #53, <token>) — Class, in one sentence: the plugin defended one CSV export against spreadsheet formulas and not the other. jo-report.mjs csvCell applies the runtime's FORMULA_START (now exported from dashboard-runtime.mjs, the rule's one home) to every text cell — a leading apostrophe — and never to a number; every report CSV is covered (email-report's search, program, audit-active and deps, and engagement-report's). Its golden fixtures moved with it: plugin-authored cells starting with "-" ("--" placeholders, a "--object …" caveat) are guarded too, as Excel would also read them. Pick up: /reload-plugins.
+Judge: test/engagement-report.mjs "F-547": a program name =HYPERLINK(…) and a template subject @SUM(1,2) through the report's real CSV path, and EVERY cell of every CSV it wrote scanned (none starts with = + - @ or a tab, a negative number apart); test/jo-report.mjs csvCell over each start character, a tab and negative numbers.
+Mutation copy-out — sweep (source: each guard or branch this round's fixes added, reverted or weakened one at a time, plus the old behaviour the finding reported — the fixes' own arms, a vacuity check, not closure); predictions written to C:/m/predictions.txt before the first run; each mutant on its own copy of the plugin, the named suites run:
+    M21 the formula guard removed from jo-report csvCell                                KILLED pred:KILL
+    M22 the guard applied to numbers too                                                KILLED pred:KILL
+Sibling sweep: every CSV writer in the plugin (git grep toCsv / csvCell / csvText): jo-report's toCsv (all report CSVs) and the runtime's csvText (the pages, already guarded) — no third.
 
 ## F-548 — DEFERRED (past 0.54.0)
 Reported: 2026-10-15 (builder, R12 release gate — Bradley's question at F-529's ruling: with lists on, does a routine refresh update them?)
