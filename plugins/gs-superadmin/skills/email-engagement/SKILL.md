@@ -170,6 +170,9 @@ pull, a routine one: "about M minutes", M being the summary's price of
 say instead "a routine pull re-reads only the recent months, so it is shorter than the
 first pull, which took about F minutes", F being the full pull's price,
 `fullRefreshMinutes` of `/gs-superadmin:email-engagement refresh <dashboard slug> --full`.
+When `fullRefreshMinutes` is null as well (a dashboard imported here and not yet refreshed
+here has no plan to price from), give no minutes: say the pull's time is known once its
+first refresh here plans it.
 
 Otherwise the plan makes a handful of cheap calls and prints what the full pull will
 cost. Nothing is pulled yet.

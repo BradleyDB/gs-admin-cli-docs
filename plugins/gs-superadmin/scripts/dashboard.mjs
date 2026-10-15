@@ -2024,8 +2024,9 @@ function verbReport(ctx, slug, opt, argv) {
  * @param {*} snapshot @param {string[]|"all"} statusesShown
  */
 function heldBy(snapshot, statusesShown) {
+  // The snapshot's selector is the adapter's resolved one (engagement.mjs resolveParams): sentSince is {spec, date}.
   const sel = snapshot.meta.params?.selector ?? {};
-  const selection = sel.names?.length || sel.ids?.length ? `the programs it names (${[...(sel.names ?? []), ...(sel.ids ?? [])].join(", ")})` : sel.sentSince ? `the programs that sent since ${sel.sentSince} (counted back from the pull's day)` : "every program that sent in the window";
+  const selection = sel.names?.length || sel.ids?.length ? `the programs it names (${[...(sel.names ?? []), ...(sel.ids ?? [])].join(", ")})` : sel.sentSince ? `the programs that sent since ${sel.sentSince.date} (${sel.sentSince.spec}, counted back from the pull's day)` : "every program that sent in the window";
   return {
     pulledAt: snapshot.meta.pulledAt, window: { from: snapshot.meta.window.from, to: snapshot.meta.window.to }, selection,
     programs: snapshot.dimensions.programs.map((p) => ({ id: p.id, name: p.name ?? null, statuses: p.statuses ?? [], shown: statusesShown === "all" || !Array.isArray(statusesShown) || (p.statuses ?? []).some((x) => statusesShown.includes(x)) })),
