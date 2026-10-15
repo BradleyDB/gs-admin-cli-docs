@@ -3088,15 +3088,15 @@ Results (builder close-out, 2026-10-14 @ hb-20261014-04; feat/jo-dash-f528-withd
   close-out comment on dev.
 Section status: CLEARED — F-528 VERIFIED (builder, the verdict of record for the role-inversion fix).
 
-## R12-A — the release gate's fixes (banked 2026-10-15, builder, R12 fix round A @ <token>; verdict at the R12-A verdict round)
+## R12-A — the release gate's fixes (banked 2026-10-15, builder, R12 fix round A @ hb-20261015-01; verdict at the R12-A verdict round)
 
 Owed by: the R12-A verdict round, in the consumer workspace with the plugin loaded from `dev` once PR (R12-A) is merged
-(a terminal in the workspace with --plugin-dir, canary <token> matched). NO PULL: every arm runs on the stand-in, on the
+(a terminal in the workspace with --plugin-dir, canary hb-20261015-01 matched). NO PULL: every arm runs on the stand-in, on the
 repo's suites, or on a SCRATCH import of the kept dashboard (digital-outreach-health-v2: `export … --with-snapshot`, then
 `import --file … --slug r12a-scratch`), never on the kept dashboard itself. The only tenant call allowed is `whoami`; arm
 V7's account lines are optional and read the tenant (a login), and are skipped without one (say so). The publish arms
 point a NEW publish target at a temp folder (`publish-target r12a-temp <a new empty folder>` and
-`change r12a-scratch 'publish.config.to="r12a-temp"'`), never the leaders' shared folder. Token: <token>. Why it is
+`change r12a-scratch 'publish.config.to="r12a-temp"'`), never the leaders' shared folder. Token: hb-20261015-01. Why it is
 banked: the fixes are judged by the suites, but three of them change what an admin reads (the change summary's words,
 the tiles, the skill's route), and no suite reads skill prose.
 
