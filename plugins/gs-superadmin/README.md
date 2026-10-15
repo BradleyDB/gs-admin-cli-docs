@@ -98,7 +98,7 @@ skill from the catalog below, e.g.:
 | [`/gs-superadmin:deprecate`](#deprecate-an-asset) | Walk an asset through the deprecation checklist | slash only |
 | [`/gs-superadmin:change-request`](#plan--execute-a-config-change) | Turn a ticket or request into a reviewable, KB-cited implementation plan | slash only |
 | [`/gs-superadmin:email-report`](#report-on-jo-emails--schedules) | Read-only Journey Orchestrator email & schedule reports (4 modes) | slash + natural language |
-| [`/gs-superadmin:email-engagement`](#report-on-email-engagement) | Read-only open-rate and engagement report across JO programs from the tenant's send log, an engagement dashboard built once and pulled again by hand whenever new numbers are wanted (its panels also creatable as Gainsight reports, each behind the guard), and one account's email timeline by day | slash + natural language |
+| [`/gs-superadmin:email-engagement`](#report-on-email-engagement) | Read-only open-rate and engagement report across JO programs from the tenant's send log, an engagement dashboard built once and pulled again by hand whenever new numbers are wanted, and one account's email timeline by day | slash + natural language |
 | [`/gs-superadmin:deps-report`](#tenant-wide-dependency-search) | Tenant-wide "what depends on this object/field/connection?" impact analysis | slash + natural language |
 | [`/gs-superadmin:report-bug`](#report-a-cli-bug-upstream) | Capture a `gs-admin` CLI misbehavior as a vendor-ready bug report | slash only |
 
