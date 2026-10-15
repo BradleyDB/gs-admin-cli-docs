@@ -363,7 +363,8 @@ they were documented, and the never-documented, plus the email templates it lack
 per pull with no model), pulls, keeps the snapshots, rebuilds the pages, and shows the change
 since the last pull on the headline figures. The first pull is full and takes minutes to
 tens of minutes on a large tenant; later ones are selective (the recent months only) and
-shorter. A pull that stops (the login expired, a call failed) leaves the last good pages
+shorter. The customer lists are ranked at a full pull: a selective pull keeps that ranking
+(the page dates it) and updates the figures, and `refresh … --full` ranks them again. A pull that stops (the login expired, a call failed) leaves the last good pages
 untouched and continues on the next run, and a setting changed in between does not strand
 it: the pull is then planned afresh for the new settings.
 
@@ -445,9 +446,10 @@ which dashboard folder a bare slug means. The pages' own copy lines carry it the
   A Claude desktop local task that runs the same runner script works the same way.
 - **Changing one setting:** `node .gs-superadmin/plugin/scripts/dashboard.mjs change
   program-health accounts.pull=true --kb acme-prod --dry-run` says what the change costs (a
-  rebuild with no pull, a re-selection of the customer lists, or the next pull with its
-  minutes, priced for the dashboard as it will be after the change); without `--dry-run` it
-  saves and does it. The value is JSON: a text setting goes in JSON quotes inside the
+  rebuild with no pull, the customer lists ranked again over the last full pull's rows, or the
+  next pull with its minutes, priced for the dashboard as it will be after the change; a list
+  changed after a selective pull is ranked at the next `--full` pull, and the change says so
+  with that line); without `--dry-run` it saves and does it. The value is JSON: a text setting goes in JSON quotes inside the
   shell's (`'pages.1.title="Leadership"'`). The lines the pages offer to copy are these.
 - **Handing over to a backup refresher:** `… export program-health --out handover.json
   --with-snapshot --kb acme-prod`, then on their machine `… import --file handover.json --kb

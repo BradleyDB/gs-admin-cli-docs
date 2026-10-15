@@ -1001,6 +1001,18 @@ export function specStore(kbDir) {
     }
     if (isText(by)) d.by = by;
   };
+  // A dashboard's shared-folder copy is its own (F-532): two specs of this KB never publish to one target and file (a
+  // copy published over another's, a prune deleting another's data files). The other saved dashboard a spec's publish
+  // file would share, or null; the file compared case-blind (a Windows or macOS folder does not tell the cases apart).
+  const publishTargetOf = (spec) => (spec?.publish?.target === "file-copy" && isObj(spec.publish.config) ? `${spec.publish.config.to}|${String(spec.publish.config.file).toLowerCase()}` : null);
+  const publishClash = (spec) => {
+    const mine = publishTargetOf(spec);
+    if (!mine) return null;
+    const root = join(kb, DASHBOARDS_DIR);
+    const slugs = existsSync(root) ? readdirSync(root, { withFileTypes: true }).filter((d) => d.isDirectory() && d.name !== spec.slug).map((d) => d.name).sort(cmpKey) : [];
+    return slugs.find((other) => existsSync(specPath(kb, other)) && publishTargetOf(read(specPath(kb, other), "the spec")) === mine) ?? null;
+  };
+  const clashText = (spec, other) => `the leaders' copy of "${spec.slug}" would go to the same file as the dashboard "${other}"'s (${spec.publish.config.file} in the target "${spec.publish.config.to}"): each dashboard publishes its own file, so one would overwrite the other's page — give this one another file (publish.config.file, say "${spec.slug}-leaders.html")`;
   const summary = (slug, d) => ({ slug, path: paths(slug).draft, answered: d.answered, title: d.spec.title, by: d.by ?? null, startedAt: d.startedAt, updatedAt: d.updatedAt, ...(d.takenOverFrom ? { takenOverFrom: d.takenOverFrom } : {}) });
 
   return {
@@ -1073,6 +1085,9 @@ export function specStore(kbDir) {
       // The whole draft, not the touched field: a change is refused when what it leaves is not a valid spec.
       const { problems, notes } = validateSpec(d.spec);
       if (problems.length) refuse(`not saved — ${problemsText(problems)}`);
+      // A publish setting set to another dashboard's file is refused here, before the draft is written (F-532).
+      const clash = sets.some(([p]) => String(p).startsWith("publish")) ? publishClash(d.spec) : null;
+      if (clash) refuse(`not saved — ${clashText(d.spec, clash)}`);
       d.answered = [...new Set([...d.answered, ...answered])];
       d.updatedAt = new Date().toISOString();
       writeSpecFile(draft, d);
@@ -1095,6 +1110,8 @@ export function specStore(kbDir) {
       if (!d) refuse(`no draft of "${slug}" to save`);
       const { problems, notes } = validateSpec(d.spec);
       if (problems.length) refuse(`not saved — ${problemsText(problems)}`);
+      const clash = publishClash(d.spec);
+      if (clash) refuse(`not saved — ${clashText(d.spec, clash)}`);
       const replaced = existsSync(saved);
       // The replaced spec stays as ONE previous copy (ruled 2026-10-04), so a change can be read back and undone by hand.
       if (replaced) writeSpecFile(`${saved}.previous`, read(saved, "the saved spec"));
@@ -1120,12 +1137,32 @@ export function specStore(kbDir) {
       writeSpecFile(resolve(outPath), envelope);
       return { out: resolve(outPath), tenantHost: spec.tenantHost, spec };
     },
-    /** Write an exported spec into this KB; refused when it was exported from another tenant (the SPEC's tenant decides). */
-    importSpec({ file, slug = null, replace = false }) {
+    /**
+     * Write an exported spec into this KB; refused when it was exported from another tenant (the SPEC's tenant decides).
+     * Imported under another slug, the dashboard takes its own publish file (F-532): the exported dashboard's default
+     * file name becomes this slug's, and a file another dashboard of this KB publishes to is renamed the same way; the
+     * rename is returned (`publishRenamed`) so the import says it. `beforeWrite(spec)` runs after every check and before
+     * anything is written (F-540: the snapshot beside the export is checked there, so a refused one writes nothing).
+     * @param {{file: *, slug?: ?string, replace?: boolean, beforeWrite?: (spec: *) => void}} args
+     */
+    importSpec({ file, slug = null, replace = false, beforeWrite = null }) {
       const envelope = typeof file === "string" ? read(resolve(file), "the export") : file;
       if (!isObj(envelope) || envelope.kind !== EXPORT_KIND || !isObj(envelope.spec)) refuse(`${typeof file === "string" ? `--file ${file}` : "the export"}: not a dashboard spec export (its kind is not "${EXPORT_KIND}")`);
       const spec = envelope.spec;
+      const exportedSlug = spec.slug;
       if (slug) spec.slug = slug;
+      let publishRenamed = null;
+      if (spec.publish?.target === "file-copy" && isObj(spec.publish.config)) {
+        /** @param {string} s @returns {string} the leaders' file a dashboard of that slug publishes by default */
+        const fileOf = (s) => /** @type {*} */ (defaultPublish(s).config).file;
+        const own = fileOf(spec.slug);
+        const from = spec.publish.config.file;
+        const renamedSlug = spec.slug !== exportedSlug && from === fileOf(exportedSlug);
+        if (from !== own && (renamedSlug || publishClash(spec))) {
+          spec.publish.config.file = own;
+          publishRenamed = { from, to: own, why: renamedSlug ? `imported as "${spec.slug}", it publishes its own file, not "${exportedSlug}"'s` : `"${publishClash({ ...spec, publish: { ...spec.publish, config: { ...spec.publish.config, file: from } } })}" of this knowledge base already publishes to that file` };
+        }
+      }
       const { problems } = validateSpec(spec);
       if (problems.length) refuse(`the exported spec is not valid here: ${problemsText(problems)}`);
       // Before anything is written: a spec is refreshed from ONE tenant.
@@ -1133,9 +1170,12 @@ export function specStore(kbDir) {
       const { saved, draft } = paths(spec.slug);
       if (existsSync(draft)) refuse(`a draft of "${spec.slug}" is in progress here — save or delete it first, or import under another --slug`);
       if (existsSync(saved) && !replace) refuse(`a dashboard "${spec.slug}" is already saved here — pass --replace to overwrite it, or --slug <other> to import beside it`);
+      const clash = publishClash(spec);
+      if (clash) refuse(`not imported — ${clashText(spec, clash)}`);
+      if (beforeWrite) beforeWrite(spec);
       if (existsSync(saved)) writeSpecFile(`${saved}.previous`, read(saved, "the saved spec"));
       writeSpecFile(saved, spec);
-      return { slug: spec.slug, path: saved, exportedAt: envelope.exportedAt ?? null, spec };
+      return { slug: spec.slug, path: saved, exportedAt: envelope.exportedAt ?? null, spec, publishRenamed };
     },
   };
 }
