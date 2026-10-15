@@ -37,17 +37,22 @@
 //
 // Zero dependencies — Node built-ins only.
 // ─────────────────────────────────────────────────────────────────────────────
-import { mkdtempSync, rmSync, mkdirSync, writeFileSync, readFileSync, copyFileSync } from "node:fs";
+import { mkdtempSync, realpathSync, rmSync, mkdirSync, writeFileSync, readFileSync, copyFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { tmpdir } from "node:os";
 import { spawnSync, execFileSync } from "node:child_process";
 
 // ── Temp-dir lifecycle ───────────────────────────────────────────────────────
 
-// Fresh directory under the OS temp dir. Caller owns removal (try/finally
-// around removeTempDir — the suites' idiom).
+// Fresh directory under the OS temp dir, returned as its REAL path. Caller owns
+// removal (try/finally around removeTempDir — the suites' idiom). Real because a
+// child run from a cwd under it reads process.cwd() as the real path: on macOS the
+// temp dir /var/folders/... is a symlink into /private/var/..., and a suite that
+// passes the returned path to one run (--workspace) and runs another from a cwd
+// under it would compare two spellings of one directory (the macOS leg of the
+// 0.54.0 release PR: F-533's "remedy line run as printed" did not resume).
 export function makeTempDir(prefix) {
-  return mkdtempSync(join(tmpdir(), `${prefix}-`));
+  return realpathSync(mkdtempSync(join(tmpdir(), `${prefix}-`)));
 }
 
 // Bounded-retry removal: on the windows CI leg a just-exited child (or an AV
