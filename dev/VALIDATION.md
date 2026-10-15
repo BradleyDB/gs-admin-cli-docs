@@ -3153,3 +3153,56 @@ THIS LIST IS COMPLETE.
 
 Cleanup: `rm -r <kb>/dashboards/r12a-scratch`, the temp folders, and the `r12a-temp` publish target
 (`.gs-superadmin/publish-targets.json`: remove the key by hand or leave it pointing at the deleted folder).
+
+Results (R12-A-V, 2026-10-15 @ hb-20261015-01, tester; dev at d9bdb99 (PR #53 merged), clean and level; a terminal in the
+workspace with --plugin-dir, canary matched; production KB, no pull; tenant reads: whoami, then on Bradley's login (asked:
+the closing step's pre-flight needed one) V6's plan and V7's two account lines):
+- V1 PASSED: the dry run and the change as the bar says (done false, ranked false, rebuilt true, the `--full` line and the
+  reason, a routine refresh); done.text read to Bradley: "Yes, as written". The edit screen's closing ask and first option
+  as the bar says. Probe faults: the closing step's token pre-flight (a login, not foreseen here); V3's changes on the same
+  scratch replaced the open draft, so the edit was redone with another size.
+- V2 PASSED by Bradley's eye: the default view level on all five tiles with the closed-months note; September alone with no
+  note; October alone "no closed month shown to compare with it"; September to October "over the 1 closed month shown";
+  the Health column "Change (closed months)". Bradley's ruling on the default comparison: "Polish, after 0.54.0" (the
+  plan's backlog).
+- V3 PASSED with a SUBSTITUTION: the kept dashboard publishes nowhere, so (a) and (b) ran on a second import of the scratch
+  after giving it a file-copy target (r12a-scratch2): (a) publishRenamed said; (b) the exact and a mixed-case name refused,
+  naming r12a-scratch, the spec byte-equal; (c) noLongerUpdated named the old page and data folder, both left; (d) the
+  planted CSV survived; (e) a non-snapshot JSON refused, "nothing was imported", no folder, and under --replace the spec
+  byte-equal.
+- V4 PASSED: test/dashboard.mjs 143/143, test/engagement-query.mjs 144/144, test/dashboard-page.mjs 212/212,
+  test/jo-report.mjs all passed, test/engagement-report.mjs 56/56; every R12-A check named above present and passing.
+- V5 PASSED on what the data holds: five CSVs, 2,836 cells, none starting with a formula character (none needed the
+  apostrophe); engagement-programs.csv in hidden Excel: no formula, no error cell. The adversarial arm rests on V4.
+- V6 FAILED on F-534 (reopened, two instances on its own fields: held/holds selection prints "[object Object]"; a stale
+  import is priced "about null minutes"); the route itself passed by Bradley's eye; the walk stopped before the pull. The
+  exit-4 rule (F-533), the R2 describe line (F-538) and mode A's two rules (F-539) read as written: PASSED.
+- V7 PASSED (with the login): againstSnapshot null on a scratch with no snapshot; co-nobody exit 6, no candidates, an error
+  to relay.
+Section status: OPEN on F-534 only (fixed by the tester's role inversion the same day; the close-out below owes the
+verdict of record); the twelve other sections VERIFIED on the bus.
+
+## R12-A-V close-out — the builder's verdict on the tester's F-534 role-inversion fix (banked 2026-10-15, tester, @ hb-20261015-02)
+
+Owed by: the BUILDER (the tester authored the fix and may not verify it), on fix/r12a-v-f534-held-words before its PR
+merges. No tenant call. Token: hb-20261015-02.
+
+THIS LIST IS COMPLETE.
+
+- C1 (the class). On the branch: `node plugins/gs-superadmin/test/dashboard.mjs` passes, its two new F-534 checks among them
+  (the "[object ...]" scan over every verb's output; the sent-since words from a selector built by resolveParams). Revert
+  the dashboard.mjs hunk alone: both fail. Pass bar: both checks pass on the fix and fail on the revert.
+- C2 (the read). SKILL.md R2's new sentence (both prices null: no minutes, the pull's time known once its first refresh
+  here plans it) reads right against the summary a fresh import's report returns (refreshMinutes and fullRefreshMinutes
+  both null). Pass bar: the sentence covers that case and no other case changed.
+- C3 (the run). CI green on the fix PR at its head.
+
+Results (builder close-out, 2026-10-15, fix/r12a-v-f534-held-words at e1c2c1f; no tenant call):
+- C1 PASSED: the branch head 145/145 with both new F-534 checks passing; the dashboard.mjs hunk reverted alone 2 FAILED of 145,
+  exactly the two new checks (the words check and the [object] scan), each naming "[object Object]" — predicted.
+- C2 PASSED: a fresh import's report has refreshMinutes and fullRefreshMinutes both null (no run directory of its own), the
+  sentence's case; no other R2 case changed. The sentence was reworded by the builder for C3 (meaning unchanged; F-534's
+  Builder amendment line), so Bradley's read of its words is the one item still open, and it does not gate the merge.
+- C3 FAILED at 1aa9b49 (validate-plugin run 38769298383: engagement-report's bare-word prose check), PASSED at e1c2c1f
+  after the amendment (validate-plugin run 38770931304, docs-drift run 38770931245; CLEAN).
+Section status: CLEARED — F-534 VERIFIED (builder, the verdict of record).
