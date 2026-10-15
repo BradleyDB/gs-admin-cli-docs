@@ -961,6 +961,40 @@ try {
         ![readme, skill, readFileSync(join(HERE, "..", "scripts", "dashboard-spec.mjs"), "utf8"), readFileSync(SCRIPT, "utf8")].some((t) => /one short (Claude )?session/i.test(t)) && /### L2 — Publish the artifact \(not offered/.test(skill),
       { offered, named: named.json?.error, section: dashboardSection.match(/.{0,80}artifact.{0,80}/i)?.[0] });
   }
+  // F-528: native Gainsight reports are not offered while backlog LTR-26 stands (ruled at S8-V): the report builder
+  // cannot finish what native-plan creates. The verbs, dashboard-native.mjs and T-11's `native` record stay (their own
+  // suites drive them); what is refused is the OFFER, read over WHOLE files, never chosen spans (F-528-V: an offer in the
+  // README's skill table and the skill's Step 1 router both passed a span-bounded check): the mode's words — "native"
+  // and "Gainsight reports" — anywhere in the skill (its one not-offered sentence set aside), the plugin README (its
+  // unrelated "native safety layer" set aside) or the repo README, and `rp create` / `rp update` anywhere in the skill
+  // (the plugin README's guard section names them for its own reasons); a mode N section; a tenant-mutation exception
+  // in the skill's description or ground rules; a native line in the CHANGELOG's 0.54.0 entry other than the one saying
+  // it is not offered.
+  {
+    const offer = /\bnative\b|\bGainsight\s+reports\b/i;
+    const readme = readFileSync(join(HERE, "..", "README.md"), "utf8");
+    const readmeRead = readme.replace(/\bno native safety layer\b/, "");
+    const repoReadme = readFileSync(join(HERE, "..", "..", "..", "README.md"), "utf8");
+    const skill = readFileSync(join(HERE, "..", "skills", "email-engagement", "SKILL.md"), "utf8");
+    const notOffered = /Native\s+Gainsight reports made from a dashboard are not offered[\s\S]*?say so and stop\./g;
+    const skillRead = skill.replace(notOffered, "");
+    const front = skill.slice(0, skill.indexOf("\n---", 4));
+    const description = front.match(/^description: (.*)$/m)?.[1] ?? "";
+    const hint = front.match(/^argument-hint: (.*)$/m)?.[1] ?? "";
+    const modeList = skill.slice(skill.indexOf("Its modes:"), skill.indexOf("## Ground rules"));
+    const groundRules = skill.slice(skill.indexOf("## Ground rules"), skill.indexOf("## Arguments"));
+    const changelog = readFileSync(join(HERE, "..", "CHANGELOG.md"), "utf8");
+    const at = changelog.indexOf("## 0.54.0");
+    const entry = changelog.slice(at, changelog.indexOf("\n## ", at + 1)).split(/\n(?=- )/).filter((b) => !b.startsWith("- **Native Gainsight reports are not offered.**")).join("\n");
+    const exception = /\b(except|but for|exception)\b|native|rp create|rp update/i;
+    const where = (text) => text.match(new RegExp(`.{0,80}(?:${offer.source}).{0,80}`, "i"))?.[0];
+    check("F-528 native reports are not offered: no word of the mode (native, Gainsight reports) anywhere in the skill but its one not-offered sentence, in the plugin README or in the repo README, and no rp create / rp update in the skill; no mode N section; the skill's description ends \"Never mutates the tenant.\" and neither it nor the ground rules carry an exception; the CHANGELOG's 0.54.0 entry names native reports only to say they are not offered",
+      (skill.match(notOffered) ?? []).length === 1 && !offer.test(skillRead) && !/\brp\s+(?:create|update)\b/i.test(skill) && !/^##+ N\b/m.test(skill) && hint.length > 100 && modeList.length > 500 &&
+        /Never mutates the tenant\.$/.test(description) && !exception.test(description) && /Read-only tenant\./.test(groundRules) && !exception.test(groundRules) &&
+        readme.includes("### The engagement dashboard") && !offer.test(readmeRead) && repoReadme.includes("/gs-superadmin:email-engagement") && !offer.test(repoReadme) &&
+        at >= 0 && /Native Gainsight reports are not offered/.test(changelog.slice(at)) && !/native/i.test(entry),
+      { skill: where(skillRead), readme: where(readmeRead), repoReadme: where(repoReadme), description: description.slice(-160), rule: groundRules.match(/.{0,60}(except|but for|exception|native).{0,60}/i)?.[0], entry: entry.match(/.{0,80}native.{0,80}/i)?.[0] });
+  }
   check("refusals: an unknown verb, a missing slug, a refresh of a draft, an unknown question (purpose, dropped, among them), and a workspace with no KB each exit 1 with one line",
     run("frobnicate", []).code === 1 && run("status", []).code === 1 && run("refresh", ["quick"]).code === 1 && /is a draft, not a saved dashboard/.test(run("refresh", ["quick"]).json?.error ?? "") && run("answer", [SLUG, "nope", "x"]).code === 1 && /no question is called "purpose"/.test(run("answer", ["quick", "purpose", "x"]).json?.error ?? "") && run("list", [], { flags: ["--workspace", join(ROOT, "nowhere"), "--bin", FAKE] }).code === 1);
   check("the summaries carry counts and verdicts, never rows: no account name and no message text reaches stdout from a refresh", !JSON.stringify(resumed.json).includes("Acme Customer") && JSON.stringify(resumed.json).length < 12000);

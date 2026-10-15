@@ -7,33 +7,8 @@ history when this file was introduced.
 
 ## 0.54.0 — 2026-10-14
 
-Native Gainsight reports from a dashboard (NAT-1, NAT-2), and four fixes to the leaders'
-copy and the page's marks.
+Four fixes to the leaders' copy and the page's marks.
 
-- **Native reports, planned.** `dashboard.mjs native-plan <dashboard>` says, for every
-  panel of both pages, whether Gainsight's own reports can carry it: native (every figure),
-  partial (the figures a report cannot carry left out, each with its reason), or not native
-  with the reason (step names, the customer lists, the dashboard's program groups, the
-  health tables, the email text, survey participants, content-link clicks, the distinct
-  counts). For each report it prints the exact `gs-admin rp create` line, read against the
-  tenant's own schema first (a field the delivery log lacks, or a filter on a picklist, is
-  refused rather than guessed). Two panels that would save the same report share one.
-- **What you add in the Gainsight UI.** The CLI cannot author a rate or a conditional
-  column, so a report saves one count (Sent, or a single count's own filter), and the plan
-  gives, for each other figure, the calculated column to add (its condition, from the
-  dashboard's own definitions: Delivered is "went out and did not bounce") and, for each
-  rate, the formula (Open rate = Opened ÷ Delivered, empty on nothing delivered). The
-  page's months, programs, status and internal recipients are Gainsight dashboard filters
-  you set in the UI; the plan says which.
-- **Created one at a time, each behind the guard.** `/gs-superadmin:email-engagement native
-  <dashboard>` shows the plan, asks once, then issues every `rp create` (and `rp update` for
-  a changed panel) as its own command, so the mutation guard asks for each; no script ever
-  runs one. `native-record` reads each new report's id back by its exact name and records it
-  in the dashboard (with a fingerprint, so a re-run skips what is unchanged and updates what
-  moved); `native-verify` reads every report back through `rp run-saved`. `--test-prefix` names
-  every report `ZZ|TEST|…` for a sandbox try-out. The CLI cannot delete a report: the skill
-  lists every id it created, and the plan lists recorded reports no panel needs any more,
-  for removal in the UI.
 - **The claude.ai artifact is no longer offered** for the leaders' copy. A Claude session
   must read the whole page before it can publish it as an artifact, and a real leaders' page
   takes several turns to read, every publish. The interview offers a shared folder or the
@@ -48,6 +23,9 @@ copy and the page's marks.
 - **Every mark a tab shows is explained at its foot.** The † (months carried forward from
   an earlier pull) is now explained in the tab's "About these figures" beside the *, and a
   bar chart whose names carry a † says what it means under the chart.
+- **Native Gainsight reports are not offered.** The entry command's `native-plan`,
+  `native-record` and `native-verify` verbs ship, but no skill mode or README recipe offers
+  them, because Gainsight's report builder cannot finish the reports they create (F-528).
 
 ## 0.53.0 — 2026-10-14
 
