@@ -3207,3 +3207,57 @@ Results (builder close-out, 2026-10-15, fix/r12a-v-f534-held-words at e1c2c1f; n
 - C3 FAILED at 1aa9b49 (validate-plugin run 38769298383: engagement-report's bare-word prose check), PASSED at e1c2c1f
   after the amendment (validate-plugin run 38770931304, docs-drift run 38770931245; CLEAN).
 Section status: CLEARED — F-534 VERIFIED (builder, the verdict of record).
+
+## F-548 — ranking on every refresh (banked 2026-10-15, builder, Session B @ <token>; verdict at the F-548 verdict round)
+
+Owed by: the F-548 verdict round, in the consumer workspace (Gainsight_Workspace) with the plugin loaded from the branch
+under test (a terminal in the workspace with --plugin-dir, canary <token> matched). LIVE: about two hours of pulls on
+the KEPT dashboard (digital-outreach-health-v2), production, reads only, one call at a time, as many logins as the pulls
+take (the runner checkpoints across them). Order matters: L1 runs while the kept dashboard's latest snapshot is still
+the one 0.54.0 made (no account store beside it, no meta.accountStore), so the migration arm is first. L3 runs on a
+SCRATCH import (f548-scratch), never a list change on the kept dashboard. Token: <token>. Why it is banked: the suites
+judge the store over the fixture tenant and the stand-in; what only the kept dashboard can show is the migration on a
+real 0.54.0 snapshot, the store's real size and time, a selective refresh's lists against a full one's on real data,
+and the skill relaying the new words (no suite reads skill prose).
+
+THIS LIST IS COMPLETE.
+
+- L0 (provenance). `git -C <repo> status -sb` on the branch under test; the dev-canary token equals <token>. Before any
+  pull: the kept dashboard's latest snapshot has no `meta.accountStore` and no `<stamp>.accounts.json` beside it in
+  `payscale-prod/dashboards/digital-outreach-health-v2/snapshots/`. Record its three lists' kept counts (25/25/25).
+- L1 (the migration, the full pull; the skill walk). In the tester session, invoke `/gs-superadmin:email-engagement`
+  (model-invocable: the session invokes it itself) to refresh digital-outreach-health-v2, the plain refresh with NO
+  `--full`. Before it runs, `dashboard.mjs report digital-outreach-health-v2 --kb payscale-prod` returns
+  `refreshFullOnce` (the latest snapshot "was made before the account store: the customer lists need one full pull to
+  start ranking on every refresh …") and `refreshMinutes` equal to `fullRefreshMinutes`. Pass bar: the refresh exits 0
+  (across logins if it must: each stop says exit 3, `gs-admin login`, the line again, and continues); `pull.mode` full and
+  `pull.why` the sentence above, relayed by the skill in its Pull line; no `--full` was typed and nothing was done by
+  hand; `accountStore` names `snapshots/<stamp>.accounts.json`, the only store in the folder, beside the new snapshot;
+  the store is plain JSON with one cell per line (open it), its `pulledAt` the snapshot's, its size about 4.6 MB (record
+  bytes, cells and accounts: the snapshot's `meta.accountStore` holds the same counts); the pull's minutes (record them,
+  about 67 expected). Record the three lists (kind, n, floor, kept in order).
+- L2 (a selective refresh's lists against the full one's). Right after L1, the same plain refresh again. Pass bar:
+  `pull.mode` selective (record the minutes, about 44 expected); its three lists equal L1's in kind, n, floor, per,
+  segment and kept IN ORDER, each `rankedAt` its OWN pull time and `carriedFrom` null; one store in the folder (the new
+  one). If a list differs, compare the two snapshots' byTemplate totals over the months L2 pulled (meta.refresh
+  .pulledMonths): unchanged totals with different lists is a FAIL; moved totals make the difference legitimate only if a
+  full pull agrees, so then run `refresh … --full` (a third pull) and compare its lists with L2's: equal is a pass.
+- L3 (a list change with no pull, the page, the report and the About tab; on a scratch import). `export
+  digital-outreach-health-v2 --out <tmp>/f548.json --with-snapshot --kb payscale-prod` (the summary names
+  `accountStore`, and its hint says the import's first pull is selective), `import --file <tmp>/f548.json --slug
+  f548-scratch --kb payscale-prod` (`accountStore` copied beside the imported snapshot), then `change f548-scratch
+  accounts.lists=[{"kind":"most-bounced","n":5,"floor":0}] --kb payscale-prod --dry-run` and the same without
+  `--dry-run`. Pass bar: the consequence says the lists are ranked again from the account store (a rebuild, no pull);
+  the change exits 0, `done.ranked` true, no call made (no login needed); f548-scratch's admin page's Most bounced
+  customers panel lists exactly 5 accounts with the note "The 5 most bounced across programs over the whole window, as
+  the pull of <date> ranked them."; `report f548-scratch` lists the same 5 in the same order; the page's About tab
+  says "the 5 most bounced". Read the panel and the done.text to Bradley: is it what an admin should read? Then the edit
+  screen: `new f548-scratch`, `next f548-scratch --question customer-list-detail`, one size changed, `next`: the closing
+  ask says the lists are ranked again from the account store, and its first option reads "Save and rank the customer
+  lists again now (no pull)"; discard the draft. Remove f548-scratch and the export files at the end.
+- L4 (the page on the kept dashboard, F-530). Open the kept dashboard's latest-admin.html after L2. Pass bar: each of the
+  three customer-list panels lists the snapshot's kept accounts in the record's order (spot-check the first five of
+  each against `honesty.accountSelection.lists`), with the note naming its size and floor; pick a two-month range in the
+  filter bar: the note adds "re-ranked here over what is shown" and only the list's own accounts appear.
+
+Results:
