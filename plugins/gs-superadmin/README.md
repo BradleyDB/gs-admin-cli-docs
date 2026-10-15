@@ -311,7 +311,7 @@ Reports land in `<slug>/reports-adhoc/` beside the snapshot they were written fr
 a snapshot you already have without pulling again. Program status never limits what is
 pulled: the tables show Active programs unless you named programs, `--include-paused`
 adds Paused ones, `--all` shows every status, and the report states how many it hides.
-Never mutates the tenant, but for the dashboard's native mode below, whose every report is its own command behind the guard's ask. For one program's own numbers, Gainsight's analytics page for
+Never mutates the tenant. For one program's own numbers, Gainsight's analytics page for
 that program is the place; this skill is for the comparisons the UI cannot make.
 
 ### The engagement dashboard
@@ -500,37 +500,6 @@ which dashboard folder a bare slug means. The pages' own copy lines carry it the
   *What it costs.* Viewers pay nothing: the leaders' copy is a file or a page of files, so
   opening it runs no query and no session; the publish is a file copy, with no Claude
   session. The interview is one Claude session; a refresh is `gs-admin` calls only.
-- **Native Gainsight reports from the dashboard** (for admins who want the figures inside
-  Gainsight): `/gs-superadmin:email-engagement native program-health` in a session. It is
-  the one part of this skill that writes to the tenant, and only reports:
-
-  1. **The plan** (reads only): `… native-plan program-health --kb acme-prod` says, for
-     each panel of both pages, whether a Gainsight report can carry it — native, partial
-     (the figures a report cannot carry left out, each with its reason), or not native
-     (step names, the customer lists, the program groups, the health tables, the email
-     text, survey participants, content-link clicks and the distinct counts are not on the
-     delivery log in a form a report reads) — and prints the exact `gs-admin rp create`
-     line for each report, checked against your tenant's schema first.
-  2. **One approval, then one command per report.** The skill shows the plan and asks once;
-     then it issues every `rp create` (or `rp update`, for a panel changed since) as its own
-     command, so the mutation guard asks for each one. `… native-record program-health
-     --panel <panel> --kb acme-prod` records each report's id in the dashboard after its
-     line succeeds, so a later run skips what is unchanged.
-  3. **Read back:** `… native-verify program-health --kb acme-prod` runs each report through
-     `rp run-saved` and says which columns are still to be added.
-  4. **The UI steps.** The CLI cannot author a rate or a conditional column, so each report
-     saves one count (Sent, or a single count's own filter) and the plan lists what to add
-     in Gainsight's report builder: a calculated column per other count, with its condition
-     in the dashboard's own terms (Delivered: `IsSent = "YES" AND IsBounced is not "YES"`),
-     and a formula column per rate (Open rate = Opened ÷ Delivered). The page's filters
-     (months, programs, internal recipients) become Gainsight dashboard filters you set
-     there, and placing the reports on a Gainsight dashboard is a UI step (the CLI has no
-     dashboard command). Program status and the dashboard's groups are not on the delivery
-     log, so the reports cover programs of every status, ungrouped.
-
-  Add `--test-prefix` to try it on a sandbox: every report is named `ZZ|TEST|…`. The CLI cannot
-  delete a report: the skill lists every report it created, with its id, and the plan
-  lists recorded reports no panel needs any more, for removal in the Gainsight UI.
 - **A program's failure text** (the masked messages and the "Other" samples) is shown by
   `… health program-health --program <id>` in the terminal, never on a page.
 - **One account's timeline:** `/gs-superadmin:email-engagement account 'Acme Corp'` in a
