@@ -314,6 +314,9 @@ const HEALTH_PANELS = Object.freeze([
   { id: "one-time", tab: "health", type: "health-one-time", title: "One-time and ad-hoc programs", knobs: { months: 6 } },
   { id: "error-rate", tab: "health", type: "table", title: "Error rate by program", query: { groupBy: ["program"], metrics: ["sent", "failed", "errorRate", "bounced", "bounceRate", "rejected", "rejectedRate", "unsubscribed", "unsubscribeRate", "spamComplaints", "spamRate"], sort: [{ metric: "errorRate", dir: "desc" }], having: [{ metric: "sent", gte: 1 }] }, columns: ["sent", "failed", "errorRate", "bounceRate", "rejectedRate", "unsubscribeRate", "spamRate"] },
 ]);
+// A customer list's panel: its id is the list's kind, and the page shows the pull's ranking of that list (the selection
+// record's kept accounts, n, floor and segments; F-530). The query's sort orders a re-ranking under a narrowing filter;
+// its having and limit apply only to a watch list that names no customer list.
 const ACCOUNT_LIST = (id, title, sort, having) => ({ id, tab: "engagement", type: "watchlist", title, query: { groupBy: ["account"], metrics: ["delivered", "opened", "openRate", "bounced"], sort: [sort], having: [having], limit: 25 } });
 // The Templates tab's one panel (TPL-2), on both presets; a leaders' page draws it only when its Templates tab is turned on.
 const TEMPLATES_PANEL = /** @type {T11Panel} */ (Object.freeze({ id: "templates", tab: "templates", type: "templates", title: "Emails: text and search", knobs: {} }));

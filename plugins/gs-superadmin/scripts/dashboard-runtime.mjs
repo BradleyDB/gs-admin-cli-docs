@@ -1022,9 +1022,72 @@ export function createDashboard(engine, model) {
   };
   /** The button that shows an account in the one-account view (ACC-2): only where the page has that view. */
   const viewAccountButton = (key) => (accountPanel && key != null && accountChoices.some((a) => a.key === key) ? ` <button type="button" class="gs-chip gs-text" data-act="account" data-account="${esc(key)}" title="Show this account month by month, with the line for its day-by-day timeline">View</button>` : "");
+  /** A cross-program watch list's table: each ranked account, with the programs that sent to it underneath. */
+  const watchTable = (panel, state, result) => {
+    const cols = panel.query.metrics;
+    const under = watchlistDetail(panel, state, result);
+    const head = `<tr><th scope="col">Account</th><th scope="col" class="gs-num">Programs</th>${cols.map((id) => `<th scope="col" class="gs-num">${esc(engine.metric(id).label)}</th>`).join("")}</tr>`;
+    const body = result.rows.map((row) => {
+      const own = under.get(row.key.account) ?? [];
+      const sub = own.map((d) => `<tr class="gs-sub"><td>${esc(d.label.program ?? d.key.program)}${badges(d.label.statuses)}</td><td></td>${cols.map((id) => metricCell(id, d.cells[id])).join("")}</tr>`).join("");
+      return `<tr><td>${esc(row.label.account ?? row.key.account)}${mark(row)}${viewAccountButton(row.key.account)}</td><td class="gs-num">${own.length}</td>${cols.map((id) => metricCell(id, row.cells[id])).join("")}</tr>${sub}`;
+    }).join("");
+    return `<div class="gs-scroll"><table><thead>${head}</thead><tbody>${body}</tbody></table></div>`;
+  };
+  // ── The customer lists' panels (F-530): the pull's ranking, never a second one ──
+  // A cross-program watch list the page model marks with a customer list's kind (panel.list) shows that list as the
+  // pull ranked it: the selection record's kept accounts in the record's order, its size and floor, one table per
+  // segment of a per-segment list. The report reads the same record, and the About tab the spec it was ranked from, so
+  // the three agree. Under a narrowing filter (months, programs, groups, statuses, the external class, one account) or
+  // a viewer's column sort, the list's own accounts are re-ranked over what is shown, and the note says so. ONE view
+  // for the panel and its CSV.
+  const listRecords = (panel) => (snapshot.honesty?.accountSelection?.lists ?? []).filter((l) => l.kind === panel.list);
+  const wholeView = (state) => {
+    const f = filtersOf(state);
+    return !f.months && !f.programs && !f.statuses && !f.supergroups && !f.groups && f.recipientClass === "all" && !state.account;
+  };
+  const listView = (panel, state) => {
+    const whole = wholeView(state);
+    const sort = state.so?.[panel.id];
+    const sections = listRecords(panel).map((record) => {
+      if (record.notRanked || !record.kept.length) return { record, result: null };
+      const accounts = state.account ? record.kept.filter((k) => k === state.account) : record.kept;
+      const order = sort ? [sort[0] === "account" ? { dim: "account", dir: sort[1] } : { metric: sort[0], dir: sort[1] }] : panel.query.sort;
+      const result = engine.runQuery(snapshot, { ...filtersOf(state), accounts, accountBuckets: ["account"] }, { groupBy: ["account"], metrics: panel.query.metrics, sort: order });
+      if (whole && !sort && !result.unavailable) {
+        const at = new Map(record.kept.map((k, i) => [k, i]));
+        result.rows.sort((a, b) => at.get(a.key.account) - at.get(b.key.account));
+      }
+      return { record, result };
+    });
+    return { whole, reordered: !whole || !!sort, sections };
+  };
+  const kindWords = (kind) => String(kind).replace("-", " ");
+  const segmentOf = (r) => (r.per ? `${r.per}: ${r.segment ?? "(none)"}` : null);
+  const listNote = (r, view) => {
+    const sel = snapshot.honesty?.accountSelection;
+    // The list in the words the About tab and the report use for it (the n, the floor, the segment field).
+    const quiet = r.kind === "least-engaged" && (sel?.lowCadencePrograms ?? []).length ? `; on a program that sends about once per contact, an account with at least ${sel.lowCadenceRule?.minDelivered ?? 3} delivered and no open joins it` : "";
+    const ranked = `The ${r.n} ${kindWords(r.kind)}${r.floor > 0 ? ` (at least ${r.floor} delivered)` : ""}${r.per ? ` per ${r.per}` : ""} across programs over the whole window, as the pull of ${String(r.rankedAt ?? snapshot.meta.pulledAt).slice(0, 10)} ranked them${quiet}`;
+    return view.reordered ? `${ranked}; re-ranked here over what is shown.` : `${ranked}.`;
+  };
+  const renderListPanel = (panel, state) => {
+    const view = listView(panel, state);
+    if (!view.sections.length) return `${open(panel)}<p class="gs-note">${esc(`This dashboard keeps no ${kindWords(panel.list)} list: the customer lists in its settings name the lists the pull ranks.`)}</p>${close}`;
+    const cols = panel.query.metrics;
+    const parts = view.sections.map(({ record: r, result }) => {
+      const head = segmentOf(r) ? `<h4>${esc(segmentOf(r))}</h4>` : "";
+      if (r.notRanked) return `${head}<p class="gs-note">${esc(engine.reasonText(r.notRanked))}</p>`;
+      if (!r.kept.length) return `${head}<p class="gs-note">${esc(`No account met this list's floor${r.floor > 0 ? ` (at least ${r.floor} delivered)` : ""}.`)}</p>`;
+      if (result.unavailable) return `${head}${renderNotice(lackFacts(result.unavailable.reason))}`;
+      return `${head}${watchTable(panel, state, result)}${result.rows.length ? "" : `<p class="gs-note">No account of this list has a send under the current filters.</p>`}<p class="gs-note">${esc(listNote(r, view))}</p>${notesBlock(whyNotes(result.rows, cols))}`;
+    }).join("");
+    return `${open(panel, csvButton(panel))}${parts}${close}`;
+  };
   const renderWatchlistPanel = (panel, state) => {
     const result = run(panel, state);
     if (result.unavailable) return `${open(panel)}${renderNotice(lackFacts(result.unavailable.reason))}${close}`;
+    if (panel.list) return renderListPanel(panel, state);
     const cols = panel.query.metrics;
     const cross = isCrossProgram(panel);
     const scope = result.scope;
@@ -1033,15 +1096,8 @@ export function createDashboard(engine, model) {
       const notes = whyNotes(result.rows, cols);
       return `${open(panel, csvButton(panel))}${tableOf(panel, result, cols)}${result.rows.length ? "" : `<p class="gs-note">Nothing matches the current filters.</p>`}${rank}${notesBlock(notes)}${close}`;
     }
-    const under = watchlistDetail(panel, state, result);
-    const head = `<tr><th scope="col">Account</th><th scope="col" class="gs-num">Programs</th>${cols.map((id) => `<th scope="col" class="gs-num">${esc(engine.metric(id).label)}</th>`).join("")}</tr>`;
-    const body = result.rows.map((row) => {
-      const own = under.get(row.key.account) ?? [];
-      const sub = own.map((d) => `<tr class="gs-sub"><td>${esc(d.label.program ?? d.key.program)}${badges(d.label.statuses)}</td><td></td>${cols.map((id) => metricCell(id, d.cells[id])).join("")}</tr>`).join("");
-      return `<tr><td>${esc(row.label.account ?? row.key.account)}${mark(row)}${viewAccountButton(row.key.account)}</td><td class="gs-num">${own.length}</td>${cols.map((id) => metricCell(id, row.cells[id])).join("")}</tr>${sub}`;
-    }).join("");
     const notes = whyNotes(result.rows, cols);
-    return `${open(panel, csvButton(panel))}<div class="gs-scroll"><table><thead>${head}</thead><tbody>${body}</tbody></table></div>${result.rows.length ? "" : `<p class="gs-note">No account clears the floor under the current filters.</p>`}${rank}${notesBlock(notes)}${close}`;
+    return `${open(panel, csvButton(panel))}${watchTable(panel, state, result)}${result.rows.length ? "" : `<p class="gs-note">No account clears the floor under the current filters.</p>`}${rank}${notesBlock(notes)}${close}`;
   };
 
   // ── The health views ───────────────────────────────────────────────────────
@@ -1326,6 +1382,22 @@ export function createDashboard(engine, model) {
           ...(p.steps ?? []).map((s) => [r.name ?? r.templateId, r.templateId, p.name ?? p.programId, (p.statuses ?? []).map(engine.statusLabel).join(", "), s.step ?? s.stepId ?? "", s.variant ?? s.variantId ?? "", "", "", "", ...figuresOf(cols, s.cells)]),
         ]),
       ]);
+    } else if (panel.list) {
+      // A customer list's export is its view (F-530): one line per account of the list in the order drawn, then one per
+      // program under it, each line naming the list's segment for a per-segment list.
+      if (run(panel, state).unavailable) return null;
+      const cols = panel.query.metrics;
+      const statusText = (row) => (row.label.statuses ?? []).map(engine.statusLabel).join(", ");
+      headers = ["List", "Account", "Program", "Status", "Programs", ...figureHeads(cols)];
+      rows = listView(panel, state).sections.filter((s) => s.result && !s.result.unavailable).flatMap(({ record, result }) => {
+        const under = watchlistDetail(panel, state, result);
+        const list = segmentOf(record) ?? `the ${record.n} ${kindWords(record.kind)}`;
+        return result.rows.flatMap((row) => {
+          const own = under.get(row.key.account) ?? [];
+          const account = dimText("account", row) ?? "";
+          return [[list, account, "", "", own.length, ...figuresOf(cols, row.cells)], ...own.map((d) => [list, account, dimText("program", d) ?? "", statusText(d), "", ...figuresOf(cols, d.cells)])];
+        });
+      });
     } else {
       if (panel.type === "account" && !state.account) return null;
       const result = run(panel, state);

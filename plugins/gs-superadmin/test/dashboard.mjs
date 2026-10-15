@@ -967,6 +967,14 @@ try {
         isDeepStrictEqual(rk(afterSel), [["most-bounced", 3, 0, 3, null]]) && afterSel.honesty.accountSelection.lists[0].rankedAt === before.meta.pulledAt && pageText("admin").includes("Acme health lists") && argvLines().length === callsBefore &&
         isDeepStrictEqual(stores(), [snapshots().at(-1).replace(/[.]json$/, ".accounts.json")]),
       [dryList.json?.consequenceText, sel.json?.done ?? sel.json?.error ?? sel.stderr?.slice(-400), rk(before), rk(afterSel), stores(), snapshots()]);
+    // The store stays beside the snapshot (F-548): no page carries it, the leaders' page least of all. Every account in
+    // the store but the kept ones would otherwise reach a page; the kept accounts are all a page names.
+    const storeKeys = readJson(join(dash(), SNAPSHOTS_DIR, stores()[0])).accounts;
+    // The settings name accounts too (the test accounts, any pinned one): those are the spec's, never the store's.
+    const keptKeys = new Set([...afterSel.dimensions.accounts.map((a) => a.key), ...(afterSel.meta.params.testAccounts ?? []), ...(afterSel.meta.params.accounts.pinned ?? [])]);
+    const unkept = storeKeys.filter((k) => !keptKeys.has(k));
+    check("F-548 no page carries the account store: neither the admin page nor the leaders' page holds its kind or any account it holds that the lists did not keep (and the settings do not name)",
+      unkept.length > 0 && ["admin", "exec"].every((p) => !pageText(p).includes("gs-superadmin/account-store") && unkept.every((k) => !pageText(p).includes(`"${k}"`))), [unkept.slice(0, 5), ["admin", "exec"].map((p) => { const t = pageText(p); const k = unkept.find((x) => t.includes(`"${x}"`)); return k ? t.slice(Math.max(0, t.indexOf(`"${k}"`) - 200), t.indexOf(`"${k}"`) + 40) : null; })]);
     // The judge, at the runner: a full refresh over the same stand-in data ranks the changed list to the same accounts,
     // in order; a routine refresh after it ranks them itself, to the same accounts again.
     const keptAfterChange = afterSel.honesty.accountSelection.lists.map((l) => l.kept);
