@@ -179,7 +179,9 @@
  * @property {{cadence: "weekly"|"monthly"|"quarterly"|"manual", ownerNote: ?string}} refresh
  * @property {T11Publish} publish   where the leaders' copy goes after a refresh (PUB-3, additive in S7: the targets
  *   file-copy and claude-artifact beside none)
- * @property {{reports: Array<{panel: string, reportId: string, name?: string}>}} native   reports created in Gainsight from this spec
+ * @property {{reports: Array<{panel: string, reportId: string, name?: string, planHash?: string}>}} native   reports created in
+ *   Gainsight from this spec (NAT-2): `panel` is "<page id>/<panel id>"; `planHash` (additive, S8) the fingerprint of
+ *   what the report was saved with, so a re-run skips an unchanged panel and updates a changed one
  * @property {import("./dashboard-theme.mjs").Theme} [theme]   the pages' look (additive, UX-1, S4d): brand-facing token
  *   values only — text and surface colours (light, and dark or derived), chart series colours, a system font stack, a
  *   radius, an optional logo as a PNG or JPEG data URI of at most 200 KB — plus the validator's notes on any token it
@@ -520,7 +522,7 @@ export const SPEC_DESCRIPTIONS = Object.freeze([
     say: (s) => {
       const c = /** @type {any} */ (s.publish.config);
       if (s.publish.target === "file-copy") return [`After every refresh and rebuild the leaders' page is copied, as ${c.file} (the same file each time), into the shared folder this machine names "${c.to}".${c.datedCopies ? " A copy named with the pull's date is kept beside it." : ""}${c.datasets ? " Its tables go beside it as CSV files, with a definitions file." : ""}`];
-      if (s.publish.target === "claude-artifact") return [`The leaders' page is published as a claude.ai artifact after a refresh, by Claude (one short session)${c.url ? `, at ${c.url}` : "; not yet published"}.`];
+      if (s.publish.target === "claude-artifact") return [`The leaders' page is published as a claude.ai artifact after a refresh, by Claude in a session${c.url ? `, at ${c.url}` : "; not yet published"}; a target no longer offered, since the session must read the whole page first.`];
       return ["Not published anywhere: the pages are files in the workspace."];
     },
   },
@@ -835,7 +837,7 @@ export function validateSpec(input) {
   }
   if (obj(s.native, "native")) {
     if (!Array.isArray(s.native.reports)) bad("native.reports", "must be a list");
-    else s.native.reports.forEach((r, i) => { if (!isObj(r) || !isText(r.panel) || !isText(r.reportId) || Object.keys(r).some((k) => !["panel", "reportId", "name"].includes(k))) bad(`native.reports[${i}]`, "must be {panel, reportId, name?}: the panel a Gainsight report was created from, and the report's id"); });
+    else s.native.reports.forEach((r, i) => { if (!isObj(r) || !isText(r.panel) || !isText(r.reportId) || Object.keys(r).some((k) => !["panel", "reportId", "name", "planHash"].includes(k)) || (r.name !== undefined && !isText(r.name)) || (r.planHash !== undefined && !(typeof r.planHash === "string" && /^[0-9a-f]{8}$/.test(r.planHash)))) bad(`native.reports[${i}]`, "must be {panel, reportId, name?, planHash?}: the panel a Gainsight report was created from (\"<page id>/<panel id>\"), the report's id, its name, and the fingerprint of what it was saved with"); });
   }
   // The look (UX-1, additive): absent is the default theme; present, its shape is checked here (a colour as #rrggbb,
   // a font stack, a PNG or JPEG logo under the cap); whether a colour READS is the theme validator's, at build.

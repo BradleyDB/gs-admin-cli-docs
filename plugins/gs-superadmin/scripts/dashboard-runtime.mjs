@@ -648,7 +648,28 @@ export function createDashboard(engine, model) {
   const tip = (text, body, cls = "gs-mark") => `<span class="${cls}" data-tip="${esc(text)}" title="${esc(text)}" tabindex="0" role="button" aria-label="${esc(text)}">${body}</span>`;
   // Short on purpose: the mark sits on many rows and carries this text three ways (tip, title, name); the full sentence is at the foot of the tab.
   const provisionalTip = () => `Includes the provisional period: sends on or after ${snapshot.meta.incompleteFrom}, where opens are still arriving.`;
-  const mark = (row) => `${row.incomplete ? `<sup>${tip(provisionalTip(), "*")}</sup>` : ""}${row.carried ? `<sup>${tip("Includes months carried forward from an earlier pull: their figures were read by that pull and may have moved since.", "&dagger;")}</sup>` : ""}`;
+  const CARRIED_TIP = "Includes months carried forward from an earlier pull: their figures were read by that pull and may have moved since.";
+  /**
+   * The marks a pane has drawn so far (F-525): every site that draws a * or a † — a table's tipped mark, a kpi tile,
+   * a chart label's suffix — records it here, and the tab's foot (paneNotes) explains exactly the marks the tab
+   * shows. renderPane resets it per tab; it is null outside a pane, where nothing reads it.
+   * @type {{incomplete: boolean, carried: boolean} | null}
+   */
+  let drawnMarks = null;
+  const noteMarks = (row) => {
+    if (!drawnMarks) return;
+    if (row.incomplete) drawnMarks.incomplete = true;
+    if (row.carried) drawnMarks.carried = true;
+  };
+  const mark = (row) => {
+    noteMarks(row);
+    return `${row.incomplete ? `<sup>${tip(provisionalTip(), "*")}</sup>` : ""}${row.carried ? `<sup>${tip(CARRIED_TIP, "&dagger;")}</sup>` : ""}`;
+  };
+  /** The marks as a chart label's plain suffix: an SVG label cannot carry the tip, so the tab's foot (and the chart's own note) explains them. */
+  const markSuffix = (row) => {
+    noteMarks(row);
+    return `${row.incomplete ? "*" : ""}${row.carried ? "†" : ""}`;
+  };
   /** The notes every view with these metrics carries: the click and response caveats (R18, R20, R1b), from the engine's caveat table. */
   const metricNotes = (ids) => {
     const notes = [];
@@ -659,14 +680,16 @@ export function createDashboard(engine, model) {
   /** A panel's notes as one quiet block under it, or nothing. The marks (* and †) explain themselves (tip) and once at the foot of the tab (paneNotes); no panel repeats them (ruled 2026-10-11). */
   const notesBlock = (notes) => (notes.length ? `<div class="gs-notes">${notes.join("")}</div>` : "");
   /**
-   * What every figure on a tab shares, said ONCE at the foot of the tab rather than under each panel: what the
-   * provisional mark means, and the click and response caveats for the metrics the tab's panels show.
+   * What every figure on a tab shares, said ONCE at the foot of the tab rather than under each panel: what each
+   * mark the tab drew means (F-525: the * and the † alike, read from what the panels drew), and the click and
+   * response caveats for the metrics the tab's panels show.
    */
   const paneNotes = (tabId, state) => {
     const own = panels.filter((p) => p.tab === tabId);
     const ids = [...new Set(own.flatMap(metricsOf))];
     const notes = [];
-    if (state.to >= incompleteMonth && own.some((p) => !HEALTH_TYPES.includes(p.type))) notes.push(`<p class="gs-note">* Provisional period: ${esc(engine.provisionalText(snapshot.meta))}.</p>`);
+    if (drawnMarks?.incomplete || (state.to >= incompleteMonth && own.some((p) => !HEALTH_TYPES.includes(p.type)))) notes.push(`<p class="gs-note">* Provisional period: ${esc(engine.provisionalText(snapshot.meta))}.</p>`);
+    if (drawnMarks?.carried) notes.push(`<p class="gs-note gs-note-carried">&dagger; ${esc(CARRIED_TIP)}</p>`);
     notes.push(...metricNotes(ids));
     return notes.length ? `<div class="gs-notes gs-pane-notes" data-notes="${esc(tabId)}"><p class="gs-notice-head">About these figures</p>${notes.join("")}</div>` : "";
   };
@@ -761,6 +784,7 @@ export function createDashboard(engine, model) {
       const d = delta?.metrics?.[t.id] ?? null;
       const since = noPrevious ? "" : `<p class="gs-kpi-since gs-muted">Since last pull: ${sinceText(d) ?? "no figure to compare with."}</p>`;
       const whyAttr = t.cell.value == null && t.cell.why ? ` title="${esc(engine.reasonText(t.cell.why))}"` : "";
+      if (view.incomplete) noteMarks({ incomplete: true });
       return `<div class="gs-kpi" data-metric="${esc(t.id)}"><p class="gs-kpi-label">${esc(t.label)}</p><p class="gs-kpi-value"${whyAttr}>${figure(t.id, t.cell)}${view.incomplete ? `<sup>${tip(provisionalTip(), "*")}</sup>` : ""}</p>${usual}${den}${since}</div>`;
     });
     const total = { incomplete: view.incomplete, carried: view.carried, cells: Object.fromEntries(view.tiles.map((t) => [t.id, t.cell])) };
@@ -838,7 +862,7 @@ export function createDashboard(engine, model) {
     // The month ticks are drawn after the bars and lines. A label is drawn only where it has room: past the months
     // the axis holds side by side, every k-th is labelled, counted back from the last month so the newest always
     // is (F-524: no two labels share the same room); every month keeps its figure in its tooltip and the table.
-    const tickText = (r) => `${monthLabel(r.key[dim])}${r.incomplete ? "*" : ""}${r.carried ? "†" : ""}`;
+    const tickText = (r) => `${monthLabel(r.key[dim])}${markSuffix(r)}`;
     const widest = Math.max(0, ...rows.map((r) => labelWidth(tickText(r))));
     const every = Math.max(1, Math.ceil((widest + 4) / slot));
     const ticks = rows.flatMap((r, i) => ((n - 1 - i) % every === 0 ? [{ label: svgText(xMid(i), h - bottom + 18, tickText(r), "tick", "middle"), full: "" }] : []));
@@ -970,12 +994,14 @@ export function createDashboard(engine, model) {
       });
     });
     // The names, after the bars; their full texts in the overlay, after everything (F-522).
-    const names = shown.map(({ row: r }, slot) => svgLabel({ x: labelW - 8, y: top + row * slot + row / 2 + 4, text: String(dimText(dim, r) ?? "(none)"), max: Math.floor((labelW - 12) / SVG_CHAR_PX), cls: "tick", key: slot, anchor: "end", suffix: `${r.incomplete ? "*" : ""}${r.carried ? "†" : ""}`, room: { left: 4, width: w - 8, lineWidth: 320, stack: "down" } }));
+    const names = shown.map(({ row: r }, slot) => svgLabel({ x: labelW - 8, y: top + row * slot + row / 2 + 4, text: String(dimText(dim, r) ?? "(none)"), max: Math.floor((labelW - 12) / SVG_CHAR_PX), cls: "tick", key: slot, anchor: "end", suffix: markSuffix(r), room: { left: 4, width: w - 8, lineWidth: 320, stack: "down" } }));
     const svg = `<svg class="gs-chart gs-bars-across" viewBox="0 0 ${w} ${h}" role="${svgRole(names)}" aria-label="${esc(panel.title)}">${parts.join("")}${names.map((l) => l.label).join("")}${svgOverlay(names)}</svg>`;
     const extra = [];
     if (result.rows.length > shown.length) extra.push(`<p class="gs-note">The ${shown.length} ${panel.query.sort?.length ? "first in this panel's order" : `largest by ${lead.label}`} of ${result.rows.length} are drawn; every one is in the table underneath and in the download.</p>`);
     if (cut) extra.push(`<p class="gs-note">${cut === 1 ? "One bar runs" : `${cut} bars run`} past the scale, cut by a break mark: ${cut === 1 ? "its figure is" : "their figures are"} written beside ${cut === 1 ? "it" : "them"}, and the scale fits the other bars.</p>`);
     if (shown.some(({ row: r }) => r.incomplete)) extra.push(`<p class="gs-note">* Includes the provisional period: sends on or after ${esc(snapshot.meta.incompleteFrom)}, where opens are still arriving.</p>`);
+    // A † in a name is plain text, never a tip (the name's hover opens the full name, F-522), so it is said here too (F-525).
+    if (shown.some(({ row: r }) => r.carried)) extra.push(`<p class="gs-note">&dagger; ${esc(CARRIED_TIP)}</p>`);
     return chartFrame(panel, result, series, ui, svg, extra);
   };
 
@@ -1569,10 +1595,20 @@ export function createDashboard(engine, model) {
     const own = panels.filter((p) => p.tab === tab.id);
     if (!own.length) return `<p class="gs-muted">${esc(tab.meaning)}</p>`; // the writer refuses such a spec (F-486): reached by no built page
     const draw = (list) => list.map((p) => renderPanel(p, state, ui)).join("");
-    if (tab.id !== "health") return draw(own) + paneNotes(tab.id, state);
-    // Health: the two groups, each headed only when it holds a panel.
-    const grouped = GROUPS.map((g) => ({ g, list: own.filter(g.holds) })).filter(({ list }) => list.length);
-    return grouped.map(({ g, list }) => `<div class="gs-group-title" role="heading" aria-level="2" data-group="${g.id}">${esc(g.title)}</div>${g.note ? `<p class="gs-note gs-group-note">${esc(g.note)}</p>` : ""}${draw(list)}`).join("") + paneNotes(tab.id, state);
+    // The panels are drawn first, recording their marks; the foot is written from what they drew (F-525).
+    drawnMarks = { incomplete: false, carried: false };
+    try {
+      if (tab.id !== "health") {
+        const body = draw(own);
+        return body + paneNotes(tab.id, state);
+      }
+      // Health: the two groups, each headed only when it holds a panel.
+      const grouped = GROUPS.map((g) => ({ g, list: own.filter(g.holds) })).filter(({ list }) => list.length);
+      const body = grouped.map(({ g, list }) => `<div class="gs-group-title" role="heading" aria-level="2" data-group="${g.id}">${esc(g.title)}</div>${g.note ? `<p class="gs-note gs-group-note">${esc(g.note)}</p>` : ""}${draw(list)}`).join("");
+      return body + paneNotes(tab.id, state);
+    } finally {
+      drawnMarks = null;
+    }
   };
   const renderPanes = (state, ui) => tabs.map((t) => `<section class="gs-pane" data-pane="${esc(t.id)}"${attr("hidden", t.id !== state.tab)}>${renderPane(t, state, ui)}</section>`).join("");
   // The logo rides the page as a data URI (PNG or JPEG only, capped by the spec's validator): no request to anywhere.

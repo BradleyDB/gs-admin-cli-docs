@@ -756,6 +756,9 @@ export function buildTenant(variant = {}) {
     describable: new Map([...listed, UNLISTED].map((p) => [p.id, p])),
     serverMax: variant.serverMax ?? 5000,
     listMax: variant.listMax ?? 1000,
+    // Saved reports (NAT-2): what `rp create` saved, by id. The spawned fake keeps them in its state folder.
+    /** @type {Map<string, *>} */
+    reports: new Map(),
   };
 }
 
@@ -1067,8 +1070,92 @@ export function answer(argv, tenant) {
     const payload = templatePayload(flagValue(argv, "--id"));
     return payload ? ok(payload) : fail(`Error: Email template not found\n${REQUEST_ID}`);
   }
+  if (words[0] === "rp" && words[1] === "create") return rpSave(argv, tenant, null);
+  if (words[0] === "rp" && words[1] === "update") return rpSave(argv, tenant, flagValue(argv, "--id") ?? null);
+  if (words[0] === "rp" && words[1] === "describe") return rpDescribe(argv, tenant);
+  if (words[0] === "rp" && words[1] === "run-saved") return rpRunSaved(argv, tenant);
   return fail(`Error: command ${words.join(" ")} is not faked`);
 }
+
+// ── Saved reports (NAT-2): rp create / update / describe / run-saved ────────
+// Modelled on the CLI's report handler at the pin (dist/artifacts/handlers/report.js and validators/report.js at
+// 1.0.10, read off the source): the body is built from the schema (a where condition on a field the schema lacks is
+// DROPPED silently, as for rp run; a condition keeps its value only — a `dateLiteral` beside it is lost, as
+// enrichFilterConditions keeps `rightOperand.value` alone); a show-field list must not be empty; a pivoted group-by
+// needs a GRID with two group-bys or more and exactly one pivoted; a KPI has no group-by and one show field;
+// `describe --name` matches the exact name first, letter case ignored, and refuses a name only a fragment matches;
+// `update` with show fields replaces the report's columns (so a column added in the UI goes); `run-saved` answers
+// rows keyed by each column's LABEL with display-formatted string values (shapes/e-3). ASSUMED, as nothing measured
+// them: what `create` prints on success, and the refusal text of a duplicate name. The scripts read neither (the
+// id is read back by name through `describe`).
+const DISPLAY_TYPES = ["PIE", "BAR", "COLUMN", "GRID", "LINE", "AREA", "STACKED_BAR", "STACKED_COLUMN", "BUBBLE", "D3BUBBLE", "SCATTER", "CHART", "COLUMN_LINE", "HEATMAP", "DONUT", "KPI", "WIDGET", "FUNNEL", "GAUGE"];
+function rpSave(argv, tenant, updateId) {
+  const existing = updateId ? tenant.reports.get(updateId) : null;
+  if (updateId && !existing) return fail(`Error: Failed to fetch existing report definition for id "${updateId}".\n${REQUEST_ID}`);
+  const object = flagValue(argv, "--object") ?? existing?.object;
+  const name = (updateId ? flagValue(argv, "--new-name") : flagValue(argv, "--name")) ?? existing?.name;
+  if (!name) return fail("Error: --name is required");
+  if (!object || !tenant.schemas[object]) return fail(FAULT_TEXT.generic);
+  const schema = tenant.schemas[object];
+  let show, group, where;
+  try {
+    show = JSON.parse(flagValue(argv, "--show-fields") ?? JSON.stringify(existing?.show ?? []));
+    group = JSON.parse(flagValue(argv, "--group-by") ?? JSON.stringify(existing?.group ?? []));
+    where = JSON.parse(flagValue(argv, "--where-filters") ?? JSON.stringify(existing?.where ?? { conditions: [] }));
+  } catch {
+    return fail("Error: whereFilters must be object");
+  }
+  const display = flagValue(argv, "--display-type") ?? existing?.display ?? "GRID";
+  if (!DISPLAY_TYPES.includes(display)) return fail(`Invalid input: /displayType must be equal to one of the allowed values`, 2);
+  if (!Array.isArray(show) || !show.length) return fail("Error: Report must have at least one entry in showFields (spec §2.1, EMPTY_SHOW_ME_FIELDS).");
+  const pivots = group.filter((g) => g.pivoted === true).length;
+  if (pivots && !(display === "GRID" && group.length >= 2 && pivots === 1)) return fail("Error: A pivoted group-by requires reportDisplayType=GRID, at least 2 group-by fields and exactly one pivoted (spec §10.5).");
+  if (display === "KPI" && (group.length || show.length > 1)) return fail("Error: KPI requires no group-by fields and at most one show field (spec §10.6).");
+  const known = new Set(schema.map((f) => f.fieldName.toLowerCase()));
+  for (const e of [...show, ...group]) if (!e.fieldPath && !known.has(String(e.name ?? "").toLowerCase())) return fail(`Error: Field "${e.name}" not found on object ${object}.\n${REQUEST_ID}`);
+  const conditions = (where.conditions ?? []).filter((c) => known.has(String(c?.leftOperand?.fieldName ?? "").toLowerCase())).map((c) => ({ leftOperand: { fieldName: c.leftOperand.fieldName }, operator: c.operator ?? c.comparisonOperator, rightOperand: { value: c.rightOperand?.value ?? c.value } }));
+  const lower = String(name).toLowerCase();
+  if ([...tenant.reports.values()].some((r) => r.id !== updateId && r.name.toLowerCase() === lower)) return fail(`Error: A report named "${name}" already exists.\n${REQUEST_ID}`);
+  const id = updateId ?? `rpt-${String(tenant.reports.size + 1).padStart(4, "0")}`;
+  const replacedColumns = updateId && flagValue(argv, "--show-fields") !== undefined;
+  tenant.reports.set(id, { id, name, object, show, group, where: { conditions }, display, uiColumns: replacedColumns ? [] : existing?.uiColumns ?? [] });
+  return ok({ result: true, data: { reportId: id, reportName: name } });
+}
+function rpDescribe(argv, tenant) {
+  const id = flagValue(argv, "--id");
+  const name = flagValue(argv, "--name");
+  let r = id ? tenant.reports.get(id) : null;
+  if (!id && name) {
+    const lower = name.toLowerCase();
+    r = [...tenant.reports.values()].find((x) => x.name.toLowerCase() === lower) ?? null;
+    if (!r) {
+      const hits = [...tenant.reports.values()].filter((x) => x.name.toLowerCase().includes(lower));
+      return fail(hits.length ? `Error: No report matches "${name}" exactly (consumerType: REPORT_BUILDER).\n${hits.map((h) => `    • ${h.name}   (id: ${h.id})`).join("\n")}` : `Error: No report named "${name}" found.\n${REQUEST_ID}`);
+    }
+  }
+  if (!r) return fail(`Error: Failed to fetch saved report definition (id="${id ?? "<by name>"}").\n${REQUEST_ID}`);
+  return ok({ result: true, data: { reportId: r.id, reportName: r.name, sourceDetails: { objectName: r.object }, showFields: r.show, groupByFields: r.group, whereFilters: r.where, reportDisplayType: r.display } });
+}
+function rpRunSaved(argv, tenant) {
+  const id = flagValue(argv, "--id");
+  const r = id ? tenant.reports.get(id) : null;
+  if (!r) return fail(`Error: Failed to fetch saved report definition (id="${id ?? "<by name>"}").`);
+  const run = rpRun(["rp", "run", "--object", r.object, "--show-fields", JSON.stringify(r.show), ...(r.group.length ? ["--group-by", JSON.stringify(r.group)] : []), "--where-filters", JSON.stringify(r.where), "--page-size", flagValue(argv, "--page-size") ?? "50"], tenant);
+  if (run.status !== 0) return run;
+  // Each cell by its column's label, as a display string (group-bys first, then the show fields, in the order the
+  // answer carries them); then the columns an admin added in the UI (the suite writes them, standing for the admin).
+  const labelOf = (e) => e.displayName ?? e.name;
+  const rows = JSON.parse(run.stdout).map((row) => {
+    const keys = Object.keys(row);
+    /** @type {Object<string, ?string>} */
+    const out = {};
+    [...r.group, ...r.show].forEach((e, i) => { const cell = row[keys[i]]; out[labelOf(e)] = cell == null ? null : String(cell.fv ?? cell.v ?? ""); });
+    for (const u of r.uiColumns) out[u.label] = String(u.value);
+    return out;
+  });
+  return ok(rows);
+}
+
 
 /**
  * Fault injection, shared by the spawned fake and the in-process transport.
