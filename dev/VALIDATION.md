@@ -3025,11 +3025,11 @@ S8-V (2026-10-14 @ hb-20261014-02; feat/jo-dash-s8-native at 5d74a44, clean and 
 - Cleanup done: the sandbox dashboard folder (spec, `native/`, plan and verify payloads; the sandbox KB had no `dashboards/` before this round), the closing step's run directory, the session's scratch payloads.
 Section status: CLEARED with one arm failed — N0, N2, N3, N5, N6 PASSED, N1 read (F-528), N4 FAILED (F-528's second instance: the UI steps cannot be performed; counts by a pivot, no rate in a report). F-528 (normal, OPEN) gates the release, not the merge (the S6-V and S7-V precedent). Ruled at the close (Bradley): PR #51 merges on green CI; mode N is WITHDRAWN as an offer for now (F-526's pattern; code, verbs and T-11's `native` kept), native reports backlogged with the measured routes (plan LTR-26) — the withdrawal is F-528's fix round.
 
-## F-528 — the withdrawal read (banked 2026-10-14, builder, F-528 fix round @ <token>; verdict at F-528-V)
+## F-528 — the withdrawal read (banked 2026-10-14, builder, F-528 fix round @ hb-20261014-03; verdict at F-528-V)
 
 Owed by: F-528-V, in the consumer workspace with the plugin loaded from feat/jo-dash-f528-withdraw-native (a terminal in
 the workspace with --plugin-dir, canary matched). NO PULL and NO tenant call: nothing here reads the tenant. Token:
-<token>. Why it is banked: the withdrawal is prose (a skill mode, two READMEs, a CHANGELOG entry), and no suite runs
+hb-20261014-03. Why it is banked: the withdrawal is prose (a skill mode, two READMEs, a CHANGELOG entry), and no suite runs
 skill prose; the check (W3) reads the text, but only a walk shows what the skill does when asked.
 
 THIS LIST IS COMPLETE.
