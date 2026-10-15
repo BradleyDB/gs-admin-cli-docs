@@ -2652,6 +2652,7 @@ S5-V second sitting (2026-10-12 @ hb-20261012-01; production, reads only): `jo-p
 - Also measured here, for F-513: even this selective refresh (6 recipient classes × 56 categories) is longer than one login on this tenant, and every login is the admin's by-hand browser flow.
 - R1 on this dashboard (the first sitting's R1 was the fast-path one): see § DSH-3 I10 — the first pull across two logins after the gate and the stranded plan were worked around; `lookbackDerivedFrom` 30 (the tie now named: the first sitting's note taken).
 Section status: CLEARED on R1–R9 as measured (R8 at the second sitting); F-513, F-512's reopen and F-517 are the section's open findings for the fix round; the third sitting re-owes R1's first-pull half under the checkpoint (a pull priced above one login).
+Release pre-flight (builder, 2026-10-14, R12 release 0.54.0): the re-owed half SPENT — R1's first pull under the checkpoint is § DSH-3 I10, CLEARED at the third sitting @ hb-20261012-02. Nothing owed here.
 
 ## UX-2 — the brand walk with Bradley's real brand input (banked 2026-10-12, builder, Session S5 @ hb-20261011-02; verdict at S5-V)
 
@@ -2685,6 +2686,7 @@ S5-V second sitting (2026-10-12 @ hb-20261012-01; on an EDIT of the saved dashbo
 - B3 PASSED on the proxy: `answer dry-run yes` wrote preview/latest-admin.html (2.12 MB) and latest-exec.html (0.75 MB), `themed: true`, 53 calls; one logo image as a data URI, the accent and the replaced series colours in the page, zero `http` requests, the status colours untouched; Bradley: "looks on brand, logo and navy accents are there".
 - B4 PASSED: `answer look clear` on the edit returned "the default look" and the draft's theme is gone; the saved spec's theme was never touched; on the fast-path dashboard (s5v-fastpath) the look was defaulted, never asked.
 Section status: CLEARED on a proxy; the real brand walk a blind spot owed whenever Bradley has his file. The edit itself exposed F-516 (an edit re-asks the interview) — logged under § DSH-3 I8.
+Release pre-flight (builder, 2026-10-14, R12 release 0.54.0): standing-arm — the real-brand walk stays owed whenever Bradley has his brand file; a blind spot, not a release gate. Nothing else owed here.
 
 ## F-502 / F-503 / F-504 — the S5 kickoff batch on a real tenant: the one-day schedules, the copy lines, the category cost (banked 2026-10-11, builder, Session S5 @ hb-20261011-02; verdict at S5-V)
 
