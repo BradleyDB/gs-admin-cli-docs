@@ -3024,3 +3024,26 @@ S8-V (2026-10-14 @ hb-20261014-02; feat/jo-dash-s8-native at 5d74a44, clean and 
 - Guard-wiring: the ten real mutating lines (above), each ask rendered and approved; the tenant switch was typed by Bradley.
 - Cleanup done: the sandbox dashboard folder (spec, `native/`, plan and verify payloads; the sandbox KB had no `dashboards/` before this round), the closing step's run directory, the session's scratch payloads.
 Section status: CLEARED with one arm failed — N0, N2, N3, N5, N6 PASSED, N1 read (F-528), N4 FAILED (F-528's second instance: the UI steps cannot be performed; counts by a pivot, no rate in a report). F-528 (normal, OPEN) gates the release, not the merge (the S6-V and S7-V precedent). Ruled at the close (Bradley): PR #51 merges on green CI; mode N is WITHDRAWN as an offer for now (F-526's pattern; code, verbs and T-11's `native` kept), native reports backlogged with the measured routes (plan LTR-26) — the withdrawal is F-528's fix round.
+
+## F-528 — the withdrawal read (banked 2026-10-14, builder, F-528 fix round @ <token>; verdict at F-528-V)
+
+Owed by: F-528-V, in the consumer workspace with the plugin loaded from feat/jo-dash-f528-withdraw-native (a terminal in
+the workspace with --plugin-dir, canary matched). NO PULL and NO tenant call: nothing here reads the tenant. Token:
+<token>. Why it is banked: the withdrawal is prose (a skill mode, two READMEs, a CHANGELOG entry), and no suite runs
+skill prose; the check (W3) reads the text, but only a walk shows what the skill does when asked.
+
+THIS LIST IS COMPLETE.
+
+- W1 (the skill read and walked once; email-engagement is model-invocable, so the tester invokes it). Read the skill's
+  description, argument hint, mode list, ground rules and Arguments. Then ask the session for native reports
+  ("make Gainsight reports from the program-health dashboard"). Pass bar: the skill says native Gainsight reports are
+  not offered in this release (Gainsight's report builder cannot finish them) and stops, with no `native-plan` run and
+  no `rp create` line; the description ends "Never mutates the tenant."; no mode N anywhere in the skill.
+- W2 (the READMEs and the CHANGELOG read). The plugin README's email-engagement section ("Never mutates the tenant." with
+  no exception) and its dashboard section (no native-reports recipe); the repo README's email-engagement bullet (no
+  native clause); the CHANGELOG's 0.54.0 entry (its title names no native reports; the one line saying the verbs ship
+  in the entry command but are not offered, F-528). Pass bar: no shipped prose offers native reports; Bradley rules
+  the wording.
+- W3 (the check's run). `node plugins/gs-superadmin/test/dashboard.mjs` in the repo. Pass bar: the "F-528 native
+  reports are not offered" check passes (and the suite with it); the native suite (`test/dashboard-native.mjs`) still
+  passes (the code is kept).
