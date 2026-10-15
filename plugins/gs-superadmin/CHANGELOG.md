@@ -7,703 +7,113 @@ history when this file was introduced.
 
 ## 0.54.0 — 2026-10-14
 
-Four fixes to the leaders' copy and the page's marks.
+Email engagement, from a one-off report to a dashboard you refresh with one command. A new
+skill reads how your Journey Orchestrator emails performed from the tenant's send log,
+through read-only `gs-admin` calls: a report, dashboards built once from an interview and
+pulled again whenever new numbers are wanted, a timeline of what one account was sent, and
+a copy of the leaders' page in a shared folder. This entry covers everything since 0.43.4:
+the versions 0.44.0 to 0.53.0 were staged on the way and never released on their own.
 
-- **The claude.ai artifact is no longer offered** for the leaders' copy. A Claude session
-  must read the whole page before it can publish it as an artifact, and a real leaders' page
-  takes several turns to read, every publish. The interview offers a shared folder or the
-  workspace only; a dashboard already set to the artifact keeps working through the skill.
-- **A copy that fails part-way says so.** When a file in the shared folder cannot be
-  replaced (a CSV open in Excel), the summary now reads `published: false` and names the
-  files that were replaced and the ones that still hold the previous copy; the exit code
-  stays 0, as before.
-- **The leaders' CSV files carry the dashboard's name** (`<dashboard>-<table>.csv`,
-  `<dashboard>-definitions.csv`), so a file dragged out of its folder still says where it
-  came from. Files under the old names are removed at the next publish.
-- **Every mark a tab shows is explained at its foot.** The † (months carried forward from
-  an earlier pull) is now explained in the tab's "About these figures" beside the *, and a
-  bar chart whose names carry a † says what it means under the chart.
+- **New skill: `/gs-superadmin:email-engagement`.** `/gs-superadmin:email-report` answers
+  what the emails say and when they run; this one answers how they performed. Its modes:
+  `report`, `dashboard new | edit | list`, `refresh <slug>`, `publish <slug>` and
+  `account '<name>'`. A plain question ("what's the open rate for the onboarding
+  program?") routes to `report`. It never changes anything on the tenant.
+- **The open-rate report.** One pull of the send log for a period, then a report in
+  `<slug>/reports-adhoc/`: a headline by status and one row per program with sent, unique
+  recipients, accounts reached, delivered, opened and open rate side by side, then clicks,
+  bounces and survey responses. `--by-template` adds a row per template (with its subject),
+  `--step-detail` a row per step and variant; `--csv` and `--xlsx` add spreadsheets.
+- **Every number says how it was calculated.** A glossary gives each metric's object,
+  fields, counted value, standing filters, date field and calculation, so any figure can
+  be rebuilt in a Gainsight report, and says where a figure will not match the Gainsight UI
+  and why (Sent counts every attempt; Delivered is what went out and did not bounce; clicks
+  count content links only). Click cells tell a tracked 0% from "Not tracked" and from a
+  figure marked "(tracking unknown)"; a rate with nothing to divide by is blank, never 0%.
+  Name your own unsubscribe page with `--unsubscribe-link` so its clicks are not counted
+  as content clicks. What is still provisional (opens on the current month; bounces and
+  unsubscribes on the months a refresh reads again) is said wherever it shows.
+- **Customer lists across programs, opt-in.** With accounts pulled (`--accounts`; off by
+  default, because ranking accounts is most of a pull's cost), three lists over the whole
+  window: the 25 most engaged, the 25 least engaged (over a delivered floor) and the 25
+  most bounced, each account with its rows on every program it is on. Lists are data
+  (`--account-list`), company fields can drive a list per segment, and the per-program
+  lists remain behind their own flags. Without accounts, the report says so where the list
+  would be.
+- **The cost first, and pulls that outlast a login.** The plan prints the calls and minutes
+  before pulling, and the skill asks before a long pull. A pull longer than one login runs
+  as far as the login allows, stops cleanly keeping every call it made, and the next run
+  after `gs-admin login` continues it; a call the server did not answer is retried by the
+  next run, never recorded as final. Every stop prints the exact line to run next, with
+  `--kb` and its own flags, and that line, run as printed, continues it.
+- **Health data, counted and never read as text** (`--health`). Bounce and failure reasons
+  are counted on the server by category, with an "Other" row for the rest; error messages
+  are masked (addresses, ids, reference numbers) before anything is stored, and the masked
+  samples are shown by the terminal only, never on a page. A new figure, send failures, and
+  the error rate built on it. Program health is read from signals, each from its own data
+  (the participant source's last sync, participants admitted and refused, failures at a
+  step, sends against the program's own history), into lists an admin reads: Schedule
+  ended, Participant sync overdue, Admitting nobody, Step errors this period, No recent
+  sends, Finished campaign, Cannot judge yet (with the reason), Working as expected, and the
+  rest. A program your knowledge base does not document reads "Cannot judge yet (no doc)",
+  never a guess, and the skill offers the narrow refresh that closes the gap. Test accounts
+  are excluded on the server (`--test-account`) and join the internal recipients.
+- **Template text beside performance.** The pull reads each template's current subject and
+  body from the knowledge base (never its HTML), with when the text is as of and whether
+  the template was edited after its last send; the plan prices the templates the knowledge
+  base lacks and the skill offers to fill them through email-report's own gap-fill.
+- **Dashboards: `dashboard new | edit | list`.** An interview, one question at a time in an
+  admin's terms, builds a dashboard: which tenant, which programs, which months, how they
+  are grouped (proposed from your programs, written as rules), internal domains, test
+  accounts, the tabs per page with what each costs in minutes, the customer lists, the
+  look, and where the leaders' copy goes. It closes with one step: the full refresh's calls
+  and minutes against the login, then save and refresh now, a dry run first, save only, or
+  go back. `--fast-path` takes every default and goes straight there. An edit asks nothing
+  again: it states what the change costs (a pull, a re-ranking, or a rebuild) and does it.
+  A brand theme can be given as a guidelines file or pasted values; every colour is checked
+  for contrast and replaced, with the reason, when it fails.
+- **The pages.** Two self-contained HTML files per dashboard, an admin page and a leaders'
+  page, that open from disk and ask the network for nothing. Tabs (Engagement, Health,
+  Templates, About) with a one-row filter bar for the current tab: months, programs,
+  status, group and internal recipients, recomputed in the browser by the same code as the
+  report, kept in the address so a view can be bookmarked. Tables sort, scroll, hide
+  columns and download what they show as a CSV; charts carry their values; a bar chart over
+  hundreds of programs draws the 25 largest across with every row in the table underneath;
+  a shortened name opens whole on hover, focus, click or tap. Every mark (the provisional
+  `*`, the carried-forward `†`) is explained at the tab's foot. The About tab defines every
+  figure, lists the dashboard's settings and says how to refresh. A leaders' page carries
+  no account names, error messages or template text unless the dashboard says it may.
+  Readable at WCAG AA in light and dark, and on paper.
+- **Refresh with no model in the loop.** `/gs-superadmin:email-engagement refresh <slug>`
+  (or `node .gs-superadmin/plugin/scripts/dashboard.mjs refresh <slug>`) checks the tenant
+  first (a dashboard is never refreshed from another tenant), takes a workspace lock,
+  brings the knowledge base up to date for the dashboard's programs and missing templates,
+  pulls, keeps thirteen snapshots, and rebuilds both pages; a refresh that stops leaves the
+  last good pages untouched. `--health-only` reads the current month and the health
+  families again. The pages say when the data was pulled and that they are not live. The
+  README has a copy-paste scheduled-refresh recipe per OS, and the hand-over to a backup
+  refresher (export with the snapshot, import).
+- **The leaders' copy, published.** At the end of every successful refresh the leaders'
+  page is copied into a folder you name (a synced OneDrive, SharePoint or network folder)
+  under the same file name every time, with each table beside it as a CSV named after the
+  dashboard and a definitions file. The folder is mapped on your machine
+  (`dashboard.mjs publish-target leaders <folder>`), so an exported dashboard carries no
+  path. `publish <slug>` copies the pages as they stand, with no pull. A copy that fails,
+  wholly or part-way (a CSV open in Excel), never touches the pages in the workspace: the
+  summary reads `published: false` and names what was and was not replaced, and the exit
+  code stays 0.
+- **One account's email timeline: `account '<name>'`.** What one customer was sent over the
+  last 90 days (up to 24 months), by program, email and day, beside the same programs'
+  sends to everyone, in a page of its own; the account's contacts are added up and never
+  named. A name is never guessed: anything but one exact match answers with a pick list
+  and pulls nothing. Named with a dashboard, the timeline is reconciled with that
+  dashboard's pull, month by month. The admin page gains a one-account view with the line
+  that pulls its timeline.
 - **Native Gainsight reports are not offered.** The entry command's `native-plan`,
   `native-record` and `native-verify` verbs ship, but no skill mode or README recipe offers
   them, because Gainsight's report builder cannot finish the reports they create (F-528).
-
-## 0.53.0 — 2026-10-14
-
-The leaders' copy, published (PUB-3, PUB-4): by default into a synced shared folder after
-every refresh, or as a claude.ai artifact; and a bar chart that stays readable over hundreds
-of programs.
-
-- **A shared folder, by default.** A dashboard's leaders' page is copied, at the end of every
-  successful refresh and rebuild, into a folder you name (a OneDrive, SharePoint or network
-  folder synced to your machine), under the SAME file name every time, so a leader bookmarks
-  one file or the folder once. A refresh that fails or stops copies nothing and leaves the
-  last copy where it was; a copy that fails (the folder gone, a file locked by the sync) is
-  said in the summary and never touches the pages in the workspace. The summary prints where
-  the copy went. Dated copies beside it are an option, off by default.
-- **The folder lives on your machine, not in the dashboard.** A dashboard names a target
-  (`leaders` by default) and a file name; `dashboard.mjs publish-target leaders <folder>`
-  maps the target to a folder in the workspace's own settings, so an exported dashboard
-  still carries no path. A backup refresher who imports it sets their own folder; until then
-  each refresh says the copy was skipped and why.
-- **The numbers beside the page.** With the shared folder, each table of the leaders' page is
-  also written as a CSV in a data folder beside it (the headline, the months, the groups,
-  the top and bottom programs) plus a definitions file (what each figure means, the
-  caveats, the filters in force, whether account names are carried), overwritten under the
-  same names each pull; every table has a "Data pulled" column, and the definitions file
-  opens with the pull's date and time. Built by the page's own CSV builder, so the figures
-  are the page's.
-- **Publish without pulling:** `dashboard.mjs publish <dashboard>` copies the pages as they
-  are, for a monthly publish by hand.
-- **A claude.ai artifact, the second target.** With `publish.target` `claude-artifact`, the
-  refresh writes the leaders' page in the form an artifact takes (its title and style, then
-  the page, never a second document inside the artifact's), and
-  `/gs-superadmin:email-engagement` publishes it in one short Claude session after the pull,
-  updating the same link each time. Inside the artifact, Download CSV asks the viewer to
-  confirm the save (the artifact's downloads permission); everywhere else it saves as before.
-  A viewer needs a Claude account in your organization; a filtered view cannot be bookmarked
-  there.
-- **The interview asks where the leaders' copy goes** (a shared folder now or later, an
-  artifact link, or the workspace only), and `change` sets it later; changing it rebuilds
-  the pages (no pull) and publishes there at once.
-- **A bar chart by program, readable.** A bar panel over programs, groups or emails is drawn
-  across: one row per name, the names in a column of their own, the 25 largest by the
-  figure (every row stays in the table underneath and the download); a mass send that would
-  flatten the rest runs past the scale with a break mark and its figure written beside it;
-  no bar above zero is drawn thinner than visible; the provisional period is marked beside a
-  name, never as stripes. A month axis labels every second or third month when the months
-  would not fit side by side.
-- **A shortened name opens on top.** The whole name of a shortened chart label is drawn over
-  everything else in the chart, never under the labels after it.
-- **Every stop says the exact line to run.** A refresh that stops on the login, on a failed
-  call or during re-documentation, or that is refused while an earlier one waits, prints the
-  full command with `--kb` and its own flags (`--full`, `--health-only`), and that line,
-  run as printed, continues it.
-
-## 0.52.0 — 2026-10-13
-
-One account's email timeline (ACC-1, ACC-2): what a customer was sent, by program and day,
-in a page of its own; and a one-account view on the dashboard's admin page.
-
-- **`/gs-superadmin:email-engagement account '<name>' [--last 6m]`**, and the entry
-  command's `dashboard.mjs account [<dashboard>] (--account-id <GSID> | --account-name
-  <name>)`: the account's sends over the last 90 days (up to 24 months), read one call at a
-  time after the tenant and the login are checked, by program, email and day, with the same
-  programs' sends to every recipient over the same days beside them. The page: one lane per
-  program, a mark per email and day sized by its sends and drawn as opened, delivered and not
-  opened, or not delivered; the account's open rate against everyone's; a program filter and
-  the internal-recipients switch; the sends as a table with its CSV; the data-pulled line; an
-  About part with the definitions and the line to pull it again. Self-contained, no request
-  anywhere, every name escaped.
-- **Account is the finest grain.** The account's contacts are added up and never named: no
-  address, person or send id reaches the timeline, its payload files or its page.
-- **A name is never guessed.** One exact match is the account; several, or none exact (a
-  contains search then), answer with a pick list of the candidates with their GSIDs and sends,
-  and nothing is pulled (exit 6).
-- **Checked against the dashboard.** Named with a dashboard, the dashboard's internal domains
-  and test accounts decide who is internal, and the timeline is reconciled with that
-  dashboard's latest pull of the same account per program and whole month (closed months
-  must match; a provisional month drifts; a program left out is named with why: the dashboard
-  holds no row of the account on it, or it kept the account there but the account's sends on it
-  fall only in the first, partial month of the days or the provisional month).
-- **The admin page's one-account view:** an account the customer lists kept, month by month,
-  chosen with the Account filter or View beside its name in a list, with the copyable line for
-  its timeline by day (it needs a `gs-admin` login; the page says so). With accounts not pulled
-  it says why and how to add them.
-- **A program's whole name on a chart.** A name a chart shortens (a timeline's lanes, a bar
-  chart's labels) opens whole over the chart on hover, keyboard focus, click or tap, like
-  every other hint on the page; a second click or tap closes it.
-- **The customer lists after a refresh that continues an earlier pull.** It keeps the lists
-  the last full pull ranked, says when they were ranked, and counts their figures again; the
-  report no longer says that no account met a list's floor while the accounts are there. A
-  list that pull did not rank says so, and that a full refresh (`refresh <slug> --full`)
-  ranks it.
-- **What a stopped refresh still needs.** The resume's opening line and the stop's "more
-  logins" price what is left of the pull: never more than the whole, falling as calls land.
-- The account timeline is a second snapshot kind of the engagement adapter, additive on its
-  contract. The engagement snapshot gains three additive fields on each customer list's
-  record (when it was ranked, where it was carried from, why it was not ranked).
-
-## 0.51.0 — 2026-10-12
-
-The engagement dashboard's entry command and the interview that builds a dashboard (PUB-1,
-DSH-3, UX-2): one deterministic command, `dashboard.mjs`, does everything mechanical about a
-dashboard with no model in the loop, and `/gs-superadmin:email-engagement` gains the
-`dashboard new | edit | list` and `refresh <slug>` modes as a thin front door over it.
-
-- **One entry command, `node .gs-superadmin/plugin/scripts/dashboard.mjs <verb>`.** `new`
-  starts a draft (or `--fast-path`, the standard program-health dashboard); `next` and
-  `answer` walk the questions table; `change <slug> <path>=<json>` sets a setting through
-  the spec writer, says what it costs (in-page, rebuild only, or the next pull with its
-  minutes), saves, and does it (`--dry-run` stops before); `save`, `list` (drafts with their
-  holder and date), `status` (last pull, age, the lock), `refresh
-  <slug> [--full] [--health-only]`, `rebuild`, `report` (the open-rate report over the latest
-  snapshot, no pull), `export [--with-snapshot]` / `import`, and `health <slug> --program
-  <id>` (a program's masked messages and the "Other" samples, to the terminal only).
-- **The refresh, with no model:** the tenant is checked before any call (a dashboard is
-  never refreshed from another tenant: its own exit code), the login's remaining life is
-  held against the pull plus the re-documentation, a workspace lock refuses a second refresh
-  naming its holder (stale after two hours), the knowledge base is brought up to date for the
-  dashboard's programs (modified since documented, or never documented) and the email
-  templates it lacks, up to a cap per refresh, the spec's settings become the pull's
-  (customer lists, test accounts, the window kind, the health lookback derived from the
-  longest schedule period), the groups are applied, thirteen snapshots are kept, both pages
-  are rebuilt, and the headline tiles show the change since the last pull over the closed
-  months both pulls hold. A refresh that stops (the login, a failed call) leaves the last
-  good pages untouched and resumes on the next run. `--health-only` reads the current month
-  and the health families again and carries the rest.
-- **The questions table, as data in the command, in an admin's terms** (the wordings
-  ruled by the maintainer at the first verdict sitting, 2026-10-12): the interview opens by
-  saying which tenant the dashboard is for, then asks which programs (those that sent in
-  the last 90 days by default), which months the pages cover (rolling, fixed, or since a
-  month, with this tenant's minutes per month), the grouping (proposed from the plan's
-  program list, written as rules), internal domains, test accounts as company records
-  (names looked up once, or GSIDs), the unsubscribe link (the standard one is recognised on
-  its own), two health settings, the look, the tabs per page (one bullet per tab, with the
-  minutes Health adds and the bounce categories' share), the customer lists (off by default,
-  with the first pull's minutes with and without them) and, when they are on, whether the
-  leaders' page may carry them with names and how the lists are built, step detail with its
-  minutes, and the tenant's own expected failure reasons (the six shipped ones named). An
-  option that needs a value (a date, a number of months, a list of names) asks for it on
-  its own; the admin never sees an input grammar. It closes with one step: the full
-  refresh's calls and minutes against the login, and save and refresh now, a dry run first
-  (preview pages on real data), save only, or go back. The fast path takes every question's
-  own default through the same apply (the standard dashboard is the programs that sent in
-  the last 90 days, grouped Recurring / One-off with each model beneath) and goes straight
-  to the closing step. No purpose, audiences, cadence or metrics question: both pages are
-  always built, both optional metrics always shown, and the About tab opens with a fixed
-  statement of what the dashboard is (an admin's own sentence can be set with `change`).
-- **The pages say when the data was pulled and how many days ago, and that they are not
-  live.** No stale banner and no cadence: refreshes are manual, and the About tab's "How to
-  refresh" says how to run or schedule one. `refresh.cadence` and `freshness.maxAgeDays`
-  stay in the spec, read by nothing; `status` and the dashboard's `report` no longer compute
-  a next due date or a staleness.
-- **Brand theming in the interview (UX-2):** brand input arrives as data (a guidelines file
-  the user names, or pasted values; a brand skill's output is not a path); the candidate
-  tokens are stored as the spec's theme; the theme validator runs and the interview shows
-  every token it replaced with the reason; the dry-run preview renders in the theme; a logo
-  is read from a local PNG or JPEG, never a URL. Skipping is the fast path's default and is
-  never asked twice.
-- **From the second verdict sitting (2026-10-12; the pull across logins, the edit, the
-  proposal, the copy lines):**
-  - **A pull longer than one login is not refused: it checkpoints across logins** (F-513,
-    ruled). The refresh no longer holds the whole pull to the login's remaining minutes
-    before the first call: it runs as far as the login allows, stops cleanly with exit 3
-    keeping every call it made, and the next run after a login continues it; the closing
-    step, the estimate and the stop say about how many logins of an hour a pull of that
-    size takes. The estimate's confirmation reads the login as it stands at that moment.
-  - **A setting changed between a stopped pull and its resume no longer strands the
-    dashboard** (F-512): a pending run whose parameters moved is abandoned, said, and the
-    pull planned afresh, so no state file is removed by hand and no refusal names a flag
-    the command lacks.
-  - **An edit over a saved dashboard asks nothing again** (F-516): every setting the saved
-    spec holds counts as answered, `next` goes to the closing step, which states what the
-    edit changes and costs (a pull, a re-ranking of the customer lists, or a rebuild), and
-    its first option does that; `next --question <id>` changes one setting.
-  - **The group proposal is built from what the rules resolve over** (F-515): the suggestion
-    file carries each program's model CODE (what a rule tests) beside its display name,
-    its `recurring` as the pull reads it (the one-run-window and months-with-sends rules
-    applied at the plan), and exactly the programs the dashboard selects (the plan's own
-    selection, listed-or-described); the refresh summary counts a program ungrouped inside
-    its supergroup too; the About tab describes a model rule by its display name and draws
-    the Groups part once.
-  - **Every copy line and recipe carries `--kb <folder>`** (F-503): the pages know their
-    knowledge-base folder's name, so the lines they offer to copy and the About tab's
-    refresh line run as drawn in a workspace with two tenants; the README's recipes the
-    same.
-  - **The README's scheduled refresh is a copy-paste recipe per OS** (F-517): a runner
-    script, the task's create, run-once and delete lines (`schtasks`; `crontab`), the Git
-    Bash prefix, what the task shows, and the two-firing behaviour (a stop on an expired
-    login, a resume after the next by-hand login).
-  - **Wording** (F-511): the How to refresh statement on the About tab and at the closing
-    step says where to type the command, how to log in and what to do when a pull outlasts
-    the login, with the slash command that runs the same thing; the test-accounts option
-    asks for GSIDs or for names, never both; `list` shows no cadence; a list with no
-    delivered floor says so; a change's pull is priced for the dashboard after the change,
-    from the last real pull's plan (never a dry run's). A question with more than four
-    options (the programs question keeps its six) is asked in chat as a numbered list, never
-    through "Other" (F-514, ruled). The skill says what `--owner` is and names every group
-    rule's fields.
-  - **Smaller:** the page's caveats list keeps one entry per caveat rather than per id, so
-    both sample-cap sentences show (F-506).
-- **From the third verdict sitting (2026-10-13; the scheduled firing, the pricing lines,
-  the How to refresh wording, the V2 polish):**
-  - **A call the server did not answer is retried by the next run, never replayed as
-    final** (F-519). A resume reused a call's "timed out twice" record as a decision, and
-    for a call with nothing left to split on that made one transient server timeout a
-    permanent failure: every later refresh stopped partial within seconds, the message said
-    to run it again, and only a hand-removed state file ended the loop. A resume now makes
-    such a call afresh (a split record is reused only as the decision to cut a unit whose
-    halves then carry the attempts; a failed record is never reused), the stop says what
-    failed (the family, the programs the call covered, "a server timeout"), that the next
-    run retries it, and in how many runs it has failed so far, and the message has no empty
-    slot.
-  - **A pricing line reads the run in front of the admin, not the plan** (F-518): a resumed
-    refresh prices the remainder (the plan's units whose answers are not on disk yet) and
-    says it is continuing with what remains of what, and the summary's `budget` carries the
-    plan's seconds beside the remainder's; an edit's forced re-pull carries the same login
-    clause as a new dashboard's first refresh (the logins of an hour when the login does
-    not cover it).
-  - **The How to refresh statement is the maintainer's ruled wording, verbatim, held once**
-    (F-511 instance 27, the section's second reopen): the About tab's section (three
-    numbered steps, what the admin will see, the session and schedule paragraph), the
-    closing step's statement and the save summary's text all read one data structure in
-    the page runtime, so the three cannot drift; the leaders' page keeps its one sentence.
-  - **The filter bar's program list says what it holds and answers to the other filters**
-    (F-505): the count line reads "N programs sent in this window, M selected", a program
-    with no send in the chosen months or outside the chosen statuses is dimmed in the list
-    and says why, and the summary's "shown" counts the programs with rows under the filters
-    (saying how many selected programs have no sends in these months).
-  - **The plan prices the gap-fill with the pull** (F-507): `estimate.token.withProposals`
-    (the pull plus the re-documentation and the template gap-fill the plan proposes, and
-    whether that fits the login) and `estimate.token.afterPullSeconds` (what the login has
-    left after the pull); the skill's two asks say which budget would outlive the login.
-  - **A lowest-N panel is described as such** (F-508): "the 10 lowest by Open rate" on the
-    About tab, in `show` and in the in-page ranking note, never "the top 10".
-  - **The unclassified-wordings caveat gates each part on its own count** (F-509): with no
-    unclassified entry wording the sentence starts at the step part.
-- **Smaller:** the save's first refresh continues the closing step's plan instead of
-  planning again; a stale refresh lock taken over by a run the budget then refuses is
-  recorded in the refusal; the derived health lookback says what it came from on a tie;
-  the generic unsubscribe-link rule reads the singular `preference` as well (Gainsight's
-  own preference-page token is singular).
-- **The customer watch list redesigned around the customer (DSH-2 ruling 4):** the pull's
-  default selection is three cross-program lists over the whole window — 25 most engaged,
-  25 least engaged (a delivered floor of 10; on a program that sends about once per contact
-  the signal is at least 3 delivered and no open), 25 most bounced — each kept account
-  getting its own rows on every program it is on; R24's per-program numbers stay available
-  and are off by default (`--accounts-busiest`, `--accounts-low`, `--accounts-bounce`). Lists
-  are data (`--account-list <kind>[:<n>[:<floor>[:<per field>]]]`, `--no-account-lists`),
-  company fields ride the names call (`--account-field`) for "per segment" lists, and the
-  selection is recorded in the snapshot. The open-rate report's account section shows the
-  cross-program lists, and the per-program lists only when their numbers are set.
-- **The spec (T-11, additive):** the window kind, the two health settings and the expected
-  reasons under the source's params; the customer lists and company fields under accounts;
-  `kb.redocument {enabled, cap}`; freshness defaulted from the cadence; a draft records its
-  holder, and another holder's draft is refused without `--take-over`. The spec writer's
-  verbs are importable functions, so the entry command never spawns it.
-- **README recipes:** the on-demand refresh, `--health-only`, a scheduled refresh through the
-  OS scheduler or a Claude desktop local task (never a cloud routine: the login lasts about
-  an hour, so a scheduled run succeeds only after a login within it; the first pull is full
-  and may need more than one login, later ones are selective), the hand-over to a backup
-  refresher (export with the snapshot, import), and the leaders' copy as a file copy to a
-  shared folder (SharePoint and OneDrive download an HTML file rather than show it).
-- **Three V2 findings fixed with the batch (F-502, F-503, F-504), and one interview edge:**
-  a program whose recurring cron is boxed into a window shorter than one period (the
-  tenant's one-day sends) is one-time by its data: ended with nobody in flight it reads
-  Finished campaign with "one-day schedule, ended <day>", never Schedule ended, and the
-  Recurring / One-off grouping follows, except a program re-run through such windows month
-  after month, which recurs by hand (F-502; the snapshot's program schedule gains
-  `oneRunWindow`). The line a page tells an admin to copy names the page, the tab and the
-  source in the entry command's own grammar (`pages.0.tabs.1.enabled=true`), so it runs
-  as written (F-503). The plan and the interview say what the bounce categories cost (one
-  counted call per category per recipient class: all, each internal domain, the test
-  accounts, the test accounts on each domain) before a category file, a domain or a test
-  account is added, and the category call is priced at its measured 2.5 s instead of a 7 s
-  default (F-504; the calls are not fewer yet). On an edit, the metrics question puts a
-  metric left off earlier back when the page's panels are the preset's (or the preset's
-  minus a metric); a page whose panels were changed by hand keeps them and the answer names
-  the change that starts again from the preset.
-
-## 0.50.0 — 2026-10-11
-
-The engagement dashboard's look (UX-1): a design round over the finished pages, on
-fictional fixtures, and the mechanism a brand theme will fill (UX-2). Presentation only:
-no figure, filter or export changed meaning.
-
-- **The tab strip sits above a one-row filter bar for the current tab.** The headline
-  figures are the first thing on the page. The bar shows the controls that act on the tab
-  you are on (About has none; the account control only on a tab with an account panel),
-  with Reset and a one-line summary of the view (programs, status, months, recipients)
-  inside it. Every filter has one shape: its name on top, the control under it. Programs
-  and Status are pickers that open on click ("Running now" and "Every status" sit inside
-  the status picker), so a keyboard user tabs past their lists unless one is open; Escape
-  and a click outside close them. Binary filters are switches: "Include internal
-  recipients" (on when the spec starts on everyone), "Show expected failures", and the
-  search's "All the words" and "Whole words".
-- **Tables sort and scroll.** Every heading of a table panel sorts its rows (a second
-  click flips; a "Default order" button returns the panel's own order and hiding the
-  sorted column drops the sort); the sort travels in the address with the filters. A long
-  table scrolls inside its panel with the heading and the total row pinned.
-- **Charts carry their values:** a number above every point and on top of every bar (the
-  last point of a line keeps the series name), falling back to the last point and the
-  hover past 16 points per series or on bars too thin to carry one.
-- **Marks and ⓘ explain themselves on hover, focus, click or tap** (the native tooltip
-  was slow and touch never showed it): the `*` and `†` marks, the "(tracking unknown)"
-  and "(all time)" markers and every ⓘ on the Health tab. No panel repeats what a mark
-  means; the foot of the tab says it once. The headline's "Change since the last
-  refresh: none yet, this is the first pull" sits beside its title.
-- **Schedules read in words beside the cron** ("On the 1st of the month, at 08:00";
-  "On weekdays, at 09:00"); an expression the describer cannot read shows alone.
-- **The Health tab is grouped by what the months reach:** "Over the filtered time period"
-  (Send health, Why sends and participants fail, Error rate by program) and "Not bound by
-  the filtered time period" (Program health, Schedules, One-time and ad-hoc programs), the
-  second with a note that the program, status, group and recipients filters still apply
-  and each panel's own basis under its title.
-- **Show columns ▾ and Download current view (CSV).** The columns tool is a popover whose
-  heading says the choice reaches the CSV too; the download button says what it exports.
-  Both sit to the right of a panel's title. The headline tiles say "no previous pull" once,
-  and what every figure on a tab shares (the provisional period, the click and response
-  caveats) is said once at the foot of the tab.
-- **Templates tab:** an email's programs are folded under it until opened (a search hit or
-  an open drawer unfolds its email); each row under an email says what it is (Program,
-  Step), and the heading reads "Email › program › step". Text opens an email's text in
-  place, under the table the button is in, on the same tab.
-- **Where a page lacks something:** the filter bar carries a one-line pointer; the full
-  notice with its how-to stands where the data would be (the customer lists; the About
-  tab's settings for the recipients toggle).
-- **Charts:** the legend reads before the plot, the provisional band is labelled, bars are
-  thin (at most 24 px) with square bases, dots sit on a ring of the surface colour. The
-  customer-list titles lose their parentheticals.
-- **About:** a contents line, How to use first, and the wording corrected (the bar narrows
-  the current tab; which tables have Show columns; a text-less leaders' page says only that
-  it carries no email text).
-- **Readable in both schemes and on paper:** every text colour, the status colours
-  included, reads at WCAG AA on every surface in light and dark; control borders at 3:1; a
-  visible focus ring; print uses the light colours whatever the OS setting and keeps the
-  summary line; the stale banner's refresh line has a Copy button.
-- **T-11 `theme` (additive) and a theme validator.** A spec may carry a brand theme: text
-  and surface colours (light; dark, or derived), chart series colours, a system font stack,
-  a corner radius, a logo as a PNG or JPEG data URI of at most 200 KB. `dashboard-theme.mjs`
-  holds the default theme as data and the one validator: text contrast at AA in both
-  schemes, chart colours distinguishable from each other and the background under normal
-  and simulated colour-blind vision, a dark set derived when none is given; a token that
-  fails is replaced by the default's with a note the About tab shows. Fonts are system
-  stacks only; the page still makes no network request. The interview step that fills it
-  is UX-2 (S5).
-
-The engagement dashboard's templates line (TPL-1, TPL-2): what each email says, beside how
-it performed. `/gs-superadmin:email-engagement report` gains one ask and one column; the
-pages gain a tab.
-
-- **The pull reads each template's current text from the knowledge base** — the subject,
-  the plain-text body and the variants, with tokens rendered as their field labels — and
-  records when the text is as of, when the template was last modified, and whether it was
-  edited after its last send. No template HTML ever reaches a snapshot or a page. The pull
-  also reads each template's link-tracking setting from its doc (the doc now carries it, as
-  of the fetch), so a never-clicked template whose tracked link is present reads a real 0%
-  and one with links but none tracked reads "Not tracked"; a `--link-settings` file still
-  overrides per template.
-- **The plan prices the template gap and the skill offers to close it**: templates the
-  knowledge base has no doc for, docs older than the template's last send, and docs with no
-  link-tracking reading for a never-clicked template. Fifty or fewer are filled without
-  asking; more draws the same ask as email-report's gap-fill. The fill IS email-report's
-  gap-fill (register, mark, describe-batch within a budget, resumable), driven from files
-  the plan writes, so every template fetched lands in the knowledge base for both skills.
-  The pull itself never fetches a template.
-- **A Templates tab on the pages**: one row per email the filters keep, most sent first,
-  with how many programs send it, its last send month, whether it was edited after that,
-  and its sent, delivered, opened, open rate, clicked, click rate and bounced (the three
-  tracking states as everywhere); under each, the programs that send it with their own
-  figures and survey responses, and, with step detail, each step and variant. Sortable by
-  its headings; Columns and Download CSV like every table. Keyword search over subjects
-  and bodies mirrors email-report `search` (several words, any or all, whole words,
-  case-insensitive, a marked snippet per hit) and narrows with the global filters: the
-  same words find the same templates in both, except a word inside a raw token key, which
-  email-report sees and the page does not. Text opens a drawer with the email's current
-  text, the day it is as of and the caveat that it is not necessarily what was sent; the
-  Emails and Steps tables link to it. A leaders' page carries no template text unless the
-  spec opts in (`pages[].templateContent`, new on the spec): it keeps the performance rows
-  and says the text is not on the page. The page size report counts the text's share.
-- **The report's per-template and per-step rows gain a Subject column** (and the CSVs a
-  `subject` field): a dash where the knowledge base holds no text for the template.
-
-## 0.48.0 — 2026-10-09
-
-The engagement dashboard's views (DSH-4): what each page shows, and how. Still no skill
-change, and still nothing builds a page for you (that is the next session's entry
-command); `dashboard-page.mjs` builds the pages below from a spec and a snapshot.
-
-- **Every page has panels by default.** A spec that lists none takes its preset's: an
-  admin page shows headline figures, an open-rate trend and sends by month, tables by
-  program, email, step and survey, and three customer lists ranked across programs (the
-  most engaged, the least engaged and the most bounced, 25 each, over a delivered floor,
-  each account's programs underneath, in the CSV as well); a leaders' page shows the headline figures, the two
-  charts, a table by group and the ten highest and ten lowest open rates. The Health tab
-  shows send health against the usual, program health, why sends and participants fail,
-  schedules, one-time programs and the error rate by program. A spec may still list its
-  own panels; one that leaves an on tab empty is refused.
-- **Five panel types** (a headline figure, a bar chart, a monthly trend, a table, a ranked
-  list) and **four typed health views**, each with its own few settings checked when the
-  spec changes: program health (the no-send threshold adjustable in the page, 14 / 30 / 60
-  / 90 days beside the spec's own), failure reasons (expected failures behind a toggle),
-  schedules (a stale mark past the dashboard's freshness) and one-time programs (months of
-  send history). Charts are drawn by hand, take every colour from the page's token block,
-  shade the provisional month, mark carried-forward months, label a trend that starts after
-  a figure began to be counted, and carry the same rows as a table underneath.
-- **The Health tab leads with change against the usual**: each figure beside the same figure
-  over the window's closed months. Failure categories carry their definitions as tooltips
-  (never a tenant's text); when uncategorised bounces exceed a few percent the page says so
-  and names the terminal line that shows the samples; a health pull that was asked for and
-  did not complete is flagged at the top of the page. A page embeds health aggregates only:
-  rows read as text fold into the counted remainder, and the samples never leave the
-  terminal.
-- **An About tab on every page, generated from the asset**: every metric shown, defined from
-  the registry (on an admin page with its object, fields, filters, date field and
-  calculation, so a figure can be rebuilt in a Gainsight report); how to use the page; this
-  dashboard's settings with each group rule's match count and the Ungrouped bucket; where
-  the data came from; the caveats; how to refresh. A leaders' page keeps the recipients
-  sentences and drops the internal-domain and unsubscribe-link values.
-- **The ruled defaults**: an admin page opens on every program that sent, with status badges
-  and a one-click "Running now" preset; a leaders' page opens on the closed months with the
-  current month one click away (`pages[].dateDefault`, new on the spec). A stale banner
-  shows once the data is past the dashboard's freshness; a caveats footer is on every tab.
-- **The three tracking states look different**: a tracked 0% is a plain 0%, "Not tracked" is
-  a muted label with no number, and an unknown figure carries a marker with its tooltip.
-  Click columns say they count content links only; response columns carry the survey
-  caveat; an all-time figure says so; Sent stands beside every rate.
-- **The line to copy is the entry command's**: `node .gs-superadmin/plugin/scripts/dashboard.mjs
-  change <slug> <path>=<json>` for a setting (the verb lands with the entry command) and
-  `… refresh <slug>` for a figure the snapshot predates. An on Templates tab says, before
-  template content exists, that a later pull adds it, instead of standing empty (F-486).
-
-## 0.47.0 — 2026-10-04
-
-More groundwork for the engagement dashboard: the page itself. No skill changes, and
-nothing builds a page for you yet; `/gs-superadmin:email-engagement report` runs as
-before.
-
-- **New script: `dashboard-page.mjs`**, which turns a dashboard spec and an engagement
-  snapshot into one HTML file per page of the spec (`latest-<page>.html`). A page is a
-  single file that opens from disk and asks the network for nothing: its data, the code
-  that calculates every figure and the default view are all inside it, and the default
-  view reads even without JavaScript.
-- **Filters that recompute the page in the browser**, with the same code that computes
-  the report: a month range; a searchable list of every program with its status and
-  group, select all or none; group; status; and leaving out internal recipients. The
-  status filter starts on Active programs on an admin page and on every status on a
-  leaders' page, and the page always says how many programs the status filter hides. The
-  filters you set are kept in the page's address, so a view can be bookmarked or shared.
-- **Every table can hide or show its columns** (remembered in your browser) **and
-  download what it shows as a CSV.** A cell a spreadsheet would run as a formula is
-  written as plain text.
-- **What a page does not have, it says where the data would be.** A page cannot change a
-  setting or pull data, so instead of an empty table or a zero it states the reason and,
-  on an admin page, what it would take: whether it needs a new pull or only a rebuild,
-  which setting to change, and a line to copy. A leaders' page gets the statement alone.
-  This covers a snapshot pulled without accounts, a tab that is turned off (offered,
-  dimmed, on an admin page; absent on a leaders' page), and the internal-recipients
-  filter when no internal domain is set, which is shown switched off with the reason.
-- **A leaders' page carries no account data** unless the spec says it may name accounts,
-  and a page with the Health tab off carries no error messages.
-- **The builder reports each page's size**, table by table, warns above 5 MB naming what is
-  large and what would make the page smaller, and does not write a leaders' page above
-  15 MB.
-
-Health data, re-shaped after its first run on a real tenant (the S3b batch; F-476, F-482,
-F-483 and F-484):
-
-- **Failure reasons are counted, never read as text.** Bounce reasons are counted on the
-  server by category: one filtered count per category, grouped by program, email, month
-  and bounce type, with the total beside them and an "Other" row for the rest. A
-  categorised row keeps the category's label in place of the text, so an address the
-  masking misses is cut, not stored. A small masked sample of the uncategorised text is
-  kept in the snapshot for extending the list (shown by the terminal, never on a page).
-  The shipped category list is empty until the product wordings are captured from a real
-  tenant; `--failure-categories <file.json>` adds your own, and `--expected-reason <text>`
-  names failures that are expected by design, kept apart from the rest and never hidden.
-  Participants refused at entry are an exact per-program total and an exact count per
-  month: on this CLI the reason field accepts no filter at all (its schema says so), so the
-  split by reason is a SAMPLE, read one small page per program (the refusals still
-  happening in the last 90 days, the most repeated first) and labelled as one wherever it
-  is shown. Every shipped wording has a KIND: a business rule working (already in the
-  participant list, unique criteria, met the advanced criteria, unsubscribed, opted out),
-  a bad address (a missing address, a bounce at the send step, the bounce list), or a
-  program error; "expected" means a business rule. The million-row read the first live
-  pull made is gone.
-- **A sample is read per program over the window it was picked from, never as the first
-  page of a tenant-wide read.** One program outside the selection used to fill the page;
-  then programs were picked by their refusals over the whole window and read over the last
-  90 days, so a pick could come back empty and still count as sampled. Now one count-first
-  read says which programs have refusals still happening in the last 90 days, and each
-  sample page reads exactly that window, most refusals first, at most `--sample-programs`
-  (25) a pull. The page holds the most REPEATED refusals: on the largest program measured,
-  the newest page held only its Send Email step's wordings and hid the missing-address
-  wording that dominates it. A program whose counts did not move since the previous pull
-  over the same window keeps that pull's sample at no call; the programs the cap left out
-  are named, and `plan` prices reading them so raising the cap is an informed choice.
-- **Program health is read from signals, each from its own data, and never inferred from
-  the schedule.** Measured on a real tenant: the schedule's own run-state fields are unset
-  even on programs that run daily, so no run result is read from them. The one heartbeat an
-  ingest leaves is the participant source's last sync time, read tenant-wide in one call;
-  beside it the pull reads participants admitted per day, refusals per month, and
-  participants who got in and fell off at a step, counted on the server by category (a
-  step whose action failed, a platform error, a bounce drop, a record delete). Sends are
-  judged against the program's own history for every program: an ingest cron says nothing
-  about when a program sends. Read on a real tenant and corrected: a program's schedule is
-  the LIVE one it documents (an ended job schedule documented beside the live participant
-  sync no longer reads as the program's); a documented schedule that ended before the
-  source last synced is documentation behind the tenant, never an ended schedule; a step
-  failure is a program error only when it is one (a step that cannot run, a platform
-  error), while a bounce, a reject or the bounce list at the send step is a bad address
-  and an opt-out a business rule; and a program with fewer than three months of sends,
-  all of them recent, is too new to judge rather than late. The lists an admin reads are:
-  Schedule ended, Participant sync disabled, Participant sync overdue, Only refused
-  participants arriving, Admitting nobody (no admission over the last `--quiet-due-days`
-  due days, 5 by default), Step errors this period, No recent sends, Finished campaign (a
-  one-off with no participant still moving), Active with no sends in this window, Cannot
-  judge yet (with the reason: the ingest period is longer than the window, the
-  documentation is behind the tenant, or the program is too new), and Working as
-  expected. The capped live `jo p describe` read of flagged programs is gone.
-- **Health is sized before it is read.** The plan now makes one server-side count for
-  every family that reads rows (clicked sends, bounced attempts, failed participants) and
-  prices those families from it, so the estimate covers the splits a large tenant forces.
-  A part that would exceed the row budget (`--max-pages`, 40 pages by default) is not read
-  and says why (`too-large`); a click detail over it is refused at the plan, naming what
-  to narrow.
-- **The pull time is when the facts were read.** `meta.pulledAt` is stamped when the fact
-  calls start, not when the run directory is made, and a run resumed after midnight keeps
-  the day it was planned on (`--today` still overrides). The "different parameters"
-  refusal names the parameter that moved.
-- **The cron calculator** (6 or 7 Quartz fields, lists, ranges, steps, names, L, X#n, XL)
-  decides when an ingest was last due. A cron it cannot read says so and never alarms on
-  its own; a schedule whose period is longer than the lookback window reads "cannot
-  judge", and `plan` reports the longest period among the programs so a longer
-  `--health-lookback-days` (up to a year) can be chosen.
-- **Every program's schedule rides every pull made with a knowledge base**, whether or not
-  health is pulled (`dimensions.programs[].schedule`, with its start and end dates), so a
-  grouping rule on "recurring" resolves on any dashboard, and a schedule whose kind the doc
-  does not settle leaves that trait unknown rather than "not recurring". Step names carry
-  the date they are as of, and a caveat names the oldest.
-- **Error messages are masked harder, and no harder than that**: a gateway's message id
-  with dots, hyphens, underscores, plus, slash or equals signs becomes `<id>`, while a
-  URL's scheme, host and path (a vendor's help link) and a mail host are left as they are:
-  masking them took 11 of the 30 bounce wordings a tenant captured for its category list
-  (Microsoft's dotted diagnostic codes, help links), and the samples they appear in are
-  shown by the terminal only and never leave the workspace.
-- **Every output says what is still provisional**: opens keep arriving on sends from the
-  first of the current month, and bounces and unsubscribes can still change on the months a
-  refresh reads again (the last `--repull-months`, 2 by default).
-- **Test accounts are excluded on the server** (`--test-account <company id>`, repeatable):
-  one call per family for the accounts and one for their overlap with each internal
-  domain, and they join the internal class, so the one recipients toggle covers both.
-  Distinct external counts leave them out with NOT_IN, which keeps the sends that have no
-  company at all (measured). The step table is by domain alone, and a caveat says so.
-- **Every all-time health figure carries a reason a page can render** (`all-time`), and a
-  field a query filters or groups on is checked against the schema's own filterable and
-  groupable flags before the call is made.
-
-Two redesigns after the third verdict round on a real tenant (F-484, F-491; 2026-10-08):
-
-- **A failure wording no category knows is one explicit state everywhere: `unclassified`,
-  kind `unknown`.** It is never read as a known error or a business rule and never left as
-  a blank; a program kept from admitting anyone by such a wording is on the alarm list
-  with the signal saying the cause needs investigation, and a caveat names how many
-  wordings and participants are involved and how to report them so the shipped list can
-  learn them. A category's pattern names the invariant core of a product wording, never
-  the field label the platform fills in per program: the null-address refusal, found with
-  three labels on one tenant, is one category (`invalid-field-value`, a bad address)
-  however the field is named. Sampled texts carry both how many participants bore them
-  and how many refusals those participants had in all.
-- **The knowledge base is the one source of a program's schedule, and what it lacks is
-  named, never guessed.** A program the KB does not document (created after its last
-  journey capture) reads "Cannot judge yet (no doc)": its schedule, ingest and finished
-  signals are undecided rather than read as a one-off. A documented program the list says
-  was modified after its doc was written is judged from the doc and flagged. The snapshot
-  names both sets (`honesty.kb`), a caveat says how to close the gap, and the plan prices
-  the narrow refresh (one describe per program) and writes its inputs beside `plan.json`;
-  the email-engagement skill offers that refresh before the pull. A run re-reads the KB
-  when it moved between the plan and the run. A pull made without a KB judges no program
-  "working as expected" or "finished".
-
-## 0.46.0 — 2026-10-04
-
-Groundwork for the engagement dashboard. No skill changes: `/gs-superadmin:email-engagement
-report` runs as before, makes the same calls, and writes the same report.
-
-- **The engagement pull can read health data** (`engagement.mjs … --health`; off unless
-  passed, and `plan` prints what it adds either way). With it, a snapshot also holds:
-  bounced emails by program, email and month with the reason the mail service gave;
-  participants a program could not process, with the reason; each program's participants
-  by state; each program's last send day, from which Active programs that have gone
-  silent are listed; and each schedule's last-run result, read from your knowledge base.
-  A health call that fails never fails the pull: that part is recorded as not read, with
-  the reason, and is shown as missing rather than as "no failures".
-- **Error messages are masked before they are stored.** A bounce or failure reason names
-  people: addresses, ids, reference numbers. Each is replaced with a placeholder when the
-  message is fetched, so the raw text never reaches disk, and messages that differ only
-  in whom they name are counted as one.
-- **A new figure, send failures, and the error rate built on it** (send failures ÷ Sent).
-  A send failure is an attempt that bounced or was rejected, counted once even when both
-  flags are set. Every snapshot carries it whether or not `--health` is passed. A
-  refresh that continues from a snapshot made before this version pulls every table again
-  once, and says so.
-- **New script: `dashboard-spec.mjs`**, which writes the file a dashboard is built from:
-  which programs, how they are grouped, which pages and tabs. `draft`, `set`,
-  `validate`, `save` and `show` write and read a spec under
-  `<slug>/dashboards/<name>/`; `export` and `import` carry one to another machine. A
-  spec holds no path of the machine it was written on, and an import onto a different
-  tenant is refused.
-- **New script: `dashboard-groups.mjs`**, which puts every program in a supergroup and a
-  group from a spec's rules: by program characteristic (model, audience, whether it
-  sends surveys, whether its schedule recurs), by folder id, by name, by hand. Rules apply
-  in the order listed, and a program no rule reaches lands in "Ungrouped". Gainsight
-  exposes a program's folder id but not the folder's name, so a folder group takes its
-  label from you.
-
-## 0.45.0 — 2026-10-04
-
-- **New skill: `/gs-superadmin:email-engagement`, with one mode, `report`.** It answers
-  "how did our emails perform?" from your tenant's send log, where `email-report` answers
-  what the emails say and when they run. It pulls the send log for a period through
-  read-only `gs-admin` calls, then writes a report to `<slug>/reports-adhoc/`: a headline
-  by status, and one row per program with sent, unique recipients, accounts reached,
-  delivered, opened and open rate side by side, then clicks, bounces and survey responses.
-  `--by-template` adds a row per template with the step it sits on, and a row per step
-  and variant when you pull with `--step-detail`. `--csv` and `--xlsx` add spreadsheets.
-  It is also triggered by a plain question such as "what's the open rate for the
-  onboarding program?".
-- **Every number in the report says how it was calculated.** A section at the end lists,
-  for each metric, the Gainsight object it is read from, the fields and the value that
-  counts, the filters every count carries, the date field and the calculation, so you can
-  rebuild any figure in a Gainsight report and compare. It also says where a figure will
-  not match the Gainsight UI and why: Sent counts every attempt, Delivered is what went
-  out and did not bounce, and clicks count content links only.
-- **Click cells tell "not tracked" apart from a real zero.** A click figure reads a plain
-  number when clicks are tracked, `Not tracked` when no link in the email is tracked, and
-  a number marked `(tracking unknown)` when the data cannot tell. A rate with nothing to
-  divide by is blank, never 0%.
-- **The account watch list is opt-in.** Pass `--accounts` to get, per program, the
-  accounts with the lowest open rates and the most bounces. It is off by default because
-  it is most of a pull's cost; without it the report says so where the list would be and
-  how to turn it on, rather than showing an empty list.
-- **The pull tells you its cost first.** The skill prints the estimated calls and minutes
-  before pulling and asks before a pull of more than about ten minutes. A pull the login
-  expires under stops cleanly and continues where it stopped after `gs-admin login`.
-- **`engagement.mjs --name` takes a program's id as well as its name**, as
-  `email-report`'s `--name` does.
-
-## 0.44.0 — 2026-10-03
-
-- **Groundwork for email engagement reporting. Nothing you can run yet.** A new script,
-  `scripts/engagement.mjs`, reads a tenant's Journey Orchestrator send log through
-  read-only `gs-admin` calls and writes one snapshot file: sent, delivered, opened,
-  bounced, rejected, unsubscribed, spam complaints and content-link clicks per program,
-  template and month; unique recipients and accounts reached per program; survey
-  responses; and, when asked for, a short list of accounts per program with the rest
-  rolled into one row.
-  No skill calls it in this version, and no existing skill changes. The open-rate
-  report and the dashboards that read this file arrive in later versions.
-  Three things in the file are worth knowing now. A program's click tracking reads
-  "tracked" only when every one of its templates is tracked; a mix reads "unknown".
-  Each survey program carries its all-time Submitted and Partially submitted counts
-  beside its all-time participant count, so a response rate has one basis. And if your
-  unsubscribe link is a page on your own site, or on an outside host, name it with
-  `--unsubscribe-link` (a link or a host; repeat it for several) so its clicks are not
-  counted as content clicks.
-- **The per-account data in that snapshot is optional, and off unless you ask for it.**
-  Ranking every account for every program is most of a pull: on a large tenant it turned a
-  pull of a few minutes into one of about half an hour. Pass `--accounts` to include it.
-  Without it the snapshot holds no account rows and says so (`meta.accounts`), so nothing
-  that reads it can mistake "not pulled" for "no accounts"; the number of accounts each
-  program reached is still there. `plan` prints what the account data would add in calls
-  and seconds whether it is on or off. To add accounts later, run the refresh again with
-  `--accounts`: it pulls every table again and says that it did.
-- **A refresh takes nothing from a snapshot it cannot continue from.** Given another
-  tenant's snapshot as `--previous`, or one made before the metric definitions settled,
-  a refresh already pulled every number again, but it still read click history, template
-  names and account names from that file. Where two tenants share ids (a sandbox copied
-  from production), a template could read as click-tracked on the other tenant's clicks.
-  It now reads nothing from such a file.
+  Nor is a claude.ai artifact offered for the leaders' copy: a Claude session must read the
+  whole page before it can publish it, which takes several turns on a real leaders' page.
 
 ## 0.43.4 — 2026-10-06 (hotfix, released from main)
 
