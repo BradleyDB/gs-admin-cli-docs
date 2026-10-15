@@ -523,10 +523,32 @@ try {
     const sentClosed = sumRows(GOLD.facts.byTemplate.filter((r) => closed.includes(r.month)), "sent");
     const closedRows = GOLD.facts.byTemplate.filter((r) => closed.includes(r.month));
     check("kpi view: a tile is the metric over everything the filters keep; the usual is the same figure over the window's closed months — per month for a count, as itself for a rate — and the change is a ratio for a count and percentage points for a rate; a distinct count has no total and says why; a rate carries its denominator's count as send-size context; since-last-pull is null until a refresh carries a delta",
-      k.tiles[0].cell.value === sentAll && k.tiles[0].usual.value === sentClosed / closed.length && k.tiles[0].usual.perMonth === true && k.tiles[0].usual.closedMonths === 3 && k.tiles[0].change.kind === "ratio" && Math.abs(k.tiles[0].change.value - sentAll / 4 / (sentClosed / 3)) < 1e-12 &&
+      k.tiles[0].cell.value === sentAll && k.tiles[0].usual.value === sentClosed / closed.length && k.tiles[0].usual.perMonth === true && k.tiles[0].usual.closedMonths === 3 && k.tiles[0].change.kind === "ratio" && Math.abs(k.tiles[0].change.value - sentClosed / 3 / (sentClosed / 3)) < 1e-12 && isDeepStrictEqual(k.tiles[0].change.months, { closed: 3, provisionalLeftOut: 1 }) &&
         Math.abs(k.tiles[1].cell.value - sumRows(GOLD.facts.byTemplate, "opened") / sumRows(GOLD.facts.byTemplate, "delivered")) < 1e-12 && Math.abs(k.tiles[1].usual.value - sumRows(closedRows, "opened") / sumRows(closedRows, "delivered")) < 1e-12 && k.tiles[1].usual.perMonth === false && k.tiles[1].change.kind === "points" &&
         k.tiles[1].denominator.id === "delivered" && k.tiles[1].denominator.cell.value === sumRows(GOLD.facts.byTemplate, "delivered") && k.tiles[2].cell.value === null && k.tiles[2].cell.why === "not-additive" && k.tiles[2].change === null && k.tiles.every((t) => t.sinceLastPull === null) && k.previousPulledAt === null && k.incomplete === true,
       k.tiles.map((t) => [t.id, t.cell, t.usual, t.change]));
+    // F-531: the change compares like with like. Day 2 of a month: the provisional month's sends scaled to 2/30. The
+    // old divisor (a sum holding the provisional month over a month count counting it) read a drop that did not
+    // happen; the change over the closed months the view keeps reads level, a closed month alone reads its own
+    // ratio, the provisional month alone has no change, and a rate is compared over the closed months too.
+    {
+      const prov = String(GOLD.meta.incompleteFrom).slice(0, 7);
+      const day2 = structuredClone(GOLD);
+      for (const t of ["byTemplate", "byAccount", "byStep"]) for (const r of day2.facts[t] ?? []) if (r.month === prov) for (const m of ["sent", "delivered", "opened", "clicked", "bounced"]) if (typeof r[m] === "number") r[m] = Math.round(r[m] * 2 / 30);
+      for (const r of day2.facts.health?.bounceReasons ?? []) if (r.month === prov) r.count = Math.round(r.count * 2 / 30);
+      const D = Q.openSnapshot(day2);
+      const whole = Q.kpiView(D, { recipientClass: "all" }, { metrics: ["sent", "openRate"] });
+      const lastClosed = closed.at(-1);
+      const one = Q.kpiView(D, { months: [lastClosed] }, { metrics: ["sent"] });
+      const lastSent = sumRows(GOLD.facts.byTemplate.filter((r) => r.month === lastClosed), "sent");
+      const provOnly = Q.kpiView(D, { months: [prov] }, { metrics: ["sent"] });
+      const sentAllDay2 = sumRows(day2.facts.byTemplate, "sent");
+      check("F-531 day 2 of a month (the bounce categories' change the same: over the closed months of the period, said): the count tile's change is over the closed months the view keeps (level, 1.00, not the old divisor's drop), says it left the provisional month out, a rate's change is over the closed months too (0 points), a view of one closed month reads that month against the usual, and the provisional month alone has no change",
+        Math.abs(whole.tiles[0].change.value - 1) < 1e-12 && sentAllDay2 / 4 / (sentClosed / 3) < 0.95 && isDeepStrictEqual(whole.tiles[0].change.months, { closed: 3, provisionalLeftOut: 1 }) && Math.abs(whole.tiles[1].change.value) < 1e-9 &&
+          Math.abs(one.tiles[0].change.value - lastSent / (sentClosed / 3)) < 1e-12 && one.tiles[0].change.months.provisionalLeftOut === 0 && provOnly.tiles[0].change === null && provOnly.tiles[0].usual != null &&
+          (() => { const v = Q.healthReasonsView(D, { recipientClass: "all" }); const cats = [...v.bounces.categories, v.bounces.other].filter((c) => c && c.usualPerMonth); return cats.length > 0 && cats.every((c) => Math.abs(c.change - 1) < 1e-9) && isDeepStrictEqual(v.bounces.changeMonths, { closed: 3, provisionalLeftOut: 1 }); })(),
+        [whole.tiles.map((t) => t.change), sentAllDay2 / 4 / (sentClosed / 3), one.tiles[0].change, provOnly.tiles[0].change]);
+    }
     check("kpi view: under a filter that keeps only closed months the change is level (the usual IS the figure), and with no closed month there is no usual",
       Math.abs(Q.kpiView(GOLD, { months: closed }, { metrics: ["openRate"] }).tiles[0].change.value) < 1e-9 && Q.kpiView({ ...GOLD, dimensions: { ...GOLD.dimensions, months: ["2026-09"] } }, { months: ["2026-09"] }, { metrics: ["sent"] }).tiles[0].usual === null);
     const r = Q.healthReasonsView(GOLD, { recipientClass: "all" });

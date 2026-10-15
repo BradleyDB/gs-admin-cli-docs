@@ -375,6 +375,19 @@ try {
     const row = h.md.split("\n").find((l) => l.includes("CS\\|Risk"));
     check("a program name full of pipes and a line break stays one table cell in the markdown and one quoted field in the CSV",
       h.code === 0 && !!row && row.split(/(?<!\\)\|/).length === tableUnder(h.md, "## Programs").headers.length + 2 && row.includes("<br>") && readFileSync(join(ROOT, "csv-hostile", "engagement-programs.csv"), "utf8").includes('"CS|Risk|Onboarding <b>x</b>\n=1+1"'));
+    // F-547: tenant text a spreadsheet would run as a formula (a leading = + - @) is written as text in every report
+    // CSV, through jo-report's one csvCell: here a program name and a template subject on the report's own CSV path.
+    const formula = structuredClone(GOLD);
+    formula.dimensions.programs.find((p) => p.id === "p-onboard").name = '=HYPERLINK("https://x.example","open")';
+    const tpl = formula.dimensions.templates.find((t) => t.content?.subject);
+    if (tpl?.content) tpl.content.subject = "@SUM(1,2)";
+    const fx = report(["--snapshot", snapshotFile("formula", formula), "--report", outDir(), "--by-template", "--all", "--csv-dir", join(ROOT, "csv-formula")]);
+    const fxCsv = (name) => readFileSync(join(ROOT, "csv-formula", name), "utf8");
+    // Every cell of every CSV written: none starts with a formula character unless a number (the judge reads the whole output, not the two planted cells).
+    const cellsOf = (text) => text.replace(BOM_RE, "").split("\r\n").filter(Boolean).flatMap((l) => l.match(/("([^"]|"")*"|[^,]*)(?=,|$)/g) ?? []).map((c) => c.replace(/^"|"$/g, ""));
+    const offending = fx.code === 0 ? readdirSync(join(ROOT, "csv-formula")).flatMap((f) => cellsOf(fxCsv(f)).filter((c) => /^[=+\-@\t]/.test(c) && !/^-?\d+(\.\d+)?$/.test(c)).map((c) => [f, c])) : ["no run"];
+    check("F-547 a program name and a template subject that start with a formula character are written as text (a leading apostrophe) in the report's CSVs; no cell of any CSV the report wrote starts with = + - @ or a tab, a negative number apart",
+      fx.code === 0 && fxCsv("engagement-programs.csv").includes(`"'=HYPERLINK(""https://x.example"",""open"")"`) && !!tpl && fxCsv("engagement-templates.csv").includes("'@SUM(1,2)") && offending.length === 0, [fx.stderr?.slice(-300), offending.slice(0, 5)]);
   }
 
   // ══ The skill's prose (house rule 18) ═════════════════════════════════════

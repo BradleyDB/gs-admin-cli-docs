@@ -130,22 +130,46 @@ the leaders' copy), or A (one account's timeline).
 With `--snapshot`, go to step R4. Before planning, read the dashboard rule below: a saved
 dashboard of this tenant may already answer the question.
 
-**A dashboard answers first.** If `node .gs-superadmin/plugin/scripts/dashboard.mjs list
---kb <slug>` shows a saved dashboard whose programs cover the question, run its report
-instead of a fresh pull:
+**A dashboard answers first.** `node .gs-superadmin/plugin/scripts/dashboard.mjs list
+--kb <slug>` shows each saved dashboard with `holds`: its last pull's time, `window`
+(`from`, `to`), `selection` (which programs it took, in words) and how many `programs`.
+When one holds the months the question is about, run its report instead of a fresh pull:
 
 ```
 node .gs-superadmin/plugin/scripts/dashboard.mjs report <dashboard slug> --kb <slug> <report flags>
 ```
 
-Read its summary. Answer from that report and SAY THE DATE (`pulledAt`) and the age
-(`snapshotAgeDays`, "pulled N days ago") in the answer: the dashboard is not live, and its
-numbers are as of that pull. When `snapshotAgeDays` is above 7, first say the date and
-the age, say how long a pull again would take (the summary's minutes, beside the age), and
-ask whether to run `/gs-superadmin:email-engagement refresh <dashboard slug>` first (`refreshMinutes` is its estimate)
-or to answer from the older numbers; never answer from an old snapshot quietly. A program
-the dashboard does not hold (its selection or its window) is said, never a blank: read
-`unmatchedNames` first.
+When the user asked for `--csv` or `--xlsx`, also append `--csv-dir
+<slug>/reports-adhoc/engagement-<YYYY-MM-DD>-csv` (today's date), as step R4 does; step R5
+then converts those CSVs.
+
+Read its summary. Check every program the question names against `held.programs` (each
+with its `id`, `name`, `statuses` and `shown`), by name or id:
+
+- Held and `shown`: answer from the report.
+- Held but `shown` is false: the report's status filter hides it (a Paused program, say).
+  Run the report again with `--include-paused` (or `--all` for any other status) and answer
+  from that.
+- Not held: the dashboard does not hold it (its `held.selection` or its `held.window` left
+  it out). Say so, naming the program and what the dashboard holds; never answer it with a
+  blank. Then go on to the plan below with `--name <that program>` for the programs the
+  dashboard does not hold, or stop if the user would rather not pull.
+
+`unmatchedNames` is something else: names the dashboard's OWN selection lists that matched
+no program. A question with no program named (every program, or a status) is answered from
+the report as it is.
+
+Answer from that report and SAY THE DATE (`pulledAt`) and the age (`snapshotAgeDays`,
+"pulled N days ago") in the answer: the dashboard is not live, and its numbers are as of
+that pull. When `snapshotAgeDays` is above 7, first say the date and the age, then ask
+whether to run `/gs-superadmin:email-engagement refresh <dashboard slug>` first or to answer
+from the older numbers; never answer from an old snapshot quietly. The ask prices that
+pull, a routine one: "about M minutes", M being the summary's price of
+`/gs-superadmin:email-engagement refresh <dashboard slug>`, `refreshMinutes`. When that is null
+(no routine pull has been priced yet: the dashboard has had only its first, full pull),
+say instead "a routine pull re-reads only the recent months, so it is shorter than the
+first pull, which took about F minutes", F being the full pull's price,
+`fullRefreshMinutes` of `/gs-superadmin:email-engagement refresh <dashboard slug> --full`.
 
 Otherwise the plan makes a handful of cheap calls and prints what the full pull will
 cost. Nothing is pulled yet.
@@ -218,7 +242,7 @@ it, and the files are the ones the plan wrote beside `plan.json`):
 ```
 node .gs-superadmin/plugin/scripts/manifest.mjs upsert-batch --manifest <slug>/_manifest.json --domain <journey-domain> --file <estimate.kb.listFile> --id-field advancedOutreachId --name-field advancedOutreachName --partial
 node .gs-superadmin/plugin/scripts/manifest.mjs mark --manifest <slug>/_manifest.json --keys-file <estimate.kb.keysFile> --status stale
-node .gs-superadmin/plugin/scripts/describe-batch.mjs --manifest <slug>/_manifest.json --domain <journey-domain> --out-dir <slug>/<journey-domain> --keys-file <estimate.kb.keysFile> --limit 25
+node .gs-superadmin/plugin/scripts/describe-batch.mjs --manifest <slug>/_manifest.json --domain <journey-domain> --command "gs-admin --json jo p describe --id {id}" --doc-mode program --out-dir <slug>/<journey-domain> --keys-file <estimate.kb.keysFile> --limit 25
 ```
 
 The first registers the undocumented programs as a declared subset (`--partial` is
@@ -529,7 +553,10 @@ that moment, with `loginsNeeded`); on `no` the summary says which setting to ans
 By exit code on any verb: `3` is the login (ask for `gs-admin login`, then run the line in
 the summary's `remedy.line` when it has one, else the same command); `5` is the wrong tenant (the CLI is on another tenant than the dashboard's:
 say both and stop); `4` is a stopped pull (`error` names the call that failed and says the
-next run retries it: re-issue once); `1` is a refusal (show `error`).
+next run retries it: run the summary's `remedy.line` once, exactly as written, as step P
+does — never re-issue the verb that started the pull: a `change` or an `answer … save yes`
+has already saved, so the same command again finds nothing to change or no draft; if the
+line exits 4 again, report `error`); `1` is a refusal (show `error`).
 
 ### D4 — Final report (dashboard)
 
@@ -562,7 +589,10 @@ end at `=` for a text setting: put the quoted value there. Relay `changed` (each
 ("rebuild only", or the next pull with its minutes). Ask the user to confirm; on yes
 re-issue without `--dry-run`: the script saves
 and DOES the consequence (a rebuild, a re-selection of the customer lists, or the pull);
-relay `done`. The paths are the ones the pages' copy lines use and the ones
+relay `done`. For a customer-list change, relay `done.text` as written: the lists are
+ranked again now only over a full pull's rows; after a routine pull they are ranked at the
+next full pull (`/gs-superadmin:email-engagement refresh <dash> --full`), and
+`done.remedy.line` is that pull's line (offer it; never run it unasked). The paths are the ones the pages' copy lines use and the ones
 `node .gs-superadmin/plugin/scripts/dashboard.mjs costs` lists.
 
 ---
@@ -702,9 +732,12 @@ meanwhile. By exit code:
   `programs`, `reconciled` (and, when a dashboard was named, `against`: compared, or the
   reason it was not), and the `page` path.
 - `6` — the name matched several accounts, or none exactly (`resolution.candidates`, each
-  with its `key` and its `sent` over the same days; empty when nothing matched). Nothing was
-  pulled and nothing is guessed: show the candidates as a numbered list (name, GSID, sends)
-  and ask which one; then re-issue the command with `--account-id <the chosen key>`.
+  with its `key` and its `sent` over the same days). Nothing was pulled and nothing is
+  guessed. When there are candidates, show them as a numbered list (name, GSID, sends) and
+  ask which one; then re-issue the command with `--account-id <the chosen key>`. When
+  `resolution.candidates` is empty (no account has that name, or no account has that GSID),
+  relay `error` and ask the user for the company's exact spelling or its GSID; re-issue
+  with what they give.
 - `3` — the login expired: relay `error`, ask the user to run `gs-admin login`, then
   re-issue the same command; it continues where it stopped.
 - `4` — a call failed: relay `error`, re-issue once, then report.
@@ -721,7 +754,9 @@ meanwhile. By exit code:
   Page:      <page>
 ```
 
-`<checks line>` is "ok" when `reconciled` is true and no dashboard was named; "ok, and
+`<checks line>` is "ok" when `reconciled` is true and no dashboard was named; "ok; not
+compared with the dashboard: it has no pull yet" when a dashboard was named and
+`againstSnapshot` is null; "ok, and
 equal to the dashboard's own rows of this account" when `against.compared` is above 0;
 "not compared with the dashboard: <againstText.reason>" when `against.reason` is set; after
 either dashboard line, each `againstText.notCompared` entry, if any, as "not compared:

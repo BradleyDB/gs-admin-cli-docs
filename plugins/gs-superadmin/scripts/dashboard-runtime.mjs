@@ -263,8 +263,9 @@ export const HEALTH_DAY_OPTIONS = Object.freeze([14, 30, 60, 90]);
 // ── The CSV builder (R27) ────────────────────────────────────────────────────
 // A text cell starting with = + - @, a tab or a carriage return is read by a
 // spreadsheet as a formula. A leading apostrophe makes it text. Numbers are
-// written as numbers and are never touched.
-const FORMULA_START = /^[=+\-@\t\r]/;
+// written as numbers and are never touched. The ONE home of the rule: the
+// report CSVs (jo-report.mjs csvCell) import it from here (F-547).
+export const FORMULA_START = /^[=+\-@\t\r]/;
 /** @param {*} v @returns {string} one CSV cell */
 export function csvCell(v) {
   if (v == null) return "";
@@ -773,13 +774,15 @@ export function createDashboard(engine, model) {
     const ratio = Math.round(d.change.value * 100) / 100;
     return ratio === 1 ? "level with the last pull" : `${ratio > 1 ? "&#9650;" : "&#9660;"} ${ratio}&times; the last pull's`;
   };
+  // Which months a change compares (F-531): the closed months the view keeps, never the provisional one; said when one is left out.
+  const changeBasis = (m) => (!m || !m.provisionalLeftOut ? "" : ` <span class="gs-muted">(over the ${plural(m.closed, "closed month")} shown; the current month is left out until it closes)</span>`);
   const renderKpiPanel = (panel, state) => {
     const view = engine.kpiView(snapshot, filtersOf(state), panel.query);
     const delta = model.delta ?? null;
     // "No previous pull" is one fact about the page, said once under the tiles, not once per tile.
     const noPrevious = !delta;
     const tiles = view.tiles.map((t) => {
-      const usual = t.usual ? `<p class="gs-kpi-usual">Usual${t.usual.perMonth ? " a month" : ""}: ${fmt(t.id, t.usual.perMonth ? Math.round(t.usual.value) : t.usual.value)} <span class="gs-muted">(${plural(t.usual.closedMonths, "closed month")})</span>${t.change ? ` &middot; ${changeText(t.change)}` : ""}</p>` : `<p class="gs-kpi-usual gs-muted">No closed month to compare with.</p>`;
+      const usual = t.usual ? `<p class="gs-kpi-usual">Usual${t.usual.perMonth ? " a month" : ""}: ${fmt(t.id, t.usual.perMonth ? Math.round(t.usual.value) : t.usual.value)} <span class="gs-muted">(${plural(t.usual.closedMonths, "closed month")})</span>${t.change ? ` &middot; ${changeText(t.change)}${changeBasis(t.change.months)}` : t.cell.value != null ? ` &middot; <span class="gs-muted">no closed month shown to compare with it</span>` : ""}</p>` : `<p class="gs-kpi-usual gs-muted">No closed month to compare with.</p>`;
       const den = t.denominator ? `<p class="gs-kpi-context">${esc(t.denominator.label)} ${figure(t.denominator.id, t.denominator.cell)}</p>` : "";
       const d = delta?.metrics?.[t.id] ?? null;
       const since = noPrevious ? "" : `<p class="gs-kpi-since gs-muted">Since last pull: ${sinceText(d) ?? "no figure to compare with."}</p>`;
@@ -1101,7 +1104,7 @@ export function createDashboard(engine, model) {
       const rows = shown(b.categories).map((c) => `<tr><td>${categoryCell(c)}</td><td>${esc(kindLabel(c.kind))}</td><td class="gs-num">${c.count}</td><td class="gs-num">${c.usualPerMonth == null ? esc(engine.NO_VALUE) : Math.round(c.usualPerMonth * 10) / 10}</td><td class="gs-num">${changeCell(c)}</td></tr>`).join("");
       const other = b.other ? `<tr class="gs-other"><td>${categoryCell(b.other)} <span class="gs-muted">${b.other.share == null ? "" : `${Math.round(b.other.share * 100)}% of bounces`}</span></td><td></td><td class="gs-num">${b.other.count}</td><td class="gs-num">${b.other.usualPerMonth == null ? esc(engine.NO_VALUE) : Math.round(b.other.usualPerMonth * 10) / 10}</td><td class="gs-num">${changeCell(b.other)}</td></tr>` : "";
       const signal = b.other?.overThreshold ? `<div class="gs-notice gs-notice-compact" role="note" data-signal="other"><p>Uncategorised bounce text is ${Math.round(b.other.share * 100)}% of bounces, over a few percent: the masked samples are in the terminal, never on a page.</p>${renderLine(COPY_LINES.health(model.slug, "<program id>", model.kb))}</div>` : "";
-      bounces = `<h3>Bounce reasons <span class="gs-muted">(${plural(b.total, "bounce")} in the ${plural(b.months, "month")} shown)</span></h3><div class="gs-scroll"><table><thead><tr><th scope="col">Reason</th><th scope="col">Kind</th><th scope="col" class="gs-num">This period</th><th scope="col" class="gs-num">Usual a month</th><th scope="col" class="gs-num">Change</th></tr></thead><tbody>${rows}${other}</tbody></table></div>${signal}${hidden(b.categories)}`;
+      bounces = `<h3>Bounce reasons <span class="gs-muted">(${plural(b.total, "bounce")} in the ${plural(b.months, "month")} shown)</span></h3><div class="gs-scroll"><table><thead><tr><th scope="col">Reason</th><th scope="col">Kind</th><th scope="col" class="gs-num">This period</th><th scope="col" class="gs-num">Usual a month</th><th scope="col" class="gs-num">Change${b.changeMonths?.provisionalLeftOut ? ` <span class="gs-muted">(closed months)</span>` : ""}</th></tr></thead><tbody>${rows}${other}</tbody></table></div>${signal}${hidden(b.categories)}`;
     }
     // Refusals at entry: exact totals, the split exact or a sample.
     let entry;
