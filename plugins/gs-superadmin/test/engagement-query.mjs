@@ -1,0 +1,842 @@
+#!/usr/bin/env node
+// ─────────────────────────────────────────────────────────────────────────────
+// engagement-query.mjs (test) — fixtures for scripts/engagement-query.mjs
+// (ENG-4): the one aggregation path over a T-10 snapshot, its metric registry,
+// the glossary and caveats rendered from it, and the T-10 read floor's use.
+//
+// Snapshots come from the REAL producer, never hand-built:
+//   GOLD  test/fixtures/engagement/snapshot-acme.json (accounts on, step detail
+//         on, all three click-tracking states, both recipient classes);
+//   OFF   a pull with the adapter's defaults (no account grain, no step detail);
+//   SEL   a selective refresh over an earlier pull (carried-forward months).
+// OFF and SEL are pulled here through the real process and the stand-in CLI.
+//
+// Expectations are derived independently (R-10): ORACLE sums below walk the
+// snapshot's fact rows with a hand-written predicate per case, and one check
+// counts the fictional tenant's own rows. Named cases are also pinned to a
+// committed golden (query-golden.json); `--write-golden` regenerates it.
+//
+// The module must run where a browser runs it: the suite loads its bytes in a
+// context with no Node globals and repeats the golden cases there.
+//
+// Run:  node plugins/gs-superadmin/test/engagement-query.mjs
+// Zero dependencies — Node built-ins only.
+// ─────────────────────────────────────────────────────────────────────────────
+import { readFileSync, writeFileSync } from "node:fs";
+import { join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+import { isDeepStrictEqual } from "node:util";
+import vm from "node:vm";
+import { makeTempDir, removeTempDir, writeFiles, runNode } from "../../../test/rig.mjs";
+import * as Q from "../scripts/engagement-query.mjs";
+import { buildQuery } from "../scripts/engagement.mjs";
+// The differential (TPL-2, A-6): email-report's own search over the same fixture KB.
+import { searchTemplates } from "../scripts/jo-report-search.mjs";
+import { buildIndex } from "../scripts/jo-report.mjs";
+import { buildTenant, kbFiles } from "./fixtures/engagement/acme-tenant.mjs";
+
+const {
+  runQuery, metric, METRICS, SOURCES, SEND_MEASURES, CAVEATS, REASONS, DIMENSIONS, formatCell, glossary, glossaryNotes, describeMetric, caveatsFor, caveatText, dataPulledLine,
+  reasonText, statusLabel, openSnapshot, programClickAvailability, readResponses, accountAvailability, rollUpTracking, measuresCounted, NO_VALUE, NOT_TRACKED, UNKNOWN_MARK,
+} = Q;
+
+const HERE = dirname(fileURLToPath(import.meta.url));
+const PLUGIN = join(HERE, "..");
+const MODULE = join(PLUGIN, "scripts", "engagement-query.mjs");
+const ENGINE = join(PLUGIN, "scripts", "engagement.mjs");
+const FAKE = join(HERE, "fixtures", "engagement", "fake-gs-admin.mjs");
+const GOLDEN_SNAPSHOT = join(HERE, "fixtures", "engagement", "snapshot-acme.json");
+const GOLDEN = join(HERE, "fixtures", "engagement", "query-golden.json");
+const WRITE_GOLDEN = process.argv.includes("--write-golden");
+
+let failures = 0;
+let ran = 0;
+function check(label, cond, detail) {
+  ran++;
+  console.log(`${cond ? "PASS" : "FAIL"}  ${label}`);
+  if (!cond) {
+    failures++;
+    if (detail !== undefined) console.log(`      ${JSON.stringify(detail)?.slice(0, 1500)}`);
+  }
+}
+const throws = (fn, re) => {
+  try {
+    fn();
+  } catch (e) {
+    return re.test(e.message);
+  }
+  return false;
+};
+
+const ROOT = makeTempDir("gs-superadmin-engagement-query");
+try {
+  // ── The snapshots ──────────────────────────────────────────────────────────
+  const GOLD = openSnapshot(JSON.parse(readFileSync(GOLDEN_SNAPSHOT, "utf8")));
+  const WS = join(ROOT, "ws");
+  writeFiles(WS, { ".gs-superadmin/.keep": "" });
+  writeFiles(join(ROOT, "kb"), kbFiles("acme-prod"));
+  const KB = join(ROOT, "kb", "acme-prod");
+  const pull = (run, flags, tenant = {}) => {
+    const out = join(ROOT, `${run}.json`);
+    const r = runNode(ENGINE, ["run", "--workspace", WS, "--bin", FAKE, "--kb", KB, "--page-size", "400", "--internal-domain", "acme.com", "--run", run, "--out", out, ...flags], { env: { ...process.env, FAKE_TENANT: JSON.stringify(tenant) } });
+    if (r.status !== 0) throw new Error(`fixture pull ${run} failed (${r.status}): ${r.stderr.slice(-600)}`);
+    return { path: out, snapshot: openSnapshot(JSON.parse(readFileSync(out, "utf8"))) };
+  };
+  const OFF = pull("off", ["--today", "2026-09-15", "--pulled-at", "2026-09-15T09:00:00-07:00", "--from", "2026-06"]).snapshot;
+  const prev = pull("prev", ["--today", "2026-08-15", "--pulled-at", "2026-08-15T09:00:00-07:00", "--from", "2026-05", "--to", "2026-08"], { cutoff: "2026-08-16" });
+  const SEL = pull("sel", ["--today", "2026-09-15", "--pulled-at", "2026-09-15T09:00:00-07:00", "--from", "2026-05", "--previous", prev.path]).snapshot;
+  check("fixtures: the three snapshots are what the cases need — accounts and step detail on; both off; a selective refresh with carried months",
+    accountAvailability(GOLD).pulled && GOLD.meta.stepDetail && !accountAvailability(OFF).pulled && !OFF.meta.stepDetail && SEL.meta.refresh.mode === "selective" && SEL.meta.refresh.carriedMonths.length > 0,
+    [OFF.meta.accounts, SEL.meta.refresh]);
+
+  // ── The oracle: straight sums over fact rows, one hand-written predicate per case ──
+  const zero = () => Object.fromEntries(SEND_MEASURES.map((k) => [k, 0]));
+  const sumRows = (rows) => rows.reduce((m, r) => { for (const k of SEND_MEASURES) m[k] += r[k]; return m; }, zero());
+  const additive = ["sent", "delivered", "bounced", "rejected", "unsubscribed", "spamComplaints", "opened"];
+  const values = (row, ids = additive) => Object.fromEntries(ids.map((id) => [id, row.cells[id].value]));
+  const pick = (m, ids = additive) => Object.fromEntries(ids.map((id) => [id, m[id]]));
+  const T = GOLD.facts.byTemplate;
+  const statusOf = (id) => GOLD.dimensions.programs.find((p) => p.id === id).statuses;
+  const total = (filters, table = "byTemplate") => runQuery(GOLD, filters, { groupBy: table === "byAccount" ? ["account"] : table === "byStep" ? ["step"] : [], metrics: additive }).total;
+
+  // ── Each filter, alone ─────────────────────────────────────────────────────
+  /** @type {Array<[string, *, (r: *) => boolean]>} */
+  const cases = [
+    ["no filter", {}, () => true],
+    ["months", { months: ["2026-07", "2026-08"] }, (r) => r.month === "2026-07" || r.month === "2026-08"],
+    ["programs", { programs: ["p-onboard", "p-nps"] }, (r) => r.programId === "p-onboard" || r.programId === "p-nps"],
+    ["statuses (a program matches when ANY of its statuses is listed)", { statuses: ["NEW"] }, (r) => statusOf(r.programId).includes("NEW")],
+    ["statuses, several", { statuses: ["PROCESSING", "PAUSE"] }, (r) => statusOf(r.programId).some((s) => s === "PROCESSING" || s === "PAUSE")],
+    ["recipientClass external", { recipientClass: "external" }, (r) => r.recipientClass === "external"],
+    ["recipientClass internal", { recipientClass: "internal" }, (r) => r.recipientClass === "internal"],
+    ["templates", { templates: ["tpl-welcome"] }, (r) => r.templateId === "tpl-welcome"],
+    ["templates, the sends that name none", { templates: [null] }, (r) => r.templateId == null],
+    ["models", { models: ["DRIPV2"] }, (r) => ["p-onboard", "p-pilot", "p-unlisted"].includes(r.programId)],
+    ["audiences", { audiences: ["USER"] }, (r) => r.programId === "p-pilot"],
+    ["groups (none assigned yet: null is a value)", { groups: [null] }, () => true],
+    ["supergroups, one no program has", { supergroups: ["Surveys"] }, () => false],
+    // Combinations.
+    ["months + recipientClass", { months: ["2026-09"], recipientClass: "external" }, (r) => r.month === "2026-09" && r.recipientClass === "external"],
+    ["months + programs + recipientClass", { months: ["2026-06", "2026-07"], programs: ["p-onboard"], recipientClass: "internal" }, (r) => (r.month === "2026-06" || r.month === "2026-07") && r.programId === "p-onboard" && r.recipientClass === "internal"],
+    ["statuses + templates + months", { statuses: ["PROCESSING"], templates: ["tpl-welcome", "tpl-nps"], months: ["2026-08"] }, (r) => statusOf(r.programId).includes("PROCESSING") && ["tpl-welcome", "tpl-nps"].includes(r.templateId) && r.month === "2026-08"],
+    ["audiences + recipientClass + models", { audiences: ["CUSTOMER"], recipientClass: "external", models: ["DRIPV2", "CSAT_SURVEY_V2"] }, (r) => ["p-onboard", "p-unlisted", "p-nps"].includes(r.programId) && r.recipientClass === "external"],
+  ];
+  for (const [name, filters, pred] of cases) {
+    const got = values(total(filters));
+    const want = pick(sumRows(T.filter(pred)));
+    check(`filter: ${name} — the additive measures equal a straight sum of the rows the predicate keeps`, isDeepStrictEqual(got, want) && (name.includes("no program has") || want.sent > 0 || name.includes("none assigned")), { got, want });
+  }
+  check("filter: months that are not in the window keep nothing, and an unknown program keeps nothing (never everything)",
+    total({ months: ["2031-01"] }).cells.sent.value === 0 && total({ programs: ["p-nope"] }).cells.sent.value === 0);
+
+  // ── The fact table is picked by grain, and the grains agree ───────────────
+  const A = GOLD.facts.byAccount;
+  const S = GOLD.facts.byStep;
+  check("grain: grouping by account reads byAccount, by step or variant reads byStep, anything else reads byTemplate",
+    runQuery(GOLD, {}, { groupBy: ["account"], metrics: ["sent"] }).table === "byAccount" && runQuery(GOLD, {}, { groupBy: ["program", "step"], metrics: ["sent"] }).table === "byStep" &&
+      runQuery(GOLD, {}, { groupBy: ["variant"], metrics: ["sent"] }).table === "byStep" && runQuery(GOLD, {}, { groupBy: ["program", "month"], metrics: ["sent"] }).table === "byTemplate" &&
+      runQuery(GOLD, { accountBuckets: ["account"] }, { groupBy: ["program"], metrics: ["sent"] }).table === "byAccount");
+  check("grain: accounts beside templates or steps is refused — no table holds both, and joining two would double-count",
+    throws(() => runQuery(GOLD, {}, { groupBy: ["account", "template"], metrics: ["sent"] }), /no fact table holds accounts beside templates or steps/) &&
+      throws(() => runQuery(GOLD, { templates: ["tpl-welcome"] }, { groupBy: ["account"], metrics: ["sent"] }), /no fact table/));
+  for (const p of GOLD.dimensions.programs) {
+    const byT = values(runQuery(GOLD, { programs: [p.id] }, { groupBy: ["program"], metrics: additive }).rows[0]);
+    const byA = values(runQuery(GOLD, { programs: [p.id] }, { groupBy: ["account"], metrics: additive }).total);
+    const byS = values(runQuery(GOLD, { programs: [p.id] }, { groupBy: ["step"], metrics: additive }).total, ["sent", "delivered", "opened", "bounced"]);
+    check(`grain: ${p.id} — the program's total is the same from the template table, the account table (every bucket) and the step table`,
+      isDeepStrictEqual(byT, pick(sumRows(T.filter((r) => r.programId === p.id)))) && isDeepStrictEqual(byA, byT) && isDeepStrictEqual(byS, pick(byT, ["sent", "delivered", "opened", "bounced"])), { byT, byA, byS });
+  }
+  {
+    const named = runQuery(GOLD, { accountBuckets: ["account"] }, { groupBy: ["account"], metrics: ["sent"] });
+    const oneKey = GOLD.dimensions.accounts[0].key;
+    const one = runQuery(GOLD, { accounts: [oneKey] }, { groupBy: ["account", "month"], metrics: ["sent", "opened"] });
+    check("account grain: every bucket is a row (named accounts by name, the two roll-up rows by what they are), and a bucket filter keeps only the named ones",
+      runQuery(GOLD, {}, { groupBy: ["account"], metrics: ["sent"] }).rows.some((r) => r.key.account === "other" && r.label.account === "All other accounts") &&
+        runQuery(GOLD, {}, { groupBy: ["account"], metrics: ["sent"] }).rows.some((r) => r.key.account === "no-company-link" && r.label.account === "No company link") &&
+        named.rows.length === GOLD.dimensions.accounts.length && named.rows.every((r) => r.label.account?.startsWith("Acme Customer")) &&
+        named.total.cells.sent.value === A.filter((r) => r.bucket === "account").reduce((s, r) => s + r.sent, 0));
+    check("account grain: an account filter keeps that account's rows only",
+      one.total.cells.sent.value === A.filter((r) => r.accountKey === oneKey).reduce((s, r) => s + r.sent, 0) && one.rows.every((r) => r.key.account === oneKey) && one.total.cells.sent.value > 0);
+  }
+  check("step grain: one row per program, step and variant, with the step's name and order from the dimension table, and the template it sent",
+    (() => {
+      const r = runQuery(GOLD, {}, { groupBy: ["program", "step", "variant"], metrics: ["sent"] });
+      const welcome = r.rows.filter((x) => x.key.program === "p-onboard" && x.label.step === "Welcome");
+      return r.rows.length === new Set(S.map((x) => JSON.stringify([x.programId, x.stepId, x.variantId]))).size && welcome.length === 2 && welcome.every((x) => x.label.stepOrder === 1 && x.label.template === "Acme Welcome" && x.label.variant) &&
+        welcome.reduce((s, x) => s + x.cells.sent.value, 0) === S.filter((x) => x.programId === "p-onboard" && x.templateId === "tpl-welcome").reduce((s, x) => s + x.sent, 0);
+    })());
+  check("template grain: a row names its template, and the step it sits on only where the template is on exactly one step of that program",
+    (() => {
+      const rows = runQuery(GOLD, {}, { groupBy: ["program", "template"], metrics: ["sent"] }).rows;
+      const at = (t) => rows.find((r) => r.key.template === t).label;
+      return isDeepStrictEqual([at("tpl-day7").stepName, at("tpl-day7").stepOrder, at("tpl-day7").stepCount], ["Day 7 check-in", 2, 1]) && at("tpl-renew").stepName === null && at("tpl-renew").stepCount === 2 &&
+        at("tpl-unlisted").stepCount === 0 && rows.some((r) => r.key.template === null && r.label.template === null);
+    })());
+
+  {
+    // One template sent by two programs, on a different step in each (the dimension keeps a use per program).
+    const shared = structuredClone(GOLD);
+    shared.dimensions.templates.find((t) => t.id === "tpl-welcome").uses.push({ programId: "p-unlisted", stepName: "Intro", stepOrder: 4, stepCount: 1 });
+    for (const r of shared.facts.byTemplate) if (r.programId === "p-unlisted") r.templateId = "tpl-welcome";
+    const rows = runQuery(shared, { templates: ["tpl-welcome"] }, { groupBy: ["program", "template"], metrics: ["sent"] }).rows;
+    const of = (p) => rows.find((r) => r.key.program === p)?.label;
+    check("template grain: a template two programs send is named with the step of THAT program in each row, and with no step when the row spans programs",
+      rows.length === 2 && of("p-onboard").stepName === "Welcome" && of("p-onboard").stepOrder === 1 && of("p-unlisted").stepName === "Intro" && of("p-unlisted").stepOrder === 4 &&
+        runQuery(shared, {}, { groupBy: ["template"], metrics: ["sent"] }).rows.find((r) => r.key.template === "tpl-welcome").label.stepName === null, rows.map((r) => r.label));
+  }
+
+  // ── Against the tenant's own rows (not the snapshot's) ────────────────────
+  {
+    const tenant = buildTenant();
+    const months = new Set(GOLD.dimensions.months);
+    const want = new Map();
+    for (const r of tenant.tables.email_log_v2) {
+      if (r.Source !== "Advanced Outreach" || r.AddressType !== "To" || !months.has(r.ExecutedDate.slice(0, 7))) continue;
+      const m = want.get(r.SourceId) ?? { sent: 0, delivered: 0, opened: 0, external: 0 };
+      m.sent++;
+      if (r.IsSent === "YES" && r.IsBounced !== "YES") m.delivered++;
+      if (r.IsOpened === "YES") m.opened++;
+      if (!r.LowerCaseEmailId.endsWith("@acme.com")) m.external++;
+      want.set(r.SourceId, m);
+    }
+    const rows = runQuery(GOLD, {}, { groupBy: ["program"], metrics: ["sent", "delivered", "opened", "openRate"] }).rows;
+    const ext = runQuery(GOLD, { recipientClass: "external" }, { groupBy: ["program"], metrics: ["sent"] }).rows;
+    check("oracle: per program, sent, delivered, opened and the open rate equal a direct count of the fictional tenant's delivery-log rows; external sent equals the rows whose address is not internal",
+      rows.length === 5 && rows.every((r) => {
+        const w = want.get(r.key.program);
+        return r.cells.sent.value === w.sent && r.cells.delivered.value === w.delivered && r.cells.opened.value === w.opened && r.cells.openRate.value === w.opened / w.delivered;
+      }) && ext.every((r) => r.cells.sent.value === want.get(r.key.program).external),
+      rows.map((r) => [r.key.program, values(r, ["sent", "delivered", "opened"]), want.get(r.key.program)]));
+  }
+
+  // ── Rates ──────────────────────────────────────────────────────────────────
+  {
+    const r = runQuery(GOLD, { programs: ["p-onboard"] }, { groupBy: ["program"], metrics: ["openRate", "deliveredRate", "bounceRate", "rejectedRate", "unsubscribeRate", "spamRate"] }).rows[0].cells;
+    const m = sumRows(T.filter((x) => x.programId === "p-onboard"));
+    check("rates: open rate divides by delivered; the delivered, bounce, rejected, unsubscribe and spam rates divide by sent",
+      r.openRate.value === m.opened / m.delivered && r.deliveredRate.value === m.delivered / m.sent && r.bounceRate.value === m.bounced / m.sent && r.rejectedRate.value === m.rejected / m.sent &&
+        r.unsubscribeRate.value === m.unsubscribed / m.sent && r.spamRate.value === m.spamComplaints / m.sent, r);
+    // A program whose every attempt bounced: delivered 0, opened 0.
+    const dead = structuredClone(GOLD);
+    for (const x of dead.facts.byTemplate) if (x.programId === "p-unlisted") Object.assign(x, { delivered: 0, opened: 0, clicked: 0 });
+    const cells = runQuery(dead, { programs: ["p-unlisted"] }, { groupBy: ["program"], metrics: ["delivered", "openRate", "clickRate", "bounceRate"] }).rows[0].cells;
+    check("rates: a zero denominator gives NO rate — null with the reason, shown as a dash, never 0% — while a rate with a real denominator beside it is still computed",
+      cells.delivered.value === 0 && cells.openRate.value === null && cells.openRate.why === "zero-denominator" && formatCell("openRate", cells.openRate) === NO_VALUE &&
+        cells.clickRate.value === null && cells.clickRate.why === "zero-denominator" && cells.bounceRate.value !== null, cells);
+    check("rates: a filter that keeps no row gives null rates, never 0%", runQuery(GOLD, { months: ["2031-01"] }, { groupBy: [], metrics: ["openRate", "bounceRate"] }).total.cells.openRate.value === null);
+  }
+
+  // ── Uniques: exact per program; per month where pre-computed; no value otherwise ──
+  {
+    const U = GOLD.facts.uniques;
+    const ids = ["uniqueRecipients", "accountsReached", "participantRecords"];
+    const win = (p) => U.find((u) => u.programId === p && u.scope === "window");
+    const mon = (p, m) => U.find((u) => u.programId === p && u.scope === "month" && u.month === m);
+    const full = runQuery(GOLD, {}, { groupBy: ["program"], metrics: ids });
+    check("uniques: over the whole window, each program's three distinct counts are the snapshot's window row, exactly",
+      full.rows.length === 5 && full.rows.every((r) => isDeepStrictEqual(values(r, ids), { uniqueRecipients: win(r.key.program).people, accountsReached: win(r.key.program).accounts, participantRecords: win(r.key.program).participantRecords })));
+    check("uniques are never summed across programs: the total row has no value for any of them, and neither has a query that does not group by program",
+      ids.every((id) => full.total.cells[id].value === null && full.total.cells[id].why === "not-additive") &&
+        ids.every((id) => runQuery(GOLD, {}, { groupBy: ["month"], metrics: ids }).rows.every((r) => r.cells[id].value === null && r.cells[id].why === "not-additive")) &&
+        full.rows.reduce((s, r) => s + r.cells.uniqueRecipients.value, 0) > 0);
+    const single = runQuery(GOLD, { months: ["2026-07"] }, { groupBy: ["program"], metrics: ids });
+    check("uniques: for a single month, the month row; grouped by program and month, each month's row",
+      single.rows.every((r) => r.cells.uniqueRecipients.value === mon(r.key.program, "2026-07").people && r.cells.accountsReached.value === mon(r.key.program, "2026-07").accounts) &&
+        runQuery(GOLD, {}, { groupBy: ["program", "month"], metrics: ids }).rows.every((r) => r.cells.uniqueRecipients.value === mon(r.key.program, r.key.month).people && r.cells.participantRecords.value === mon(r.key.program, r.key.month).participantRecords));
+    const two = runQuery(GOLD, { months: ["2026-07", "2026-08"] }, { groupBy: ["program"], metrics: ids });
+    check("uniques: for any other date range there is NO figure — null with the reason, shown as a dash — never the sum of two months",
+      two.rows.length > 0 && two.rows.every((r) => ids.every((id) => r.cells[id].value === null && r.cells[id].why === "needs-full-window-or-one-month" && formatCell(id, r.cells[id]) === NO_VALUE)));
+    const ext = runQuery(GOLD, { recipientClass: "external" }, { groupBy: ["program"], metrics: ids });
+    const int = runQuery(GOLD, { recipientClass: "internal" }, { groupBy: ["program"], metrics: ids });
+    check("uniques: the external filter reads the external counts; the internal filter has none, and says so (a distinct count cannot be had by subtraction)",
+      ext.rows.every((r) => r.cells.uniqueRecipients.value === win(r.key.program).external.people && r.cells.accountsReached.value === win(r.key.program).external.accounts) &&
+        ext.rows.some((r) => r.cells.uniqueRecipients.value !== win(r.key.program).people) && int.rows.length > 0 && int.rows.every((r) => r.cells.uniqueRecipients.value === null && r.cells.uniqueRecipients.why === "class-not-pulled"));
+    check("uniques: a template filter, a template grouping or the account grain has no distinct count",
+      [runQuery(GOLD, { templates: ["tpl-welcome"] }, { groupBy: ["program"], metrics: ids }), runQuery(GOLD, {}, { groupBy: ["program", "template"], metrics: ids }), runQuery(GOLD, { accountBuckets: ["account"] }, { groupBy: ["program"], metrics: ids })]
+        .every((r) => r.rows.length > 0 && r.rows.every((x) => ids.every((id) => x.cells[id].value === null && x.cells[id].why === "per-program-only"))));
+    const off = runQuery(OFF, {}, { groupBy: ["program"], metrics: ids });
+    check("participant records with step detail off: no value, never 0, and the reason is the snapshot's own marker; the other two counts are still there",
+      off.rows.length > 0 && off.rows.every((r) => r.cells.participantRecords.value === null && r.cells.participantRecords.why === OFF.meta.participantRecords.reason && r.cells.uniqueRecipients.value > 0) &&
+        OFF.meta.participantRecords.reason === "step-detail-off" && reasonText("step-detail-off").includes("step detail"));
+  }
+
+  // ── Clicks: three tracking states, and no value under not-tracked ─────────
+  {
+    const byTpl = runQuery(GOLD, {}, { groupBy: ["template"], metrics: ["clicked", "clickRate", "delivered"] }).rows;
+    const at = (t) => byTpl.find((r) => r.key.template === t).cells;
+    check("clicks: a tracked template with no click reads 0 and 0.0% — a real zero",
+      isDeepStrictEqual(at("tpl-nps").clicked, { value: 0, state: "tracked" }) && at("tpl-nps").clickRate.value === 0 && formatCell("clicked", at("tpl-nps").clicked) === "0" && formatCell("clickRate", at("tpl-nps").clickRate) === "0.0%");
+    check("clicks: a not-tracked template has NO value — not 0 — and reads \"Not tracked\"; its rate has none either",
+      at("tpl-renew-b").clicked.value === null && at("tpl-renew-b").clicked.state === "not-tracked" && at("tpl-renew-b").clickRate.value === null && formatCell("clicked", at("tpl-renew-b").clicked) === NOT_TRACKED &&
+        formatCell("clickRate", at("tpl-renew-b").clickRate) === NOT_TRACKED);
+    check("clicks: an unknown template shows its value with the marker, never a bare number",
+      at("tpl-day7").clicked.state === "unknown" && at("tpl-day7").clicked.value === 0 && formatCell("clicked", at("tpl-day7").clicked) === `0 ${UNKNOWN_MARK}` && formatCell("clickRate", at("tpl-day7").clickRate) === `0.0% ${UNKNOWN_MARK}` &&
+        byTpl.find((r) => r.key.template === null).cells.clicked.state === "unknown");
+    const byProgram = runQuery(GOLD, {}, { groupBy: ["program"], metrics: ["clicked", "clickRate"] }).rows;
+    check("clicks: with no filter, a program's state is the snapshot's own roll-up (tracked only when every template is), for every program",
+      byProgram.length === 5 && byProgram.every((r) => r.cells.clicked.state === programClickAvailability(GOLD, r.key.program).state) && new Set(byProgram.map((r) => r.cells.clicked.state)).size >= 2,
+      byProgram.map((r) => [r.key.program, r.cells.clicked.state]));
+    check("clicks: the roll-up follows the filter — p-onboard is unknown as a whole, tracked once the filter leaves only its tracked template",
+      runQuery(GOLD, { programs: ["p-onboard"] }, { groupBy: ["program"], metrics: ["clicked"] }).rows[0].cells.clicked.state === "unknown" &&
+        isDeepStrictEqual(runQuery(GOLD, { programs: ["p-onboard"], templates: ["tpl-welcome"] }, { groupBy: ["program"], metrics: ["clicked"] }).rows[0].cells.clicked, { value: T.filter((r) => r.templateId === "tpl-welcome").reduce((s, r) => s + r.clicked, 0), state: "tracked" }));
+    // The stored count of a not-tracked template must never surface, even were it non-zero.
+    const seeded = structuredClone(GOLD);
+    for (const x of seeded.facts.byTemplate) if (x.templateId === "tpl-renew-b") x.clicked = 5;
+    for (const x of seeded.facts.byStep) if (x.templateId === "tpl-renew-b") x.clicked = 5;
+    const renew = runQuery(seeded, { programs: ["p-renew"] }, { groupBy: ["program"], metrics: ["clicked"] }).rows[0].cells.clicked;
+    // Both of p-renew's templates read not-tracked from their KB docs (TPL-1), so the program has no figure at all; with
+    // tpl-renew read as unknown instead, the program's figure is tpl-renew's count and leaves tpl-renew-b's seeded 5 out.
+    const unknownRenew = structuredClone(seeded);
+    unknownRenew.meta.metricAvailability.clicks.templates["tpl-renew"].state = "unknown";
+    const renew2 = runQuery(unknownRenew, { programs: ["p-renew"] }, { groupBy: ["program"], metrics: ["clicked"] }).rows[0].cells.clicked;
+    check("clicks: a not-tracked template's stored count never stands in — seeded with 5 a row, the template still has no value, in the template and the step table, and its program's figure leaves it out",
+      runQuery(seeded, { templates: ["tpl-renew-b"] }, { groupBy: ["template"], metrics: ["clicked"] }).rows[0].cells.clicked.value === null &&
+        runQuery(seeded, { programs: ["p-renew"] }, { groupBy: ["step"], metrics: ["clicked"] }).rows.filter((r) => r.label.templateId === "tpl-renew-b").every((r) => r.cells.clicked.value === null) &&
+        renew.state === "not-tracked" && renew.value === null && renew2.state === "unknown" && renew2.value === T.filter((r) => r.templateId === "tpl-renew").reduce((s, r) => s + r.clicked, 0), [renew, renew2]);
+    const acc = runQuery(GOLD, { accountBuckets: ["account"] }, { groupBy: ["program", "account"], metrics: ["clicked"] }).rows;
+    check("clicks at the account grain carry the program's roll-up, since an account row names no template",
+      acc.length > 0 && acc.every((r) => r.cells.clicked.state === programClickAvailability(GOLD, r.key.program).state));
+    const across = runQuery(GOLD, { accountBuckets: ["account"] }, { groupBy: ["account"], metrics: ["clicked"] }).rows;
+    const programsOf = (key) => [...new Set(GOLD.facts.byAccount.filter((r) => r.accountKey === key).map((r) => r.programId))];
+    const mixed = across.filter((r) => new Set(programsOf(r.key.account).map((p) => programClickAvailability(GOLD, p).state)).size > 1);
+    check("clicks at the account grain, one account across several programs: the state is the roll-up of ALL of them — an account a tracked and an unknown program both send to reads unknown, whichever comes first; an account only a not-tracked program sends to reads not-tracked",
+      mixed.length > 0 && mixed.every((r) => r.cells.clicked.state === "unknown") &&
+        // Seen through one not-tracked program alone (the program filter), every account reads not-tracked (since S5 every kept account has rows on every program it is on, so no account is on a not-tracked program only).
+        (() => { const only = runQuery(GOLD, { accountBuckets: ["account"], programs: ["p-renew"] }, { groupBy: ["account"], metrics: ["clicked"] }).rows; return only.length > 0 && only.every((r) => r.cells.clicked.state === "not-tracked"); })() &&
+        across.every((r) => r.cells.clicked.state === rollUpTracking(/** @type {any} */ (Object.fromEntries([["tracked", "tracked"], ["notTracked", "not-tracked"], ["unknown", "unknown"]].map(([k, st]) => [k, programsOf(r.key.account).filter((p) => programClickAvailability(GOLD, p).state === st).length]))))),
+      across.map((r) => [r.key.account, r.cells.clicked.state, programsOf(r.key.account)]));
+    check("rollUpTracking: all tracked is tracked, all not-tracked is not-tracked, any mix and nothing at all are unknown",
+      rollUpTracking({ tracked: 2, notTracked: 0, unknown: 0 }) === "tracked" && rollUpTracking({ tracked: 0, notTracked: 3, unknown: 0 }) === "not-tracked" && rollUpTracking({ tracked: 1, notTracked: 1, unknown: 0 }) === "unknown" &&
+        rollUpTracking({ tracked: 1, notTracked: 0, unknown: 1 }) === "unknown" && rollUpTracking({ tracked: 0, notTracked: 0, unknown: 0 }) === "unknown");
+  }
+
+  // ── Survey responses: program level, and a rate on the all-time basis only ──
+  {
+    const ids = ["submitted", "partiallySubmitted", "anyResponse", "surveyParticipants", "responseRate"];
+    const all = readResponses(GOLD, "p-nps");
+    const rows = runQuery(GOLD, {}, { groupBy: ["program"], metrics: ids }).rows;
+    const nps = rows.find((r) => r.key.program === "p-nps").cells;
+    check("responses: per program over the whole window, the all-time counts with the all-time denominator, and the rate from that one pair",
+      nps.submitted.value === all.submitted && nps.partiallySubmitted.value === all.partiallySubmitted && nps.anyResponse.value === all.submitted + all.partiallySubmitted && nps.surveyParticipants.value === all.participants &&
+        nps.responseRate.value === (all.submitted + all.partiallySubmitted) / all.participants && ids.every((id) => nps[id].basis === "all-time" && nps[id].state === "tracked") && formatCell("responseRate", nps.responseRate).endsWith("%"), nps);
+    const other = rows.find((r) => r.key.program === "p-onboard").cells;
+    check("responses: a program that sent no survey has no value for any of them — never 0",
+      ids.every((id) => other[id].value === null && other[id].state === "not-tracked" && formatCell(id, other[id]) === NO_VALUE));
+    const months = runQuery(GOLD, { months: ["2026-07"] }, { groupBy: ["program"], metrics: ids }).rows.find((r) => r.key.program === "p-nps").cells;
+    const m = readResponses(GOLD, "p-nps", ["2026-07"]);
+    check("responses: under a date filter, the months' counts and NO rate and NO denominator — a window count never sits beside the all-time denominator",
+      months.submitted.value === m.submitted && months.submitted.basis === "months" && months.responseRate.value === null && months.responseRate.why === "all-time-basis-only" && months.surveyParticipants.value === null);
+    const trend = runQuery(GOLD, { programs: ["p-nps"] }, { groupBy: ["program", "month"], metrics: ["anyResponse", "responseRate"] }).rows;
+    check("responses: grouped by month, each response month's own count (the trend), with no rate",
+      trend.length > 0 && trend.every((r) => r.cells.anyResponse.value === readResponses(GOLD, "p-nps", [r.key.month]).anyResponse && r.cells.responseRate.value === null) &&
+        trend.reduce((s, r) => s + r.cells.anyResponse.value, 0) === GOLD.facts.responses.filter((r) => r.programId === "p-nps").reduce((s, r) => s + r.submitted + r.partiallySubmitted, 0));
+    check("responses are program level: no value by template, by step, at the account grain or under a template filter",
+      [runQuery(GOLD, {}, { groupBy: ["program", "template"], metrics: ids }), runQuery(GOLD, {}, { groupBy: ["step"], metrics: ids }), runQuery(GOLD, {}, { groupBy: ["account"], metrics: ids }), runQuery(GOLD, { templates: ["tpl-nps"] }, { groupBy: ["program"], metrics: ids })]
+        .every((r) => r.rows.every((x) => ids.every((id) => x.cells[id].value === null && x.cells[id].why === "program-level-only"))));
+    const unread = structuredClone(GOLD);
+    unread.meta.metricAvailability.responses.programs["p-pilot"].state = "unknown";
+    check("responses: a sum over a survey program and programs that sent none is TRACKED (no survey adds a real 0), in a total and in a trend; it is unknown only when a program's responses could not be read",
+      runQuery(GOLD, {}, { groupBy: ["program"], metrics: ids }).total.cells.anyResponse.state === "tracked" && runQuery(GOLD, {}, { groupBy: ["month"], metrics: ["anyResponse"] }).rows.every((r) => r.cells.anyResponse.state === "tracked") &&
+        formatCell("anyResponse", runQuery(GOLD, {}, { groupBy: [], metrics: ["anyResponse"] }).total.cells.anyResponse) === String(all.submitted + all.partiallySubmitted) &&
+        runQuery(unread, {}, { groupBy: [], metrics: ["anyResponse"] }).total.cells.anyResponse.state === "unknown" && runQuery(GOLD, { programs: ["p-onboard", "p-pilot"] }, { groupBy: [], metrics: ["anyResponse"] }).total.cells.anyResponse.state === "not-tracked");
+    const tot = runQuery(GOLD, {}, { groupBy: ["program"], metrics: ids }).total.cells;
+    check("responses: the total adds the programs that sent a survey (the all-time table is additive across programs)",
+      tot.surveyParticipants.value === GOLD.facts.responseParticipants.reduce((s, r) => s + r.participants, 0) && tot.anyResponse.value === GOLD.facts.responseParticipants.reduce((s, r) => s + r.submitted + r.partiallySubmitted, 0));
+  }
+
+  // ── A table the snapshot does not hold ─────────────────────────────────────
+  {
+    const acc = runQuery(OFF, {}, { groupBy: ["program", "account"], metrics: ["sent", "openRate"] });
+    const step = runQuery(OFF, {}, { groupBy: ["step"], metrics: ["sent"] });
+    check("accounts not pulled: an account query returns NO rows and the reason from the snapshot's own marker — never an empty table that reads as \"no accounts\"",
+      acc.rows.length === 0 && acc.total === null && acc.unavailable?.reason === OFF.meta.accounts.reason && acc.unavailable.reason === "accounts-off" && /accounts off/.test(reasonText(acc.unavailable.reason)));
+    check("a snapshot made before the account switch existed (no marker) is read as holding accounts: the same query returns rows",
+      (() => {
+        const legacy = structuredClone(GOLD);
+        delete legacy.meta.accounts;
+        const r = runQuery(legacy, {}, { groupBy: ["account"], metrics: ["sent"] });
+        return r.unavailable === null && r.rows.length > 0;
+      })());
+    check("step detail off: a step query returns no rows and says why", step.rows.length === 0 && step.unavailable?.reason === "step-detail-off");
+    check("accounts REACHED is still there with accounts off: it is a distinct count per program, not the account table",
+      runQuery(OFF, {}, { groupBy: ["program"], metrics: ["accountsReached"] }).rows.every((r) => r.cells.accountsReached.value != null));
+  }
+
+  // ── Row provenance, and the incomplete period ─────────────────────────────
+  {
+    const carriedMonths = SEL.meta.refresh.carriedMonths;
+    const byMonth = runQuery(SEL, {}, { groupBy: ["month"], metrics: ["sent"] }).rows;
+    const facts = SEL.facts.byTemplate;
+    check("provenance: a row that adds up carried-forward facts says so; a row over re-pulled months does not",
+      byMonth.filter((r) => r.carried).length > 0 && byMonth.every((r) => r.carried === facts.some((x) => x.month === r.key.month && x.provenance === "carried")) &&
+        byMonth.filter((r) => r.carried).every((r) => carriedMonths.includes(r.key.month)) && runQuery(SEL, { months: SEL.meta.refresh.pulledMonths }, { groupBy: ["program"], metrics: ["sent"] }).rows.every((r) => !r.carried) &&
+        runQuery(SEL, {}, { groupBy: ["program"], metrics: ["sent"] }).rows.some((r) => r.carried) && runQuery(GOLD, {}, { groupBy: ["program"], metrics: ["sent"] }).rows.every((r) => !r.carried));
+    const inc = GOLD.meta.incompleteFrom.slice(0, 7);
+    check("incomplete period: a row is marked when it includes sends on or after incompleteFrom's month",
+      runQuery(GOLD, {}, { groupBy: ["month"], metrics: ["sent"] }).rows.every((r) => r.incomplete === (r.key.month >= inc)) && runQuery(GOLD, { months: ["2026-06"] }, { groupBy: ["program"], metrics: ["sent"] }).rows.every((r) => !r.incomplete) &&
+        runQuery(GOLD, {}, { groupBy: ["program"], metrics: ["sent"] }).rows.some((r) => r.incomplete));
+  }
+
+  // ── Scope, sort, having, limit, refusals ──────────────────────────────────
+  {
+    const active = runQuery(GOLD, { statuses: ["PROCESSING"] }, { groupBy: ["program"], metrics: ["sent"] });
+    check("scope: the result says how many programs the status filter hides, the months it covers and whether that is the whole window",
+      active.scope.programs === 4 && active.scope.programsHiddenByStatus === 1 && active.scope.fullWindow === true && runQuery(GOLD, { months: ["2026-06"] }, { groupBy: [], metrics: ["sent"] }).scope.fullWindow === false &&
+        runQuery(GOLD, { programs: ["p-renew"], statuses: ["PROCESSING"] }, { groupBy: [], metrics: ["sent"] }).scope.programsHiddenByStatus === 1);
+    const desc = runQuery(GOLD, {}, { groupBy: ["program"], metrics: ["sent", "openRate"], sort: [{ metric: "sent", dir: "desc" }] }).rows.map((r) => r.cells.sent.value);
+    const byName = runQuery(GOLD, {}, { groupBy: ["program"], metrics: ["sent"], sort: [{ dim: "program" }] }).rows.map((r) => r.label.program);
+    const nullsLast = runQuery(GOLD, {}, { groupBy: ["template"], metrics: ["clicked"], sort: [{ metric: "clicked", dir: "asc" }] }).rows.map((r) => r.cells.clicked.value);
+    const nullsLastDesc = runQuery(GOLD, {}, { groupBy: ["template"], metrics: ["clicked"], sort: [{ metric: "clicked", dir: "desc" }] }).rows.map((r) => r.cells.clicked.value);
+    check("sort: by a metric in either direction, by a dimension's name, and a row with no value sorts last whichever the direction",
+      isDeepStrictEqual(desc, [...desc].sort((a, b) => b - a)) && isDeepStrictEqual(byName, [...byName].sort((a, b) => (a.toLowerCase() < b.toLowerCase() ? -1 : 1))) && nullsLast[nullsLast.length - 1] === null && nullsLastDesc[nullsLastDesc.length - 1] === null &&
+        nullsLast.indexOf(null) > 0 && nullsLast.slice(nullsLast.indexOf(null)).every((v) => v === null) && nullsLastDesc.slice(nullsLastDesc.indexOf(null)).every((v) => v === null) && isDeepStrictEqual(nullsLast.filter((v) => v != null), [...nullsLast.filter((v) => v != null)].sort((a, b) => a - b)), { desc, byName, nullsLast, nullsLastDesc });
+    const order = runQuery(GOLD, { programs: ["p-onboard"] }, { groupBy: ["program", "template"], metrics: ["sent"], sort: [{ label: "stepOrder" }] }).rows.map((r) => r.label.stepOrder);
+    check("sort: by a label field — templates in the order of the steps they sit on", isDeepStrictEqual(order, [1, 2]), order);
+    const having = runQuery(GOLD, { accountBuckets: ["account"] }, { groupBy: ["account"], metrics: ["delivered", "openRate"], having: [{ metric: "delivered", gte: 12 }], sort: [{ metric: "openRate", dir: "asc" }], limit: 3 });
+    const perAccount = new Map();
+    for (const r of A.filter((x) => x.bucket === "account")) perAccount.set(r.accountKey, { delivered: (perAccount.get(r.accountKey)?.delivered ?? 0) + r.delivered, opened: (perAccount.get(r.accountKey)?.opened ?? 0) + r.opened });
+    const wantLow = [...perAccount].filter(([, m]) => m.delivered >= 12).map(([k, m]) => [k, m.opened / m.delivered]).sort((a, b) => a[1] - b[1] || (a[0] < b[0] ? -1 : 1)).slice(0, 3).map(([, rate]) => rate);
+    check("having and limit: the lowest open rates among accounts with at least N delivered, cut to the first three — the watch list's query",
+      having.rows.length === 3 && isDeepStrictEqual(having.rows.map((r) => r.cells.openRate.value), wantLow) && having.rows.every((r) => r.cells.delivered.value >= 12), [having.rows.map((r) => r.cells), wantLow]);
+    check("refusals: an unknown metric, an unknown dimension, a sort or a having on something the query does not compute, and a bad recipient class each fail loudly",
+      throws(() => runQuery(GOLD, {}, { groupBy: [], metrics: ["opens"] }), /unknown metric "opens"/) && throws(() => runQuery(GOLD, {}, { groupBy: ["status"], metrics: ["sent"] }), /unknown dimension "status"/) &&
+        throws(() => runQuery(GOLD, {}, { groupBy: [], metrics: ["sent"], sort: [{ metric: "opened" }] }), /sort names "opened"/) && throws(() => runQuery(GOLD, {}, { groupBy: [], metrics: ["sent"], having: [{ metric: "opened", gte: 1 }] }), /having names "opened"/) &&
+        throws(() => runQuery(GOLD, {}, { groupBy: ["program"], metrics: ["sent"], sort: [{ dim: "month" }] }), /does not group by/) && throws(() => runQuery(GOLD, { recipientClass: /** @type {*} */ ("everyone") }, { groupBy: [], metrics: ["sent"] }), /recipientClass must be/));
+    check("every dimension the engine names can be grouped by, alone, over the table it belongs to",
+      DIMENSIONS.every((d) => {
+        const r = runQuery(GOLD, {}, { groupBy: [d], metrics: ["sent"] });
+        return r.unavailable === null && r.rows.reduce((s, x) => s + x.cells.sent.value, 0) === r.total.cells.sent.value && r.total.cells.sent.value === sumRows(T).sent;
+      }));
+  }
+
+  // ── The registry: one statement, three readers ────────────────────────────
+  {
+    check("registry: every metric has a label and a plain-language definition; every rate names two registry metrics; every caveat a metric names has its text",
+      METRICS.every((m) => m.label && m.definition && m.definition.endsWith(".")) && METRICS.filter((m) => m.numerator).every((m) => metric(m.numerator) && metric(m.denominator)) &&
+        METRICS.every((m) => m.caveats.every((c) => typeof CAVEATS[c] === "function")) && METRICS.length === new Set(METRICS.map((m) => m.id)).size);
+    check("registry: the send measures are the snapshot's own, in its order, and the count rules decide what one attempt adds to",
+      isDeepStrictEqual([...SEND_MEASURES], Object.keys(T[0]).filter((k) => typeof T[0][k] === "number")) &&
+        isDeepStrictEqual(measuresCounted({ wentOut: true, opened: true }), ["sent", "delivered", "opened"]) && isDeepStrictEqual(measuresCounted({ wentOut: true, bounced: true, opened: true }), ["sent", "bounced", "failed", "opened"]) &&
+        isDeepStrictEqual(measuresCounted({}), ["sent"]) && isDeepStrictEqual(measuresCounted({ bounced: true, rejected: true, unsubscribed: true, spam: true }), ["sent", "bounced", "rejected", "unsubscribed", "spamComplaints", "failed"]));
+    const all = glossary(METRICS.map((m) => m.id), GOLD);
+    check("glossary: every metric has all five parts — the object, the field or fields and the value that counts, the filters every count carries, the date field, and the calculation — and every rate says what a zero denominator gives",
+      all.length === METRICS.length && all.every((e) => e.object && e.fields && Array.isArray(e.filters) && e.filters.length > 0 && e.dateField && e.calculation) &&
+        all.filter((e) => metric(e.id).numerator).every((e) => /never 0%/.test(e.zeroDenominator)) && all.filter((e) => !metric(e.id).numerator).every((e) => e.zeroDenominator === null));
+    const g = Object.fromEntries(all.map((e) => [e.id, e]));
+    const where = (family, extra = {}) => buildQuery({ family, cls: "all", window: { start: "2026-06-01", end: "2026-07-01" }, ...extra }).where;
+    const said = (c) => `${c.field} = ${typeof c.value === "string" ? JSON.stringify(c.value) : c.value}`;
+    const ran = (conds, c) => conds.some((w) => w.leftOperand.fieldName === c.field && w.operator === c.op && w.rightOperand.value === c.value);
+    check("glossary = what ran: the filters and the date field each entry states are the ones the adapter's own query carries, for the delivery log, the step log and the survey object",
+      SOURCES.log.standing.every((c) => ran(where("template"), c) && g.sent.filters.includes(said(c))) && where("template").some((w) => w.leftOperand.fieldName === g.sent.dateField && w.operator === "GTE") &&
+        where("template").some((w) => w.leftOperand.fieldName === g.sent.dateField && w.operator === "LT") &&
+        SOURCES.steps.standing.every((c) => ran(where("step"), c) && g.participantRecords.filters.includes(said(c))) && where("participants-window").some((w) => w.leftOperand.fieldName === g.participantRecords.dateField) &&
+        SOURCES.survey.standing.every((c) => ran(where("resp-total"), c) && ran(where("resp-participants"), c) && ran(where("resp-month"), c) && g.submitted.filters.includes(said(c))) &&
+        ran(where("resp-total"), SOURCES.survey.responded) && where("resp-month").some((w) => w.leftOperand.fieldName === SOURCES.survey.dateField) && g.submitted.dateField.includes(SOURCES.survey.dateField),
+      [g.sent.filters, g.participantRecords.filters, g.submitted.filters]);
+    const grouped = (family) => buildQuery({ family, cls: "all", window: { start: "2026-06-01", end: "2026-07-01" }, of: "people" });
+    check("glossary = what ran: the flag fields a count names are the ones the adapter groups by, and the distinct counts go through the lookups named",
+      Object.values(SOURCES.log.flags).every((f) => grouped("template").group.some((x) => x.name === f.field)) && Object.values(SOURCES.steps.flags).every((f) => grouped("step").group.some((x) => x.name === f.field)) &&
+        g.delivered.fields === "IsSent = YES and IsBounced is not YES" && g.opened.fields === "IsOpened = YES" && g.sent.fields.startsWith("every row") && g.bounced.perStep.includes("Bounce = true") &&
+        g.delivered.perStep.startsWith("ao_emails: EmailSend = true and Bounce is not true") && g.uniqueRecipients.fields === "distinct person.Gsid, through GsPersonId" &&
+        grouped("uniques-window").show[0].fieldPath.hops[0].through === "GsPersonId" && g.accountsReached.fields.includes("GsCompanyId") && g.participantRecords.object === "ao_emails" && g.responseRate.object === "survey_participant");
+    check("glossary: a rate states its numerator and its denominator by name, and what is done after the read is stated: content-link classification with its patterns, the tenant's unsubscribe input, and distinct counts never summed",
+      g.openRate.calculation === "Opened ÷ Delivered" && g.clickRate.calculation === "Clicked ÷ Delivered" && g.bounceRate.calculation === "Bounced ÷ Sent" && g.responseRate.calculation === "Any response ÷ Survey participants" &&
+        g.openRate.fields.includes("IsOpened = YES") && g.openRate.fields.includes("IsBounced is not YES") && g.clicked.afterRead.some((a) => a.includes("mailto") && a.includes("unsubscribe|opt")) &&
+        g.clicked.afterRead.some((a) => a.includes("www.acme.com/mail-settings")) && describeMetric("clicked", OFF).afterRead.some((a) => /No unsubscribe link of the tenant's own/.test(a)) &&
+        g.uniqueRecipients.afterRead.some((a) => /never added/.test(a)) && g.submitted.afterRead.some((a) => a.includes("AOParticipantId")) && /RespondedDate/.test(g.submitted.dateField));
+    check("glossary: the per-step source appears only when the snapshot carries step detail; a rate's glossary brings the two metrics it divides; the recipient-class note names this pull's domains",
+      describeMetric("delivered", OFF).perStep === null && describeMetric("delivered", null).perStep === null && isDeepStrictEqual(glossary(["openRate"], GOLD).map((e) => e.id), ["delivered", "opened", "openRate"]) &&
+        glossaryNotes(GOLD)[0].includes("@acme.com") && /No internal domain/.test(glossaryNotes(/** @type {*} */ ({ meta: { params: { internalDomains: [] } } }))[0]));
+    check("UI differences are stated where they exist: Sent and Delivered against the program analytics page, the classic view's bounce percentage, content-link clicks",
+      /every attempt/.test(g.sent.uiParity) && /subtracts every bounce event/.test(g.delivered.uiParity) && /classic Journey Analytics/.test(g.bounced.uiParity) && /classic Journey Analytics/.test(g.bounceRate.uiParity) && /rarely match/.test(g.clicked.uiParity));
+  }
+
+  // ── Health: the error rate, and what a reader is told when health is missing (HLT-1) ──
+  {
+    const { healthAvailability, silentPrograms, maskMessage, MASK_RULES } = Q;
+    const of = (rows, k) => rows.reduce((x, r) => x + r[k], 0);
+    const byProgram = runQuery(GOLD, {}, { groupBy: ["program"], metrics: ["sent", "bounced", "rejected", "failed", "errorRate"] });
+    check("health: the error rate is send failures over Sent — per program it equals a straight sum of the rows' failed over their sent, and so does the total",
+      byProgram.rows.length > 2 && byProgram.rows.some((r) => r.cells.failed.value > 0) &&
+        byProgram.rows.every((r) => {
+          const rows = GOLD.facts.byTemplate.filter((x) => x.programId === r.key.program);
+          return r.cells.failed.value === of(rows, "failed") && r.cells.errorRate.value === of(rows, "failed") / of(rows, "sent");
+        }) && byProgram.total.cells.errorRate.value === of(GOLD.facts.byTemplate, "failed") / of(GOLD.facts.byTemplate, "sent"));
+    const byStep = runQuery(GOLD, { recipientClass: "external" }, { groupBy: ["step"], metrics: ["failed", "errorRate"] });
+    const byAccount = runQuery(GOLD, { months: [GOLD.dimensions.months[0]] }, { groupBy: ["account"], metrics: ["failed", "errorRate"] });
+    check("health: the error rate follows every filter and grain like any send measure — by step for external recipients, by account for one month — and has no value, never 0%, where nothing was sent",
+      byStep.table === "byStep" && byStep.rows.some((r) => r.cells.errorRate.value > 0) && byAccount.table === "byAccount" && byAccount.rows.every((r) => r.cells.failed.value != null) &&
+        runQuery(GOLD, { months: ["2031-01"] }, { groupBy: [], metrics: ["errorRate"] }).total.cells.errorRate.why === "zero-denominator");
+    check("health: one attempt with both flags is one failure — the count rule is any-of, where every other count is all-of",
+      isDeepStrictEqual(measuresCounted({ bounced: true, rejected: true }), ["sent", "bounced", "rejected", "failed"]) && isDeepStrictEqual(measuresCounted({ rejected: true }), ["sent", "rejected", "failed"]) && !measuresCounted({ wentOut: true, opened: true }).includes("failed"));
+    const old = /** @type {any} */ ({ ...GOLD, meta: { ...GOLD.meta, health: undefined }, facts: { ...GOLD.facts, health: undefined, byTemplate: GOLD.facts.byTemplate.map(({ failed: _f, ...r }) => r) } });
+    const oq = runQuery(old, {}, { groupBy: ["program"], metrics: ["sent", "failed", "errorRate"] });
+    check("health: a snapshot made before failures were counted has NO failure figure — null with the reason, shown as a dash, never 0 — while Sent beside it still reads; and its health marker reads as not pulled",
+      oq.rows.length > 2 && oq.rows.every((r) => r.cells.failed.value === null && r.cells.failed.why === "measure-not-in-snapshot" && r.cells.errorRate.value === null && r.cells.errorRate.why === "measure-not-in-snapshot" && r.cells.sent.value > 0) &&
+        formatCell("errorRate", oq.rows[0].cells.errorRate) === NO_VALUE && oq.total.cells.failed.value === null && isDeepStrictEqual(healthAvailability(old), { pulled: false, reason: "predates-health", asOf: null, dayWindow: null, parts: {} }) &&
+        silentPrograms(old).unavailable.reason === "predates-health" && ["measure-not-in-snapshot", "predates-health", "call-failed", "no-schema", "no-kb", "too-large", "all-time", "not-filterable"].every((r) => REASONS[r]));
+    const g = Object.fromEntries(glossary(["failed", "errorRate"], GOLD).map((e) => [e.id, e]));
+    check("health glossary: send failures state both flags joined by OR, on the delivery log and per step; the error rate names its numerator and denominator",
+      g.failed.fields === "IsBounced = YES or IsRejected = YES" && /Bounce = true or Rejected = true/.test(g.failed.perStep) && g.errorRate.calculation === "Send failures ÷ Sent" && /never 0%/.test(g.errorRate.zeroDenominator) && g.sent && g.failed.object === "email_log_v2");
+    check("health caveats: an output that shows no health table does not carry the health caveats; one that does carries them, and the send-failure caveat rides the metric",
+      !caveatsFor(GOLD, ["sent", "openRate"]).some((c) => c.id === "schedules-from-kb" || c.id === "health-incomplete") && caveatsFor(GOLD, ["errorRate"], { health: true }).some((c) => c.id === "schedules-from-kb") &&
+        caveatsFor(GOLD, ["errorRate"]).some((c) => c.id === "failures-are-send-failures") && /participantStates: The call that reads this did not return/.test(caveatText("health-incomplete", { parts: [{ part: "participantStates", reason: "call-failed" }] })));
+    const silent = silentPrograms(GOLD);
+    const npsRow = Object.values(silent.lists).flat().find((r) => r.programId === "p-nps");
+    check("health: the health signals read the snapshot's own tables (F-491) — over this four-month golden the monthly-ingest survey program synced on its due day (ingest on-schedule, never an alarm), and with one closed month of sends in three, all of them recent, it has NO history to judge by yet: Cannot judge yet (too-new), never an alarm (F-491, 2026-10-08: the flat threshold had read a two-month-old program as No recent sends); the lists are the health lists under both names, and every signal carries its state",
+      silent.unavailable === null && silent.asOf === "2026-09-15" && silent.windowDays === 90 && isDeepStrictEqual(silent.rows, []) && npsRow.list === "cannot-judge" && npsRow.signals.why === "too-new" && npsRow.signals.ingest.state === "on-schedule" && npsRow.signals.sends.state === "no-history" && npsRow.signals.sends.rule === "none" && npsRow.signals.sends.daysSince >= 30 && Q.CANNOT_JUDGE_REASONS["too-new"].length > 0 &&
+        ["schedule", "ingest", "admissions", "entry", "steps", "sends"].every((k) => typeof npsRow.signals[k].state === "string") && Object.keys(silent.lists).join() === Object.keys(Q.HEALTH_LISTS).join() && Q.SILENT_LISTS === Q.HEALTH_LISTS && Q.programHealth === silentPrograms && silent.lists.ok.length >= 2);
+    check("F-498: a program judged onto any list but Cannot judge yet carries no why; a program on Cannot judge yet carries the reason that put it there",
+      Object.entries(silent.lists).every(([k, rows]) => rows.every((r) => (k === "cannot-judge" ? typeof r.signals.why === "string" : r.signals.why === null))) && silent.lists["cannot-judge"].length > 0 && silent.lists.ok.length > 0, Object.entries(silent.lists).map(([k, rows]) => [k, rows.map((r) => r.signals.why)]));
+    check("health: the masking rules are exported as data (five: the host rule is gone, F-492 ruled 2026-10-08 — a mail host is product text as often as a recipient's, and the samples never leave the workspace), a URL's scheme, host and path are protected from the id and number rules (its query is not), and a masked text is stable under masking",
+      MASK_RULES.length === 5 && !MASK_RULES.some((r) => r.id === "host") && Q.MASK_PROTECTED.id === "url-path" && maskMessage("to bo@c02.example.com ref 1234567") === "to <email> ref <number>" && maskMessage(maskMessage("to bo@c02.example.com ref 1234567")) === "to <email> ref <number>" && maskMessage("via mx.recipient-corp.example") === "via mx.recipient-corp.example" &&
+        maskMessage("550 Invalid Recipient - https://community.mimecast.com/docs/DOC-1369#550 [") === "550 Invalid Recipient - https://community.mimecast.com/docs/DOC-1369#550 [" && maskMessage("see https://help.example.com/articles/12345678?t=abcDEF123456xyz") === "see https://help.example.com/articles/12345678?<id>");
+    // F-492 (second reopen): the span suppresses the token and number rules ONLY; an address, a UUID or an IPv4 inside a URL's path still goes.
+    check("F-492 (second reopen) class test: a protected URL span stops the id and number rules alone — an address inside a URL's path is masked, a UUID in a path is masked, an IPv4 host is masked while the path behind it keeps its long id (the span is found on the raw text), and a named host's path's long id stays and a help link's path still equals itself",
+      maskMessage("550 5.1.1 see https://mail.acme.com/bounce/cs@acme.com for details") === "550 5.1.1 see https://mail.acme.com/bounce/<email> for details" && maskMessage("https://x.example.com/u/0f1e2d3c-4b5a-6978-8a9b-0c1d2e3f4a5b/x") === "https://x.example.com/u/<id>/x" &&
+        maskMessage("see http://10.1.2.3/path/abcDEF123456xyz") === "see http://<ip>/path/abcDEF123456xyz" && maskMessage("550 Invalid Recipient - https://community.mimecast.com/docs/DOC-1369#550 [") === "550 Invalid Recipient - https://community.mimecast.com/docs/DOC-1369#550 [" && isDeepStrictEqual([...Q.MASK_PROTECTED.suppresses], ["token", "number"]),
+      [maskMessage("550 5.1.1 see https://mail.acme.com/bounce/cs@acme.com for details"), maskMessage("https://x.example.com/u/0f1e2d3c-4b5a-6978-8a9b-0c1d2e3f4a5b/x")]);
+    check("F-495: a bounce category with no kind is a bad address whatever its expected flag says (false, or absent), and one flagged expected: true is a business rule; F-501: a stored row's kind comes from the one fallback rule, which accepts 'unknown' on a stored row and never on a category",
+      Q.categoryTable("bounceReasons", [{ id: "x", label: "X", pattern: "mailbox full", definition: "d", expected: false }])[0].kind === "bad-address" && Q.categoryTable("bounceReasons", [{ id: "x", label: "X", pattern: "mailbox full", definition: "d" }])[0].kind === "bad-address" &&
+        Q.categoryTable("bounceReasons", [{ id: "x", label: "X", pattern: "mailbox full", definition: "d", expected: true }])[0].kind === "business-rule" && Q.categoryTable("participantFailures", [{ id: "x", label: "X", pattern: "zz", definition: "d", expected: false }])[9].kind === "program-error" &&
+        Q.kindOf({ kind: "unknown" }, { stored: true }) === "unknown" && Q.kindOf({ kind: "unknown" }) === "program-error" && Q.kindOf({ kind: "unknown", expected: true }) === "business-rule" && Q.kindOf({ expected: true }, { stored: true }) === "business-rule" && Q.kindOf({ kind: "bad-address" }, { stored: true }) === "bad-address");
+    // The failure categories (S3b): bounces shipped empty, the refusals as the measured product wordings; validated as data, "other" reserved.
+    check("health: the shipped bounce category table is empty (the captured wordings await the ruling), the shipped refusal table is the nine measured product wordings, each with its KIND (business rule, bad address, program error; F-491, 2026-10-08) and the expected flag derived from it, the fourth kind 'unknown' reserved for a text no category matches (F-484, 2026-10-08), the step table the seven, the table is frozen data, and a tenant's own list is validated — unique ids, text in every field, disjoint patterns, no reserved id or kind",
+      isDeepStrictEqual(Q.FAILURE_CATEGORIES.bounceReasons, []) && Q.FAILURE_CATEGORIES.participantFailures.length === 9 && Q.FAILURE_CATEGORIES.participantFailures.filter((c) => c.kind === "business-rule").length === 6 && Q.FAILURE_CATEGORIES.participantFailures.filter((c) => c.kind === "bad-address").map((c) => c.id).join() === "bounce-list,bounced-at-send,invalid-field-value" && Q.FAILURE_CATEGORIES.participantFailures.every((c) => Q.FAILURE_KINDS.includes(c.kind) && c.kind !== "unknown" && !("expected" in c)) &&
+        // F-484, redesigned 2026-10-08: the null-address pattern is the wording's invariant core (the field label varies per program); "unknown" is the fourth kind, a text no category matches, and never a category's own; "unclassified" is its reserved id.
+        Q.FAILURE_CATEGORIES.participantFailures.find((c) => c.id === "invalid-field-value").pattern === "contains Invalid value" && isDeepStrictEqual([...Q.FAILURE_KINDS], ["business-rule", "bad-address", "program-error", "unknown"]) && Q.UNKNOWN_KIND === "unknown" && Q.UNCLASSIFIED_CATEGORY === "unclassified" && Q.kindOf({ kind: "unknown" }) === "program-error" &&
+        Q.validateCategories([{ id: "a", label: "A", pattern: "p", definition: "d", kind: "unknown" }]).some((m) => /never a category/.test(m)) && Q.validateCategories([{ id: "unclassified", label: "A", pattern: "p", definition: "d" }]).some((m) => /reserved/.test(m)) &&
+        Q.STEP_FAILURE_CATEGORIES.length === 7 && Q.STEP_FAILURE_CATEGORIES.some((c) => c.state === "SYSTEM_ERROR") && Q.STEP_FAILURE_CATEGORIES.filter((c) => c.kind === "program-error").map((c) => c.id).join() === "step-action-failed,platform-error" && Q.STEP_FAILURE_CATEGORIES.filter((c) => c.kind === "bad-address").map((c) => c.id).join() === "bounce-drop,reject-drop,bounce-list-at-send" &&
+        Q.categoryTable("participantFailures").every((c) => c.expected === (c.kind === "business-rule")) && Q.categoryTable("participantFailures", [{ id: "x", label: "X", pattern: "zz", definition: "d", expected: true }])[9].kind === "business-rule" && Q.categoryTable("bounceReasons", [{ id: "y", label: "Y", pattern: "yy", definition: "d" }])[0].kind === "bad-address" &&
+        Q.validateCategories([{ id: "a", label: "A", pattern: "p", definition: "d", kind: "odd" }]).some((m) => /kind must be one of/.test(m)) && Q.validateCategories([{ id: "a", label: "A", pattern: "p", definition: "d", kind: "bad-address", expected: true }]).some((m) => /contradicts/.test(m)) && Object.isFrozen(Q.FAILURE_CATEGORIES) && Q.OTHER_CATEGORY === "other" && Q.validateCategories([]).length === 0 &&
+        Q.validateCategories([{ id: "a", label: "A", pattern: "x y", definition: "d" }, { id: "b", label: "B", pattern: "y", definition: "d" }]).some((p) => /disjoint/.test(p)) && Q.categoryTable("bounceReasons", [{ id: "a", label: " A ", pattern: " p ", definition: "d" }])[0].label === "A" &&
+        throws(() => Q.categoryTable(/** @type {any} */ ("steps")), /no failure categories/) && throws(() => Q.categoryTable("bounceReasons", [{ id: "other", label: "A", pattern: "p", definition: "d" }]), /reserved/));
+  }
+
+  // ── The views beyond a table (DSH-4): each held to straight sums over the fixture's rows ──
+  {
+    const H = GOLD.facts.health;
+    const closed = GOLD.dimensions.months.filter((m) => m < String(GOLD.meta.incompleteFrom).slice(0, 7));
+    const sumRows = (rows, field) => rows.reduce((s, r) => s + r[field], 0);
+    const k = Q.kpiView(GOLD, { recipientClass: "all" }, { metrics: ["sent", "openRate", "uniqueRecipients"] });
+    const sentAll = sumRows(GOLD.facts.byTemplate, "sent");
+    const sentClosed = sumRows(GOLD.facts.byTemplate.filter((r) => closed.includes(r.month)), "sent");
+    const closedRows = GOLD.facts.byTemplate.filter((r) => closed.includes(r.month));
+    check("kpi view: a tile is the metric over everything the filters keep; the usual is the same figure over the window's closed months — per month for a count, as itself for a rate — and the change is a ratio for a count and percentage points for a rate; a distinct count has no total and says why; a rate carries its denominator's count as send-size context; since-last-pull is null until a refresh carries a delta",
+      k.tiles[0].cell.value === sentAll && k.tiles[0].usual.value === sentClosed / closed.length && k.tiles[0].usual.perMonth === true && k.tiles[0].usual.closedMonths === 3 && k.tiles[0].change.kind === "ratio" && Math.abs(k.tiles[0].change.value - sentClosed / 3 / (sentClosed / 3)) < 1e-12 && isDeepStrictEqual(k.tiles[0].change.months, { closed: 3, provisionalLeftOut: 1 }) &&
+        Math.abs(k.tiles[1].cell.value - sumRows(GOLD.facts.byTemplate, "opened") / sumRows(GOLD.facts.byTemplate, "delivered")) < 1e-12 && Math.abs(k.tiles[1].usual.value - sumRows(closedRows, "opened") / sumRows(closedRows, "delivered")) < 1e-12 && k.tiles[1].usual.perMonth === false && k.tiles[1].change.kind === "points" &&
+        k.tiles[1].denominator.id === "delivered" && k.tiles[1].denominator.cell.value === sumRows(GOLD.facts.byTemplate, "delivered") && k.tiles[2].cell.value === null && k.tiles[2].cell.why === "not-additive" && k.tiles[2].change === null && k.tiles.every((t) => t.sinceLastPull === null) && k.previousPulledAt === null && k.incomplete === true,
+      k.tiles.map((t) => [t.id, t.cell, t.usual, t.change]));
+    // F-531: the change compares like with like. Day 2 of a month: the provisional month's sends scaled to 2/30. The
+    // old divisor (a sum holding the provisional month over a month count counting it) read a drop that did not
+    // happen; the change over the closed months the view keeps reads level, a closed month alone reads its own
+    // ratio, the provisional month alone has no change, and a rate is compared over the closed months too.
+    {
+      const prov = String(GOLD.meta.incompleteFrom).slice(0, 7);
+      const day2 = structuredClone(GOLD);
+      for (const t of ["byTemplate", "byAccount", "byStep"]) for (const r of day2.facts[t] ?? []) if (r.month === prov) for (const m of ["sent", "delivered", "opened", "clicked", "bounced"]) if (typeof r[m] === "number") r[m] = Math.round(r[m] * 2 / 30);
+      for (const r of day2.facts.health?.bounceReasons ?? []) if (r.month === prov) r.count = Math.round(r.count * 2 / 30);
+      const D = Q.openSnapshot(day2);
+      const whole = Q.kpiView(D, { recipientClass: "all" }, { metrics: ["sent", "openRate"] });
+      const lastClosed = closed.at(-1);
+      const one = Q.kpiView(D, { months: [lastClosed] }, { metrics: ["sent"] });
+      const lastSent = sumRows(GOLD.facts.byTemplate.filter((r) => r.month === lastClosed), "sent");
+      const provOnly = Q.kpiView(D, { months: [prov] }, { metrics: ["sent"] });
+      const sentAllDay2 = sumRows(day2.facts.byTemplate, "sent");
+      check("F-531 day 2 of a month (the bounce categories' change the same: over the closed months of the period, said): the count tile's change is over the closed months the view keeps (level, 1.00, not the old divisor's drop), says it left the provisional month out, a rate's change is over the closed months too (0 points), a view of one closed month reads that month against the usual, and the provisional month alone has no change",
+        Math.abs(whole.tiles[0].change.value - 1) < 1e-12 && sentAllDay2 / 4 / (sentClosed / 3) < 0.95 && isDeepStrictEqual(whole.tiles[0].change.months, { closed: 3, provisionalLeftOut: 1 }) && Math.abs(whole.tiles[1].change.value) < 1e-9 &&
+          Math.abs(one.tiles[0].change.value - lastSent / (sentClosed / 3)) < 1e-12 && one.tiles[0].change.months.provisionalLeftOut === 0 && provOnly.tiles[0].change === null && provOnly.tiles[0].usual != null &&
+          (() => { const v = Q.healthReasonsView(D, { recipientClass: "all" }); const cats = [...v.bounces.categories, v.bounces.other].filter((c) => c && c.usualPerMonth); return cats.length > 0 && cats.every((c) => Math.abs(c.change - 1) < 1e-9) && isDeepStrictEqual(v.bounces.changeMonths, { closed: 3, provisionalLeftOut: 1 }); })(),
+        [whole.tiles.map((t) => t.change), sentAllDay2 / 4 / (sentClosed / 3), one.tiles[0].change, provOnly.tiles[0].change]);
+    }
+    check("kpi view: under a filter that keeps only closed months the change is level (the usual IS the figure), and with no closed month there is no usual",
+      Math.abs(Q.kpiView(GOLD, { months: closed }, { metrics: ["openRate"] }).tiles[0].change.value) < 1e-9 && Q.kpiView({ ...GOLD, dimensions: { ...GOLD.dimensions, months: ["2026-09"] } }, { months: ["2026-09"] }, { metrics: ["sent"] }).tiles[0].usual === null);
+    const r = Q.healthReasonsView(GOLD, { recipientClass: "all" });
+    const bounceOf = (test) => sumRows(H.bounceReasons.filter(test), "count");
+    const isOther = (x) => x.category == null || x.category === "other";
+    check("health-reasons view: bounce categories are straight sums of the bounce rows per category, the usual is the per-closed-month sum, Other is the remainder with its share, each category carries its definition and kind from the pull's own table (never tenant text), and the refusals at entry are the exact window and all-time totals with the split a sample, step failures by category",
+      r.bounces.total === bounceOf(() => true) && r.bounces.categories.map((c) => c.id).join() === "user-unknown,blocked-by-policy" && r.bounces.categories.every((c) => c.count === bounceOf((x) => x.category === c.id) && c.usualPerMonth === bounceOf((x) => x.category === c.id && closed.includes(x.month)) / 3 && c.definition.length > 10 && c.kind === "bad-address" && c.expected === false) &&
+        r.bounces.other.count === bounceOf(isOther) && r.bounces.other.share === bounceOf(isOther) / bounceOf(() => true) && r.bounces.other.overThreshold === true && r.bounces.categories[0].definition === GOLD.meta.params.health.categories.bounceReasons[0].definition &&
+        r.entry.window.participants === sumRows(H.entryFailures, "participants") && r.entry.allTime.participants === sumRows(H.participantFailures, "participants") && r.entry.allTimeBasis === "all-time" && r.entry.counted === false && r.entry.split.exact === false && r.entry.split.basis === "sample" &&
+        r.entry.split.rows.find((c) => c.id === "unclassified").kind === "unknown" && r.entry.split.rows.find((c) => c.id === "already-in-list").expected === true && r.entry.split.rows.find((c) => c.id === "already-in-list").participants === sumRows(H.entrySamples.filter((x) => x.category === "already-in-list"), "participants") &&
+        r.steps.categories.map((c) => [c.id, c.participants]).flat().join() === "record-delete,4,bounce-drop,3" && r.steps.categories[0].expected === true && r.steps.categories[1].kind === "bad-address",
+      [r.bounces, r.entry.split, r.steps]);
+    const narrowed = Q.healthReasonsView(GOLD, { programs: ["p-onboard"], months: ["2026-06", "2026-07"], recipientClass: "external" });
+    check("health-reasons view: the global filters narrow it — programs, months and the recipient class on bounces; programs and months on refusals and step failures — and a part the pull did not read says so instead of reading as no failures",
+      narrowed.bounces.total === bounceOf((x) => x.programId === "p-onboard" && ["2026-06", "2026-07"].includes(x.month) && x.recipientClass === "external") && narrowed.entry.window.participants === sumRows(H.entryFailures.filter((x) => x.programId === "p-onboard" && ["2026-06", "2026-07"].includes(x.month)), "participants") && narrowed.steps.categories.length === 0 &&
+        (() => { const s = { ...GOLD, meta: { ...GOLD.meta, health: { ...GOLD.meta.health, parts: { ...GOLD.meta.health.parts, bounceReasons: { pulled: false, reason: "call-failed" } } } } }; const v = Q.healthReasonsView(s, {}); return v.bounces.unavailable.reason === "call-failed" && v.bounces.categories.length === 0 && v.entry.window !== null; })() &&
+        Q.healthReasonsView(OFF, {}).unavailable.reason === "health-off");
+    const folded = Q.healthForPage(H);
+    check("health for a page (aggregates only, ruled 2026-10-05): rows read as text fold into the per-key Other row with their counts added, categorised rows stay, the failure samples are emptied, every other table is as it was — and every view computes the same over the folded tables",
+      (() => {
+        const text = /** @type {any} */ ({ ...H, bounceReasons: [...H.bounceReasons, { ...H.bounceReasons[0], message: "550 some masked text", category: null, count: 5 }, { ...H.bounceReasons[0], message: "551 other text", category: null, count: 7 }], participantFailures: [...H.participantFailures, { programId: "p-nps", message: "a wording", category: null, participants: 1, occurrences: 2 }], failureSamples: [{ programId: "p-nps", part: "bounceReasons", message: "x" }] });
+        const f = Q.healthForPage(text);
+        const key = (x) => JSON.stringify([x.programId, x.templateId, x.month, x.recipientClass, x.bounceType]);
+        const other = f.bounceReasons.filter((x) => key(x) === key(H.bounceReasons[0]) && x.category === "other");
+        return other.length === 1 && other[0].count === H.bounceReasons[0].count + 12 && other[0].message === null && f.bounceReasons.every((x) => x.category != null) && f.failureSamples.length === 0 &&
+          f.participantFailures.find((x) => x.programId === "p-nps").participants === H.participantFailures.find((x) => x.programId === "p-nps").participants + 1 && f.participantFailures.every((x) => x.message == null || x.category !== "other") &&
+          isDeepStrictEqual(f.schedules, H.schedules) && isDeepStrictEqual(f.entrySamples, H.entrySamples) && folded.bounceReasons.length === H.bounceReasons.length &&
+          isDeepStrictEqual(Q.healthReasonsView({ ...GOLD, facts: { ...GOLD.facts, health: f } }, {}).bounces, Q.healthReasonsView({ ...GOLD, facts: { ...GOLD.facts, health: text } }, {}).bounces) &&
+          isDeepStrictEqual(Q.healthSilentView({ ...GOLD, facts: { ...GOLD.facts, health: folded } }, {}, { days: 45 }), Q.healthSilentView(GOLD, {}, { days: 45 }));
+      })());
+    const sil = Q.healthSilentView(GOLD, { programs: ["p-nps", "p-onboard"] }, { days: 45 });
+    check("health-silent view: programHealth's lists narrowed to the programs the filters keep (the status filter included), the counts per list, the alarm lists and labels named for the page, and the date filter declared as not applying",
+      sil.unavailable === null && Object.values(sil.lists).flat().every((x) => ["p-nps", "p-onboard"].includes(x.programId)) && Object.values(sil.counts).reduce((a, b) => a + b, 0) === 2 && sil.alarmLists.includes("ingest-overdue") && sil.labels.ok === "Working as expected" && sil.monthsIgnored === false &&
+        Q.healthSilentView(GOLD, { months: ["2026-07"] }, { days: 45 }).monthsIgnored === true && Object.values(Q.healthSilentView(GOLD, { statuses: ["PAUSE"] }, { days: 45 }).counts).reduce((a, b) => a + b, 0) === 0 && Q.healthSilentView(OFF, {}, { days: 30 }).unavailable.reason === "health-off" &&
+        throws(() => Q.healthSilentView(GOLD, {}, { days: 400 }), /1 to 90/));
+    const sch = Q.healthSchedulesView(GOLD, {}, { staleAfterDays: 20 });
+    check("health-schedules view: one row per documented schedule of the kept programs with its as-of day, stale when that day is more than the threshold before the pull (cutoff 2026-08-26 for 20 days before 2026-09-15), a row that says so for a program with no doc, and the threshold checked",
+      sch.cutoff === "2026-08-26" && sch.pulledDay === "2026-09-15" && isDeepStrictEqual(sch.rows.map((x) => [x.programId, x.documented, x.classification, x.asOf, x.stale]), [["p-pilot", true, "no schedule captured", "2026-08-20", true], ["p-nps", true, "recurring", "2026-08-20", true], ["p-onboard", true, "recurring", "2026-09-01", false], ["p-renew", true, "no schedule captured", "2026-08-20", true], ["p-unlisted", false, null, null, null]]) &&
+        sch.rows[1].endDay === "2028-01-01" && sch.stale === 3 && sch.undocumented === 1 && Q.healthSchedulesView(GOLD, {}, { staleAfterDays: 45 }).stale === 0 && Q.healthSchedulesView(OFF, {}, { staleAfterDays: 45 }).unavailable.reason === "health-off" && throws(() => Q.healthSchedulesView(GOLD, {}, { staleAfterDays: 0 }), /whole number/),
+      sch.rows);
+    const ot = Q.healthOneTimeView(GOLD, { recipientClass: "all" }, { months: 3 });
+    check("health-one-time view: the kept programs whose documented schedule does not recur, each with its last send, the months it sent in, its templates and its sends over the last N months as straight sums; a program whose schedule the pull does not have is counted, never listed",
+      isDeepStrictEqual(ot.rows.map((x) => x.programId), ["p-renew", "p-pilot"]) && ot.historyMonths.join() === "2026-07,2026-08,2026-09" && ot.scheduleUnknown === 1 && ot.lastSendBasis === "day" &&
+        ot.rows.every((x) => x.history.every((h) => h.sent === sumRows(GOLD.facts.byTemplate.filter((f) => f.programId === x.programId && f.month === h.month), "sent")) && x.monthsWithSends === new Set(GOLD.facts.byTemplate.filter((f) => f.programId === x.programId && f.sent > 0).map((f) => f.month)).size) &&
+        ot.rows[0].lastSendDay === "2026-09-09" && Q.healthOneTimeView(GOLD, {}, { months: 2 }).historyMonths.length === 2 && throws(() => Q.healthOneTimeView(GOLD, {}, { months: 0 }), /whole number/), ot.rows);
+  }
+
+  // ── The templates view and the in-page search (TPL-1, TPL-2, R14, R19) ──
+  {
+    const { templatesView, searchTemplateContent, templateContent, templateAvailability, compileSearchTerm, searchSnippet, searchableTemplateFields, TEMPLATE_VIEW_METRICS, SEARCH_SNIPPET_DEFAULT, LINK_READINGS } = Q;
+    const byTpl = (filters) => runQuery(GOLD, filters, { groupBy: ["template"], metrics: [...TEMPLATE_VIEW_METRICS], sort: [{ metric: "sent", dir: "desc" }] }).rows.filter((r) => r.key.template != null);
+    const v = templatesView(GOLD, {});
+    const row = (id, view = v) => view.rows.find((r) => r.templateId === id);
+    check("templates view: one row per template the filters keep, most sent first, each row's cells the engine's own by-template cells; under each, the programs that send it with the program × template cells and the program's survey figures; with step detail the steps and variants under each program (a template reused on two steps drills into both); the content's dates and flag; a send with no template id counted apart",
+      v.unavailable === null && v.content.available === true && v.stepDetail === true && v.rows.map((r) => r.templateId).join() === byTpl({}).map((r) => r.key.template).join() && v.rows.every((r, i) => isDeepStrictEqual(r.cells, byTpl({})[i].cells)) &&
+        v.rows.every((r) => r.programs.length > 0 && r.programs.every((p) => isDeepStrictEqual(p.cells, runQuery(GOLD, { programs: [p.programId], templates: [r.templateId] }, { groupBy: ["program", "template"], metrics: [...TEMPLATE_VIEW_METRICS] }).rows[0].cells))) &&
+        row("tpl-renew").programs[0].stepCount === 2 && row("tpl-renew").programs[0].steps.length === 2 && row("tpl-renew").programs[0].steps.every((s) => s.stepId && s.cells.sent.value > 0) && row("tpl-welcome").programs[0].steps.length === 2 && row("tpl-welcome").programs[0].steps.map((s) => s.variantId).sort().join() === "var-welcome-a,var-welcome-b" &&
+        row("tpl-nps").programs[0].survey.surveyParticipants.value > 0 && row("tpl-welcome").programs[0].survey.surveyParticipants.value === null && isDeepStrictEqual(TEMPLATE_VIEW_METRICS, v.metrics) &&
+        row("tpl-nps").content.editedAfterLastSend === true && row("tpl-nps").content.asOf === "2026-09-01" && row("tpl-nps").content.subject === "How is {Product Name} working for you?" && row("tpl-nps").lastSendMonth === "2026-07" && row("tpl-unlisted").content === null &&
+        v.noTemplate !== null && v.noTemplate.cells.sent.value > 0 && v.total.cells.sent.value > 0 && v.templatesKept === v.rows.length, v.rows.map((r) => [r.templateId, r.cells.sent.value, r.programs.map((p) => [p.programId, p.steps?.length])]));
+    check("templates view: the global filters narrow it (programs, months, status, the recipient class) exactly as they narrow the by-template query; a sort by name, by a metric in either direction or by the last send month orders the rows with nulls last",
+      isDeepStrictEqual(templatesView(GOLD, { programs: ["p-renew"] }).rows.map((r) => r.templateId), ["tpl-renew", "tpl-renew-b"]) && isDeepStrictEqual(templatesView(GOLD, { months: ["2026-07"], recipientClass: "external" }).rows.map((r) => r.cells.sent.value), byTpl({ months: ["2026-07"], recipientClass: "external" }).map((r) => r.cells.sent.value)) &&
+        templatesView(GOLD, { statuses: ["STOP"] }).rows.length === 0 && isDeepStrictEqual(templatesView(GOLD, {}, { sort: { by: "name", dir: "asc" } }).rows.map((r) => r.name), [...v.rows.map((r) => r.name)].sort((a, b) => (a.toLowerCase() < b.toLowerCase() ? -1 : 1))) &&
+        (() => { const vals = templatesView(GOLD, {}, { sort: { by: "clickRate", dir: "desc" } }).rows.map((r) => r.cells.clickRate.value); const nums = vals.filter((x) => x != null); return isDeepStrictEqual(nums, [...nums].sort((a, b) => b - a)) && vals.slice(nums.length).every((x) => x == null); })() &&
+        (() => { const m = templatesView(GOLD, {}, { sort: { by: "lastSend", dir: "asc" } }).rows.map((r) => r.lastSendMonth); return isDeepStrictEqual(m, [...m].sort()); })());
+    const kbDir = KB;
+    const index = buildIndex({ kbDir }).index;
+    const CASES_SEARCH = /** @type {Array<[string[], {wholeWord?: boolean, allTerms?: boolean}]>} */ ([[["renewal"], {}], [["renew"], {}], [["renew"], { wholeWord: true }], [["acme", "survey"], {}], [["acme", "survey"], { allTerms: true }], [["week"], { wholeWord: true }], [["ACME"], {}], [["hand?"], {}], [["Product Name"], {}], [["gs-prod"], {}]]);
+    const mine = (terms, o) => searchTemplateContent(GOLD, {}, terms, o);
+    const theirs = (terms, o) => searchTemplates(index, terms, { wholeWord: o.wholeWord, allTerms: o.allTerms, snippetRadius: SEARCH_SNIPPET_DEFAULT });
+    const flat = (hits, idOf, matchesOf) => hits.flatMap((h) => matchesOf(h).map((m) => `${idOf(h)}|${m.field}|${m.term}`)).sort();
+    const differential = CASES_SEARCH.map(([terms, o]) => [terms.join(" "), JSON.stringify(o), flat(mine(terms, o).matched, (h) => h.templateId, (h) => h.matches), flat(theirs(terms, o).hits, (h) => h.template.id, (h) => h.matches)]);
+    const agree = differential.filter(([, , a, b]) => isDeepStrictEqual(a, b)).map(([t, o]) => `${t} ${o}`);
+    const disagree = differential.filter(([, , a, b]) => !isDeepStrictEqual(a, b)).map(([t, o]) => `${t} ${o}`);
+    check("A-6 differential: the in-page search and email-report `search` over the same fixture knowledge base find the same templates, in the same fields, for the same terms — plain terms, several terms any or all, whole word, letter case, a term with a regex character — and the one documented divergence is a term inside a raw token key (the page searches the rendered text, email-report the raw doc text): it matches there and not here, while the token's label matches here and not there",
+      agree.length === CASES_SEARCH.length - 2 && isDeepStrictEqual(disagree, ["Product Name {}", "gs-prod {}"]) && mine(["gs-prod"], {}).matched.length === 0 && theirs(["gs-prod"], {}).hits.map((h) => h.template.id).join() === "tpl-nps" && mine(["Product Name"], {}).matched.map((m) => m.templateId).join() === "tpl-nps" && theirs(["Product Name"], {}).hits.length === 0 &&
+        mine(["renewal"], {}).matched.map((m) => m.templateId).join() === "tpl-renew,tpl-renew-b" && mine(["renew"], {}).matched.map((m) => m.templateId).join() === "tpl-renew,tpl-renew-b" && mine(["renew"], { wholeWord: true }).matched.length === 0 && mine(["acme", "survey"], { allTerms: true }).matched.map((m) => m.templateId).join() === "tpl-nps" && mine(["acme", "survey"], {}).matched.length > 1,
+      differential.filter(([, , a, b]) => !isDeepStrictEqual(a, b)));
+    const renewal = mine(["renewal"], {});
+    const theirRenewal = theirs(["renewal"], {});
+    check("search: a snippet is the FIRST hit per field with the radius of context, white space collapsed, ASCII ellipses where cut, the hit text beside it; over a template without tokens the snippets equal email-report's byte for byte; the radius is the panel's knob, checked; terms are deduplicated; an empty term list searches nothing",
+      isDeepStrictEqual(renewal.matched[0].matches.map((m) => [m.field, m.snippet]), theirRenewal.hits[0].matches.map((m) => [m.field, m.snippet])) && renewal.matched[0].matches.every((m) => m.hit.toLowerCase() === "renewal") && renewal.matched[0].matches.some((m) => m.snippet.endsWith("...")) &&
+        searchTemplateContent(GOLD, {}, ["renewal"], { snippet: 10 }).matched[0].matches.every((m) => m.snippet.length < renewal.matched[0].matches[0].snippet.length + 40) && throws(() => searchTemplateContent(GOLD, {}, ["x"], { snippet: 0 }), /snippet radius/) &&
+        searchTemplateContent(GOLD, {}, ["renew", "renew"], { allTerms: true }).matched.length === 2 && searchTemplateContent(GOLD, {}, [], {}).matched.length === 0 && searchTemplateContent(GOLD, {}, ["  "], {}).searched === 0 &&
+        compileSearchTerm("c++", { wholeWord: true }).test("use c++ now") && !compileSearchTerm("c++", { wholeWord: true }).test("c++x") && searchSnippet("abcdefghij", 4, 6, 2) === "...cdefgh..." && isDeepStrictEqual(searchableTemplateFields({ name: "N", content: { subject: "S", body: "B", variants: [{ name: "V", subject: "vs", body: "" }] } }).map((f) => f.field), ["title", "subject", "body", 'variant "V" subject']) &&
+        renewal.searched === 5 && searchTemplateContent(GOLD, { programs: ["p-onboard"] }, ["renewal"], {}).matched.length === 0 && searchTemplateContent(GOLD, { programs: ["p-onboard"] }, ["renewal"], {}).searched === 2);
+    const searched = templatesView(GOLD, {}, { terms: ["renewal"] });
+    check("templates view under a search: only the matching templates, each with its matches, the search's own summary (terms, options, how many were searched), and the figures of what the filters keep",
+      searched.rows.map((r) => r.templateId).join() === "tpl-renew,tpl-renew-b" && searched.rows[0].matches.length === 3 && searched.rows[1].matches.length === 1 && isDeepStrictEqual(searched.search.terms, ["renewal"]) && searched.search.searched === 5 && searched.rows[0].cells.sent.value === row("tpl-renew").cells.sent.value && templatesView(GOLD, {}, { terms: ["zzz"] }).rows.length === 0, searched.search);
+    const c = templateContent(GOLD, "tpl-nps");
+    check("templateContent: one template's text for the drawer — subject, body and variants as rendered plain text, the content-as-of day, the modified day, the flag, the last send month, the source — and null for a template with no content or none at all",
+      isDeepStrictEqual(Object.keys(c).sort(), ["asOf", "body", "bodyIncluded", "editedAfterLastSend", "lastSendMonth", "modified", "name", "source", "subject", "templateId", "variants"]) && c.templateId === "tpl-nps" && c.name === "Acme NPS Request" && c.subject === "How is {Product Name} working for you?" && c.body.includes("{Product Name}") && !c.body.includes("${") && c.asOf === "2026-09-01" && c.modified === "2026-08-10" && c.editedAfterLastSend === true && c.lastSendMonth === "2026-07" && c.source === "kb" &&
+        templateContent(GOLD, "tpl-welcome").variants.length === 1 && templateContent(GOLD, "tpl-welcome").variants[0].name === "Variant B" && !/<script|<img/.test(templateContent(GOLD, "tpl-welcome").body) && templateContent(GOLD, "tpl-day7").body.includes("<script>alert(1)</script>") && templateContent(GOLD, "tpl-unlisted") === null && templateContent(GOLD, "nope") === null, c);
+    // A page's copy that withholds the text (TPL-2): the figures draw, the text and the search do not; a pull made without a KB; a snapshot made before template content existed.
+    const withheld = { ...GOLD, meta: { ...GOLD.meta, templates: { ...GOLD.meta.templates, reason: "templates-not-on-page", content: false } }, dimensions: { ...GOLD.dimensions, templates: GOLD.dimensions.templates.map((t) => ({ ...t, content: null })) } };
+    const noKb = { ...GOLD, meta: { ...GOLD.meta, templates: { pulled: false, reason: "no-kb", content: false, source: null } } };
+    const legacy = { ...GOLD, meta: { ...GOLD.meta, templates: undefined } };
+    check("templates view: a page that withholds the text keeps every row and figure, says the text is not on the page, ignores a search and shows no subject; a pull made without a knowledge base and a snapshot from before template content existed each say so instead of drawing",
+      (() => { const w = templatesView(withheld, {}, { terms: ["renewal"] }); return w.unavailable === null && isDeepStrictEqual(w.content, { available: false, reason: "templates-not-on-page" }) && w.rows.length === v.rows.length && w.search === null && w.rows.every((r) => r.content === null && r.matches === null) && isDeepStrictEqual(w.rows.map((r) => r.cells), v.rows.map((r) => r.cells)); })() &&
+        templatesView(noKb, {}).unavailable.reason === "no-kb" && templatesView(noKb, {}).rows.length === 0 && templatesView(legacy, {}).unavailable.reason === "templates-not-pulled" && isDeepStrictEqual(templateAvailability(legacy), { pulled: false, reason: "templates-not-pulled", content: false, source: null }) && templateAvailability(GOLD).pulled === true &&
+        ["templates-not-pulled", "templates-not-on-page", "no-kb"].every((r) => REASONS[r]) && isDeepStrictEqual([...LINK_READINGS], ["tracked-link-present", "links-none-tracked", "unreadable"]));
+    check("caveats: the template-content caveats ride an output that shows template text and no other; the by-template and by-step rows carry the subject from the same dimension (null where the snapshot holds no content)",
+      caveatsFor(GOLD, ["sent"], { templates: true }).some((c) => c.id === "template-content-current") && !caveatsFor(GOLD, ["sent"]).some((c) => c.id.startsWith("template-")) && ["template-content-current", "template-content-missing", "template-content-behind", "template-link-readings-missing"].every((id) => typeof CAVEATS[id] === "function") &&
+        runQuery(GOLD, {}, { groupBy: ["program", "template"], metrics: ["sent"] }).rows.find((r) => r.key.template === "tpl-nps").label.subject === "How is {Product Name} working for you?" && runQuery(GOLD, {}, { groupBy: ["program", "template"], metrics: ["sent"] }).rows.find((r) => r.key.template === "tpl-unlisted").label.subject === null &&
+        runQuery(GOLD, {}, { groupBy: ["program", "step", "variant"], metrics: ["sent"] }).rows.find((r) => r.label.templateId === "tpl-welcome").label.subject === "Welcome to Acme");
+  }
+
+  // ── The cron calculator (HLT-1 S3b): on which days a schedule fires ──────
+  {
+    const { readCron, cronLastDue } = Q;
+    const fires = (expr, from, to) => { const m = readCron(expr).matches; const out = []; for (let n = Date.parse(from); n <= Date.parse(to); n += 86400000) { const d = new Date(n).toISOString().slice(0, 10); if (m(d)) out.push(d); } return out; };
+    check("cron: a weekly schedule fires on its weekday — every Monday of September 2026 — and the day it was last due before a Tuesday is the day before, with a seven-day period",
+      isDeepStrictEqual(fires("0 0 8 ? * MON *", "2026-09-01", "2026-09-30"), ["2026-09-07", "2026-09-14", "2026-09-21", "2026-09-28"]) && isDeepStrictEqual(cronLastDue("0 0 8 ? * MON *", "2026-09-15"), { readable: true, lastDue: "2026-09-14", previousDue: "2026-09-07", periodDays: 7 }));
+    check("cron: a run due ON the day is not counted (it may not have fired yet): on a Monday the last due Monday is the one before",
+      cronLastDue("0 0 8 ? * MON *", "2026-09-14").lastDue === "2026-09-07");
+    check("cron: monthly on a day, every N months from a month, the last day of the month, the nth weekday, the last weekday, weekday lists and ranges, names and numbers",
+      isDeepStrictEqual(fires("0 0 9 1 * ? *", "2026-08-01", "2026-09-30"), ["2026-08-01", "2026-09-01"]) && isDeepStrictEqual(fires("0 0 9 1 1/3 ? *", "2026-01-01", "2026-12-31"), ["2026-01-01", "2026-04-01", "2026-07-01", "2026-10-01"]) &&
+        isDeepStrictEqual(fires("0 0 9 L * ? *", "2026-02-01", "2026-03-31"), ["2026-02-28", "2026-03-31"]) && isDeepStrictEqual(fires("0 0 9 ? * TUE#2 *", "2026-09-01", "2026-09-30"), ["2026-09-08"]) && isDeepStrictEqual(fires("0 0 9 ? * FRIL *", "2026-09-01", "2026-09-30"), ["2026-09-25"]) &&
+        isDeepStrictEqual(fires("0 0 9 ? * MON,WED-FRI *", "2026-09-14", "2026-09-20"), ["2026-09-14", "2026-09-16", "2026-09-17", "2026-09-18"]) && isDeepStrictEqual(fires("0 0 9 ? * 2 *", "2026-09-14", "2026-09-20"), ["2026-09-14"]) && isDeepStrictEqual(fires("0 30 6 15 SEP ? 2026", "2026-09-01", "2026-09-30"), ["2026-09-15"]) &&
+        isDeepStrictEqual(fires("0 0 9 1/10 * ? *", "2026-09-01", "2026-09-30"), ["2026-09-01", "2026-09-11", "2026-09-21"]) && isDeepStrictEqual(fires("0 0 9 * * ? *", "2026-09-29", "2026-10-01"), ["2026-09-29", "2026-09-30", "2026-10-01"]) && isDeepStrictEqual(cronLastDue("0 0 9 1 1/3 ? *", "2026-09-15"), { readable: true, lastDue: "2026-07-01", previousDue: "2026-04-01", periodDays: 91 }));
+    check("cron: what it cannot read says so (never a guess): a sixth weekday of the month, a bad range, a day 32, five fields, empty, not text, a weekday name it does not know — and a schedule that fires only once in two years has no period",
+      ["0 0 9 ? * MON#6 *", "0 0 9 ? * FRI-MON *", "0 0 9 32 * ? *", "0 9 * * *", "", null, "0 0 9 ? * FUNDAY *", "0 0 9 1 * ? * *"].every((e) => readCron(e).readable === false && cronLastDue(e, "2026-09-15").readable === false) &&
+        isDeepStrictEqual(cronLastDue("0 0 9 15 SEP ? 2026", "2026-09-16"), { readable: true, lastDue: "2026-09-15", previousDue: null, periodDays: null }) && cronLastDue("0 0 9 15 SEP ? 2031", "2026-09-16").lastDue === null);
+  }
+
+  // ── Caveats and "data pulled" ─────────────────────────────────────────────
+  {
+    const adapterSource = readFileSync(ENGINE, "utf8");
+    const emitted = [...adapterSource.matchAll(/caveats\.push\(\{ id: "([a-z-]+)"/g)].map((m) => m[1]);
+    check(`caveats: every caveat the adapter can write into a snapshot (${emitted.length} ids, read from its source) has its text here, and both of its "not pulled" reasons have theirs`,
+      emitted.length >= 9 && emitted.every((id) => typeof CAVEATS[id] === "function") && ["accounts-off", "step-detail-off"].every((r) => REASONS[r] && adapterSource.includes(`"${r}"`)), emitted.filter((id) => !CAVEATS[id]));
+    const shown = ["sent", "delivered", "opened", "openRate", "clicked", "clickRate", "uniqueRecipients", "submitted"];
+    const gold = caveatsFor(GOLD, shown);
+    const texts = (list) => list.map((c) => c.text).join("\n");
+    check("caveats: every output carries the incomplete period with its date, the opens caveat, the click caveats, the uniques rule, the survey grain, status-is-today, and what the pull left out — each once",
+      ["incomplete-period", "opens-are-pixel-loads", "delivered-small-groups", "clicks-content-only", "click-tracking-states", "uniques-scope", "responses-program-level", "status-is-today", "cc-copies-excluded", "other-sources-excluded", "no-template-id", "test-participants-excluded", "step-names-unavailable"]
+        .every((id) => gold.filter((c) => c.id === id).length === 1) && texts(gold).includes(GOLD.meta.incompleteFrom) && texts(gold).includes(`${GOLD.honesty.excluded.ccCopies} CC copies`), gold.map((c) => c.id));
+    check("caveats: only what the output shows — with no click or survey metric shown, their caveats are absent", (() => {
+      const few = caveatsFor(GOLD, ["sent", "opened", "openRate"]).map((c) => c.id);
+      return !few.includes("clicks-content-only") && !few.includes("responses-program-level") && !few.includes("test-participants-excluded") && few.includes("opens-are-pixel-loads") && few.includes("delivered-small-groups");
+    })());
+    const sel = caveatsFor(SEL, shown);
+    const carried = sel.find((c) => c.id === "carried-forward-months");
+    check("caveats: a selective refresh carries the carried-forward caveat — the months, the pull they came from, and the horizon",
+      !!carried && SEL.meta.refresh.carriedMonths.every((m) => carried.text.includes(m)) && carried.text.includes(SEL.meta.refresh.previousPulledAt) && /last 2 month/.test(carried.text) && !gold.some((c) => c.id === "carried-forward-months"), carried);
+    const off = caveatsFor(OFF, shown);
+    check("caveats: with accounts and step detail off, both say so with the reason in words",
+      off.some((c) => c.id === "accounts-not-pulled" && /accounts off/.test(c.text)) && off.some((c) => c.id === "participant-records-not-pulled" && /step detail/.test(c.text)));
+    const failed = structuredClone(GOLD);
+    failed.caveats.push({ id: "incomplete-period-drift", detail: { from: "2026-09-01", checks: [{ id: "templates-sum-to-program", drift: 3 }] } }, { id: "reconciliation-mismatch", detail: { checks: ["accounts-sum-to-program"] } });
+    const fc = caveatsFor(failed, shown);
+    check("caveats: a closed-month mismatch is a FAILURE and leads the block; drift in the incomplete period is stated as not a failure",
+      fc[0].id === "reconciliation-mismatch" && /RECONCILIATION FAILED/.test(fc[0].text) && fc[0].text.includes("accounts-sum-to-program") &&
+        /not a failure/.test(fc.find((c) => c.id === "incomplete-period-drift").text) && fc.find((c) => c.id === "incomplete-period-drift").text.includes("templates-sum-to-program: 3"));
+    check("caveats: one this module has no text for is shown with its id and detail, never dropped",
+      caveatText("some-new-caveat", { n: 2 }) === 'some-new-caveat: {"n":2}' && caveatsFor({ ...GOLD, caveats: [{ id: "some-new-caveat", detail: { n: 2 } }] }, []).some((c) => c.text === 'some-new-caveat: {"n":2}'));
+    // F-509: each part of the unclassified-wordings caveat is gated on its own count, so a zero-entry pull never reads
+    // "0 entry-refusal wording(s) … plus 232 participant(s)".
+    const unc = (detail) => caveatText("unclassified-wordings", { wordings: 0, programs: 0, participants: 0, occurrences: 0, stepParticipants: 0, bounceWordings: 0, bouncePrograms: 0, ...detail });
+    check("F-509 unclassified-wordings: with no unclassified entry wording the sentence starts at the step part (no '0 entry-refusal' clause); with both parts it reads the entry clause plus the step clause; with the entry part alone no step clause; with nothing but bounce wordings only the bounce sentence",
+      unc({ stepParticipants: 232 }).startsWith("232 participant(s) fell off at a step for a reason the shipped list does not name. An unknown product wording") && !unc({ stepParticipants: 232 }).includes("0 entry-refusal") &&
+        unc({ wordings: 2, programs: 1, participants: 4, occurrences: 9, stepParticipants: 232 }).startsWith('2 entry-refusal wording(s) in the samples of 1 program(s) match no known category and are labelled "unclassified" (kind unknown): 4 sampled participant(s), 9 refusal(s) in all, plus 232 participant(s) who fell off at a step for a reason the shipped list does not name. An unknown product wording') &&
+        unc({ wordings: 2, programs: 1, participants: 4, occurrences: 9 }).startsWith('2 entry-refusal wording(s) in the samples of 1 program(s) match no known category and are labelled "unclassified" (kind unknown): 4 sampled participant(s), 9 refusal(s) in all. An unknown product wording') &&
+        unc({ bounceWordings: 3, bouncePrograms: 2 }).startsWith("3 bounce wording(s) in the samples of 2 program(s)") && !unc({ bounceWordings: 3, bouncePrograms: 2 }).includes("entry-refusal"),
+      [unc({ stepParticipants: 232 })]);
+    check("data pulled: the line every output carries names the pull's date and time, the time zone when the snapshot has one, the tenant, the window and the provisional period",
+      dataPulledLine(GOLD) === "Data pulled 2026-09-15T09:00:00-07:00 from acme.gainsightcloud.com. Window 2026-06 to 2026-09; sends on or after 2026-09-01 are provisional (opens keep arriving), and bounces and unsubscribes on sends since 2026-08-01 can still change (the 2 months a refresh reads again)." &&
+        Q.provisionalText({ ...GOLD.meta, refresh: { ...GOLD.meta.refresh, repullMonths: 1 } }) === "sends on or after 2026-09-01 are provisional (opens keep arriving)" && isDeepStrictEqual(Q.provisionalSpan(GOLD.meta), { from: "2026-09-01", flagsFrom: "2026-08-01", repullMonths: 2 }) &&
+        dataPulledLine(/** @type {*} */ ({ meta: { ...GOLD.meta, timeZone: "America/Denver" } })).includes("(America/Denver)"), dataPulledLine(GOLD));
+    check("reasons and statuses: a reason the table lacks is shown as itself; statuses read as the Gainsight UI words them, and an unknown one as itself",
+      reasonText("brand-new") === "No value (brand-new)." && reasonText(null) === "" && statusLabel("PROCESSING") === "Active" && statusLabel("NEW") === "Draft" && statusLabel("PAUSE") === "Paused" && statusLabel("STOP") === "Stopped" && statusLabel("ARCHIVED") === "ARCHIVED");
+  }
+
+  // ── The golden cases, and the same bytes with no Node around them ─────────
+  {
+    /** @type {Array<[string, *, *, *]>} */
+    const CASES = [
+      ["programs", GOLD, {}, { groupBy: ["program"], metrics: ["sent", "uniqueRecipients", "accountsReached", "delivered", "opened", "openRate", "clicked", "clickRate", "participantRecords", "responseRate"], sort: [{ metric: "sent", dir: "desc" }] }],
+      ["programs, active, external, one month", GOLD, { statuses: ["PROCESSING"], recipientClass: "external", months: ["2026-08"] }, { groupBy: ["program"], metrics: ["sent", "uniqueRecipients", "openRate", "clickRate"] }],
+      ["templates", GOLD, {}, { groupBy: ["program", "template"], metrics: ["sent", "delivered", "opened", "openRate", "clicked", "clickRate"], sort: [{ dim: "program" }, { label: "stepOrder" }] }],
+      ["steps", GOLD, {}, { groupBy: ["program", "step", "variant"], metrics: ["sent", "openRate", "clicked"] }],
+      ["accounts of one program", GOLD, { programs: ["p-onboard"] }, { groupBy: ["account"], metrics: ["sent", "delivered", "opened", "openRate", "bounced", "bounceRate"], sort: [{ metric: "sent", dir: "desc" }] }],
+      ["trend", GOLD, {}, { groupBy: ["month"], metrics: ["sent", "openRate", "bounceRate", "anyResponse"] }],
+      ["accounts off", OFF, {}, { groupBy: ["program", "account"], metrics: ["sent"] }],
+      ["programs, accounts and step detail off", OFF, {}, { groupBy: ["program"], metrics: ["sent", "uniqueRecipients", "accountsReached", "participantRecords", "openRate", "clickRate"] }],
+    ];
+    // The templates view's cases (TPL-2): the view as a page draws it, under a search, and sorted.
+    /** @type {Array<[string, *, *, *]>} */
+    const VIEW_CASES = [
+      ["templates view", GOLD, {}, {}],
+      ["templates view, search any of two terms", GOLD, { statuses: ["PROCESSING", "PAUSE", "NEW"] }, { terms: ["acme", "survey"], snippet: 30 }],
+      ["templates view, sorted by open rate", GOLD, { months: ["2026-07", "2026-08"] }, { sort: { by: "openRate", dir: "desc" } }],
+    ];
+    const render = (mod, [, snapshot, filters, query]) => {
+      const r = mod.runQuery(snapshot, filters, query);
+      const line = (row) => ({ key: row.key, label: row.label, carried: row.carried, incomplete: row.incomplete, cells: Object.fromEntries(query.metrics.map((id) => [id, { ...row.cells[id], shown: mod.formatCell(id, row.cells[id]) }])) });
+      return { table: r.table, unavailable: r.unavailable, scope: r.scope, rows: r.rows.map(line), total: r.total ? line(r.total) : null };
+    };
+    const renderView = (mod, [, snapshot, filters, opts]) => mod.templatesView(snapshot, filters, opts);
+    const produced = Object.fromEntries([...CASES.map((c) => [c[0], render(Q, c)]), ...VIEW_CASES.map((c) => [c[0], renderView(Q, c)])]);
+    if (WRITE_GOLDEN) writeFileSync(GOLDEN, JSON.stringify(produced, null, 1) + "\n");
+    const golden = JSON.parse(readFileSync(GOLDEN, "utf8"));
+    for (const [name] of [...CASES, ...VIEW_CASES]) check(`golden: ${name}`, isDeepStrictEqual(JSON.parse(JSON.stringify(produced[name])), golden[name]));
+    check("golden: the file holds exactly the cases run (a retired case is deleted, never left to rot)", isDeepStrictEqual(Object.keys(golden), [...CASES, ...VIEW_CASES].map((c) => c[0])));
+
+    // The page will carry this file's exact bytes. Load them where there is no
+    // Node: no process, no require, no Buffer, no module system.
+    const source = readFileSync(MODULE, "utf8");
+    const names = [...source.matchAll(/^export (?:const|function) (\w+)/gm)].map((m) => m[1]);
+    const context = vm.createContext({});
+    let bare = null;
+    let loadError = null;
+    try {
+      bare = vm.runInContext(`${source.replace(/^export /gm, "")}\n;({ ${names.join(", ")} })`, context);
+    } catch (e) {
+      loadError = String(e);
+    }
+    check("browser-safe: the module has no import or require of any kind, and its bytes load in a context with no Node globals",
+      !/^\s*import[\s{(]/m.test(source.replace(/\/\*[\s\S]*?\*\//g, "")) && !/\brequire\(/.test(source) && bare !== null && isDeepStrictEqual(names.sort(), Object.keys(Q).sort()), loadError ?? names.filter((n) => !(n in Q)));
+    if (bare) {
+      const there = Object.fromEntries([...CASES.map((c) => [c[0], JSON.parse(JSON.stringify(render(bare, c)))]), ...VIEW_CASES.map((c) => [c[0], JSON.parse(JSON.stringify(renderView(bare, c)))])]);
+      check("browser-safe: every golden case computed by those bytes, with no Node around them, equals the golden — the page and the report cannot disagree",
+        isDeepStrictEqual(there, golden));
+      check("browser-safe: the glossary, the caveats and the read floor run there too",
+        JSON.stringify(bare.glossary(["openRate", "clicked"], GOLD)) === JSON.stringify(glossary(["openRate", "clicked"], GOLD)) && JSON.stringify(bare.caveatsFor(SEL, ["sent", "clicked"])) === JSON.stringify(caveatsFor(SEL, ["sent", "clicked"])) &&
+          bare.openSnapshot(GOLD) === GOLD && bare.accountAvailability(OFF).reason === "accounts-off" && JSON.stringify(bare.silentPrograms(GOLD)) === JSON.stringify(Q.silentPrograms(GOLD)) && bare.healthAvailability(GOLD).pulled === true &&
+          bare.maskMessage("to bo@c02.example.com") === "to <email>");
+    }
+
+    // ── The account timeline (ACC-1, ACC-2): its read floor and its one view ──
+    // The committed fixture timeline is the real producer's (the engagement suite writes it through the process).
+    const TL = Q.openTimeline(JSON.parse(readFileSync(join(HERE, "fixtures", "engagement", "timeline-acme.json"), "utf8")));
+    const sum = (rows) => Object.fromEntries(Q.TIMELINE_MEASURES.map((k) => [k, rows.reduce((n, r) => n + r[k], 0)]));
+    const rate = (s) => (s.delivered ? s.opened / s.delivered : null);
+    const all = Q.timelineView(TL);
+    const allSums = sum(TL.facts.accountTimeline);
+    check("timelineView: with no filter the totals are straight sums of the timeline's rows, the open rate is opened ÷ delivered (the registry's rule), and the comparison is the straight sum of the tenant rows",
+      Q.TIMELINE_MEASURES.join() === "sent,delivered,bounced,rejected,unsubscribed,spamComplaints,failed,opened" && all.total.cells.sent.value === allSums.sent && all.total.cells.delivered.value === allSums.delivered && all.total.cells.opened.value === allSums.opened &&
+        all.total.cells.bounced.value === allSums.bounced && all.total.cells.openRate.value === rate(allSums) && all.tenant.cells.openRate.value === rate(sum(TL.facts.tenantByProgram)) && allSums.sent > 0,
+      [all.total, allSums]);
+    const marksOracle = (rows) => {
+      const m = new Map();
+      for (const r of rows) {
+        const k = JSON.stringify([r.programId, r.templateId, r.day]);
+        m.set(k, [...(m.get(k) ?? []), r]);
+      }
+      return m;
+    };
+    const om = marksOracle(TL.facts.accountTimeline);
+    check("timelineView: one mark per program, email and day (both classes added), in day order; its state is opened when any send was opened, unopened when delivered and none opened, not-delivered otherwise; provisional from incompleteFrom",
+      all.marks.length === om.size && all.marks.every((mk, i) => {
+        const rows = om.get(JSON.stringify([mk.key.program, mk.key.template, mk.key.day]));
+        const s = sum(rows);
+        return !!rows && mk.cells.sent.value === s.sent && mk.cells.openRate.value === rate(s) && mk.state === (s.opened > 0 ? "opened" : s.delivered > 0 ? "unopened" : "not-delivered") && mk.incomplete === (mk.key.day >= TL.meta.incompleteFrom) && (i === 0 || all.marks[i - 1].key.day <= mk.key.day);
+      }) && new Set(all.marks.map((m) => m.state)).size >= 2, all.marks.slice(0, 3));
+    const external = Q.timelineView(TL, { recipientClass: "external" });
+    const firstProgram = TL.dimensions.programs[0].id;
+    const oneProgram = Q.timelineView(TL, { programs: [firstProgram] });
+    check("timelineView: the recipients filter keeps one class on both sides (the account's rows and the comparison), and the program filter keeps one lane and says how many it hides",
+      external.total.cells.sent.value === sum(TL.facts.accountTimeline.filter((r) => r.recipientClass === "external")).sent && external.tenant.cells.sent.value === sum(TL.facts.tenantByProgram.filter((r) => r.recipientClass === "external")).sent && external.total.cells.sent.value < all.total.cells.sent.value &&
+        oneProgram.lanes.length === 1 && oneProgram.lanes[0].key.program === firstProgram && oneProgram.scope.hiddenByFilter === TL.dimensions.programs.length - 1 && oneProgram.total.cells.sent.value === sum(TL.facts.accountTimeline.filter((r) => r.programId === firstProgram)).sent &&
+        oneProgram.lanes[0].tenant.sent.value === sum(TL.facts.tenantByProgram.filter((r) => r.programId === firstProgram)).sent && throws(() => Q.timelineView(TL, { recipientClass: /** @type {*} */ ("test") }), /recipientClass must be/));
+    const dark = { ...TL, facts: { ...TL.facts, accountTimeline: TL.facts.accountTimeline.map((r) => ({ ...r, delivered: 0, opened: 0 })) } };
+    const darkView = Q.timelineView(dark);
+    check("timelineView: a rate on nothing delivered is null with its reason, never 0%, and such a mark is not-delivered",
+      darkView.total.cells.openRate.value === null && darkView.total.cells.openRate.why === "zero-denominator" && darkView.marks.every((m) => m.state === "not-delivered") && Q.formatCell("openRate", darkView.total.cells.openRate) === NO_VALUE);
+    const months = Q.timelineByMonth(TL);
+    check("timelineByMonth: the rows added up by program, month and class, exactly (what a dashboard's account rows of the same account hold)",
+      months.length > 0 && months.every((m) => isDeepStrictEqual(Q.TIMELINE_MEASURES.map((k) => m[k]), Q.TIMELINE_MEASURES.map((k) => sum(TL.facts.accountTimeline.filter((r) => r.programId === m.programId && r.recipientClass === m.recipientClass && r.day.startsWith(m.month)))[k]))) &&
+        months.reduce((n, m) => n + m.sent, 0) === allSums.sent);
+    check("openTimeline is the loud reader of the second snapshot kind: a timeline of another version, an engagement snapshot or a non-object is refused naming T-10, and openSnapshot refuses a timeline",
+      Q.openTimeline(TL) === TL && throws(() => Q.openTimeline({ ...TL, schemaVersion: 2 }), /schemaVersion 2 is not 1 .*\(T-10\)/) && throws(() => Q.openTimeline(GOLD), /kind "engagement" is not "account-timeline"/) &&
+        throws(() => Q.openTimeline([]), /not an object/) && throws(() => openSnapshot(TL), /kind "account-timeline" is not "engagement"/));
+    const caveatIds = Q.timelineCaveats(TL).map((c) => c.id);
+    const flagged = Q.timelineCaveats({ ...TL, caveats: [...TL.caveats, { id: "timeline-reconciliation-mismatch", detail: { pulledAt: "x", mismatches: 2, measures: ["opened"] } }] });
+    check("a timeline's data-pulled line names when, from where, the days and the provisional day; its caveats carry its own (a reconciliation failure first), the provisional days, the open rate's, and that recipients are added up to the account",
+      Q.timelinePulledLine(TL) === `Data pulled ${TL.meta.pulledAt} from ${TL.meta.tenantHost}. Days ${TL.meta.window.start} to ${TL.meta.window.end} (the last ${TL.meta.window.last}); sends on or after ${TL.meta.incompleteFrom} are provisional (opens keep arriving).` &&
+        ["incomplete-period", "opens-are-pixel-loads", "delivered-small-groups", "account-timeline-grain", "timeline-tenant-comparison", "status-is-today"].every((id) => caveatIds.includes(id)) && TL.caveats.every((c) => caveatIds.includes(c.id)) &&
+        flagged[0].id === "timeline-reconciliation-mismatch" && /RECONCILIATION FAILED .* 2 program-month\(s\) .*opened/.test(flagged[0].text), caveatIds);
+    if (bare) check("browser-safe: the timeline's view, reader and caveats computed by the module's bytes with no Node around them equal the module's own",
+      JSON.stringify(bare.timelineView(TL, { recipientClass: "external" })) === JSON.stringify(external) && bare.openTimeline(TL) === TL && JSON.stringify(bare.timelineCaveats(TL)) === JSON.stringify(Q.timelineCaveats(TL)));
+  }
+} finally {
+  removeTempDir(ROOT);
+}
+
+if (failures) {
+  console.log(`\nengagement-query: ${failures} FAILED of ${ran}`);
+  process.exit(1);
+}
+console.log(`\nengagement-query: all ${ran} checks passed`);

@@ -24,13 +24,14 @@
 // Run:  node build/test-check-doc-drift.mjs
 // Zero dependencies — Node built-ins only.
 // ─────────────────────────────────────────────────────────────────────────────
-import { readFileSync, writeFileSync, rmSync, readdirSync, existsSync } from "node:fs";
+import { readFileSync, writeFileSync, rmSync, readdirSync, existsSync, statSync } from "node:fs";
 import { join } from "node:path";
 // The registry engine, imported statically for the definition-site pin (19k):
 // the rig's copy is byte-identical, and check-imports refuses a non-literal
 // dynamic specifier (the F-267/lexer contract).
 import { sweepDefectClasses } from "./defect-classes.mjs";
 import { ROOT } from "./lib.mjs";
+import { BUS_FILE, readBus, readDevOnlySet, parseDevOnlyValue, parseDevOnlySet, isDevOnly, covers } from "./dev-only.mjs";
 import { execFileSync } from "node:child_process";
 import {
   makeTempDir, removeTempDir, copyTrackedTree, initScratchGitRepo, gitAddAll, runNode, snapshotFiles, writeFiles,
@@ -46,10 +47,85 @@ function check(label, cond, detail) {
   if (detail !== undefined) console.log(`      ${typeof detail === "string" ? detail.slice(0, 600) : JSON.stringify(detail)}`);
 }
 
+// ── the strip-set reader, in memory (F-469) ──────────────────────────────────
+// build/dev-only.mjs is the ONE reader of the bus header's Dev-only: line, and its
+// grammar must be dev-utils' so the release tool and these checks never disagree.
+// Every verdict below is dev-utils' own (check_dev_only, measured by a differential
+// over its branch vectors and a whitespace census of every code point to U+3000 —
+// F-469's Judge line); a vector is pinned here per branch of that function.
+{
+  const outcome = (v) => { try { return JSON.stringify(parseDevOnlyValue(v, "L")); } catch (e) { return "REFUSED: " + e.message; } };
+  const ch = (cp) => String.fromCharCode(cp);
+  const ACCEPT = [
+    ["dev plugins/gs-superadmin/skills/dev-canary", ["dev", "plugins/gs-superadmin/skills/dev-canary"]],
+    ["none", []], ["NONE", []], [" none ", []],
+    ["a" + ch(92) + "b", ["a/b"]], ["./dev//x/.", ["dev/x"]], ["dev" + ch(9) + "plugins", ["dev", "plugins"]],
+    ["a" + ch(0x1c) + "b", ["a", "b"]], ["a" + ch(0x85) + "b", ["a", "b"]], ["a" + ch(0x3000) + "b", ["a", "b"]],
+    ["a" + ch(0xfeff) + "b", ["a" + ch(0xfeff) + "b"]], [".GIT", [".GIT"]], ["a/..b", ["a/..b"]],
+  ];
+  for (const [v, want] of ACCEPT) check(`dev-only grammar: ${JSON.stringify(v)} reads as ${JSON.stringify(want)}`, outcome(v) === JSON.stringify(want), outcome(v));
+  const REFUSE = [
+    ["", "has no value"], ["   ", "has no value"], ["none dev", "stands alone"], ["dev none", "stands alone"],
+    ["/abs", "is absolute"], ["C:x", "is absolute"], [ch(92) + "x", "is absolute"], [".", "the repo root"], ["./", "the repo root"],
+    ["a/../b", "climbs out"], ["..", "climbs out"], ["a/.git", "inside .git"], [".git/x", "inside .git"],
+    ["dev ./dev", "given twice"], ["dev dev/", "given twice"],
+  ];
+  for (const [v, why] of REFUSE) check(`dev-only grammar: ${JSON.stringify(v)} is refused (${why})`, outcome(v).startsWith("REFUSED") && outcome(v).includes(why), outcome(v));
+
+  const CANARY = "Canary: plugins/gs-superadmin/skills/dev-canary/SKILL.md description";
+  const bus = (...header) => ["# FEEDBACK", "", "Profile: plugin", ...header, "", "## F-001 — OPEN", "Dev-only: below-the-header"].join("\n");
+  /** @param {string} text @returns {any} a DevOnlySet, or { refused } */
+  const set = (text) => { try { return parseDevOnlySet(text, "bus"); } catch (e) { return { refused: e.message }; } };
+  const s1 = set(bus(CANARY, "Dev-only: dev plugins/gs-superadmin/skills/dev-canary"));
+  check("dev-only set: a declared canary dir is not listed twice", JSON.stringify(s1.paths) === JSON.stringify(["dev", "plugins/gs-superadmin/skills/dev-canary"]), s1);
+  const s2 = set(bus(CANARY, "Dev-only: dev"));
+  check("dev-only set: the canary joins the set from the Canary: line when the Dev-only: line omits it (dev-utils strips it regardless)",
+    JSON.stringify(s2.paths) === JSON.stringify(["dev", "plugins/gs-superadmin/skills/dev-canary"]) && s2.canaryName === "dev-canary", s2);
+  const s3 = set(bus(CANARY, "Dev-only: none"));
+  check("dev-only set: `none` strips the canary only", JSON.stringify(s3.paths) === JSON.stringify(["plugins/gs-superadmin/skills/dev-canary"]), s3);
+  const s4 = set(bus(CANARY, "Dev-only: plugins/gs-superadmin/skills"));
+  check("dev-only set: a declared ancestor of the canary covers it", JSON.stringify(s4.paths) === JSON.stringify(["plugins/gs-superadmin/skills"]), s4);
+  check("dev-only set: no Dev-only: line in the header is refused — a line below the first ## F- section is not the header",
+    /declares no `Dev-only:` line/.test(set(bus(CANARY)).refused ?? ""), set(bus(CANARY)));
+  check("dev-only set: a second Dev-only: line is refused (dev-utils would read only the first)",
+    /a second `Dev-only:` line/.test(set(bus(CANARY, "Dev-only: dev", "Dev-only: plugins")).refused ?? ""), set(bus(CANARY, "Dev-only: dev", "Dev-only: plugins")));
+  check("dev-only set: a header with no Canary: path is refused", /no repo-relative `Canary:` path/.test(set(bus("Dev-only: dev")).refused ?? ""), set(bus("Dev-only: dev")));
+  check("dev-only set: a non-plugin profile is refused",
+    /knows the plugin profile's canary/.test(set(bus(CANARY, "Dev-only: dev").replace("Profile: plugin", "Profile: skill")).refused ?? ""), "");
+  check("dev-only set: covers is a path-segment prefix, never a string prefix",
+    covers("dev", "dev") && covers("dev", "dev/x.md") && !covers("dev", "devx/y") && !covers("dev", "build/dev-only.mjs"), "");
+}
+
 const rig = makeTempDir("doc-drift-test");
 try {
   copyTrackedTree(ROOT, rig);
   initScratchGitRepo(rig);
+  // F-469: the strip set is read from the bus header. On a tree the strip already ran
+  // on (docs-drift's rehearsal arm, a release branch) the copied tree has no bus, and a
+  // fresh rig has no history to find one in — so the rig's HEAD gets the declaration the
+  // real tree resolved, committed and then removed from the worktree and index: the
+  // rehearsal arm's own shape (HEAD carries the bus, the checked tree does not). A full
+  // tree keeps its bus in the worktree. setRigBus changes the declaration wherever this
+  // shape keeps it, so every case below runs on both arms.
+  const rigGit = (...args) => execFileSync("git", ["-c", "core.autocrlf=false", "-c", "core.safecrlf=false", ...args], { cwd: rig, encoding: "utf8" });
+  const busInWorktree = existsSync(join(rig, BUS_FILE));
+  const plantHeadBus = (text) => {
+    writeFiles(rig, { [BUS_FILE]: text });
+    gitAddAll(rig);
+    rigGit("-c", "user.name=rig", "-c", "user.email=rig@acme.com", "-c", "commit.gpgsign=false", "commit", "-q", "--allow-empty", "-m", "rig: the bus in HEAD");
+    rigGit("rm", "-q", "--", BUS_FILE);
+  };
+  const realBus = readBus(ROOT).text;
+  if (!busInWorktree) plantHeadBus(realBus);
+  const setRigBus = (text) => {
+    if (!busInWorktree) return plantHeadBus(text);
+    writeFiles(rig, { [BUS_FILE]: text });
+    gitAddAll(rig);
+  };
+  const devOnly = readDevOnlySet(ROOT);
+  const isUserSkill = (s) => !isDevOnly(devOnly, `plugins/gs-superadmin/skills/${s}`);
+  // The rig bus with its Dev-only: value replaced (the line is always present: the reader refuses a bus without it).
+  const withDevOnlyValue = (value) => realBus.split("\n").map((l) => (l.startsWith("Dev-only:") ? `Dev-only: ${value}` : l)).join("\n");
   const CHECKER = join(rig, "build", "check-doc-drift.mjs");
   const run = () => runNode(CHECKER, [], { cwd: rig });
   const at = (rel) => join(rig, rel);
@@ -74,7 +150,7 @@ try {
   const skills = readdirSync(at("plugins/gs-superadmin/skills"), { withFileTypes: true })
     .filter((d) => d.isDirectory() && existsSync(at(`plugins/gs-superadmin/skills/${d.name}/SKILL.md`)))
     .map((d) => d.name);
-  const userSkill = skills.find((s) => s !== "dev-canary");
+  const userSkill = skills.find((s) => isUserSkill(s));
   if (!userSkill) {
     // Every later case depends on this; falling through would crash mid-suite
     // on an undefined path and mask the summary (B2 review, finder A).
@@ -134,41 +210,187 @@ try {
     }
   };
 
-  // ── check 17: a .mjs under a dev-only strip path goes red (W8.5 review) ────
-  // Both strip paths, each named in the message; the probe names are unique
-  // to this arm so no other check's collateral can satisfy the assertion.
+  // ── checks 4, 17, 18: every path of the declared strip set, probed (F-469) ──
+  // The probes are generated from the set the bus header declares — a list of paths
+  // here would be one more copy of the Dev-only: line — and each probe name is unique
+  // to its arm, so no other check's collateral can satisfy an assertion.
+  const PLUGIN = "plugins/gs-superadmin";
+  devOnly.paths.forEach((p, i) => {
+    if (existsSync(at(p)) && !statSync(at(p)).isDirectory()) return; // a file path takes no child probe
+    withScratchFiles({ [`${p}/zzz-stripprobe${i}.mjs`]: "// fixture probe (scratch rig only)\n" }, () => {
+      const res = run();
+      check(`check 17: a .mjs under strip path ${p} goes red, naming the strip-path rule`,
+        res.status === 1 && res.stderr.includes(`${p}/zzz-stripprobe${i}.mjs: a .mjs under a dev-only strip path`), res.stderr);
+    });
+    withScratchFiles({ [`${PLUGIN}/scripts/zzz-stripref${i}.txt`]: `See the arm in ${p}/ZZZ-NOTES.md for the procedure.\n` }, () => {
+      const res = run();
+      check(`check 18: shipped content naming ${p}/ZZZ-NOTES.md goes red at its line, naming the path`,
+        res.status === 1 && res.stderr.includes(`zzz-stripref${i}.txt:1: shipped plugin content names a dev-only strip path (${p}`), res.stderr);
+    });
+    if (p !== PLUGIN && covers(PLUGIN, p)) {
+      const rel = p.slice(PLUGIN.length + 1);
+      withScratchFiles({ [`${PLUGIN}/scripts/zzz-plugref${i}.txt`]: `token lives in ${rel}/SKILL.md\n` }, () => {
+        const res = run();
+        check(`check 18: shipped content naming ${rel} plugin-relatively goes red`,
+          res.status === 1 && res.stderr.includes(`zzz-plugref${i}.txt:1: shipped plugin content names a dev-only strip path (${rel}`), res.stderr);
+      });
+    }
+    withScratchFiles({ [`${p}/zzz-canarynote${i}.md`]: `a dev-only doc may name ${devOnly.canaryName}\n` }, () => {
+      const res = run();
+      check(`check 4: a doc inside strip path ${p} may name the canary skill`, !res.stderr.includes(`zzz-canarynote${i}.md`), res.stderr);
+    });
+  });
+  withScratchFiles({ "zzz-canaryleak.md": `install the ${devOnly.canaryName} skill\n` }, () => {
+    const res = run();
+    check("check 4: a doc outside the strip set naming the canary skill goes red at its line",
+      res.status === 1 && res.stderr.includes(`zzz-canaryleak.md:1: mentions ${devOnly.canaryName}`), res.stderr);
+  });
+  withScratchFiles({ [`${PLUGIN}/scripts/zzz-devnull.txt`]: "redirect to /dev/null is fine; so is the dev branch\n" }, () => {
+    const res = run();
+    check("check 18 (control): /dev/null and the phrase 'dev branch' in shipped content stay green",
+      res.status === 0 && !/zzz-devnull/.test(res.stderr), res.stderr);
+  });
+
+  // ── check 18's spelling grammar, on a synthetic line (F-469) ───────────────
+  // Vacuity check on the fix's own decision points (stripMention in the checker),
+  // run on paths added to the line so both spelling kinds are present whatever the
+  // real set holds: a ONE-segment path (zzz-devdir) needs a child and never heads an
+  // absolute path; a MULTI-segment one inside the plugin (skills/zzz-devskill,
+  // plugin-relative) counts bare and after a slash; neither counts as the tail or head
+  // of a longer name. One checker run; each probe file carries one spelling.
   {
-    withScratchFiles({ "dev/zzz-stripprobe.mjs": "// fixture probe (scratch rig only)\n" }, () => {
+    setRigBus(withDevOnlyValue(`${devOnly.declared.join(" ")} zzz-devdir ${PLUGIN}/skills/zzz-devskill`.trim()));
+    const probes = {
+      red: {
+        "g1": ["see zzz-devdir/NOTES.md.", "(zzz-devdir/NOTES.md)"],
+        "g2": ["../zzz-devdir/NOTES.md", "(zzz-devdir/NOTES.md)"],
+        "g3": ["<repo>/zzz-devdir/NOTES.md", "(zzz-devdir/NOTES.md)"],
+        "g4": ["token in skills/zzz-devskill today", "(skills/zzz-devskill)"],
+        "g5": ["<plugin>/skills/zzz-devskill/NOTES.md", "(skills/zzz-devskill)"],
+        "g6": [`see ${PLUGIN}/skills/zzz-devskill`, "skills/zzz-devskill)"],
+      },
+      green: {
+        "g7": "the zzz-devdir word alone",
+        "g8": "cat /zzz-devdir/null",
+        "g9": "myzzz-devdir/NOTES.md",
+        "g10": "skills/zzz-devskill-x and skills/zzz-devskill2",
+        "g11": "zzz-devdir/ then a space",
+      },
+    };
+    const files = { "zzz-devdir/NOTES.md": "dev-only notes\n", [`${PLUGIN}/skills/zzz-devskill/NOTES.md`]: "dev-only notes\n" };
+    for (const [id, [text]] of Object.entries(probes.red)) files[`${PLUGIN}/scripts/zzz-gram-${id}.txt`] = text + "\n";
+    for (const [id, text] of Object.entries(probes.green)) files[`${PLUGIN}/scripts/zzz-gram-${id}.txt`] = text + "\n";
+    withScratchFiles(files, () => {
       const res = run();
-      check("check 17: a .mjs under dev/ goes red, naming the strip-path rule",
-        res.status === 1 && /dev\/zzz-stripprobe\.mjs: a \.mjs under a dev-only strip path/.test(res.stderr), res.stderr);
+      for (const [id, [text, mention]] of Object.entries(probes.red))
+        check(`check 18 grammar ${id}: ${JSON.stringify(text)} goes red naming ${mention}`,
+          res.stderr.includes(`zzz-gram-${id}.txt:1: shipped plugin content names a dev-only strip path `) &&
+            res.stderr.split("\n").some((l) => l.includes(`zzz-gram-${id}.txt:1:`) && l.includes(mention)), res.stderr);
+      for (const [id, text] of Object.entries(probes.green))
+        check(`check 18 grammar ${id} (control): ${JSON.stringify(text)} stays green`, !res.stderr.includes(`zzz-gram-${id}.txt`), res.stderr);
     });
-    withScratchFiles({ "plugins/gs-superadmin/skills/dev-canary/zzz-canaryprobe.mjs": "// fixture probe (scratch rig only)\n" }, () => {
-      const res = run();
-      check("check 17: a .mjs under the dev-canary skill goes red, naming the strip-path rule",
-        res.status === 1 && /dev-canary\/zzz-canaryprobe\.mjs: a \.mjs under a dev-only strip path/.test(res.stderr), res.stderr);
-    });
+    setRigBus(realBus);
   }
 
-  // ── check 18: shipped plugin content naming a dev-only strip path goes red (W9 review) ──
-  // A shipped skill reference pointing at dev/VALIDATION.md, and a shipped
-  // script comment naming the canary skill; a /dev/null spelling stays green.
+  // ── every reader follows the Dev-only: line with no second edit (F-469) ──────
+  // The finding's judge, committed: add a path to the line and checks 17, 18 and 4
+  // and the CLI the workflow reads all take it; drop one and they all let it go.
   {
-    withScratchFiles({ "plugins/gs-superadmin/skills/setup/references/zzz-refprobe.md": "See the arm in dev/VALIDATION.md for the procedure.\n" }, () => {
+    setRigBus(withDevOnlyValue(`${devOnly.declared.join(" ")} zzz-devadd`.trim()));
+    withScratchFiles({
+      "zzz-devadd/probe.mjs": "// fixture probe (scratch rig only)\n",
+      "zzz-devadd/NOTES.md": `dev-only notes may name ${devOnly.canaryName}\n`,
+      [`${PLUGIN}/scripts/zzz-addref.txt`]: "notes live in zzz-devadd/NOTES.md\n",
+    }, () => {
       const res = run();
-      check("check 18: a shipped skill reference naming dev/VALIDATION.md goes red at its line, naming the strip-path rule",
-        res.status === 1 && /zzz-refprobe\.md:1: shipped plugin content names a dev-only strip path \(dev\/VALIDATION\.md\)/.test(res.stderr), res.stderr);
+      check("follow (add): check 17 flags a .mjs under the added path", res.stderr.includes("zzz-devadd/probe.mjs: a .mjs under a dev-only strip path"), res.stderr);
+      check("follow (add): check 18 flags shipped content naming the added path", res.stderr.includes("zzz-addref.txt:1: shipped plugin content names a dev-only strip path (zzz-devadd/NOTES.md)"), res.stderr);
+      check("follow (add): check 4 lets a doc under the added path name the canary", !res.stderr.includes("zzz-devadd/NOTES.md:1: mentions"), res.stderr);
+      const cli = runNode(join(rig, "build", "dev-only.mjs"), [], { cwd: rig });
+      check("follow (add): the CLI the workflow steps read prints the added path", cli.status === 0 && cli.stdout.split("\n").includes("zzz-devadd"), cli.stdout + cli.stderr);
     });
-    withScratchFiles({ "plugins/gs-superadmin/scripts/zzz-canaryref.txt": "token lives in skills/dev-canary/SKILL.md\n" }, () => {
+    const dropped = devOnly.declared.find((p) => !covers(p, devOnly.canary));
+    if (dropped) {
+      setRigBus(withDevOnlyValue(devOnly.declared.filter((p) => p !== dropped).join(" ") || "none"));
+      withScratchFiles({
+        [`${dropped}/zzz-dropprobe.mjs`]: "// fixture probe (scratch rig only)\n",
+        [`${dropped}/zzz-dropnote.md`]: `names ${devOnly.canaryName}\n`,
+        [`${PLUGIN}/scripts/zzz-dropref.txt`]: `notes live in ${dropped}/ZZZ-NOTES.md\n`,
+      }, () => {
+        const res = run();
+        check(`follow (drop ${dropped}): check 17 no longer flags a .mjs under it`, !res.stderr.includes("zzz-dropprobe.mjs"), res.stderr);
+        check(`follow (drop ${dropped}): check 18 no longer flags shipped content naming it`, !res.stderr.includes("zzz-dropref.txt"), res.stderr);
+        check(`follow (drop ${dropped}): check 4 now flags a doc under it naming the canary`, res.stderr.includes(`${dropped}/zzz-dropnote.md:1: mentions ${devOnly.canaryName}`), res.stderr);
+        const cli = runNode(join(rig, "build", "dev-only.mjs"), [], { cwd: rig });
+        check(`follow (drop ${dropped}): the CLI no longer prints it, and still prints the canary`,
+          cli.status === 0 && !cli.stdout.split("\n").includes(dropped) && cli.stdout.split("\n").includes(devOnly.canary), cli.stdout + cli.stderr);
+      });
+    } else check("follow (drop): the real set declares a path besides the canary to drop", false, devOnly);
+    setRigBus(withDevOnlyValue(devOnly.declared.filter((p) => !covers(p, devOnly.canary)).join(" ") || "none"));
+    {
+      const cli = runNode(join(rig, "build", "dev-only.mjs"), [], { cwd: rig });
+      check("follow (drop the canary dir): the canary stays in the set — the Canary: line carries it, as dev-utils strips it",
+        cli.status === 0 && cli.stdout.split("\n").includes(devOnly.canary), cli.stdout + cli.stderr);
+    }
+    // Refusals stop the checker before any check runs: the set is a precondition.
+    for (const [label, text, why] of [
+      ["a path climbing out of the repo", withDevOnlyValue("dev ../x"), "climbs out of the repo"],
+      ["`none` beside a path", withDevOnlyValue("none dev"), "stands alone"],
+      ["no Dev-only: line", realBus.split("\n").filter((l) => !l.startsWith("Dev-only:")).join("\n"), "declares no `Dev-only:` line"],
+      ["a second Dev-only: line", realBus.replace(/^Dev-only:.*$/m, (l) => `${l}\nDev-only: dev`), "a second `Dev-only:` line"],
+    ]) {
+      setRigBus(text);
       const res = run();
-      check("check 18: shipped content naming the dev-canary skill goes red",
-        res.status === 1 && /zzz-canaryref\.txt:1: shipped plugin content names a dev-only strip path \(skills\/dev-canary\)/.test(res.stderr), res.stderr);
-    });
-    withScratchFiles({ "plugins/gs-superadmin/scripts/zzz-devnull.txt": "redirect to /dev/null is fine; so is the dev branch\n" }, () => {
+      check(`dev-only refusal (${label}): the checker exits 1 naming it before any check runs`,
+        res.status === 1 && res.stderr.startsWith("dev-only strip set:") && res.stderr.includes(why) && !/Doc-drift check passed/.test(res.stdout), res.stderr);
+    }
+    // Restore BEFORE the shape-specific arm: the last refusal left a malformed bus
+    // behind, and on a stripped tree the arm below reads it (the first stripped-tree
+    // rehearsal of this suite crashed here — F-469).
+    setRigBus(realBus);
+    if (busInWorktree) {
+      setRigBus(withDevOnlyValue(`${devOnly.declared.join(" ")} zzz-untracked`.trim()));
       const res = run();
-      check("check 18 (control): /dev/null and the phrase 'dev branch' in shipped content stay green",
-        res.status === 0 && !/zzz-devnull/.test(res.stderr), res.stderr);
-    });
+      check("dev-only refusal (an untracked path): the working-tree bus's paths must be tracked — a typo strips nothing",
+        res.status === 1 && res.stderr.includes("`zzz-untracked` on dev/FEEDBACK.md's Dev-only: line is not tracked here"), res.stderr);
+      setRigBus(realBus);
+    } else {
+      // A stripped tree reads the declaration from HEAD or dev: tracked-ness is the
+      // business of the tree that carries the bus (its full arm), by design.
+      const source = (() => { try { return readDevOnlySet(rig).source; } catch (e) { return `refused: ${e.message}`; } })();
+      check("dev-only (stripped tree): the rig reads the set from HEAD", source === `HEAD:${BUS_FILE}`, source);
+    }
+  }
+
+  // ── check 24: the CI consumers read the set, never a list (F-469) ──────────
+  {
+    const WF = ".github/workflows/docs-drift.yml";
+    const snap = snapshotFiles([at(WF)]);
+    try {
+      mutate(WF, (s) => s.replace("git --literal-pathspecs rm -r -q --ignore-unmatch -- $paths", `git rm -r -q --ignore-unmatch ${devOnly.paths.join(" ")}`));
+      const res = run();
+      check("check 24: the strip step spelling the set itself goes red, naming the step and the paths",
+        res.status === 1 && res.stderr.includes('step "Strip dev-only content (release-tree rehearsal arm)" spells the strip path(s)') && res.stderr.includes(devOnly.paths[0]), res.stderr);
+    } finally { snap.restore(); }
+    try {
+      mutate(WF, (s) => s.replace(/(- name: No dev-only content on main[\s\S]*?)paths=\$\(node build\/dev-only\.mjs\)/, (_, head) => `${head}paths="${devOnly.paths.join(" ")}"`));
+      const res = run();
+      check("check 24: the main-existence step not running the reader goes red (and its own list reds too)",
+        res.status === 1 && res.stderr.includes('step "No dev-only content on main" does not run `node build/dev-only.mjs`') &&
+          res.stderr.includes('step "No dev-only content on main" spells the strip path(s)'), res.stderr);
+    } finally { snap.restore(); }
+    try {
+      // Control (the sweep's M10 survivor, pinned): a comment line inside a run: body is
+      // prose, not a second copy of the line, so naming the paths there stays green.
+      mutate(WF, (s) => s.replace("          set -f\n          git --literal-pathspecs rm", `          # strips ${devOnly.paths.join(" ")}\n          set -f\n          git --literal-pathspecs rm`));
+      const res = run();
+      check("check 24 (control): a comment line inside a run: body may name the strip paths", res.status === 0 && !res.stderr.includes("check 24:"), res.stderr);
+    } finally { snap.restore(); }
+    try {
+      mutate(WF, (s) => s.replace("- name: No dev-only content on main", "- name: No dev-only content on main (renamed)"));
+      const res = run();
+      check("check 24: a consumer step that moved or was renamed goes red — the site list is stale", res.status === 1 && res.stderr.includes('has no step "- name: No dev-only content on main"'), res.stderr);
+    } finally { snap.restore(); }
   }
 
   // ── check 5: runner enumeration vs the AGENTS.md battery fence ─────────────
@@ -383,7 +605,7 @@ try {
   //   (control: setup's own pinned warning carries the vocabulary inside its
   //   window and the baseline stays green — asserted by the baseline arm)
   {
-    const nonSetup = skills.find((s) => s !== "dev-canary" && s !== "setup");
+    const nonSetup = skills.find((s) => isUserSkill(s) && s !== "setup");
     const rel = `plugins/gs-superadmin/skills/${nonSetup}/SKILL.md`;
     const snap = snapshotFiles([at(rel)]);
     try {
@@ -457,7 +679,7 @@ try {
   {
     // 10h: the F-387 reopen shape verbatim — a pointer sentence with NO token,
     // exactly as the three dangling sites read, on a non-setup skill.
-    const nonSetup = skills.find((s) => s !== "dev-canary" && s !== "setup");
+    const nonSetup = skills.find((s) => isUserSkill(s) && s !== "setup");
     const rel = `plugins/gs-superadmin/skills/${nonSetup}/SKILL.md`;
     const snap = snapshotFiles([at(rel)]);
     try {
@@ -489,7 +711,7 @@ try {
   //   `scripts/<x>.mjs` placeholder and scaffold-mechanics' trailing-slash
   //   `templates/conventions/` directory token both stay green)
   {
-    const nonSetup = skills.find((s) => s !== "dev-canary" && s !== "setup");
+    const nonSetup = skills.find((s) => isUserSkill(s) && s !== "setup");
     const rel = `plugins/gs-superadmin/skills/${nonSetup}/SKILL.md`;
     const snap = snapshotFiles([at(rel)]);
     try {
@@ -1097,7 +1319,7 @@ try {
     const setLiteral = /CAPTURE_HELPER_SKILLS = new Set\(\[([^\]]*)\]/.exec(checkerSrc)?.[1] ?? "";
     const helperSet = new Set([...setLiteral.matchAll(/"([a-z0-9-]+)"/g)].map((m) => m[1]));
     const member = skills.find((s) => helperSet.has(s));
-    const outsider = skills.find((s) => !helperSet.has(s) && s !== "dev-canary");
+    const outsider = skills.find((s) => !helperSet.has(s) && isUserSkill(s));
     if (helperSet.size === 0 || !member || !outsider) {
       console.log("FAIL  rig sanity: CAPTURE_HELPER_SKILLS scrape broke, or no member/outsider skill to mutate");
       console.log(`      ${JSON.stringify({ helperSet: [...helperSet], skills })}`);
@@ -1265,7 +1487,7 @@ try {
   // $CLAUDE_PLUGIN_ROOT and $env:CLAUDE_PLUGIN_ROOT must red in a non-setup
   // skill, by line; the braced-only fence test left this hole.
   {
-    const nonSetup = skills.find((s) => s !== "dev-canary" && s !== "setup");
+    const nonSetup = skills.find((s) => isUserSkill(s) && s !== "setup");
     const rel = `plugins/gs-superadmin/skills/${nonSetup}/SKILL.md`;
     const snap = snapshotFiles([at(rel)]);
     try {
@@ -1404,7 +1626,7 @@ try {
     const canonOnly16 = rules16[0]?.formula;
     const pointer16 = field16("pointer");
     const paraSkills16 = [...(/paraphraseSkills: \[([^\]]*)\]/.exec(lit16)?.[1] ?? "").matchAll(/"([a-z0-9-]+)"/g)].map((m) => m[1]);
-    const outsider16 = skills.find((s) => s !== canonSkill && !paraSkills16.includes(s) && s !== "dev-canary");
+    const outsider16 = skills.find((s) => s !== canonSkill && !paraSkills16.includes(s) && isUserSkill(s));
     if (!canonSkill || !headline16 || !canonOnly16 || !pointer16 || paraSkills16.length === 0 || !outsider16) {
       console.log("FAIL  rig sanity: TOKEN_PREFLIGHT scrape broke, or no outsider skill to mutate");
       console.log(`      ${JSON.stringify({ canonSkill, headline16, rules16, pointer16, paraSkills16, outsider16 })}`);

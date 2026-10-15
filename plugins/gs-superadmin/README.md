@@ -7,7 +7,8 @@ left off. In short:
 - **A local knowledge base of your tenant** — every rule, journey, scorecard, report,
   connector, … indexed and documented as markdown Claude can cite.
 - **Everyday admin skills** — drift detection, naming audits, deprecations, reviewable
-  change plans, email/schedule reports, tenant-wide impact analysis, upstream bug reports.
+  change plans, email/schedule reports, email engagement reports, tenant-wide impact
+  analysis, upstream bug reports.
 - **A safety net** — every `gs-admin` command the CLI catalog marks mutating triggers a
   human approval prompt, and approved changes are journaled. Reads run freely;
   catalog-mutating commands ask (see [the gate you're relying on](#how-the-plugin-protects-your-tenant)
@@ -84,9 +85,10 @@ skill from the catalog below, e.g.:
 
 > **How invocation works — read this first.** Most skills fire **only** on their exact
 > slash command: typing "audit my rule names" in plain English does nothing — you must
-> type `/gs-superadmin:audit`. Exactly two skills — `email-report` and `deps-report` —
-> are also triggered by natural-language questions ("which emails mention X?",
-> "what breaks if I change this field?"). The table's **Invoke** column marks each one.
+> type `/gs-superadmin:audit`. Exactly three skills — `email-report`, `email-engagement`
+> and `deps-report` — are also triggered by natural-language questions ("which emails
+> mention X?", "what's the open rate for program Y?", "what breaks if I change this
+> field?"). The table's **Invoke** column marks each one.
 
 | Skill | What it does | Invoke |
 |-------|--------------|--------|
@@ -96,6 +98,7 @@ skill from the catalog below, e.g.:
 | [`/gs-superadmin:deprecate`](#deprecate-an-asset) | Walk an asset through the deprecation checklist | slash only |
 | [`/gs-superadmin:change-request`](#plan--execute-a-config-change) | Turn a ticket or request into a reviewable, KB-cited implementation plan | slash only |
 | [`/gs-superadmin:email-report`](#report-on-jo-emails--schedules) | Read-only Journey Orchestrator email & schedule reports (4 modes) | slash + natural language |
+| [`/gs-superadmin:email-engagement`](#report-on-email-engagement) | Read-only open-rate and engagement report across JO programs from the tenant's send log, an engagement dashboard built once and pulled again by hand whenever new numbers are wanted, and one account's email timeline by day | slash + natural language |
 | [`/gs-superadmin:deps-report`](#tenant-wide-dependency-search) | Tenant-wide "what depends on this object/field/connection?" impact analysis | slash + natural language |
 | [`/gs-superadmin:report-bug`](#report-a-cli-bug-upstream) | Capture a `gs-admin` CLI misbehavior as a vendor-ready bug report | slash only |
 
@@ -246,6 +249,277 @@ matches `Some Field`, with near-misses listed but never counted. The skill refre
 statuses with a live sweep and offers a budget-gated KB gap-fill first — single-quote
 names (they contain `|`), and note the audit's per-step sends column is honestly
 `not available via CLI`. Never mutates the tenant.
+
+## Report on email engagement
+
+```
+/gs-superadmin:email-engagement report --sent-since 90d --internal-domain acme.com
+/gs-superadmin:email-engagement report --name 'Onboarding|Welcome Series' --by-template --step-detail
+/gs-superadmin:email-engagement report --accounts --xlsx
+```
+
+Also answers natural questions — "what's the open rate for the onboarding program?",
+"which programs have low open rates?" — without the slash command.
+
+Where `email-report` says what your emails say and when they run, this says how they
+performed. It reads the tenant's send log through read-only `gs-admin` calls into one
+snapshot file, then writes a report from it:
+
+- **A headline by status** and **one row per program**: sent, unique recipients, accounts
+  reached, delivered, opened and open rate side by side, then clicks and bounces.
+- **Survey responses** for programs that sent a survey: submitted, partially submitted,
+  any response, and the response rate.
+- **`--by-template`** — one row per program and template, with the step it sits on and
+  the template's subject as the knowledge base holds it; and one row per step and variant
+  when the pull ran with `--step-detail`. The pull reads each template's current text from
+  the knowledge base and offers to fetch the templates it lacks, through email-report's own
+  gap-fill, so they land there too.
+- **`--accounts`** — the customer lists across programs: the 25 most engaged, the 25
+  least engaged (among accounts with at least 10 delivered; on a program that sends about
+  once per contact, at least 3 delivered and no open) and the 25 most bounced, each with
+  the programs it is on. Per-program lists are off unless you set their numbers. Account
+  data is off unless you pass the flag, because ranking every account is most of a pull:
+  on a large tenant it turned a pull of a few minutes into about half an hour. Without it
+  the report says so where the lists would be; it never shows an empty list.
+- **How each number is calculated** — for every metric shown: the Gainsight object it is
+  read from, the fields and the value that counts, the filters every count carries, the
+  date field, and the calculation. You can rebuild any figure in a Gainsight report and
+  compare.
+- **Caveats & data gaps**, always, with the date and time the data was pulled.
+
+Things worth knowing before you read the numbers:
+
+- **Sent is every attempt; Delivered is what went out and did not bounce.** Open rate and
+  click rate divide by Delivered. The Gainsight program analytics page uses the same words
+  for different counts, and the glossary says how they differ.
+- **Clicks count content links only**, not unsubscribe or mailto links, so they will rarely
+  match the Gainsight UI. If your unsubscribe link is a page on your own site, name it with
+  `--unsubscribe-link`. Click tracking is often off: a click cell reads a number when
+  clicks are tracked (a 0 is a real 0), `Not tracked` when no link is tracked, and a
+  number marked `(tracking unknown)` when the data cannot tell.
+- **Unique recipients and accounts reached are exact per program** and are never added
+  across programs.
+- **The current month is provisional**: opens keep arriving.
+- **The pull takes minutes, not seconds.** The skill prints the estimate first and asks
+  before a pull of more than about ten minutes. `--sent-since 90d` or `--name` narrows it.
+  A pull the login expires under stops cleanly and continues where it stopped after
+  `gs-admin login`. A call the server will not answer (a timeout that survives its retry)
+  stops the pull the same way, naming the call: the next run retries it and continues.
+
+Reports land in `<slug>/reports-adhoc/` beside the snapshot they were written from;
+`--csv` or `--xlsx` adds spreadsheet output, and `--snapshot <file>` writes a report from
+a snapshot you already have without pulling again. Program status never limits what is
+pulled: the tables show Active programs unless you named programs, `--include-paused`
+adds Paused ones, `--all` shows every status, and the report states how many it hides.
+Never mutates the tenant. For one program's own numbers, Gainsight's analytics page for
+that program is the place; this skill is for the comparisons the UI cannot make.
+
+### The engagement dashboard
+
+```
+/gs-superadmin:email-engagement dashboard new program-health
+/gs-superadmin:email-engagement dashboard new program-health --fast-path
+/gs-superadmin:email-engagement dashboard edit program-health
+/gs-superadmin:email-engagement dashboard list
+/gs-superadmin:email-engagement refresh program-health
+/gs-superadmin:email-engagement account 'Acme Corp' --last 6m
+```
+
+Set a dashboard up once and pull it again when needed, instead of calling a skill for every
+question. `dashboard new` is an interview, one question at a time, in an admin's terms: it
+opens by saying which tenant the dashboard is for, then asks which programs (those that sent
+in the last 90 days by default), which months the pages cover (rolling, fixed, or since a
+month, with this tenant's minutes per month), how to group the programs (proposed from
+their characteristics, or by folder, or a naming convention), the company's own domains and
+test accounts (company records, by name or GSID, never addresses), the unsubscribe link, two
+health settings, the look (brand guidelines as a file or pasted values; a logo from a local
+PNG or JPEG), the tabs per page with the minutes the Health tab adds, the customer lists
+(off by default, with their cost) and, when they are on, whether the leaders' page may carry
+them with names and how the lists are built, step detail with its minutes, the
+tenant's own expected failure reasons, and where the leaders' copy goes. It closes with one step: the full refresh's calls
+and minutes against your login, and the choice to save and refresh now, run a dry run
+first (preview pages on real data), save only, or go back. Every option is a plain choice;
+a value an option needs (a date, a number of months, a list of names) is asked for on its
+own. `--fast-path` takes every question's default and goes straight to the closing step.
+Everything mechanical runs through one command,
+`node .gs-superadmin/plugin/scripts/dashboard.mjs`, with no model in the loop: the skill is
+its front door, and the command works on its own.
+
+The pages are self-contained HTML files under `<slug>/dashboards/<name>/` (`latest-admin.html`,
+`latest-exec.html`), with global filters (months, a searchable program list, groups, status,
+internal recipients), tabs (Engagement, Health, Templates, About), charts, sortable tables
+with a CSV download, and an About tab that opens with what the dashboard is and is generated
+from the dashboard's own settings. The header says when the data was pulled and how many
+days ago, and that the pages are not live: they change only when the dashboard is refreshed,
+by hand. Thirteen snapshots are kept beside them. The admin page also has a one-account view:
+pick an account the customer lists kept (or View beside its name in a list) to see its sends
+month by month, with the line that pulls its days.
+
+**Pulling again.** A refresh checks that the CLI is on the dashboard's tenant before any
+call (a production dashboard is never refreshed from a sandbox), says how many logins a
+pull of this size takes, takes a lock so a second refresh is refused by name,
+brings the knowledge base up to date for the dashboard's programs (the ones modified since
+they were documented, and the never-documented, plus the email templates it lacks, up to 50
+per pull with no model), pulls, keeps the snapshots, rebuilds the pages, and shows the change
+since the last pull on the headline figures. The first pull is full and takes minutes to
+tens of minutes on a large tenant; later ones are selective (the recent months only) and
+shorter. The customer lists are ranked at a full pull: a selective pull keeps that ranking
+(the page dates it) and updates the figures, and `refresh … --full` ranks them again. A pull that stops (the login expired, a call failed) leaves the last good pages
+untouched and continues on the next run, and a setting changed in between does not strand
+it: the pull is then planned afresh for the new settings.
+
+Every line below names the tenant's knowledge-base folder with `--kb <folder>` (here
+`acme-prod`): a workspace can hold more than one tenant, and the command refuses to guess
+which dashboard folder a bare slug means. The pages' own copy lines carry it the same way.
+
+- **On demand:** `/gs-superadmin:email-engagement refresh program-health` in a session, or
+  from a terminal in the workspace folder with no session at all, after `gs-admin login`
+  if your last login was more than an hour ago:
+
+  ```bash
+  node .gs-superadmin/plugin/scripts/dashboard.mjs refresh program-health --kb acme-prod
+  ```
+
+- **A pull longer than one login.** The `gs-admin` login lasts about an hour, the CLI never
+  refreshes it, and every login is a browser flow you complete by hand (see the operating
+  model and `reference/auth.md`). A pull that needs longer is not refused: it runs as far
+  as the login allows, stops cleanly with exit code 3 keeping every call it made, and the
+  pages stay as they were. Log in again and run the same line: it continues where it
+  stopped. The interview's closing step and the refresh itself say about how many logins a
+  pull of that size takes; plan around that number. A first pull on a large tenant, and a
+  selective one with Health on and several recipient classes, can each take two.
+- **Health only, between full refreshes** (the current month and the health families are
+  read again, the rest carried; on a tenant with many bounce categories the health calls
+  are most of the time, so this is shorter than a full refresh but not by much):
+
+  ```bash
+  node .gs-superadmin/plugin/scripts/dashboard.mjs refresh program-health --health-only --kb acme-prod
+  ```
+
+- **Scheduled.** A task on your own machine can run the refresh for you, never a cloud
+  routine (it cannot reach the keychain token). Because every login is by hand, a scheduled
+  run succeeds only when you logged in within the hour before it fires: a firing with no
+  recent login exits 3 and leaves the pages alone, and the next firing after you log in
+  resumes it and finishes. So the schedule is a reminder with the run attached: log in
+  shortly before it fires. The recipe is a runner script (it sets the working directory,
+  runs the refresh line and keeps a log), one line to create the task, and one to delete it.
+
+  Windows: save this as `refresh-program-health.cmd` in the workspace folder (replace the
+  path and the folder name):
+
+  ```bat
+  @echo off
+  cd /d C:\path\to\workspace
+  node .gs-superadmin\plugin\scripts\dashboard.mjs refresh program-health --kb acme-prod >> dashboards-refresh.log 2>&1
+  ```
+
+  then create the task (monthly, the 1st at 09:00; `/SC WEEKLY /D MON` for weekly), run it
+  once by hand to see it work, and delete it when the dashboard retires:
+
+  ```bat
+  schtasks /Create /TN "gs-dashboard program-health" /SC MONTHLY /D 1 /ST 09:00 /TR "C:\path\to\workspace\refresh-program-health.cmd" /F
+  schtasks /Run /TN "gs-dashboard program-health"
+  schtasks /Delete /TN "gs-dashboard program-health" /F
+  ```
+
+  From a Git Bash prompt put `MSYS_NO_PATHCONV=1` in front of each `schtasks` line: that
+  shell otherwise rewrites `/Create` into a path. The task opens a console window while it
+  runs (the scripts' `npm root -g` lookup and the refresh's progress lines); nothing in it
+  needs a click, and the log holds what it printed.
+
+  macOS and Linux: save this as `refresh-program-health.sh` in the workspace folder and
+  `chmod +x` it:
+
+  ```bash
+  #!/bin/sh
+  cd /path/to/workspace || exit 1
+  node .gs-superadmin/plugin/scripts/dashboard.mjs refresh program-health --kb acme-prod >> dashboards-refresh.log 2>&1
+  ```
+
+  then add one line with `crontab -e` (monthly, the 1st at 09:00; `0 9 * * 1` for Monday
+  mornings) and remove that line the same way when the dashboard retires:
+
+  ```
+  0 9 1 * * /path/to/workspace/refresh-program-health.sh
+  ```
+
+  A Claude desktop local task that runs the same runner script works the same way.
+- **Changing one setting:** `node .gs-superadmin/plugin/scripts/dashboard.mjs change
+  program-health accounts.pull=true --kb acme-prod --dry-run` says what the change costs (a
+  rebuild with no pull, the customer lists ranked again over the last full pull's rows, or the
+  next pull with its minutes, priced for the dashboard as it will be after the change; a list
+  changed after a selective pull is ranked at the next `--full` pull, and the change says so
+  with that line); without `--dry-run` it saves and does it. The value is JSON: a text setting goes in JSON quotes inside the
+  shell's (`'pages.1.title="Leadership"'`). The lines the pages offer to copy are these.
+- **Handing over to a backup refresher:** `… export program-health --out handover.json
+  --with-snapshot --kb acme-prod`, then on their machine `… import --file handover.json --kb
+  acme-prod`: their first pull is selective, with a change against yours. No lock is shared
+  across machines.
+- **The leaders' copy** is the leaders' page, `latest-exec.html`. It holds no account rows
+  unless the dashboard opted in, and no internal domain or unsubscribe link values. It goes
+  where the dashboard's `publish` setting says: the interview asks, and `change` sets it.
+
+  *A shared folder, the default.* Every successful refresh and rebuild copies it into a
+  folder synced to your machine (OneDrive, SharePoint, a network share), as
+  `<dashboard>-leaders.html`, the SAME file every time: a leader bookmarks that one file,
+  or the folder, once, and it is current after each refresh. Beside it, in
+  `<dashboard>-leaders-data/`, go its tables as CSV files named with the dashboard's name
+  (`<dashboard>-<table>.csv`) and a `<dashboard>-definitions.csv` (what each figure means,
+  the caveats, the filters, when the data was pulled), overwritten the same way, so a file
+  dragged out of the folder still says which dashboard it came from. A refresh that fails
+  or stops copies nothing: the folder keeps the last copy, as the workspace keeps the last
+  pages. A copy that fails (the folder gone, a file locked by the sync) is said in the
+  summary and leaves the workspace's pages as they are; when it failed part-way, the
+  summary reads `published: false` and its `partial` names the files this publish replaced
+  and the ones still holding the previous publish, so run `publish` again once the file is
+  free. The refresh's summary, and the scheduled run's log, say where the copy went.
+
+  The folder lives on your machine, not in the dashboard: the dashboard names a target
+  (`leaders`), and one line maps it to the folder, once per machine. A backup refresher who
+  imports the dashboard runs it on theirs; until then each refresh says the copy was
+  skipped and why.
+
+  ```bash
+  node .gs-superadmin/plugin/scripts/dashboard.mjs publish-target leaders 'C:\path\to\OneDrive - Acme\Leadership' --kb acme-prod
+  ```
+
+  Opening it: from File Explorer (or Finder) the synced file opens in the browser and works
+  whole, filters, tabs and Download CSV included; on the OneDrive website it opened as a
+  preview with an "open" option, no download step, where this was measured. SharePoint and
+  Teams were not measured: they may download an HTML file rather than show it, and a leader
+  then opens it in two clicks (download, open). Dated copies beside the same-name file are
+  an option, off by default: `change program-health publish.config.datedCopies=true --kb
+  acme-prod`.
+
+  *Monthly by default, with your refresh, and by hand.* Each refresh publishes the leaders'
+  copy (on demand or the scheduled recipe above); this line publishes it on its own, with
+  no pull:
+
+  ```bash
+  node .gs-superadmin/plugin/scripts/dashboard.mjs publish program-health --kb acme-prod
+  ```
+
+  *What it costs.* Viewers pay nothing: the leaders' copy is a file or a page of files, so
+  opening it runs no query and no session; the publish is a file copy, with no Claude
+  session. The interview is one Claude session; a refresh is `gs-admin` calls only.
+- **A program's failure text** (the masked messages and the "Other" samples) is shown by
+  `… health program-health --program <id>` in the terminal, never on a page.
+- **One account's timeline:** `/gs-superadmin:email-engagement account 'Acme Corp'` in a
+  session, or `… account program-health --account-id <GSID> --kb acme-prod` (the line the
+  admin page's one-account view offers to copy). It pulls that account's emails by program
+  and day over the last 90 days (`--last 6m`, up to `24m`, for longer) into a page of its
+  own: one lane per program, a mark per email and day, filled when opened, the account's open
+  rate beside every recipient of the same programs over the same days, a table with its CSV.
+  The account's contacts are added up and never named. A name that matches several accounts,
+  or none exactly, lists the candidates with their GSIDs and pulls nothing (exit 6): give the
+  GSID. With a dashboard named, its internal domains and test accounts decide who is internal,
+  the timeline is checked against the dashboard's own rows of that account, and the files sit
+  in `<slug>/dashboards/<name>/accounts/`; without one, in `<slug>/reports-adhoc/`. It needs
+  a `gs-admin` login, so only an admin can run it; anyone else sees an account only through the
+  page's one-account view.
+
+Everything the dashboard shows is in the workspace: the spec, the snapshots and the pages
+are tenant data under `<slug>/`, git-ignored like the rest of the knowledge base.
 
 ## Tenant-wide dependency search
 
@@ -454,7 +728,7 @@ editing session has unsaved changes (the Journey cache is keyed by program id, n
   journey/ journey-email-templates/ rules-engine/ data-management/ data-designer/
   connectors/ scorecard/ report/ …    one folder per indexed asset type (manifest domain)
   changes/                  change plans (change-request skill) + JOURNAL.md (change journal)
-  reports-adhoc/            email-report / deps-report output
+  reports-adhoc/            email-report / email-engagement / deps-report output
   relationships/
     field-to-rule.md
     field-to-scorecard.md

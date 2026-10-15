@@ -330,7 +330,7 @@ const LEAKY_USER = "dev" + "user";
   }
   // (b) a staged deletion WARNS on its own line, naming the file — it passes,
   // because an intended deletion (docs-drift's release-strip rehearsal `git
-  // rm`s dev/ and the canary from the index with no commit, then runs this
+  // rm`s the dev-only set from the index with no commit, then runs this
   // gate) is indistinguishable from a broken checkout; unstaging it clears the
   // warning on the same rig, so the warning arm is what produced it.
   rig = mkRig();

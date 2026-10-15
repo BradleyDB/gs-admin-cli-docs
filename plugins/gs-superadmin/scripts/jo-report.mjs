@@ -76,6 +76,7 @@ import {
   stripBom, isMainModule, STUB_MARKER_RE, makeCliHelpers, readKbIdentity,
   shq, POSIX_QUOTE_CAVEAT, needsPosixQuoteCaveat, readJsonFile, resolveRecordedDomains, laneTable } from "./doc-lib.mjs";
 import { fileURLToPath } from "node:url";
+import { FORMULA_START } from "./dashboard-runtime.mjs";
 const HERE = dirname(fileURLToPath(import.meta.url));
 // The journey and template KB folders are resolved from the manifest's
 // recordings (F-429; doc-lib resolveRecordedDomains — the one home): a lane's
@@ -200,6 +201,9 @@ const normSchedule = (s) => ({
   runningNow: s.runningNow ?? null,
   timeZoneName: s.timeZoneName ?? null,
   jobType: s.jobType ?? null,
+  // The schedule's bounds (epoch milliseconds; measured 2026-10-07 on a live describe): a schedule past its end has ended (F-491).
+  startTime: s.startTime ?? null,
+  endTime: s.endTime ?? null,
 });
 
 const normCondition = (c) => {
@@ -582,6 +586,15 @@ export function parseTemplateDoc(md, docPath = "") {
     tokens: null,
     docPath,
     bodyIncluded: false,
+    // C1 v3 (TPL-1, additive): the template's last-modified date as the doc's
+    // `- modified:` bullet records it (the payload's modifiedDateStr; null when
+    // unknown); the link-tracking reading the renderer wrote at the fetch
+    // (doc-lib readLinkTracking: {reading, entries, present, tracked, system,
+    // stale}; null on a doc written before it existed); and lastVerified, the
+    // manifest's capture date, overlaid by buildIndex as on programs.
+    modified: null,
+    linkTracking: null,
+    lastVerified: null,
   };
 
   // id: the re-fetch hint carries it verbatim (survives ids the filename
@@ -602,6 +615,22 @@ export function parseTemplateDoc(md, docPath = "") {
       const m = /^active: (.*)$/.exec(s);
       if (m) tpl.active = m[1] === "true" ? true : m[1] === "false" ? false : null;
     }
+  }
+  // "- modified: 2023-06-12 18:26:31 UTC by Leah" (the renderer's dateOf; "unknown by unknown" when the payload said nothing)
+  if (bullets.modified != null) {
+    const when = bullets.modified.split(" by ")[0].trim();
+    tpl.modified = when && when !== "unknown" ? when : null;
+  }
+  // "- linkTracking: <reading> · entries: n · present: n · tracked: n · system: n · stale: n" (doc-lib linkTrackingBullet)
+  if (bullets.linkTracking != null) {
+    const [reading, ...rest] = bullets.linkTracking.split("·").map((s) => s.trim());
+    const counts = {};
+    for (const seg of rest) {
+      const m = /^(entries|present|tracked|system|stale): (\d+)$/.exec(seg);
+      if (m) counts[m[1]] = Number(m[2]);
+    }
+    if (["tracked-link-present", "links-none-tracked", "unreadable"].includes(reading)) tpl.linkTracking = { reading, entries: counts.entries ?? null, present: counts.present ?? null, tracked: counts.tracked ?? null, system: counts.system ?? null, stale: counts.stale ?? null };
+    else parseErrors.push(`template doc: linkTracking bullet holds an unknown reading "${reading}"`);
   }
   if (tpl.id == null) parseErrors.push("template doc: no id found (re-fetch hint and key bullet both absent)");
 
@@ -726,9 +755,15 @@ export function freshnessLine(index) {
 
 // RFC-4180 CSV. Quoting is triggered by comma/quote/CR/LF as the RFC
 // requires, plus pipe and edge whitespace (harmless to quote, and Gainsight
-// names are full of pipes — quoting keeps them visibly one field).
+// names are full of pipes — quoting keeps them visibly one field). A text
+// cell a spreadsheet would read as a formula (it starts with = + - @, a tab
+// or a carriage return: the page runtime's FORMULA_START, the rule's one home)
+// gets a leading apostrophe, so tenant text (a template subject, a program or
+// account name) opens as text in every report CSV (F-547). A number is never
+// touched.
 export function csvCell(v) {
-  const s = v == null ? "" : String(v);
+  let s = v == null ? "" : String(v);
+  if (typeof v !== "number" && FORMULA_START.test(s)) s = `'${s}`;
   return /[",\r\n|]/.test(s) || /^\s|\s$/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 
@@ -1076,6 +1111,8 @@ export function buildIndex({ kbDir, liveListFiles = [] }) {
     const { tpl, parseErrors: errs } = res;
     if (errs.length) parseErrors.push({ docPath, id: tpl.id, errors: errs });
     if (tpl.id == null) continue;
+    // C1 v3 (TPL-1): when the doc was captured, from the inventory — the date its content is as of.
+    tpl.lastVerified = inventory[`${joDirs.templates}/${tpl.id}`]?.last_verified ?? null;
     if (templates[tpl.id]) warnings.push(`duplicate template id ${tpl.id} (${docPath} overwrote ${templates[tpl.id].docPath})`);
     templates[tpl.id] = tpl;
   }
