@@ -105,8 +105,10 @@
 //     manifest and describe-batch scripts, as the knowledge-base skills run
 //     them), capped per refresh, off-switchable; the template gap the same way.
 //   - A display-only change rebuilds from the last snapshot; a re-selection of
-//     the customer lists reduces the last run directory again when it is still
-//     there, else the next pull says so.
+//     the customer lists reduces the last run directory again when the latest
+//     pull was FULL and its run directory is a finished pull; otherwise the
+//     pages are rebuilt and the change says the lists are ranked at the next
+//     full refresh, with its line (F-529).
 //
 // Citations: DSH-n / PUB-n / UX-n are work items and Rnn rulings of the
 // maintainer's unpublished JO-dashboards plan; the decision each produced is
@@ -229,14 +231,20 @@ export const ADAPTER_MAPPING = Object.freeze([
  * @param {*} spec a valid spec
  * @param {{today: string, forceFull?: boolean, healthOnly?: boolean, lookbackDays?: ?number, categories?: *, preview?: boolean}} opts
  */
+/** The health pull is on when any page's Health tab is on (the one rule: the adapter's --health, a tab change's cost, a change's price). */
+const healthPulled = (spec) => spec.pages.some((pg) => pg.tabs.some((t) => t.id === "health" && t.enabled));
+const notStartedText = (from, thisMonth) => `sources[0].params.window.from (${from}) is a month that has not started (this month is ${thisMonth}): the window must start in this month or before — answer the window again, or change it with change <slug> 'sources.0.params.window.from="YYYY-MM"'`;
 export function adapterParams(spec, { today, forceFull = false, healthOnly = false, lookbackDays = null, categories = {}, preview = false }) {
   const p = src(spec);
   const w = windowOf(p);
   const thisMonth = today.slice(0, 7);
+  // A window's first month must have started (F-537): a since or fixed month after this one (a typo, 2026-12 for
+  // 2025-12) is refused here, naming the setting, before it reaches the adapter's window check as an uncaught error.
+  if (w.kind !== "rolling" && w.from > thisMonth) refuse(notStartedText(w.from, thisMonth));
   const to = w.kind === "fixed" ? w.to : thisMonth;
   const from = w.kind === "rolling" ? addMonths(to, -(p.windowMonths - 1)) : w.from;
   const windowDays = monthsBetween(from, to).length * 31;
-  const healthOn = !preview && spec.pages.some((pg) => pg.tabs.some((t) => t.id === "health" && t.enabled));
+  const healthOn = !preview && healthPulled(spec);
   const silent = spec.health.silentDays;
   const lookback = Math.max(1, Math.min(366, windowDays, Math.max(silent, lookbackDays ?? silent)));
   return {
@@ -258,12 +266,13 @@ export function adapterParams(spec, { today, forceFull = false, healthOnly = fal
 // What changing a setting costs, as DATA: `pull` (the next refresh pulls everything again) is DERIVED from the
 // adapter mapping above; `rebuild` is a page rebuilt from the last snapshot with no pull; `in-page` is a starting value
 // a viewer can also change on the page (the saved value is what a page starts on, so the rebuild applies it);
-// `reselect` re-ranks the customer lists over the last run directory's rows (a rebuild) when it is still there, else
-// the next pull; `identity` cannot change. Every SPEC_DESCRIPTIONS path has exactly one cost (the suite holds it both
+// `reselect` re-ranks the customer lists over the last FULL pull's run directory (a rebuild) when the latest pull was
+// full and its rows are still there; else the pages are rebuilt and the lists wait for the next full refresh (F-529);
+// `identity` cannot change. Every SPEC_DESCRIPTIONS path has exactly one cost (the suite holds it both
 // ways), and the page's LACKS rows must agree with it (the suite holds that too).
 export const COST_KINDS = Object.freeze({
   pull: "the next refresh pulls everything again",
-  reselect: "the customer lists are ranked again over the last pull's rows (a rebuild); when those rows are gone, the next refresh",
+  reselect: "the customer lists are ranked again over the last full pull's rows (a rebuild); after a routine refresh, or when those rows are gone, the pages are rebuilt and the lists are ranked at the next full refresh (refresh --full)",
   rebuild: "the pages are rebuilt from the last snapshot, with no pull",
   "in-page": "a starting value a viewer can also change on the page; the pages are rebuilt so they start on it",
   identity: "cannot be changed: it names the dashboard or its tenant",
@@ -317,7 +326,7 @@ export function changeCost(before, after, { longestPeriodDays = null } = {}) {
   }
   // A tab switch reaches the pull only through Health (--health is on when any page's Health tab is): a tab change
   // that leaves the health pull as it was (Templates, or a second page's Health tab) is a rebuild.
-  const healthMoved = (() => { try { return adapterParams(before, { today: "2026-01-01" }).health.pull !== adapterParams(after, { today: "2026-01-01" }).health.pull; } catch { return true; } })();
+  const healthMoved = healthPulled(before) !== healthPulled(after);
   // The silent threshold reaches the pull only as the derived lookback's floor: while the longest schedule period
   // (from the last plan) is above both the old and the new value, the lookback does not move and the change is the
   // page's starting threshold alone, a rebuild. With no plan yet, the pull side is assumed.
@@ -406,7 +415,7 @@ export const CLOSING_ASK = (ctx) => {
   const slug = ctx?.spec?.slug ?? "<slug>";
   const edit = ctx?.edit ?? null;
   const head = edit
-    ? `Ready to save this edit. ${edit.consequence == null ? "Nothing changed against the saved dashboard." : `Compared with the saved dashboard it changes ${plural(edit.changed.length, "setting")} (${edit.changed.map((c) => c.path).join(", ")}): ${edit.consequence === "pull" ? `the next refresh pulls everything again, about ${N(e, (x) => minutesOf(x.full.seconds), "M")} minutes; ${login("the refresh")}` : edit.consequence === "reselect" ? "the customer lists are ranked again over the last pull's rows (a rebuild, no pull)" : "the pages are rebuilt from the data already pulled, no pull"}.`}`
+    ? `Ready to save this edit. ${edit.consequence == null ? "Nothing changed against the saved dashboard." : `Compared with the saved dashboard it changes ${plural(edit.changed.length, "setting")} (${edit.changed.map((c) => c.path).join(", ")}): ${edit.consequence === "pull" ? `the next refresh pulls everything again, about ${N(e, (x) => minutesOf(x.full.seconds), "M")} minutes; ${login("the refresh")}` : edit.consequence === "reselect" ? (edit.reselect ? reselectText(edit.reselect, edit.reselect.line) : "the customer lists are ranked again over the last full pull's rows (a rebuild, no pull)") : "the pages are rebuilt from the data already pulled, no pull"}.`}`
     : `Ready to save. A full refresh with these settings is about ${N(e, (x) => x.full.calls, "N")} calls and ${mins(e, (x) => x.full.seconds, "M")} on this tenant; ${login("the first refresh")}.`;
   return `${head} ${HOW_TO_REFRESH_TEXT(slug, ctx?.kb ?? null)}`;
 };
@@ -422,7 +431,7 @@ export const CLOSING_OPTIONS = (ctx) => {
     ? { id: "save-now", text: `Save and run the first refresh now (${mins(e, (x) => x.full.seconds, "M")})`, answers: [["dry-run", "no"], ["estimate", "yes"], ["save", "yes"]] }
     : edit.consequence == null ? null
       : edit.consequence === "pull" ? { id: "save-now", text: `Save and run the refresh now (${mins(e, (x) => x.full.seconds, "M")})`, answers: [["dry-run", "no"], ["estimate", "yes"], ["save", "yes"]] }
-        : { id: "save-now", text: edit.consequence === "reselect" ? "Save and rank the customer lists again now (no pull)" : "Save and rebuild the pages now (no pull)", answers: [["dry-run", "no"], ["estimate", "yes"], ["save", "yes"]] };
+        : { id: "save-now", text: edit.consequence === "reselect" ? (edit.reselect && !edit.reselect.rank ? "Save and rebuild the pages now (no pull; the customer lists are ranked at the next full refresh)" : "Save and rank the customer lists again now (no pull)") : "Save and rebuild the pages now (no pull)", answers: [["dry-run", "no"], ["estimate", "yes"], ["save", "yes"]] };
   // On an edit with a pull already made, the preview is rebuilt from the last pull with no call (the themed preview
   // UX-2 promises, at no login cost); a new dashboard's dry run is the cheap program-level pull.
   const previewFromPull = edit && ctx?.hasSnapshot;
@@ -483,10 +492,11 @@ export const QUESTIONS = Object.freeze([
         { id: "since:<from>", text: "Everything from a start month up to now", followUps: [{ key: "from", kind: "text", ask: "The start month? (YYYY-MM)" }] },
       ];
     },
-    apply: (v) => {
+    apply: (v, ctx) => {
       const s = String(v).trim();
       const m = s.match(/^(rolling):(\d+)$/) ?? s.match(/^(fixed):(\d{4}-\d{2}):(\d{4}-\d{2})$/) ?? s.match(/^(since):(\d{4}-\d{2})$/);
       if (!m) refuse(`"${printable(s, 40)}" is not rolling:<months>, fixed:<from>:<to> or since:<from> (months as YYYY-MM)`);
+      if (m[1] !== "rolling" && ctx?.today && m[2] > ctx.today.slice(0, 7)) refuse(notStartedText(m[2], ctx.today.slice(0, 7)));
       if (m[1] === "rolling") return { sets: [["sources.0.params.window", { kind: "rolling" }], ["sources.0.params.windowMonths", Number(m[2])]] };
       if (m[1] === "fixed") return { sets: [["sources.0.params.window", { kind: "fixed", from: m[2], to: m[3] }]] };
       return { sets: [["sources.0.params.window", { kind: "since", from: m[2] }]] };
@@ -814,9 +824,46 @@ function freshName(dir, base, ext = "") {
   for (let n = 2; existsSync(join(dir, `${name}${ext}`)); n++) name = `${base}-${n}`;
   return name;
 }
+// A snapshot's file name is its pull's LOCAL time with the offset dropped, so a name is no order (F-544): a clock moved
+// back (the repeated DST hour, westward travel) or an import from a zone east names a later pull earlier. The order is
+// the instant its pulledAt parses to, read from the file (once per file and version: the cache key is the path, the
+// modification time and the size); two pulls of one instant keep their names' order, the collision suffix last.
+const pulledAtCache = new Map();
+function snapshotInstant(path) {
+  const st = statSync(path);
+  const key = `${path}\0${st.mtimeMs}\0${st.size}`;
+  if (!pulledAtCache.has(key)) {
+    let at = NaN;
+    try { at = Date.parse(readJsonFile(path)?.meta?.pulledAt); } catch { /* unreadable: ordered first, never the latest */ }
+    pulledAtCache.set(key, Number.isFinite(at) ? at : -Infinity);
+  }
+  return pulledAtCache.get(key);
+}
+const suffixOf = (f) => Number(/-(\d+)\.json$/.exec(f)?.[1] ?? 1);
 function snapshotFiles(ctx, slug) {
   const dir = join(dirOf(ctx, slug), SNAPSHOTS_DIR);
-  return existsSync(dir) ? readdirSync(dir).filter((f) => /\.json$/.test(f) && !f.startsWith("preview")).sort(cmpKey).map((f) => join(dir, f)) : [];
+  if (!existsSync(dir)) return [];
+  return readdirSync(dir).filter((f) => /\.json$/.test(f) && !f.startsWith("preview")).map((f) => ({ f, path: join(dir, f) })).map((x) => ({ ...x, at: snapshotInstant(x.path) }))
+    .sort((a, b) => a.at - b.at || cmpKey(a.f.replace(/-\d+\.json$/, ".json"), b.f.replace(/-\d+\.json$/, ".json")) || suffixOf(a.f) - suffixOf(b.f)).map((x) => x.path);
+}
+// ── A run directory's owner (F-535) ──────────────────────────────────────────
+// Every run directory a dashboard makes is named dash-<slug>-<core>[-<n>][-lb<days>]: the core is plan-, preview- or
+// account- with ten hex digits (stableRunId, the account timeline), or a pull's second-resolution stamp; -<n> a name
+// taken in the same second (freshName), -lb<days> a plan re-made on a moved lookback (appended after; the grammar
+// takes the two suffixes in either order). A slug may hold hyphens, so a name PREFIX
+// is no owner (renewals would own dash-renewals-emea-…). The owner is read back from the name by that one grammar:
+// the slug is the longest head whose rest is exactly one core and its suffixes, and a core can sit in no suffix, so
+// the reading is exact.
+const RUN_NAME_RE = /^dash-(.+)-(?:(plan|preview|account)-[0-9a-f]{10}|\d{8}T\d{6})(?:-\d+)?(?:-lb\d+)?(?:-\d+)?$/;
+/** @returns {?{slug: string, kind: "plan"|"preview"|"account"|"pull"}} the dashboard a run directory belongs to and its kind */
+export function runOwner(name) {
+  const m = RUN_NAME_RE.exec(String(name));
+  return m ? { slug: m[1], kind: /** @type {*} */ (m[2] ?? "pull") } : null;
+}
+/** This dashboard's run directories that hold a pull or its plan (a first refresh lives in the interview's plan directory): never a dry run's or an account timeline's. */
+function pullRunDirs(ctx, slug) {
+  const root = join(ctx.wsDir, ".gs-superadmin", "tmp", "engagement");
+  return existsSync(root) ? readdirSync(root, { withFileTypes: true }).filter((d) => d.isDirectory() && runOwner(d.name)?.slug === slug && ["plan", "pull"].includes(runOwner(d.name)?.kind ?? "")).map((d) => d.name) : [];
 }
 const latestSnapshotPath = (ctx, slug) => snapshotFiles(ctx, slug).at(-1) ?? null;
 const openSnapshotFile = (path) => engine.openSnapshot(readJsonFile(path));
@@ -898,7 +945,9 @@ function planWithLookback(ctx, args) {
   const second = runAdapter(ctx, { ...args, phase: "plan", lookbackDays: derived, runId: `${args.runId}-lb${derived}` });
   return { ...second, lookbackDays: second.params.health.lookbackDays, lookbackDerivedFrom: derivedFrom };
 }
-const stableRunId = (ctx, spec, what) => `dash-${spec.slug}-${what}-${sha(adapterParams(spec, { today: ctx.today }))}`;
+// The tenant's failure categories reach the pull (runAdapter passes them), so they are in the key (F-543): a category
+// file edited the same day after a plan names a new run, never a resume prepareRun refuses as other flags.
+const stableRunId = (ctx, spec, what) => `dash-${spec.slug}-${what}-${sha(adapterParams(spec, { today: ctx.today, categories: categoriesFor(ctx).categories }))}`;
 // ── Re-documentation, with no model (PUB-1 ruling; TPL-1 choice 3) ───────────
 function journeyDomain(ctx) {
   const manifest = readJsonOr(join(ctx.kbDir, "_manifest.json"), {});
@@ -1062,10 +1111,26 @@ function copyInto(src, dir, name) {
   writeFileAtomicSync(dest, readFileSync(src));
   return dest;
 }
-/** Remove the CSV files a data folder holds that this publish did not write (a panel removed since): ours by its name. */
+/** Remove the CSV files of the dashboard's OWN data folder in the workspace that this publish did not write (a panel removed since). */
 function pruneDataFolder(dir, keep) {
   for (const f of existsSync(dir) ? readdirSync(dir) : []) if (/\.csv$/i.test(f) && !keep.includes(f)) rmSync(join(dir, f), { force: true });
 }
+// What this dashboard last wrote into the shared folder (F-532): the page, its data folder and the data files, as ONE
+// record beside the spec, written when a copy is whole. The shared folder is not the dashboard's: a file there is ours
+// only when this record names it, so the prune removes a data file the last publish wrote and this one does not (a
+// panel removed since), never another dashboard's file or a leader's own copy; and a copy the last publish wrote that
+// this one does not replace (the file renamed, another target, the data files switched off) is named, not deleted.
+export const PUBLISH_RECORD_FILE = "published.json";
+const readPublishRecord = (dir) => { try { const r = readJsonOr(join(dir, PUBLISH_RECORD_FILE), null); return r && typeof r.file === "string" ? r : null; } catch { return null; } };
+/** The copies the last publish wrote that this one no longer updates (null `now`: the dashboard publishes to no folder now). */
+function noLongerUpdated(prev, now) {
+  if (!prev) return [];
+  const out = [];
+  if (!now || resolve(prev.file) !== resolve(now.file)) out.push(prev.file);
+  if (prev.data?.folder && (!now?.data || resolve(prev.data.folder) !== resolve(now.data.folder))) out.push(prev.data.folder);
+  return out;
+}
+const noLongerText = (paths) => `the earlier copy is no longer updated by this dashboard and was left where it is: ${paths.join(", ")} — remove it from the shared folder when no one reads it, or point its readers at the new file`;
 const copyFault = (e) => (e && typeof e === "object" && "code" in e ? `${e.code}: ${e instanceof Error ? e.message : e}` : String(e));
 /**
  * Publish the leaders' page(s) of a dashboard as its spec says, from the pages as they stand in the workspace.
@@ -1086,7 +1151,16 @@ function publishLeadersOrThrow(ctx, { spec, snapshot }) {
   const pub = spec.publish ?? { target: "none", config: {} };
   const leaders = spec.pages.filter((pg) => pg.preset === "exec");
   const dir = dirOf(ctx, spec.slug);
-  if (pub.target === "none" || !leaders.length) return { target: pub.target, published: false, why: pub.target === "none" ? "the dashboard publishes nowhere: its pages are files in the workspace" : "the dashboard has no leaders' page" };
+  const prev = readPublishRecord(dir);
+  // The publish moved off the shared folder: the copy there is said once (on this result), and the record goes with it.
+  let offFolder = {};
+  if (pub.target !== "file-copy" && prev) {
+    const stale = noLongerUpdated(prev, null);
+    rmSync(join(dir, PUBLISH_RECORD_FILE), { force: true });
+    offFolder = { noLongerUpdated: stale, note: noLongerText(stale) };
+    ctx.log(`the leaders' copy: ${offFolder.note}`);
+  }
+  if (pub.target === "none" || !leaders.length) return { target: pub.target, published: false, why: pub.target === "none" ? "the dashboard publishes nowhere: its pages are files in the workspace" : "the dashboard has no leaders' page", ...offFolder };
   const page = leaders[0];
   const local = join(dir, pageFileName(page.id));
   if (!existsSync(local)) return { target: pub.target, published: false, why: `no leaders' page to publish yet (${local}): run \`${refreshRemedy(ctx, spec.slug)}\` first` };
@@ -1098,7 +1172,7 @@ function publishLeadersOrThrow(ctx, { spec, snapshot }) {
     writeFileAtomicSync(file, artifactContentOf(readFileSync(local, "utf8")));
     const url = pub.config.url ?? null;
     ctx.log(`the leaders' page is ready to publish as a claude.ai artifact: ${file} (/gs-superadmin:email-engagement publishes it${url ? ` to ${url}` : ""})`);
-    return { target: "claude-artifact", published: false, ready: true, file, url, title: `${spec.title} · ${page.title}`, capabilities: { downloads: true }, next: `Claude publishes this file as a claude.ai artifact (a target no longer offered: the Artifact tool reads the whole file first, several turns at a real page's size): /gs-superadmin:email-engagement publish ${spec.slug}${url ? `; it updates ${url}` : "; record the new link afterwards with " + entryLine(ctx, "change", spec.slug, `'publish.config.url="<link>"'`)}` };
+    return { ...offFolder, target: "claude-artifact", published: false, ready: true, file, url, title: `${spec.title} · ${page.title}`, capabilities: { downloads: true }, next: `Claude publishes this file as a claude.ai artifact (a target no longer offered: the Artifact tool reads the whole file first, several turns at a real page's size): /gs-superadmin:email-engagement publish ${spec.slug}${url ? `; it updates ${url}` : "; record the new link afterwards with " + entryLine(ctx, "change", spec.slug, `'publish.config.url="<link>"'`)}` };
   }
   // file-copy
   const c = pub.config;
@@ -1150,10 +1224,18 @@ function publishLeadersOrThrow(ctx, { spec, snapshot }) {
     ctx.log(`the leaders' copy: ${out.why}`);
     return out;
   }
-  // Pruning a stale data file comes after the copy is whole: one that cannot be removed leaves the copy whole and is said.
-  if (datasets && destData) {
-    try { pruneDataFolder(destData, datasets.files); } catch (e) { out.why = `the copy is whole, but a data file no panel writes any more could not be removed from ${destData} (${copyFault(e)}): it is stale; remove it by hand`; ctx.log(`the leaders' copy: ${out.why}`); }
+  // Pruning a stale data file comes after the copy is whole, and only a file the last publish of THIS dashboard wrote
+  // there (its record): one that cannot be removed leaves the copy whole and is said.
+  const sameData = prev?.data?.folder && destData && resolve(prev.data.folder) === resolve(destData);
+  const stale = sameData ? prev.data.files.filter((f) => !datasets.files.includes(f)) : [];
+  const leftStale = [];
+  for (const f of stale) {
+    try { rmSync(join(destData, f), { force: true }); } catch (e) { leftStale.push(f); out.why = `the copy is whole, but a data file no panel writes any more could not be removed from ${destData} (${copyFault(e)}): it is stale; remove it by hand`; ctx.log(`the leaders' copy: ${out.why}`); }
   }
+  const record = { file: out.file, data: datasets && destData ? { folder: destData, files: [...datasets.files, ...leftStale] } : null, at: new Date(ctx.nowMs).toISOString() };
+  const moved = noLongerUpdated(prev, record);
+  if (moved.length) { out.noLongerUpdated = moved; out.note = noLongerText(moved); ctx.log(`the leaders' copy: ${out.note}`); }
+  writeJson(join(dir, PUBLISH_RECORD_FILE), record);
   ctx.log(`the leaders' copy was published: ${out.file} (the same file each time)${out.dated ? `, and ${out.dated}` : ""}${out.datasets ? `, with ${out.datasets.files.length} CSV files in ${out.datasets.folder}` : ""}`);
   return out;
 }
@@ -1336,7 +1418,7 @@ function saveInterviewState(ctx, slug, state) { mkdirSync(dirOf(ctx, slug), { re
  * The EXACT key is the adapter's parameters as they are: the closing step is priced on it, and re-plans when needed.
  */
 const planKeys = (ctx, spec) => {
-  const p = adapterParams(spec, { today: ctx.today });
+  const p = adapterParams(spec, { today: ctx.today, categories: categoriesFor(ctx).categories });
   const { from: _f, to: _t, ...loose } = p;
   return { exact: sha(p), loose: sha(loose) };
 };
@@ -1358,8 +1440,8 @@ function interviewContext(ctx, slug, { draft }) {
   // The preview snapshot is megabytes on a real tenant: parsed once, and only by a reader that asks for it.
   let preview;
   return {
-    spec, answered: draft.answered, plan, planExact: exact ? plan : null, planRun, previewPath, fastPath: !!state.fastPath, kb: basename(ctx.kbDir),
-    get edit() { return savedRaw ? (edit ??= (() => { const saved = openSpec(savedRaw); const lp = lastPlan(ctx, slug); return { saved, ...changeCost(saved, spec, { longestPeriodDays: lp?.estimate?.health?.lookback?.longestPeriodDays ?? null }) }; })()) : null; },
+    spec, answered: draft.answered, plan, planExact: exact ? plan : null, planRun, previewPath, fastPath: !!state.fastPath, kb: basename(ctx.kbDir), today: ctx.today,
+    get edit() { return savedRaw ? (edit ??= (() => { const saved = openSpec(savedRaw); const lp = lastPlan(ctx, slug); const cost = changeCost(saved, spec, { longestPeriodDays: lp?.estimate?.health?.lookback?.longestPeriodDays ?? null }); return { saved, ...cost, ...(cost.consequence === "reselect" ? { reselect: { ...reselectReadiness(ctx, slug), line: refreshRemedy(ctx, slug, { full: true }) } } : {}) }; })()) : null; },
     get hasSnapshot() { return !!latestSnapshotPath(ctx, slug); },
     get preview() { return previewPath ? (preview ??= openSnapshotFile(previewPath)) : null; },
     params: adapterParams(spec, { today: ctx.today }), programs: plan ? readJsonOr(join(planRun, "programs.json"), []) : [],
@@ -1590,7 +1672,7 @@ function verbAction(ctx, slug, q, value, ictx) {
   const planRun = ictx.planExact && ictx.planRun && !latestSnapshotPath(ctx, slug) ? basename(ictx.planRun) : null;
   const edit = ictx.edit;
   const saved = verbSave(ctx, slug);
-  if (yes !== "yes") return { ...saved, mode: "answer", question: q.id, refresh: null, done: null, hint: edit && edit.consequence !== "pull" ? (edit.consequence == null ? "nothing changed" : `rebuild ${slug} when ready`) : `refresh ${slug} when ready` };
+  if (yes !== "yes") return { ...saved, mode: "answer", question: q.id, refresh: null, done: null, hint: edit && edit.consequence !== "pull" ? (edit.consequence == null ? "nothing changed" : edit.consequence === "reselect" ? `rebuild ${slug} shows the other changes when ready; a rebuild ranks no list: the changed customer lists are ranked at the next full refresh (\`${refreshRemedy(ctx, slug, { full: true })}\`)` : `rebuild ${slug} when ready`) : `refresh ${slug} when ready` };
   try {
     // An edit DOES its consequence (F-516): the pull, a re-selection of the lists, or a rebuild; nothing when nothing changed.
     if (edit) {
@@ -1619,16 +1701,17 @@ function lastPlan(ctx, slug) {
   // The plan of the run the LATEST SNAPSHOT was pulled from (its directory is the one whose run.json carries that pull
   // time), else a stopped run's, else the most recent run directory by its clock; never a dry run's (its preview
   // parameters price nothing a refresh does: the S5-V second sitting's "about 72 minutes" was read from one).
-  const runs = existsSync(root) ? readdirSync(root, { withFileTypes: true }).filter((d) => d.isDirectory() && d.name.startsWith(`dash-${slug}-`) && !d.name.includes("-preview-")).map((d) => d.name) : [];
+  // This dashboard's own runs, by the exact owner its name reads back to (F-535): never another dashboard whose slug
+  // extends this one, never a dry run's or an account timeline's plan.
+  const runs = pullRunDirs(ctx, slug);
   const latest = latestSnapshotPath(ctx, slug);
-  // The file's stamp (its first 15 characters: a collision suffix may follow) names the pull it came from.
-  const stamp = latest ? basename(latest).slice(0, 15) : null;
-  const pulledFrom = stamp ? runs.find((d) => { const run = readJsonOr(join(root, d, "run.json"), null); return run?.params?.pulledAt && snapshotStamp(run.params.pulledAt) === stamp; }) ?? null : null;
+  // The run whose pull time IS the latest snapshot's (an exact key, as the re-selection matches it).
+  const pulledAt = latest ? readJsonOr(latest, null)?.meta?.pulledAt ?? null : null;
+  const pulledFrom = pulledAt ? runs.find((d) => readJsonOr(join(root, d, "run.json"), null)?.params?.pulledAt === pulledAt) ?? null : null;
   const byClock = runs.map((d) => ({ d, at: (() => { try { return statSync(join(root, d, "run.json")).mtimeMs; } catch { return 0; } })() })).sort((a, b) => b.at - a.at).map((x) => x.d);
   const plan = [pulledFrom, state?.run ?? null, ...byClock].filter(Boolean).map((d) => readJsonOr(join(root, d, "plan.json"), null)).find(Boolean);
   return plan ?? null;
 }
-const lastPlanMinutes = (ctx, slug) => { const plan = lastPlan(ctx, slug); return plan?.estimate?.full?.seconds != null ? minutesOf(plan.estimate.full.seconds) : null; };
 function verbSave(ctx, slug) {
   const r = ctx.store.save(slug);
   rmSync(join(dirOf(ctx, slug), INTERVIEW_FILE), { force: true });
@@ -1638,7 +1721,10 @@ function verbSave(ctx, slug) {
 function verbList(ctx) {
   const dashboards = ctx.store.listDashboards().map((d) => {
     const latest = d.saved ? latestSnapshotPath(ctx, d.slug) : null;
-    return { ...d, lastPull: latest ? basename(latest).replace(/\.json$/, "") : null, pages: d.saved ? d.pages.filter((p) => existsSync(join(dirOf(ctx, d.slug), pageFileName(p)))) : [] };
+    // What the latest pull holds, in a line a reader can judge a question against (F-534): its time, window, selection and program count.
+    const snap = latest ? readJsonOr(latest, null) : null;
+    const holds = snap?.meta ? (({ pulledAt, window, selection }) => ({ pulledAt, window, selection, programs: snap.dimensions?.programs?.length ?? 0 }))(heldBy(snap, "all")) : null;
+    return { ...d, lastPull: latest ? basename(latest).replace(/\.json$/, "") : null, holds, pages: d.saved ? d.pages.filter((p) => existsSync(join(dirOf(ctx, d.slug), pageFileName(p)))) : [] };
   });
   return { ok: true, mode: "list", tenantHost: ctx.store.tenantHost, kb: basename(ctx.kbDir), dashboards };
 }
@@ -1779,28 +1865,61 @@ function verbRebuild(ctx, slug) {
   const r = rebuildFrom(ctx, { spec, snapshotPath: files.at(-1), previousPath: files.at(-2) ?? null, outDir: dirOf(ctx, slug) });
   return { ok: true, mode: "rebuild", slug, pulledAt: r.pulledAt, ungrouped: r.ungrouped, delta: r.delta, pages: r.pages.map((p) => ({ page: p.page, path: p.path, megabytes: p.megabytes, warning: p.warning })), publish: r.publish };
 }
-/** A re-selection of the customer lists over the last run directory's rows (ruled 2026-10-05): reduce again with the new lists, no pull. */
-function reselectFromRun(ctx, slug, spec) {
-  const state = readJsonOr(join(dirOf(ctx, slug), STATE_FILE), null);
+/**
+ * Whether a change of the customer lists can rank them now, and over which rows (F-529, ruled 2026-10-15). A list is
+ * ranked only over a FULL pull's rows: a routine (selective) refresh keeps the last full ranking and folds every other
+ * account's older months away (F-521, F-548), so re-reducing its run cannot rank a new or resized list. Ranked now: the
+ * latest snapshot is a full pull and its run directory (matched by the exact pull time, among this dashboard's own
+ * runs) is a finished pull. Anything else is said, never a stack trace: no pull yet, a routine refresh, the rows gone
+ * (an import, a cleaned tmp), or a run directory that is not a finished pull (one an edit's plan resumed, phase plan).
+ * @returns {{rank: boolean, why: ?string, latest: ?string, runDir: ?string}}
+ */
+function reselectReadiness(ctx, slug) {
   const latest = latestSnapshotPath(ctx, slug);
-  if (!latest) return { done: false, why: "no snapshot yet" };
-  const current = openSnapshotFile(latest);
-  // The run the latest snapshot came from: its directory is named for the pull it made.
-  // Every run directory of this dashboard (a first refresh may live in the interview's plan directory); the pull's time decides.
-  const candidates = existsSync(join(ctx.wsDir, ".gs-superadmin", "tmp", "engagement")) ? readdirSync(join(ctx.wsDir, ".gs-superadmin", "tmp", "engagement")).filter((d) => d.startsWith(`dash-${slug}-`) && !d.includes("-preview-")) : [];
-  const runDir = candidates.map((d) => join(ctx.wsDir, ".gs-superadmin", "tmp", "engagement", d)).find((d) => { try { const run = readJsonOr(join(d, "run.json"), null); return run?.params?.pulledAt === current.meta.pulledAt; } catch { return false; } }) ?? null;
-  void state;
-  if (!runDir || !existsSync(join(runDir, "status.json"))) return { done: false, why: "the last pull's rows are no longer in the workspace: the next refresh selects the lists" };
-  const run = readJsonOr(join(runDir, "run.json"), {});
-  const input = loadRun(runDir, { previous: run.previousPath && existsSync(run.previousPath) ? openSnapshotFile(run.previousPath) : null, cliVersion: run.cliVersion ?? null, pluginVersion: ctx.pluginVersion });
+  if (!latest) return { rank: false, latest: null, runDir: null, why: "the dashboard has no pull yet: its first refresh ranks the lists" };
+  const meta = readJsonOr(latest, null)?.meta ?? {};
+  if (meta.refresh?.mode !== "full") return { rank: false, latest, runDir: null, why: `the latest pull (${meta.pulledAt}) was a routine refresh, which keeps the ranking of the last full pull and holds no rows to rank a changed list over` };
+  const root = join(ctx.wsDir, ".gs-superadmin", "tmp", "engagement");
+  const runDir = pullRunDirs(ctx, slug).map((d) => join(root, d)).find((d) => readJsonOr(join(d, "run.json"), null)?.params?.pulledAt === meta.pulledAt) ?? null;
+  if (!runDir) return { rank: false, latest, runDir: null, why: `the rows of the latest pull (${meta.pulledAt}, a full one) are no longer in the workspace` };
+  const status = readJsonOr(join(runDir, "status.json"), null);
+  if (status?.status !== "ok" || status?.phase !== "all") return { rank: false, latest, runDir, why: `the run directory of the latest pull (${basename(runDir)}) is not a finished pull now (status ${status?.status ?? "missing"}, phase ${status?.phase ?? "missing"}: a plan made since resumed it)` };
+  return { rank: true, latest, runDir, why: null };
+}
+/** What a list change does, said before it runs (`change`'s consequenceText, the edit's closing ask and its option). */
+const reselectText = (r, line) => (r.rank ? "the customer lists are ranked again over the last full pull's rows (a rebuild, no pull)" : `the pages are rebuilt with no pull, and the changed customer lists are ranked at the next full refresh (\`${line}\`): ${r.why}`);
+/**
+ * A change of the customer lists, done (ruled 2026-10-05, narrowed 2026-10-15 at F-529): over a full pull's run
+ * directory, reduce again with the new lists (ranked, no pull); otherwise rank nothing, rebuild the pages so every other
+ * changed setting of the same change lands, and say that the lists are ranked at the next full refresh, with its line
+ * and its minutes. `done` is true only when the lists were ranked.
+ */
+function reselectFromRun(ctx, slug, spec) {
+  const r = reselectReadiness(ctx, slug);
+  if (!r.rank) {
+    const line = refreshRemedy(ctx, slug, { full: true });
+    const plan = lastPlan(ctx, slug);
+    const fullMinutes = plan?.estimate?.full?.seconds != null ? minutesOf(plan.estimate.full.seconds) : null;
+    const files = snapshotFiles(ctx, slug);
+    const rebuilt = files.length ? rebuildFrom(ctx, { spec, snapshotPath: files.at(-1), previousPath: files.at(-2) ?? null, outDir: dirOf(ctx, slug) }) : null;
+    return {
+      done: false, ranked: false, rebuilt: !!rebuilt, why: r.why, fullRefreshMinutes: fullMinutes,
+      text: `The change is saved. The customer lists were not ranked again: ${r.why}. They are ranked at the next full refresh (${fullMinutes != null ? `about ${plural(fullMinutes, "minute")}` : "a full pull's time"}): \`${line}\`; a routine refresh keeps the current ranking. ${rebuilt ? "The pages were rebuilt with the other changes." : "There are no pages to rebuild yet."}`,
+      remedy: { login: false, line },
+      ...(rebuilt ? { pages: rebuilt.pages.map((p) => ({ page: p.page, path: p.path })), publish: rebuilt.publish } : {}),
+    };
+  }
+  const run = readJsonOr(join(r.runDir, "run.json"), {});
+  const input = loadRun(r.runDir, { previous: run.previousPath && existsSync(run.previousPath) ? openSnapshotFile(run.previousPath) : null, cliVersion: run.cliVersion ?? null, pluginVersion: ctx.pluginVersion });
   input.params.accounts.lists = accountLists(spec);
   const pulled = reduceEngagement(input);
   const previous = input.previous;
   const { snapshot } = applyGroups(pulled, spec.groups, { previous });
-  writeFileAtomicSync(latest, JSON.stringify(snapshot));
+  writeFileAtomicSync(r.latest, JSON.stringify(snapshot));
   const delta = computeDelta(spec, snapshot, previous);
   const pages = buildPages(ctx, { spec, snapshot, delta, outDir: dirOf(ctx, slug) });
-  return { done: true, publish: publishLeaders(ctx, { spec, snapshot }), snapshot: latest, lists: snapshot.honesty?.accountSelection?.lists?.map((l) => ({ kind: l.kind, kept: l.kept.length })) ?? [], pages: pages.map((p) => ({ page: p.page, path: p.path })) };
+  const lists = snapshot.honesty?.accountSelection?.lists?.map((l) => ({ kind: l.kind, kept: l.kept.length })) ?? [];
+  return { done: true, ranked: true, text: `The change is saved and the customer lists were ranked again over the last full pull's rows (${snapshot.meta.pulledAt}), no pull; the pages were rebuilt.`, publish: publishLeaders(ctx, { spec, snapshot }), snapshot: r.latest, lists, pages: pages.map((p) => ({ page: p.page, path: p.path })) };
 }
 function verbChange(ctx, slug, pairs, dryRun) {
   const saved = savedSpec(ctx, slug);
@@ -1825,18 +1944,28 @@ function verbChange(ctx, slug, pairs, dryRun) {
     if (e instanceof SpecRefusal) refuse(e.message);
     throw e;
   }
+  // A value the pull would refuse (a window that has not started, F-537) is refused before anything is saved.
+  try { adapterParams(d.draft.spec, { today: ctx.today }); } catch (e) { if (!had) ctx.store.discardDraft(slug); throw e; }
   const plan = lastPlan(ctx, slug);
   const { changed, consequence } = changeCost(saved, d.draft.spec, { longestPeriodDays: plan?.estimate?.health?.lookback?.longestPeriodDays ?? null });
   // The pull's minutes are priced for the spec AFTER the change (F-511 instance 24), from the last plan's parts.
   const seconds = pullSecondsAfter(plan, saved, d.draft.spec);
-  const says = consequence == null ? "nothing changed" : consequence === "pull" ? `the next refresh pulls everything again, ${seconds != null ? `about ${plural(minutesOf(seconds), "minute")}${seconds > LOGIN_SECONDS ? ` (about ${plural(loginsFor(seconds), "login")} of an hour)` : ""}` : "a first pull's time (no plan yet)"}` : consequence === "reselect" ? "the customer lists are ranked again over the last pull's rows (a rebuild), or the next refresh when those rows are gone" : "rebuild only (no pull)";
+  const says = consequence == null ? "nothing changed" : consequence === "pull" ? `the next refresh pulls everything again, ${seconds != null ? `about ${plural(minutesOf(seconds), "minute")}${seconds > LOGIN_SECONDS ? ` (about ${plural(loginsFor(seconds), "login")} of an hour)` : ""}` : "a first pull's time (no plan yet)"}` : consequence === "reselect" ? reselectText(reselectReadiness(ctx, slug), refreshRemedy(ctx, slug, { full: true })) : "rebuild only (no pull)";
   const summary = { ok: true, mode: "change", slug, by: started.by, draftHadEarlierChanges: had, changed, consequence, consequenceText: says, pullSeconds: consequence === "pull" ? seconds : null, costTable: COST_KINDS, dryRun };
   if (dryRun) {
     if (!had) ctx.store.discardDraft(slug);
     return { ...summary, saved: false, done: null };
   }
   if (!changed.length) { if (!had) ctx.store.discardDraft(slug); return { ...summary, saved: false, done: null }; }
-  const savedNow = ctx.store.save(slug);
+  let savedNow;
+  try {
+    savedNow = ctx.store.save(slug);
+  } catch (e) {
+    // A save the writer refuses (another dashboard's publish file, F-532) leaves no draft this change started.
+    if (!had) ctx.store.discardDraft(slug);
+    if (e instanceof SpecRefusal) refuse(e.message);
+    throw e;
+  }
   const spec = openSpec(savedNow.spec);
   const done = doConsequence(ctx, slug, spec, consequence);
   return { ...summary, saved: true, previousCopy: `${savedNow.path}.previous`, done };
@@ -1858,9 +1987,8 @@ export function pullSecondsAfter(plan, before, after) {
   const wa = windowOf(src(after));
   if (wb.kind === "rolling" && wa.kind === "rolling" && src(before).windowMonths !== src(after).windowMonths && src(before).windowMonths > 0) seconds = (seconds / src(before).windowMonths) * src(after).windowMonths;
   const flip = (part, was, now) => { if (!part || was === now) return; seconds += now ? (part.on ? 0 : part.addsSeconds) : -(part.on ? part.addsSeconds : 0); };
-  const healthOn = (s) => s.pages.some((pg) => pg.tabs.some((t) => t.id === "health" && t.enabled));
   flip(e.accounts, !!before.accounts.pull, !!after.accounts.pull);
-  flip(e.health, healthOn(before), healthOn(after));
+  flip(e.health, healthPulled(before), healthPulled(after));
   flip(e.stepDetail, !!src(before).stepDetail, !!src(after).stepDetail);
   return Math.max(0, Math.round(seconds));
 }
@@ -1878,8 +2006,29 @@ function verbReport(ctx, slug, opt, argv) {
     if (e instanceof ReportRefusal) refuse(e.message);
     throw e;
   }
-  // The snapshot's age and the minutes a pull would take: the skill says both and offers the pull (no cadence is read; ruled 2026-10-12).
-  return { ...summary, mode: "report", slug, snapshotAgeDays: ageDays, refreshMinutes: lastPlanMinutes(ctx, slug) };
+  // The snapshot's age and the minutes a pull would take: the skill says both and offers the pull (no cadence is read;
+  // ruled 2026-10-12). The pull it offers is the ROUTINE refresh (F-534): priced from the last plan when that plan was a
+  // routine (selective) one, its own run's figure; after only a full pull no routine refresh has been priced yet, so the
+  // figure is null and the full pull's minutes ride beside it for the skill's wording.
+  const plan = lastPlan(ctx, slug);
+  const refreshMinutes = plan?.estimate?.mode === "selective" && plan.estimate.thisRun?.seconds != null ? minutesOf(plan.estimate.thisRun.seconds) : null;
+  const fullRefreshMinutes = plan?.estimate?.full?.seconds != null ? minutesOf(plan.estimate.full.seconds) : null;
+  return { ...summary, mode: "report", slug, snapshotAgeDays: ageDays, refreshMinutes, fullRefreshMinutes, held: heldBy(snapshot, summary.statusesShown) };
+}
+/**
+ * What a dashboard's snapshot holds, for the question it is asked (F-534): the pull's selection and window in words and
+ * every program it holds (id, name, statuses), each marked `shown` when the report's status filter shows it. The skill
+ * checks the programs a question names against these: one not held is not on the dashboard (its selection or its
+ * window left it out), one held but not shown is hidden by its status.
+ * @param {*} snapshot @param {string[]|"all"} statusesShown
+ */
+function heldBy(snapshot, statusesShown) {
+  const sel = snapshot.meta.params?.selector ?? {};
+  const selection = sel.names?.length || sel.ids?.length ? `the programs it names (${[...(sel.names ?? []), ...(sel.ids ?? [])].join(", ")})` : sel.sentSince ? `the programs that sent since ${sel.sentSince} (counted back from the pull's day)` : "every program that sent in the window";
+  return {
+    pulledAt: snapshot.meta.pulledAt, window: { from: snapshot.meta.window.from, to: snapshot.meta.window.to }, selection,
+    programs: snapshot.dimensions.programs.map((p) => ({ id: p.id, name: p.name ?? null, statuses: p.statuses ?? [], shown: statusesShown === "all" || !Array.isArray(statusesShown) || (p.statuses ?? []).some((x) => statusesShown.includes(x)) })),
+  };
 }
 function verbExport(ctx, slug, opt, argv) {
   if (!opt("--out")) refuse("export needs --out <file>");
@@ -1895,18 +2044,24 @@ function verbExport(ctx, slug, opt, argv) {
 }
 function verbImport(ctx, opt, argv) {
   if (!opt("--file")) refuse("import needs --file <export>");
-  const r = ctx.store.importSpec({ file: opt("--file"), slug: opt("--slug") ?? null, replace: argv.includes("--replace") });
   const sibling = resolve(opt("--file")).replace(/\.json$/i, "") + ".snapshot.json";
   const snapPath = opt("--snapshot") ? resolve(opt("--snapshot")) : existsSync(sibling) ? sibling : null;
+  // The snapshot is opened and its tenant checked BEFORE the spec is written (F-540): a refused snapshot leaves nothing
+  // written, a spec replaced under --replace included.
+  let pulled = null;
+  const checkSnapshot = (spec) => {
+    if (!snapPath) return;
+    try { pulled = openSnapshotFile(snapPath); } catch (e) { refuse(`the snapshot ${snapPath} cannot be read (${e instanceof Error ? e.message : e}) — nothing was imported`); }
+    if (pulled.meta.tenantHost !== spec.tenantHost) refuse(`the snapshot was pulled from ${pulled.meta.tenantHost}, and the dashboard belongs to ${spec.tenantHost} — nothing was imported`);
+  };
+  const r = ctx.store.importSpec({ file: opt("--file"), slug: opt("--slug") ?? null, replace: argv.includes("--replace"), beforeWrite: checkSnapshot });
   let snapshot = null;
-  if (snapPath) {
-    const s = openSnapshotFile(snapPath);
-    if (s.meta.tenantHost !== r.spec.tenantHost) refuse(`the snapshot was pulled from ${s.meta.tenantHost}, and the dashboard belongs to ${r.spec.tenantHost} — not imported`);
+  if (snapPath && pulled) {
     mkdirSync(join(dirOf(ctx, r.slug), SNAPSHOTS_DIR), { recursive: true });
-    snapshot = join(dirOf(ctx, r.slug), SNAPSHOTS_DIR, `${snapshotStamp(s.meta.pulledAt)}.json`);
+    snapshot = join(dirOf(ctx, r.slug), SNAPSHOTS_DIR, `${freshName(join(dirOf(ctx, r.slug), SNAPSHOTS_DIR), snapshotStamp(pulled.meta.pulledAt), ".json")}.json`);
     copyFileSync(snapPath, snapshot);
   }
-  return { ok: true, mode: "import", slug: r.slug, path: r.path, snapshot, exportedAt: r.exportedAt };
+  return { ok: true, mode: "import", slug: r.slug, path: r.path, snapshot, exportedAt: r.exportedAt, ...(r.publishRenamed ? { publishRenamed: { ...r.publishRenamed, text: `The leaders' copy of "${r.slug}" goes to ${r.publishRenamed.to}, not ${r.publishRenamed.from}: ${r.publishRenamed.why}.` } } : {}) };
 }
 function verbHealth(ctx, slug, opt) {
   const programId = opt("--program");

@@ -69,7 +69,8 @@ the versions 0.44.0 to 0.53.0 were staged on the way and never released on their
   look, and where the leaders' copy goes. It closes with one step: the full refresh's calls
   and minutes against the login, then save and refresh now, a dry run first, save only, or
   go back. `--fast-path` takes every default and goes straight there. An edit asks nothing
-  again: it states what the change costs (a pull, a re-ranking, or a rebuild) and does it.
+  again: it states what the change costs (a pull, a re-ranking over the last full pull, or
+  a rebuild) and does it.
   A brand theme can be given as a guidelines file or pasted values; every colour is checked
   for contrast and replaced, with the reason, when it fails.
 - **The pages.** Two self-contained HTML files per dashboard, an admin page and a leaders'
@@ -79,7 +80,9 @@ the versions 0.44.0 to 0.53.0 were staged on the way and never released on their
   report, kept in the address so a view can be bookmarked. Tables sort, scroll, hide
   columns and download what they show as a CSV; charts carry their values; a bar chart over
   hundreds of programs draws the 25 largest across with every row in the table underneath;
-  a shortened name opens whole on hover, focus, click or tap. Every mark (the provisional
+  a shortened name opens whole on hover, focus, click or tap. A headline figure's change
+  against the usual month compares the closed months shown, never a month still in
+  progress, and says so. Every mark (the provisional
   `*`, the carried-forward `†`) is explained at the tab's foot. The About tab defines every
   figure, lists the dashboard's settings and says how to refresh. A leaders' page carries
   no account names, error messages or template text unless the dashboard says it may.
@@ -93,12 +96,19 @@ the versions 0.44.0 to 0.53.0 were staged on the way and never released on their
   families again. The pages say when the data was pulled and that they are not live. The
   README has a copy-paste scheduled-refresh recipe per OS, and the hand-over to a backup
   refresher (export with the snapshot, import).
+- **Customer lists are ranked at a full pull.** A routine refresh keeps that ranking (the
+  page dates it) and updates the figures; `refresh <slug> --full` ranks the lists again. A
+  list changed after a routine refresh is ranked at the next full refresh, and the change
+  says so, with that refresh's line.
 - **The leaders' copy, published.** At the end of every successful refresh the leaders'
   page is copied into a folder you name (a synced OneDrive, SharePoint or network folder)
   under the same file name every time, with each table beside it as a CSV named after the
   dashboard and a definitions file. The folder is mapped on your machine
   (`dashboard.mjs publish-target leaders <folder>`), so an exported dashboard carries no
-  path. `publish <slug>` copies the pages as they stand, with no pull. A copy that fails,
+  path. Each dashboard publishes its own file: one imported under another name takes its
+  own, two dashboards are never saved to the same file, a publish removes only the data
+  files it wrote itself, and a copy it stops updating (the file renamed, the target
+  changed) is named in the summary and left in place. `publish <slug>` copies the pages as they stand, with no pull. A copy that fails,
   wholly or part-way (a CSV open in Excel), never touches the pages in the workspace: the
   summary reads `published: false` and names what was and was not replaced, and the exit
   code stays 0.
@@ -114,6 +124,10 @@ the versions 0.44.0 to 0.53.0 were staged on the way and never released on their
   them, because Gainsight's report builder cannot finish the reports they create (F-528).
   Nor is a claude.ai artifact offered for the leaders' copy: a Claude session must read the
   whole page before it can publish it, which takes several turns on a real leaders' page.
+- **Hardening: spreadsheet formulas in report CSVs.** A cell that starts with `=`, `+`, `-`
+  or `@` (a template subject, a program or account name) is written as text in every report
+  CSV, `/gs-superadmin:email-report`'s included, as the dashboard pages' own downloads
+  already were.
 
 ## 0.43.4 — 2026-10-06 (hotfix, released from main)
 

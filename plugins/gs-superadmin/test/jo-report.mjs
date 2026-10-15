@@ -452,6 +452,9 @@ check("csv: quote doubled and quoted", csvCell('say "hi"') === '"say ""hi"""', c
 check("csv: newline quoted", csvCell("line1\nline2") === '"line1\nline2"', csvCell("line1\nline2"));
 check("csv: pipe quoted (Gainsight names)", csvCell("ZZ|TEST|Email 3") === '"ZZ|TEST|Email 3"', csvCell("ZZ|TEST|Email 3"));
 check("csv: plain field unquoted, null empty", csvCell("plain") === "plain" && csvCell(null) === "", null);
+check("csv: F-547 text a spreadsheet would read as a formula (a leading = + - @, a tab) gets a leading apostrophe, quoted as any other text would be; a number, a negative one included, is never touched; = inside the text is left",
+  csvCell("=1+1") === "'=1+1" && csvCell("+cmd") === "'+cmd" && csvCell("-x") === "'-x" && csvCell("@SUM(A1)") === "'@SUM(A1)" && csvCell("\tx") === "'\tx" && csvCell('=HYPERLINK("u")') === `"'=HYPERLINK(""u"")"` &&
+    csvCell(-5) === "-5" && csvCell(3.5) === "3.5" && csvCell("a=b") === "a=b" && csvCell("") === "", [csvCell("=1+1"), csvCell(-5), csvCell("\tx")]);
 // ── wave-2 portability: junction CLI entry + BOM-tolerant index load ─────────
 {
   // F-117: invoked through a junction/symlink the dispatcher must still run
