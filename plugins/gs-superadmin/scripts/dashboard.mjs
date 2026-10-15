@@ -1074,20 +1074,21 @@ function buildPages(ctx, { spec, snapshot, delta, outDir }) {
 }
 /** A list as the spec and the pull's echo both hold it, for comparing the two. */
 const listKey = (l) => JSON.stringify([l.kind, l.n, l.floor, l.per ?? null]);
+/** Whether a snapshot was ranked with the spec's customer lists (the pull's list echo, which a ranking from the store rewrites). */
+const listsAgree = (spec, snapshot) => accountLists(spec).map(listKey).join() === (snapshot.meta.params?.accounts?.lists ?? []).map(listKey).join();
 /**
  * The customer lists follow the saved spec on every build (F-548, F-530: the pages, the report and the About tab read
  * one ranking): when the spec's lists are not the ones this snapshot was ranked with, they are ranked again from the
  * snapshot's account store with no pull, and the snapshot is rewritten in place. Null when nothing was ranked: the lists
  * already agree, the pull holds no accounts, or the snapshot has no store of its own (the next refresh ranks them).
  */
-function rankChangedLists(spec, snapshot, snapshotPath) {
+function rankChangedLists(spec, snapshot, snapshotPath, { write = true } = {}) {
   if (spec.accounts?.pull === false || !engine.accountAvailability(snapshot).pulled) return null;
-  const want = accountLists(spec);
-  if (want.map(listKey).join() === (snapshot.meta.params?.accounts?.lists ?? []).map(listKey).join()) return null;
+  if (listsAgree(spec, snapshot)) return null;
   const store = readAccountStore(accountStorePath(snapshotPath));
   if (!accountStoreFits(store, snapshot)) return null;
-  const { snapshot: ranked, newlyKept } = rankFromStore({ snapshot, store, lists: want });
-  writeFileAtomicSync(snapshotPath, JSON.stringify(ranked));
+  const { snapshot: ranked, newlyKept } = rankFromStore({ snapshot, store, lists: accountLists(spec) });
+  if (write) writeFileAtomicSync(snapshotPath, JSON.stringify(ranked));
   return { snapshot: ranked, newlyKept: newlyKept.length, unnamed: ranked.meta.params.accounts.names ? ranked.dimensions.accounts.filter((a) => newlyKept.includes(a.key) && a.name == null).length : 0 };
 }
 function rebuildFrom(ctx, { spec, snapshotPath, previousPath, outDir }) {
@@ -1668,7 +1669,10 @@ function verbAction(ctx, slug, q, value, ictx) {
       // An edit's preview: the draft's settings over the LAST PULL, no call (the review of 2026-10-12: a dry run that
       // pulls for an edit that needs no pull spends login minutes on nothing; a pull-cost edit still previews what the
       // last pull holds, said so).
-      const pulled = openSnapshotFile(lastPull);
+      const opened = openSnapshotFile(lastPull);
+      // The draft's customer lists, ranked from the store in memory (never written: the draft is not saved), so the
+      // preview's panels and its About tab name the same lists (F-530).
+      const pulled = rankChangedLists(spec, opened, lastPull, { write: false })?.snapshot ?? opened;
       const previewDir = join(dirOf(ctx, slug), PREVIEW_DIR);
       const { snapshot, resolution } = applyGroups(pulled, spec.groups);
       const pages = buildPages(ctx, { spec, snapshot, delta: null, outDir: previewDir });
@@ -1954,6 +1958,12 @@ function reselectFromStore(ctx, slug, spec) {
     };
   }
   const snapshot = openSnapshotFile(r.latest);
+  // Ranked is what the snapshot now holds (the review's outcome-from-proxy note): its lists are the spec's. A change that
+  // also turned the customer lists off ranks nothing, and says so.
+  if (!listsAgree(spec, snapshot)) {
+    const why = spec.accounts?.pull === false ? "the customer lists are turned off for this dashboard (accounts.pull is false): the lists are kept and unused until they are turned on" : "the lists the snapshot holds are not the saved ones";
+    return { done: false, ranked: false, rebuilt: !!rebuilt, why, text: `The change is saved. The customer lists were not ranked again: ${why}. ${rebuilt ? "The pages were rebuilt with the other changes." : ""}`.trim(), ...pages };
+  }
   const lists = snapshot.honesty?.accountSelection?.lists?.map((l) => ({ kind: l.kind, kept: l.kept.length, ...(l.per ? { per: l.per, segment: l.segment } : {}), ...(l.notRanked ? { notRanked: l.notRanked } : {}) })) ?? [];
   const unnamed = rebuilt?.listsRanked?.unnamed ?? 0;
   return {
