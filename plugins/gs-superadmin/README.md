@@ -98,7 +98,7 @@ skill from the catalog below, e.g.:
 | [`/gs-superadmin:deprecate`](#deprecate-an-asset) | Walk an asset through the deprecation checklist | slash only |
 | [`/gs-superadmin:change-request`](#plan--execute-a-config-change) | Turn a ticket or request into a reviewable, KB-cited implementation plan | slash only |
 | [`/gs-superadmin:email-report`](#report-on-jo-emails--schedules) | Read-only Journey Orchestrator email & schedule reports (4 modes) | slash + natural language |
-| [`/gs-superadmin:email-engagement`](#report-on-email-engagement) | Read-only open-rate and engagement report across JO programs from the tenant's send log, an engagement dashboard built once and pulled again by hand whenever new numbers are wanted, and one account's email timeline by day | slash + natural language |
+| [`/gs-superadmin:email-engagement`](#report-on-email-engagement) | Read-only open-rate and engagement report across JO programs from the tenant's send log, an engagement dashboard built once and pulled again by hand whenever new numbers are wanted (its panels also creatable as Gainsight reports, each behind the guard), and one account's email timeline by day | slash + natural language |
 | [`/gs-superadmin:deps-report`](#tenant-wide-dependency-search) | Tenant-wide "what depends on this object/field/connection?" impact analysis | slash + natural language |
 | [`/gs-superadmin:report-bug`](#report-a-cli-bug-upstream) | Capture a `gs-admin` CLI misbehavior as a vendor-ready bug report | slash only |
 
@@ -311,7 +311,7 @@ Reports land in `<slug>/reports-adhoc/` beside the snapshot they were written fr
 a snapshot you already have without pulling again. Program status never limits what is
 pulled: the tables show Active programs unless you named programs, `--include-paused`
 adds Paused ones, `--all` shows every status, and the report states how many it hides.
-Never mutates the tenant. For one program's own numbers, Gainsight's analytics page for
+Never mutates the tenant, but for the dashboard's native mode below, whose every report is its own command behind the guard's ask. For one program's own numbers, Gainsight's analytics page for
 that program is the place; this skill is for the comparisons the UI cannot make.
 
 ### The engagement dashboard
@@ -461,12 +461,16 @@ which dashboard folder a bare slug means. The pages' own copy lines carry it the
   folder synced to your machine (OneDrive, SharePoint, a network share), as
   `<dashboard>-leaders.html`, the SAME file every time: a leader bookmarks that one file,
   or the folder, once, and it is current after each refresh. Beside it, in
-  `<dashboard>-leaders-data/`, go its tables as CSV files and a `definitions.csv` (what each
-  figure means, the caveats, the filters, when the data was pulled), overwritten the same
-  way. A refresh that fails or stops copies nothing: the folder keeps the last copy, as the
-  workspace keeps the last pages. A copy that fails (the folder gone, a file locked by the
-  sync) is said in the summary and leaves the workspace's pages as they are. The refresh's
-  summary, and the scheduled run's log, say where the copy went.
+  `<dashboard>-leaders-data/`, go its tables as CSV files named with the dashboard's name
+  (`<dashboard>-<table>.csv`) and a `<dashboard>-definitions.csv` (what each figure means,
+  the caveats, the filters, when the data was pulled), overwritten the same way, so a file
+  dragged out of the folder still says which dashboard it came from. A refresh that fails
+  or stops copies nothing: the folder keeps the last copy, as the workspace keeps the last
+  pages. A copy that fails (the folder gone, a file locked by the sync) is said in the
+  summary and leaves the workspace's pages as they are; when it failed part-way, the
+  summary reads `published: false` and its `partial` names the files this publish replaced
+  and the ones still holding the previous publish, so run `publish` again once the file is
+  free. The refresh's summary, and the scheduled run's log, say where the copy went.
 
   The folder lives on your machine, not in the dashboard: the dashboard names a target
   (`leaders`), and one line maps it to the folder, once per machine. A backup refresher who
@@ -485,15 +489,6 @@ which dashboard folder a bare slug means. The pages' own copy lines carry it the
   an option, off by default: `change program-health publish.config.datedCopies=true --kb
   acme-prod`.
 
-  *A claude.ai artifact, the second target*
-  (`change program-health 'publish={"target":"claude-artifact","config":{"url":null}}' --kb
-  acme-prod`): a private link that people in your organization open with their Claude
-  account once you share it from the artifact's Share menu. Only Claude can publish one:
-  after a refresh, `/gs-superadmin:email-engagement publish program-health` in a Claude Code
-  session publishes the page (one short session) and updates the same link each time.
-  Inside the artifact, Download CSV asks the viewer to confirm the save; a filtered view
-  cannot be bookmarked there (the address bar keeps no filters).
-
   *Monthly by default, with your refresh, and by hand.* Each refresh publishes the leaders'
   copy (on demand or the scheduled recipe above); this line publishes it on its own, with
   no pull:
@@ -503,9 +498,39 @@ which dashboard folder a bare slug means. The pages' own copy lines carry it the
   ```
 
   *What it costs.* Viewers pay nothing: the leaders' copy is a file or a page of files, so
-  opening it runs no query and no session; the publish is one short Claude session for an
-  artifact target and nothing for a file copy. The interview is one Claude session; a
-  refresh is `gs-admin` calls only.
+  opening it runs no query and no session; the publish is a file copy, with no Claude
+  session. The interview is one Claude session; a refresh is `gs-admin` calls only.
+- **Native Gainsight reports from the dashboard** (for admins who want the figures inside
+  Gainsight): `/gs-superadmin:email-engagement native program-health` in a session. It is
+  the one part of this skill that writes to the tenant, and only reports:
+
+  1. **The plan** (reads only): `… native-plan program-health --kb acme-prod` says, for
+     each panel of both pages, whether a Gainsight report can carry it — native, partial
+     (the figures a report cannot carry left out, each with its reason), or not native
+     (step names, the customer lists, the program groups, the health tables, the email
+     text, survey participants, content-link clicks and the distinct counts are not on the
+     delivery log in a form a report reads) — and prints the exact `gs-admin rp create`
+     line for each report, checked against your tenant's schema first.
+  2. **One approval, then one command per report.** The skill shows the plan and asks once;
+     then it issues every `rp create` (or `rp update`, for a panel changed since) as its own
+     command, so the mutation guard asks for each one. `… native-record program-health
+     --panel <panel> --kb acme-prod` records each report's id in the dashboard after its
+     line succeeds, so a later run skips what is unchanged.
+  3. **Read back:** `… native-verify program-health --kb acme-prod` runs each report through
+     `rp run-saved` and says which columns are still to be added.
+  4. **The UI steps.** The CLI cannot author a rate or a conditional column, so each report
+     saves one count (Sent, or a single count's own filter) and the plan lists what to add
+     in Gainsight's report builder: a calculated column per other count, with its condition
+     in the dashboard's own terms (Delivered: `IsSent = "YES" AND IsBounced is not "YES"`),
+     and a formula column per rate (Open rate = Opened ÷ Delivered). The page's filters
+     (months, programs, internal recipients) become Gainsight dashboard filters you set
+     there, and placing the reports on a Gainsight dashboard is a UI step (the CLI has no
+     dashboard command). Program status and the dashboard's groups are not on the delivery
+     log, so the reports cover programs of every status, ungrouped.
+
+  Add `--test-prefix` to try it on a sandbox: every report is named `ZZ|TEST|…`. The CLI cannot
+  delete a report: the skill lists every report it created, with its id, and the plan
+  lists recorded reports no panel needs any more, for removal in the Gainsight UI.
 - **A program's failure text** (the masked messages and the "Other" samples) is shown by
   `… health program-health --program <id>` in the terminal, never on a page.
 - **One account's timeline:** `/gs-superadmin:email-engagement account 'Acme Corp'` in a

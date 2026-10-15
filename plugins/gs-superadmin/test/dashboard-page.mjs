@@ -31,7 +31,7 @@ import { fileURLToPath } from "node:url";
 import { isDeepStrictEqual } from "node:util";
 import vm from "node:vm";
 import { makeTempDir, removeTempDir, writeFiles, runNode } from "../../../test/rig.mjs";
-import { buildPage, pageModel, pageSnapshot, packTable, inlinedSources, pageFileName, aboutSettings, PAGE_BUDGET, TOKENS, buildTimelinePage, timelineModel, timelineFileName, buildDatasets, artifactContentOf, datasetsDirName } from "../scripts/dashboard-page.mjs";
+import { buildPage, pageModel, pageSnapshot, packTable, inlinedSources, pageFileName, aboutSettings, PAGE_BUDGET, TOKENS, buildTimelinePage, timelineModel, timelineFileName, buildDatasets, artifactContentOf, datasetsDirName, datasetFileName } from "../scripts/dashboard-page.mjs";
 import { createDashboard, mount, unpackSnapshot, unpackTable, csvCell, csvText, esc, LACKS, NOT_LACKS, NEEDS, COPY_LINES, ENTRY_COMMAND, HEALTH_DAY_OPTIONS, PAGE_MODEL_VERSION, cronWords, createTimeline, shellWord } from "../scripts/dashboard-runtime.mjs";
 import * as engine from "../scripts/engagement-query.mjs";
 import { openSpec, SPEC_DESCRIPTIONS, PRESETS, presetPanels, describeSpec, setPath, validateSpec } from "../scripts/dashboard-spec.mjs";
@@ -752,6 +752,31 @@ try {
     check("a trend across a boundary is labelled: where the first month was pulled before the figure was counted, the line starts at the first month that has it, the gap is never bridged, and a note says from when the figure is counted; a carried-forward month's dot is drawn hollow with the dagger note",
       /gs-note-boundary">Error rate is counted from 2026-07: the months before were pulled before this figure existed/.test(bLine) && (bLine.match(/<circle class="gs-svg-dot/g) ?? []).length === 3 && (bLine.match(/<polyline/g) ?? []).length === 1 && !bLine.includes('points="') === false &&
         (bLine.match(/gs-svg-carried/g) ?? []).length === 1 && /data-tip="Includes months carried forward from an earlier pull[^"]*"[^>]*>&dagger;<\/span>/.test(bLine) && bLine.includes(">2026-07†</text>") && lacksIn(bLine).join() === "measure-not-in-snapshot", bLine.match(/<p class="gs-note[^"]*">[^<]*/g));
+    // F-525: every mark a tab draws is explained at the tab's foot. Read from the markup alone, independent of how the
+    // runtime decides: a mark is a tipped * or † (a table, a tile) or a * or † ending an SVG label (a chart's tick or
+    // name, which cannot be tipped); the foot is the pane's "About these figures" block.
+    const unexplainedMarks = (html) => {
+      const markup = markupOf(html);
+      return [...markup.matchAll(/<section class="gs-pane" data-pane="([\w-]+)"/g)].flatMap(([, tab]) => {
+        const pane = paneHtml(markup, tab) ?? "";
+        const footAt = pane.indexOf('<div class="gs-notes gs-pane-notes"');
+        const body = footAt < 0 ? pane : pane.slice(0, footAt);
+        const foot = footAt < 0 ? "" : pane.slice(footAt);
+        const labels = [...body.matchAll(/<text [^>]*>([^<]*)/g)].map((m) => m[1]);
+        const star = /<sup><span class="gs-mark"[^>]*>\*<\/span><\/sup>/.test(body) || labels.some((t) => /\*†?$/.test(t));
+        const dagger = /<sup><span class="gs-mark"[^>]*>&dagger;<\/span><\/sup>/.test(body) || labels.some((t) => /†$/.test(t));
+        return [...(star && !/<p class="gs-note">\* Provisional period: /.test(foot) ? [`${tab}: *`] : []), ...(dagger && !/<p class="gs-note gs-note-carried">&dagger; Includes months carried forward from an earlier pull/.test(foot) ? [`${tab}: †`] : [])];
+      });
+    };
+    const markPage = build(specWith((s) => { s.pages[0].panels.push({ id: "by-program-bars", tab: "engagement", type: "bar", title: "Sent by program", query: { groupBy: ["program"], metrics: ["sent"] } }); }), boundary);
+    const markPane = paneHtml(markupOf(markPage.html), "engagement");
+    const byProgram = panelHtml(markPage.html, "by-program-bars");
+    check("F-525: a tab whose figures carry both marks — a † in a table row, a † ending a chart's month tick and a program's name in a bar chart drawn across — explains each at its foot (\"About these figures\": the * note and the † note in the table tip's words), the chart drawn across says what its names' † means in its own note, and no tab of any page built here draws a mark its foot leaves unexplained",
+      /<sup><span class="gs-mark"[^>]*>&dagger;<\/span><\/sup>/.test(markPane) && /<text [^>]*>[^<]*†(?:<title>|<\/text>)/.test(byProgram ?? "") &&
+        unexplainedMarks(markPage.html).length === 0 && /data-notes="engagement">[\s\S]*<p class="gs-note gs-note-carried">&dagger; Includes months carried forward from an earlier pull: their figures were read by that pull and may have moved since\.<\/p>/.test(markPane) &&
+        /<p class="gs-note">&dagger; Includes months carried forward from an earlier pull/.test(byProgram ?? "") &&
+        [ADMIN_P.html, bPage.html].every((h) => unexplainedMarks(h).length === 0) && !/gs-note-carried/.test(paneHtml(markupOf(ADMIN_P.html), "engagement") ?? ""),
+      [unexplainedMarks(markPage.html), unexplainedMarks(ADMIN_P.html), byProgram?.match(/<p class="gs-note[^"]*">[^<]*/g)]);
     // The watch list: accounts ranked across programs, each account's programs underneath.
     const most = presetPanels(SPEC_DEFAULTS.pages[0]).find((p) => p.id === "most-engaged");
     const wl = build(specWith((s) => { s.pages[0].panels = []; s.pages[0].statusDefault = null; }), PULLED);
@@ -1612,17 +1637,22 @@ try {
       const asRows = (t) => parseCsv(t.replace(/^\uFEFF/, ""));
       const pulledAt = String(PULLED.meta.pulledAt);
       const tablesEqual = expected.every(({ p, csv }) => {
-        const got = asRows(byName.get(`${p.id}.csv`) ?? "");
+        const got = asRows(byName.get(`${SPEC_ACCOUNTS.slug}-${p.id}.csv`) ?? "");
         const want = parseCsv(csv.text);
         return got.length === want.length && got[0].at(-1) === "Data pulled" && got.slice(1).every((r) => r.at(-1) === pulledAt) && isDeepStrictEqual(got.map((r) => r.slice(0, -1)), want);
       });
-      const defs = asRows(byName.get("definitions.csv") ?? "");
+      const defs = asRows(byName.get(`${SPEC_ACCOUNTS.slug}-definitions.csv`) ?? "");
       const everyAccount = PULLED.dimensions.accounts.map((a) => a.name).filter(Boolean);
-      check("PUB-3 the dataset emitter: one CSV per panel of the leaders' page (stable names, <panel>.csv) holding exactly that panel's Download CSV of the default view (one aggregation path) with a last \"Data pulled\" column; a definitions file whose first row is when the data was pulled, then the filters in force, the account-names setting, each figure's meaning and the caveats; no account name anywhere on a page that may not name accounts",
+      check("PUB-3 the dataset emitter: one CSV per panel of the leaders' page (stable names carrying the dashboard's name first, <dashboard>-<panel>.csv and <dashboard>-definitions.csv: ruled at S7-V) holding exactly that panel's Download CSV of the default view (one aggregation path) with a last \"Data pulled\" column; a definitions file whose first row is when the data was pulled, then the filters in force, the account-names setting, each figure's meaning and the caveats; no account name anywhere on a page that may not name accounts",
         files.length === expected.length + 1 && tablesEqual && isDeepStrictEqual(defs[0], ["Kind", "Name", "Text"]) && isDeepStrictEqual(defs[1], ["pulled", "Data pulled", `${PULLED.meta.pulledAt}${PULLED.meta.timeZone ? ` (${PULLED.meta.timeZone})` : ""}`]) &&
           defs.some((r) => r[0] === "filter" && r[1] === "Months") && defs.some((r) => r[0] === "privacy" && /no account rows/.test(r[2])) && defs.some((r) => r[0] === "metric" && r[1] === engine.metric("openRate").label) && defs.some((r) => r[0] === "caveat") &&
-          !files.some((f) => everyAccount.some((n) => f.text.includes(n))) && files.every((f) => f.text.startsWith("\uFEFF")) && datasetsDirName("program-health-leaders.html") === "program-health-leaders-data",
+          !files.some((f) => everyAccount.some((n) => f.text.includes(n))) && files.every((f) => f.text.startsWith("\uFEFF") && f.name.startsWith(`${SPEC_ACCOUNTS.slug}-`)) && datasetFileName("a b/c", "x") === "a_b_c-x.csv" && datasetsDirName("program-health-leaders.html") === "program-health-leaders-data",
         { names: files.map((f) => f.name), defs: defs.slice(0, 3) });
+      // A panel whose id is "definitions" keeps its own file: the definitions file's name is never taken twice.
+      const named = specWith((sp) => { const ex = sp.pages.find((pg) => pg.preset === "exec"); ex.panels = [{ id: "definitions", tab: "engagement", type: "table", title: "Defs", query: { groupBy: ["program"], metrics: ["sent"] } }]; });
+      const namedFiles = buildDatasets({ spec: named, snapshot: applyGroups(PULLED, named.groups).snapshot, pageId: named.pages.find((pg) => pg.preset === "exec").id, kb: "acme-prod" }).map((f) => f.name);
+      check("PUB-3 a leaders' panel with the id \"definitions\" gets a file of its own beside the definitions file: no two data files share a name",
+        new Set(namedFiles).size === namedFiles.length && namedFiles.includes(`${named.slug}-panel-definitions.csv`) && namedFiles.includes(`${named.slug}-definitions.csv`), namedFiles);
       // The artifact form: the page's title and style, then its body; no second document; it still boots.
       const execBuilt = build(SPEC_DEFAULTS, PULLED, "exec");
       const content = artifactContentOf(execBuilt.html);

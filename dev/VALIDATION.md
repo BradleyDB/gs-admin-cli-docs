@@ -2902,3 +2902,125 @@ S7-V (2026-10-14 12:30 to 14:15 @ hb-20261014-01; feat/jo-dash-s7-publish at cb7
 - Guard-wiring: `gs-admin jo p pause --help` drew the guard's ask (the command named, both tenants, production flagged); Bradley declined.
 - Noted, not logged: the page did not work when opened from inside a zip archive (Bradley, earlier the same day; not a delivery path, cause unmeasured).
 Section status: CLEARED with one arm stopped — Setup, K0, P1, P2 PASSED, P4 ruled, P5 skipped; P3 STOPPED by the platform limit (F-526, the offer withdrawn at S8, artifact support backlogged); F-522, F-523, F-524 VERIFIED; F-525 (normal), F-526 (normal) and F-527 (polish) logged and routed to S8's kickoff batch with the CSV-name ruling.
+
+## S7-V batch — F-525, F-526, F-527 and the dataset-name prefix on a scratch import, with no pull (banked 2026-10-14, builder, Session S8 @ hb-20261014-02; verdict at S8-V)
+
+Owed by: S8-V, in the consumer workspace with the plugin loaded from feat/jo-dash-s8-native (a terminal in the
+workspace with --plugin-dir, canary matched). NO PULL and NO tenant call beyond the tester's own `whoami`: every arm
+runs on a SCRATCH import of the kept dashboard v2 made with its snapshot, as S7-V did: `export v2 --out <file>
+--with-snapshot --kb <kb>`, then `import --file <file> --snapshot <snap> --slug <scratch> --kb <kb>` (the export's hint
+names the `--snapshot`; S7-V found the line without it). Token: hb-20261014-02. Why it is banked: the batch was built on the
+fictional fixtures; Bradley's eye on a real tab foot, the interview's real wording and a real synced folder are not on
+the builder's machine. Tenant data stays in the workspace and the test folder Bradley names.
+
+THIS LIST IS COMPLETE (the same rule as above).
+
+- B1 (F-525: every mark a tab shows is explained at its foot, about five minutes). On the scratch (its latest snapshot is
+  v2's selective one, so months are carried): `change <scratch> 'pages.0.panels=[{"id":"b","tab":"engagement","type":"bar","title":"By program","query":{"groupBy":["program"],"metrics":["sent"]}},{"id":"t","tab":"engagement","type":"table","title":"Programs","query":{"groupBy":["program"],"metrics":["sent","openRate"]}},{"id":"h","tab":"health","type":"health-schedules","title":"S","knobs":{"staleAfterDays":30}}]' --kb <kb>`
+  (prints rebuild only), open the scratch admin page. Pass bar (Bradley's eye): the Engagement tab's foot, "About these
+  figures", has a † line in the table tip's words ("Includes months carried forward from an earlier pull: their
+  figures were read by that pull and may have moved since.") beside the * line; the bar chart's own note under it
+  says what a † in a name means; a name carrying † is explained without hovering the mark (the foot and the note); a
+  tab with no carried figure (Health) has no † line. Optional: narrow the months to the closed ones only — the *
+  line goes when no * is drawn.
+- B2 (F-526: the artifact offer withdrawn). `node .gs-superadmin/plugin/scripts/dashboard.mjs questions` and read the
+  `leaders-copy` ask and its options aloud. Pass bar: three options (a shared folder now, a shared folder later — the
+  default — the workspace only), no artifact option and no artifact sentence; the ask otherwise as drafted at S7-V
+  (P4's ruling: "as drafted, minus the artifact parts"). `answer <scratch draft> leaders-copy artifact` (on a draft
+  from `new <x>`) is refused naming the three options. The plugin README's "The leaders' copy" bullet has no artifact
+  recipe and its cost sentence no "one short session". Bradley rules the wording (the F-511 practice).
+- B3 (the dataset-name prefix and F-527, a test folder Bradley names inside his synced OneDrive, `VAL-TEST-s8`).
+  `publish-target leaders '<folder>' --kb <kb>`, `change <scratch> 'publish={"target":"file-copy","config":{"to":"leaders","file":"<scratch>-leaders.html","datedCopies":false,"datasets":true}}' --kb <kb>`
+  (a rebuild, which publishes at its end). Pass bar: `<scratch>-leaders-data/` holds `<scratch>-<panel>.csv` files and
+  `<scratch>-definitions.csv`, every name starting with the dashboard's; the summary's `published` true. Then open ONE
+  of the CSVs in Excel (it locks the file) and `publish <scratch> --kb <kb>` again. Pass bar: exit 0; the summary reads
+  `published: false` with `partial` naming the replaced files (the page first) and the locked one with every file after
+  it as not replaced; `why` starts "the copy is not whole"; no temporary file left in the folder; close Excel, `publish`
+  again: `published: true`. Optional, if the test folder held S7-V's unprefixed `<panel>.csv` files: they are gone after
+  the publish (the stale-file pruning).
+- B4 (the skill's mode L Leaders line). On the locked-file publish of B3 walked through `/gs-superadmin:email-engagement
+  publish <scratch>` (the tester invokes it: model-invocable): the Leaders line says the copy is not whole, lists the
+  files still holding the previous publish and asks to close what holds them and publish again.
+
+Cleanup at the close: the scratch dashboard and its pages, the test folder's contents, the `leaders` entry in
+`.gs-superadmin/publish-targets.json`, the export file.
+Section status (banked): OPEN — owed at S8-V.
+
+S8-V (2026-10-14 @ hb-20261014-02; feat/jo-dash-s8-native at 5d74a44, clean and level; a terminal in the workspace with --plugin-dir, canary matched; production KB, NO pull and no tenant call beyond the tester's `whoami`; Bradley present for every eye arm; the pass bar stated before each arm):
+- Setup PASSED: `export <v2> --out <f> --with-snapshot` (exit 0), `import --file <f> --snapshot <snap> --slug <scratch>` (exit 0, the snapshot carried: selective, months carried), the title set to a `[VAL-TEST]` name through `change` (rebuild, exit 0).
+- B1 PASSED (F-525 VERIFIED): the `change` printed "rebuild only (no pull)"; the scratch admin page's markup: the Engagement tab's "About these figures" holds the * line and a † line in the table tip's words, the bar chart drawn across carries its own † note, the Health pane has no notes block; Bradley's eye on the page: "Passes as described". The optional closed-months-only check not run.
+- B2 PASSED (F-526 VERIFIED): `questions`: `leaders-copy` has three options (a shared folder now with its follow-up, a shared folder later — the default — the workspace only), no artifact sentence in its ask, and no question in the table mentions an artifact (0 occurrences); `answer <draft> leaders-copy artifact` and `… claude-artifact` each exit 1 naming the three options; the plugin README's leaders' copy bullet holds no artifact recipe and its cost sentence reads "the publish is a file copy, with no Claude session". Bradley read the ask and its options verbatim: "Reads right" (P4's ruling held).
+- B3 PASSED (F-527 VERIFIED; the dataset-name prefix CLEARED): a `VAL-TEST-s8` folder in Bradley's synced OneDrive; `publish-target leaders '<folder>'`; the B3 `change` (a rebuild, which published at its end): `published: true`, the data folder 7 files, every name starting with the dashboard's (6 tables + `<scratch>-definitions.csv`); the workspace's `latest-exec-data/` prefixed the same. One CSV (the 4th data file in the publish's order) held open by Excel: `publish` exit 0, `published: false`, `partial.replaced` = the page and the 3 data files before it, `partial.notReplaced` = the locked file and the 3 after it, `why` opening "the copy is not whole: 4 of 8 files were replaced and 4 still hold the previous publish (…)" with the retry line, no temporary file, the modified times confirming the split. Excel closed; S7's unprefixed `headline.csv` and `definitions.csv` planted in the data folder; `publish` exit 0, `published: true`, `partial` null, both planted files pruned. Noted, not logged: the `why` repeats the error code ("EPERM: EPERM:"), cosmetic.
+- B4 PASSED: the changed SKILL.md (email-engagement, model-invocable) walked by the tester in mode L (`publish <scratch>`) on the locked folder (step 1's whoami, then the script: the same partial): its Leaders line said the copy is not whole, named the four files still holding the previous publish and asked to close what holds them and publish again.
+- Cleanup done: the scratch dashboard and the draft made for B2, the export and snapshot files, `publish-targets.json` (it held only `leaders`), the OneDrive test folder (made by the tester, removed whole); v2 and the other kept dashboard untouched.
+Section status: CLEARED — B1–B4 PASSED; F-525, F-526, F-527 VERIFIED; the dataset-name prefix CLEARED.
+
+## NAT-2 — native Gainsight reports created from a dashboard, on the SANDBOX only (banked 2026-10-14, builder, Session S8 @ hb-20261014-02; verdict at S8-V)
+
+Owed by: S8-V, in the consumer workspace with the plugin loaded from feat/jo-dash-s8-native (a terminal in the
+workspace with --plugin-dir, canary matched). SANDBOX ONLY: `rp create` and `rp update` are mutating and write
+reports into the tenant; production is never used for this section. Every report is named `ZZ|TEST|…` (the
+`--test-prefix` flag). Token: hb-20261014-02. Why it is banked: the build ran offline against the stand-in CLI, whose `rp create`
+/ `describe` / `run-saved` are modelled on the CLI's report handler at the pin; what `rp create` prints, the server's
+acceptance of each payload, the UI's calculated-column grammar and run-saved's real labels are unmeasured.
+
+Pick before the first call (the tester, with Bradley): a sandbox dashboard. The sandbox KB has none saved today, so the
+cheapest is the fast path on the sandbox KB with lists off (`dashboard new zz-native --fast-path --kb <sandbox kb>`, then
+the closing step's save and first refresh: a small pull on a sandbox). A `whoami` names the sandbox before anything else.
+
+THIS LIST IS COMPLETE (the same rule as above).
+
+- N0 (the guard on the mutating lines, before anything is created). Pass bar: `native-plan <dash> --test-prefix --kb
+  <sandbox kb>` exits 0 with `schemaChecked: true` (its one schema read and the whoami are the only calls in the fake-free
+  run: count them on stderr/journal); the summary's `reports` each carry a `command` starting `gs-admin --json rp
+  create --name 'ZZ|TEST|`; issuing the FIRST one as its own command draws the guard's ask naming `report create` and
+  the sandbox (Bradley approves this one); no script ran any of them (the change journal holds one row per approved
+  command, none from a script).
+- N1 (the plan reads right to Bradley). Bradley reads the summary: the verdicts (native, partial with what is left out
+  and why, not native with why), the shared panels, and the dashboard steps. Pass bar: his read; a wording he would
+  change is logged (F-511 practice).
+- N2 (create and record each, one at a time, through the skill's mode N). `/gs-superadmin:email-engagement native <dash>
+  --test-prefix` walked by Bradley typing it (or the tester invoking it: model-invocable): the plan shown, one approval ask,
+  then each `command` issued as its own Bash command (one guard ask each), each followed by `native-record <dash>
+  --panel <panel>`. Pass bar: every create exits 0; every record finds the report by its exact name and writes
+  `native.reports[]` with the panel, id, name and an eight-digit fingerprint (read `spec.json`); the shared panels are
+  recorded under the same id. Record what `rp create` printed (its shape, for the stand-in), without values.
+- N3 (read back). `native-verify <dash> --kb <sandbox kb>`. Pass bar: every report `ok`, `rows` above 0, `missing` empty
+  (the group and count labels came back as planned: record the real labels if they differ from `Program`, `Program
+  id`, `Month`, `Sent`), every value a string; `uiPending` names the UI columns. One program's Sent equals the
+  dashboard snapshot's sent for the same program over the same months once a Months dashboard filter is set (or
+  equals a direct `rp run` count with the same standing filters and no date filter).
+- N4 (one formula column in the UI, Bradley's hands). On one partial report (the admin headline or "Programs"), Bradley
+  adds the UI steps' calculated column "Delivered" and the formula column "Open rate" in Gainsight's report builder,
+  then `native-verify` again. Pass bar: that report's `uiPending` no longer names them; the open rate read back as a
+  formatted string equals the dashboard's to the display's rounding for one program over the same months. Record the
+  UI's own grammar for the condition if the steps' wording ("the SUM of a field that is 1 when …") does not map onto
+  it one to one.
+- N5 (re-run and update). `native-plan` again: every report `unchanged`, nothing to create. Change one panel's title
+  (`change <dash> 'pages.0.panels=…'` or a preset title through a hand-written panel list), `native-plan`: that panel
+  `update` with its `warning`; issue the update line (one guard ask), `native-record`, `native-verify`. Pass bar: the
+  report keeps its id with the new name; the warning held (the UI columns of N4 are gone after an update of that
+  report — measure it on the N4 report only if Bradley agrees, else on another).
+- N6 (cleanup, by hand in the UI: the CLI cannot delete a report). The skill's final report lists every report it created
+  with its id and name. Pass bar: the list matches `native.reports[]`; Bradley deletes each `ZZ|TEST|` report in the
+  Gainsight UI (Reports, search "ZZ|TEST|"); the tester records the count deleted. A dashboard of the reports, if one
+  was arranged, is deleted the same way.
+
+Cleanup at the close: the ZZ|TEST| reports deleted in the sandbox UI (N6), the scratch sandbox dashboard and its
+pages/snapshots under the sandbox KB, the `native/` folder beside it.
+Section status (banked): OPEN — owed at S8-V.
+
+S8-V (2026-10-14 @ hb-20261014-02; feat/jo-dash-s8-native at 5d74a44, clean and level; a terminal in the workspace with --plugin-dir, canary matched; the SANDBOX tenant (`whoami` named it before the first call; the switch and the login typed by Bradley), one call at a time, two logins; every report `ZZ|TEST|…`; the only writes the nine `rp create` and one `rp update` lines `native-plan` printed, each its own command, each approved by Bradley at the guard's ask; the pass bar stated before each arm):
+- Ruled at the start (Bradley, "ok making updates to our testing here, as long as we can still reasonably verify what we need to"): the sandbox dashboard is SAVED WITH NO PULL — a native report carries no date filter and `native-plan` reads only the saved spec, the whoami and one schema read — so N3 and N4 compare against direct `rp run` counts (the alternative N3's bar already allows), never a snapshot. A sandbox sends nothing; its log holds copied history (49 months read back).
+- Pick: the fast path on the sandbox KB (`zz-test-native`, customer lists off, a `[VAL-TEST]` title); the closing step's plan made 17 reads (one timed out and answered on its retry) and priced a full refresh at about 40 calls; `save later` exit 0, nothing pulled.
+- N0 PASSED: `native-plan <dash> --test-prefix` exit 0, `schemaChecked: true`; 24 panels: 6 native, 6 partial, 12 not; 9 to create, 3 shared; every `command` starts `gs-admin --json rp create --name 'ZZ|TEST|`. Calls: the whoami and one `rp schema` (read from the verb's code: it prints no progress line and reads are not journaled, so the count was not observed). Every create drew the guard's ask; its text (Bradley's paste, creates 2–4): "Mutating Gainsight command: gs-admin report create … Workspace manifests claim multiple tenants (<both named>) — confirm `gs-admin whoami` targets the intended one before approving. ⚠ At least one of these tenants is PRODUCTION …" — the action and both workspace tenants, not which one is active (the guard's documented multi-tenant shape). The first create's ask was seen, not captured. The journal: 9 `report create` rows, guard-approved, none from a script, in the workspace's unattributed journal (two tenants and no change marker: by design).
+- N1 READ by Bradley, F-528 logged (normal): the plan never states what a report IS — object, columns, group-by, filters — which lives only inside each line's JSON ("if this is intended to be instructional, you'd want to include the name of the table the report needs, field names, and if there's any group by … as well as any filters that are needed/logic").
+- N2 PASSED: mode N walked by the tester (model-invocable): step 1's whoami, the plan again (the same 9 lines), its ONE approval ask (AskUserQuestion: create 9, update 0; Bradley: yes), then each line issued exactly as written as its own Bash command, `native-record` after each: every create `result: true` with a report id, every record "found by its exact name"; `spec.json` `native.reports[]` 12 records over 9 distinct ids (the leaders' three shared panels under their admin report's id), every name `ZZ|TEST|…`, every `planHash` eight hex digits. What `rp create` printed, for the stand-in (keys, no values): `{result, requestId, data: {createdDate, modifiedDate, deleted, reportId, reportName, reportDescription, sourceDetails{objectName, objectLabel, connectionId, connectionType, dataStoreType}, showFields[{fieldName, dbName, label, fieldAlias, dataType, objectName, objectDBName, properties{meta, required, aggregatable, pathLabel, columnCalculationConfigs[]}, displayOrder, fieldType, displayName, rowGrouped, pivoted, scale, groupable, sortable, filterable, expressionDetails{expressionType, expression{tokenType, key, outputDataType}}}], drillDownFields[], groupByFields[], whereFilters{conditions[{filterAlias, comparisonOperator, rightOperandType, filterValue{value[]}, global, globalFilter, anyAtGlobal, stateFilter, leftOperand{…}}], expression}, havingFilters{conditions[]}, teamFilters{conditions[], expression}, orderByFields[], pageSize, reportDisplayType, reportOptions{…}, properties{}, reportTypes[], offset, requestSource, folderId, currentRowGroupLevel, createdBy, modifiedBy, createdByName, modifiedByName, createdDateStr, modifiedDateStr}, duration, alerts[]}`; `rp update` prints the same envelope.
+- N3 PASSED: `native-verify` 9 of 9 `ok`, rows above 0 (1 on the two ungrouped reports; 49 on the two by month; a full 50-row page on the five by program or email: the verify reads one `--page-size 50` page by design), `missing` empty, the labels as planned (`Program`, `Program id`, `Month`, `Sent`, and `Email`, `Email id` on Emails), every value a display-formatted string (thousands separators, `Mon-YYYY`), `uiPending` naming each report's UI columns. Direct counts with the same two standing filters and no date filter: one program's Sent equal (a count under 10), the headline's total equal (order 10^6).
+- Executor's choices, ruled one question each: (1) GRID only — KEPT ("all tables is fine"; trend panels as charts to the backlog, plan LTR-24); (2) one report per panel — KEPT (premise reopened by N4, F-528); (3) no order-by / having / limit through the CLI — KEPT (to the backlog, LTR-25); (4) the naming — KEPT; (5) sharing — KEPT; (6) an update confirmed by name — KEPT; (7) 0.54.0 with its own entry — KEPT. Bradley asked what the native reports are for; answered: admins viewing the figures inside Gainsight, not feeding the page (the report-fed idea is IDEA-1).
+- N4 FAILED (F-528's second instance): in the sandbox's report builder (Bradley's hands, the headline report) the steps' calculated columns ("the SUM of a field that is 1 when …") cannot be built — "there is no case/if logic"; "Add Formula Field" offers only the object's own numeric fields (link clicked count, number of opens, total responded), so no rate can be built in a report. Measured UI path for the counts: group or pivot the report on the flag fields (two screenshots: Sent grouped by Bounced and Opened; "Switch Pivot" with Opened in columns). Bradley's proposal for the rates: a Data Designer with CASE statements. Not saved; the second `native-verify` not run (nothing added).
+- N5 PASSED: `native-plan` again: 9 unchanged, 3 shared, nothing to create. Send health retitled through `change pages.0.panels=<the admin preset with that title changed>` (rebuild only; "no snapshot yet", as saved with no pull); `native-plan`: exactly that panel `update` with its `warning`; the line issued (its own guard ask, "Mutating Gainsight command: gs-admin report update", the same two-tenant text, Bradley's paste) → `result: true`, the SAME report id, the new name; `native-record` "its name is the planned one (…)"; `native-verify` ok, rows 1; `native-plan` after it: 9 unchanged. The warning's half (UI columns dropped by an update) unmeasured: the report had none, and N4 found none can be built.
+- N6 PASSED: the skill's list and `native.reports[]` matched (9 reports); Bradley deleted the 9 in the sandbox UI (they sit in the UI's trash); a fully paged `gs-admin --json rp list` (200 a page, the last page short) holds 9 fewer reports than before and no `[VAL-TEST] S8-V` name. One older `ZZ|TEST|` report from a pre-program verification round remains, not this round's: left for the program wind-down's sweep. No Gainsight dashboard was arranged.
+- Guard-wiring: the ten real mutating lines (above), each ask rendered and approved; the tenant switch was typed by Bradley.
+- Cleanup done: the sandbox dashboard folder (spec, `native/`, plan and verify payloads; the sandbox KB had no `dashboards/` before this round), the closing step's run directory, the session's scratch payloads.
+Section status: CLEARED with one arm failed — N0, N2, N3, N5, N6 PASSED, N1 read (F-528), N4 FAILED (F-528's second instance: the UI steps cannot be performed; counts by a pivot, no rate in a report). F-528 (normal, OPEN) gates the release, not the merge (the S6-V and S7-V precedent). Ruled at the close (Bradley): PR #51 merges on green CI; mode N is WITHDRAWN as an offer for now (F-526's pattern; code, verbs and T-11's `native` kept), native reports backlogged with the measured routes (plan LTR-26) — the withdrawal is F-528's fix round.

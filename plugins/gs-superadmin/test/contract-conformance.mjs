@@ -890,6 +890,14 @@ try {
     check("T-11: theme (additive, UX-1) is optional and, when present, exactly {colors?, dark?, series?, seriesDark?, font?, radius?, logo?, notes?}: the committed fixture carries none and opens; a spec with every member opens; an unknown member, a colour not as #rrggbb and an SVG logo are each refused by field",
       !("theme" in fixture) && openSpec(themed) !== null && themeKeys(themed.theme) === "colors,dark,font,logo,notes,radius,series,seriesDark" &&
         [[{ nope: 1 }, "theme.nope"], [{ colors: { fg: "blue" } }, "theme.colors.fg"], [{ logo: "data:image/svg+xml;base64,PHN2Zz4=" }, "theme.logo"], [{ series: [] }, "theme.series"]].every(([t, path]) => { try { openSpec({ ...fixture, theme: t }); return false; } catch (e) { return e.message.includes(path); } }));
+    // Additive on T-11 (NAT-2, S8): a native report's record may carry `planHash`, the fingerprint of what the report
+    // was saved with (eight hex digits); the committed fixture records none and opens; an unknown key, an empty
+    // reportId or a malformed fingerprint is refused naming the record.
+    const withNative = (reports) => ({ ...fixture, native: { reports } });
+    const refusedAt = (reports) => { try { openSpec(withNative(reports)); return null; } catch (e) { return String(e.message); } };
+    check("T-11: native.reports[] (additive, NAT-2) are {panel, reportId, name?, planHash?}: a record with every member opens, one with only panel and reportId opens, and an unknown key, an empty id or a fingerprint that is not eight hex digits is refused naming native.reports[0]",
+      fixture.native.reports.length === 0 && openSpec(withNative([{ panel: "admin/programs", reportId: "rpt-1", name: "ZZ|TEST|A - Admin - Programs", planHash: "0a1b2c3d" }])) !== null && openSpec(withNative([{ panel: "admin/programs", reportId: "rpt-1" }])) !== null &&
+        [[{ panel: "admin/programs", reportId: "rpt-1", extra: 1 }], [{ panel: "admin/programs", reportId: "" }], [{ panel: "admin/programs", reportId: "rpt-1", planHash: "XYZ" }]].every((r) => /native\.reports\[0\]/.test(refusedAt(r) ?? "")));
     const src = readFileSync(WRITER, "utf8");
     const header = src.slice(src.indexOf("// ── T-11 ·"), src.indexOf("import { existsSync"));
     const named = (k) => new RegExp("@property \\{[^\\n]*\\} \\[?(params\\.)?" + k + "\\]?( |$)", "m").test(header);
