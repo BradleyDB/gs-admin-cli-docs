@@ -3075,3 +3075,13 @@ of record is the BUILDER's, at the close-out (the tester authored this fix and m
   four places quoted to him as they stand at hb-20261014-04): "fine as is, i can probably clean later if needed" — the
   wording stands; nothing owed on it at the close-out.
 - C3 (the run). `test/dashboard.mjs` (the F-528 check included) and `test/dashboard-native.mjs` pass; CI green on PR #52.
+
+Results (builder close-out, 2026-10-14 @ hb-20261014-04; feat/jo-dash-f528-withdraw-native at 531a9b5, clean and level):
+- C1 PASSED: 13 of 13 hunks KILLED pred:KILL, each on its own clause (the builder's harness: the committed F-528 block run
+  verbatim, predictions written first, the tree asserted clean after each); the builder's sibling probe S1 (the row's offer
+  reworded with neither key word) SURVIVED pred:SURVIVE, a limit of any word-keyed check, recorded on the bus, not logged.
+- C2 PASSED: the skill-table row reads its pre-S8 words; the differential against 2268d66 finds no surviving S8 line about
+  native reports in the skill, either README or the CHANGELOG; the wording read stands (Bradley, above).
+- C3 PASSED locally: test/dashboard.mjs 124/124, test/dashboard-native.mjs 23/23; CI on PR #52 at the merge, named in the
+  close-out comment on dev.
+Section status: CLEARED — F-528 VERIFIED (builder, the verdict of record for the role-inversion fix).
