@@ -4092,12 +4092,13 @@ Mutation copy-out — sweep (source: each guard or branch this round's fixes add
 Sibling sweep: every reader of the engagement tmp root in dashboard.mjs (git grep "tmp", "engagement"): lastPlan, reselect, verbRefresh (by the state file's exact run id), interviewContext (by the state's run id), runAdapter's callers (they name ids, never scan) — the two scanners now read runOwner.
 Verified: 2026-10-15 (tester, R12-A-V @ hb-20261015-01; dev at d9bdb99 (PR #53 merged), clean and level; a terminal in the workspace with --plugin-dir, canary matched; production KB, no pull; VALIDATION § R12-A V4) — pass bar stated first (the Judge): every run directory reads back to its owner by the one grammar, and a dashboard saved with no pull beside one whose slug extends it prices from no plan. V4: both F-535 checks pass on dev. Verdict: VERIFIED.
 
-## F-536 — OPEN
+## F-536 — DEFERRED (past 0.54.0)
 Reported: 2026-10-14 (builder, R12 release-gate review, verifier reproduced in Git Bash, PowerShell 5.1 and cmd)
 Severity: polish — every failure is a refusal and nothing is written (the verifier tiered it normal: it blocks filling internal domains from a Windows terminal; logged polish on the release rule, re-declare if that matters more)
 What: the no-internal-domain copy line ends at `sources.0.params.internalDomains=` and asks for a JSON value; typed after the = in PowerShell 5.1 or cmd (or bare in bash) the embedded quotes are stripped, node refuses "the value is not JSON", and the refusal's own advice (quote text ("Renewals")) fails the same way; the skill's single-quoted form fails in PowerShell 5.1.
 Repro: paste the page's line in PowerShell 5.1 and type ["acme.com"] after the =: refused.
 Expected: the printed line carries a value form that survives each shell (a pre-quoted pair, or a value read from a file / stdin), and the refusal's advice runs as given.
+Defer: 2026-10-15 (auto, release ceremony) - past 0.54.0. Why not now: OPEN polish at release. Reopen: next release ceremony.
 
 ## F-537 — VERIFIED
 Reported: 2026-10-14 (builder, R12 release-gate review, verifier reproduced)
@@ -4152,17 +4153,19 @@ Mutation copy-out — sweep (source: each guard or branch this round's fixes add
 Sibling sweep: every other import write (the snapshot copy, the .previous copy): both after the check now.
 Verified: 2026-10-15 (tester, R12-A-V @ hb-20261015-01; dev at d9bdb99 (PR #53 merged), clean and level; a terminal in the workspace with --plugin-dir, canary matched; production KB, no pull; VALIDATION § R12-A V3 (e), V4) — pass bar stated first: a refused or unreadable snapshot leaves nothing written, under --replace included. V3e: an import whose --snapshot is a JSON file that is not a snapshot: exit 1, "... cannot be read (...) — nothing was imported", no dashboard folder made; the same under --replace onto r12a-scratch2: refused, its spec byte-equal (sha1 unchanged). V4: the F-540 checks pass. Verdict: VERIFIED.
 
-## F-541 — OPEN
+## F-541 — DEFERRED (past 0.54.0)
 Reported: 2026-10-14 (builder, R12 release-gate review, verifier reproduced; unreachable for a released user: no dashboard code was ever released before this version)
 Severity: polish — a spec only an unreleased dev build plus a hand-written panel list can produce
 What: a spec validated under S4b (templates on, preset panels written out) fails the S4c rule "lists no panel for the templates tab", and every repair path goes through startDraft's validation, so only a hand edit fixes a saved spec a later validator tightening rejects. The 0.54.0 writer cannot produce a spec its own validator refuses.
 Expected: a validation tightening between versions leaves a repair path through the writer (draft from an invalid saved spec, refusing only the save).
+Defer: 2026-10-15 (auto, release ceremony) - past 0.54.0. Why not now: OPEN polish at release. Reopen: next release ceremony.
 
-## F-542 — OPEN
+## F-542 — DEFERRED (past 0.54.0)
 Reported: 2026-10-14 (builder, R12 release-gate review, verifier traced)
 Severity: polish — bounded (one restart per rise of the derived lookback); the numbers are right
 What: on a resume after re-documentation moved the KB stamp, the derived health lookback can rise (30 → 90) and the pull moves to a fresh -lb<N> run directory with nothing reused, while the resume line still says "the calls already made are reused".
 Expected: the resume says it starts the pull again and why, or carries the answered calls the new lookback does not change.
+Defer: 2026-10-15 (auto, release ceremony) - past 0.54.0. Why not now: OPEN polish at release. Reopen: next release ceremony.
 
 ## F-543 — VERIFIED
 Reported: 2026-10-14 (builder, R12 release-gate review, verifier reproduced)
@@ -4193,17 +4196,19 @@ Mutation copy-out — sweep (source: each guard or branch this round's fixes add
 Sibling sweep: every reader of the snapshots folder (snapshotFiles' callers, verbImport's write): all through snapshotFiles.
 Verified: 2026-10-15 (tester, R12-A-V @ hb-20261015-01; dev at d9bdb99 (PR #53 merged), clean and level; a terminal in the workspace with --plugin-dir, canary matched; production KB, no pull; VALIDATION § R12-A V4) — pass bar stated first: snapshots ordered by the pulledAt instant. V4: the F-544 check passes (a snapshot an hour newer, named to sort first, is the one status reads; retention over the same order). Verdict: VERIFIED.
 
-## F-545 — OPEN
+## F-545 — DEFERRED (past 0.54.0)
 Reported: 2026-10-14 (builder, R12 release-gate review, verifier traced)
 Severity: polish — misleading text, recoverable
 What: refresh's resume checks run before takeLock, so a second `refresh --full` during a live refresh is told "a stopped refresh … is waiting to resume … or remove refresh-state.json to start over" instead of "already running"; takeLock is check-then-write (no exclusive create) and release deletes unconditionally.
 Expected: take the lock before reading or removing the state file; "already running" first.
+Defer: 2026-10-15 (auto, release ceremony) - past 0.54.0. Why not now: OPEN polish at release. Reopen: next release ceremony.
 
-## F-546 — OPEN
+## F-546 — DEFERRED (past 0.54.0)
 Reported: 2026-10-14 (builder, R12 release-gate review, verifier traced)
 Severity: polish — self-healing (a lost mark is re-documented next refresh); not a normal flow
 What: the refresh lock is per dashboard, but re-documentation writes the KB-wide _manifest.json (manifest.mjs has no lock), so two dashboards of one KB refreshed at once can lose each other's documented / stale marks. The same property holds for every manifest writer.
 Expected: a KB-level lock around re-documentation, or the manifest's writes made merge-safe.
+Defer: 2026-10-15 (auto, release ceremony) - past 0.54.0. Why not now: OPEN polish at release. Reopen: next release ceremony.
 
 ## F-547 — VERIFIED
 Reported: 2026-10-14 (builder, R12 /security-review: one candidate, filtered — highest severity Low; the same unguarded writer ships on main through email-report)
