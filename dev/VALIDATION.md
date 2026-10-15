@@ -3065,3 +3065,11 @@ canary matched; no tenant call):
   reports)") SURVIVED, predicted: the check reads chosen spans, not the router or the Arguments.
 Section status: OPEN — W1 and W3 passed, W2 failed; F-528 REOPENED (bus, first reopen). Owed at the next verdict round:
   W1–W3 again, Bradley's wording read included.
+
+Re-banked 2026-10-14 (tester, role inversion on Bradley's word; the fix at cc83ea6, F-528's second Fix line): the verdict
+of record is the BUILDER's, at the close-out (the tester authored this fix and may not verify it). Owed by the builder:
+- C1 (the differential). Revert each -U0 prose hunk of 1f7593a (the skill, both READMEs, the CHANGELOG) and cc83ea6's row
+  hunk alone on the branch and run the committed F-528 check: every one fails it, on its own clause. Pass bar: 13 of 13.
+- C2 (the read). The plugin README's skill-table row for email-engagement carries no Gainsight-reports clause; W1's skill
+  reply stands (the skill is unchanged since F-528-V). Bradley's wording read of W2 is asked at the close-out.
+- C3 (the run). `test/dashboard.mjs` (the F-528 check included) and `test/dashboard-native.mjs` pass; CI green on PR #52.
