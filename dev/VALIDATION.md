@@ -3181,6 +3181,7 @@ the closing step's pre-flight needed one) V6's plan and V7's two account lines):
   to relay.
 Section status: OPEN on F-534 only (fixed by the tester's role inversion the same day; the close-out below owes the
 verdict of record); the twelve other sections VERIFIED on the bus.
+Section status: CLEARED (release prep, 2026-10-15, builder) — F-534 VERIFIED by the close-out below (PR #54 merged at 13293c3), so every R12-A section is VERIFIED; V2's default-comparison question ruled by Bradley "Polish, after 0.54.0" (the plan's backlog). Spent for 0.54.0.
 
 ## R12-A-V close-out — the builder's verdict on the tester's F-534 role-inversion fix (banked 2026-10-15, tester, @ hb-20261015-02)
 
