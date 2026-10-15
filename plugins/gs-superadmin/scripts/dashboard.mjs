@@ -2011,9 +2011,10 @@ function verbReport(ctx, slug, opt, argv) {
   // routine (selective) one, its own run's figure; after only a full pull no routine refresh has been priced yet, so the
   // figure is null and the full pull's minutes ride beside it for the skill's wording.
   const plan = lastPlan(ctx, slug);
-  const refreshMinutes = plan?.estimate?.mode === "selective" && plan.estimate.thisRun?.seconds != null ? minutesOf(plan.estimate.thisRun.seconds) : null;
+  const refreshSeconds = plan?.estimate?.mode === "selective" && plan.estimate.thisRun?.seconds != null ? plan.estimate.thisRun.seconds : null;
+  const refreshMinutes = refreshSeconds != null ? minutesOf(refreshSeconds) : null;
   const fullRefreshMinutes = plan?.estimate?.full?.seconds != null ? minutesOf(plan.estimate.full.seconds) : null;
-  return { ...summary, mode: "report", slug, snapshotAgeDays: ageDays, refreshMinutes, fullRefreshMinutes, held: heldBy(snapshot, summary.statusesShown) };
+  return { ...summary, mode: "report", slug, snapshotAgeDays: ageDays, refreshMinutes, refreshSeconds, fullRefreshMinutes, held: heldBy(snapshot, summary.statusesShown) };
 }
 /**
  * What a dashboard's snapshot holds, for the question it is asked (F-534): the pull's selection and window in words and
