@@ -192,6 +192,7 @@ export const NOT_LACKS = Object.freeze({
   "account-not-kept-on-program": "a timeline's comparison with a dashboard: the dashboard's customer lists",
   "program-not-in-dashboard": "a timeline's comparison with a dashboard: the dashboard's programs",
   "no-send-in-months-compared": "a timeline's comparison with a dashboard: where the account's sends fall in the days",
+  "field-not-read": "a report's per-segment customer list: the next refresh reads its company field",
   "list-set-since": "a report's customer list after a selective refresh: only a full pull ranks it",
   "previous-not-ranked": "a report's customer list after a selective refresh: only a full pull ranks it",
 });

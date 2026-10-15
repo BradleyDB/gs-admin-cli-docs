@@ -660,8 +660,10 @@ export const REASONS = deepFreeze({
   "account-not-kept-on-program": "The dashboard did not keep this account there: it holds no row of the account on the program over its window.",
   "program-not-in-dashboard": "The program is not in the dashboard.",
   "no-send-in-months-compared": "The dashboard kept this account there, but the account's sends on it fall only outside the whole months compared (the first, partial month of these days, or the provisional month), so there was nothing to compare.",
-  // Why a selective refresh holds no ranking for a cross-program customer list (F-521): it carries the last full
-  // ranking, and these have none to carry. A full pull ranks every list again.
+  // Why a customer list holds no ranking. Since F-548 every refresh ranks every list, so only a per-segment list a
+  // change set over a company field the pull did not read is not ranked (until the next refresh reads it). The two
+  // after it are a snapshot made before F-548, when a selective refresh carried the last full ranking (F-521).
+  "field-not-read": "This list is split by a company field the last pull did not read, so it is not ranked yet: the next refresh reads the field and ranks it.",
   "list-set-since": "This list was set after the full pull that ranked the others, and a pull that continues from an earlier one cannot rank it: a full pull (a dashboard's refresh with --full) ranks it over every account.",
   "previous-not-ranked": "The pull this one continued from held no ranking of this list over every program, so there was none to keep: a full pull (a dashboard's refresh with --full) ranks it over every account.",
 });
