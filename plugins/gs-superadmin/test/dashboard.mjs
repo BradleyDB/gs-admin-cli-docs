@@ -961,6 +961,30 @@ try {
         ![readme, skill, readFileSync(join(HERE, "..", "scripts", "dashboard-spec.mjs"), "utf8"), readFileSync(SCRIPT, "utf8")].some((t) => /one short (Claude )?session/i.test(t)) && /### L2 — Publish the artifact \(not offered/.test(skill),
       { offered, named: named.json?.error, section: dashboardSection.match(/.{0,80}artifact.{0,80}/i)?.[0] });
   }
+  // F-528: native Gainsight reports are not offered while backlog LTR-26 stands (ruled at S8-V): the report builder
+  // cannot finish what native-plan creates. The verbs, dashboard-native.mjs and T-11's `native` record stay (their own
+  // suites drive them); what is refused is the OFFER: a mode N section, `native <dash>` in the skill's argument hint or
+  // mode list, a tenant-mutation exception in its description or ground rules, a native recipe in the README's
+  // dashboard section, and a native line in the CHANGELOG's 0.54.0 entry other than the one saying it is not offered.
+  {
+    const readme = readFileSync(join(HERE, "..", "README.md"), "utf8");
+    const dashboardSection = readme.slice(readme.indexOf("### The engagement dashboard"), readme.indexOf("## Tenant-wide dependency search"));
+    const skill = readFileSync(join(HERE, "..", "skills", "email-engagement", "SKILL.md"), "utf8");
+    const front = skill.slice(0, skill.indexOf("\n---", 4));
+    const description = front.match(/^description: (.*)$/m)?.[1] ?? "";
+    const hint = front.match(/^argument-hint: (.*)$/m)?.[1] ?? "";
+    const modeList = skill.slice(skill.indexOf("Its modes:"), skill.indexOf("## Ground rules"));
+    const groundRules = skill.slice(skill.indexOf("## Ground rules"), skill.indexOf("## Arguments"));
+    const changelog = readFileSync(join(HERE, "..", "CHANGELOG.md"), "utf8");
+    const at = changelog.indexOf("## 0.54.0");
+    const entry = changelog.slice(at, changelog.indexOf("\n## ", at + 1)).split(/\n(?=- )/).filter((b) => !b.startsWith("- **Native Gainsight reports are not offered.**")).join("\n");
+    const exception = /\b(except|but for|exception)\b|native|rp create|rp update/i;
+    check("F-528 native reports are not offered: the skill has no mode N section and no `native` in its argument hint or mode list, its description ends \"Never mutates the tenant.\" and neither it nor the ground rules carry an exception; the README's dashboard section has no native recipe; the CHANGELOG's 0.54.0 entry names native reports only to say they are not offered",
+      !/^##+ N\b/m.test(skill) && !/native/i.test(hint) && hint.length > 100 && modeList.length > 500 && !/native/i.test(modeList) &&
+        /Never mutates the tenant\.$/.test(description) && !exception.test(description) && /Read-only tenant\./.test(groundRules) && !exception.test(groundRules) &&
+        dashboardSection.length > 1000 && !/native/i.test(dashboardSection) && at >= 0 && /Native Gainsight reports are not offered/.test(changelog.slice(at)) && !/native/i.test(entry),
+      { hint: hint.match(/.{0,40}native.{0,40}/i)?.[0], description: description.slice(-160), rule: groundRules.match(/.{0,60}(except|but for|exception|native).{0,60}/i)?.[0], section: dashboardSection.match(/.{0,80}native.{0,80}/i)?.[0], entry: entry.match(/.{0,80}native.{0,80}/i)?.[0] });
+  }
   check("refusals: an unknown verb, a missing slug, a refresh of a draft, an unknown question (purpose, dropped, among them), and a workspace with no KB each exit 1 with one line",
     run("frobnicate", []).code === 1 && run("status", []).code === 1 && run("refresh", ["quick"]).code === 1 && /is a draft, not a saved dashboard/.test(run("refresh", ["quick"]).json?.error ?? "") && run("answer", [SLUG, "nope", "x"]).code === 1 && /no question is called "purpose"/.test(run("answer", ["quick", "purpose", "x"]).json?.error ?? "") && run("list", [], { flags: ["--workspace", join(ROOT, "nowhere"), "--bin", FAKE] }).code === 1);
   check("the summaries carry counts and verdicts, never rows: no account name and no message text reaches stdout from a refresh", !JSON.stringify(resumed.json).includes("Acme Customer") && JSON.stringify(resumed.json).length < 12000);

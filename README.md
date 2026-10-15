@@ -161,8 +161,7 @@ Re-run to keep documenting in batches: `/gs-superadmin:setup --budget 50` or
   send log: per program, sent, unique recipients, accounts reached, delivered, opened and
   open rate, with clicks, survey responses, an optional account watch list, and a glossary
   that says how every number is calculated; and engagement dashboards built once and pulled
-  again by hand, whose panels its native mode can also create as Gainsight reports (each
-  `rp create` its own command, behind the guard's ask). Also answers questions like "what's
+  again by hand. Also answers questions like "what's
   the open rate for the onboarding program?".
 - **`/gs-superadmin:deps-report`** — tenant-wide impact analysis: every documented asset
   (rules, journeys, reports, connector jobs, data designers, scorecards) that depends on

@@ -1,6 +1,6 @@
 ---
-description: Read-only Journey Orchestrator email engagement from the tenant's send log, for comparisons across programs and periods — "every program that sent since a date", which programs have low open rates, the cross-program customer lists (most engaged, least engaged, most bounced) — as a one-off report or as a dashboard built once and pulled again by hand whenever new numbers are wanted. Use when asked "how are our email programs performing", "which programs have low open rates", "which customers aren't opening our emails", "build (or edit) a dashboard of our email engagement", "update the engagement dashboard" (/gs-superadmin:email-engagement refresh <slug>), or "what have we emailed this customer" (one account's timeline by day). For ONE program's numbers, Gainsight's own analytics page for that program is the place; this skill is for the comparisons the UI cannot make. Pairs with email-report, which says what the emails say and when they run. Writes a markdown report, optionally CSVs/XLSX, or self-contained HTML pages. Never mutates the tenant, except in its native mode, which creates Gainsight reports from a dashboard, each `rp create` its own command behind the guard's ask.
-argument-hint: "report [--name p]… [--ids-file f] [--sent-since d] [--from YYYY-MM] [--to YYYY-MM] [--internal-domain d]… [--unsubscribe-link l]… [--test-account id]… [--accounts] [--step-detail] [--previous f] [--snapshot f] [--by-template] [--exclude-internal] [--include-paused|--all] [--csv] [--xlsx] [--slug name] | dashboard new <slug> [--fast-path] | dashboard edit <slug> | dashboard list | /gs-superadmin:email-engagement refresh <slug> [--full] [--health-only] | publish <slug> | native <dash> [--test-prefix] | account [<dash>] '<name>' [--last Nd|Nm]"
+description: Read-only Journey Orchestrator email engagement from the tenant's send log, for comparisons across programs and periods — "every program that sent since a date", which programs have low open rates, the cross-program customer lists (most engaged, least engaged, most bounced) — as a one-off report or as a dashboard built once and pulled again by hand whenever new numbers are wanted. Use when asked "how are our email programs performing", "which programs have low open rates", "which customers aren't opening our emails", "build (or edit) a dashboard of our email engagement", "update the engagement dashboard" (/gs-superadmin:email-engagement refresh <slug>), or "what have we emailed this customer" (one account's timeline by day). For ONE program's numbers, Gainsight's own analytics page for that program is the place; this skill is for the comparisons the UI cannot make. Pairs with email-report, which says what the emails say and when they run. Writes a markdown report, optionally CSVs/XLSX, or self-contained HTML pages. Never mutates the tenant.
+argument-hint: "report [--name p]… [--ids-file f] [--sent-since d] [--from YYYY-MM] [--to YYYY-MM] [--internal-domain d]… [--unsubscribe-link l]… [--test-account id]… [--accounts] [--step-detail] [--previous f] [--snapshot f] [--by-template] [--exclude-internal] [--include-paused|--all] [--csv] [--xlsx] [--slug name] | dashboard new <slug> [--fast-path] | dashboard edit <slug> | dashboard list | /gs-superadmin:email-engagement refresh <slug> [--full] [--health-only] | publish <slug> | account [<dash>] '<name>' [--last Nd|Nm]"
 # model-invocable by design (no disable-model-invocation): a plain "open rate for program X" routes to `report` (email-report precedent)
 ---
 
@@ -21,9 +21,6 @@ How Journey Orchestrator emails performed, read from the tenant's send log. Its 
   rebuilds its pages, with no model in the loop; the leaders' copy is published at its end.
 - **publish <slug>** — publishes the leaders' copy of a saved dashboard as its pages stand,
   with no pull: into the shared folder the dashboard names.
-- **native <dash>** — the dashboard's panels that Gainsight's own reports can carry,
-  planned, then created in the tenant one guarded command at a time, recorded and read
-  back; what is left (rate columns, dashboard filters) is listed for the Gainsight UI.
 - **account '<name>'** — one account's emails by program and day over the last N days or
   months, in a page of its own (its contacts added up, never named).
 
@@ -37,11 +34,9 @@ customer lists across programs, which the UI cannot make.
 
 Each is a one-line reminder; the full rule lives where the pointer says.
 
-- **Read-only tenant, but for mode N.** The pull issues only catalogued non-mutating
-  commands (`whoami`, `rp run`, `rp schema`, `jo p list`, `jo p describe`, `jo email
-  template`) and its scripts refuse any other (rule canon: operating model, "Read-only by
-  default"). Mode N's `rp create` and `rp update` lines are the one exception: each is
-  issued by this skill as its own command, so the guard asks, and no script runs one.
+- **Read-only tenant.** The pull issues only catalogued non-mutating commands (`whoami`,
+  `rp run`, `rp schema`, `jo p list`, `jo p describe`, `jo email template`) and its scripts
+  refuse any other (rule canon: operating model, "Read-only by default").
 - **One `gs-admin` call at a time.** The scripts make their calls one after another;
   never start a second `gs-admin` command while one is running (rule canon:
   `/gs-superadmin:email-report`, Ground rules).
@@ -67,9 +62,9 @@ engagement or email performance across programs; `dashboard` when the user wants
 dashboard built, changed or listed; the pull-again mode when a saved dashboard should be
 brought up to date (`/gs-superadmin:email-engagement refresh <slug>`); `publish` when the
 leaders' copy should be published again without a pull ("publish the leaders' page", "copy
-it to the shared folder"); `native` when the admin wants a dashboard's figures as Gainsight
-reports ("make these native reports"; `--test-prefix` for a sandbox try-out); `account` when the
-ask is what one customer was sent.
+it to the shared folder"); `account` when the ask is what one customer was sent. Native
+Gainsight reports made from a dashboard are not offered in this release (Gainsight's report
+builder cannot finish them); if asked for them, say so and stop.
 
 Pull flags (report mode) — passed to the pull script exactly as written here (steps R2
 and R3):
@@ -124,7 +119,7 @@ matches (or use `--slug`). If no workspace manifest exists, tell the user to run
 user to run `gs-admin login`, then continue.
 
 Then go to the mode's steps: R (report), D (dashboard), P (the pull-again mode), L (publish
-the leaders' copy), N (native Gainsight reports), or A (one account's timeline).
+the leaders' copy), or A (one account's timeline).
 
 ---
 
@@ -674,90 +669,6 @@ second time in the same request. Say what the artifact is: a private link, opene
 people in the organization with their Claude account once it is shared with them from the
 artifact's Share menu; a filtered view cannot be bookmarked there (the address bar keeps no
 filters); viewers pay nothing.
-
----
-
-## N — native Gainsight reports (`native <dash>`)
-
-The dashboard's panels that Gainsight's own reports can carry, created as reports in the
-tenant. Use it when the admin wants the figures inside Gainsight ("make these native
-reports", "put this dashboard in Gainsight"). This is the ONE mode that writes to the
-tenant: every `rp create` and `rp update` is its own command, the mutation guard asks for
-each, and no script ever runs one. With `--test-prefix` (a try-out, on a sandbox) every report
-name starts `ZZ|TEST|`. Check the login first (step 1); then:
-
-### N1 — The plan (reads only)
-
-```
-node .gs-superadmin/plugin/scripts/dashboard.mjs native-plan <dash> --kb <slug>
-```
-
-Append `--test-prefix` when the user passed it. Exit 3: the login expired; ask the
-user to run `gs-admin login`, then run the summary's `remedy.line` as written. Exit 5: the
-CLI is on another tenant; say both and stop. Never issue a command from a summary whose
-`schemaChecked` is false.
-
-Show the plan in the admin's terms, from the summary:
-
-- each of `reports`: its `title`, its `status` (native: every figure; partial: say each
-  `leftOut` line, the figures a report cannot carry and why), and its `action` (create;
-  update, with its `warning`; unchanged: skipped; shared: it uses the report of the panel
-  `sameAs` names);
-- each of `notNative`, with its `why`;
-- that the CLI cannot author a rate or a conditional column: each report's `uiSteps` are
-  what the admin adds in the Gainsight UI afterwards, and the dashboard's months, programs
-  and status are Gainsight dashboard filters (`dashboardSteps`).
-
-Then ask once, with AskUserQuestion, whether to create the reports whose `action` is
-`create` (and update those whose `action` is `update`), giving both counts from `counts`.
-A yes covers this plan only; a no ends the mode with the plan as the answer.
-
-### N2 — Create or update, one at a time
-
-For each of `reports` whose `action` is `create` or `update`, in the summary's order: issue
-its `command` EXACTLY as written, as its own Bash command — never two in one call, never
-in a script, never rewritten (the guard asks for each one; a declined ask skips that
-report). When it exits 0, record it:
-
-```
-node .gs-superadmin/plugin/scripts/dashboard.mjs native-record <dash> --panel <panel> --kb <slug>
-```
-
-Substitute `<panel>` with that report's `panel` (it is `<page id>/<panel id>`, a word the
-shell takes as it is). A command that exits non-zero: say its stderr's first line and go
-on to the next report, recording nothing for it — except a create refused because a report
-of that exact name already exists (an earlier run that stopped before recording it): then
-run `native-record` for it as above, which finds that report by its name and records it. A
-report whose `action` is `shared` and whose `unrecorded` is true needs no command: run
-`native-record` for its `panel` alone. `native-record` refusing: relay `error` and stop.
-
-### N3 — Read them back
-
-```
-node .gs-superadmin/plugin/scripts/dashboard.mjs native-verify <dash> --kb <slug>
-```
-
-Relay each of `reports`: `ok`, `rows`, and `uiPending` (the UI columns not added yet). A
-report that is not `ok`: say its `why`.
-
-### N4 — What is left for the UI
-
-```
-✓ /gs-superadmin:email-engagement native <dash> complete
-  Reports:  <created> created, <updated> updated, <unchanged> unchanged, <shared> shared
-  In the Gainsight UI: <ui line>
-  Created this time (the CLI cannot delete a report): <created list>
-  No longer needed: <cleanup list>
-```
-
-`<created>`, `<updated>`, `<unchanged>` and `<shared>` are the counts of the reports this
-request created, updated, skipped and shared. `<ui line>` is "add the columns each report
-lists, then the dashboard filters below", followed on new lines, at the same indentation,
-by each report's `title` and its `uiSteps`, then the summary's `dashboardSteps`, one per
-line. `<created list>` is every report this request created or updated as `<name>
-(<reportId>)`, one per line at the same indentation, or "none". `<cleanup list>` is the
-plan's `cleanup` the same way, or "none". On a `--test-prefix` run, also say: delete the
-`ZZ|TEST|` reports in the Gainsight UI when done (Reports, search "ZZ|TEST|"). Then stop.
 
 ---
 
