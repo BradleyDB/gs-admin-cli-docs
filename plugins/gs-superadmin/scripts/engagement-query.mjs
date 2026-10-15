@@ -1467,7 +1467,12 @@ export const silentPrograms = programHealth;
 // carries its basis.
 // The usual (a KPI's and a category's "change against the usual"): the same
 // figure over the window's CLOSED months, per month for a count, as itself for
-// a rate. The current month is never in it (opens keep arriving).
+// a rate. The current month is never in it (opens keep arriving). The change
+// compares like with like (F-531): the figure over the CLOSED months the view
+// keeps against the usual, never a sum that holds the provisional month divided
+// by a month count that counts it (two days of a month read as a 0.76x drop);
+// `months` says how many closed months it covers and how many provisional ones
+// it leaves out, and a view with no closed month has no change.
 /**
  * Headline figures (a kpi panel): each metric over everything the filters
  * keep, the usual beside it and the change against it, and for a rate the
@@ -1476,7 +1481,7 @@ export const silentPrograms = programHealth;
  * @param {T10Snapshot} snapshot
  * @param {EngagementFilters} filters
  * @param {{metrics: string[]}} query
- * @returns {{tiles: Array<{id: string, label: string, cell: EngagementCell, usual: ?{value: number, perMonth: boolean, closedMonths: number}, change: ?{kind: "points"|"ratio", value: ?number}, denominator: ?{id: string, label: string, cell: EngagementCell}, sinceLastPull: null}>, scope: *, incomplete: boolean, carried: boolean, previousPulledAt: ?string}}
+ * @returns {{tiles: Array<{id: string, label: string, cell: EngagementCell, usual: ?{value: number, perMonth: boolean, closedMonths: number}, change: ?{kind: "points"|"ratio", value: ?number, months: {closed: number, provisionalLeftOut: number}}, denominator: ?{id: string, label: string, cell: EngagementCell}, sinceLastPull: null}>, scope: *, incomplete: boolean, carried: boolean, previousPulledAt: ?string}}
  */
 export function kpiView(snapshot, filters, query) {
   const f = filters ?? {};
@@ -1485,15 +1490,18 @@ export function kpiView(snapshot, filters, query) {
   const usualRun = closed.length ? runQuery(snapshot, { ...f, months: closed }, { groupBy: [], metrics: query.metrics }) : null;
   const dens = [...new Set(query.metrics.map((id) => metric(id).denominator).filter(Boolean))];
   const context = dens.length ? runQuery(snapshot, f, { groupBy: [], metrics: dens }).total.cells : {};
-  const months = now.scope.months.length;
+  const viewClosed = now.scope.months.filter((m) => closed.includes(m));
+  const leftOut = now.scope.months.length - viewClosed.length;
+  const closedNow = !viewClosed.length ? null : leftOut ? runQuery(snapshot, { ...f, months: viewClosed }, { groupBy: [], metrics: query.metrics }) : now;
   const tiles = query.metrics.map((id) => {
     const def = metric(id);
     const cell = now.total.cells[id];
     const rate = isRate(def);
     const u = usualRun?.total.cells[id] ?? null;
     const usual = u && u.value != null ? { value: rate ? u.value : u.value / closed.length, perMonth: !rate, closedMonths: closed.length } : null;
+    const c = closedNow?.total.cells[id] ?? null;
     let change = null;
-    if (usual && cell.value != null) change = rate ? { kind: "points", value: (cell.value - usual.value) * 100 } : { kind: "ratio", value: usual.value && months ? cell.value / months / usual.value : null };
+    if (usual && c && c.value != null) change = { ...(rate ? { kind: /** @type {"points"} */ ("points"), value: (c.value - usual.value) * 100 } : { kind: /** @type {"ratio"} */ ("ratio"), value: usual.value ? c.value / viewClosed.length / usual.value : null }), months: { closed: viewClosed.length, provisionalLeftOut: leftOut } };
     const den = def.denominator ? { id: def.denominator, label: metric(def.denominator).label, cell: context[def.denominator] } : null;
     return { id, label: def.label, cell, usual, change, denominator: den, sinceLastPull: null };
   });
@@ -1599,15 +1607,18 @@ export function healthReasonsView(snapshot, filters, { otherShareFlag = OTHER_SH
       const closedRows = inScope.filter((r) => closed.includes(r.month));
       const idOf = (r) => (remainder(r.category) ? OTHER_CATEGORY : r.category);
       const sumOf = (rows, id) => sumBy(rows.filter((r) => idOf(r) === id), "count");
+      // The change over the CLOSED months of the period (F-531: like with like), never the provisional month's part-count.
+      const periodClosed = months.filter((m) => closed.includes(m));
+      const closedPeriod = period.filter((r) => periodClosed.includes(r.month));
       const withUsual = (c) => {
         const usual = closed.length ? sumOf(closedRows, c.id) / closed.length : null;
-        return { ...c, usualPerMonth: usual, change: usual && months.length ? c.count / months.length / usual : null };
+        return { ...c, usualPerMonth: usual, change: usual && periodClosed.length ? sumOf(closedPeriod, c.id) / periodClosed.length / usual : null };
       };
       const ids = [...new Set(inScope.map(idOf))];
       const named = ids.filter((id) => id !== OTHER_CATEGORY).map((id) => withUsual({ ...namedCategory(id, table, OTHER_NAMED), count: sumOf(period, id) })).sort((a, b) => b.count - a.count || cmp(a.label, b.label));
       const total = sumBy(period, "count");
       const other = withUsual({ id: OTHER_CATEGORY, ...OTHER_NAMED, expected: false, count: sumOf(period, OTHER_CATEGORY) });
-      bounces = { unavailable: null, basis: p.basis, total, months: months.length, closedMonths: closed.length, categories: named, other: { ...other, share: total ? other.count / total : null, overThreshold: total > 0 && other.count / total > otherShareFlag } };
+      bounces = { unavailable: null, basis: p.basis, total, months: months.length, closedMonths: closed.length, changeMonths: { closed: periodClosed.length, provisionalLeftOut: months.length - periodClosed.length }, categories: named, other: { ...other, share: total ? other.count / total : null, overThreshold: total > 0 && other.count / total > otherShareFlag } };
     }
   }
   // Refusals at entry: exact totals, and the split by category, exact or a sample.

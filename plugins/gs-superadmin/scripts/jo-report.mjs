@@ -76,6 +76,7 @@ import {
   stripBom, isMainModule, STUB_MARKER_RE, makeCliHelpers, readKbIdentity,
   shq, POSIX_QUOTE_CAVEAT, needsPosixQuoteCaveat, readJsonFile, resolveRecordedDomains, laneTable } from "./doc-lib.mjs";
 import { fileURLToPath } from "node:url";
+import { FORMULA_START } from "./dashboard-runtime.mjs";
 const HERE = dirname(fileURLToPath(import.meta.url));
 // The journey and template KB folders are resolved from the manifest's
 // recordings (F-429; doc-lib resolveRecordedDomains — the one home): a lane's
@@ -754,9 +755,15 @@ export function freshnessLine(index) {
 
 // RFC-4180 CSV. Quoting is triggered by comma/quote/CR/LF as the RFC
 // requires, plus pipe and edge whitespace (harmless to quote, and Gainsight
-// names are full of pipes — quoting keeps them visibly one field).
+// names are full of pipes — quoting keeps them visibly one field). A text
+// cell a spreadsheet would read as a formula (it starts with = + - @, a tab
+// or a carriage return: the page runtime's FORMULA_START, the rule's one home)
+// gets a leading apostrophe, so tenant text (a template subject, a program or
+// account name) opens as text in every report CSV (F-547). A number is never
+// touched.
 export function csvCell(v) {
-  const s = v == null ? "" : String(v);
+  let s = v == null ? "" : String(v);
+  if (typeof v !== "number" && FORMULA_START.test(s)) s = `'${s}`;
   return /[",\r\n|]/.test(s) || /^\s|\s$/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 
