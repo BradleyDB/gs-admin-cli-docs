@@ -3014,7 +3014,7 @@ Blind spots: no tenant pull was made with the new families (the two reads were c
      Carried forward (not in this release): F-448 verdict by the other role; the skipped-path arm
        (Blind spots above). -->
 
-## F-530 — DEFERRED (past 0.54.0)
+## F-530 — OPEN
 Reported: 2026-10-14 (builder, R12 release-gate review, verifier reproduced over test/fixtures/engagement/snapshot-acme.json)
 Severity: normal — a reader of the admin page acts on a customer list that is not the one the dashboard says it holds
 Class: consumer-parity
@@ -3023,6 +3023,7 @@ Repro: set the snapshot's selection record (or the spec through `change`) to lea
 Expected: the page's list panels take n, floor, per and the kept set from the same source as the report, so the two and the About tab agree.
 Routing: the R12 fix round, before the recut.
 Defer: 2026-10-15 (Bradley, R12 release gate) - past 0.54.0. Why not now: it bites only when an admin changes a list from its defaults (25, at least 10 delivered), and its natural fix (the page reads the pull's kept set) belongs to F-548's redesign of where list membership comes from. Reopen: session B (F-548), the fast follow after 0.54.0.
+Reopened: 2026-10-15 (builder, Session B — the F-548 redesign round on feat/f548-ranking-every-refresh) — re-opened as the defer's trigger names; worked as an instance under F-548's redesign (the page's list panels read the pull's kept set).
 
 ## F-536 — DEFERRED (past 0.54.0)
 Reported: 2026-10-14 (builder, R12 release-gate review, verifier reproduced in Git Bash, PowerShell 5.1 and cmd)
@@ -3060,9 +3061,12 @@ What: the refresh lock is per dashboard, but re-documentation writes the KB-wide
 Expected: a KB-level lock around re-documentation, or the manifest's writes made merge-safe.
 Defer: 2026-10-15 (auto, release ceremony) - past 0.54.0. Why not now: OPEN polish at release. Reopen: next release ceremony.
 
-## F-548 — DEFERRED (past 0.54.0)
+## F-548 — OPEN
 Reported: 2026-10-15 (builder, R12 release gate — Bradley's question at F-529's ruling: with lists on, does a routine refresh update them?)
 Severity: normal — with customer lists on, list membership is frozen at the last full pull: a routine (selective) refresh updates the kept accounts' figures but never who is on a list, so current membership costs a full pull every time (on the kept dashboard about 67 minutes against a selective refresh's 44)
 What: Class, in one sentence: the cross-program lists are ranked only from data a full pull holds and the snapshot then folds away. A full pull reads every account's figures for every month, ranks, and keeps per-account rows only for the kept (listed, pinned) accounts; every other account's months become one "all other accounts" row per program and month. A selective refresh re-reads every account for the months it pulls (account units are planned per program per pulled month for all accounts), but the older months of the non-kept accounts are gone, so it cannot rank and carries the last full ranking (F-521, by design: rankedAt and carriedFrom say so). F-529's reselect is the same limit met at edit time.
 Expected: the snapshot (or a sidecar beside the pages, never embedded in a page) keeps compact per-account totals by program and month for every account, so every refresh re-ranks exactly: stored months plus pulled months give the full pull's ranking (the judge: over unchanged data, a selective refresh's lists equal a full pull's, kind, n, floor, per, segment, kept, in order); a list change re-ranks from the store at no pull; the low-cadence quiet rule (per program) and per-segment lists (company fields for newly listed accounts) are kept. Contract: a 0.54.0 snapshot without the store is detected and the next refresh goes full, priced and said, with no hand step and no refusal. The store's size is measured on the kept dashboard's run directories before building, and the design stops if it is prohibitive.
 Defer: 2026-10-15 (Bradley, R12 release gate) - past 0.54.0. Why not now: shipping 0.54.0 sooner is worth more than current membership on routine refreshes — a day-1 adopter's build is a full pull, most will not refresh for a month, the staleness is dated on the page and stated in the release notes, and the cost of waiting is one extra full refresh after session B. Reopen: session B, the fast follow after the 0.54.0 release (with F-530 and F-529's root).
+Reopened: 2026-10-15 (builder, Session B on feat/f548-ranking-every-refresh) — re-opened as the defer's trigger names, with F-530 and F-529's root as instances under the same redesign.
+Measured: 2026-10-15 (builder, Session B step 1; offline, from the kept dashboard's one finished full run directory through the plugin's own loadRun and account row reader; no tenant call) — a per-account store over the 13-month window holds 15,436 accounts and 185,675 account x program x month cells with sends (150,068 account x program pairs); as compact JSON (dictionaries plus index rows of sent, delivered, opened, bounced) 4.56 MB raw, 0.98 MB gzipped, beside a 3.6 MB snapshot; months leaving the window are dropped, so it tracks send breadth, not the dashboard's age (a 24-month window: about 10 MB raw at the recent rate). From the store's cells alone plus the per-program cadence every pull reads for the whole window, selectAccountsAcross reproduced the full pull's three recorded lists IDENTICAL IN ORDER (25/25/25).
+Ruling: 2026-10-15 (Bradley) — BUILD, as PLAIN JSON (a zipped file is no user-readable reference) and ONE store, for the latest snapshot only (only the latest is read; a missing store is the migration path).
