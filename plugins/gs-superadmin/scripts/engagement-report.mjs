@@ -255,7 +255,9 @@ export function buildReport(snapshot, opts = {}) {
         // The lists were selected over EVERY program, so their rows are read over every status (the recipient class
         // still applies); the per-program tables below keep the status filter.
         const across = (query) => runQuery(snapshot, { recipientClass, accounts: l.kept, accountBuckets: /** @type {Array<"account">} */ (["account"]) }, query);
-        const rows = across({ groupBy: ["account"], metrics: CROSS_METRICS, sort }).rows;
+        // In the list's own order (F-530): the pull's ranking, the order the page shows; the sort only breaks no tie.
+        const at = new Map(l.kept.map((k, i) => [k, i]));
+        const rows = across({ groupBy: ["account"], metrics: CROSS_METRICS, sort }).rows.sort((a, b) => (at.get(a.key.account) ?? Infinity) - (at.get(b.key.account) ?? Infinity));
         const name = (r) => r.label.account ?? r.key.account;
         // The programs each kept account is on: the engine's own program × account rows, counted per account.
         const touched = new Map();
