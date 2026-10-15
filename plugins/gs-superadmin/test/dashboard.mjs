@@ -37,7 +37,7 @@ import { HOW_TO_REFRESH_RULED } from "./fixtures/engagement/ruled-text.mjs";
 import { LACKS, HOW_TO_REFRESH_TEXT } from "../scripts/dashboard-runtime.mjs";
 import { openSnapshot } from "../scripts/engagement-query.mjs";
 import { nativePlan, TEST_PREFIX } from "../scripts/dashboard-native.mjs";
-import { makeGate } from "../scripts/engagement.mjs";
+import { makeGate, resolveParams } from "../scripts/engagement.mjs";
 import { kbFiles, OWN_SITE_UNSUBSCRIBE, TEMPLATES_DOMAIN, buildTenant, FIXTURE_BOUNCE_CATEGORIES } from "./fixtures/engagement/acme-tenant.mjs";
 import { splitRedirect } from "./fixtures/engagement/shell-words.mjs";
 
@@ -78,8 +78,12 @@ const run = (verb, args = [], { env = {}, tenant = TENANT, flags = common } = {}
   const r = runNode(SCRIPT, [verb, ...args, ...flags], { env: { ...process.env, FAKE_STATE: STATE, FAKE_TENANT: JSON.stringify(tenant), ...env } });
   let json = null;
   try { json = JSON.parse(r.stdout); } catch { /* a stack trace path */ }
+  // The class behind F-534's reopen: a structured value printed into words. Every verb's output this suite makes is read.
+  for (const out of [r.stdout, r.stderr]) if (/\[object [A-Z]\w*\]/.test(out ?? "")) objectWords.push(`${verb}: ${out.match(/.{0,80}\[object [A-Z]\w*\].{0,40}/)?.[0]}`);
   return { code: r.status, json, stderr: r.stderr };
 };
+/** @type {string[]} */
+const objectWords = [];
 const dash = (slug = SLUG, kb = KB) => join(kb, "dashboards", slug);
 const draftFile = (slug = SLUG, kb = KB) => join(dash(slug, kb), "spec.draft.json");
 const specFile = (slug = SLUG, kb = KB) => join(dash(slug, kb), "spec.json");
@@ -1022,6 +1026,20 @@ try {
       rep.code === 0 && plan534?.estimate?.mode === "selective" && plan534.estimate.thisRun.seconds < plan534.estimate.full.seconds && rep.json.refreshSeconds === plan534.estimate.thisRun.seconds && rep.json.refreshMinutes === mins(plan534.estimate.thisRun.seconds) && rep.json.fullRefreshMinutes === mins(plan534.estimate.full.seconds) && rep.json.held.programs.length === repSnap.dimensions.programs.length && rep.json.held.window.from === repSnap.meta.window.from && rep.json.held.window.to === repSnap.meta.window.to && typeof rep.json.held.selection === "string" &&
         shown.length === rep.json.counts.programsShown && rep.json.held.programs.some((x) => !x.shown) && rep.json.csvFiles.length > 0 && existsSync(join(ROOT, "r12", "report-csv")) && run("list", []).json?.dashboards?.find((d) => d.slug === SLUG)?.holds?.programs === repSnap.dimensions.programs.length,
       [rep.json?.refreshMinutes, rep.json?.fullRefreshMinutes, plan534?.estimate?.mode, plan534?.estimate?.thisRun?.seconds, plan534?.estimate?.full?.seconds, rep.json?.counts, shown.length, rep.json?.error]);
+    // F-534 reopen (R12-A-V): a dashboard selected by "sent since" holds the adapter's RESOLVED selector ({spec, date},
+    // from engagement.mjs resolveParams — never restated here), and held / holds say it in words. acme-health selects
+    // the whole window, so its snapshot is copied with that selector and imported into the second workspace.
+    const sinceSel = resolveParams({ sentSince: "90d", today: TODAY }).selector;
+    writeFileSync(join(ROOT, "r12", "since.snapshot.json"), JSON.stringify({ ...repSnap, meta: { ...repSnap.meta, params: { ...repSnap.meta.params, selector: sinceSel } } }));
+    const ws2 = ["--workspace", WS2, "--kb", KB2, "--bin", FAKE, "--today", TODAY, "--by", "cy"];
+    const sinceExport = run("export", [SLUG, "--out", join(ROOT, "r12", "since.json")]);
+    const sinceImport = run("import", ["--file", join(ROOT, "r12", "since.json"), "--slug", "acme-since", "--snapshot", join(ROOT, "r12", "since.snapshot.json")], { flags: ws2 });
+    const sinceRep = run("report", ["acme-since"], { flags: ws2 });
+    const sinceHolds = run("list", [], { flags: ws2 }).json?.dashboards?.find((d) => d.slug === "acme-since")?.holds;
+    const sinceWords = `the programs that sent since ${sinceSel.sentSince.date} (90d, counted back from the pull's day)`;
+    check("F-534 a dashboard selected by 'sent since' says its selection in words, in the report's held and in list's holds: the resolved date and the asked span, never a structured value",
+      sinceExport.code === 0 && sinceImport.code === 0 && sinceRep.code === 0 && sinceRep.json.held.selection === sinceWords && sinceHolds?.selection === sinceWords,
+      [sinceImport.json?.error, sinceRep.json?.held?.selection, sinceHolds?.selection]);
     // F-535: a dashboard whose slug another extends (acme, beside acme-health), saved with no pull: its change is priced
     // from no plan, never from acme-health's runs; and F-532: imported under another slug it publishes its own file.
     const exported = run("export", [SLUG, "--out", join(ROOT, "r12", "acme-health.json"), "--with-snapshot"]);
@@ -1183,6 +1201,7 @@ try {
   check("refusals: an unknown verb, a missing slug, a refresh of a draft, an unknown question (purpose, dropped, among them), and a workspace with no KB each exit 1 with one line",
     run("frobnicate", []).code === 1 && run("status", []).code === 1 && run("refresh", ["quick"]).code === 1 && /is a draft, not a saved dashboard/.test(run("refresh", ["quick"]).json?.error ?? "") && run("answer", [SLUG, "nope", "x"]).code === 1 && /no question is called "purpose"/.test(run("answer", ["quick", "purpose", "x"]).json?.error ?? "") && run("list", [], { flags: ["--workspace", join(ROOT, "nowhere"), "--bin", FAKE] }).code === 1);
   check("the summaries carry counts and verdicts, never rows: no account name and no message text reaches stdout from a refresh", !JSON.stringify(resumed.json).includes("Acme Customer") && JSON.stringify(resumed.json).length < 12000);
+  check("F-534 reopen's class: no output of any verb this suite ran (stdout or stderr) prints a structured value as \"[object …]\"", objectWords.length === 0, objectWords.slice(0, 5));
 } finally {
   removeTempDir(ROOT);
 }
