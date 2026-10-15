@@ -664,8 +664,8 @@ export const REASONS = deepFreeze({
   // change set over a company field the pull did not read is not ranked (until the next refresh reads it). The two
   // after it are a snapshot made before F-548, when a selective refresh carried the last full ranking (F-521).
   "field-not-read": "This list is split by a company field the last pull did not read, so it is not ranked yet: the next refresh reads the field and ranks it.",
-  "list-set-since": "This list was set after the full pull that ranked the others, and a pull that continues from an earlier one cannot rank it: a full pull (a dashboard's refresh with --full) ranks it over every account.",
-  "previous-not-ranked": "The pull this one continued from held no ranking of this list over every program, so there was none to keep: a full pull (a dashboard's refresh with --full) ranks it over every account.",
+  "list-set-since": "This list was set after the full pull that ranked the others, and a pull that continued from an earlier one could not rank it then: the next pull ranks it over every account.",
+  "previous-not-ranked": "The pull this one continued from held no ranking of this list over every program, so there was none to keep: the next pull ranks it over every account.",
 });
 /** @param {?string} id @returns {string} the reason in words; an id the table lacks is shown as itself */
 export const reasonText = (id) => (id == null ? "" : REASONS[id] ?? `No value (${id}).`);

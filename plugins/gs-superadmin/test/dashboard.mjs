@@ -1008,7 +1008,11 @@ try {
     const detail = run("next", [SLUG, "--question", "customer-list-detail"]);
     run("answer", [SLUG, "customer-list-detail", composeAnswer(detail.json.question.options[1], { "most-engaged": "4 1", "least-engaged": "keep", "most-bounced": "keep" })]);
     const editClose = run("next", [SLUG]);
-    run("answer", [SLUG, "dry-run", "no"]);
+    const editPreview = run("answer", [SLUG, "dry-run", "yes"]);
+    const previewAdmin = editPreview.json?.preview?.pages?.find((p) => p.page === "admin")?.path;
+    check("F-548 the edit's preview from the last pull (no call) ranks the draft's customer lists from the store in memory: its Most engaged panel states the draft's list (4, at least 1 delivered), as its About tab does, and the saved snapshot is not rewritten",
+      editPreview.code === 0 && editPreview.json.preview?.fromLastPull === true && !!previewAdmin && readFileSync(previewAdmin, "utf8").includes("The 4 most engaged (at least 1 delivered) across programs") && readSnap().meta.params.accounts.lists.every((l) => l.kind !== "most-engaged" || l.n !== 4),
+      [editPreview.json?.preview ?? editPreview.json?.error, readSnap().meta.params.accounts.lists]);
     run("answer", [SLUG, "estimate", "yes"]);
     const editDone = run("answer", [SLUG, "save", "yes"]);
     check("F-548 the edit's closing step over a routine refresh: the ask says the customer lists are ranked again from the account store (a rebuild, no pull), the first option reads 'Save and rank the customer lists again now (no pull)', and the save's done says ranked true",
