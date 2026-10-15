@@ -131,7 +131,7 @@ jobs:
         shell: bash
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 20
       # Zero-dependency checks first — fail fast before the npm install below
@@ -196,6 +196,52 @@ jobs:
       # definition site instead of relying on transitive consumer fixtures).
       - name: Doc-lib direct fixtures
         run: node plugins/gs-superadmin/test/doc-lib-fixtures.mjs
+      # The jo-engagement adapter (ENG-2): the fictional tenant's stand-in CLI
+      # reproduces the send log's measured behaviours (silent row caps, null
+      # date ordering, LOOKUP collapse), and the snapshot must equal a straight
+      # count of the fixture's rows. Before the contract suite, which pins the
+      # same producer's output shape (T-10).
+      - name: Engagement adapter fixtures (engagement.mjs)
+        run: node plugins/gs-superadmin/test/engagement.mjs
+      # The query engine (ENG-4) and the open-rate report (ENG-3) read the
+      # adapter's snapshot. Both suites pull their snapshots through the real
+      # adapter process and the stand-in CLI, hold the numbers to straight
+      # counts, and pin a committed golden; the engine's bytes are also run in
+      # a context with no Node globals, since every page will inline them.
+      - name: Engagement query engine fixtures (engagement-query.mjs)
+        run: node plugins/gs-superadmin/test/engagement-query.mjs
+      - name: Engagement report fixtures (engagement-report.mjs)
+        run: node plugins/gs-superadmin/test/engagement-report.mjs
+      # The dashboard spec (DSH-1) and program grouping (DSH-5). The grouping
+      # suite reads the adapter's committed fixture snapshot; the spec suite
+      # drives the spec's one writer as a real process and holds the spec it
+      # builds to the committed fixture spec, which the contract suite pins.
+      - name: Dashboard grouping fixtures (dashboard-groups.mjs)
+        run: node plugins/gs-superadmin/test/dashboard-groups.mjs
+      - name: Dashboard spec writer fixtures (dashboard-spec.mjs)
+        run: node plugins/gs-superadmin/test/dashboard-spec.mjs
+      # The dashboard page (DSH-2): the builder and the runtime every page
+      # inlines. A built page's two scripts and its embedded data are run in a
+      # context with no Node globals and held to the engine in Node over the
+      # original snapshot, filter state by filter state.
+      - name: Dashboard page fixtures (dashboard-page.mjs, dashboard-runtime.mjs)
+        run: node plugins/gs-superadmin/test/dashboard-page.mjs
+      # The page's look (UX-1): the default theme as data, the theme validator
+      # over its four fixtures, and a themed page through the real builder.
+      - name: Dashboard theme fixtures (dashboard-theme.mjs)
+        run: node plugins/gs-superadmin/test/dashboard-theme.mjs
+      # The entry command (PUB-1, DSH-3, UX-2): the questions table walked as a
+      # real process, the refresh with its lock, tenant check, re-documentation
+      # and resumable stop, the change verb's three consequences, export and
+      # import, over the fictional tenant and the stand-in CLI.
+      - name: Dashboard entry-command fixtures (dashboard.mjs)
+        run: node plugins/gs-superadmin/test/dashboard.mjs
+      # Native Gainsight reports (NAT-1, NAT-2): each panel's verdict by hand,
+      # the payloads against the report domain's rules, the create and update
+      # lines read back as a shell reads them, and a saved report read back
+      # through the stand-in CLI equal to a straight count.
+      - name: Dashboard native-report fixtures (dashboard-native.mjs)
+        run: node plugins/gs-superadmin/test/dashboard-native.mjs
       # Executes the frozen T-1/T-2 contracts against produced artifacts
       # (GP-B5 DS-18): manifest verbs in a temp workspace, bundled catalog
       # key sets.
@@ -236,7 +282,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 20
       - name: Install Claude Code

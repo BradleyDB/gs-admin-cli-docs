@@ -159,8 +159,9 @@ released surface that marketplace users clone.
 
 - **Branch off `dev`, PR to `dev`.** Never push or PR `main` directly — releases reach
   `main` only via a short-lived `release/vX.Y.Z` branch cut from `dev`, on which
-  dev-branch-only content (the `dev-canary` skill, the `dev/` directory) is stripped
-  first. Never merge `main` back into `dev`. CI enforces the targeting rule: a PR
+  dev-branch-only content is stripped first — the set the `Dev-only:` line in
+  `dev/FEEDBACK.md`'s header declares, plus the `dev-canary` skill (run
+  `node build/dev-only.mjs` to print it). Never merge `main` back into `dev`. CI enforces the targeting rule: a PR
   aimed at `main` from anything but a `release/*` branch fails the required `guard`
   check (`pr-target-guard.yml`), and the check's message says the fix — change the
   PR's base branch to `dev` (**Edit** next to the PR title, then the base dropdown).
@@ -224,15 +225,16 @@ provenance, not links — the reasoning you need is in the comment beside them:
 - **Planning-record tokens** cite the maintainer's unpublished planning notes: `GP-n` /
   `GP-Bn` (the going-public plan); `DS-nn`, `A-n`, `X-n`, `R-n`, `G-n`, `D-n`, `C-n`,
   `S-n`, `En`, and the `Wn` / `Bn` / `P1` / `C1` wave-and-session labels (the GP-B5
-  architecture program); `ER-nn` (the email-report program); `PV`, `CP-n`, `SA-n` (earlier
+  architecture program); `ER-nn` (the email-report program); `ENG-n`, `SPK-n`, `HLT-n`, `DSH-n`, `TPL-n`,
+  `PUB-n`, `ACC-n`, `NAT-n` and the rulings `Rnn` (the JO-dashboards program); `PV`, `CP-n`, `SA-n` (earlier
   programs); and `Mn` mutant labels inside test suites. Every decision they produced is
   recorded where it is enforced — `AGENTS.md`'s design tenets, architecture principles
   (`A-1..A-11`) and considered-and-rejected table, or the check or fixture that carries it.
-- **`T-1` … `T-9`** are the FROZEN typedef contracts and do resolve in-tree: T-1 and T-6
+- **`T-1` … `T-10`** are the FROZEN typedef contracts and do resolve in-tree: T-1 and T-6
   in `build/extract-catalog.mjs`, T-2 in `scripts/manifest.mjs`, T-3 / T-7 / T-8 in
   `scripts/doc-lib.mjs`, T-4 in `scripts/journal-lib.mjs`, T-5 in
-  `hooks/gs-admin-guard.mjs`, T-9 in `build/build-wiki.mjs` (plugin paths relative to
-  `plugins/gs-superadmin/`).
+  `hooks/gs-admin-guard.mjs`, T-9 in `build/build-wiki.mjs`, T-10 in
+  `scripts/engagement.mjs` (plugin paths relative to `plugins/gs-superadmin/`).
 
 A comment whose reasoning does not stand without its citation is a documentation bug —
 fix the comment (or open an issue) rather than hunting for the record.

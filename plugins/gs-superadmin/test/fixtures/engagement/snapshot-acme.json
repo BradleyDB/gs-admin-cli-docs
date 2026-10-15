@@ -1,0 +1,5324 @@
+{
+ "schemaVersion": 1,
+ "kind": "engagement",
+ "meta": {
+  "source": "jo-engagement",
+  "params": {
+   "window": {
+    "from": "2026-06",
+    "to": "2026-09"
+   },
+   "selector": {
+    "names": [],
+    "ids": [],
+    "sentSince": null
+   },
+   "internalDomains": [
+    "acme.com"
+   ],
+   "unsubscribeLinks": [
+    "www.acme.com/mail-settings"
+   ],
+   "testAccounts": [],
+   "stepDetail": true,
+   "accounts": {
+    "busiest": 3,
+    "lowEngagement": 2,
+    "mostBounces": 2,
+    "lowEngagementMinDelivered": 4,
+    "lists": [
+     {
+      "kind": "most-engaged",
+      "n": 25,
+      "floor": 10
+     },
+     {
+      "kind": "least-engaged",
+      "n": 25,
+      "floor": 10
+     },
+     {
+      "kind": "most-bounced",
+      "n": 25,
+      "floor": 0
+     }
+    ],
+    "fields": [],
+    "pinned": [],
+    "names": true,
+    "pull": true
+   },
+   "repullMonths": 2,
+   "pageSize": 400,
+   "health": {
+    "pull": true,
+    "lookbackDays": 90,
+    "categories": {
+     "bounceReasons": [
+      {
+       "id": "user-unknown",
+       "label": "Recipient address rejected: user unknown",
+       "pattern": "User unknown in virtual mailbox table",
+       "definition": "The receiving mail server says the address does not exist.",
+       "kind": "bad-address",
+       "expected": false
+      },
+      {
+       "id": "blocked-by-policy",
+       "label": "Message blocked by policy",
+       "pattern": "blocked by policy",
+       "definition": "The receiving mail server refused the message under a policy of its own.",
+       "kind": "bad-address",
+       "expected": false
+      }
+     ],
+     "participantFailures": [
+      {
+       "id": "already-in-list",
+       "label": "Already in the participant list",
+       "pattern": "Participant already exists in participant list",
+       "definition": "The participant is already in the program, so the source did not add them again.",
+       "kind": "business-rule",
+       "expected": true
+      },
+      {
+       "id": "unique-criteria",
+       "label": "Unique criteria already met",
+       "pattern": "Participant with unique criteria already exists",
+       "definition": "A participant with the same unique criteria is already in the program.",
+       "kind": "business-rule",
+       "expected": true
+      },
+      {
+       "id": "advanced-criteria",
+       "label": "Met the advanced criteria",
+       "pattern": "Participant has met the advanced criteria",
+       "definition": "The program's advanced criteria excluded the participant, as configured.",
+       "kind": "business-rule",
+       "expected": true
+      },
+      {
+       "id": "unsubscribed",
+       "label": "Unsubscribed from a category",
+       "pattern": "Participant has unsubscribed from one or more categories",
+       "definition": "The recipient has unsubscribed from an email category the program sends.",
+       "kind": "business-rule",
+       "expected": true
+      },
+      {
+       "id": "global-opt-out",
+       "label": "On the global opt-out",
+       "pattern": "Participant part of Global Opt Out",
+       "definition": "The recipient is on the tenant's global opt-out list.",
+       "kind": "business-rule",
+       "expected": true
+      },
+      {
+       "id": "bounce-list",
+       "label": "On the bounce list",
+       "pattern": "Participant part of Bounce list",
+       "definition": "The recipient's address is on the tenant's bounce list: it bounced before.",
+       "kind": "bad-address",
+       "expected": false
+      },
+      {
+       "id": "opt-out-at-send",
+       "label": "Opted out at the send step",
+       "pattern": "GlobalOptOut recipient(to) email",
+       "definition": "The recipient was on the global opt-out when the Send Email step ran.",
+       "kind": "business-rule",
+       "expected": true
+      },
+      {
+       "id": "bounced-at-send",
+       "label": "Bounced at the send step",
+       "pattern": "Bounced recipient(to) email",
+       "definition": "The recipient's address had bounced when the Send Email step ran.",
+       "kind": "bad-address",
+       "expected": false
+      },
+      {
+       "id": "invalid-field-value",
+       "label": "Invalid or missing value in a mapped field",
+       "pattern": "contains Invalid value",
+       "definition": "A field the program maps (most often the recipient's email address) holds no value or an invalid one on the participant record: a data problem at the source. The wording names the field.",
+       "kind": "bad-address",
+       "expected": false
+      }
+     ]
+    },
+    "expectedReasons": [],
+    "samplePrograms": 25,
+    "quietDueDays": 5
+   }
+  },
+  "pulledAt": "2026-09-15T09:00:00-07:00",
+  "timeZone": null,
+  "tenantHost": "acme.gainsightcloud.com",
+  "cliVersion": "fixture",
+  "pluginVersion": "fixture",
+  "window": {
+   "from": "2026-06",
+   "to": "2026-09",
+   "start": "2026-06-01",
+   "endExclusive": "2026-10-01"
+  },
+  "incompleteFrom": "2026-09-01",
+  "dateBasis": {
+   "object": "email_log_v2",
+   "field": "ExecutedDate",
+   "grain": "month",
+   "stepDetail": {
+    "object": "ao_emails",
+    "field": "CreatedAt"
+   }
+  },
+  "stepDetail": true,
+  "accounts": {
+   "pulled": true,
+   "reason": null
+  },
+  "participantRecords": {
+   "pulled": true,
+   "reason": null
+  },
+  "health": {
+   "pulled": true,
+   "reason": null,
+   "asOf": "2026-09-15",
+   "dayWindow": {
+    "start": "2026-06-18",
+    "endExclusive": "2026-09-16"
+   },
+   "parts": {
+    "bounceReasons": {
+     "pulled": true,
+     "reason": null,
+     "basis": "window"
+    },
+    "participantFailures": {
+     "pulled": true,
+     "reason": null,
+     "basis": "all-time"
+    },
+    "participantStates": {
+     "pulled": true,
+     "reason": null,
+     "basis": "all-time"
+    },
+    "lastSends": {
+     "pulled": true,
+     "reason": null,
+     "basis": "lookback"
+    },
+    "schedules": {
+     "pulled": true,
+     "reason": null,
+     "basis": "as-documented"
+    },
+    "failureSamples": {
+     "pulled": true,
+     "reason": null,
+     "basis": "sample"
+    },
+    "entrySamples": {
+     "pulled": true,
+     "reason": null,
+     "basis": "sample"
+    },
+    "sources": {
+     "pulled": true,
+     "reason": null,
+     "basis": "at-pull"
+    },
+    "admissions": {
+     "pulled": true,
+     "reason": null,
+     "basis": "lookback"
+    },
+    "entryFailures": {
+     "pulled": true,
+     "reason": null,
+     "basis": "window"
+    },
+    "stepFailures": {
+     "pulled": true,
+     "reason": null,
+     "basis": "window"
+    }
+   },
+   "categories": {
+    "bounceReasons": {
+     "counted": true,
+     "reason": null,
+     "ids": [
+      "user-unknown",
+      "blocked-by-policy"
+     ],
+     "configured": [
+      "user-unknown",
+      "blocked-by-policy"
+     ]
+    },
+    "participantFailures": {
+     "counted": false,
+     "reason": "not-filterable",
+     "ids": [],
+     "configured": [
+      "already-in-list",
+      "unique-criteria",
+      "advanced-criteria",
+      "unsubscribed",
+      "global-opt-out",
+      "bounce-list",
+      "opt-out-at-send",
+      "bounced-at-send",
+      "invalid-field-value"
+     ]
+    }
+   },
+   "samples": {
+    "participantFailures": {
+     "cap": 25,
+     "sampled": 2,
+     "carried": 0,
+     "notSampled": [],
+     "programs": [
+      "p-nps",
+      "p-onboard"
+     ],
+     "window": {
+      "start": "2026-06-18",
+      "endExclusive": "2026-09-16"
+     },
+     "counts": {
+      "p-nps": 2,
+      "p-onboard": 7
+     }
+    },
+    "bounceReasons": {
+     "cap": 25,
+     "sampled": 4,
+     "carried": 0,
+     "notSampled": [],
+     "programs": [
+      "p-nps",
+      "p-onboard",
+      "p-pilot",
+      "p-renew"
+     ],
+     "window": {
+      "start": "2026-06-01",
+      "endExclusive": "2026-10-01"
+     },
+     "counts": {
+      "p-nps": 1,
+      "p-onboard": 6,
+      "p-pilot": 1,
+      "p-renew": 3
+     }
+    }
+   }
+  },
+  "templates": {
+   "pulled": true,
+   "reason": null,
+   "content": true,
+   "source": "kb"
+  },
+  "refresh": {
+   "mode": "full",
+   "why": "no previous snapshot",
+   "repullMonths": 2,
+   "pulledMonths": [
+    "2026-06",
+    "2026-07",
+    "2026-08",
+    "2026-09"
+   ],
+   "carriedMonths": [],
+   "carriedPrograms": 0,
+   "fullPrograms": 5,
+   "previousPulledAt": null
+  },
+  "metricAvailability": {
+   "clicks": {
+    "templates": {
+     "tpl-day7": {
+      "state": "unknown",
+      "evidence": {
+       "clickHistory": {
+        "everClicked": false,
+        "firstMonth": null,
+        "lastMonth": null
+       },
+       "linkSettings": null
+      }
+     },
+     "tpl-nps": {
+      "state": "tracked",
+      "evidence": {
+       "clickHistory": {
+        "everClicked": false,
+        "firstMonth": null,
+        "lastMonth": null
+       },
+       "linkSettings": {
+        "reading": "tracked-link-present",
+        "asOf": "2026-09-01"
+       }
+      }
+     },
+     "tpl-renew": {
+      "state": "not-tracked",
+      "evidence": {
+       "clickHistory": {
+        "everClicked": false,
+        "firstMonth": null,
+        "lastMonth": null
+       },
+       "linkSettings": {
+        "reading": "links-none-tracked",
+        "asOf": "2026-09-01"
+       }
+      }
+     },
+     "tpl-renew-b": {
+      "state": "not-tracked",
+      "evidence": {
+       "clickHistory": {
+        "everClicked": false,
+        "firstMonth": null,
+        "lastMonth": null
+       },
+       "linkSettings": {
+        "reading": "links-none-tracked",
+        "asOf": "2026-09-01"
+       }
+      }
+     },
+     "tpl-unlisted": {
+      "state": "tracked",
+      "evidence": {
+       "clickHistory": {
+        "everClicked": true,
+        "firstMonth": "2026-08",
+        "lastMonth": "2026-08"
+       },
+       "linkSettings": null
+      }
+     },
+     "tpl-welcome": {
+      "state": "tracked",
+      "evidence": {
+       "clickHistory": {
+        "everClicked": true,
+        "firstMonth": "2026-06",
+        "lastMonth": "2026-09"
+       },
+       "linkSettings": {
+        "reading": "links-none-tracked",
+        "asOf": "2026-08-20"
+       }
+      }
+     }
+    },
+    "programs": {
+     "p-nps": {
+      "state": "tracked",
+      "templates": {
+       "tracked": 1,
+       "notTracked": 0,
+       "unknown": 0
+      }
+     },
+     "p-onboard": {
+      "state": "unknown",
+      "templates": {
+       "tracked": 1,
+       "notTracked": 0,
+       "unknown": 1
+      }
+     },
+     "p-pilot": {
+      "state": "unknown",
+      "templates": {
+       "tracked": 0,
+       "notTracked": 0,
+       "unknown": 1
+      }
+     },
+     "p-renew": {
+      "state": "not-tracked",
+      "templates": {
+       "tracked": 0,
+       "notTracked": 2,
+       "unknown": 0
+      }
+     },
+     "p-unlisted": {
+      "state": "tracked",
+      "templates": {
+       "tracked": 1,
+       "notTracked": 0,
+       "unknown": 0
+      }
+     }
+    }
+   },
+   "responses": {
+    "programs": {
+     "p-nps": {
+      "state": "tracked",
+      "evidence": {
+       "surveyParticipants": 52
+      }
+     },
+     "p-onboard": {
+      "state": "not-tracked",
+      "evidence": {
+       "surveyParticipants": 0
+      }
+     },
+     "p-pilot": {
+      "state": "not-tracked",
+      "evidence": {
+       "surveyParticipants": 0
+      }
+     },
+     "p-renew": {
+      "state": "not-tracked",
+      "evidence": {
+       "surveyParticipants": 0
+      }
+     },
+     "p-unlisted": {
+      "state": "not-tracked",
+      "evidence": {
+       "surveyParticipants": 0
+      }
+     }
+    }
+   }
+  }
+ },
+ "dimensions": {
+  "programs": [
+   {
+    "id": "p-nps",
+    "name": "Acme NPS Survey",
+    "statuses": [
+     "PROCESSING"
+    ],
+    "model": "CSAT_SURVEY_V2",
+    "modelName": "CSAT Survey",
+    "audienceType": "CUSTOMER",
+    "supergroup": null,
+    "group": null,
+    "folderId": "101",
+    "syncScheduleDisabled": false,
+    "modifiedAt": null,
+    "schedule": {
+     "classification": "recurring",
+     "cronExpression": "0 0 9 1 * ? *",
+     "timeZoneName": "America/Los_Angeles",
+     "startTime": 1767225600000,
+     "endTime": 1830297600000,
+     "asOf": "2026-08-20T00:00:00.000Z",
+     "oneRunWindow": false
+    }
+   },
+   {
+    "id": "p-onboard",
+    "name": "Acme Onboarding Chain",
+    "statuses": [
+     "PROCESSING"
+    ],
+    "model": "DRIPV2",
+    "modelName": "Email Chain",
+    "audienceType": "CUSTOMER",
+    "supergroup": null,
+    "group": null,
+    "folderId": "101",
+    "syncScheduleDisabled": false,
+    "modifiedAt": null,
+    "schedule": {
+     "classification": "recurring",
+     "cronExpression": "0 0 8 ? * MON *",
+     "timeZoneName": "America/Los_Angeles",
+     "startTime": 1767225600000,
+     "endTime": 1830297600000,
+     "asOf": "2026-09-01T00:00:00.000Z",
+     "oneRunWindow": false
+    }
+   },
+   {
+    "id": "p-pilot",
+    "name": "Acme Internal Pilot",
+    "statuses": [
+     "PROCESSING"
+    ],
+    "model": "DRIPV2",
+    "modelName": "Email Chain",
+    "audienceType": "USER",
+    "supergroup": null,
+    "group": null,
+    "folderId": "303",
+    "syncScheduleDisabled": false,
+    "modifiedAt": null,
+    "schedule": {
+     "classification": "no schedule captured",
+     "cronExpression": null,
+     "timeZoneName": null,
+     "startTime": null,
+     "endTime": null,
+     "asOf": "2026-08-20T00:00:00.000Z",
+     "oneRunWindow": false
+    }
+   },
+   {
+    "id": "p-renew",
+    "name": "Acme Renewal Dynamic",
+    "statuses": [
+     "PAUSE",
+     "NEW"
+    ],
+    "model": "DYNAMIC_PROGRAM",
+    "modelName": "Dynamic Program",
+    "audienceType": "CUSTOMER",
+    "supergroup": null,
+    "group": null,
+    "folderId": "202",
+    "syncScheduleDisabled": false,
+    "modifiedAt": null,
+    "schedule": {
+     "classification": "no schedule captured",
+     "cronExpression": null,
+     "timeZoneName": null,
+     "startTime": null,
+     "endTime": null,
+     "asOf": "2026-08-20T00:00:00.000Z",
+     "oneRunWindow": false
+    }
+   },
+   {
+    "id": "p-unlisted",
+    "name": "Acme Unlisted Program",
+    "statuses": [
+     "PROCESSING"
+    ],
+    "model": "DRIPV2",
+    "modelName": "Email Chain",
+    "audienceType": "CUSTOMER",
+    "supergroup": null,
+    "group": null,
+    "folderId": "303",
+    "syncScheduleDisabled": null,
+    "modifiedAt": null,
+    "schedule": null
+   }
+  ],
+  "templates": [
+   {
+    "id": "tpl-day7",
+    "name": "Acme Day 7",
+    "uses": [
+     {
+      "programId": "p-onboard",
+      "stepName": "Day 7 check-in",
+      "stepOrder": 2,
+      "stepCount": 1,
+      "asOf": "2026-09-01T00:00:00.000Z"
+     }
+    ],
+    "lastSendMonth": "2026-09",
+    "content": {
+     "subject": "Day 7: how is it going?",
+     "body": "It has been a week since you joined Acme. <script>alert(1)</script> Need a hand? Reply to this email, ${unresolved::token}.",
+     "bodyIncluded": true,
+     "variants": [],
+     "asOf": "2026-09-02",
+     "modified": "2026-01-20",
+     "editedAfterLastSend": false,
+     "source": "kb"
+    }
+   },
+   {
+    "id": "tpl-nps",
+    "name": "Acme NPS Request",
+    "uses": [
+     {
+      "programId": "p-nps",
+      "stepName": "Survey email",
+      "stepOrder": 1,
+      "stepCount": 1,
+      "asOf": "2026-08-20T00:00:00.000Z"
+     }
+    ],
+    "lastSendMonth": "2026-07",
+    "content": {
+     "subject": "How is {Product Name} working for you?",
+     "body": "Hi there,\n\nTell us how {Product Name} is working for your team: https://survey.example.com/s/nps\n\nThanks,\nAcme\n\nUnsubscribe: https://mail.example.com/unsubscribe?t=abc",
+     "bodyIncluded": true,
+     "variants": [],
+     "asOf": "2026-09-01",
+     "modified": "2026-08-10",
+     "editedAfterLastSend": true,
+     "source": "kb"
+    }
+   },
+   {
+    "id": "tpl-renew",
+    "name": "Acme Renewal",
+    "uses": [
+     {
+      "programId": "p-renew",
+      "stepName": null,
+      "stepOrder": null,
+      "stepCount": 2,
+      "asOf": "2026-08-20T00:00:00.000Z"
+     }
+    ],
+    "lastSendMonth": "2026-09",
+    "content": {
+     "subject": "Your Acme renewal is coming up",
+     "body": "Hello,\n\nYour Acme plan renews soon. Review your plan: https://www.example.com/account/plan\nQuestions about renewals: https://www.example.com/help/renewals\n\nThe Acme team",
+     "bodyIncluded": true,
+     "variants": [],
+     "asOf": "2026-09-01",
+     "modified": "2026-02-01",
+     "editedAfterLastSend": false,
+     "source": "kb"
+    }
+   },
+   {
+    "id": "tpl-renew-b",
+    "name": "Acme Renewal Thanks",
+    "uses": [
+     {
+      "programId": "p-renew",
+      "stepName": "Renewal thanks",
+      "stepOrder": 3,
+      "stepCount": 1,
+      "asOf": "2026-08-20T00:00:00.000Z"
+     }
+    ],
+    "lastSendMonth": "2026-09",
+    "content": {
+     "subject": "Thanks for renewing",
+     "body": "Thank you for renewing with Acme! Your receipt: https://www.example.com/account/receipt",
+     "bodyIncluded": true,
+     "variants": [],
+     "asOf": "2026-09-01",
+     "modified": "2026-09-05",
+     "editedAfterLastSend": null,
+     "source": "kb"
+    }
+   },
+   {
+    "id": "tpl-unlisted",
+    "name": "Acme Unlisted",
+    "uses": [
+     {
+      "programId": "p-unlisted",
+      "stepName": null,
+      "stepOrder": null,
+      "stepCount": 0,
+      "asOf": null
+     }
+    ],
+    "lastSendMonth": "2026-08",
+    "content": null
+   },
+   {
+    "id": "tpl-welcome",
+    "name": "Acme Welcome",
+    "uses": [
+     {
+      "programId": "p-onboard",
+      "stepName": "Welcome",
+      "stepOrder": 1,
+      "stepCount": 1,
+      "asOf": "2026-09-01T00:00:00.000Z"
+     }
+    ],
+    "lastSendMonth": "2026-09",
+    "content": {
+     "subject": "Welcome to Acme",
+     "body": "Welcome to Acme!\nStart here: the getting-started guide",
+     "bodyIncluded": true,
+     "variants": [
+      {
+       "name": "Variant B",
+       "subject": "Welcome aboard",
+       "body": "Welcome to Acme, from the B side. Start here: https://www.example.com/guide/getting-started"
+      }
+     ],
+     "asOf": "2026-08-20",
+     "modified": "2026-08-15",
+     "editedAfterLastSend": false,
+     "source": "kb"
+    }
+   }
+  ],
+  "steps": [
+   {
+    "programId": "p-nps",
+    "stepId": "st-nps-1",
+    "name": "Survey email",
+    "order": 1,
+    "templateId": "tpl-nps",
+    "variantId": "var-nps",
+    "variantName": "var-nps name"
+   },
+   {
+    "programId": "p-onboard",
+    "stepId": "st-ob-1",
+    "name": "Welcome",
+    "order": 1,
+    "templateId": "tpl-welcome",
+    "variantId": "var-welcome-a",
+    "variantName": "var-welcome-a name"
+   },
+   {
+    "programId": "p-onboard",
+    "stepId": "st-ob-1",
+    "name": "Welcome",
+    "order": 1,
+    "templateId": "tpl-welcome",
+    "variantId": "var-welcome-b",
+    "variantName": "var-welcome-b name"
+   },
+   {
+    "programId": "p-onboard",
+    "stepId": "st-ob-2",
+    "name": "Day 7 check-in",
+    "order": 2,
+    "templateId": "tpl-day7",
+    "variantId": "var-day7",
+    "variantName": "var-day7 name"
+   },
+   {
+    "programId": "p-pilot",
+    "stepId": "st-pl-1",
+    "name": null,
+    "order": null,
+    "templateId": null,
+    "variantId": null,
+    "variantName": null
+   },
+   {
+    "programId": "p-renew",
+    "stepId": "st-rn-1",
+    "name": "Renewal notice",
+    "order": 1,
+    "templateId": "tpl-renew",
+    "variantId": "var-renew",
+    "variantName": "var-renew name"
+   },
+   {
+    "programId": "p-renew",
+    "stepId": "st-rn-2",
+    "name": "Renewal reminder",
+    "order": 2,
+    "templateId": "tpl-renew",
+    "variantId": "var-renew",
+    "variantName": "var-renew name"
+   },
+   {
+    "programId": "p-renew",
+    "stepId": "st-rn-3",
+    "name": "Renewal thanks",
+    "order": 3,
+    "templateId": "tpl-renew-b",
+    "variantId": "var-renew-b",
+    "variantName": "var-renew-b name"
+   },
+   {
+    "programId": "p-unlisted",
+    "stepId": "st-ul-1",
+    "name": null,
+    "order": null,
+    "templateId": "tpl-unlisted",
+    "variantId": "var-unlisted",
+    "variantName": "var-unlisted name"
+   }
+  ],
+  "accounts": [
+   {
+    "key": "co-01",
+    "name": "Acme Customer 01"
+   },
+   {
+    "key": "co-02",
+    "name": "Acme Customer 02"
+   },
+   {
+    "key": "co-03",
+    "name": "Acme Customer 03"
+   },
+   {
+    "key": "co-04",
+    "name": "Acme Customer 04"
+   },
+   {
+    "key": "co-05",
+    "name": "Acme Customer 05"
+   },
+   {
+    "key": "co-06",
+    "name": "Acme Customer 06"
+   },
+   {
+    "key": "co-07",
+    "name": "Acme Customer 07"
+   },
+   {
+    "key": "co-08",
+    "name": "Acme Customer 08"
+   },
+   {
+    "key": "co-09",
+    "name": "Acme Customer 09"
+   },
+   {
+    "key": "co-10",
+    "name": "Acme Customer 10"
+   }
+  ],
+  "months": [
+   "2026-06",
+   "2026-07",
+   "2026-08",
+   "2026-09"
+  ]
+ },
+ "facts": {
+  "byTemplate": [
+   {
+    "programId": "p-nps",
+    "templateId": "tpl-nps",
+    "month": "2026-07",
+    "recipientClass": "external",
+    "sent": 12,
+    "delivered": 11,
+    "bounced": 1,
+    "rejected": 0,
+    "unsubscribed": 1,
+    "spamComplaints": 0,
+    "failed": 1,
+    "opened": 7,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-onboard",
+    "templateId": "tpl-day7",
+    "month": "2026-06",
+    "recipientClass": "external",
+    "sent": 21,
+    "delivered": 19,
+    "bounced": 1,
+    "rejected": 1,
+    "unsubscribed": 0,
+    "spamComplaints": 1,
+    "failed": 2,
+    "opened": 12,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-onboard",
+    "templateId": "tpl-day7",
+    "month": "2026-06",
+    "recipientClass": "internal",
+    "sent": 1,
+    "delivered": 1,
+    "bounced": 0,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 0,
+    "opened": 1,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-onboard",
+    "templateId": "tpl-welcome",
+    "month": "2026-06",
+    "recipientClass": "external",
+    "sent": 21,
+    "delivered": 19,
+    "bounced": 1,
+    "rejected": 1,
+    "unsubscribed": 1,
+    "spamComplaints": 0,
+    "failed": 2,
+    "opened": 13,
+    "clicked": 1,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-onboard",
+    "templateId": "tpl-welcome",
+    "month": "2026-06",
+    "recipientClass": "internal",
+    "sent": 1,
+    "delivered": 0,
+    "bounced": 1,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 1,
+    "opened": 1,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-onboard",
+    "templateId": "tpl-day7",
+    "month": "2026-07",
+    "recipientClass": "external",
+    "sent": 21,
+    "delivered": 19,
+    "bounced": 1,
+    "rejected": 1,
+    "unsubscribed": 1,
+    "spamComplaints": 0,
+    "failed": 2,
+    "opened": 13,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-onboard",
+    "templateId": "tpl-day7",
+    "month": "2026-07",
+    "recipientClass": "internal",
+    "sent": 1,
+    "delivered": 1,
+    "bounced": 0,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 0,
+    "opened": 0,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-onboard",
+    "templateId": "tpl-welcome",
+    "month": "2026-07",
+    "recipientClass": "external",
+    "sent": 21,
+    "delivered": 18,
+    "bounced": 2,
+    "rejected": 1,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 3,
+    "opened": 12,
+    "clicked": 2,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-onboard",
+    "templateId": "tpl-welcome",
+    "month": "2026-07",
+    "recipientClass": "internal",
+    "sent": 1,
+    "delivered": 1,
+    "bounced": 0,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 0,
+    "opened": 1,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-onboard",
+    "templateId": "tpl-day7",
+    "month": "2026-08",
+    "recipientClass": "external",
+    "sent": 21,
+    "delivered": 18,
+    "bounced": 2,
+    "rejected": 1,
+    "unsubscribed": 0,
+    "spamComplaints": 1,
+    "failed": 3,
+    "opened": 13,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-onboard",
+    "templateId": "tpl-day7",
+    "month": "2026-08",
+    "recipientClass": "internal",
+    "sent": 1,
+    "delivered": 1,
+    "bounced": 0,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 0,
+    "opened": 1,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-onboard",
+    "templateId": "tpl-welcome",
+    "month": "2026-08",
+    "recipientClass": "external",
+    "sent": 21,
+    "delivered": 18,
+    "bounced": 2,
+    "rejected": 1,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 3,
+    "opened": 14,
+    "clicked": 2,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-onboard",
+    "templateId": "tpl-welcome",
+    "month": "2026-08",
+    "recipientClass": "internal",
+    "sent": 1,
+    "delivered": 1,
+    "bounced": 0,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 0,
+    "opened": 0,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-onboard",
+    "templateId": "tpl-day7",
+    "month": "2026-09",
+    "recipientClass": "external",
+    "sent": 21,
+    "delivered": 18,
+    "bounced": 2,
+    "rejected": 1,
+    "unsubscribed": 1,
+    "spamComplaints": 0,
+    "failed": 3,
+    "opened": 12,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-onboard",
+    "templateId": "tpl-day7",
+    "month": "2026-09",
+    "recipientClass": "internal",
+    "sent": 1,
+    "delivered": 1,
+    "bounced": 0,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 0,
+    "opened": 1,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-onboard",
+    "templateId": "tpl-welcome",
+    "month": "2026-09",
+    "recipientClass": "external",
+    "sent": 21,
+    "delivered": 19,
+    "bounced": 1,
+    "rejected": 1,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 2,
+    "opened": 12,
+    "clicked": 2,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-onboard",
+    "templateId": "tpl-welcome",
+    "month": "2026-09",
+    "recipientClass": "internal",
+    "sent": 1,
+    "delivered": 1,
+    "bounced": 0,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 0,
+    "opened": 1,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-pilot",
+    "templateId": null,
+    "month": "2026-06",
+    "recipientClass": "internal",
+    "sent": 3,
+    "delivered": 2,
+    "bounced": 1,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 1,
+    "opened": 2,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-pilot",
+    "templateId": null,
+    "month": "2026-07",
+    "recipientClass": "internal",
+    "sent": 3,
+    "delivered": 3,
+    "bounced": 0,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 0,
+    "opened": 2,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-pilot",
+    "templateId": null,
+    "month": "2026-08",
+    "recipientClass": "internal",
+    "sent": 3,
+    "delivered": 2,
+    "bounced": 1,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 1,
+    "opened": 2,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-pilot",
+    "templateId": null,
+    "month": "2026-09",
+    "recipientClass": "internal",
+    "sent": 3,
+    "delivered": 3,
+    "bounced": 0,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 0,
+    "opened": 2,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-renew",
+    "templateId": "tpl-renew",
+    "month": "2026-06",
+    "recipientClass": "external",
+    "sent": 12,
+    "delivered": 11,
+    "bounced": 1,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 1,
+    "opened": 7,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-renew",
+    "templateId": "tpl-renew-b",
+    "month": "2026-06",
+    "recipientClass": "external",
+    "sent": 6,
+    "delivered": 5,
+    "bounced": 0,
+    "rejected": 1,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 1,
+    "opened": 4,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-renew",
+    "templateId": "tpl-renew",
+    "month": "2026-07",
+    "recipientClass": "external",
+    "sent": 12,
+    "delivered": 11,
+    "bounced": 1,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 1,
+    "failed": 1,
+    "opened": 7,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-renew",
+    "templateId": "tpl-renew-b",
+    "month": "2026-07",
+    "recipientClass": "external",
+    "sent": 6,
+    "delivered": 4,
+    "bounced": 1,
+    "rejected": 1,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 2,
+    "opened": 3,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-renew",
+    "templateId": "tpl-renew",
+    "month": "2026-08",
+    "recipientClass": "external",
+    "sent": 12,
+    "delivered": 11,
+    "bounced": 1,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 1,
+    "opened": 8,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-renew",
+    "templateId": "tpl-renew-b",
+    "month": "2026-08",
+    "recipientClass": "external",
+    "sent": 6,
+    "delivered": 6,
+    "bounced": 0,
+    "rejected": 0,
+    "unsubscribed": 1,
+    "spamComplaints": 0,
+    "failed": 0,
+    "opened": 4,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-renew",
+    "templateId": "tpl-renew",
+    "month": "2026-09",
+    "recipientClass": "external",
+    "sent": 12,
+    "delivered": 11,
+    "bounced": 0,
+    "rejected": 1,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 1,
+    "opened": 7,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-renew",
+    "templateId": "tpl-renew-b",
+    "month": "2026-09",
+    "recipientClass": "external",
+    "sent": 6,
+    "delivered": 5,
+    "bounced": 1,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 1,
+    "opened": 3,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-unlisted",
+    "templateId": "tpl-unlisted",
+    "month": "2026-08",
+    "recipientClass": "external",
+    "sent": 6,
+    "delivered": 6,
+    "bounced": 0,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 0,
+    "opened": 4,
+    "clicked": 1,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   }
+  ],
+  "byStep": [
+   {
+    "programId": "p-nps",
+    "stepId": "st-nps-1",
+    "variantId": "var-nps",
+    "templateId": "tpl-nps",
+    "month": "2026-07",
+    "recipientClass": "external",
+    "sent": 12,
+    "delivered": 11,
+    "bounced": 1,
+    "rejected": 0,
+    "unsubscribed": 1,
+    "spamComplaints": 0,
+    "failed": 1,
+    "opened": 7,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-onboard",
+    "stepId": "st-ob-1",
+    "variantId": "var-welcome-a",
+    "templateId": "tpl-welcome",
+    "month": "2026-06",
+    "recipientClass": "external",
+    "sent": 11,
+    "delivered": 10,
+    "bounced": 1,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 1,
+    "opened": 7,
+    "clicked": 1,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-onboard",
+    "stepId": "st-ob-1",
+    "variantId": "var-welcome-b",
+    "templateId": "tpl-welcome",
+    "month": "2026-06",
+    "recipientClass": "external",
+    "sent": 10,
+    "delivered": 9,
+    "bounced": 0,
+    "rejected": 1,
+    "unsubscribed": 1,
+    "spamComplaints": 0,
+    "failed": 1,
+    "opened": 6,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-onboard",
+    "stepId": "st-ob-1",
+    "variantId": "var-welcome-b",
+    "templateId": "tpl-welcome",
+    "month": "2026-06",
+    "recipientClass": "internal",
+    "sent": 1,
+    "delivered": 0,
+    "bounced": 1,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 1,
+    "opened": 1,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-onboard",
+    "stepId": "st-ob-2",
+    "variantId": "var-day7",
+    "templateId": "tpl-day7",
+    "month": "2026-06",
+    "recipientClass": "external",
+    "sent": 21,
+    "delivered": 19,
+    "bounced": 1,
+    "rejected": 1,
+    "unsubscribed": 0,
+    "spamComplaints": 1,
+    "failed": 2,
+    "opened": 12,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-onboard",
+    "stepId": "st-ob-2",
+    "variantId": "var-day7",
+    "templateId": "tpl-day7",
+    "month": "2026-06",
+    "recipientClass": "internal",
+    "sent": 1,
+    "delivered": 1,
+    "bounced": 0,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 0,
+    "opened": 1,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-onboard",
+    "stepId": "st-ob-1",
+    "variantId": "var-welcome-a",
+    "templateId": "tpl-welcome",
+    "month": "2026-07",
+    "recipientClass": "external",
+    "sent": 11,
+    "delivered": 9,
+    "bounced": 2,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 2,
+    "opened": 7,
+    "clicked": 1,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-onboard",
+    "stepId": "st-ob-1",
+    "variantId": "var-welcome-b",
+    "templateId": "tpl-welcome",
+    "month": "2026-07",
+    "recipientClass": "external",
+    "sent": 10,
+    "delivered": 9,
+    "bounced": 0,
+    "rejected": 1,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 1,
+    "opened": 5,
+    "clicked": 1,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-onboard",
+    "stepId": "st-ob-1",
+    "variantId": "var-welcome-b",
+    "templateId": "tpl-welcome",
+    "month": "2026-07",
+    "recipientClass": "internal",
+    "sent": 1,
+    "delivered": 1,
+    "bounced": 0,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 0,
+    "opened": 1,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-onboard",
+    "stepId": "st-ob-2",
+    "variantId": "var-day7",
+    "templateId": "tpl-day7",
+    "month": "2026-07",
+    "recipientClass": "external",
+    "sent": 21,
+    "delivered": 19,
+    "bounced": 1,
+    "rejected": 1,
+    "unsubscribed": 1,
+    "spamComplaints": 0,
+    "failed": 2,
+    "opened": 13,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-onboard",
+    "stepId": "st-ob-2",
+    "variantId": "var-day7",
+    "templateId": "tpl-day7",
+    "month": "2026-07",
+    "recipientClass": "internal",
+    "sent": 1,
+    "delivered": 1,
+    "bounced": 0,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 0,
+    "opened": 0,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-onboard",
+    "stepId": "st-ob-1",
+    "variantId": "var-welcome-a",
+    "templateId": "tpl-welcome",
+    "month": "2026-08",
+    "recipientClass": "external",
+    "sent": 11,
+    "delivered": 10,
+    "bounced": 1,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 1,
+    "opened": 7,
+    "clicked": 1,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-onboard",
+    "stepId": "st-ob-1",
+    "variantId": "var-welcome-b",
+    "templateId": "tpl-welcome",
+    "month": "2026-08",
+    "recipientClass": "external",
+    "sent": 10,
+    "delivered": 8,
+    "bounced": 1,
+    "rejected": 1,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 2,
+    "opened": 7,
+    "clicked": 1,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-onboard",
+    "stepId": "st-ob-1",
+    "variantId": "var-welcome-b",
+    "templateId": "tpl-welcome",
+    "month": "2026-08",
+    "recipientClass": "internal",
+    "sent": 1,
+    "delivered": 1,
+    "bounced": 0,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 0,
+    "opened": 0,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-onboard",
+    "stepId": "st-ob-2",
+    "variantId": "var-day7",
+    "templateId": "tpl-day7",
+    "month": "2026-08",
+    "recipientClass": "external",
+    "sent": 21,
+    "delivered": 18,
+    "bounced": 2,
+    "rejected": 1,
+    "unsubscribed": 0,
+    "spamComplaints": 1,
+    "failed": 3,
+    "opened": 13,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-onboard",
+    "stepId": "st-ob-2",
+    "variantId": "var-day7",
+    "templateId": "tpl-day7",
+    "month": "2026-08",
+    "recipientClass": "internal",
+    "sent": 1,
+    "delivered": 1,
+    "bounced": 0,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 0,
+    "opened": 1,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-onboard",
+    "stepId": "st-ob-1",
+    "variantId": "var-welcome-a",
+    "templateId": "tpl-welcome",
+    "month": "2026-09",
+    "recipientClass": "external",
+    "sent": 11,
+    "delivered": 10,
+    "bounced": 1,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 1,
+    "opened": 6,
+    "clicked": 2,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-onboard",
+    "stepId": "st-ob-1",
+    "variantId": "var-welcome-b",
+    "templateId": "tpl-welcome",
+    "month": "2026-09",
+    "recipientClass": "external",
+    "sent": 10,
+    "delivered": 9,
+    "bounced": 0,
+    "rejected": 1,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 1,
+    "opened": 6,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-onboard",
+    "stepId": "st-ob-1",
+    "variantId": "var-welcome-b",
+    "templateId": "tpl-welcome",
+    "month": "2026-09",
+    "recipientClass": "internal",
+    "sent": 1,
+    "delivered": 1,
+    "bounced": 0,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 0,
+    "opened": 1,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-onboard",
+    "stepId": "st-ob-2",
+    "variantId": "var-day7",
+    "templateId": "tpl-day7",
+    "month": "2026-09",
+    "recipientClass": "external",
+    "sent": 21,
+    "delivered": 18,
+    "bounced": 2,
+    "rejected": 1,
+    "unsubscribed": 1,
+    "spamComplaints": 0,
+    "failed": 3,
+    "opened": 12,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-onboard",
+    "stepId": "st-ob-2",
+    "variantId": "var-day7",
+    "templateId": "tpl-day7",
+    "month": "2026-09",
+    "recipientClass": "internal",
+    "sent": 1,
+    "delivered": 1,
+    "bounced": 0,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 0,
+    "opened": 1,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-pilot",
+    "stepId": "st-pl-1",
+    "variantId": null,
+    "templateId": null,
+    "month": "2026-06",
+    "recipientClass": "internal",
+    "sent": 3,
+    "delivered": 2,
+    "bounced": 1,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 1,
+    "opened": 2,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-pilot",
+    "stepId": "st-pl-1",
+    "variantId": null,
+    "templateId": null,
+    "month": "2026-07",
+    "recipientClass": "internal",
+    "sent": 3,
+    "delivered": 3,
+    "bounced": 0,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 0,
+    "opened": 2,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-pilot",
+    "stepId": "st-pl-1",
+    "variantId": null,
+    "templateId": null,
+    "month": "2026-08",
+    "recipientClass": "internal",
+    "sent": 3,
+    "delivered": 2,
+    "bounced": 1,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 1,
+    "opened": 2,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-pilot",
+    "stepId": "st-pl-1",
+    "variantId": null,
+    "templateId": null,
+    "month": "2026-09",
+    "recipientClass": "internal",
+    "sent": 3,
+    "delivered": 3,
+    "bounced": 0,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 0,
+    "opened": 2,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-renew",
+    "stepId": "st-rn-1",
+    "variantId": "var-renew",
+    "templateId": "tpl-renew",
+    "month": "2026-06",
+    "recipientClass": "external",
+    "sent": 6,
+    "delivered": 5,
+    "bounced": 1,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 1,
+    "opened": 3,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-renew",
+    "stepId": "st-rn-2",
+    "variantId": "var-renew",
+    "templateId": "tpl-renew",
+    "month": "2026-06",
+    "recipientClass": "external",
+    "sent": 6,
+    "delivered": 6,
+    "bounced": 0,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 0,
+    "opened": 4,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-renew",
+    "stepId": "st-rn-3",
+    "variantId": "var-renew-b",
+    "templateId": "tpl-renew-b",
+    "month": "2026-06",
+    "recipientClass": "external",
+    "sent": 6,
+    "delivered": 5,
+    "bounced": 0,
+    "rejected": 1,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 1,
+    "opened": 4,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-renew",
+    "stepId": "st-rn-1",
+    "variantId": "var-renew",
+    "templateId": "tpl-renew",
+    "month": "2026-07",
+    "recipientClass": "external",
+    "sent": 6,
+    "delivered": 5,
+    "bounced": 1,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 1,
+    "opened": 3,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-renew",
+    "stepId": "st-rn-2",
+    "variantId": "var-renew",
+    "templateId": "tpl-renew",
+    "month": "2026-07",
+    "recipientClass": "external",
+    "sent": 6,
+    "delivered": 6,
+    "bounced": 0,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 1,
+    "failed": 0,
+    "opened": 4,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-renew",
+    "stepId": "st-rn-3",
+    "variantId": "var-renew-b",
+    "templateId": "tpl-renew-b",
+    "month": "2026-07",
+    "recipientClass": "external",
+    "sent": 6,
+    "delivered": 4,
+    "bounced": 1,
+    "rejected": 1,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 2,
+    "opened": 3,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-renew",
+    "stepId": "st-rn-1",
+    "variantId": "var-renew",
+    "templateId": "tpl-renew",
+    "month": "2026-08",
+    "recipientClass": "external",
+    "sent": 6,
+    "delivered": 6,
+    "bounced": 0,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 0,
+    "opened": 4,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-renew",
+    "stepId": "st-rn-2",
+    "variantId": "var-renew",
+    "templateId": "tpl-renew",
+    "month": "2026-08",
+    "recipientClass": "external",
+    "sent": 6,
+    "delivered": 5,
+    "bounced": 1,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 1,
+    "opened": 4,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-renew",
+    "stepId": "st-rn-3",
+    "variantId": "var-renew-b",
+    "templateId": "tpl-renew-b",
+    "month": "2026-08",
+    "recipientClass": "external",
+    "sent": 6,
+    "delivered": 6,
+    "bounced": 0,
+    "rejected": 0,
+    "unsubscribed": 1,
+    "spamComplaints": 0,
+    "failed": 0,
+    "opened": 4,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-renew",
+    "stepId": "st-rn-1",
+    "variantId": "var-renew",
+    "templateId": "tpl-renew",
+    "month": "2026-09",
+    "recipientClass": "external",
+    "sent": 6,
+    "delivered": 5,
+    "bounced": 0,
+    "rejected": 1,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 1,
+    "opened": 3,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-renew",
+    "stepId": "st-rn-2",
+    "variantId": "var-renew",
+    "templateId": "tpl-renew",
+    "month": "2026-09",
+    "recipientClass": "external",
+    "sent": 6,
+    "delivered": 6,
+    "bounced": 0,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 0,
+    "opened": 4,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-renew",
+    "stepId": "st-rn-3",
+    "variantId": "var-renew-b",
+    "templateId": "tpl-renew-b",
+    "month": "2026-09",
+    "recipientClass": "external",
+    "sent": 6,
+    "delivered": 5,
+    "bounced": 1,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 1,
+    "opened": 3,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-unlisted",
+    "stepId": "st-ul-1",
+    "variantId": "var-unlisted",
+    "templateId": "tpl-unlisted",
+    "month": "2026-08",
+    "recipientClass": "external",
+    "sent": 6,
+    "delivered": 6,
+    "bounced": 0,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 0,
+    "opened": 4,
+    "clicked": 1,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   }
+  ],
+  "byAccount": [
+   {
+    "programId": "p-nps",
+    "bucket": "account",
+    "accountKey": "co-01",
+    "month": "2026-07",
+    "recipientClass": "external",
+    "sent": 1,
+    "delivered": 1,
+    "bounced": 0,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 0,
+    "opened": 0,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-nps",
+    "bucket": "account",
+    "accountKey": "co-02",
+    "month": "2026-07",
+    "recipientClass": "external",
+    "sent": 1,
+    "delivered": 0,
+    "bounced": 1,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 1,
+    "opened": 0,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-nps",
+    "bucket": "account",
+    "accountKey": "co-03",
+    "month": "2026-07",
+    "recipientClass": "external",
+    "sent": 1,
+    "delivered": 1,
+    "bounced": 0,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 0,
+    "opened": 1,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-nps",
+    "bucket": "account",
+    "accountKey": "co-04",
+    "month": "2026-07",
+    "recipientClass": "external",
+    "sent": 1,
+    "delivered": 1,
+    "bounced": 0,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 0,
+    "opened": 0,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-nps",
+    "bucket": "account",
+    "accountKey": "co-05",
+    "month": "2026-07",
+    "recipientClass": "external",
+    "sent": 1,
+    "delivered": 1,
+    "bounced": 0,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 0,
+    "opened": 1,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-nps",
+    "bucket": "account",
+    "accountKey": "co-06",
+    "month": "2026-07",
+    "recipientClass": "external",
+    "sent": 1,
+    "delivered": 1,
+    "bounced": 0,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 0,
+    "opened": 1,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-nps",
+    "bucket": "account",
+    "accountKey": "co-07",
+    "month": "2026-07",
+    "recipientClass": "external",
+    "sent": 1,
+    "delivered": 1,
+    "bounced": 0,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 0,
+    "opened": 0,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-nps",
+    "bucket": "account",
+    "accountKey": "co-08",
+    "month": "2026-07",
+    "recipientClass": "external",
+    "sent": 1,
+    "delivered": 1,
+    "bounced": 0,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 0,
+    "opened": 1,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-nps",
+    "bucket": "account",
+    "accountKey": "co-09",
+    "month": "2026-07",
+    "recipientClass": "external",
+    "sent": 1,
+    "delivered": 1,
+    "bounced": 0,
+    "rejected": 0,
+    "unsubscribed": 1,
+    "spamComplaints": 0,
+    "failed": 0,
+    "opened": 1,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-nps",
+    "bucket": "account",
+    "accountKey": "co-10",
+    "month": "2026-07",
+    "recipientClass": "external",
+    "sent": 1,
+    "delivered": 1,
+    "bounced": 0,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 0,
+    "opened": 0,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-nps",
+    "bucket": "other",
+    "accountKey": null,
+    "month": "2026-07",
+    "recipientClass": "external",
+    "sent": 2,
+    "delivered": 2,
+    "bounced": 0,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 0,
+    "opened": 2,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-onboard",
+    "bucket": "account",
+    "accountKey": "co-01",
+    "month": "2026-06",
+    "recipientClass": "external",
+    "sent": 4,
+    "delivered": 2,
+    "bounced": 2,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 2,
+    "opened": 1,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-onboard",
+    "bucket": "account",
+    "accountKey": "co-01",
+    "month": "2026-06",
+    "recipientClass": "internal",
+    "sent": 2,
+    "delivered": 1,
+    "bounced": 1,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 1,
+    "opened": 2,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-onboard",
+    "bucket": "account",
+    "accountKey": "co-02",
+    "month": "2026-06",
+    "recipientClass": "external",
+    "sent": 4,
+    "delivered": 4,
+    "bounced": 0,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 1,
+    "failed": 0,
+    "opened": 3,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-onboard",
+    "bucket": "account",
+    "accountKey": "co-03",
+    "month": "2026-06",
+    "recipientClass": "external",
+    "sent": 4,
+    "delivered": 4,
+    "bounced": 0,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 0,
+    "opened": 3,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-onboard",
+    "bucket": "account",
+    "accountKey": "co-04",
+    "month": "2026-06",
+    "recipientClass": "external",
+    "sent": 4,
+    "delivered": 4,
+    "bounced": 0,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 0,
+    "opened": 2,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-onboard",
+    "bucket": "account",
+    "accountKey": "co-05",
+    "month": "2026-06",
+    "recipientClass": "external",
+    "sent": 4,
+    "delivered": 4,
+    "bounced": 0,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 0,
+    "opened": 3,
+    "clicked": 1,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-onboard",
+    "bucket": "account",
+    "accountKey": "co-06",
+    "month": "2026-06",
+    "recipientClass": "external",
+    "sent": 4,
+    "delivered": 4,
+    "bounced": 0,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 0,
+    "opened": 3,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-onboard",
+    "bucket": "account",
+    "accountKey": "co-07",
+    "month": "2026-06",
+    "recipientClass": "external",
+    "sent": 4,
+    "delivered": 2,
+    "bounced": 0,
+    "rejected": 2,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 2,
+    "opened": 1,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-onboard",
+    "bucket": "account",
+    "accountKey": "co-08",
+    "month": "2026-06",
+    "recipientClass": "external",
+    "sent": 4,
+    "delivered": 4,
+    "bounced": 0,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 0,
+    "opened": 3,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-onboard",
+    "bucket": "account",
+    "accountKey": "co-09",
+    "month": "2026-06",
+    "recipientClass": "external",
+    "sent": 4,
+    "delivered": 4,
+    "bounced": 0,
+    "rejected": 0,
+    "unsubscribed": 1,
+    "spamComplaints": 0,
+    "failed": 0,
+    "opened": 3,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-onboard",
+    "bucket": "account",
+    "accountKey": "co-10",
+    "month": "2026-06",
+    "recipientClass": "external",
+    "sent": 4,
+    "delivered": 4,
+    "bounced": 0,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 0,
+    "opened": 2,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-onboard",
+    "bucket": "no-company-link",
+    "accountKey": null,
+    "month": "2026-06",
+    "recipientClass": "external",
+    "sent": 2,
+    "delivered": 2,
+    "bounced": 0,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 0,
+    "opened": 1,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-onboard",
+    "bucket": "account",
+    "accountKey": "co-01",
+    "month": "2026-07",
+    "recipientClass": "external",
+    "sent": 4,
+    "delivered": 4,
+    "bounced": 0,
+    "rejected": 0,
+    "unsubscribed": 1,
+    "spamComplaints": 0,
+    "failed": 0,
+    "opened": 3,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-onboard",
+    "bucket": "account",
+    "accountKey": "co-01",
+    "month": "2026-07",
+    "recipientClass": "internal",
+    "sent": 2,
+    "delivered": 2,
+    "bounced": 0,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 0,
+    "opened": 1,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-onboard",
+    "bucket": "account",
+    "accountKey": "co-02",
+    "month": "2026-07",
+    "recipientClass": "external",
+    "sent": 4,
+    "delivered": 4,
+    "bounced": 0,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 0,
+    "opened": 2,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-onboard",
+    "bucket": "account",
+    "accountKey": "co-03",
+    "month": "2026-07",
+    "recipientClass": "external",
+    "sent": 4,
+    "delivered": 4,
+    "bounced": 0,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 0,
+    "opened": 3,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-onboard",
+    "bucket": "account",
+    "accountKey": "co-04",
+    "month": "2026-07",
+    "recipientClass": "external",
+    "sent": 4,
+    "delivered": 4,
+    "bounced": 0,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 0,
+    "opened": 3,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-onboard",
+    "bucket": "account",
+    "accountKey": "co-05",
+    "month": "2026-07",
+    "recipientClass": "external",
+    "sent": 4,
+    "delivered": 4,
+    "bounced": 0,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 0,
+    "opened": 2,
+    "clicked": 1,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-onboard",
+    "bucket": "account",
+    "accountKey": "co-06",
+    "month": "2026-07",
+    "recipientClass": "external",
+    "sent": 4,
+    "delivered": 1,
+    "bounced": 1,
+    "rejected": 2,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 3,
+    "opened": 1,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-onboard",
+    "bucket": "account",
+    "accountKey": "co-07",
+    "month": "2026-07",
+    "recipientClass": "external",
+    "sent": 4,
+    "delivered": 4,
+    "bounced": 0,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 0,
+    "opened": 3,
+    "clicked": 1,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-onboard",
+    "bucket": "account",
+    "accountKey": "co-08",
+    "month": "2026-07",
+    "recipientClass": "external",
+    "sent": 4,
+    "delivered": 4,
+    "bounced": 0,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 0,
+    "opened": 2,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-onboard",
+    "bucket": "account",
+    "accountKey": "co-09",
+    "month": "2026-07",
+    "recipientClass": "external",
+    "sent": 4,
+    "delivered": 4,
+    "bounced": 0,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 0,
+    "opened": 3,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-onboard",
+    "bucket": "account",
+    "accountKey": "co-10",
+    "month": "2026-07",
+    "recipientClass": "external",
+    "sent": 4,
+    "delivered": 4,
+    "bounced": 0,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 0,
+    "opened": 3,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-onboard",
+    "bucket": "no-company-link",
+    "accountKey": null,
+    "month": "2026-07",
+    "recipientClass": "external",
+    "sent": 2,
+    "delivered": 0,
+    "bounced": 2,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 2,
+    "opened": 0,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-onboard",
+    "bucket": "account",
+    "accountKey": "co-01",
+    "month": "2026-08",
+    "recipientClass": "external",
+    "sent": 4,
+    "delivered": 4,
+    "bounced": 0,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 0,
+    "opened": 3,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-onboard",
+    "bucket": "account",
+    "accountKey": "co-01",
+    "month": "2026-08",
+    "recipientClass": "internal",
+    "sent": 2,
+    "delivered": 2,
+    "bounced": 0,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 0,
+    "opened": 1,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-onboard",
+    "bucket": "account",
+    "accountKey": "co-02",
+    "month": "2026-08",
+    "recipientClass": "external",
+    "sent": 4,
+    "delivered": 3,
+    "bounced": 1,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 1,
+    "opened": 3,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-onboard",
+    "bucket": "account",
+    "accountKey": "co-03",
+    "month": "2026-08",
+    "recipientClass": "external",
+    "sent": 4,
+    "delivered": 4,
+    "bounced": 0,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 0,
+    "opened": 2,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-onboard",
+    "bucket": "account",
+    "accountKey": "co-04",
+    "month": "2026-08",
+    "recipientClass": "external",
+    "sent": 4,
+    "delivered": 4,
+    "bounced": 0,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 1,
+    "failed": 0,
+    "opened": 3,
+    "clicked": 1,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-onboard",
+    "bucket": "account",
+    "accountKey": "co-05",
+    "month": "2026-08",
+    "recipientClass": "external",
+    "sent": 4,
+    "delivered": 2,
+    "bounced": 0,
+    "rejected": 2,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 2,
+    "opened": 2,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-onboard",
+    "bucket": "account",
+    "accountKey": "co-06",
+    "month": "2026-08",
+    "recipientClass": "external",
+    "sent": 4,
+    "delivered": 4,
+    "bounced": 0,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 0,
+    "opened": 2,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-onboard",
+    "bucket": "account",
+    "accountKey": "co-07",
+    "month": "2026-08",
+    "recipientClass": "external",
+    "sent": 4,
+    "delivered": 4,
+    "bounced": 0,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 0,
+    "opened": 3,
+    "clicked": 1,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-onboard",
+    "bucket": "account",
+    "accountKey": "co-08",
+    "month": "2026-08",
+    "recipientClass": "external",
+    "sent": 4,
+    "delivered": 4,
+    "bounced": 0,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 0,
+    "opened": 3,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-onboard",
+    "bucket": "account",
+    "accountKey": "co-09",
+    "month": "2026-08",
+    "recipientClass": "external",
+    "sent": 4,
+    "delivered": 3,
+    "bounced": 1,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 1,
+    "opened": 2,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-onboard",
+    "bucket": "account",
+    "accountKey": "co-10",
+    "month": "2026-08",
+    "recipientClass": "external",
+    "sent": 4,
+    "delivered": 2,
+    "bounced": 2,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 2,
+    "opened": 2,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-onboard",
+    "bucket": "no-company-link",
+    "accountKey": null,
+    "month": "2026-08",
+    "recipientClass": "external",
+    "sent": 2,
+    "delivered": 2,
+    "bounced": 0,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 0,
+    "opened": 2,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-onboard",
+    "bucket": "account",
+    "accountKey": "co-01",
+    "month": "2026-09",
+    "recipientClass": "external",
+    "sent": 4,
+    "delivered": 4,
+    "bounced": 0,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 0,
+    "opened": 2,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-onboard",
+    "bucket": "account",
+    "accountKey": "co-01",
+    "month": "2026-09",
+    "recipientClass": "internal",
+    "sent": 2,
+    "delivered": 2,
+    "bounced": 0,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 0,
+    "opened": 2,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-onboard",
+    "bucket": "account",
+    "accountKey": "co-02",
+    "month": "2026-09",
+    "recipientClass": "external",
+    "sent": 4,
+    "delivered": 4,
+    "bounced": 0,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 0,
+    "opened": 3,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-onboard",
+    "bucket": "account",
+    "accountKey": "co-03",
+    "month": "2026-09",
+    "recipientClass": "external",
+    "sent": 4,
+    "delivered": 4,
+    "bounced": 0,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 0,
+    "opened": 3,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-onboard",
+    "bucket": "account",
+    "accountKey": "co-04",
+    "month": "2026-09",
+    "recipientClass": "external",
+    "sent": 4,
+    "delivered": 2,
+    "bounced": 0,
+    "rejected": 2,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 2,
+    "opened": 1,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-onboard",
+    "bucket": "account",
+    "accountKey": "co-05",
+    "month": "2026-09",
+    "recipientClass": "external",
+    "sent": 4,
+    "delivered": 3,
+    "bounced": 1,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 1,
+    "opened": 3,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-onboard",
+    "bucket": "account",
+    "accountKey": "co-06",
+    "month": "2026-09",
+    "recipientClass": "external",
+    "sent": 4,
+    "delivered": 4,
+    "bounced": 0,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 0,
+    "opened": 3,
+    "clicked": 1,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-onboard",
+    "bucket": "account",
+    "accountKey": "co-07",
+    "month": "2026-09",
+    "recipientClass": "external",
+    "sent": 4,
+    "delivered": 4,
+    "bounced": 0,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 0,
+    "opened": 2,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-onboard",
+    "bucket": "account",
+    "accountKey": "co-08",
+    "month": "2026-09",
+    "recipientClass": "external",
+    "sent": 4,
+    "delivered": 4,
+    "bounced": 0,
+    "rejected": 0,
+    "unsubscribed": 1,
+    "spamComplaints": 0,
+    "failed": 0,
+    "opened": 3,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-onboard",
+    "bucket": "account",
+    "accountKey": "co-09",
+    "month": "2026-09",
+    "recipientClass": "external",
+    "sent": 4,
+    "delivered": 2,
+    "bounced": 2,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 2,
+    "opened": 1,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-onboard",
+    "bucket": "account",
+    "accountKey": "co-10",
+    "month": "2026-09",
+    "recipientClass": "external",
+    "sent": 4,
+    "delivered": 4,
+    "bounced": 0,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 0,
+    "opened": 2,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-onboard",
+    "bucket": "no-company-link",
+    "accountKey": null,
+    "month": "2026-09",
+    "recipientClass": "external",
+    "sent": 2,
+    "delivered": 2,
+    "bounced": 0,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 0,
+    "opened": 1,
+    "clicked": 1,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-pilot",
+    "bucket": "no-company-link",
+    "accountKey": null,
+    "month": "2026-06",
+    "recipientClass": "internal",
+    "sent": 3,
+    "delivered": 2,
+    "bounced": 1,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 1,
+    "opened": 2,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-pilot",
+    "bucket": "no-company-link",
+    "accountKey": null,
+    "month": "2026-07",
+    "recipientClass": "internal",
+    "sent": 3,
+    "delivered": 3,
+    "bounced": 0,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 0,
+    "opened": 2,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-pilot",
+    "bucket": "no-company-link",
+    "accountKey": null,
+    "month": "2026-08",
+    "recipientClass": "internal",
+    "sent": 3,
+    "delivered": 2,
+    "bounced": 1,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 1,
+    "opened": 2,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-pilot",
+    "bucket": "no-company-link",
+    "accountKey": null,
+    "month": "2026-09",
+    "recipientClass": "internal",
+    "sent": 3,
+    "delivered": 3,
+    "bounced": 0,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 0,
+    "opened": 2,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-renew",
+    "bucket": "account",
+    "accountKey": "co-03",
+    "month": "2026-06",
+    "recipientClass": "external",
+    "sent": 3,
+    "delivered": 2,
+    "bounced": 0,
+    "rejected": 1,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 1,
+    "opened": 0,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-renew",
+    "bucket": "account",
+    "accountKey": "co-04",
+    "month": "2026-06",
+    "recipientClass": "external",
+    "sent": 3,
+    "delivered": 2,
+    "bounced": 1,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 1,
+    "opened": 2,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-renew",
+    "bucket": "account",
+    "accountKey": "co-05",
+    "month": "2026-06",
+    "recipientClass": "external",
+    "sent": 3,
+    "delivered": 3,
+    "bounced": 0,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 0,
+    "opened": 3,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-renew",
+    "bucket": "account",
+    "accountKey": "co-06",
+    "month": "2026-06",
+    "recipientClass": "external",
+    "sent": 3,
+    "delivered": 3,
+    "bounced": 0,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 0,
+    "opened": 0,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-renew",
+    "bucket": "account",
+    "accountKey": "co-07",
+    "month": "2026-06",
+    "recipientClass": "external",
+    "sent": 3,
+    "delivered": 3,
+    "bounced": 0,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 0,
+    "opened": 3,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-renew",
+    "bucket": "account",
+    "accountKey": "co-08",
+    "month": "2026-06",
+    "recipientClass": "external",
+    "sent": 3,
+    "delivered": 3,
+    "bounced": 0,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 0,
+    "opened": 3,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-renew",
+    "bucket": "account",
+    "accountKey": "co-03",
+    "month": "2026-07",
+    "recipientClass": "external",
+    "sent": 3,
+    "delivered": 2,
+    "bounced": 1,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 1,
+    "opened": 0,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-renew",
+    "bucket": "account",
+    "accountKey": "co-04",
+    "month": "2026-07",
+    "recipientClass": "external",
+    "sent": 3,
+    "delivered": 3,
+    "bounced": 0,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 0,
+    "opened": 3,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-renew",
+    "bucket": "account",
+    "accountKey": "co-05",
+    "month": "2026-07",
+    "recipientClass": "external",
+    "sent": 3,
+    "delivered": 3,
+    "bounced": 0,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 0,
+    "opened": 3,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-renew",
+    "bucket": "account",
+    "accountKey": "co-06",
+    "month": "2026-07",
+    "recipientClass": "external",
+    "sent": 3,
+    "delivered": 3,
+    "bounced": 0,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 0,
+    "opened": 0,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-renew",
+    "bucket": "account",
+    "accountKey": "co-07",
+    "month": "2026-07",
+    "recipientClass": "external",
+    "sent": 3,
+    "delivered": 2,
+    "bounced": 0,
+    "rejected": 1,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 1,
+    "opened": 2,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-renew",
+    "bucket": "account",
+    "accountKey": "co-08",
+    "month": "2026-07",
+    "recipientClass": "external",
+    "sent": 3,
+    "delivered": 2,
+    "bounced": 1,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 1,
+    "failed": 1,
+    "opened": 2,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-renew",
+    "bucket": "account",
+    "accountKey": "co-03",
+    "month": "2026-08",
+    "recipientClass": "external",
+    "sent": 3,
+    "delivered": 3,
+    "bounced": 0,
+    "rejected": 0,
+    "unsubscribed": 1,
+    "spamComplaints": 0,
+    "failed": 0,
+    "opened": 0,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-renew",
+    "bucket": "account",
+    "accountKey": "co-04",
+    "month": "2026-08",
+    "recipientClass": "external",
+    "sent": 3,
+    "delivered": 3,
+    "bounced": 0,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 0,
+    "opened": 3,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-renew",
+    "bucket": "account",
+    "accountKey": "co-05",
+    "month": "2026-08",
+    "recipientClass": "external",
+    "sent": 3,
+    "delivered": 3,
+    "bounced": 0,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 0,
+    "opened": 3,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-renew",
+    "bucket": "account",
+    "accountKey": "co-06",
+    "month": "2026-08",
+    "recipientClass": "external",
+    "sent": 3,
+    "delivered": 2,
+    "bounced": 1,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 1,
+    "opened": 0,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-renew",
+    "bucket": "account",
+    "accountKey": "co-07",
+    "month": "2026-08",
+    "recipientClass": "external",
+    "sent": 3,
+    "delivered": 3,
+    "bounced": 0,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 0,
+    "opened": 3,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-renew",
+    "bucket": "account",
+    "accountKey": "co-08",
+    "month": "2026-08",
+    "recipientClass": "external",
+    "sent": 3,
+    "delivered": 3,
+    "bounced": 0,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 0,
+    "opened": 3,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-renew",
+    "bucket": "account",
+    "accountKey": "co-03",
+    "month": "2026-09",
+    "recipientClass": "external",
+    "sent": 3,
+    "delivered": 3,
+    "bounced": 0,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 0,
+    "opened": 0,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-renew",
+    "bucket": "account",
+    "accountKey": "co-04",
+    "month": "2026-09",
+    "recipientClass": "external",
+    "sent": 3,
+    "delivered": 2,
+    "bounced": 1,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 1,
+    "opened": 2,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-renew",
+    "bucket": "account",
+    "accountKey": "co-05",
+    "month": "2026-09",
+    "recipientClass": "external",
+    "sent": 3,
+    "delivered": 2,
+    "bounced": 0,
+    "rejected": 1,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 1,
+    "opened": 2,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-renew",
+    "bucket": "account",
+    "accountKey": "co-06",
+    "month": "2026-09",
+    "recipientClass": "external",
+    "sent": 3,
+    "delivered": 3,
+    "bounced": 0,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 0,
+    "opened": 0,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-renew",
+    "bucket": "account",
+    "accountKey": "co-07",
+    "month": "2026-09",
+    "recipientClass": "external",
+    "sent": 3,
+    "delivered": 3,
+    "bounced": 0,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 0,
+    "opened": 3,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-renew",
+    "bucket": "account",
+    "accountKey": "co-08",
+    "month": "2026-09",
+    "recipientClass": "external",
+    "sent": 3,
+    "delivered": 3,
+    "bounced": 0,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 0,
+    "opened": 3,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-unlisted",
+    "bucket": "account",
+    "accountKey": "co-01",
+    "month": "2026-08",
+    "recipientClass": "external",
+    "sent": 2,
+    "delivered": 2,
+    "bounced": 0,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 0,
+    "opened": 1,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-unlisted",
+    "bucket": "account",
+    "accountKey": "co-02",
+    "month": "2026-08",
+    "recipientClass": "external",
+    "sent": 2,
+    "delivered": 2,
+    "bounced": 0,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 0,
+    "opened": 2,
+    "clicked": 1,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-unlisted",
+    "bucket": "account",
+    "accountKey": "co-03",
+    "month": "2026-08",
+    "recipientClass": "external",
+    "sent": 2,
+    "delivered": 2,
+    "bounced": 0,
+    "rejected": 0,
+    "unsubscribed": 0,
+    "spamComplaints": 0,
+    "failed": 0,
+    "opened": 1,
+    "clicked": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   }
+  ],
+  "responses": [
+   {
+    "programId": "p-nps",
+    "month": "2026-07",
+    "submitted": 2,
+    "partiallySubmitted": 0,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-nps",
+    "month": "2026-08",
+    "submitted": 0,
+    "partiallySubmitted": 1,
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   }
+  ],
+  "responseParticipants": [
+   {
+    "programId": "p-nps",
+    "participants": 52,
+    "submitted": 10,
+    "partiallySubmitted": 4
+   }
+  ],
+  "uniques": [
+   {
+    "programId": "p-nps",
+    "scope": "month",
+    "month": "2026-07",
+    "people": 12,
+    "accounts": 12,
+    "participantRecords": 12,
+    "external": {
+     "people": 12,
+     "accounts": 12,
+     "participantRecords": 12
+    },
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-nps",
+    "scope": "window",
+    "month": null,
+    "people": 12,
+    "accounts": 12,
+    "participantRecords": 12,
+    "external": {
+     "people": 12,
+     "accounts": 12,
+     "participantRecords": 12
+    },
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-onboard",
+    "scope": "month",
+    "month": "2026-06",
+    "people": 22,
+    "accounts": 10,
+    "participantRecords": 22,
+    "external": {
+     "people": 21,
+     "accounts": 10,
+     "participantRecords": 21
+    },
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-onboard",
+    "scope": "month",
+    "month": "2026-07",
+    "people": 22,
+    "accounts": 10,
+    "participantRecords": 22,
+    "external": {
+     "people": 21,
+     "accounts": 10,
+     "participantRecords": 21
+    },
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-onboard",
+    "scope": "month",
+    "month": "2026-08",
+    "people": 22,
+    "accounts": 10,
+    "participantRecords": 22,
+    "external": {
+     "people": 21,
+     "accounts": 10,
+     "participantRecords": 21
+    },
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-onboard",
+    "scope": "month",
+    "month": "2026-09",
+    "people": 22,
+    "accounts": 10,
+    "participantRecords": 22,
+    "external": {
+     "people": 21,
+     "accounts": 10,
+     "participantRecords": 21
+    },
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-onboard",
+    "scope": "window",
+    "month": null,
+    "people": 22,
+    "accounts": 10,
+    "participantRecords": 44,
+    "external": {
+     "people": 21,
+     "accounts": 10,
+     "participantRecords": 42
+    },
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-pilot",
+    "scope": "month",
+    "month": "2026-06",
+    "people": 3,
+    "accounts": 0,
+    "participantRecords": 3,
+    "external": {
+     "people": 0,
+     "accounts": 0,
+     "participantRecords": 0
+    },
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-pilot",
+    "scope": "month",
+    "month": "2026-07",
+    "people": 3,
+    "accounts": 0,
+    "participantRecords": 3,
+    "external": {
+     "people": 0,
+     "accounts": 0,
+     "participantRecords": 0
+    },
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-pilot",
+    "scope": "month",
+    "month": "2026-08",
+    "people": 3,
+    "accounts": 0,
+    "participantRecords": 3,
+    "external": {
+     "people": 0,
+     "accounts": 0,
+     "participantRecords": 0
+    },
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-pilot",
+    "scope": "month",
+    "month": "2026-09",
+    "people": 3,
+    "accounts": 0,
+    "participantRecords": 3,
+    "external": {
+     "people": 0,
+     "accounts": 0,
+     "participantRecords": 0
+    },
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-pilot",
+    "scope": "window",
+    "month": null,
+    "people": 3,
+    "accounts": 0,
+    "participantRecords": 3,
+    "external": {
+     "people": 0,
+     "accounts": 0,
+     "participantRecords": 0
+    },
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-renew",
+    "scope": "month",
+    "month": "2026-06",
+    "people": 6,
+    "accounts": 6,
+    "participantRecords": 6,
+    "external": {
+     "people": 6,
+     "accounts": 6,
+     "participantRecords": 6
+    },
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-renew",
+    "scope": "month",
+    "month": "2026-07",
+    "people": 6,
+    "accounts": 6,
+    "participantRecords": 6,
+    "external": {
+     "people": 6,
+     "accounts": 6,
+     "participantRecords": 6
+    },
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-renew",
+    "scope": "month",
+    "month": "2026-08",
+    "people": 6,
+    "accounts": 6,
+    "participantRecords": 6,
+    "external": {
+     "people": 6,
+     "accounts": 6,
+     "participantRecords": 6
+    },
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-renew",
+    "scope": "month",
+    "month": "2026-09",
+    "people": 6,
+    "accounts": 6,
+    "participantRecords": 6,
+    "external": {
+     "people": 6,
+     "accounts": 6,
+     "participantRecords": 6
+    },
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-renew",
+    "scope": "window",
+    "month": null,
+    "people": 6,
+    "accounts": 6,
+    "participantRecords": 6,
+    "external": {
+     "people": 6,
+     "accounts": 6,
+     "participantRecords": 6
+    },
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-unlisted",
+    "scope": "month",
+    "month": "2026-08",
+    "people": 6,
+    "accounts": 3,
+    "participantRecords": 6,
+    "external": {
+     "people": 6,
+     "accounts": 3,
+     "participantRecords": 6
+    },
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   },
+   {
+    "programId": "p-unlisted",
+    "scope": "window",
+    "month": null,
+    "people": 6,
+    "accounts": 3,
+    "participantRecords": 6,
+    "external": {
+     "people": 6,
+     "accounts": 3,
+     "participantRecords": 6
+    },
+    "provenance": "pulled",
+    "pulledAt": "2026-09-15T09:00:00-07:00"
+   }
+  ],
+  "health": {
+   "bounceReasons": [
+    {
+     "programId": "p-nps",
+     "templateId": "tpl-nps",
+     "month": "2026-07",
+     "bounceType": "HARD_BOUNCE",
+     "message": null,
+     "category": "other",
+     "recipientClass": "external",
+     "count": 1,
+     "provenance": "pulled",
+     "pulledAt": "2026-09-15T09:00:00-07:00"
+    },
+    {
+     "programId": "p-onboard",
+     "templateId": "tpl-day7",
+     "month": "2026-06",
+     "bounceType": "HARD_BOUNCE",
+     "message": "Recipient address rejected: user unknown",
+     "category": "user-unknown",
+     "recipientClass": "external",
+     "count": 1,
+     "provenance": "pulled",
+     "pulledAt": "2026-09-15T09:00:00-07:00"
+    },
+    {
+     "programId": "p-onboard",
+     "templateId": "tpl-welcome",
+     "month": "2026-06",
+     "bounceType": "HARD_BOUNCE",
+     "message": "Message blocked by policy",
+     "category": "blocked-by-policy",
+     "recipientClass": "internal",
+     "count": 1,
+     "provenance": "pulled",
+     "pulledAt": "2026-09-15T09:00:00-07:00"
+    },
+    {
+     "programId": "p-onboard",
+     "templateId": "tpl-welcome",
+     "month": "2026-06",
+     "bounceType": "SOFT_BOUNCE",
+     "message": null,
+     "category": "other",
+     "recipientClass": "external",
+     "count": 1,
+     "provenance": "pulled",
+     "pulledAt": "2026-09-15T09:00:00-07:00"
+    },
+    {
+     "programId": "p-onboard",
+     "templateId": "tpl-day7",
+     "month": "2026-07",
+     "bounceType": "HARD_BOUNCE",
+     "message": "Recipient address rejected: user unknown",
+     "category": "user-unknown",
+     "recipientClass": "external",
+     "count": 1,
+     "provenance": "pulled",
+     "pulledAt": "2026-09-15T09:00:00-07:00"
+    },
+    {
+     "programId": "p-onboard",
+     "templateId": "tpl-welcome",
+     "month": "2026-07",
+     "bounceType": "HARD_BOUNCE",
+     "message": null,
+     "category": "other",
+     "recipientClass": "external",
+     "count": 1,
+     "provenance": "pulled",
+     "pulledAt": "2026-09-15T09:00:00-07:00"
+    },
+    {
+     "programId": "p-onboard",
+     "templateId": "tpl-welcome",
+     "month": "2026-07",
+     "bounceType": "SOFT_BOUNCE",
+     "message": null,
+     "category": "other",
+     "recipientClass": "external",
+     "count": 1,
+     "provenance": "pulled",
+     "pulledAt": "2026-09-15T09:00:00-07:00"
+    },
+    {
+     "programId": "p-onboard",
+     "templateId": "tpl-day7",
+     "month": "2026-08",
+     "bounceType": "HARD_BOUNCE",
+     "message": null,
+     "category": "other",
+     "recipientClass": "external",
+     "count": 1,
+     "provenance": "pulled",
+     "pulledAt": "2026-09-15T09:00:00-07:00"
+    },
+    {
+     "programId": "p-onboard",
+     "templateId": "tpl-day7",
+     "month": "2026-08",
+     "bounceType": "SOFT_BOUNCE",
+     "message": "Recipient address rejected: user unknown",
+     "category": "user-unknown",
+     "recipientClass": "external",
+     "count": 1,
+     "provenance": "pulled",
+     "pulledAt": "2026-09-15T09:00:00-07:00"
+    },
+    {
+     "programId": "p-onboard",
+     "templateId": "tpl-welcome",
+     "month": "2026-08",
+     "bounceType": "HARD_BOUNCE",
+     "message": null,
+     "category": "other",
+     "recipientClass": "external",
+     "count": 1,
+     "provenance": "pulled",
+     "pulledAt": "2026-09-15T09:00:00-07:00"
+    },
+    {
+     "programId": "p-onboard",
+     "templateId": "tpl-welcome",
+     "month": "2026-08",
+     "bounceType": "SOFT_BOUNCE",
+     "message": "Recipient address rejected: user unknown",
+     "category": "user-unknown",
+     "recipientClass": "external",
+     "count": 1,
+     "provenance": "pulled",
+     "pulledAt": "2026-09-15T09:00:00-07:00"
+    },
+    {
+     "programId": "p-onboard",
+     "templateId": "tpl-day7",
+     "month": "2026-09",
+     "bounceType": "HARD_BOUNCE",
+     "message": null,
+     "category": "other",
+     "recipientClass": "external",
+     "count": 1,
+     "provenance": "pulled",
+     "pulledAt": "2026-09-15T09:00:00-07:00"
+    },
+    {
+     "programId": "p-onboard",
+     "templateId": "tpl-day7",
+     "month": "2026-09",
+     "bounceType": "HARD_BOUNCE",
+     "message": "Recipient address rejected: user unknown",
+     "category": "user-unknown",
+     "recipientClass": "external",
+     "count": 1,
+     "provenance": "pulled",
+     "pulledAt": "2026-09-15T09:00:00-07:00"
+    },
+    {
+     "programId": "p-onboard",
+     "templateId": "tpl-welcome",
+     "month": "2026-09",
+     "bounceType": "HARD_BOUNCE",
+     "message": "Message blocked by policy",
+     "category": "blocked-by-policy",
+     "recipientClass": "external",
+     "count": 1,
+     "provenance": "pulled",
+     "pulledAt": "2026-09-15T09:00:00-07:00"
+    },
+    {
+     "programId": "p-pilot",
+     "templateId": null,
+     "month": "2026-06",
+     "bounceType": "HARD_BOUNCE",
+     "message": "Message blocked by policy",
+     "category": "blocked-by-policy",
+     "recipientClass": "internal",
+     "count": 1,
+     "provenance": "pulled",
+     "pulledAt": "2026-09-15T09:00:00-07:00"
+    },
+    {
+     "programId": "p-pilot",
+     "templateId": null,
+     "month": "2026-08",
+     "bounceType": "SOFT_BOUNCE",
+     "message": null,
+     "category": "other",
+     "recipientClass": "internal",
+     "count": 1,
+     "provenance": "pulled",
+     "pulledAt": "2026-09-15T09:00:00-07:00"
+    },
+    {
+     "programId": "p-renew",
+     "templateId": "tpl-renew",
+     "month": "2026-06",
+     "bounceType": "HARD_BOUNCE",
+     "message": null,
+     "category": "other",
+     "recipientClass": "external",
+     "count": 1,
+     "provenance": "pulled",
+     "pulledAt": "2026-09-15T09:00:00-07:00"
+    },
+    {
+     "programId": "p-renew",
+     "templateId": "tpl-renew",
+     "month": "2026-07",
+     "bounceType": "HARD_BOUNCE",
+     "message": "Recipient address rejected: user unknown",
+     "category": "user-unknown",
+     "recipientClass": "external",
+     "count": 1,
+     "provenance": "pulled",
+     "pulledAt": "2026-09-15T09:00:00-07:00"
+    },
+    {
+     "programId": "p-renew",
+     "templateId": "tpl-renew-b",
+     "month": "2026-07",
+     "bounceType": "SOFT_BOUNCE",
+     "message": null,
+     "category": "other",
+     "recipientClass": "external",
+     "count": 1,
+     "provenance": "pulled",
+     "pulledAt": "2026-09-15T09:00:00-07:00"
+    },
+    {
+     "programId": "p-renew",
+     "templateId": "tpl-renew",
+     "month": "2026-08",
+     "bounceType": "SOFT_BOUNCE",
+     "message": null,
+     "category": "other",
+     "recipientClass": "external",
+     "count": 1,
+     "provenance": "pulled",
+     "pulledAt": "2026-09-15T09:00:00-07:00"
+    },
+    {
+     "programId": "p-renew",
+     "templateId": "tpl-renew-b",
+     "month": "2026-09",
+     "bounceType": "HARD_BOUNCE",
+     "message": "Recipient address rejected: user unknown",
+     "category": "user-unknown",
+     "recipientClass": "external",
+     "count": 1,
+     "provenance": "pulled",
+     "pulledAt": "2026-09-15T09:00:00-07:00"
+    }
+   ],
+   "participantFailures": [
+    {
+     "programId": "p-nps",
+     "message": null,
+     "category": "other",
+     "expected": false,
+     "participants": 2,
+     "occurrences": 3
+    },
+    {
+     "programId": "p-onboard",
+     "message": null,
+     "category": "other",
+     "expected": false,
+     "participants": 7,
+     "occurrences": 13
+    },
+    {
+     "programId": "p-renew",
+     "message": null,
+     "category": "other",
+     "expected": false,
+     "participants": 4,
+     "occurrences": 7
+    }
+   ],
+   "participantStates": [
+    {
+     "programId": "p-nps",
+     "state": "ACTIVE",
+     "participants": 4
+    },
+    {
+     "programId": "p-nps",
+     "state": "COMPLETED",
+     "participants": 11
+    },
+    {
+     "programId": "p-nps",
+     "state": "DROP",
+     "participants": 2
+    },
+    {
+     "programId": "p-nps",
+     "state": "KNOCKED_OFF",
+     "participants": 1
+    },
+    {
+     "programId": "p-nps",
+     "state": "SYSTEM_ERROR",
+     "participants": 1
+    },
+    {
+     "programId": "p-onboard",
+     "state": "ACTIVE",
+     "participants": 23
+    },
+    {
+     "programId": "p-onboard",
+     "state": "COMPLETED",
+     "participants": 22
+    },
+    {
+     "programId": "p-onboard",
+     "state": "DROP",
+     "participants": 7
+    },
+    {
+     "programId": "p-onboard",
+     "state": "KNOCKED_OFF",
+     "participants": 7
+    },
+    {
+     "programId": "p-onboard",
+     "state": "SYSTEM_ERROR",
+     "participants": 7
+    },
+    {
+     "programId": "p-pilot",
+     "state": "ACTIVE",
+     "participants": 1
+    },
+    {
+     "programId": "p-pilot",
+     "state": "COMPLETED",
+     "participants": 2
+    },
+    {
+     "programId": "p-renew",
+     "state": "ACTIVE",
+     "participants": 2
+    },
+    {
+     "programId": "p-renew",
+     "state": "COMPLETED",
+     "participants": 2
+    },
+    {
+     "programId": "p-renew",
+     "state": "KNOCKED_OFF",
+     "participants": 1
+    },
+    {
+     "programId": "p-renew",
+     "state": "SYSTEM_ERROR",
+     "participants": 1
+    },
+    {
+     "programId": "p-unlisted",
+     "state": "ACTIVE",
+     "participants": 2
+    },
+    {
+     "programId": "p-unlisted",
+     "state": "COMPLETED",
+     "participants": 1
+    },
+    {
+     "programId": "p-unlisted",
+     "state": "DROP",
+     "participants": 1
+    },
+    {
+     "programId": "p-unlisted",
+     "state": "KNOCKED_OFF",
+     "participants": 1
+    },
+    {
+     "programId": "p-unlisted",
+     "state": "SYSTEM_ERROR",
+     "participants": 1
+    }
+   ],
+   "lastSends": [
+    {
+     "programId": "p-nps",
+     "name": "Acme NPS Survey",
+     "statuses": [
+      "PROCESSING"
+     ],
+     "selected": true,
+     "lastSendDay": "2026-07-18",
+     "lastSendMonth": "2026-07"
+    },
+    {
+     "programId": "p-onboard",
+     "name": "Acme Onboarding Chain",
+     "statuses": [
+      "PROCESSING"
+     ],
+     "selected": true,
+     "lastSendDay": "2026-09-15",
+     "lastSendMonth": "2026-09"
+    },
+    {
+     "programId": "p-pilot",
+     "name": "Acme Internal Pilot",
+     "statuses": [
+      "PROCESSING"
+     ],
+     "selected": true,
+     "lastSendDay": "2026-08-23",
+     "lastSendMonth": "2026-09"
+    },
+    {
+     "programId": "p-renew",
+     "name": "Acme Renewal Dynamic",
+     "statuses": [
+      "PAUSE",
+      "NEW"
+     ],
+     "selected": true,
+     "lastSendDay": "2026-09-09",
+     "lastSendMonth": "2026-09"
+    },
+    {
+     "programId": "p-unlisted",
+     "name": "Acme Unlisted Program",
+     "statuses": [
+      "PROCESSING"
+     ],
+     "selected": true,
+     "lastSendDay": "2026-08-27",
+     "lastSendMonth": "2026-08"
+    }
+   ],
+   "schedules": [
+    {
+     "programId": "p-nps",
+     "asOf": "2026-08-20T00:00:00.000Z",
+     "source": "kb",
+     "scheduleType": "CRON",
+     "classification": "recurring",
+     "cronExpression": "0 0 9 1 * ? *",
+     "timeZoneName": "America/Los_Angeles",
+     "startTime": 1767225600000,
+     "endTime": 1830297600000,
+     "lastRunSuccess": true,
+     "lastSuccessTime": 1756717200000,
+     "nextRunTime": 1759309200000,
+     "runningNow": false
+    },
+    {
+     "programId": "p-onboard",
+     "asOf": "2026-09-01T00:00:00.000Z",
+     "source": "kb",
+     "scheduleType": "CRON",
+     "classification": "recurring",
+     "cronExpression": "0 0 8 ? * MON *",
+     "timeZoneName": "America/Los_Angeles",
+     "startTime": 1767225600000,
+     "endTime": 1830297600000,
+     "lastRunSuccess": false,
+     "lastSuccessTime": 1756712400000,
+     "nextRunTime": 1757926800000,
+     "runningNow": false
+    },
+    {
+     "programId": "p-pilot",
+     "asOf": "2026-08-20T00:00:00.000Z",
+     "source": "kb",
+     "scheduleType": null,
+     "classification": "no schedule captured",
+     "cronExpression": null,
+     "timeZoneName": null,
+     "startTime": null,
+     "endTime": null,
+     "lastRunSuccess": null,
+     "lastSuccessTime": null,
+     "nextRunTime": null,
+     "runningNow": null
+    },
+    {
+     "programId": "p-renew",
+     "asOf": "2026-08-20T00:00:00.000Z",
+     "source": "kb",
+     "scheduleType": null,
+     "classification": "no schedule captured",
+     "cronExpression": null,
+     "timeZoneName": null,
+     "startTime": null,
+     "endTime": null,
+     "lastRunSuccess": null,
+     "lastSuccessTime": null,
+     "nextRunTime": null,
+     "runningNow": null
+    }
+   ],
+   "failureSamples": [
+    {
+     "programId": "p-nps",
+     "part": "bounceReasons",
+     "message": "452 4.2.2 Mailbox full",
+     "category": "other",
+     "kind": "unknown",
+     "expected": false,
+     "count": 1,
+     "occurrences": 1,
+     "pulledAt": "2026-09-15T09:00:00-07:00"
+    },
+    {
+     "programId": "p-nps",
+     "part": "participantFailures",
+     "message": "Email address <email> is invalid",
+     "category": "unclassified",
+     "kind": "unknown",
+     "expected": false,
+     "count": 1,
+     "occurrences": 2,
+     "pulledAt": "2026-09-15T09:00:00-07:00"
+    },
+    {
+     "programId": "p-nps",
+     "part": "participantFailures",
+     "message": "Participant already exists in participant list",
+     "category": "already-in-list",
+     "kind": "business-rule",
+     "expected": true,
+     "count": 1,
+     "occurrences": 1,
+     "pulledAt": "2026-09-15T09:00:00-07:00"
+    },
+    {
+     "programId": "p-onboard",
+     "part": "bounceReasons",
+     "message": "452 4.2.2 Mailbox full",
+     "category": "other",
+     "kind": "unknown",
+     "expected": false,
+     "count": 3,
+     "occurrences": 3,
+     "pulledAt": "2026-09-15T09:00:00-07:00"
+    },
+    {
+     "programId": "p-onboard",
+     "part": "participantFailures",
+     "message": "Bounced recipient(to) email <email>' in Step 'Send Email'",
+     "category": "bounced-at-send",
+     "kind": "bad-address",
+     "expected": false,
+     "count": 1,
+     "occurrences": 3,
+     "pulledAt": "2026-09-15T09:00:00-07:00"
+    },
+    {
+     "programId": "p-onboard",
+     "part": "participantFailures",
+     "message": "Duplicate participant",
+     "category": "unclassified",
+     "kind": "unknown",
+     "expected": false,
+     "count": 1,
+     "occurrences": 2,
+     "pulledAt": "2026-09-15T09:00:00-07:00"
+    },
+    {
+     "programId": "p-onboard",
+     "part": "participantFailures",
+     "message": "Email address <email> is invalid",
+     "category": "unclassified",
+     "kind": "unknown",
+     "expected": false,
+     "count": 1,
+     "occurrences": 2,
+     "pulledAt": "2026-09-15T09:00:00-07:00"
+    },
+    {
+     "programId": "p-onboard",
+     "part": "participantFailures",
+     "message": "Missing required field: Email",
+     "category": "unclassified",
+     "kind": "unknown",
+     "expected": false,
+     "count": 1,
+     "occurrences": 2,
+     "pulledAt": "2026-09-15T09:00:00-07:00"
+    },
+    {
+     "programId": "p-onboard",
+     "part": "participantFailures",
+     "message": "Participant already exists in participant list",
+     "category": "already-in-list",
+     "kind": "business-rule",
+     "expected": true,
+     "count": 2,
+     "occurrences": 2,
+     "pulledAt": "2026-09-15T09:00:00-07:00"
+    },
+    {
+     "programId": "p-renew",
+     "part": "bounceReasons",
+     "message": "452 4.2.2 Mailbox full",
+     "category": "other",
+     "kind": "unknown",
+     "expected": false,
+     "count": 2,
+     "occurrences": 2,
+     "pulledAt": "2026-09-15T09:00:00-07:00"
+    }
+   ],
+   "entrySamples": [
+    {
+     "programId": "p-nps",
+     "category": "already-in-list",
+     "kind": "business-rule",
+     "expected": true,
+     "participants": 1,
+     "occurrences": 1,
+     "sampleRows": 2,
+     "pulledAt": "2026-09-15T09:00:00-07:00"
+    },
+    {
+     "programId": "p-nps",
+     "category": "unclassified",
+     "kind": "unknown",
+     "expected": false,
+     "participants": 1,
+     "occurrences": 2,
+     "sampleRows": 2,
+     "pulledAt": "2026-09-15T09:00:00-07:00"
+    },
+    {
+     "programId": "p-onboard",
+     "category": "already-in-list",
+     "kind": "business-rule",
+     "expected": true,
+     "participants": 2,
+     "occurrences": 2,
+     "sampleRows": 8,
+     "pulledAt": "2026-09-15T09:00:00-07:00"
+    },
+    {
+     "programId": "p-onboard",
+     "category": "bounced-at-send",
+     "kind": "bad-address",
+     "expected": false,
+     "participants": 1,
+     "occurrences": 3,
+     "sampleRows": 8,
+     "pulledAt": "2026-09-15T09:00:00-07:00"
+    },
+    {
+     "programId": "p-onboard",
+     "category": "unclassified",
+     "kind": "unknown",
+     "expected": false,
+     "participants": 4,
+     "occurrences": 7,
+     "sampleRows": 8,
+     "pulledAt": "2026-09-15T09:00:00-07:00"
+    },
+    {
+     "programId": "p-onboard",
+     "category": "unique-criteria",
+     "kind": "business-rule",
+     "expected": true,
+     "participants": 1,
+     "occurrences": 3,
+     "sampleRows": 8,
+     "pulledAt": "2026-09-15T09:00:00-07:00"
+    }
+   ],
+   "sources": [
+    {
+     "programId": "p-nps",
+     "sourceType": "QUERY_BUILDER",
+     "lastSyncedOn": "2026-09-01 09:03:40",
+     "operation": "ADD_ALL_PARTICIPANT_IN_POWER_LIST"
+    },
+    {
+     "programId": "p-onboard",
+     "sourceType": "QUERY_BUILDER",
+     "lastSyncedOn": "2026-09-14 08:02:11",
+     "operation": "ADD_ALL_PARTICIPANT_IN_POWER_LIST"
+    },
+    {
+     "programId": "p-pilot",
+     "sourceType": "CSV",
+     "lastSyncedOn": null,
+     "operation": "ADD_ALL_PARTICIPANT_IN_POWER_LIST"
+    },
+    {
+     "programId": "p-renew",
+     "sourceType": "CSV",
+     "lastSyncedOn": "2026-03-02 10:00:00",
+     "operation": "ADD_ALL_PARTICIPANT_IN_POWER_LIST"
+    }
+   ],
+   "admissions": [
+    {
+     "programId": "p-nps",
+     "day": "2026-07-15",
+     "participants": 3
+    },
+    {
+     "programId": "p-onboard",
+     "day": "2026-08-01",
+     "participants": 1
+    },
+    {
+     "programId": "p-onboard",
+     "day": "2026-08-02",
+     "participants": 1
+    },
+    {
+     "programId": "p-onboard",
+     "day": "2026-08-03",
+     "participants": 1
+    },
+    {
+     "programId": "p-onboard",
+     "day": "2026-08-04",
+     "participants": 1
+    },
+    {
+     "programId": "p-onboard",
+     "day": "2026-08-05",
+     "participants": 1
+    },
+    {
+     "programId": "p-onboard",
+     "day": "2026-08-06",
+     "participants": 1
+    },
+    {
+     "programId": "p-onboard",
+     "day": "2026-08-07",
+     "participants": 1
+    },
+    {
+     "programId": "p-onboard",
+     "day": "2026-08-08",
+     "participants": 1
+    },
+    {
+     "programId": "p-onboard",
+     "day": "2026-08-14",
+     "participants": 1
+    },
+    {
+     "programId": "p-onboard",
+     "day": "2026-08-15",
+     "participants": 1
+    },
+    {
+     "programId": "p-onboard",
+     "day": "2026-08-16",
+     "participants": 1
+    },
+    {
+     "programId": "p-onboard",
+     "day": "2026-08-17",
+     "participants": 1
+    },
+    {
+     "programId": "p-onboard",
+     "day": "2026-08-18",
+     "participants": 1
+    },
+    {
+     "programId": "p-onboard",
+     "day": "2026-08-19",
+     "participants": 1
+    },
+    {
+     "programId": "p-onboard",
+     "day": "2026-08-20",
+     "participants": 1
+    },
+    {
+     "programId": "p-onboard",
+     "day": "2026-08-21",
+     "participants": 1
+    },
+    {
+     "programId": "p-onboard",
+     "day": "2026-08-22",
+     "participants": 1
+    },
+    {
+     "programId": "p-onboard",
+     "day": "2026-08-23",
+     "participants": 1
+    },
+    {
+     "programId": "p-onboard",
+     "day": "2026-08-24",
+     "participants": 1
+    },
+    {
+     "programId": "p-onboard",
+     "day": "2026-08-25",
+     "participants": 1
+    },
+    {
+     "programId": "p-onboard",
+     "day": "2026-08-26",
+     "participants": 1
+    },
+    {
+     "programId": "p-onboard",
+     "day": "2026-08-27",
+     "participants": 1
+    },
+    {
+     "programId": "p-unlisted",
+     "day": "2026-08-01",
+     "participants": 1
+    },
+    {
+     "programId": "p-unlisted",
+     "day": "2026-08-02",
+     "participants": 1
+    },
+    {
+     "programId": "p-unlisted",
+     "day": "2026-08-03",
+     "participants": 1
+    },
+    {
+     "programId": "p-unlisted",
+     "day": "2026-08-04",
+     "participants": 1
+    },
+    {
+     "programId": "p-unlisted",
+     "day": "2026-08-05",
+     "participants": 1
+    },
+    {
+     "programId": "p-unlisted",
+     "day": "2026-08-27",
+     "participants": 1
+    }
+   ],
+   "entryFailures": [
+    {
+     "programId": "p-nps",
+     "month": "2026-07",
+     "participants": 1,
+     "occurrences": 1
+    },
+    {
+     "programId": "p-nps",
+     "month": "2026-08",
+     "participants": 1,
+     "occurrences": 2
+    },
+    {
+     "programId": "p-onboard",
+     "month": "2026-07",
+     "participants": 3,
+     "occurrences": 3
+    },
+    {
+     "programId": "p-onboard",
+     "month": "2026-08",
+     "participants": 2,
+     "occurrences": 4
+    },
+    {
+     "programId": "p-onboard",
+     "month": "2026-09",
+     "participants": 2,
+     "occurrences": 6
+    }
+   ],
+   "stepFailures": [
+    {
+     "programId": "p-onboard",
+     "month": "2026-08",
+     "category": "bounce-drop",
+     "kind": "bad-address",
+     "expected": false,
+     "participants": 2
+    },
+    {
+     "programId": "p-onboard",
+     "month": "2026-08",
+     "category": "record-delete",
+     "kind": "business-rule",
+     "expected": true,
+     "participants": 3
+    },
+    {
+     "programId": "p-unlisted",
+     "month": "2026-08",
+     "category": "bounce-drop",
+     "kind": "bad-address",
+     "expected": false,
+     "participants": 1
+    },
+    {
+     "programId": "p-unlisted",
+     "month": "2026-08",
+     "category": "record-delete",
+     "kind": "business-rule",
+     "expected": true,
+     "participants": 1
+    }
+   ]
+  }
+ },
+ "honesty": {
+  "excluded": {
+   "ccCopies": 4,
+   "nonJoSources": 4,
+   "deletedPrograms": {
+    "programs": 0,
+    "sent": 0
+   },
+   "unselectedPrograms": {
+    "programs": 0,
+    "sent": 0
+   }
+  },
+  "rows": {
+   "seen": 402,
+   "parsed": 402,
+   "unreadable": 0
+  },
+  "calls": {
+   "answered": 83,
+   "split": 0,
+   "retried": 0
+  },
+  "noTemplateId": {
+   "sent": 12
+  },
+  "noCompanyLink": {
+   "sent": 20
+  },
+  "stepNames": {
+   "source": "kb",
+   "programsWithDesign": 4,
+   "programsWithout": 1
+  },
+  "kb": {
+   "source": "kb",
+   "undocumented": [
+    "p-unlisted"
+   ],
+   "behind": []
+  },
+  "accountNames": {
+   "requested": 10,
+   "resolved": 10
+  },
+  "accountSelection": {
+   "lists": [
+    {
+     "kind": "most-engaged",
+     "n": 25,
+     "floor": 10,
+     "per": null,
+     "segment": null,
+     "kept": [
+      "co-05",
+      "co-08",
+      "co-07",
+      "co-02",
+      "co-04",
+      "co-09",
+      "co-01",
+      "co-10",
+      "co-03",
+      "co-06"
+     ],
+     "selectedFrom": "every program",
+     "rankedAt": "2026-09-15T09:00:00-07:00",
+     "carriedFrom": null,
+     "notRanked": null
+    },
+    {
+     "kind": "least-engaged",
+     "n": 25,
+     "floor": 10,
+     "per": null,
+     "segment": null,
+     "kept": [
+      "co-06",
+      "co-03",
+      "co-10",
+      "co-01",
+      "co-09",
+      "co-04",
+      "co-02",
+      "co-07",
+      "co-08",
+      "co-05"
+     ],
+     "selectedFrom": "every program",
+     "rankedAt": "2026-09-15T09:00:00-07:00",
+     "carriedFrom": null,
+     "notRanked": null
+    },
+    {
+     "kind": "most-bounced",
+     "n": 25,
+     "floor": 0,
+     "per": null,
+     "segment": null,
+     "kept": [
+      "co-01",
+      "co-09",
+      "co-02",
+      "co-04",
+      "co-06",
+      "co-10",
+      "co-03",
+      "co-05",
+      "co-08"
+     ],
+     "selectedFrom": "every program",
+     "rankedAt": "2026-09-15T09:00:00-07:00",
+     "carriedFrom": null,
+     "notRanked": null
+    }
+   ],
+   "lowCadencePrograms": [
+    "p-nps",
+    "p-unlisted"
+   ],
+   "cadenceRatio": {
+    "p-nps": 1,
+    "p-onboard": 8,
+    "p-pilot": 4,
+    "p-renew": 12,
+    "p-unlisted": 1
+   },
+   "lowCadenceRule": {
+    "maxRatio": 1.5,
+    "minDelivered": 3
+   },
+   "perProgram": {
+    "busiest": 3,
+    "lowEngagement": 2,
+    "mostBounces": 2,
+    "lowEngagementMinDelivered": 4
+   }
+  },
+  "clicks": {
+   "clickedSends": 14,
+   "withContentClick": 8,
+   "nonContentOnly": 6,
+   "unreadable": 0,
+   "detailMissing": 0,
+   "byUnsubscribeInput": 0
+  },
+  "responses": {
+   "available": true,
+   "otherStatus": 0,
+   "unattributed": 1,
+   "testParticipantsExcluded": 3
+  },
+  "health": {
+   "otherPrograms": 1,
+   "unreadableRows": 0,
+   "schedules": {
+    "programsWithDoc": 4,
+    "programsWithout": 1
+   },
+   "samples": {
+    "bounceReasons": 3,
+    "participantFailures": 7
+   },
+   "categories": {
+    "overlapRows": 0
+   }
+  },
+  "testAccounts": {
+   "accounts": 0,
+   "sent": 0
+  },
+  "templates": {
+   "referenced": 6,
+   "withContent": 5,
+   "missing": 1,
+   "behind": 1,
+   "unreadLinks": 1,
+   "source": "kb"
+  }
+ },
+ "reconciliation": {
+  "ok": true,
+  "checks": [
+   {
+    "id": "templates-sum-to-program",
+    "ok": true,
+    "compared": 14,
+    "mismatches": 0,
+    "examples": [],
+    "drift": 0,
+    "driftExamples": []
+   },
+   {
+    "id": "accounts-sum-to-program",
+    "ok": true,
+    "compared": 126,
+    "mismatches": 0,
+    "examples": [],
+    "drift": 0,
+    "driftExamples": []
+   },
+   {
+    "id": "internal-within-all",
+    "ok": true,
+    "compared": 109,
+    "mismatches": 0,
+    "examples": [],
+    "drift": 0,
+    "driftExamples": []
+   },
+   {
+    "id": "clicked-within-sent",
+    "ok": true,
+    "compared": 30,
+    "mismatches": 0,
+    "examples": [],
+    "drift": 0,
+    "driftExamples": []
+   },
+   {
+    "id": "steps-sum-to-template",
+    "ok": true,
+    "compared": 88,
+    "mismatches": 0,
+    "examples": [],
+    "drift": 0,
+    "driftExamples": []
+   },
+   {
+    "id": "bounce-reasons-sum-to-bounced",
+    "ok": true,
+    "compared": 14,
+    "mismatches": 0,
+    "examples": [],
+    "drift": 0,
+    "driftExamples": []
+   }
+  ]
+ },
+ "caveats": [
+  {
+   "id": "step-names-unavailable",
+   "detail": {
+    "programs": 1,
+    "source": "kb"
+   }
+  },
+  {
+   "id": "step-names-as-of",
+   "detail": {
+    "oldest": "2026-08-20T00:00:00.000Z",
+    "programs": 4
+   }
+  },
+  {
+   "id": "schedules-from-kb",
+   "detail": {
+    "oldest": "2026-08-20T00:00:00.000Z"
+   }
+  },
+  {
+   "id": "kb-behind-tenant",
+   "detail": {
+    "undocumented": 1,
+    "behind": 0,
+    "programs": [
+     "p-unlisted"
+    ],
+    "keysFile": "kb-gap-keys.json",
+    "refreshSeconds": 3
+   }
+  },
+  {
+   "id": "template-content-current",
+   "detail": {
+    "templates": 5,
+    "oldest": "2026-08-20"
+   }
+  },
+  {
+   "id": "template-content-missing",
+   "detail": {
+    "missing": 1,
+    "referenced": 6,
+    "keysFile": "template-gap-keys.json",
+    "seconds": 3
+   }
+  },
+  {
+   "id": "template-content-behind",
+   "detail": {
+    "behind": 1,
+    "seconds": 3
+   }
+  },
+  {
+   "id": "template-link-readings-missing",
+   "detail": {
+    "count": 1,
+    "seconds": 3
+   }
+  },
+  {
+   "id": "unclassified-wordings",
+   "detail": {
+    "wordings": 3,
+    "programs": 2,
+    "participants": 4,
+    "occurrences": 8,
+    "stepParticipants": 0,
+    "bounceWordings": 1,
+    "bouncePrograms": 3
+   }
+  },
+  {
+   "id": "health-all-time",
+   "detail": {
+    "parts": [
+     "participantFailures",
+     "participantStates"
+    ],
+    "reason": "all-time"
+   }
+  },
+  {
+   "id": "participant-failures-no-breakdown",
+   "detail": {
+    "reason": "not-filterable",
+    "expectedReasons": 0
+   }
+  },
+  {
+   "id": "failure-samples-sampled",
+   "detail": {
+    "programs": 2
+   }
+  }
+ ]
+}

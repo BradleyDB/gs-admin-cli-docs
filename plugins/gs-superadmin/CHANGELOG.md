@@ -5,7 +5,131 @@ marketplace doesn't pin versions — users get main — so entries describe what
 user who updates, not internal refactors. Entries before 0.8.0 were reconstructed from git
 history when this file was introduced.
 
-## 0.43.4 — 2026-10-06
+## 0.54.0 — 2026-10-14
+
+Email engagement, from a one-off report to a dashboard you refresh with one command. A new
+skill reads how your Journey Orchestrator emails performed from the tenant's send log,
+through read-only `gs-admin` calls: a report, dashboards built once from an interview and
+pulled again whenever new numbers are wanted, a timeline of what one account was sent, and
+a copy of the leaders' page in a shared folder. This entry covers everything since 0.43.4:
+the versions 0.44.0 to 0.53.0 were staged on the way and never released on their own.
+
+- **New skill: `/gs-superadmin:email-engagement`.** `/gs-superadmin:email-report` answers
+  what the emails say and when they run; this one answers how they performed. Its modes:
+  `report`, `dashboard new | edit | list`, `refresh <slug>`, `publish <slug>` and
+  `account '<name>'`. A plain question ("what's the open rate for the onboarding
+  program?") routes to `report`. It never changes anything on the tenant.
+- **The open-rate report.** One pull of the send log for a period, then a report in
+  `<slug>/reports-adhoc/`: a headline by status and one row per program with sent, unique
+  recipients, accounts reached, delivered, opened and open rate side by side, then clicks,
+  bounces and survey responses. `--by-template` adds a row per template (with its subject),
+  `--step-detail` a row per step and variant; `--csv` and `--xlsx` add spreadsheets.
+- **Every number says how it was calculated.** A glossary gives each metric's object,
+  fields, counted value, standing filters, date field and calculation, so any figure can
+  be rebuilt in a Gainsight report, and says where a figure will not match the Gainsight UI
+  and why (Sent counts every attempt; Delivered is what went out and did not bounce; clicks
+  count content links only). Click cells tell a tracked 0% from "Not tracked" and from a
+  figure marked "(tracking unknown)"; a rate with nothing to divide by is blank, never 0%.
+  Name your own unsubscribe page with `--unsubscribe-link` so its clicks are not counted
+  as content clicks. What is still provisional (opens on the current month; bounces and
+  unsubscribes on the months a refresh reads again) is said wherever it shows.
+- **Customer lists across programs, opt-in.** With accounts pulled (`--accounts`; off by
+  default, because ranking accounts is most of a pull's cost), three lists over the whole
+  window: the 25 most engaged, the 25 least engaged (over a delivered floor) and the 25
+  most bounced, each account with its rows on every program it is on. Lists are data
+  (`--account-list`), company fields can drive a list per segment, and the per-program
+  lists remain behind their own flags. Without accounts, the report says so where the list
+  would be.
+- **The cost first, and pulls that outlast a login.** The plan prints the calls and minutes
+  before pulling, and the skill asks before a long pull. A pull longer than one login runs
+  as far as the login allows, stops cleanly keeping every call it made, and the next run
+  after `gs-admin login` continues it; a call the server did not answer is retried by the
+  next run, never recorded as final. Every stop prints the exact line to run next, with
+  `--kb` and its own flags, and that line, run as printed, continues it.
+- **Health data, counted and never read as text** (`--health`). Bounce and failure reasons
+  are counted on the server by category, with an "Other" row for the rest; error messages
+  are masked (addresses, ids, reference numbers) before anything is stored, and the masked
+  samples are shown by the terminal only, never on a page. A new figure, send failures, and
+  the error rate built on it. Program health is read from signals, each from its own data
+  (the participant source's last sync, participants admitted and refused, failures at a
+  step, sends against the program's own history), into lists an admin reads: Schedule
+  ended, Participant sync overdue, Admitting nobody, Step errors this period, No recent
+  sends, Finished campaign, Cannot judge yet (with the reason), Working as expected, and the
+  rest. A program your knowledge base does not document reads "Cannot judge yet (no doc)",
+  never a guess, and the skill offers the narrow refresh that closes the gap. Test accounts
+  are excluded on the server (`--test-account`) and join the internal recipients.
+- **Template text beside performance.** The pull reads each template's current subject and
+  body from the knowledge base (never its HTML), with when the text is as of and whether
+  the template was edited after its last send; the plan prices the templates the knowledge
+  base lacks and the skill offers to fill them through email-report's own gap-fill.
+- **Dashboards: `dashboard new | edit | list`.** An interview, one question at a time in an
+  admin's terms, builds a dashboard: which tenant, which programs, which months, how they
+  are grouped (proposed from your programs, written as rules), internal domains, test
+  accounts, the tabs per page with what each costs in minutes, the customer lists, the
+  look, and where the leaders' copy goes. It closes with one step: the full refresh's calls
+  and minutes against the login, then save and refresh now, a dry run first, save only, or
+  go back. `--fast-path` takes every default and goes straight there. An edit asks nothing
+  again: it states what the change costs (a pull, a re-ranking over the last full pull, or
+  a rebuild) and does it.
+  A brand theme can be given as a guidelines file or pasted values; every colour is checked
+  for contrast and replaced, with the reason, when it fails.
+- **The pages.** Two self-contained HTML files per dashboard, an admin page and a leaders'
+  page, that open from disk and ask the network for nothing. Tabs (Engagement, Health,
+  Templates, About) with a one-row filter bar for the current tab: months, programs,
+  status, group and internal recipients, recomputed in the browser by the same code as the
+  report, kept in the address so a view can be bookmarked. Tables sort, scroll, hide
+  columns and download what they show as a CSV; charts carry their values; a bar chart over
+  hundreds of programs draws the 25 largest across with every row in the table underneath;
+  a shortened name opens whole on hover, focus, click or tap. A headline figure's change
+  against the usual month compares the closed months shown, never a month still in
+  progress, and says so. Every mark (the provisional
+  `*`, the carried-forward `†`) is explained at the tab's foot. The About tab defines every
+  figure, lists the dashboard's settings and says how to refresh. A leaders' page carries
+  no account names, error messages or template text unless the dashboard says it may.
+  Readable at WCAG AA in light and dark, and on paper.
+- **Refresh with no model in the loop.** `/gs-superadmin:email-engagement refresh <slug>`
+  (or `node .gs-superadmin/plugin/scripts/dashboard.mjs refresh <slug>`) checks the tenant
+  first (a dashboard is never refreshed from another tenant), takes a workspace lock,
+  brings the knowledge base up to date for the dashboard's programs and missing templates,
+  pulls, keeps thirteen snapshots, and rebuilds both pages; a refresh that stops leaves the
+  last good pages untouched. `--health-only` reads the current month and the health
+  families again. The pages say when the data was pulled and that they are not live. The
+  README has a copy-paste scheduled-refresh recipe per OS, and the hand-over to a backup
+  refresher (export with the snapshot, import).
+- **Customer lists are ranked at a full pull.** A routine refresh keeps that ranking (the
+  page dates it) and updates the figures; `refresh <slug> --full` ranks the lists again. A
+  list changed after a routine refresh is ranked at the next full refresh, and the change
+  says so, with that refresh's line.
+- **The leaders' copy, published.** At the end of every successful refresh the leaders'
+  page is copied into a folder you name (a synced OneDrive, SharePoint or network folder)
+  under the same file name every time, with each table beside it as a CSV named after the
+  dashboard and a definitions file. The folder is mapped on your machine
+  (`dashboard.mjs publish-target leaders <folder>`), so an exported dashboard carries no
+  path. Each dashboard publishes its own file: one imported under another name takes its
+  own, two dashboards are never saved to the same file, a publish removes only the data
+  files it wrote itself, and a copy it stops updating (the file renamed, the target
+  changed) is named in the summary and left in place. `publish <slug>` copies the pages as they stand, with no pull. A copy that fails,
+  wholly or part-way (a CSV open in Excel), never touches the pages in the workspace: the
+  summary reads `published: false` and names what was and was not replaced, and the exit
+  code stays 0.
+- **One account's email timeline: `account '<name>'`.** What one customer was sent over the
+  last 90 days (up to 24 months), by program, email and day, beside the same programs'
+  sends to everyone, in a page of its own; the account's contacts are added up and never
+  named. A name is never guessed: anything but one exact match answers with a pick list
+  and pulls nothing. Named with a dashboard, the timeline is reconciled with that
+  dashboard's pull, month by month. The admin page gains a one-account view with the line
+  that pulls its timeline.
+- **Native Gainsight reports are not offered.** The entry command's `native-plan`,
+  `native-record` and `native-verify` verbs ship, but no skill mode or README recipe offers
+  them, because Gainsight's report builder cannot finish the reports they create (F-528).
+  Nor is a claude.ai artifact offered for the leaders' copy: a Claude session must read the
+  whole page before it can publish it, which takes several turns on a real leaders' page.
+- **Hardening: spreadsheet formulas in report CSVs.** A cell that starts with `=`, `+`, `-`
+  or `@` (a template subject, a program or account name) is written as text in every report
+  CSV, `/gs-superadmin:email-report`'s included, as the dashboard pages' own downloads
+  already were.
+
+## 0.43.4 — 2026-10-06 (hotfix, released from main)
 
 Dependency answers now see Power List programs (F-487). On a typical tenant most
 journey programs draw participants from a **Power List**, and until now neither

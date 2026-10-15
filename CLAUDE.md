@@ -103,7 +103,9 @@ build/        lib.mjs — the lane's shared module (ROOT + BOM-tolerant readJson
               render-cheatsheet.mjs emitter) · emit-reader-shapes.mjs (the plugin's
               measured read surface, from the tracer in the plugin's test/) · wiki-assets/
               guards + fixtures: check-{stale-facts,doc-drift,instance-data}.mjs ·
-              defect-classes.mjs (the registry as data, W10) ·
+              defect-classes.mjs (the registry as data, W10) · dev-only.mjs (the ONE
+              reader of the release strip set — the bus header's Dev-only: and Canary:
+              lines; checks and the CI strip read it, F-469) ·
               test-{wiki,comparison}-html.mjs · test-render-cheatsheet.mjs ·
               test-emit-reader-shapes.mjs ·
               instruments (a recipe runs them; never gates): sweep-twins.mjs ·
@@ -118,7 +120,7 @@ plugins/      gs-superadmin/ — skills/hooks/templates/scripts/test are hand-ma
 test/         rig.mjs — the shared test rig (temp-dir + spawnSync plumbing ONLY,
               GP-B5 DS-22); rig-only by check — suites live in the two test homes above
 dev/          dev-branch-only workflow state (feedback bus, deferred validations) —
-              stripped at release, never on main
+              stripped at release (it is on the bus header's Dev-only: line), never on main
 ```
 
 The generated-file table, tests, and contributor rules live in [AGENTS.md](AGENTS.md).
@@ -132,8 +134,10 @@ in this repo must not get wrong:
 - **Branch off `dev`, PR to `dev`.** Never push or PR `main` directly. Some clones also
   carry a local pre-push hook that rejects it outright.
 - **`main` is reached only through a short-lived `release/vX.Y.Z` branch** cut from `dev`,
-  on which dev-branch-only content is stripped first — the `dev/` directory and the
-  `dev-canary` provenance skill. Never merge `main` back into `dev`. **Review and the
+  on which dev-branch-only content is stripped first — the set declared once, on the
+  `Dev-only:` line of `dev/FEEDBACK.md`'s header beside its `Canary:` line (the
+  `dev-canary` provenance skill); `node build/dev-only.mjs` prints it, from dev's bus on
+  a tree the strip already ran on. Never merge `main` back into `dev`. **Review and the
   version bump (with its CHANGELOG entry) happen on `dev` before that branch is cut** —
   never on the release branch. Do not improvise a release from this file: the bullets
   here are invariants, not a runbook, and the rest of the ceremony lives in the

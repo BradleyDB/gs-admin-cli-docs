@@ -1,0 +1,302 @@
+{
+  "schemaVersion": 1,
+  "kind": "dashboard-spec",
+  "slug": "program-health",
+  "title": "Acme program health",
+  "owner": "Acme CS Ops",
+  "purpose": "Which programs need attention this month.",
+  "tenantHost": "acme.gainsightcloud.com",
+  "sources": [
+    {
+      "adapter": "jo-engagement",
+      "params": {
+        "windowMonths": 13,
+        "window": {
+          "kind": "rolling"
+        },
+        "selector": {
+          "sentSince": "90d",
+          "names": [],
+          "ids": []
+        },
+        "internalDomains": [
+          "acme.com"
+        ],
+        "unsubscribeLinks": [
+          "https://www.acme.com/mail-settings"
+        ],
+        "testAccounts": [],
+        "pinnedAccounts": [
+          "co-01"
+        ],
+        "stepDetail": false,
+        "repullMonths": 2,
+        "quietDueDays": 5,
+        "samplePrograms": 25,
+        "expectedReasons": []
+      }
+    }
+  ],
+  "globalFilters": [
+    {
+      "id": "dateRange",
+      "enabled": true
+    },
+    {
+      "id": "programs",
+      "enabled": true
+    },
+    {
+      "id": "group",
+      "enabled": true
+    },
+    {
+      "id": "status",
+      "enabled": true
+    },
+    {
+      "id": "recipientClass",
+      "enabled": true,
+      "default": "all"
+    }
+  ],
+  "accounts": {
+    "pull": true,
+    "busiest": 0,
+    "lowEngagement": 0,
+    "mostBounces": 0,
+    "lowEngagementMinDelivered": 10,
+    "lists": [
+      {
+        "kind": "most-engaged",
+        "n": 25,
+        "floor": 10
+      },
+      {
+        "kind": "least-engaged",
+        "n": 25,
+        "floor": 10
+      },
+      {
+        "kind": "most-bounced",
+        "n": 25,
+        "floor": 0
+      }
+    ],
+    "fields": []
+  },
+  "groups": {
+    "rules": [
+      {
+        "kind": "characteristic",
+        "level": "supergroup",
+        "characteristic": "sendsSurveys",
+        "is": true,
+        "label": "Surveys"
+      },
+      {
+        "kind": "characteristic",
+        "level": "supergroup",
+        "characteristic": "audience",
+        "is": "USER",
+        "label": "Internal"
+      },
+      {
+        "kind": "characteristic",
+        "level": "supergroup",
+        "characteristic": "recurring",
+        "is": true,
+        "label": "Recurring"
+      },
+      {
+        "kind": "folder",
+        "level": "supergroup",
+        "folders": [
+          {
+            "id": "202",
+            "label": "Renewals"
+          }
+        ]
+      },
+      {
+        "kind": "characteristic",
+        "level": "group",
+        "characteristic": "model",
+        "is": "CSAT_SURVEY_V2",
+        "label": "CSAT",
+        "within": "Surveys"
+      },
+      {
+        "kind": "namePattern",
+        "level": "group",
+        "match": "segment",
+        "delimiter": " ",
+        "index": 1
+      }
+    ],
+    "overrides": {
+      "p-pilot": {
+        "group": "Pilots"
+      }
+    }
+  },
+  "health": {
+    "silentDays": 45
+  },
+  "kb": {
+    "redocument": {
+      "enabled": true,
+      "cap": 50
+    }
+  },
+  "pages": [
+    {
+      "id": "admin",
+      "preset": "admin",
+      "title": "Admin",
+      "statusDefault": [
+        "PROCESSING"
+      ],
+      "dateDefault": "window",
+      "tabs": [
+        {
+          "id": "engagement",
+          "enabled": true
+        },
+        {
+          "id": "health",
+          "enabled": true
+        },
+        {
+          "id": "templates",
+          "enabled": true
+        },
+        {
+          "id": "about",
+          "enabled": true
+        }
+      ],
+      "panels": [
+        {
+          "id": "programs",
+          "tab": "engagement",
+          "type": "table",
+          "title": "Programs",
+          "query": {
+            "groupBy": [
+              "program"
+            ],
+            "metrics": [
+              "sent",
+              "uniqueRecipients",
+              "delivered",
+              "opened",
+              "openRate"
+            ],
+            "sort": [
+              {
+                "metric": "sent",
+                "dir": "desc"
+              }
+            ]
+          },
+          "columns": [
+            "sent",
+            "openRate"
+          ]
+        },
+        {
+          "id": "error-rate",
+          "tab": "health",
+          "type": "table",
+          "title": "Error rate by program",
+          "query": {
+            "groupBy": [
+              "program"
+            ],
+            "metrics": [
+              "sent",
+              "failed",
+              "errorRate",
+              "bounceRate",
+              "rejectedRate"
+            ],
+            "sort": [
+              {
+                "metric": "errorRate",
+                "dir": "desc"
+              }
+            ],
+            "having": [
+              {
+                "metric": "sent",
+                "gte": 1
+              }
+            ],
+            "limit": 25
+          }
+        },
+        {
+          "id": "templates",
+          "tab": "templates",
+          "type": "templates",
+          "title": "Emails: text and search",
+          "knobs": {
+            "snippet": 40
+          }
+        }
+      ],
+      "accountNames": true,
+      "sourceDetail": true,
+      "templateContent": true
+    },
+    {
+      "id": "exec",
+      "preset": "exec",
+      "title": "Leadership",
+      "statusDefault": null,
+      "dateDefault": "closed-months",
+      "tabs": [
+        {
+          "id": "engagement",
+          "enabled": true
+        },
+        {
+          "id": "health",
+          "enabled": false
+        },
+        {
+          "id": "templates",
+          "enabled": false
+        },
+        {
+          "id": "about",
+          "enabled": true
+        }
+      ],
+      "panels": [],
+      "accountNames": false,
+      "sourceDetail": false,
+      "templateContent": false
+    }
+  ],
+  "freshness": {
+    "maxAgeDays": 45
+  },
+  "refresh": {
+    "cadence": "monthly",
+    "ownerNote": "Run on the first Monday."
+  },
+  "publish": {
+    "target": "file-copy",
+    "config": {
+      "to": "leaders",
+      "file": "program-health-leaders.html",
+      "datedCopies": false,
+      "datasets": true
+    }
+  },
+  "native": {
+    "reports": []
+  }
+}

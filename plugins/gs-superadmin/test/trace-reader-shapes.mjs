@@ -73,6 +73,9 @@ import {
   renderTemplateDoc, collectScorecardMeasures, parseLiveDepsAreas, depsCaptureReadiness,
   findItemsArray, extractIds, decideEntryArray, renderProgramDoc, designerTaskFieldLabels,
 } from "../scripts/doc-lib.mjs";
+import { ROW_READERS, buildQuery, rpRunArgv, schemaTypes, listedPrograms, listHasMore, describedProgram } from "../scripts/engagement.mjs";
+import { NON_CONTENT_LINK_RULES } from "../scripts/engagement-query.mjs";
+import { buildTenant, answer } from "./fixtures/engagement/acme-tenant.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const PLUGIN = join(HERE, "..");
@@ -105,6 +108,58 @@ const kbDoc = (key, id, name, payload) =>
 
 const templatePayload = (emailTemplate, variants = []) => ({ result: true, data: { emailTemplate, variants } });
 const journeyPayload = (ao) => ({ result: true, data: { advancedOutreach: ao } });
+
+// ── The engagement adapter's payloads (ENG-2) ───────────────────────────────
+// scripts/engagement.mjs reads tenant output too: the rows of its `rp run`
+// calls, one call family per query shape. Its fixtures are what the fictional
+// acme tenant answers to the adapter's OWN queries (the query builder is the
+// producer's; the answer shapes are the response samples the fake reproduces),
+// trimmed to a few rows each — the trace measures keys, not volume.
+const ENG_TENANT = buildTenant({});
+const ENG_SPAN = { start: "2026-06-01", end: "2026-10-01" };
+const ENG_PROGRAMS = ["p-onboard", "p-nps", "p-renew"];
+const ENG_UNITS = {
+  totals: { cls: "all", window: ENG_SPAN },
+  "uniques-month": { cls: "all", of: "accounts", window: ENG_SPAN },
+  "uniques-window": { cls: "all", of: "people", window: ENG_SPAN },
+  "sent-since": { cls: "all", window: ENG_SPAN },
+  classes: { cls: "all", window: ENG_SPAN },
+  template: { cls: "all", window: ENG_SPAN },
+  account: { cls: "all", window: ENG_SPAN, programs: ENG_PROGRAMS },
+  "account-nolink": { cls: "all", window: ENG_SPAN },
+  "click-attr": { cls: "all", window: ENG_SPAN },
+  "click-attr-nolink": { cls: "all", window: ENG_SPAN },
+  "click-json": { cls: "all", window: ENG_SPAN },
+  "resp-month": { cls: "all", window: ENG_SPAN },
+  "resp-participants": { cls: "all" },
+  "resp-total": { cls: "all" },
+  "resp-unattributed": { cls: "all" },
+  "resp-test": { cls: "all" },
+  "account-names": { cls: "all", keys: ["co-01", "co-02"] },
+  step: { cls: "all", window: ENG_SPAN, programs: ENG_PROGRAMS },
+  "step-click": { cls: "all", window: ENG_SPAN, programs: ENG_PROGRAMS },
+  "participants-month": { cls: "all", window: ENG_SPAN, programs: ENG_PROGRAMS },
+  "participants-window": { cls: "all", window: ENG_SPAN, programs: ENG_PROGRAMS },
+  "count-clicks": { cls: "all", window: ENG_SPAN },
+  "count-bounces": { cls: "all", window: ENG_SPAN },
+  "template-months": { cls: "all", window: ENG_SPAN },
+  "health-bounce-total": { cls: "all", window: ENG_SPAN },
+  "health-bounce-cat": { cls: "all", window: ENG_SPAN, category: { id: "user-unknown", pattern: "User unknown in virtual mailbox table" } },
+  "health-bounce-sample": { cls: "all", window: ENG_SPAN, programs: ENG_PROGRAMS.slice(0, 1), excludePatterns: ["User unknown in virtual mailbox table"] },
+  "health-days": { cls: "all", window: ENG_SPAN },
+  "health-reasons-total": { cls: "all" },
+  "health-reasons-sample": { cls: "all", window: ENG_SPAN, programs: ENG_PROGRAMS.slice(0, 1) },
+  "health-states": { cls: "all", programs: ENG_PROGRAMS },
+  // The health signals' reads (F-491).
+  "health-sources": { cls: "all" },
+  "health-admissions": { cls: "all", window: ENG_SPAN },
+  "health-entry-month": { cls: "all", window: ENG_SPAN },
+  "health-step-total": { cls: "all", window: ENG_SPAN },
+  "health-step-cat": { cls: "all", window: ENG_SPAN, category: { id: "step-action-failed", pattern: "creation failed at step" } },
+  "health-step-state": { cls: "all", window: ENG_SPAN, category: { id: "platform-error", state: "SYSTEM_ERROR" } },
+};
+const engAnswer = (argv) => JSON.parse(answer(argv, ENG_TENANT).stdout);
+const ENG_RP_RUN = Object.entries(ENG_UNITS).map(([family, d]) => engAnswer(rpRunArgv(buildQuery({ family, ...d }), 5000)).slice(0, 6));
 
 // ── The reader table ─────────────────────────────────────────────────────────
 // One entry per CLI command whose output a KB reader indexes. `calls` are the
@@ -241,14 +296,15 @@ const ENTRIES = [
   },
   {
     command: "jo p describe",
-    readers: ["jo-report.mjs parseJourneyDoc (→ embedded, classicStep / nodeStep, normCondition, normSchedule)", "doc-lib.mjs renderProgramDoc (→ compactProgramPayload; the writer's read)", "relationships-build.mjs program token scan (spawn-traced)"],
+readers: ["jo-report.mjs parseJourneyDoc (→ embedded, classicStep / nodeStep, normCondition, normSchedule)", "doc-lib.mjs renderProgramDoc (→ compactProgramPayload; the writer's read)", "relationships-build.mjs program token scan (spawn-traced)", "engagement.mjs describedProgram (a program with sends that jo p list lacks: its name, model, audience, folder and status)"],
     // doc-lib.mjs is listed because `calls` RUNS renderProgramDoc here — it was covered by
     // other rows' declarations, so nothing red, but a row's modules must name the files ITS
     // own calls execute (F-399).
-    modules: ["scripts/doc-lib.mjs", "scripts/jo-report.mjs", "scripts/relationships-build.mjs"],
+    modules: ["scripts/doc-lib.mjs", "scripts/engagement.mjs", "scripts/jo-report.mjs", "scripts/relationships-build.mjs"],
     calls: [
       { reader: "parseJourneyDoc", mode: "doc", fn: (doc) => parseJourneyDoc(doc, "kb/journey/x.md") },
       { reader: "renderProgramDoc", mode: "object", fn: (p) => renderProgramDoc(p) },
+      { reader: "describedProgram", mode: "object", fn: (p) => describedProgram(p) },
     ],
     fixtures: [
       FX.JOURNEY_PAYLOAD,
@@ -267,9 +323,9 @@ const ENTRIES = [
   },
   {
     command: "jo e template",
-    readers: ["doc-lib.mjs renderTemplateDoc (→ bodyOf, templateTokens, dateOf; template-doc.mjs and describe-batch.mjs call it)"],
+    readers: ["doc-lib.mjs renderTemplateDoc (→ bodyOf, templateTokens, dateOf, readLinkTracking; template-doc.mjs and describe-batch.mjs call it)"],
     modules: ["scripts/doc-lib.mjs"],
-    calls: [{ reader: "renderTemplateDoc", mode: "object", fn: (p) => renderTemplateDoc(p) }],
+    calls: [{ reader: "renderTemplateDoc", mode: "object", fn: (p) => renderTemplateDoc(p, { linkRules: NON_CONTENT_LINK_RULES }) }],
     fixtures: [
       templatePayload(FX.TEMPLATE_MAIN), templatePayload(FX.TEMPLATE_FALLBACK),
       templatePayload(FX.TEMPLATE_VARIANTS, [FX.TEMPLATE_VARIANT_B]), templatePayload(FX.TEMPLATE_TOKENS),
@@ -318,6 +374,39 @@ const ENTRIES = [
     fixtures: [FX.LIST_PAGE_ROWS, FX.LIST_PAGE_TOTALS, FX.LIST_PAGE_PAGEINFO, FX.LIST_PAGE_SIGNALS],
     floor: ["data.pageInfo.totalRecords", "data.pageInfo.pageSize", "data.totalPages", "data.lastPage", "data.nextAvailable", "data.nextPage", "data.pageNumber"],
     note: "Any paginated list capture: the envelope spine (root, data, pageInfo) and the total / page-signal key sets scanListEnvelope recognizes by NAME-SET membership over Object.keys — `recognized` carries the three Sets read off doc-lib's source, every name is asserted present under enumerated, and the rows array a caller names is <itemsPath>.",
+  },
+  {
+    command: "rp run",
+    readers: ["engagement.mjs ROW_READERS — one reader per call family of the jo-engagement adapter (send-log rows by template, account and step; distinct counts; clicked sends and their LinkClickedJson; survey responses; company names; the count-first reads of clicked and bounced attempts; and the health reads: bounced attempts counted in total and per category, a masked sample of their text, a program's send days, failed participants as per-program totals and a masked sample of their reasons, participants by state). reduceEngagement and the fetch-time click stripper read rows through these and nothing else."],
+    modules: ["scripts/engagement.mjs"],
+    calls: Object.entries(ROW_READERS).map(([family, reader]) => ({ reader: `ROW_READERS["${family}"]`, mode: /** @type {"object"} */ ("object"), fn: (rows) => (Array.isArray(rows) ? rows : []).map((row) => reader(row)) })),
+    fixtures: ENG_RP_RUN,
+    floor: [
+      "[].email_log_v2_SourceId.v", "[].summarize_month_of_email_log_v2_ExecutedDate.k", "[].count_of_email_log_v2_Gsid.v", "[].email_log_v2_IsSent.v", "[].email_log_v2_IsOpened.v",
+      "[].company_GsCompanyId__gr_Gsid.v", "[].count_distinct_of_person_Gsid.v", "[].count_distinct_of_company_Gsid.v", "[].email_log_v2_LinkClickedJson.v",
+      "[].ao_participants_AOParticipantId__gr_AdvancedOutreachId.v", "[].summarize_month_of_ao_emails_CreatedAt.k", "[].count_distinct_of_ao_participants_Gsid.v",
+    ],
+    note: "The output is a bare array of rows whose keys are the CLI's column aliases: <object>_<Field> for a group or plain column, summarize_month_of_<object>_<Field> for a month bucket (read by its sortable k), count_of_<object>_Gsid, <target>_<lookup>__gr_<leaf> for a fieldPath group and count_distinct_of_<target>_<leaf> for a fieldPath distinct count. A null group value has no v key, which is why every cell is read with an `in` test. Every reader runs over every family's rows, so a column one family lacks is recorded as named-while-absent rather than missed.",
+  },
+  {
+    command: "rp schema",
+    readers: ["engagement.mjs schemaTypes (field name → data type; the adapter validates every field a query names against it before the query runs, and reads an object with no fields as unavailable)"],
+    modules: ["scripts/engagement.mjs"],
+    calls: [{ reader: "schemaTypes", mode: "object", fn: (p) => schemaTypes(p) }],
+    fixtures: [engAnswer(["--json", "rp", "schema", "--object", "email_log_v2"]), engAnswer(["--json", "rp", "schema", "--object", "no_such_object"])],
+    floor: ["data.fields[].fieldName", "data.fields[].dataType"],
+  },
+  {
+    command: "jo p list",
+    readers: ["engagement.mjs listedPrograms (id, name, the status LIST, model, audience, folder) and listHasMore (the paging envelope)"],
+    modules: ["scripts/engagement.mjs"],
+    calls: [
+      { reader: "listedPrograms", mode: "object", fn: (p) => listedPrograms([p]) },
+      { reader: "listHasMore", mode: "object", fn: (p) => listHasMore(p, 1) },
+    ],
+    fixtures: [engAnswer(["--json", "jo", "p", "list", "--limit", "1000", "--page", "1"])],
+    floor: ["data.advancedOutreaches[].advancedOutreachId", "data.advancedOutreaches[].advancedOutreachName", "data.advancedOutreaches[].advancedOutreachStatus", "data.lastPage", "data.totalPages"],
+    note: "The KB indexer reads this command through the *indexed-list row (tenant-recorded keys). This row is the engagement adapter's direct read of the live list: program names and today's statuses for the snapshot's program dimension.",
   },
 ];
 
@@ -385,6 +474,10 @@ const RULE_OUTS = [
   { file: "scripts/journal.mjs", why: "the guard journal" },
   { file: "scripts/journal-lib.mjs", why: "the guard journal's writer" },
   { file: "scripts/plugin-link.mjs", why: "the SessionStart hook — parses its OWN child's summary (scaffold.mjs check --json, F-396), never tenant output; the child hashes template files and parses no JSON at all" },
+  { file: "scripts/dashboard-spec.mjs", why: "the dashboard spec writer — parses the JSON values of its own --set flags; the files it reads are specs it wrote, never tenant output" },
+  { file: "scripts/dashboard-page.mjs", why: "the dashboard page builder — reads a spec and a snapshot the plugin's own scripts wrote, through their loud readers (openSpec, openSnapshot); never tenant output" },
+  { file: "scripts/dashboard-runtime.mjs", why: "the dashboard page's runtime — parses the page's own embedded data and the viewer's stored column choice; never tenant output" },
+  { file: "scripts/dashboard.mjs", why: "the entry command — parses its own files (the lock, the state, the plan the adapter wrote, the describe-batch and manifest summaries) and the JSON values of its answers; the ONE tenant payload it reads, the company lookup's rp run rows, goes through the adapter's traced account-names reader (ROW_READERS), never a key of its own" },
   { file: "hooks/gs-admin-guard.mjs", why: "hook stdin + the catalog — never tenant output" },
 ];
 const ENUM_RE = /JSON\.parse|parseDocJson|extractFencedJson|parseLiveDepsAreas/;

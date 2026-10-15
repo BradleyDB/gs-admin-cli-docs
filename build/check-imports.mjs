@@ -118,6 +118,20 @@ const RESTRICTED = {
       "the workspace plugin-link writer runs at every plugin session start (hooks.json SessionStart) — " +
       "a local import would widen the syntax-failure surface of the one script every session depends on",
   },
+  "plugins/gs-superadmin/scripts/engagement-query.mjs": {
+    mode: "none",
+    id: "ENG-4",
+    why:
+      "the one aggregation path over an engagement snapshot: every dashboard page carries this file's exact " +
+      "bytes inline and runs them in a browser, where no import resolves — not even a node: builtin",
+  },
+  "plugins/gs-superadmin/scripts/dashboard-runtime.mjs": {
+    mode: "none",
+    id: "DSH-2",
+    why:
+      "the dashboard page's runtime: every page carries this file's exact bytes inline beside the query engine's, " +
+      "and the builder runs the same bytes in Node for the pre-render — the engine reaches it as an argument, never an import",
+  },
   "build/defect-classes.mjs": {
     mode: "none",
     id: "W10",
