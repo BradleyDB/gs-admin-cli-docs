@@ -30,13 +30,16 @@ import { join, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { isDeepStrictEqual } from "node:util";
 import { makeTempDir, removeTempDir, writeFiles, runNode } from "../../../test/rig.mjs";
-import { COSTS, COST_KINDS, ADAPTER_MAPPING, QUESTIONS, CLOSING_ASK, CLOSING_OPTIONS, askText, defaultAnswer, composeAnswer, defaultGroupRules, categoryCostText, changeCost, coveredPath, computeDelta, adapterParams, pullSecondsAfter, loginsFor, LOGIN_SECONDS, EXIT, KEEP_SNAPSHOTS, LOCK_STALE_MS, LOCK_FILE, STATE_FILE, SNAPSHOTS_DIR, PREVIEW_DIR, SUGGESTION_FILE, ACCOUNTS_DIR, PUBLISH_TARGETS_FILE, PUBLISH_DIR } from "../scripts/dashboard.mjs";
+import { COSTS, COST_KINDS, ADAPTER_MAPPING, QUESTIONS, CLOSING_ASK, CLOSING_OPTIONS, askText, defaultAnswer, composeAnswer, defaultGroupRules, categoryCostText, changeCost, coveredPath, computeDelta, adapterParams, pullSecondsAfter, loginsFor, LOGIN_SECONDS, EXIT, KEEP_SNAPSHOTS, LOCK_STALE_MS, LOCK_FILE, STATE_FILE, SNAPSHOTS_DIR, PREVIEW_DIR, SUGGESTION_FILE, ACCOUNTS_DIR, PUBLISH_TARGETS_FILE, PUBLISH_DIR, NATIVE_READ_PATHS } from "../scripts/dashboard.mjs";
 import { resolveGroups, programTraits } from "../scripts/dashboard-groups.mjs";
 import { SPEC_DESCRIPTIONS, defaultSpec, openSpec, DEFAULT_ACCOUNT_LISTS } from "../scripts/dashboard-spec.mjs";
 import { HOW_TO_REFRESH_RULED } from "./fixtures/engagement/ruled-text.mjs";
 import { LACKS, HOW_TO_REFRESH_TEXT } from "../scripts/dashboard-runtime.mjs";
 import { openSnapshot } from "../scripts/engagement-query.mjs";
-import { kbFiles, OWN_SITE_UNSUBSCRIBE, TEMPLATES_DOMAIN } from "./fixtures/engagement/acme-tenant.mjs";
+import { nativePlan, TEST_PREFIX } from "../scripts/dashboard-native.mjs";
+import { makeGate } from "../scripts/engagement.mjs";
+import { kbFiles, OWN_SITE_UNSUBSCRIBE, TEMPLATES_DOMAIN, buildTenant } from "./fixtures/engagement/acme-tenant.mjs";
+import { splitRedirect } from "./fixtures/engagement/shell-words.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, "..", "scripts", "dashboard.mjs");
@@ -349,14 +352,14 @@ try {
   // workspace's publish targets through its one writer, never to the spec; a folder that is not there is refused.
   const copyQ = run("next", [SLUG]);
   const missingFolder = run("answer", [SLUG, "leaders-copy", `folder:${join(ROOT, "no-such-folder")}`]);
-  const asArtifact = run("answer", [SLUG, "leaders-copy", "artifact"]);
+  const asArtifact = run("answer", [SLUG, "leaders-copy", "artifact"]); // not offered since F-526: refused
   const draftArtifact = readJson(draftFile()).spec.publish;
   const toFolder = run("answer", [SLUG, "leaders-copy", composeAnswer(copyQ.json?.question?.options?.[0] ?? { id: "" }, { folder: SHARE })]);
   const targets = existsSync(join(WS, ".gs-superadmin", PUBLISH_TARGETS_FILE)) ? readJson(join(WS, ".gs-superadmin", PUBLISH_TARGETS_FILE)) : null;
   const draftPublish = readJson(draftFile()).spec.publish;
-  check("PUB-3 the leaders' copy question: asked after the expected reasons, the shared folder first (the default: set later), the artifact link and the workspace only beside it, with the cost sentence (viewers pay nothing); a folder given is written to the workspace's publish targets (the machine's), the spec naming only the target and the file; a folder that is not there is refused with nothing written; the artifact answer sets the artifact target with no link yet",
-    copyQ.json?.question?.id === "leaders-copy" && isDeepStrictEqual(copyQ.json.question.options.map((o) => o.id), ["folder:<folder>", "folder-later", "artifact", "none"]) && /Viewers pay nothing either way: the leaders' copy is a file, so opening it runs no query and no session\.$/.test(copyQ.json.question.ask) &&
-      missingFolder.code === 1 && /does not exist or is not a folder/.test(missingFolder.json?.error ?? "") && asArtifact.code === 0 && isDeepStrictEqual(draftArtifact, { target: "claude-artifact", config: { url: null } }) &&
+  check("PUB-3 the leaders' copy question: asked after the expected reasons, the shared folder first (the default: set later), the workspace only beside it (the artifact link withdrawn, F-526), with the cost sentence (viewers pay nothing); a folder given is written to the workspace's publish targets (the machine's), the spec naming only the target and the file; a folder that is not there is refused with nothing written; an artifact answer is refused as no option, writing nothing",
+    copyQ.json?.question?.id === "leaders-copy" && isDeepStrictEqual(copyQ.json.question.options.map((o) => o.id), ["folder:<folder>", "folder-later", "none"]) && /Viewers pay nothing either way: the leaders' copy is a file, so opening it runs no query and no session\.$/.test(copyQ.json.question.ask) &&
+      missingFolder.code === 1 && /does not exist or is not a folder/.test(missingFolder.json?.error ?? "") && asArtifact.code === 1 && draftArtifact.target !== "claude-artifact" &&
       toFolder.code === 0 && toFolder.json.publishTarget?.name === "leaders" && targets?.targets?.leaders?.folder === resolve(SHARE) && isDeepStrictEqual(draftPublish, { target: "file-copy", config: { to: "leaders", file: `${SLUG}-leaders.html`, datedCopies: false, datasets: true } }) && !JSON.stringify(readJson(draftFile()).spec).includes("leaders-share"),
     [copyQ.json?.question?.options, missingFolder.json, draftArtifact, toFolder.json, targets, draftPublish]);
   const callsBeforeClosing = argvLines().length;
@@ -719,11 +722,11 @@ try {
     const pub1 = refresh.json?.publish;
     // Later pulls have published since the first refresh: the folder holds the latest pull's files.
     const latestPulledAt = readJson(join(dash(), SNAPSHOTS_DIR, snapshots().at(-1))).meta.pulledAt;
-    check("PUB-3 file-copy, the default: the save's first refresh copied the leaders' page into the folder this machine maps \"leaders\" to, under the spec's file name, byte for byte the workspace's latest-exec.html; the summary and stderr say where; the tables went beside it as CSV files with a definitions file, each table's rows ending in the pull's time",
+    check("PUB-3 file-copy, the default: the save's first refresh copied the leaders' page into the folder this machine maps \"leaders\" to, under the spec's file name, byte for byte the workspace's latest-exec.html; the summary and stderr say where; the tables went beside it as CSV files with a definitions file, every one named with the dashboard's name first (<dashboard>-<panel>.csv, <dashboard>-definitions.csv: ruled at S7-V), each table's rows ending in the pull's time",
       pub1?.target === "file-copy" && pub1.published === true && pub1.file === shared && existsSync(shared) && readFileSync(shared, "utf8") === pageText("exec") && new RegExp(`the leaders' copy was published: .*${SLUG}-leaders\\.html \\(the same file each time\\)`).test(refresh.stderr) &&
-        existsSync(join(dataDir, "definitions.csv")) && pub1.datasets?.files?.length >= 3 && pub1.datasets.files.every((f) => existsSync(join(dataDir, f))) &&
-        pub1.datasets.files.filter((f) => f !== "definitions.csv").every((f) => { const rows = csvRows(readFileSync(join(dataDir, f), "utf8")); return rows[0].endsWith(",Data pulled") && rows.slice(1).every((r) => r.endsWith(`,${latestPulledAt}`)); }) &&
-        csvRows(readFileSync(join(dataDir, "definitions.csv"), "utf8"))[1].startsWith(`pulled,Data pulled,${latestPulledAt}`),
+        existsSync(join(dataDir, `${SLUG}-definitions.csv`)) && pub1.datasets?.files?.length >= 3 && pub1.datasets.files.every((f) => existsSync(join(dataDir, f)) && f.startsWith(`${SLUG}-`)) &&
+        pub1.datasets.files.filter((f) => f !== `${SLUG}-definitions.csv`).every((f) => { const rows = csvRows(readFileSync(join(dataDir, f), "utf8")); return rows[0].endsWith(",Data pulled") && rows.slice(1).every((r) => r.endsWith(`,${latestPulledAt}`)); }) &&
+        csvRows(readFileSync(join(dataDir, `${SLUG}-definitions.csv`), "utf8"))[1].startsWith(`pulled,Data pulled,${latestPulledAt}`),
       [pub1, refresh.stderr.split("\n").filter((l) => l.includes("leaders' copy"))]);
     // The same name, every time: a second pull overwrites it, and nothing else appears in the folder.
     const before = readdirSync(SHARE).sort();
@@ -752,6 +755,23 @@ try {
         pageText("admin") === pagesBefore.admin && pageText("exec") === pagesBefore.exec && !readdirSync(SHARE).some((f) => f.includes(".tmp-")) && /the leaders' copy: .*failed/.test(failed.stderr),
       [failed.json?.publish, readdirSync(SHARE)]);
     rmSync(shared, { recursive: true, force: true });
+    // F-527: a copy that fails AFTER the page was copied (a dataset CSV that cannot be replaced: a folder stands in for
+    // a file a spreadsheet holds open) is not a publish: the flag is false, `partial` names what this publish replaced
+    // and what still holds the previous one, the exit stays 0 (ruled), and the line to run again is in `why`.
+    run("publish", [SLUG]);
+    const dataFiles = readdirSync(dataDir).filter((f) => f.endsWith(".csv")).sort();
+    const order = (run("publish", [SLUG]).json?.publish?.datasets?.files ?? []);
+    const blocked = order[1];
+    rmSync(join(dataDir, blocked), { force: true });
+    mkdirSync(join(dataDir, blocked));
+    const half = run("publish", [SLUG]);
+    const hp = half.json?.publish ?? {};
+    const notReplacedNames = (hp.partial?.notReplaced ?? []).map((f) => f.split(/[\\/]/).pop());
+    check("F-527 a copy that fails after the page was copied reads published: false with a partial state: the page and the data files before the failing one are listed as replaced, the failing one and every one after it as not replaced (they hold the previous publish), the Leaders line's why says the copy is not whole and names them; exit 0, no temporary file left",
+      half.code === 0 && hp.published === false && hp.partial?.replaced?.[0] === shared && hp.partial.replaced.length === 2 && notReplacedNames[0] === blocked && isDeepStrictEqual(notReplacedNames, order.slice(1)) &&
+        /^the copy is not whole: 2 of \d+ files were replaced/.test(hp.why ?? "") && hp.why.includes(blocked) && /dashboard\.mjs publish acme-health --kb acme-prod/.test(hp.why) && !readdirSync(dataDir).some((f) => f.includes(".tmp-")) && dataFiles.length === order.length,
+      [hp, order, dataFiles]);
+    rmSync(join(dataDir, blocked), { recursive: true, force: true });
     // The manual publish (R8): the pages as they stand, no call.
     const callsBeforePublish = argvLines().length;
     const manual = run("publish", [SLUG]);
@@ -774,11 +794,18 @@ try {
     const malformed = run("publish", [SLUG]);
     writeFileSync(targetsFile, savedTargets);
     // A data file of a panel removed since is pruned, in the workspace and in the shared folder.
-    for (const d of [dataDir, join(dash(), "latest-exec-data")]) writeFileSync(join(d, "a-removed-panel.csv"), "old");
+    // S7's unprefixed names are stale since the prefix ruling: a folder published before it holds them, and they go too.
+    for (const d of [dataDir, join(dash(), "latest-exec-data")]) for (const old of ["a-removed-panel.csv", "definitions.csv", "headline.csv"]) writeFileSync(join(d, old), "old");
     const pruned = run("publish", [SLUG]);
-    check("PUB-3 a publish never refuses: a malformed publish-targets file is said (exit 0, not published, the pages untouched); and a data file no panel writes any more is removed from both data folders on the next publish",
+    // A stale data file that cannot be removed (a folder stands in for a locked file) leaves the copy whole: published, said.
+    mkdirSync(join(dataDir, "stuck.csv", "inner"), { recursive: true });
+    const stuck = run("publish", [SLUG]);
+    rmSync(join(dataDir, "stuck.csv"), { recursive: true, force: true });
+    check("PUB-3 when only the pruning of a stale data file fails, the copy is whole: published true, and the summary says the stale file could not be removed (the review's finding: never 'not whole' with nothing not replaced)",
+      stuck.code === 0 && stuck.json.publish?.published === true && stuck.json.publish.partial === null && /the copy is whole, but a data file no panel writes any more could not be removed/.test(stuck.json.publish.why ?? ""), stuck.json?.publish);
+    check("PUB-3 a publish never refuses: a malformed publish-targets file is said (exit 0, not published, the pages untouched); and a data file no panel writes any more, S7's unprefixed names among them, is removed from both data folders on the next publish",
       malformed.code === 0 && malformed.json.publish?.published === false && /could not be published/.test(malformed.json.publish.why ?? "") &&
-        pruned.code === 0 && pruned.json.publish?.published === true && !existsSync(join(dataDir, "a-removed-panel.csv")) && !existsSync(join(dash(), "latest-exec-data", "a-removed-panel.csv")) && existsSync(join(dataDir, "definitions.csv")), [malformed.json, pruned.json?.publish]);
+        pruned.code === 0 && pruned.json.publish?.published === true && ["a-removed-panel.csv", "definitions.csv", "headline.csv"].every((old) => !existsSync(join(dataDir, old)) && !existsSync(join(dash(), "latest-exec-data", old))) && existsSync(join(dataDir, `${SLUG}-definitions.csv`)), [malformed.json, pruned.json?.publish]);
     check("PUB-3 with no folder set for the target on this machine, nothing is copied and the summary says why, with the line that sets one (publish-target leaders <folder>) as its remedy",
       noTarget.code === 0 && unmapped.code === 0 && unmapped.json.publish?.published === false && /no folder is set for the publish target "leaders" on this computer/.test(unmapped.json.publish.why) && unmapped.json.publish.remedy?.line === "node .gs-superadmin/plugin/scripts/dashboard.mjs publish-target leaders <folder> --kb acme-prod", unmapped.json?.publish);
     const listed = run("publish-target", []);
@@ -797,6 +824,94 @@ try {
     const backToFolder = run("change", [SLUG, `publish=${JSON.stringify({ target: "file-copy", config: { to: "leaders", file: `${SLUG}-leaders.html`, datedCopies: false, datasets: true } })}`]);
     check("PUB-3 the artifact's link, once recorded, is what the next publish updates; and the target goes back to the shared folder the same way (each a rebuild, no pull)",
       withUrl.code === 0 && withUrl.json.done?.publish?.url === "https://claude.ai/artifact/AbCdEf123456" && backToFolder.code === 0 && backToFolder.json.done?.publish?.published === true, [withUrl.json?.done, backToFolder.json?.done]);
+  }
+
+  // ══ NAT-1 / NAT-2: native Gainsight reports, planned, created by "the user", recorded, read back ══
+  {
+    // The user's approved command, as the shell runs it from the workspace folder: the CLI (the stand-in here) with the
+    // line's words, its output to the line's file. Never through the entry command: no script runs a create.
+    const issue = (line) => {
+      const { argv, file } = splitRedirect(line);
+      const r = runNode(FAKE, argv.slice(1), { cwd: WS, env: { ...process.env, FAKE_STATE: STATE, FAKE_TENANT: JSON.stringify(TENANT) } });
+      mkdirSync(dirname(join(WS, String(file))), { recursive: true });
+      writeFileSync(join(WS, String(file)), r.stdout);
+      return r.status;
+    };
+    const rpVerbs = (lines) => lines.map((l) => l.split(" ").filter((t) => !t.startsWith("--"))).filter((t) => t[0] === "rp" || t[0] === "whoami").map((t) => (t[0] === "rp" ? `rp ${t[1]}` : "whoami"));
+    const before = argvLines().length;
+    const plan = run("native-plan", [SLUG, "--test-prefix"]);
+    const planCalls = rpVerbs(argvLines().slice(before));
+    const saved = openSpec(readJson(specFile()));
+    const expected = nativePlan(saved, { prefix: TEST_PREFIX, schema: buildTenant(TENANT).schemas.email_log_v2 });
+    const toIssue = (plan.json?.reports ?? []).filter((r) => r.command);
+    check("NAT-1 native-plan makes one whoami and one rp schema read and nothing else (no create, no update: it prints the lines, never runs them); its summary is the module's plan over the saved spec and the tenant's schema (the same verdicts, actions and counts), every create line `gs-admin --json rp create` with a ZZ|TEST| name and its output to a file beside the dashboard; the plan file written; every panel left out says why",
+      plan.code === 0 && plan.json.schemaChecked === true && isDeepStrictEqual(planCalls, ["whoami", "rp schema"]) &&
+        isDeepStrictEqual(plan.json.counts, expected.counts) && isDeepStrictEqual(plan.json.reports.map((r) => [r.panel, r.status, r.action]), expected.entries.filter((e) => e.payload).map((e) => [e.key, e.status, e.action])) &&
+        toIssue.length === expected.counts.create && toIssue.length > 0 && toIssue.every((r) => r.command.startsWith(`gs-admin --json rp create --name 'ZZ|TEST|`) && r.command.includes(` > acme-prod/dashboards/${SLUG}/native/`)) && existsSync(plan.json.planFile) && plan.json.notNative.length > 0 && plan.json.notNative.every((n) => n.why.length > 20),
+      [plan.json?.error ?? plan.stderr?.slice(-400), planCalls, plan.json?.counts, expected.counts]);
+    // Recording before the create ran is refused (nothing to find by its name); so is recording over a draft in progress.
+    const early = run("native-record", [SLUG, "--panel", toIssue[0]?.panel ?? "x"]);
+    writeFileSync(draftFile(), JSON.stringify({ kind: "dashboard-spec-draft", spec: readJson(specFile()), answered: [], startedAt: "2026-09-15T09:00:00.000Z", updatedAt: "2026-09-15T09:00:00.000Z", by: "ana" }));
+    const overDraft = run("native-record", [SLUG, "--panel", toIssue[0]?.panel ?? "x"]);
+    rmSync(draftFile(), { force: true });
+    check("NAT-2 native-record before its create line ran is refused (the report is not found by its exact name) and records nothing; over a draft in progress it is refused, so recording never saves someone's unfinished edit",
+      early.code === 1 && /was not found by its exact name: did its create line run and succeed\?/.test(early.json?.error ?? "") && openSpec(readJson(specFile())).native.reports.length === 0 &&
+        overDraft.code === 1 && /has a draft in progress/.test(overDraft.json?.error ?? ""), [early.json, overDraft.json]);
+    // The user issues each line (its own command, behind the guard's ask in a session), then records it.
+    const mark = argvLines().length;
+    const results = toIssue.map((r) => ({ r, code: issue(r.command), rec: null }));
+    for (const x of results) x.rec = run("native-record", [SLUG, "--panel", x.r.panel]);
+    const calls = rpVerbs(argvLines().slice(mark));
+    const recorded = openSpec(readJson(specFile())).native.reports;
+    const sharedKeys = (plan.json?.reports ?? []).filter((r) => r.action === "shared");
+    check("NAT-2 each create line, issued as its own command, saves a report; native-record reads its id back by its exact name (one whoami and one rp describe each, never a create) and records it through the spec writer with its fingerprint, and the panels that share it under the same id",
+      results.every((x) => x.code === 0 && x.rec.code === 0 && /^rpt-\d{4}$/.test(x.rec.json.reportId)) && calls.filter((c) => c === "rp create").length === toIssue.length && calls.filter((c) => c === "rp describe").length === toIssue.length && !calls.includes("rp update") &&
+        recorded.length === toIssue.length + sharedKeys.length && recorded.every((x) => /^[0-9a-f]{8}$/.test(x.planHash) && x.name.startsWith(TEST_PREFIX)) && sharedKeys.every((s) => recorded.find((x) => x.panel === s.panel)?.reportId === recorded.find((x) => x.panel === s.sameAs)?.reportId),
+      [results.map((x) => [x.r.panel, x.code, x.rec.json?.error]), calls, recorded.length]);
+    // A panel sharing an existing report but not recorded under its own key (added after the report was made): the
+    // plan marks it unrecorded and native-record records it under that report's id, with no command to run.
+    const firstShared = sharedKeys[0];
+    run("change", [SLUG, `native.reports=${JSON.stringify(recorded.filter((x) => x.panel !== firstShared?.panel))}`]);
+    const gap = run("native-plan", [SLUG, "--test-prefix"]);
+    const gapEntry = (gap.json?.reports ?? []).find((r) => r.panel === firstShared?.panel);
+    const createsBefore = argvLines().filter((l) => / rp create /.test(` ${l} `)).length;
+    const filled = run("native-record", [SLUG, "--panel", firstShared?.panel ?? "x"]);
+    check("NAT-2 a shared panel with no record of its own is marked unrecorded by the plan (no command printed), and native-record records it under the report it shares — read by id, never a create",
+      !!firstShared && gapEntry?.action === "shared" && gapEntry.unrecorded === true && !gapEntry.command && filled.code === 0 && filled.json.reportId === recorded.find((x) => x.panel === firstShared.sameAs)?.reportId &&
+        openSpec(readJson(specFile())).native.reports.some((x) => x.panel === firstShared.panel) && argvLines().filter((l) => / rp create /.test(` ${l} `)).length === createsBefore,
+      [gapEntry, filled.json]);
+    const again = run("native-plan", [SLUG, "--test-prefix"]);
+    check("NAT-2 a re-run skips every report already created: nothing to create or update, every report unchanged or shared, no line printed, nothing to clean up",
+      again.code === 0 && again.json.counts.create === 0 && again.json.counts.update === 0 && again.json.reports.every((r) => !r.command && ["unchanged", "shared"].includes(r.action)) && again.json.cleanup.length === 0, again.json?.counts);
+    const verify = run("native-verify", [SLUG]);
+    check("NAT-2 native-verify reads every recorded report back through rp run-saved (a report two panels share once): rows keyed by column label, every planned column there, and each report's UI columns named as still to be added",
+      verify.code === 0 && verify.json.ok === true && verify.json.reports.length === toIssue.length && verify.json.reports.every((x) => x.ok && x.rows > 0 && x.missing.length === 0 && existsSync(x.file)) &&
+        isDeepStrictEqual(verify.json.uiPending.map((x) => x.panel).sort(), expected.entries.filter((e) => e.action === "create" && e.uiColumns.length).map((e) => e.key).sort()), verify.json);
+    // A changed panel: the plan says update, with its warning; recording before the update ran, or after the dashboard
+    // moved again since the plan, is refused; after the update line ran, it records the new name and fingerprint.
+    run("change", [SLUG, `pages.0.title=${JSON.stringify("Admin team")}`]);
+    const changed = run("native-plan", [SLUG, "--test-prefix"]);
+    const updates = (changed.json?.reports ?? []).filter((r) => r.action === "update");
+    const beforeUpdate = run("native-record", [SLUG, "--panel", updates[0]?.panel ?? "x"]);
+    run("change", [SLUG, `pages.0.title=${JSON.stringify("Admin crew")}`]);
+    const moved = run("native-record", [SLUG, "--panel", updates[0]?.panel ?? "x"]);
+    run("change", [SLUG, `pages.0.title=${JSON.stringify("Admin team")}`]);
+    const updatedCode = issue(updates[0]?.command ?? "x > y");
+    const afterUpdate = run("native-record", [SLUG, "--panel", updates[0]?.panel ?? "x"]);
+    check("NAT-2 a changed panel (the page's title, in each report's name) plans an update of each of that page's reports by its recorded id (the other page's stay unchanged), with the warning that the UI's columns go; recording before the update line ran is refused (the report still has its old name), and so is recording after the dashboard moved again since the plan; once the line ran, the record keeps the id with the new name",
+      changed.code === 0 && updates.length > 0 && isDeepStrictEqual(updates.map((r) => r.panel), toIssue.filter((r) => r.panel.startsWith(`${saved.pages[0].id}/`)).map((r) => r.panel)) && changed.json.reports.filter((r) => !r.panel.startsWith(`${saved.pages[0].id}/`) && r.action !== "shared").every((r) => r.action === "unchanged") && updates.every((r) => r.command.startsWith("gs-admin --json rp update --id rpt-") && /--new-name 'ZZ\|TEST\|[^']* - Admin team - /.test(r.command) && /calculated and formula columns added in the UI go/.test(r.warning)) &&
+        beforeUpdate.code === 1 && /still has the name/.test(beforeUpdate.json?.error ?? "") && moved.code === 1 && /changed since the plan was made/.test(moved.json?.error ?? "") &&
+        updatedCode === 0 && afterUpdate.code === 0 && afterUpdate.json.reportId === recorded.find((x) => x.panel === updates[0].panel)?.reportId && / - Admin team - /.test(openSpec(readJson(specFile())).native.reports.find((x) => x.panel === updates[0].panel)?.name ?? ""),
+      [changed.json?.counts, beforeUpdate.json?.error, moved.json?.error, updatedCode, afterUpdate.json]);
+    const blind = run("native-plan", [SLUG, "--test-prefix", "--no-schema"]);
+    const blindRecord = run("native-record", [SLUG, "--panel", (blind.json?.reports ?? []).find((r) => r.action === "update")?.panel ?? "x"]);
+    check("NAT-2 a plan made with --no-schema (no login needed) says it is for reading only, and recording from it is refused",
+      blind.code === 0 && blind.json.schemaChecked === false && /for reading only/.test(blind.json.next) && blindRecord.code === 1 && /made without the tenant's schema/.test(blindRecord.json?.error ?? ""), [blind.json?.next, blindRecord.json?.error]);
+    // The gate: the native verbs' reads, and nothing else — a catalogued-mutating command is refused before any spawn.
+    const catalog = JSON.parse(readFileSync(join(HERE, "..", "reference", "catalog.json"), "utf8"));
+    const gate = makeGate({ catalog, hooksDir: join(HERE, "..", "hooks"), readPaths: NATIVE_READ_PATHS });
+    check("NAT-2 the native verbs' gate lets through whoami, rp schema, rp describe and rp run-saved, and refuses rp create and rp update as MUTATING (and a read it does not list), so no native verb can spawn a write",
+      ["whoami", "--json rp schema --object email_log_v2", "--json rp describe --name x", "--json rp run-saved --id x"].every((l) => gate(l.split(" ")) === null) && /MUTATING/.test(gate(["--json", "rp", "create", "--name", "x"]) ?? "") && /MUTATING/.test(gate(["--json", "rp", "update", "--id", "x"]) ?? "") && gate(["--json", "jo", "p", "list"]) !== null);
   }
 
   // ══ Retention; the fast path (F-512); refusals ════════════════════════════
@@ -832,6 +947,20 @@ try {
   check("the `questions` verb: every row with its ask and options as a reader sees them (the ruled letters where a figure comes from the plan), the defaults, and the closing step beside its three rows; `costs` the cost table",
     questionsVerb.code === 0 && questionsVerb.json.questions.length === QUESTIONS.length && questionsVerb.json.questions.find((x) => x.id === "window").ask.includes("about M minutes for each month covered") && questionsVerb.json.questions.find((x) => x.id === "programs").default === "sent-90d" && questionsVerb.json.questions.find((x) => x.id === "grouping").default === "(from the plan)" &&
       questionsVerb.json.questions.find((x) => x.id === "tabs").options[1].followUps.length === 4 && isDeepStrictEqual(questionsVerb.json.closing.rows, ["dry-run", "estimate", "save"]) && /your login has about T minutes left/.test(questionsVerb.json.closing.ask) && run("costs", []).json?.costs?.title === "rebuild", questionsVerb.json?.questions?.map((x) => x.id));
+  // F-526: the claude.ai artifact target is not offered while backlog LTR-23 stands (ruled at S7-V): no question's ask
+  // or option offers it, an answer that names it is refused, and neither the README's dashboard section nor the skill
+  // states an artifact publish as one short session. T-11 keeps the value (the runner's checks above still drive it).
+  {
+    const readme = readFileSync(join(HERE, "..", "README.md"), "utf8");
+    const dashboardSection = readme.slice(readme.indexOf("### The engagement dashboard"), readme.indexOf("## Tenant-wide dependency search"));
+    const skill = readFileSync(join(HERE, "..", "skills", "email-engagement", "SKILL.md"), "utf8");
+    const offered = (questionsVerb.json?.questions ?? []).filter((x) => /artifact/i.test(JSON.stringify([x.ask, x.options]))).map((x) => x.id);
+    const named = run("answer", ["quick", "leaders-copy", "artifact"]);
+    check("F-526 the artifact offer is withdrawn: no question of the interview offers a claude.ai artifact in its ask or its options, an answer naming it is refused as no option, the README's dashboard section has no artifact recipe, and no shipped prose (README, skill, the spec's About sentence) prices an artifact publish as one short session; the skill's step L2 says it is not offered",
+      questionsVerb.code === 0 && offered.length === 0 && named.code === 1 && /"artifact" is not one of the options: folder:<folder>, folder-later, none/.test(named.json?.error ?? "") && dashboardSection.length > 1000 && !/artifact/i.test(dashboardSection) &&
+        ![readme, skill, readFileSync(join(HERE, "..", "scripts", "dashboard-spec.mjs"), "utf8"), readFileSync(SCRIPT, "utf8")].some((t) => /one short (Claude )?session/i.test(t)) && /### L2 — Publish the artifact \(not offered/.test(skill),
+      { offered, named: named.json?.error, section: dashboardSection.match(/.{0,80}artifact.{0,80}/i)?.[0] });
+  }
   check("refusals: an unknown verb, a missing slug, a refresh of a draft, an unknown question (purpose, dropped, among them), and a workspace with no KB each exit 1 with one line",
     run("frobnicate", []).code === 1 && run("status", []).code === 1 && run("refresh", ["quick"]).code === 1 && /is a draft, not a saved dashboard/.test(run("refresh", ["quick"]).json?.error ?? "") && run("answer", [SLUG, "nope", "x"]).code === 1 && /no question is called "purpose"/.test(run("answer", ["quick", "purpose", "x"]).json?.error ?? "") && run("list", [], { flags: ["--workspace", join(ROOT, "nowhere"), "--bin", FAKE] }).code === 1);
   check("the summaries carry counts and verdicts, never rows: no account name and no message text reaches stdout from a refresh", !JSON.stringify(resumed.json).includes("Acme Customer") && JSON.stringify(resumed.json).length < 12000);

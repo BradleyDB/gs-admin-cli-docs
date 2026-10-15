@@ -11,7 +11,8 @@
 // directory's, the knowledge base's docs and manifest the describe-batch and
 // manifest scripts' (spawned, as every skill spawns them: they have no other
 // front door). What this file owns, and writes atomically: the snapshots, the
-// pages, the refresh lock and its resumable state, the interview's preview.
+// pages, the refresh lock and its resumable state, the interview's preview, the
+// native-report plan and its read-backs. It never runs a mutating command.
 //
 // Verbs (each prints ONE JSON summary; exit codes below):
 //   new <slug> [--fast-path] [--title <t>] [--owner <o>]
@@ -62,6 +63,18 @@
 //                        look, reconciled against its latest snapshot; a name
 //                        matching several accounts, or none exactly, is a pick
 //                        list (exit 6) and pulls nothing
+//   native-plan <slug> [--test-prefix] [--no-schema]
+//                        NAT-1: which panels a Gainsight report can carry (the
+//                        tenant's schema read first) and the exact rp create /
+//                        rp update line for each — PRINTED, never run: the
+//                        skill issues each as its own command so the guard asks;
+//                        the plan written to native/plan.json
+//   native-record <slug> --panel <page id>/<panel id>
+//                        NAT-2: after a planned line ran, the report's id read
+//                        back (rp describe) and recorded through the spec writer
+//   native-verify <slug> [--panel <page id>/<panel id>]
+//                        NAT-2: each recorded report read back (rp run-saved)
+//                        against its plan; the UI columns still to add
 //   costs | questions    the two tables, as data, for a reader (the asks and
 //                        options with the ruled placeholder letters where a
 //                        figure comes from the plan)
@@ -102,7 +115,7 @@
 // Zero dependencies — Node built-ins only.
 // ─────────────────────────────────────────────────────────────────────────────
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, unlinkSync, copyFileSync } from "node:fs";
-import { basename, dirname, isAbsolute, join, resolve } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -119,6 +132,7 @@ import {
 import { applyGroups, programTraitsOf, suggestionTable } from "./dashboard-groups.mjs";
 import { buildPage, buildTimelinePage, inlinedSources, pageFileName, buildDatasets, datasetsDirName, artifactContentOf } from "./dashboard-page.mjs";
 import { COPY_LINES, ENTRY_COMMAND, HOW_TO_REFRESH_TEXT } from "./dashboard-runtime.mjs";
+import { nativePlan, commandLine, describedReportId, readBack, dashboardSteps, NATIVE_OBJECT, TEST_PREFIX } from "./dashboard-native.mjs";
 import { writeReport, ReportRefusal } from "./engagement-report.mjs";
 import * as engine from "./engagement-query.mjs";
 import { validateTheme, readLogo, LOGO_MAX_BYTES } from "./dashboard-theme.mjs";
@@ -694,17 +708,19 @@ export const QUESTIONS = Object.freeze([
       return { sets: [["sources.0.params.expectedReasons", listValue(typeof s === "string" && s.startsWith("add:") ? s.slice(4).trim() : s)]] };
     },
   },
-  // Where the leaders' copy goes (PUB-3/PUB-4, ruled 2026-10-13 at X1: a synced shared folder by default; a claude.ai
-  // artifact the second target). The folder is the MACHINE's (ruled 2026-10-14): an answer with a folder writes the
-  // workspace's publish-targets file through its one writer, never the spec. The fast path keeps the shared-folder
-  // target with no folder yet, and every refresh then says so with the line that sets one.
+  // Where the leaders' copy goes (PUB-3/PUB-4, ruled 2026-10-13 at X1: a synced shared folder by default). The folder
+  // is the MACHINE's (ruled 2026-10-14): an answer with a folder writes the workspace's publish-targets file through
+  // its one writer, never the spec. The fast path keeps the shared-folder target with no folder yet, and every refresh
+  // then says so with the line that sets one. The claude.ai artifact target is NOT offered (ruled 2026-10-14 at S7-V,
+  // F-526: a real leaders' page is far more than one turn of a Claude session can read, and the Artifact tool reads a
+  // file whole before publishing it, so every publish takes several turns); T-11 keeps the value and the runner its
+  // code (backlog LTR-23), so a dashboard already set to it still publishes through the skill's step L2.
   {
     id: "leaders-copy", kind: "choice", path: "publish.target", judgment: false, default: "folder-later",
-    ask: "Where should the leaders' page go after each refresh? By default the refresh copies it into a shared folder you name, such as a OneDrive, SharePoint or network folder synced to this computer, overwriting the same file every time, so a leader bookmarks one file or the folder once; its tables go beside it as CSV files. A refresh that fails or stops copies nothing and leaves the last copy where it was. The folder is kept on this computer only, never in the dashboard, so an exported dashboard carries no path. You can instead publish it as a claude.ai artifact: a private link that people in your organization open with their Claude account, published by Claude in one short session after each refresh, where a filtered view cannot be bookmarked. Or keep it in the workspace only. Viewers pay nothing either way: the leaders' copy is a file, so opening it runs no query and no session.",
+    ask: "Where should the leaders' page go after each refresh? By default the refresh copies it into a shared folder you name, such as a OneDrive, SharePoint or network folder synced to this computer, overwriting the same file every time, so a leader bookmarks one file or the folder once; its tables go beside it as CSV files. A refresh that fails or stops copies nothing and leaves the last copy where it was. The folder is kept on this computer only, never in the dashboard, so an exported dashboard carries no path. Or keep it in the workspace only. Viewers pay nothing either way: the leaders' copy is a file, so opening it runs no query and no session.",
     options: () => [
       { id: "folder:<folder>", text: "A shared folder: give it now", followUps: [{ key: "folder", kind: "text", ask: "The folder's full path on this computer (it must exist)." }] },
       { id: "folder-later", text: "A shared folder, set later (the default)" },
-      { id: "artifact", text: "A claude.ai artifact link" },
       { id: "none", text: "The workspace only" },
     ],
     apply: (v, ctx) => {
@@ -712,10 +728,9 @@ export const QUESTIONS = Object.freeze([
       const folderCopy = defaultPublish(ctx.spec.slug);
       const keep = ctx.spec.publish.target === "file-copy" ? ctx.spec.publish : folderCopy;
       if (s === "none") return { sets: [["publish", { target: "none", config: {} }]] };
-      if (s === "artifact") return { sets: [["publish", { target: "claude-artifact", config: { url: ctx.spec.publish.target === "claude-artifact" ? ctx.spec.publish.config.url : null } }]] };
       if (s === "folder-later") return { sets: [["publish", keep]], notes: [`the leaders' copy goes to the shared folder named "${keep.config.to}" once this computer has one: ${ENTRY_COMMAND} publish-target ${keep.config.to} <folder>${ctx.kb ? ` --kb ${ctx.kb}` : ""}`] };
       if (s.startsWith("folder:")) return { sets: [["publish", keep]], publishTarget: { name: keep.config.to, folder: s.slice(7).trim() } };
-      return refuse(`leaders-copy: answer folder:<folder>, folder-later, artifact or none (got "${printable(s, 40)}")`);
+      return refuse(`leaders-copy: answer folder:<folder>, folder-later or none (got "${printable(s, 40)}")`);
     },
   },
   // The closing step (ruling 19): three action rows the script keeps, which the skill presents as ONE step from the
@@ -774,9 +789,11 @@ function openContext(argv, opt) {
     return transport;
   };
   const gate = makeGate({ catalog, hooksDir: join(here, "..", "hooks") });
+  // The native-report verbs' reads (NAT-2): their own command set, every create and update refused (A-5).
+  const nativeGate = makeGate({ catalog, hooksDir: join(here, "..", "hooks"), readPaths: NATIVE_READ_PATHS, shapeNoun: "one of the native-report verbs' reads", runsNoun: "read-only calls only (a report is created or updated by its own visible command, which the guard asks about)" });
   const identity = readKbIdentity(kbDir, []);
   return {
-    wsDir, kbDir, store, catalog, today, todayGiven: opt("--today") !== undefined, nowMs, pluginVersion, binOpt, gate, live, identity,
+    wsDir, kbDir, store, catalog, today, todayGiven: opt("--today") !== undefined, nowMs, pluginVersion, binOpt, gate, nativeGate, live, identity,
     by: holderName(opt("--by") ?? null), takeOver: argv.includes("--take-over"),
     log: (line) => console.error(`dashboard.mjs: ${line}`),
   };
@@ -1081,7 +1098,7 @@ function publishLeadersOrThrow(ctx, { spec, snapshot }) {
     writeFileAtomicSync(file, artifactContentOf(readFileSync(local, "utf8")));
     const url = pub.config.url ?? null;
     ctx.log(`the leaders' page is ready to publish as a claude.ai artifact: ${file} (/gs-superadmin:email-engagement publishes it${url ? ` to ${url}` : ""})`);
-    return { target: "claude-artifact", published: false, ready: true, file, url, title: `${spec.title} · ${page.title}`, capabilities: { downloads: true }, next: `Claude publishes this file as a claude.ai artifact (one short session): /gs-superadmin:email-engagement publish ${spec.slug}${url ? `; it updates ${url}` : "; record the new link afterwards with " + entryLine(ctx, "change", spec.slug, `'publish.config.url="<link>"'`)}` };
+    return { target: "claude-artifact", published: false, ready: true, file, url, title: `${spec.title} · ${page.title}`, capabilities: { downloads: true }, next: `Claude publishes this file as a claude.ai artifact (a target no longer offered: the Artifact tool reads the whole file first, several turns at a real page's size): /gs-superadmin:email-engagement publish ${spec.slug}${url ? `; it updates ${url}` : "; record the new link afterwards with " + entryLine(ctx, "change", spec.slug, `'publish.config.url="<link>"'`)}` };
   }
   // file-copy
   const c = pub.config;
@@ -1110,25 +1127,166 @@ function publishLeadersOrThrow(ctx, { spec, snapshot }) {
     pruneDataFolder(localData, files.map((f) => f.name));
     datasets = { local: localData, files: files.map((f) => f.name) };
   }
-  const out = { target: "file-copy", to: c.to, folder, file: join(folder, c.file), published: false, dated: null, datasets: null, why: null };
+  // `published` is true only when the WHOLE copy was replaced: the page, the dated copy and every data file (F-527).
+  // A copy that fails part-way says what this publish replaced and what it did not (`partial`), the exit staying 0.
+  const destData = datasets ? join(folder, datasetsDirName(c.file)) : null;
+  const datedName = c.datedCopies ? c.file.replace(/\.html$/i, `-${String(snapshot.meta.pulledAt).slice(0, 10)}.html`) : null;
+  const planned = [join(folder, c.file), ...(datedName ? [join(folder, datedName)] : []), ...(datasets ? datasets.files.map((name) => join(destData, name)) : [])];
+  const replaced = [];
+  const out = { target: "file-copy", to: c.to, folder, file: join(folder, c.file), published: false, partial: null, dated: null, datasets: null, why: null };
   try {
-    copyInto(local, folder, c.file);
-    out.published = true;
-    if (c.datedCopies) out.dated = copyInto(local, folder, c.file.replace(/\.html$/i, `-${String(snapshot.meta.pulledAt).slice(0, 10)}.html`));
-    if (datasets) {
-      const destData = join(folder, datasetsDirName(c.file));
+    replaced.push(copyInto(local, folder, c.file));
+    if (datedName) replaced.push((out.dated = copyInto(local, folder, datedName)));
+    if (datasets && destData) {
       mkdirSync(destData, { recursive: true });
-      for (const name of datasets.files) copyInto(join(datasets.local, name), destData, name);
-      pruneDataFolder(destData, datasets.files);
+      for (const name of datasets.files) replaced.push(copyInto(join(datasets.local, name), destData, name));
       out.datasets = { folder: destData, files: datasets.files };
     }
+    out.published = true;
   } catch (e) {
-    out.why = `${out.published ? "the page was copied, but " : ""}a copy into ${folder} failed (${copyFault(e)}): a file locked by the sync client, or the folder moved; the pages in the workspace are untouched — run \`${entryLine(ctx, "publish", spec.slug)}\` to try again`;
+    const notReplaced = planned.filter((f) => !replaced.includes(f));
+    if (replaced.length) out.partial = { replaced, notReplaced };
+    out.why = `${replaced.length ? `the copy is not whole: ${replaced.length} of ${planned.length} files were replaced and ${notReplaced.length} still hold the previous publish (${notReplaced.map((f) => basename(f)).join(", ")}), because ` : ""}a copy into ${folder} failed (${copyFault(e)}): a file locked by the sync client, or the folder moved; the pages in the workspace are untouched — run \`${entryLine(ctx, "publish", spec.slug)}\` to try again`;
     ctx.log(`the leaders' copy: ${out.why}`);
     return out;
   }
+  // Pruning a stale data file comes after the copy is whole: one that cannot be removed leaves the copy whole and is said.
+  if (datasets && destData) {
+    try { pruneDataFolder(destData, datasets.files); } catch (e) { out.why = `the copy is whole, but a data file no panel writes any more could not be removed from ${destData} (${copyFault(e)}): it is stale; remove it by hand`; ctx.log(`the leaders' copy: ${out.why}`); }
+  }
   ctx.log(`the leaders' copy was published: ${out.file} (the same file each time)${out.dated ? `, and ${out.dated}` : ""}${out.datasets ? `, with ${out.datasets.files.length} CSV files in ${out.datasets.folder}` : ""}`);
   return out;
+}
+// ── Native Gainsight reports (NAT-1, NAT-2; S8) ─────────────────────────────
+// The plan (which panels a Gainsight report can carry, and the exact line for each) is dashboard-native.mjs's, pure.
+// These verbs own its files and make its READS only: the tenant's schema, a saved report by name or id, a saved
+// report's rows. The lines that create or update a report are printed, NEVER run: the skill issues each one as its
+// own visible command, so the mutation guard asks (house rule 4; tenets 1 and 3), and the gate below refuses any
+// command outside NATIVE_READ_PATHS, a catalogued-mutating one first (A-5). The CLI cannot delete a report: what no
+// panel plans any more is listed for the UI.
+export const NATIVE_DIR = "native";
+export const NATIVE_PLAN_FILE = "plan.json";
+/** The reads the native verbs may make, each catalogued non-mutating. */
+export const NATIVE_READ_PATHS = new Set(["whoami", "report schema", "report describe", "report run-saved"]);
+function nativeRead(ctx, argv, id) {
+  const why = ctx.nativeGate(argv);
+  if (why) refuse(why);
+  return ctx.live().run({ id, argv, timeoutMs: 120000 });
+}
+const nativeDir = (ctx, slug) => join(dirOf(ctx, slug), NATIVE_DIR);
+/** The workspace-relative file a planned line writes the CLI's answer to (the line runs from the workspace folder). */
+const nativeOutFile = (ctx, slug, entry) => relative(ctx.wsDir, join(nativeDir(ctx, slug), `${entry.page}-${entry.panel}.${entry.action}.json`)).split(sep).join("/");
+function readNativeSchema(ctx) {
+  const r = nativeRead(ctx, ["--json", "rp", "schema", "--object", NATIVE_OBJECT], "native-schema");
+  if (!r.ok) refuse(`gs-admin rp schema --object ${NATIVE_OBJECT} failed: ${printable(r.stderr.trim() || `exit ${r.status}`, 300)}`);
+  let fields = null;
+  try { fields = JSON.parse(r.stdout)?.data?.fields ?? null; } catch { /* said below */ }
+  if (!Array.isArray(fields) || !fields.length) refuse(`rp schema --object ${NATIVE_OBJECT} returned no field list — refusing to plan reports against a schema it cannot read`);
+  return fields.filter((f) => f && typeof f.fieldName === "string").map((f) => ({ fieldName: f.fieldName, dataType: String(f.dataType ?? "") }));
+}
+/** The plan as a reader needs it: per report its verdict, what it leaves out and why, the UI steps, and its line. */
+function planSummary(ctx, slug, plan, spec) {
+  const reports = plan.entries.filter((e) => e.payload).map((e) => ({
+    panel: e.key, title: e.title, status: e.status, action: e.action, name: e.name, ...(e.sameAs ? { sameAs: e.sameAs } : {}), reportId: e.reportId ?? null,
+    // A panel sharing a report that exists already, but not yet recorded under its own key (it was added after the
+    // report was created): native-record records it with no command to run.
+    ...(e.action === "shared" && e.reportId && !(spec.native?.reports ?? []).some((r) => r.panel === e.key && r.reportId === e.reportId) ? { unrecorded: true } : {}),
+    leftOut: e.leftOut.map((l) => `${l.label}: ${l.text}`), uiSteps: e.uiSteps.map((s) => s.text),
+    ...(e.action === "create" || e.action === "update" ? { command: commandLine(e, nativeOutFile(ctx, slug, e)) } : {}),
+    ...(e.action === "update" ? { warning: "rp update replaces the report's columns: the calculated and formula columns added in the UI go, and are added again from uiSteps" } : {}),
+  }));
+  const notNative = plan.entries.filter((e) => !e.payload).map((e) => ({ panel: e.key, title: e.title, why: e.reasons.map((r) => `${r.text}${r.detail ? ` (${r.detail})` : ""}`).join("; ") }));
+  return { reports, notNative };
+}
+function verbNativePlan(ctx, slug, rest) {
+  const spec = savedSpec(ctx, slug);
+  const prefix = rest.includes("--test-prefix") ? TEST_PREFIX : "";
+  let schema = null;
+  if (!rest.includes("--no-schema")) {
+    preflight(ctx, spec, { again: entryLine(ctx, "native-plan", slug, ...(prefix ? ["--test-prefix"] : [])) });
+    schema = readNativeSchema(ctx);
+  }
+  const plan = nativePlan(spec, { prefix, schema });
+  const dir = nativeDir(ctx, slug);
+  mkdirSync(dir, { recursive: true });
+  const file = join(dir, NATIVE_PLAN_FILE);
+  writeJson(file, { kind: "native-plan", slug, tenantHost: spec.tenantHost, at: new Date(ctx.nowMs).toISOString(), ...plan });
+  const { reports, notNative } = planSummary(ctx, slug, plan, spec);
+  return {
+    ok: true, mode: "native-plan", slug, prefix, schemaChecked: plan.schemaChecked, counts: plan.counts, reports, notNative, dashboardSteps: plan.dashboardSteps, cleanup: plan.cleanup, planFile: file,
+    next: plan.schemaChecked
+      ? `issue each report's command as its own command (the guard asks for each), then record it: ${entryLine(ctx, "native-record", slug, "--panel", "<panel>")}; then read them back: ${entryLine(ctx, "native-verify", slug)}`
+      : `a plan made without the tenant's schema is for reading only: run ${entryLine(ctx, "native-plan", slug, ...(prefix ? ["--test-prefix"] : []))} after gs-admin login before issuing any command`,
+  };
+}
+function verbNativeRecord(ctx, slug, opt) {
+  const spec = savedSpec(ctx, slug);
+  const key = opt("--panel");
+  if (!key) refuse(`native-record needs --panel <page id>/<panel id> — the panel whose report was just created or updated (native-plan lists them)`);
+  if (ctx.store.readDraft(slug)) refuse(`"${slug}" has a draft in progress — save or discard it first, so recording a report never saves someone's unfinished edit`);
+  const planFile = join(nativeDir(ctx, slug), NATIVE_PLAN_FILE);
+  const plan = readJsonOr(planFile, null);
+  const planned = plan?.entries?.find((e) => e.key === key && ["create", "update", "shared"].includes(e.action)) ?? null;
+  // A shared panel is recorded under the report of the panel it shares, once that one has an id.
+  const entry = planned?.action === "shared" ? plan.entries.find((e) => e.key === planned.sameAs) ?? null : planned;
+  if (!entry || (planned?.action === "shared" && !planned.reportId)) refuse(planned?.action === "shared" ? `"${key}" shares the report of "${planned.sameAs}", which has no id yet — record that one first` : `no create or update is planned for "${key}" — run ${entryLine(ctx, "native-plan", slug)} first; it lists the panels and their lines`);
+  if (!plan.schemaChecked) refuse(`the plan was made without the tenant's schema (--no-schema): plan again after gs-admin login before recording`);
+  // The plan must still be the dashboard's: a spec changed since would record a report the panel no longer matches.
+  const now = nativePlan(spec, { prefix: plan.prefix ?? "" }).entries.find((e) => e.key === entry.key);
+  if (!now || now.hash !== entry.hash) refuse(`the dashboard changed since the plan was made: "${key}" now plans another report — run ${entryLine(ctx, "native-plan", slug)} again`);
+  preflight(ctx, spec, { again: entryLine(ctx, "native-record", slug, "--panel", key) });
+  const byId = entry.action === "update" || planned?.action === "shared" || (entry.action === "unchanged" && !!entry.reportId);
+  const r = nativeRead(ctx, byId ? ["--json", "rp", "describe", "--id", entry.reportId] : ["--json", "rp", "describe", "--name", entry.name], "native-describe");
+  let described = null;
+  try { described = r.ok ? JSON.parse(r.stdout) : null; } catch { /* said below */ }
+  const reportId = describedReportId(described);
+  if (!reportId) refuse(`the report "${entry.name}" was not found ${entry.action === "update" ? `by its id ${entry.reportId}` : "by its exact name"}: did its ${entry.action} line run and succeed? (${printable(r.stderr.trim() || "no id in the answer", 300)})`);
+  if (byId && reportId !== entry.reportId) refuse(`rp describe --id ${entry.reportId} answered another report (${reportId}) — nothing recorded`);
+  // An update renames the report to the planned name (--new-name), so a report that still has another name was not
+  // updated. When the plan keeps the name, the name cannot tell: the summary says the update is confirmed by name only.
+  const nowName = described?.data?.reportName ?? described?.reportName ?? null;
+  if (entry.action === "update" && typeof nowName === "string" && nowName !== entry.name) refuse(`the report ${reportId} still has the name "${printable(nowName, 120)}", not "${printable(entry.name, 120)}": did its update line run and succeed? Nothing recorded`);
+  // The panel and every panel that shares its report, under one id and the first's fingerprint.
+  const keys = planned?.action === "shared" ? [key] : [key, ...plan.entries.filter((e) => e.action === "shared" && e.sameAs === key).map((e) => e.key)];
+  const records = keys.map((k) => ({ panel: k, reportId, name: entry.name, planHash: entry.hash }));
+  const kept = (spec.native?.reports ?? []).filter((x) => !keys.includes(x.panel));
+  ctx.store.startDraft(slug, { by: ctx.by, takeOver: ctx.takeOver });
+  try {
+    ctx.store.setDraft(slug, { sets: [["native.reports", [...kept, ...records]]], by: ctx.by, takeOver: ctx.takeOver });
+  } catch (e) {
+    ctx.store.discardDraft(slug);
+    if (e instanceof SpecRefusal) refuse(e.message);
+    throw e;
+  }
+  ctx.store.save(slug);
+  return {
+    ok: true, mode: "native-record", slug, panel: key, action: entry.action, reportId, name: entry.name, recorded: keys, uiSteps: entry.uiSteps.map((s) => s.text),
+    confirmed: entry.action === "create" ? "found by its exact name" : typeof nowName === "string" ? "its name is the planned one (a change that keeps the name cannot be told from no change: read it back with native-verify)" : "the report exists (its name was not in the answer)",
+    note: "recorded through the spec writer; the About tab counts the reports at the next rebuild or refresh",
+  };
+}
+function verbNativeVerify(ctx, slug, opt) {
+  const spec = savedSpec(ctx, slug);
+  const only = opt("--panel") ?? null;
+  const recorded = (spec.native?.reports ?? []).filter((x) => !only || x.panel === only);
+  if (!recorded.length) refuse(only ? `no report is recorded for "${only}"` : `no native report is recorded for "${slug}" yet — create them from ${entryLine(ctx, "native-plan", slug)} and record each with native-record`);
+  preflight(ctx, spec, { again: entryLine(ctx, "native-verify", slug, ...(only ? ["--panel", only] : [])) });
+  const plan = readJsonOr(join(nativeDir(ctx, slug), NATIVE_PLAN_FILE), null) ?? nativePlan(spec);
+  const dir = join(nativeDir(ctx, slug), "verify");
+  mkdirSync(dir, { recursive: true });
+  const reports = [];
+  for (const rec of recorded.filter((x, i, all) => all.findIndex((y) => y.reportId === x.reportId) === i)) {
+    const entry = plan.entries.find((e) => e.key === rec.panel && e.payload) ?? null;
+    const r = nativeRead(ctx, ["--json", "rp", "run-saved", "--id", rec.reportId, "--page-size", "50"], `native-verify-${rec.reportId}`);
+    if (!r.ok) { reports.push({ panel: rec.panel, reportId: rec.reportId, ok: false, why: `rp run-saved failed: ${printable(r.stderr.trim() || `exit ${r.status}`, 300)}` }); continue; }
+    const file = join(dir, `${String(rec.panel).replace(/[^A-Za-z0-9._-]/g, "_")}.json`);
+    writeFileAtomicSync(file, r.stdout);
+    let rows = null;
+    try { rows = JSON.parse(r.stdout); } catch { /* readBack says so */ }
+    const back = entry ? readBack(rows, entry) : { ok: false, why: "no planned report for this panel: run native-plan to compare", rows: Array.isArray(rows) ? rows.length : 0, missing: [], uiPending: [] };
+    reports.push({ panel: rec.panel, reportId: rec.reportId, name: rec.name ?? null, file, ...back });
+  }
+  return { ok: reports.every((x) => x.ok), mode: "native-verify", slug, reports, uiPending: reports.filter((x) => x.uiPending?.length).map((x) => ({ panel: x.panel, columns: x.uiPending })), dashboardSteps: plan.dashboardSteps ?? dashboardSteps(spec), cleanup: plan.cleanup ?? [] };
 }
 /** Publish the pages as they stand, with no pull and no rebuild (the manual publish, R8; a publish setting's change). */
 function publishNow(ctx, slug, spec) {
@@ -1820,11 +1978,12 @@ function verbAccount(ctx, slug, opt, argv) {
 
 // ── CLI ──────────────────────────────────────────────────────────────────────
 const USAGE =
-  "usage: dashboard.mjs <new|next|answer|change|save|list|status|refresh|rebuild|publish|publish-target|report|export|import|health|account|costs|questions> [<slug>] [...] " +
+  "usage: dashboard.mjs <new|next|answer|change|save|list|status|refresh|rebuild|publish|publish-target|report|export|import|health|account|native-plan|native-record|native-verify|costs|questions> [<slug>] [...] " +
+  "[native-plan: [--test-prefix] [--no-schema]] [native-record: --panel <page id>/<panel id>] [native-verify: [--panel <page id>/<panel id>]] " +
   "[publish-target: [<target name> <folder>]] " +
   "[account: (--account-id <GSID> | --account-name <name>) [--last <Nd|Nm>] (with no <slug>: [--internal-domain <d>]... [--test-account <id>]... [--account-field <f>]...)] " +
   "[--kb <tenant KB folder>] [--workspace <dir>] [--bin <gs-admin entry>] [--by <holder>] [--take-over] [--today YYYY-MM-DD] [next: --question <id>]";
-const VERBS = ["new", "next", "answer", "change", "save", "list", "status", "refresh", "rebuild", "publish", "publish-target", "report", "export", "import", "health", "account", "costs", "questions"];
+const VERBS = ["new", "next", "answer", "change", "save", "list", "status", "refresh", "rebuild", "publish", "publish-target", "report", "export", "import", "health", "account", "native-plan", "native-record", "native-verify", "costs", "questions"];
 async function main() {
   const [verb, ...rest] = process.argv.slice(2);
   const helpers = makeCliHelpers("dashboard.mjs", rest);
@@ -1843,7 +2002,7 @@ async function main() {
       closing: { rows: QUESTIONS.filter((q) => q.kind === "action").map((q) => q.id), ask: CLOSING_ASK(rctx), options: CLOSING_OPTIONS(rctx) },
     });
   }
-  const positional = rest.filter((t, i) => !t.startsWith("--") && !(i > 0 && rest[i - 1].startsWith("--") && !["--fast-path", "--take-over", "--dry-run", "--full", "--health-only", "--with-snapshot", "--replace", "--by-template", "--exclude-internal", "--include-paused", "--all"].includes(rest[i - 1])));
+  const positional = rest.filter((t, i) => !t.startsWith("--") && !(i > 0 && rest[i - 1].startsWith("--") && !["--fast-path", "--take-over", "--dry-run", "--full", "--health-only", "--with-snapshot", "--replace", "--by-template", "--exclude-internal", "--include-paused", "--all", "--test-prefix", "--no-schema"].includes(rest[i - 1])));
   try {
     const ctx = openContext(rest, opt);
     const slug = positional[0];
@@ -1866,6 +2025,9 @@ async function main() {
       case "import": out = verbImport(ctx, opt, rest); break;
       case "health": out = verbHealth(ctx, needSlug(), opt); break;
       case "account": out = verbAccount(ctx, slug ?? null, opt, rest); break;
+      case "native-plan": out = verbNativePlan(ctx, needSlug(), rest); break;
+      case "native-record": out = verbNativeRecord(ctx, needSlug(), opt); break;
+      case "native-verify": out = verbNativeVerify(ctx, needSlug(), opt); break;
       default: fail(USAGE);
     }
     await finish(out);
