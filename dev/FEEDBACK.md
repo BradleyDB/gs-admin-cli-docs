@@ -149,8 +149,8 @@ what the gate counts (F-444). The gate refuses both. Sections from F-360 on; the
 rule also reads the archive.
 
 
-Under test: dev · hb-20261015-03 · 2026-10-15
-Blind spots (hb-20261015-03): a post-release re-stamp after 0.54.0 (tag [v]0.54.0 at bb95a20), not a round: nothing new is under test; dev carries only the test-rig fix (PR #56, judged by its 3-OS run) and the deferred F-530/F-548 (Session B) and polish F-536/F-541/F-542/F-545/F-546
+Under test: feat/f548-ranking-every-refresh · hb-20261015-04 · 2026-10-15
+Blind spots (hb-20261015-04): the live arm on the kept dashboard (VALIDATION § F-548 L1-L4): the migration from its 0.54.0 snapshot, the store's real size and time, a selective pull's lists against a full one's on real data, a list change on a scratch import, the page's panels; the email-engagement skill's changed lines walked for real (no suite reads skill prose); CI on PR #57 (the local battery ran on a temp worktree)
 
 
 <!-- builder 2026-10-15 ([v]0.54.0 RELEASED — post-release housekeeping; R12, the JO-dashboards release, one folded entry; next free F-549):
