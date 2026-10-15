@@ -1913,13 +1913,21 @@ function reselectReadiness(ctx, slug) {
   if (!latest) return { rank: false, latest: null, why: "the dashboard has no pull yet: its first refresh ranks the lists" };
   const snapshot = openSnapshotFile(latest);
   if (!engine.accountAvailability(snapshot).pulled) return { rank: false, latest, why: `the latest pull (${snapshot.meta.pulledAt}) holds no accounts: the lists are ranked by the first pull with customer lists on` };
-  if (accountStoreFits(readAccountStore(accountStorePath(latest)), snapshot)) return { rank: true, latest, why: null };
-  return {
-    rank: false, latest,
-    why: snapshot.meta.accountStore
-      ? `the account store beside the latest snapshot (${snapshot.meta.pulledAt}) is missing or is not that snapshot's, so the customer lists need one full pull to rank again, and the next refresh is that pull`
-      : `the latest snapshot (${snapshot.meta.pulledAt}) was made before the account store: the customer lists need one full pull to start ranking on every refresh, and the next refresh is that pull`,
-  };
+  const gap = storeGap(snapshot, latest);
+  return gap ? { rank: false, latest, why: gap } : { rank: true, latest, why: null };
+}
+/**
+ * Why the next refresh of a dashboard with customer lists is a full pull this once (F-548's migration, Bradley's
+ * contract: detected, priced and said, with no hand step): its latest snapshot has accounts and no account store of its
+ * own (made before the store, or the store gone). Null when it has one, or holds no accounts. The adapter's decideRefresh
+ * makes the same decision at the pull; this is the runner saying it before (a list change, the report's offer).
+ * @param {T10Snapshot} snapshot @param {string} snapshotPath
+ */
+function storeGap(snapshot, snapshotPath) {
+  if (!engine.accountAvailability(snapshot).pulled || accountStoreFits(readAccountStore(accountStorePath(snapshotPath)), snapshot)) return null;
+  return snapshot.meta.accountStore
+    ? `the account store beside the latest snapshot (${snapshot.meta.pulledAt}) is missing or is not that snapshot's, so the customer lists need one full pull to rank again, and the next refresh is that pull`
+    : `the latest snapshot (${snapshot.meta.pulledAt}) was made before the account store: the customer lists need one full pull to start ranking on every refresh, and the next refresh is that pull`;
 }
 /** What a list change does, said before it runs (`change`'s consequenceText, the edit's closing ask and its option). */
 const reselectText = (r, line) => (r.rank ? "the customer lists are ranked again from the account store beside the last pull (a rebuild, no pull)" : `the pages are rebuilt with no pull, and the changed customer lists are ranked at the next refresh (\`${line}\`): ${r.why}`);
@@ -2044,10 +2052,13 @@ function verbReport(ctx, slug, opt, argv) {
   // routine (selective) one, its own run's figure; after only a full pull no routine refresh has been priced yet, so the
   // figure is null and the full pull's minutes ride beside it for the skill's wording.
   const plan = lastPlan(ctx, slug);
-  const refreshSeconds = plan?.estimate?.mode === "selective" && plan.estimate.thisRun?.seconds != null ? plan.estimate.thisRun.seconds : null;
+  // A dashboard whose latest snapshot has no account store of its own (F-548's migration) gets a full pull this once:
+  // the routine refresh offered is then priced as that full pull, and why rides beside it for the skill to say.
+  const refreshFullOnce = storeGap(snapshot, latest);
+  const refreshSeconds = refreshFullOnce ? plan?.estimate?.full?.seconds ?? null : plan?.estimate?.mode === "selective" && plan.estimate.thisRun?.seconds != null ? plan.estimate.thisRun.seconds : null;
   const refreshMinutes = refreshSeconds != null ? minutesOf(refreshSeconds) : null;
   const fullRefreshMinutes = plan?.estimate?.full?.seconds != null ? minutesOf(plan.estimate.full.seconds) : null;
-  return { ...summary, mode: "report", slug, snapshotAgeDays: ageDays, refreshMinutes, refreshSeconds, fullRefreshMinutes, held: heldBy(snapshot, summary.statusesShown) };
+  return { ...summary, mode: "report", slug, snapshotAgeDays: ageDays, refreshMinutes, refreshSeconds, fullRefreshMinutes, refreshFullOnce, held: heldBy(snapshot, summary.statusesShown) };
 }
 /**
  * What a dashboard's snapshot holds, for the question it is asked (F-534): the pull's selection and window in words and

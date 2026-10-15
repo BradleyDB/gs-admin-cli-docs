@@ -992,14 +992,16 @@ try {
     delete as054.meta.accountStore;
     writeFileSync(latestPath, JSON.stringify(as054));
     for (const f of stores()) rmSync(join(dash(), SNAPSHOTS_DIR, f));
+    const migReport = run("report", [SLUG]);
     const oldChange = run("change", [SLUG, 'accounts.lists=[{"kind":"most-bounced","n":2,"floor":0}]', 'pages.0.title="Admin before the store"']);
     const migrate = asPrinted(oldChange.json?.done?.remedy?.line ?? "");
     const migrated = readSnap();
     const nextRoutine = run("refresh", [SLUG]);
-    check("F-548 MIGRATION: over a snapshot made before the account store a list change saves, rebuilds the other change, ranks nothing and says the lists need one full pull to start ranking on every refresh, with the plain refresh line and a full pull's minutes; that line run as printed is the full pull, said (pull.why) and priced above a routine one, exit 0, no hand step and no refusal; it writes the store and ranks the changed list; the refresh after it is selective",
+    check("F-548 MIGRATION: over a snapshot made before the account store the report prices the refresh it offers as the full pull it will be, with why; a list change saves, rebuilds the other change, ranks nothing and says the lists need one full pull to start ranking on every refresh, with the plain refresh line and a full pull's minutes; that line run as printed is the full pull, said (pull.why) and priced above a routine one, exit 0, no hand step and no refusal; it writes the store and ranks the changed list; the refresh after it is selective",
       oldChange.code === 0 && oldChange.json.done.ranked === false && oldChange.json.done.rebuilt === true && /made before the account store: the customer lists need one full pull to start ranking on every refresh/.test(oldChange.json.done.why) && /refresh acme-health --kb acme-prod$/.test(oldChange.json.done.remedy.line) && typeof oldChange.json.done.fullRefreshMinutes === "number" && pageText("admin").includes("Admin before the store") &&
         migrate.code === 0 && migrate.json?.pull?.mode === "full" && /the customer lists need one full pull to start ranking on every refresh/.test(migrate.json.pull.why) && migrate.json.budget.planSeconds > routineAfter.json.budget.planSeconds && stores().length === 1 &&
-        isDeepStrictEqual(rk(migrated), [["most-bounced", 2, 0, 2, null]]) && nextRoutine.code === 0 && nextRoutine.json.pull.mode === "selective",
+        isDeepStrictEqual(rk(migrated), [["most-bounced", 2, 0, 2, null]]) && nextRoutine.code === 0 && nextRoutine.json.pull.mode === "selective" &&
+        migReport.code === 0 && /start ranking on every refresh/.test(migReport.json.refreshFullOnce ?? "") && migReport.json.refreshMinutes === migReport.json.fullRefreshMinutes && typeof migReport.json.refreshMinutes === "number",
       [oldChange.json?.done ?? oldChange.json?.error, migrate.json?.pull ?? migrate.json?.error ?? migrate.stderr?.slice(-300), migrate.json?.budget, routineAfter.json?.budget, rk(migrated)]);
     // The edit screen (F-516's closing step) says the same over a routine refresh: its consequence and its first option.
     run("new", [SLUG]);
