@@ -96,11 +96,6 @@ const HEALTH = { pull: true, categories: { bounceReasons: FIXTURE_BOUNCE_CATEGOR
 const TODAY = "2026-09-15";
 const PULLED_AT = "2026-09-15T09:00:00-07:00";
 
-/**
- * One pull through the in-process transport. Returns everything a check may want.
- * @param {{variant?: *, raw?: *, faults?: Array<*>, previous?: *, kb?: boolean|string, phase?: "all"|"plan", runDir?: ?string, now?: () => number, gate?: (argv: string[]) => ?string, linkSettings?: *}} [opts]
- *   kb: true for the suite's KB, or a KB directory
- */
 // The account store a pull writes beside its snapshot (F-548) rides on the snapshot object here, out of sight of
 // JSON and of deep-equality (a non-enumerable symbol): a later pull given that snapshot (or copyOf it) as its previous
 // gets its store with it, as a dashboard's refresh reads the store beside the latest snapshot file.
@@ -109,6 +104,11 @@ const withStore = (snapshot, store) => (snapshot && typeof snapshot === "object"
 const storeOf = (snapshot) => snapshot?.[STORE] ?? null;
 /** A deep copy of a snapshot that keeps its store (the suite's JSON copies, which drop the symbol, go through here). */
 const copyOf = (s) => withStore(JSON.parse(JSON.stringify(s)), storeOf(s));
+/**
+ * One pull through the in-process transport. Returns everything a check may want.
+ * @param {{variant?: *, raw?: *, faults?: Array<*>, previous?: *, previousStore?: *, kb?: boolean|string, phase?: "all"|"plan", runDir?: ?string, now?: () => number, gate?: (argv: string[]) => ?string, linkSettings?: *}} [opts]
+ *   kb: true for the suite's KB, or a KB directory
+ */
 function pull({ variant = {}, raw = {}, faults = [], previous = null, previousStore = storeOf(previous), kb = false, phase = "all", runDir = null, now, gate = GATE, linkSettings = null } = {}) {
   const tenant = buildTenant(variant);
   const dir = runDir ?? join(ROOT, `run-${++runSeq}`);

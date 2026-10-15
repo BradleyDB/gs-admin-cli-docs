@@ -809,10 +809,12 @@ try {
     const threeRows = anyRows(panelHtml(threePage.html, "least-engaged")).slice(1).filter((row) => row[1] !== "").map((row) => row[0].replace(/View$/, "").trim());
     const threeReport = buildReport(applyGroups(three, SPEC.groups).snapshot, { all: true }).sections.find((x) => x.startsWith("## Account watch list")) ?? "";
     const threeNames = least.kept.map((k) => nameOf(GOLD, k));
+    // The least-engaged list's own table: the other lists name the same accounts, so the order is read inside it alone.
+    const leastTable = (() => { const at = threeReport.indexOf("### Least engaged customers"); const next = threeReport.indexOf("###", at + 4); return at < 0 ? "" : threeReport.slice(at, next < 0 ? undefined : next); })();
     const inOrder = (text) => threeNames.every((n, i) => i === 0 || text.indexOf(n, text.indexOf(threeNames[i - 1])) > text.indexOf(threeNames[i - 1]));
     check("F-530 the report, the page and the About tab agree on a changed list (the 3 least engaged, at least 3 delivered): the page's panel lists exactly the record's three in its order and states its size and floor, the report lists the same three in the same order, and the About tab states the same list",
       isDeepStrictEqual(threeRows, threeNames) && panelHtml(threePage.html, "least-engaged").includes("The 3 least engaged (at least 3 delivered) across programs over the whole window") &&
-        threeNames.every((n) => threeReport.includes(n)) && inOrder(threeReport) && threeReport.includes("the 3 least engaged (at least 3 delivered)") && loadPage(threePage.html).call(`app.renderAbout()`).includes("the 3 least engaged (at least 3 delivered)"),
+        leastTable !== "" && threeNames.every((n) => leastTable.includes(n)) && inOrder(leastTable) && threeReport.includes("the 3 least engaged (at least 3 delivered)") && loadPage(threePage.html).call(`app.renderAbout()`).includes("the 3 least engaged (at least 3 delivered)"),
       [threeRows, threeNames, threeReport.slice(0, 400)]);
     // A per-segment list reaches the page (F-530: it never did): one table per segment under its field and value, each
     // the record's kept accounts in its order; a list not ranked says why in the engine's words.

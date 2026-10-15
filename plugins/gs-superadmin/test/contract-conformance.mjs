@@ -614,7 +614,8 @@ try {
       check(at("top level is exactly {schemaVersion 1, kind engagement, meta, dimensions, facts, honesty, reconciliation, caveats}"),
         keys(s) === list("schemaVersion", "kind", "meta", "dimensions", "facts", "honesty", "reconciliation", "caveats") && s.schemaVersion === 1 && s.kind === "engagement", keys(s));
       check(at("meta carries exactly the typedef keys; source jo-engagement; pulledAt has a UTC offset"),
-        keys(s.meta) === list("source", "params", "pulledAt", "timeZone", "tenantHost", "cliVersion", "pluginVersion", "window", "incompleteFrom", "dateBasis", "stepDetail", "accounts", "participantRecords", "health", "templates", "refresh", "metricAvailability") &&
+        keys(s.meta) === list("source", "params", "pulledAt", "timeZone", "tenantHost", "cliVersion", "pluginVersion", "window", "incompleteFrom", "dateBasis", "stepDetail", "accounts", "accountStore", "participantRecords", "health", "templates", "refresh", "metricAvailability") &&
+          (s.meta.accounts.pulled ? keys(s.meta.accountStore) === list("schema", "cells", "accounts") : s.meta.accountStore === null) &&
           s.meta.source === "jo-engagement" && /T\d\d:\d\d:\d\d[+-]\d\d:\d\d$/.test(s.meta.pulledAt) && s.meta.stepDetail === steps, keys(s.meta));
       check(at("window is {from, to, start, endExclusive}; incompleteFrom is a day"), keys(s.meta.window) === list("from", "to", "start", "endExclusive") && MONTH.test(s.meta.window.from) && /^\d{4}-\d\d-\d\d$/.test(s.meta.incompleteFrom), s.meta.window);
       check(at("dateBasis names ExecutedDate months, and ao_emails' CreatedAt only with step detail"),
