@@ -3071,5 +3071,7 @@ of record is the BUILDER's, at the close-out (the tester authored this fix and m
 - C1 (the differential). Revert each -U0 prose hunk of 1f7593a (the skill, both READMEs, the CHANGELOG) and cc83ea6's row
   hunk alone on the branch and run the committed F-528 check: every one fails it, on its own clause. Pass bar: 13 of 13.
 - C2 (the read). The plugin README's skill-table row for email-engagement carries no Gainsight-reports clause; W1's skill
-  reply stands (the skill is unchanged since F-528-V). Bradley's wording read of W2 is asked at the close-out.
+  reply stands (the skill is unchanged since F-528-V). Bradley's wording read of W2: DONE 2026-10-14 at F-528-V (the
+  four places quoted to him as they stand at hb-20261014-04): "fine as is, i can probably clean later if needed" — the
+  wording stands; nothing owed on it at the close-out.
 - C3 (the run). `test/dashboard.mjs` (the F-528 check included) and `test/dashboard-native.mjs` pass; CI green on PR #52.
