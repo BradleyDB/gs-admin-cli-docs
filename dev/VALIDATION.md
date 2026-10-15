@@ -3196,3 +3196,13 @@ THIS LIST IS COMPLETE.
   here plans it) reads right against the summary a fresh import's report returns (refreshMinutes and fullRefreshMinutes
   both null). Pass bar: the sentence covers that case and no other case changed.
 - C3 (the run). CI green on the fix PR at its head.
+
+Results (builder close-out, 2026-10-15, fix/r12a-v-f534-held-words at e1c2c1f; no tenant call):
+- C1 PASSED: the branch head 145/145 with both new F-534 checks passing; the dashboard.mjs hunk reverted alone 2 FAILED of 145,
+  exactly the two new checks (the words check and the [object] scan), each naming "[object Object]" — predicted.
+- C2 PASSED: a fresh import's report has refreshMinutes and fullRefreshMinutes both null (no run directory of its own), the
+  sentence's case; no other R2 case changed. The sentence was reworded by the builder for C3 (meaning unchanged; F-534's
+  Builder amendment line), so Bradley's read of its words is the one item still open, and it does not gate the merge.
+- C3 FAILED at 1aa9b49 (validate-plugin run 38769298383: engagement-report's bare-word prose check), PASSED at e1c2c1f
+  after the amendment (validate-plugin run 38770931304, docs-drift run 38770931245; CLEAN).
+Section status: CLEARED — F-534 VERIFIED (builder, the verdict of record).
