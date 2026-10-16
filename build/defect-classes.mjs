@@ -174,7 +174,7 @@ export const MECHANICAL_CLASSES = [
     scope: "shipped",
     detect: { kind: "needles", needles: ["renameSync(", "replaceFileSync("] },
     allow: {
-      "plugins/gs-superadmin/scripts/doc-lib.mjs": { why: "writeFileAtomicSync + replaceFileSync — the primitive's home (F-352), with the Windows rename retry (F-133): the retry's two renames and the primitive's replace", sites: 3 },
+      "plugins/gs-superadmin/scripts/doc-lib.mjs": { why: "writeFileAtomicSync + replaceFileSync — the primitive's home (F-352), with the Windows rename retry (F-133): the retry's two renames and the primitive's replace; plus acquireFileLock's claim of a dead lock (F-546's reopen: the one rename that takes a dead holder's file away, so exactly one taker wins it)", sites: 4 },
     },
   },
   {

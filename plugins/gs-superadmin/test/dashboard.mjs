@@ -36,7 +36,7 @@ import { resolveGroups, programTraits } from "../scripts/dashboard-groups.mjs";
 import { SPEC_DESCRIPTIONS, defaultSpec, openSpec, DEFAULT_ACCOUNT_LISTS, presetPanels } from "../scripts/dashboard-spec.mjs";
 import { HOW_TO_REFRESH_RULED } from "./fixtures/engagement/ruled-text.mjs";
 import { LACKS, HOW_TO_REFRESH_TEXT, COPY_LINES } from "../scripts/dashboard-runtime.mjs";
-import { openSnapshot } from "../scripts/engagement-query.mjs";
+import { openSnapshot, listPhrase } from "../scripts/engagement-query.mjs";
 import { nativePlan, TEST_PREFIX } from "../scripts/dashboard-native.mjs";
 import { makeGate, resolveParams } from "../scripts/engagement.mjs";
 import { kbFiles, OWN_SITE_UNSUBSCRIBE, TEMPLATES_DOMAIN, buildTenant, FIXTURE_BOUNCE_CATEGORIES } from "./fixtures/engagement/acme-tenant.mjs";
@@ -446,7 +446,7 @@ try {
   const callsBeforeHealth = argvLines().length;
   const healthOnly = run("refresh", [SLUG, "--health-only"]);
   check("refresh --health-only: a selective pull that reads the current month's facts again with the health families and carries the rest (fewer calls than the full pull), then rebuilds", healthOnly.code === 0 && healthOnly.json.healthOnly === true && healthOnly.json.pull.mode === "selective" && snapshots().length === 3 && healthOnly.json.pull.calls.made < pulled.json.done.pull.calls.made && argvLines().length > callsBeforeHealth, [healthOnly.json?.pull, pulled.json?.done?.pull?.calls]);
-  writeFileSync(join(dash(), LOCK_FILE), JSON.stringify({ by: "ben", at: new Date().toISOString(), pid: 1 }));
+  writeFileSync(join(dash(), LOCK_FILE), JSON.stringify({ by: "ben", at: new Date().toISOString(), pid: process.pid }));
   const locked = run("refresh", [SLUG]);
   check("the lock: a second refresh is refused naming the holder and the time, before any call", locked.code === 1 && /already running: started by ben at /.test(locked.json?.error ?? "") && snapshots().length === 3, locked.json);
   const staleAt = new Date(Date.now() - LOCK_STALE_MS - 60000).toISOString();
@@ -996,6 +996,7 @@ try {
     for (const f of stores()) rmSync(join(dash(), SNAPSHOTS_DIR, f));
     const migReport = run("report", [SLUG]);
     const oldChange = run("change", [SLUG, 'accounts.lists=[{"kind":"most-bounced","n":2,"floor":0}]', 'pages.0.title="Admin before the store"']);
+    const aboutInWindow = pageText("admin");
     const migrate = asPrinted(oldChange.json?.done?.remedy?.line ?? "");
     const migrated = readSnap();
     const nextRoutine = run("refresh", [SLUG]);
@@ -1005,6 +1006,16 @@ try {
         isDeepStrictEqual(rk(migrated), [["most-bounced", 2, 0, 2, null]]) && nextRoutine.code === 0 && nextRoutine.json.pull.mode === "selective" &&
         migReport.code === 0 && /start ranking on every refresh/.test(migReport.json.refreshFullOnce ?? "") && migReport.json.refreshMinutes === migReport.json.fullRefreshMinutes && typeof migReport.json.refreshMinutes === "number",
       [oldChange.json?.done ?? oldChange.json?.error, migrate.json?.pull ?? migrate.json?.error ?? migrate.stderr?.slice(-300), migrate.json?.budget, routineAfter.json?.budget, rk(migrated)]);
+    // F-530, second reopen (redesigned at the 0.56.1 gate; ruled by Bradley 2026-10-16: what is shown is described): in
+    // the window where a list change could not rank (no store), the About tab names the lists the pull RANKED — the
+    // record's, which the panels and the report draw — and says the change is waiting; once the full pull ranked the new
+    // list, the waiting line is gone and the About tab names the new list alone.
+    const waitingLine = `A change of the customer lists is waiting for the next refresh: the 2 most bounced. Until then the pages show the lists the pull of ${String(as054.meta.pulledAt).slice(0, 10)} ranked.`;
+    const rankedThen = as054.meta.params.accounts.lists.map(listPhrase);
+    const migratedLists = readSnap().meta.params.accounts.lists;
+    check("F-530 (reopened) the About tab in the no-store window describes what is shown: the lists the old snapshot was ranked with (named as the pull ranked them), with the waiting line naming the change (the 2 most bounced) and the pull it waits behind; after the full pull the About tab names the 2 most bounced alone, with no waiting line",
+      aboutInWindow.includes(waitingLine) && rankedThen.every((p) => aboutInWindow.includes(p)) && !pageText("admin").includes("waiting for the next refresh") && pageText("admin").includes("the 2 most bounced") && migratedLists.length === 1,
+      [aboutInWindow.includes(waitingLine), rankedThen, rankedThen.map((p) => aboutInWindow.includes(p)), pageText("admin").includes("waiting for the next refresh"), migratedLists]);
     // The edit screen (F-516's closing step) says the same over a routine refresh: its consequence and its first option.
     run("new", [SLUG]);
     const detail = run("next", [SLUG, "--question", "customer-list-detail"]);
@@ -1327,11 +1338,46 @@ try {
     writeFileSync(specFile(), specBefore);
     rmSync(draftFile(), { force: true });
     check("(F-541 the other change was refused with the spec byte-equal)", specAfterOther === JSON.stringify(broken, null, 2) + "\n");
+    // F-541, reopened at the 0.56.1 gate: the repair holds through the INTERVIEW too — new's own hint (next to the
+    // closing step; next --question <id>) reaches the closing step, the dry-run answer lands, and the save is REFUSED
+    // naming the problem; never a stack (the edit getter opened the saved spec strictly).
+    writeFileSync(specFile(), JSON.stringify(broken, null, 2) + "\n");
+    const reopened = run("new", [SLUG]);
+    const toClosing = run("next", [SLUG]);
+    const oneQuestion = run("next", [SLUG, "--question", "tabs"]);
+    const noDryRun = run("answer", [SLUG, "dry-run", "no"]);
+    const later = run("answer", [SLUG, "save", "later"]);
+    const specAfterLater = readFileSync(specFile(), "utf8");
+    const repairedAgain = run("change", [SLUG, "pages.0.panels=[]"]);
+    check("F-541 (reopened) the interview over a refused saved spec: next reaches the closing step (exit 0, an action question), next --question tabs shows the question, answer dry-run no lands, and the save is REFUSED naming the problem (exit 1, a refusal, no stack), the spec untouched; the repair through change then saves",
+      reopened.code === 0 && reopened.json?.state === "editing-saved" && toClosing.code === 0 && toClosing.json?.question?.kind === "action" && oneQuestion.code === 0 && oneQuestion.json?.question?.id === "tabs" && noDryRun.code === 0 &&
+        later.code === 1 && /not saved — pages\[0\]\.panels lists no panel for the templates tab/.test(later.json?.error ?? "") && ![toClosing, oneQuestion, noDryRun, later].some((r) => /at openSpec|Error: dashboard spec:/.test(r.stderr ?? "")) &&
+        specAfterLater === JSON.stringify(broken, null, 2) + "\n" && repairedAgain.code === 0 && repairedAgain.json?.saved === true && !existsSync(draftFile()),
+      [toClosing.json?.question?.id ?? toClosing.json?.error ?? toClosing.stderr?.slice(-300), oneQuestion.json?.question?.id ?? oneQuestion.stderr?.slice(-200), noDryRun.json?.error ?? noDryRun.stderr?.slice(-200), later.json?.error ?? later.stderr?.slice(-300), repairedAgain.json?.error ?? repairedAgain.stderr?.slice(-200)]);
+    // Two problems from a tightened rule (the reopen's polish instance), repaired one change at a time: the first change
+    // is refused at the save naming the other problem but KEPT in the draft, the second builds on it and saves.
+    const twice = JSON.parse(specBefore);
+    for (const i of [0, 1]) {
+      twice.pages[i].tabs.find((t) => t.id === "templates").enabled = true;
+      twice.pages[i].panels = presetPanels(twice.pages[i]).filter((p) => p.tab !== "templates");
+    }
+    writeFileSync(specFile(), JSON.stringify(twice, null, 2) + "\n");
+    rmSync(draftFile(), { force: true });
+    const firstFix = run("change", [SLUG, "pages.0.panels=[]"]);
+    const draftKept = existsSync(draftFile());
+    const secondFix = run("change", [SLUG, "pages.1.panels=[]"]);
+    check("F-541 (reopened) two problems repaired one change at a time: the first is refused at the save naming the other problem and says the change is kept in the draft (1 problem left of 2), the draft stays, the second builds on it (draftHadEarlierChanges) and saves, and the spec passes again with no draft left",
+      firstFix.code === 1 && /not saved — pages\[1\]\.panels lists no panel for the templates tab.* — this change is kept in the draft \(1 problem left of 2\): change the remaining setting the same way, and the save follows$/.test(firstFix.json?.error ?? "") && draftKept &&
+        secondFix.code === 0 && secondFix.json?.saved === true && secondFix.json.draftHadEarlierChanges === true && refusal(() => openSpec(readJson(specFile()))) === null && !existsSync(draftFile()),
+      [firstFix.json?.error ?? firstFix.stderr?.slice(-300), draftKept, secondFix.json?.error ?? secondFix.stderr?.slice(-200)]);
+    writeFileSync(specFile(), specBefore);
+    rmSync(draftFile(), { force: true });
     // F-545: a second refresh during a live one, with a stopped run's state file present, is told "already running"
     // first — the lock is taken before the state file is read (the old order read the state first and said "waiting
     // to resume … or remove refresh-state.json", the F-545 failure).
     const stoppedRoutine = run("refresh", [SLUG], { env: { FAKE_FAULTS: JSON.stringify([{ match: "rp run", kind: "auth", skip: 30, times: 9999 }]) } });
-    const liveLock = JSON.stringify({ by: "ben", at: new Date().toISOString(), pid: 1, run: "dash-acme-health-live" });
+    // A LIVE holder names a process of this machine (the reopen: a holder whose process is gone is dead at once).
+    const liveLock = JSON.stringify({ by: "ben", at: new Date().toISOString(), pid: process.pid, run: "dash-acme-health-live" });
     writeFileSync(join(dash(), LOCK_FILE), liveLock);
     const during = run("refresh", [SLUG, "--full"]);
     check("F-545 during a live refresh (a fresh lock) with a stopped run's state file present, a second refresh with other flags is refused as already running, naming the holder, never as waiting to resume; the state file and the holder's lock are untouched",
@@ -1341,6 +1387,18 @@ try {
     rmSync(join(STATE, "faults.json"), { force: true });
     const finished = run("refresh", [SLUG]);
     check("(F-545 the stopped run then resumes and finishes once the lock is gone)", finished.code === 0 && finished.json?.resumed === true && !existsSync(join(dash(), STATE_FILE)) && !existsSync(join(dash(), LOCK_FILE)), finished.json?.error ?? finished.stderr?.slice(-300));
+    // F-552: a rebuild, and a change's rebuild, take the refresh lock — refused while a refresh runs, never raced with it.
+    const titleBefore = readJson(specFile()).pages[0].title;
+    writeFileSync(join(dash(), LOCK_FILE), liveLock);
+    const rebuildDuring = run("rebuild", [SLUG]);
+    const changeDuring = run("change", [SLUG, "pages.0.title=Admin during a refresh"]);
+    check("F-552 while a refresh holds the lock, rebuild is refused as already running (the holder named, 'run rebuild again when it finishes'), and a display change is SAVED but its rebuild refused the same way (exit 1, the message saying the change is saved); the holder's lock untouched",
+      rebuildDuring.code === 1 && /already running: started by ben at .*run rebuild again when it finishes/.test(rebuildDuring.json?.error ?? "") && changeDuring.code === 1 && /^the change of "acme-health" is saved; its rebuild did not run: a refresh of "acme-health" is already running/.test(changeDuring.json?.error ?? "") && readJson(specFile()).pages[0].title === "Admin during a refresh" && readFileSync(join(dash(), LOCK_FILE), "utf8") === liveLock,
+      [rebuildDuring.json?.error ?? rebuildDuring.stderr?.slice(-300), changeDuring.json?.error ?? changeDuring.stderr?.slice(-300)]);
+    rmSync(join(dash(), LOCK_FILE), { force: true });
+    const rebuildAfter = run("rebuild", [SLUG]);
+    check("(F-552 the rebuild runs once the lock is gone, leaves none, and the page carries the saved change)", rebuildAfter.code === 0 && !existsSync(join(dash(), LOCK_FILE)) && pageText("admin").includes("Admin during a refresh"), rebuildAfter.json?.error ?? rebuildAfter.stderr?.slice(-200));
+    run("change", [SLUG, `pages.0.title=${titleBefore}`]);
     // F-542: a resume whose derived health lookback moved since the run was planned — re-documentation moved the
     // knowledge base (here: a selected program's doc now carries a six-monthly schedule) — plans and pulls in a fresh
     // -lb<days> directory, and SAYS it starts again and why, never "the calls already made are reused".
@@ -1362,11 +1420,12 @@ try {
     writeFileSync(docPath, docBefore);
     const restartLine = moved.stderr.split("\n").find((l) => /starts its pull again/.test(l)) ?? null;
     check("F-542 a stopped run records the lookback it was planned with; when the knowledge base's longest schedule period rises before the resume, the resume plans in a fresh -lb<days> directory and says it starts the pull again, from which lookback to which and why, with the whole pull's minutes — never that the calls already made are reused; the summary records the restart (resumed false, restarted from/run/lookbackDays, continuing false) and the pull ran at the new lookback",
-      stoppedFull.code === EXIT["token-expired"] && stateAfterStop.lookbackDays != null && moved.code === 0 && moved.json?.resumed === false && moved.json.budget?.continuing === false &&
-        moved.json.restarted?.from === stateAfterStop.run && moved.json.restarted.lookbackDays.from === stateAfterStop.lookbackDays && moved.json.restarted.lookbackDays.to > stateAfterStop.lookbackDays &&
+      stoppedFull.code === EXIT["token-expired"] && stateAfterStop.lookbackDays != null && typeof stateAfterStop.pullRun === "string" && moved.code === 0 && moved.json?.resumed === false && moved.json.budget?.continuing === false &&
+        // `from` names the directory the stopped run PULLED in (the state's pullRun; reopened at the 0.56.1 gate), never the base name
+        moved.json.restarted?.from === stateAfterStop.pullRun && moved.json.restarted.lookbackDays.from === stateAfterStop.lookbackDays && moved.json.restarted.lookbackDays.to > stateAfterStop.lookbackDays &&
         // (the directory is named for the DERIVED lookback; the pull runs at the window-capped one, which `to` reports)
-        moved.json.restarted.run.startsWith(`${stateAfterStop.run}-lb`) && moved.json.run === moved.json.restarted.run && moved.json.pull.lookbackDays === moved.json.restarted.lookbackDays.to &&
-        restartLine != null && new RegExp(`starts its pull again \\(run ${moved.json.restarted.run}, not ${stateAfterStop.run}\\): the derived health lookback moved from ${stateAfterStop.lookbackDays} to ${moved.json.restarted.lookbackDays.to} days since the run was planned \\(the longest schedule period in the knowledge base changed\\), so none of the calls already made applies; about \\d+ minutes? in all; the login has`).test(restartLine) &&
+        moved.json.restarted.run.startsWith(`${stateAfterStop.run}-lb`) && moved.json.restarted.run !== stateAfterStop.pullRun && moved.json.run === moved.json.restarted.run && moved.json.pull.lookbackDays === moved.json.restarted.lookbackDays.to &&
+        restartLine != null && new RegExp(`starts its pull again \\(run ${moved.json.restarted.run}, not ${stateAfterStop.pullRun}\\): the derived health lookback moved from ${stateAfterStop.lookbackDays} to ${moved.json.restarted.lookbackDays.to} days since the run was planned \\(the longest schedule period in the knowledge base changed\\), so none of the calls already made applies; about \\d+ minutes? in all; the login has`).test(restartLine) &&
         !/calls already made are reused/.test(moved.stderr) && !existsSync(join(dash(), STATE_FILE)),
       [stateAfterStop, moved.json?.restarted ?? moved.json?.error ?? moved.stderr?.slice(-400), restartLine]);
     const plain = run("refresh", [SLUG, "--full"], { env: { FAKE_FAULTS: JSON.stringify([{ match: "rp run", kind: "auth", skip: 30, times: 9999 }]) } });
@@ -1374,6 +1433,23 @@ try {
     const plainResume = run("refresh", [SLUG, "--full"]);
     check("(F-542 control: the same stop and resume with the knowledge base unchanged is a resume — the calls already made are reused, nothing restarted)",
       plain.code === EXIT["token-expired"] && plainResume.code === 0 && plainResume.json?.resumed === true && plainResume.json.restarted === undefined && plainResume.json.pull.calls.reused > 0 && /the calls already made are reused/.test(plainResume.stderr), plainResume.json?.error ?? plainResume.stderr?.slice(-300));
+    // F-542, reopened at the 0.56.1 gate: the lookback moving BACK to the base before the resume — a run planned at the
+    // raised lookback stops, the knowledge base's longest period drops — is a restart too (the pull runs in the base
+    // directory, where no fact call was made), said as one: the state names the directory the stopped run pulled in.
+    writeFileSync(docPath, sixMonthly);
+    writeFileSync(manifestPath, JSON.stringify({ ...readJson(manifestPath), last_refresh: new Date().toISOString() }, null, 2) + "\n");
+    const stoppedRaised = run("refresh", [SLUG, "--full"], { env: { FAKE_FAULTS: JSON.stringify([{ match: "rp run", kind: "auth", skip: 30, times: 9999 }]) } });
+    const stateRaised = readJson(join(dash(), STATE_FILE));
+    writeFileSync(docPath, docBefore);
+    writeFileSync(manifestPath, JSON.stringify({ ...readJson(manifestPath), last_refresh: new Date().toISOString() }, null, 2) + "\n");
+    rmSync(join(STATE, "faults.json"), { force: true });
+    const back = run("refresh", [SLUG, "--full"]);
+    const backLine = back.stderr.split("\n").find((l) => /starts its pull again/.test(l)) ?? null;
+    check("F-542 (reopened) the lookback moving BACK before the resume is a restart: the state names the -lb directory the stopped run pulled in (pullRun), the resume pulls in the directory of the lower lookback (here the fixture's own derived one; the base directory when the longest period drops to the floor) and says it starts again (from the raised run to that run, the lookback from the raised days down), resumed false, continuing false; never 'the calls already made are reused'",
+      stoppedRaised.code === EXIT["token-expired"] && typeof stateRaised.pullRun === "string" && /-lb\d+$/.test(stateRaised.pullRun) && back.code === 0 && back.json?.resumed === false && back.json.budget?.continuing === false &&
+        back.json.restarted?.from === stateRaised.pullRun && back.json.restarted.run !== stateRaised.pullRun && back.json.restarted.run.startsWith(stateRaised.run) && back.json.restarted.lookbackDays.from > back.json.restarted.lookbackDays.to && back.json.pull.lookbackDays === back.json.restarted.lookbackDays.to &&
+        backLine != null && new RegExp(`starts its pull again \\(run ${back.json.restarted.run}, not ${stateRaised.pullRun}\\): the derived health lookback moved from ${stateRaised.lookbackDays} to ${back.json.restarted.lookbackDays.to} days`).test(backLine) && !/calls already made are reused/.test(back.stderr) && !existsSync(join(dash(), STATE_FILE)),
+      [stateRaised, back.json?.restarted ?? back.json?.error ?? back.stderr?.slice(-400), backLine]);
   }
   check("refusals: an unknown verb, a missing slug, a refresh of a draft, an unknown question (purpose, dropped, among them), and a workspace with no KB each exit 1 with one line",
     run("frobnicate", []).code === 1 && run("status", []).code === 1 && run("refresh", ["quick"]).code === 1 && /is a draft, not a saved dashboard/.test(run("refresh", ["quick"]).json?.error ?? "") && run("answer", [SLUG, "nope", "x"]).code === 1 && /no question is called "purpose"/.test(run("answer", ["quick", "purpose", "x"]).json?.error ?? "") && run("list", [], { flags: ["--workspace", join(ROOT, "nowhere"), "--bin", FAKE] }).code === 1);

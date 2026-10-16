@@ -22,7 +22,8 @@
 // Run:  node plugins/gs-superadmin/test/doc-lib-fixtures.mjs
 // Zero dependencies — Node built-ins only.
 // ─────────────────────────────────────────────────────────────────────────────
-import { writeFileSync, mkdirSync, readFileSync, symlinkSync, rmSync, existsSync } from "node:fs";
+import { writeFileSync, mkdirSync, readFileSync, symlinkSync, rmSync, existsSync, utimesSync } from "node:fs";
+import { spawn, spawnSync } from "node:child_process";
 import { join } from "node:path";
 import { pathToFileURL, fileURLToPath } from "node:url";
 import { dirname } from "node:path";
@@ -36,7 +37,7 @@ import {
   decode, htmlToText, templateTokens, compactProgramPayload, renderProgramDoc,
   renderTemplateDoc, STUB_MARKER, STUB_MARKER_RE, escapeRe, sleepMs, scanListEnvelope, decideEntryArray, entryDecisionReason,
   parseDocJson, docMeta, docH1, NO_NAME, assertReadOnlyCommand, isDescribeRead, readKbIdentity,
-  resolveRecordedDomains, recordedDomainsByPath, indexedElsewhere, RECORDED_LANES, laneTable,
+  resolveRecordedDomains, recordedDomainsByPath, indexedElsewhere, RECORDED_LANES, laneTable, acquireFileLock, pidAlive,
 } from "../scripts/doc-lib.mjs";
 // List-page envelope docs and the indexer payload live in the shared reader
 // payload corpus (test/fixtures/reader-payloads.mjs) — the tracer scans the same docs.
@@ -1286,6 +1287,79 @@ if (process.env.ZZ_NEVER_SET_TYPE_PROBE) readKbIdentity(42, []);
   } finally {
     rmSync(scratch, { recursive: true, force: true });
   }
+}
+
+// ── acquireFileLock (F-545, F-546; reopened at the 0.56.1 release gate): the record is evidence, never the only ──
+// evidence. A holder is dead when its pid is gone from this machine or its record (or, unreadable, its file) is older
+// than staleMs; a record that cannot be read is held while young; a dead file is claimed by one rename; record() and
+// release() act on this taker's own record alone. The contention run is the judge the reopen was measured with (four
+// processes shared one lock and two got inside at once): N processes × M acquisitions, each marking a wx-created
+// critical section — never two inside.
+{
+  const dir = makeTempDir("gs-lock");
+  const lockp = join(dir, "x.lock");
+  const stale = 60 * 60 * 1000;
+  writeFileSync(lockp, "");
+  let l = acquireFileLock(lockp, { staleMs: stale, waitMs: 0 });
+  check("acquireFileLock: an empty (half-written) lock file that is young is HELD, never stale — not taken, held.unreadable, the file untouched",
+    !l.taken && l.held?.unreadable === true && readFileSync(lockp, "utf8") === "");
+  const old = new Date(Date.now() - stale - 1000);
+  utimesSync(lockp, old, old);
+  l = acquireFileLock(lockp, { staleMs: stale, waitMs: 0 });
+  check("acquireFileLock: an unreadable lock file older than staleMs is a dead writer's — taken over (takenOver.unreadable), this taker's record written",
+    l.taken && l.takenOver?.unreadable === true && readJsonFile(lockp).pid === process.pid);
+  l.release();
+  check("acquireFileLock: release() removes this taker's own lock", !existsSync(lockp));
+  const gone = spawnSync(process.execPath, ["-e", "process.exit(0)"]).pid;
+  writeFileSync(lockp, JSON.stringify({ pid: gone, at: new Date().toISOString(), by: "dead" }));
+  l = acquireFileLock(lockp, { staleMs: stale, waitMs: 0 });
+  check("acquireFileLock: a FRESH record whose process is gone (pidAlive false) is taken over at once, takenOver naming it",
+    l.taken && l.takenOver?.by === "dead" && !pidAlive(gone) && pidAlive(process.pid));
+  writeFileSync(lockp, JSON.stringify({ pid: process.pid, at: "2000-01-01T00:00:00.000Z", by: "other" }));
+  l.record({ run: "r1" });
+  check("acquireFileLock: record() leaves a lock another taker holds untouched", readJsonFile(lockp).by === "other" && readJsonFile(lockp).run === undefined);
+  l.release();
+  check("acquireFileLock: release() leaves a lock another taker holds untouched", existsSync(lockp) && readJsonFile(lockp).by === "other");
+  writeFileSync(lockp, JSON.stringify({ pid: process.pid, at: new Date().toISOString(), by: "live" }));
+  const t0 = Date.now();
+  l = acquireFileLock(lockp, { staleMs: stale, waitMs: 300 });
+  check("acquireFileLock: a fresh record of a live process is held — not taken after the wait, the holder's record named",
+    !l.taken && l.held?.by === "live" && Date.now() - t0 >= 250);
+  rmSync(lockp, { force: true });
+  const docLibUrl = pathToFileURL(join(dirname(fileURLToPath(import.meta.url)), "..", "scripts", "doc-lib.mjs")).href;
+  writeFiles(dir, {
+    "worker.mjs": [
+      `import { acquireFileLock } from ${JSON.stringify(docLibUrl)};`,
+      'import { writeFileSync, unlinkSync } from "node:fs";',
+      "const [lockp, inside, iters] = process.argv.slice(2);",
+      "let violations = 0, taken = 0, notTaken = 0;",
+      "for (let i = 0; i < Number(iters); i++) {",
+      "  const l = acquireFileLock(lockp, { owner: { w: process.pid }, staleMs: 3600000, waitMs: 60000 });",
+      "  if (!l.taken) { notTaken++; continue; }",
+      "  taken++;",
+      '  try { writeFileSync(inside, String(process.pid), { flag: "wx" }); } catch { violations++; }',
+      "  try { unlinkSync(inside); } catch { /* the marker is this taker's */ }",
+      "  l.release();",
+      "}",
+      "console.log(JSON.stringify({ pid: process.pid, taken, notTaken, violations }));",
+      "",
+    ].join("\n"),
+  });
+  const workers = 3;
+  const iters = 80;
+  const results = await Promise.all(Array.from({ length: workers }, () => new Promise((resolveP) => {
+    const c = spawn(process.execPath, [join(dir, "worker.mjs"), lockp, join(dir, "inside"), String(iters)], { stdio: ["ignore", "pipe", "pipe"] });
+    let out = "";
+    let err = "";
+    c.stdout.on("data", (d) => { out += d; });
+    c.stderr.on("data", (d) => { err += d; });
+    c.on("close", (code) => { let json = null; try { json = JSON.parse(out); } catch { /* a crash */ } resolveP({ code, json, err: err.slice(0, 300) }); });
+  })));
+  const sum = (k) => results.reduce((n, r) => n + (r.json?.[k] ?? 0), 0);
+  check(`acquireFileLock: ${workers} processes × ${iters} contended acquisitions of one lock — every one taken (none given up, none crashed) and NEVER two holders inside the critical section at once`,
+    results.every((r) => r.code === 0 && r.json) && sum("taken") === workers * iters && sum("notTaken") === 0 && sum("violations") === 0 && !existsSync(lockp),
+    results.map((r) => r.json ?? [r.code, r.err]));
+  removeTempDir(dir);
 }
 
 if (failures) {

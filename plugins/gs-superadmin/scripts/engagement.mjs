@@ -562,14 +562,14 @@
  * @property {(req: {id: string, argv: string[], timeoutMs: number}) => TransportResult} run
  * @typedef {{ok: boolean, status: ?number, stdout: string, stderr: string, timedOut: boolean, ms: number}} TransportResult
  */
-import { readFileSync, appendFileSync, existsSync, mkdirSync, statSync, unlinkSync } from "node:fs";
+import { readFileSync, appendFileSync, existsSync, mkdirSync, statSync, copyFileSync, openSync, readSync, closeSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   makeCliHelpers, findWorkspaceDir, findWorkspaceCatalog, makeCommandResolver, assertReadOnlyCommand,
-  resolveCliArgv, isAuthDeath, readJsonFile, writeFileAtomicSync, isMainModule, stripBom, cmpKey, termKey,
+  resolveCliArgv, isAuthDeath, readJsonFile, writeFileAtomicSync, removeFileSync, isMainModule, stripBom, cmpKey, termKey,
   readKbIdentity,
 } from "./doc-lib.mjs";
 import { printable } from "./journal-lib.mjs";
@@ -3370,14 +3370,21 @@ export function accountStoreText(store) {
  * @param {AccountStore} store
  */
 export function decodeAccountStore(store) {
+  // Decoded once per store object (F-555: the fetch's carry and the reduce's carry read one table, never two decodes
+  // of the same megabytes); the table is read, never changed, by its readers.
+  const cached = decodedStores.get(store);
+  if (cached) return cached;
   const table = new Map();
   const measures = (v = []) => ({ ...zero(), ...Object.fromEntries(store.measures.map((k, i) => [k, v[i] ?? 0])) });
   for (const [p, a, m, all, internal] of store.cells) {
     const key = [store.programs[p], a == null ? null : store.accounts[a], store.months[m]];
     table.set(JSON.stringify(key), { key, all: measures(all), internal: measures(internal) });
   }
+  decodedStores.set(store, table);
   return table;
 }
+/** @type {WeakMap<object, Map<string, {key: Array<?string>, all: Object<string, number>, internal: Object<string, number>}>>} */
+const decodedStores = new WeakMap();
 /** A store file → the store, or null when it is missing or not a store of this schema (then the next refresh goes full). */
 export function readAccountStore(path) {
   if (!path || !existsSync(path)) return null;
@@ -3421,11 +3428,22 @@ function accountTotals(units, accept, carry = new Map()) {
       addFlags(into(p, account), n, flags);
     }
   }
-  // The flags count every measure but clicked (clicks join from their own calls): the carried cells add the same ones.
+  return addCarriedCells(perProgram, carry);
+}
+/**
+ * The store's cells added to a per-program account table (the carried months of a selective pull; every month of a
+ * list change ranked from the store, rankFromStore — one step, F-555). The flags of a pulled row count every measure
+ * but clicked (clicks join from their own calls), and the carried cells add the same ones.
+ * @param {Map<string, Map<string, Object<string, number>>>} perProgram @param {Map<string, {key: Array<?string>, all: Object<string, number>}>} carry
+ */
+function addCarriedCells(perProgram, carry) {
   for (const e of carry.values()) {
     const [p, account] = e.key;
     if (account == null) continue;
-    const m = into(p, account);
+    if (!perProgram.has(p)) perProgram.set(p, new Map());
+    const acc = perProgram.get(p);
+    if (!acc.has(account)) acc.set(account, zero());
+    const m = acc.get(account);
     for (const k of SEND_MEASURES) if (k !== "clicked") m[k] += e.all[k];
   }
   return perProgram;
@@ -3465,7 +3483,7 @@ function selectionOver({ params, programs, totals, lowSet, rankedAt }) {
     }
   }
   const configured = params.accounts.lists ?? [];
-  const lists = selectAccountsAcross(across, configured.filter((l) => !l.per), { quietOnLowCadence: quiet }).map((l) => ({ ...l, rankedAt, carriedFrom: null, notRanked: null }));
+  const lists = selectAccountsAcross(across, configured.filter((l) => !l.per), { quietOnLowCadence: quiet }).map((l) => ({ ...l, rankedAt, notRanked: null }));
   const crossKeys = new Set(lists.flatMap((l) => l.keys));
   const byProgram = new Map();
   for (const p of programs) {
@@ -3531,11 +3549,15 @@ function accountRowsOf(tables, selection, provenanceOf, onDeficit = null) {
 function perSegmentListsOver({ lists, accountKeys, across, attrsOf, readFields, rankedAt }) {
   const keptAcross = new Map(accountKeys.filter((k) => across.has(k)).map((k) => [k, across.get(k)]));
   return lists.filter((l) => l.per).flatMap((l) => (readFields.includes(l.per)
-    ? selectAccountsAcross(keptAcross, [l], { attrs: attrsOf }).map((x) => ({ ...x, rankedAt, carriedFrom: null, notRanked: null }))
-    : [{ kind: l.kind, n: l.n, floor: l.floor, per: l.per, segment: null, keys: [], rankedAt: null, carriedFrom: null, notRanked: "field-not-read" }]));
+    ? selectAccountsAcross(keptAcross, [l], { attrs: attrsOf }).map((x) => ({ ...x, rankedAt, notRanked: null }))
+    : [{ kind: l.kind, n: l.n, floor: l.floor, per: l.per, segment: null, keys: [], rankedAt: null, notRanked: "field-not-read" }]));
 }
-/** A ranked list as the snapshot's selection record holds it (honesty.accountSelection.lists[]). */
-const listRecord = (l) => ({ kind: l.kind, n: l.n, floor: l.floor, per: l.per, segment: l.segment, kept: l.keys, selectedFrom: l.notRanked ? null : "every program", rankedAt: l.rankedAt, carriedFrom: l.carriedFrom, notRanked: l.notRanked });
+/**
+ * A ranked list as the snapshot's selection record holds it (honesty.accountSelection.lists[]). carriedFrom is null on
+ * every list ranked since F-548 (every refresh ranks; the one producer says so here, F-555) and stays in the record for
+ * the readers of a snapshot made before it.
+ */
+const listRecord = (l) => ({ kind: l.kind, n: l.n, floor: l.floor, per: l.per, segment: l.segment, kept: l.keys, selectedFrom: l.notRanked ? null : "every program", rankedAt: l.rankedAt, carriedFrom: l.carriedFrom ?? null, notRanked: l.notRanked });
 /**
  * A change of the customer lists ranked from the account store, with no pull (F-548; it replaces F-529's narrow path,
  * which ranked only over a full pull's run directory): the snapshot's own pull's figures for every account and month,
@@ -3554,7 +3576,7 @@ export function rankFromStore({ snapshot, store, lists }) {
   const programs = s.dimensions.programs.map((p) => p.id);
   const held = new Set(programs);
   const cells = new Map([...decodeAccountStore(store)].filter(([, e]) => held.has(e.key[0])));
-  const totals = accountTotals([], () => false, cells);
+  const totals = addCarriedCells(new Map(), cells);
   const { byProgram, lists: cross, across } = selectionOver({ params, programs, totals, lowSet: new Set(s.honesty?.accountSelection?.lowCadencePrograms ?? []), rankedAt: s.meta.pulledAt });
   const made = new Map(s.facts.byAccount.map((r) => [JSON.stringify([r.programId, r.month]), { provenance: r.provenance, pulledAt: r.pulledAt }]));
   s.facts.byAccount = accountRowsOf([cells], byProgram, (p, m) => made.get(JSON.stringify([p, m])) ?? { provenance: /** @type {RowProvenance} */ ("pulled"), pulledAt: s.meta.pulledAt });
@@ -5047,9 +5069,42 @@ async function main() {
 export function writeSnapshotAndStore(outPath, { snapshot, store }) {
   const storePath = accountStorePath(outPath);
   if (store) writeFileAtomicSync(storePath, accountStoreText(store));
-  else if (existsSync(storePath)) unlinkSync(storePath);
+  else if (existsSync(storePath)) removeFileSync(storePath); // through the Windows retry (F-546's reopen): a scanned stale store never fails the finished pull
   writeFileAtomicSync(outPath, JSON.stringify(snapshot));
   return store ? storePath : null;
+}
+/**
+ * A snapshot copied with the store beside it (an export, an import, F-548): the one rule for the pair (F-555).
+ * @param {string} from the snapshot file @param {string} to the copy's path @returns {?string} the copied store's path, or null when there was none
+ */
+export function copySnapshotWithStore(from, to) {
+  copyFileSync(from, to);
+  if (!existsSync(accountStorePath(from))) return null;
+  copyFileSync(accountStorePath(from), accountStorePath(to));
+  return accountStorePath(to);
+}
+/**
+ * The store's head alone — kind, schema, pulledAt, tenantHost, window, measures — read from the file's first line (the
+ * text form keeps the cells on the lines after it), so a reader that only asks WHICH pull a store is (accountStoreFits)
+ * never parses megabytes of cells (F-555). Null as readAccountStore would be.
+ * @param {?string} path @returns {?{kind: string, schema: number, pulledAt: string, tenantHost: string, window: {from: string, to: string}, measures: string[]}}
+ */
+export function readAccountStoreHead(path) {
+  if (!path || !existsSync(path)) return null;
+  let fd = null;
+  try {
+    fd = openSync(path, "r");
+    const buf = Buffer.alloc(16384);
+    const n = readSync(fd, buf, 0, buf.length, 0);
+    const first = stripBom(buf.toString("utf8", 0, n)).split(/\r?\n/)[0] ?? "";
+    const cut = first.lastIndexOf(',"cells":[');
+    const head = JSON.parse(cut > 0 ? `${first.slice(0, cut)}}` : first);
+    return head?.kind === ACCOUNT_STORE_KIND && head.schema === ACCOUNT_STORE_SCHEMA && Array.isArray(head.measures) ? { ...head, cells: [] } : readAccountStore(path);
+  } catch {
+    return readAccountStore(path); // not the text form this writer makes (a hand-formatted file): the whole read decides
+  } finally {
+    if (fd != null) closeSync(fd);
+  }
 }
 
 // What a caller is told about a snapshot: counts and verdicts, never rows.

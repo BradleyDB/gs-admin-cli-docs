@@ -80,7 +80,7 @@ and R3):
 | `--test-account <company id>` (repeatable) | A test account: a company record whose sends count as internal. An id, never an address. |
 | `--accounts` | Also pull per-account data, for the customer lists. Off by default: it is most of a pull's cost. |
 | `--step-detail` | Also pull per-step and per-variant rows and participant records. Off by default: it adds calls. |
-| `--previous <snapshot.json>` | Continue from an earlier snapshot of this tenant: only the most recent two months are read again and older months are taken from that file. The report's caveats then say which months were carried forward. |
+| `--previous <snapshot.json>` | Continue from an earlier snapshot of this tenant: only the most recent two months are read again and older months are taken from that file. With `--accounts`, the account store beside that snapshot (`<name>.accounts.json`, written with it) is read too; a snapshot with no store beside it (one made before the store, or copied without it) makes the pull a full one, and `pull.why` says so. The report's caveats then say which months were carried forward. |
 
 Report flags — passed to the report script (step R4):
 
@@ -583,7 +583,7 @@ Then stop.
 
 **Changing one setting later** (the user says "turn customer lists on", "make it
 quarterly", "rename the leaders' page"): no interview. Run the change verb with the
-setting's path and JSON value, first with `--dry-run` to see the consequence:
+setting's path and value (the grammar below), first with `--dry-run` to see the consequence:
 
 ```
 node .gs-superadmin/plugin/scripts/dashboard.mjs change <dash> <path>=<value> --kb <slug> --dry-run
@@ -628,9 +628,12 @@ nothing else with `gs-admin` meanwhile. By exit code:
 - `0` — relay the summary: `pull.mode` and `pull.why`, `pull.programs`, `redocumented`
   (how many programs and templates the knowledge base gained, and what is still behind),
   `delta` (the change since the last pull, or null on a first one), the pages' paths and
-  sizes, `lockTakenOver` when a stale lock was taken over, and `abandoned` when a pull
+  sizes, `lockTakenOver` when a stale lock was taken over, `abandoned` when a pull
   stopped earlier was left behind because a setting changed since (the pull was planned
-  afresh).
+  afresh), and `restarted` when a resumed pull started again in a fresh run directory
+  because the derived health lookback moved since the run was planned (its `from` and
+  `run` name the two directories, its `lookbackDays` the move): say that none of the calls
+  already made applied.
 - `3` — the login expired, before the pull or during it. A pull longer than one login is
   expected and keeps every call it made: relay the summary's `error` (it says how many
   calls were made and about how many more logins the pull needs), ask the user to run
@@ -644,8 +647,10 @@ nothing else with `gs-admin` meanwhile. By exit code:
   recurs run after run is the server's, not a transient); the pages are untouched.
 - `5` — the CLI is on another tenant than the dashboard's: say both tenants and stop.
 - `1` — refused (another pull of it is running, its holder and time named; an earlier pull
-  stopped with other flags and waits, its `remedy.line` the one to run; or the script's own
-  reason): relay `error` and stop.
+  stopped with other flags and waits, its `remedy.line` the one to run; the knowledge
+  base's manifest is locked by another writer — another dashboard's pull, or a describe, is
+  re-documenting it, and the lock clears on its own once that process finishes or is gone;
+  or the script's own reason): relay `error` and stop.
 
 On exit 0 the summary's `publish` says what became of the leaders' copy; relay it with the
 final report's Leaders line, and when its `target` is `claude-artifact` and `ready` is
@@ -699,9 +704,11 @@ Read the summary's `publish` and say it in one line (the final report's Leaders 
 The interview and the README no longer offer this target: the Artifact tool reads the
 whole of a file it did not write before publishing it, and a real leaders' page takes
 several turns to read, every publish. This step is reached only when a dashboard was set to
-`claude-artifact` before; say so, and offer the shared folder instead (`change <dash>
-'publish={"target":"file-copy","config":{"to":"leaders","file":"<dash>-leaders.html","datedCopies":false,"datasets":true}}'`,
-then `publish-target`). If the user still wants the artifact,
+`claude-artifact` before; say so, and offer the shared folder instead: write the publish
+setting as JSON to a file in the workspace's `.gs-superadmin/tmp/` folder (its content
+`{"target":"file-copy","config":{"to":"leaders","file":"<dash>-leaders.html","datedCopies":false,"datasets":true}}`),
+run `change <dash> publish=@<that file>` (an object-valued setting takes its JSON from a
+file: inline JSON survives no Windows shell), then `publish-target`. If the user still wants the artifact,
 publish the file the summary names (`publish.file`) with the Artifact tool, once:
 `file_path` that file, `title` the summary's `publish.title`, `capabilities` exactly
 the summary's `publish.capabilities` (`{"downloads": true}`: without it the page's
