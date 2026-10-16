@@ -586,12 +586,19 @@ quarterly", "rename the leaders' page"): no interview. Run the change verb with 
 setting's path and JSON value, first with `--dry-run` to see the consequence:
 
 ```
-node .gs-superadmin/plugin/scripts/dashboard.mjs change <dash> <path>=<json> --kb <slug> --dry-run
+node .gs-superadmin/plugin/scripts/dashboard.mjs change <dash> <path>=<value> --kb <slug> --dry-run
 ```
 
-`<json>` is a JSON value: `true`, `45`, `["acme.com"]`, and a text value in JSON quotes
-inside the shell's single quotes (`'pages.1.title="Leadership"'`). The pages' copy lines
-end at `=` for a text setting: put the quoted value there. Relay `changed` (each setting with its cost) and `consequenceText` as the script wrote it
+`<value>` is JSON when it parses (`true`, `45`); otherwise a bare value read by the
+setting's kind: a list as its items separated by commas
+(`"sources.0.params.internalDomains=acme.com,acme.co.uk"`; `none` empties it), a yes/no
+setting as `yes` or `no`, a text setting as the text itself
+(`"pages.1.title=Leadership page"`). Put the whole pair in double quotes when the value
+holds a space, a comma or `<`: that one spelling runs as written in Git Bash, PowerShell
+5.1 and cmd, where a JSON string's own quotes survive none of them. An object-valued
+setting (the window, the groups) takes its JSON from a file: `<path>=@<file>`. A page's
+copy line carries a placeholder in the value (`"…internalDomains=<domains>"`): put the
+value in its place and keep the quotes. Relay `changed` (each setting with its cost) and `consequenceText` as the script wrote it
 ("rebuild only", or the next pull with its minutes). Ask the user to confirm; on yes
 re-issue without `--dry-run`: the script saves
 and DOES the consequence (a rebuild, a re-selection of the customer lists, or the pull);

@@ -238,8 +238,9 @@ commands and output are still in this session.
   — each built its own token store, and the second missed the OS keychain and reported no
   token (the concurrent credential read the 1.0.10 handler made the suspect). **Fixed
   upstream at 1.0.11** (gs-fortress ledger KI-028): one keychain load and one token store
-  per process, so on CLI 1.0.11 and later `--id` works (statically verified; live
-  confirmation pending). **Use `sc measures --name '<scorecard name>'` instead** on any
+  per process, so on CLI 1.0.11 and later `--id` works (measured live at 1.0.12: three
+  first-call `--id` reads after a fresh login, each returning the tree `--name` returns).
+  **Use `sc measures --name '<scorecard name>'` instead** on any
   version (resolves name→id sequentially, which primes auth first — unaffected on every
   version); on 1.0.10 and earlier it is the only form that works.
 - **`sc measures` flattens only one level of the measures tree**, so on rollup-enabled
@@ -339,10 +340,12 @@ commands and output are still in this session.
   templates inside nested subfolders are dropped (642 on that tenant) and the subfolders
   surface as field-less rows carrying only a `folderName` (no id — skip them) — on 1.0.11
   and later the handler descends into child folders instead (fixed upstream, gs-fortress
-  ledger KI-003; the reachable count on 1.0.11 or later is not yet measured live, and
-  `--folder` still matches a folder's own name only, never a path — KI-030); plus, on
-  every version, a residual filter that hides some top-level templates too (~75 on that
-  tenant; suspected `source=COMMS` scope or template state — unconfirmed). **Workaround
+  ledger KI-003; measured live at 1.0.12 on one tenant: 1239 templates listed where 1.0.10
+  listed 648, no field-less rows, and 3 of the 1180 the KB held still absent, each in a
+  folder whose other templates list; `--folder` still matches a folder's own name only,
+  never a path — KI-030); plus, on every version, a residual filter that hides some
+  templates too (~75 top-level on the 2026-07 tenant, 3 on the 1.0.12 one; suspected
+  `source=COMMS` scope or template state — unconfirmed). **Workaround
   (validated live)**: the gap is
   discovery-only — `jo email template --id <id>` uses a different endpoint and returns
   list-invisible templates fine, so any template whose id is known (e.g. from a UI
@@ -383,16 +386,19 @@ commands and output are still in this session.
   On CLI 1.0.11 and later upstream no longer calls `process.exit()` on its error paths —
   the shared command handler sets the exit code (2 for a validation error, 1 otherwise)
   and returns, and the envelope printer and the version gate do the same — which is
-  upstream's account of this abort, so on 1.0.11 and later expect a clean exit 1 with the
-  error on stderr. Not yet measured live: until it is, **parse stderr on every version**;
-  the crash codes above are 1.0.10-and-earlier measurements.
+  upstream's account of this abort, and measured live at 1.0.12 (Git Bash and Windows
+  PowerShell 5.1, with and without `--json`): the API error on stderr with a Request ID,
+  exit 1 in both shells, no assertion. So the crash codes above are 1.0.10-and-earlier
+  measurements; **parse stderr on every version** all the same — the exit code says a
+  call failed, the `Error:` line says why.
 - **`re rules topics` and `jo email connectors` always fail server-side** — `Error: Server
   Error Occurred, Please contact support` and `Error: HTTP 500` respectively, with a fresh
   Gainsight Request ID on every call (8 attempts across two tokens and two shells, on two
   independent tenants; 0 successes). Both are non-mutating tenant-wide list commands with no
-  required flags, so there is no alternate spelling to try and no workaround. Both also abort
-  on the libuv assertion above, so the exit code is a crash code (raw 0xC0000409; 127 under Git Bash,
-  255 under PowerShell), **not** an auth or server status — do not mistake it for token
+  required flags, so there is no alternate spelling to try and no workaround. On CLI 1.0.10
+  and earlier both also abort on the libuv assertion above, so the exit code is a crash code
+  (raw 0xC0000409; 127 under Git Bash, 255 under PowerShell), **not** an auth or server
+  status (on 1.0.11 and later it is exit 1 with the error on stderr) — do not mistake it for token
   expiry (on CLI 1.0.9 and earlier, the half-life defect) and do not loop on re-login.
   Record such a command as **blocked with a
   re-check date, never excluded**: "returns 500 today" is not a durable reason to bury a

@@ -27,7 +27,7 @@ import { mkdirSync, rmSync, readFileSync, writeFileSync, existsSync, readdirSync
 import { join, dirname } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { tmpdir } from "node:os";
-import { spawnSync } from "node:child_process";
+import { spawnSync, spawn } from "node:child_process";
 
 const SCRIPT = join(dirname(fileURLToPath(import.meta.url)), "..", "scripts", "manifest.mjs");
 const ROOT = join(tmpdir(), `gs-superadmin-manifest-ops-${process.pid}`);
@@ -1794,6 +1794,51 @@ check("fingerprint: malformed value rejected (exit 1)", r.code === 1 && /40-char
   check("c1 reconcile: --domain is required", r.code === 1 && /--domain/.test(r.stderr), r.stderr);
   r = run("reconcile-docs", ["--manifest", MC, "--domain", "__proto__"]);
   check("c1 reconcile: the domain-name grammar applies (prototype-shaped name refused)", r.code === 1, r.stderr.slice(0, 120));
+}
+
+// ── F-546: the KB-wide lock around every load-change-save cycle ──────────────
+// manifest.mjs is the ONE manifest writer, so the lock it takes beside the
+// manifest is the property for every writer: two dashboards of one KB refreshed
+// at once (each re-documenting through this script) cannot lose each other's
+// marks. A fresh holder makes a writer wait, then fail loudly naming it; a dead
+// holder (older than ten minutes) is taken over; a normal verb leaves no lock.
+{
+  check("F-546 no verb of this suite left a lock file beside the first manifest", !existsSync(`${M}.lock`));
+  const ML = join(ROOT, "f546", "_manifest.json");
+  run("init", ["--manifest", ML, "--slug", "acme-f546", "--base-url", "https://a.example"]);
+  run("upsert-batch", ["--manifest", ML, "--file", listFile, "--domain", "journey-email-templates", "--id-field", "templateId", "--name-field", "title"]);
+  const LOCK = `${ML}.lock`;
+  const inv = () => JSON.parse(readFileSync(ML, "utf8")).inventory;
+  check("F-546 init and upsert-batch left no lock file beside the manifest, and the entry the checks mark exists", !existsSync(LOCK) && inv()["journey-email-templates/t-2"]?.status === "pending", inv()["journey-email-templates/t-2"]);
+  const held = JSON.stringify({ verb: "upsert-batch", pid: 424242, at: new Date().toISOString() });
+  writeFileSync(LOCK, held);
+  const before = readFileSync(ML, "utf8");
+  let r = run("mark", ["--manifest", ML, "--key", "journey-email-templates/t-2", "--status", "stale", "--lock-wait-seconds", "0"]);
+  check("F-546 a fresh lock held by another writer: mark (waiting 0 s) fails loudly naming the holder's verb, pid and time and the lock file, the manifest byte-equal, the holder's lock untouched",
+    r.code === 1 && /manifest is locked by another writer \(upsert-batch, pid 424242, since /.test(r.stderr) && r.stderr.includes(LOCK) && readFileSync(ML, "utf8") === before && readFileSync(LOCK, "utf8") === held, r.stderr.slice(0, 300));
+  // The lock released while a writer waits: the writer then lands its mark (spawned, the lock removed after 400 ms).
+  const waiting = spawn(process.execPath, [SCRIPT, "mark", "--manifest", ML, "--key", "journey-email-templates/t-2", "--status", "stale", "--lock-wait-seconds", "10"], { stdio: ["ignore", "pipe", "pipe"] });
+  const waited = await new Promise((resolveP) => {
+    let out = "";
+    let err = "";
+    waiting.stdout.on("data", (d) => { out += d; });
+    waiting.stderr.on("data", (d) => { err += d; });
+    const t0 = Date.now();
+    setTimeout(() => rmSync(LOCK, { force: true }), 400);
+    waiting.on("close", (code) => resolveP({ code, out, err, ms: Date.now() - t0 }));
+  });
+  check("F-546 a writer waits for a held lock and lands once it is released: mark exits 0 after the release (at least 400 ms in), the entry is stale, and the lock is gone",
+    waited.code === 0 && waited.ms >= 400 && inv()["journey-email-templates/t-2"].status === "stale" && !existsSync(LOCK), [waited.code, waited.ms, waited.err.slice(0, 200)]);
+  writeFileSync(LOCK, JSON.stringify({ verb: "mark", pid: 1, at: new Date(Date.now() - 11 * 60 * 1000).toISOString() }));
+  r = run("mark", ["--manifest", ML, "--key", "journey-email-templates/t-2", "--status", "documented", "--doc-path", join(ROOT, "f546", "t-2.md"), "--lock-wait-seconds", "0"]);
+  check("F-546 a lock older than ten minutes is a dead writer's: taken over, the mark lands, no lock left", r.code === 0 && inv()["journey-email-templates/t-2"].status === "documented" && !existsSync(LOCK), r.stderr.slice(0, 200));
+  writeFileSync(LOCK, "not json");
+  r = run("mark", ["--manifest", ML, "--key", "journey-email-templates/t-2", "--status", "stale", "--lock-wait-seconds", "0"]);
+  check("F-546 an unreadable lock file is a dead writer's too (no time to be fresh by): taken over, the mark lands", r.code === 0 && inv()["journey-email-templates/t-2"].status === "stale" && !existsSync(LOCK), r.stderr.slice(0, 200));
+  r = run("report", ["--manifest", ML, "--lock-wait-seconds", "abc"]);
+  check("F-546 --lock-wait-seconds takes a number of seconds", r.code === 1 && /--lock-wait-seconds must be a number/.test(r.stderr), r.stderr.slice(0, 200));
+  r = run("report", ["--manifest", M]);
+  check("F-546 a read-only verb (report) holds the lock only while it runs: none left after", r.code === 0 && !existsSync(LOCK), r.stderr.slice(0, 200));
 }
 
 rmSync(ROOT, { recursive: true, force: true });

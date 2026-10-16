@@ -154,7 +154,9 @@ export const LACKS = Object.freeze([
   { reason: "measure-not-in-snapshot", needs: "pull", setting: null, line: "refresh" },
   { reason: "accounts-not-on-page", needs: "rebuild", setting: { path: "pages[].accountNames", how: "on" }, line: "change" },
   { reason: "tab-off", needs: "by-data", setting: { path: "pages[].tabs[].enabled", how: "on" }, line: "change" },
-  { reason: "no-internal-domain", needs: "pull", setting: { path: "sources[].params.internalDomains[]", how: "fill" }, line: "change" },
+  // A `fill` setting's line carries a placeholder in the value (F-536): the notice says what to put in its place, and
+  // the pair is printed in double quotes, the one spelling Git Bash, PowerShell 5.1 and cmd all pass whole.
+  { reason: "no-internal-domain", needs: "pull", setting: { path: "sources[].params.internalDomains[]", how: "fill", placeholder: "<domains>", fillText: "the company's email domains, separated by commas (acme.com,acme.co.uk)" }, line: "change" },
   { reason: "test-accounts-need-accounts", needs: "pull", setting: { path: "accounts.pull", how: "on" }, line: "change" },
   // Health (DSH-4): the Health tab is the switch (ruled 2026-10-04), so a page whose tab is on and whose pull read no
   // health, or predates it, or continued from a pull that lacked a part, or lost a call, is a refresh away.
@@ -222,8 +224,13 @@ export const shellWord = (v) => {
   const s = String(v ?? "");
   return /^[A-Za-z0-9._\-/:@]+$/.test(s) ? s : `'${s.split("'").join(`'${"\\"}''`)}'`;
 };
+// A change pair as ONE word every shell passes whole (F-536): bare when the value holds nothing a shell reads, else the
+// whole pair in double quotes — Git Bash, cmd and Windows PowerShell 5.1 all pass "a=b,c" and "a=<x>" as written
+// (measured 2026-10-15), where a JSON string's own quotes survive none of them. A value holding a double quote, $, a
+// backtick, % or ! has no cross-shell spelling; no page line carries one.
+export const pairWord = (path, value) => (/^[A-Za-z0-9._:@\/-]*$/.test(String(value)) ? `${path}=${value}` : `"${path}=${value}"`);
 export const COPY_LINES = Object.freeze({
-  change: (slug, path, value, kb = null) => `${ENTRY_COMMAND} change ${slug} ${path}=${value}${kbFlag(kb)}`,
+  change: (slug, path, value, kb = null) => `${ENTRY_COMMAND} change ${slug} ${pairWord(path, value)}${kbFlag(kb)}`,
   refresh: (slug, kb = null) => `${ENTRY_COMMAND} refresh ${slug}${kbFlag(kb)}`,
   health: (slug, programId, kb = null) => `${ENTRY_COMMAND} health ${slug} --program ${programId}${kbFlag(kb)}`,
   // An account's timeline by day (ACC-2): a pull of its own, which a static page cannot make. By the account's GSID
@@ -407,7 +414,7 @@ export function createDashboard(engine, model) {
     if (!row) return { reason, text, known: false, needs: null, needsText: null, setting: null, line: null };
     const needs = row.needs === "by-data" ? (ctx.held ? "rebuild" : "pull") : row.needs;
     const setting = row.setting ? { ...row.setting, label: model.settingLabels[row.setting.path] ?? row.setting.path } : null;
-    const line = row.line === "refresh" || !setting ? COPY_LINES.refresh(model.slug, model.kb) : COPY_LINES.change(model.slug, concretePath(setting.path, ctx), setting.how === "on" ? "true" : "", model.kb);
+    const line = row.line === "refresh" || !setting ? COPY_LINES.refresh(model.slug, model.kb) : COPY_LINES.change(model.slug, concretePath(setting.path, ctx), setting.how === "on" ? "true" : setting.placeholder ?? "", model.kb);
     return { reason, text, known: true, needs, needsText: NEEDS[needs], setting, line };
   };
   /** The line to copy, or the button that runs it when the page has a local app behind it (the `actions` seam, LTR-10). */
@@ -424,7 +431,7 @@ export function createDashboard(engine, model) {
     if (heading) parts.push(`<p class="gs-notice-head">${esc(heading)}</p>`);
     parts.push(`<p class="gs-notice-what">${esc(facts.text)}</p>`);
     if (howTo && facts.known) {
-      const fill = facts.setting?.how === "fill" ? " The line below ends at the = sign: put the value there, as JSON." : "";
+      const fill = facts.setting?.how === "fill" ? ` In the line below, put ${facts.setting.fillText} in place of ${facts.setting.placeholder}, keeping the quotes round the pair: it then runs as written in Git Bash, PowerShell and cmd.` : "";
       const change = facts.setting ? `${facts.setting.how === "on" ? "Turn on" : "Fill in"} &quot;${esc(facts.setting.label)}&quot; in this dashboard's settings (<span class="gs-path">${esc(facts.setting.path)}</span>). ` : "";
       parts.push(`<p class="gs-notice-how">${change}${esc(facts.needsText)}${esc(fill)}</p>`);
       parts.push(renderLine(facts.line));
