@@ -178,6 +178,11 @@
    "pulled": true,
    "reason": null
   },
+  "accountStore": {
+   "schema": 1,
+   "cells": 87,
+   "accounts": 12
+  },
   "participantRecords": {
    "pulled": true,
    "reason": null
