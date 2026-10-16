@@ -3641,3 +3641,56 @@ the leaders' page of <scratch> to …") and records the `change` line the model 
 double quotes), the shell it ran in, and whether it ran as written with `--dry-run` first and the consequence relayed.
 
 Section status (release prep, 2026-10-16, builder): CLEARED — R1 measured in the three shells on the page's own line (F-536), R2 run small (two one-program scratch pulls; the lock's bar held vacuously, the manifest suite the judge of record, F-546), R3 by the stand-in suite as banked (F-541, F-542, F-545), the walk done (the tester @ hb-20261015-10; the bus's Walk and Blind spots lines keyed to that token carry the record); F-536, F-541, F-542, F-545, F-546, F-551 VERIFIED. Spent for 0.56.1.
+
+## R14 fix round — the release gate's reopens, live arms and the walk (banked 2026-10-16, builder, fix/r14-release-gate; verdict at hb-20261016-02)
+
+Owed by: the tester round on hb-20261016-02 (a terminal in the workspace with --plugin-dir on the worktree, canary matched;
+the production KB, reads only; a SCRATCH dashboard of one program for every arm — never the kept dashboard). The
+suites are the judge of record for every arm; these are the live halves the suites cannot see.
+
+### R1 (F-545, F-546; Windows) — a held handle at release, and a killed writer
+
+In PowerShell, while a scratch dashboard's refresh runs, open its `refresh.lock` with a handle that forbids delete
+(`[IO.File]::Open($path, "Open", "Read", "ReadWrite")`) and keep it until the refresh ends. FIXED: either the refresh
+still removed the lock (the retry outlasted the handle) or, once the handle is closed, the NEXT refresh of that
+dashboard runs at once (the holder's process is gone, so the lock is taken over, said as `lockTakenOver`), never
+"already running" for two hours. Then: start a refresh of the scratch dashboard with re-documentation on and interrupt
+it (Esc) while the manifest is being marked (the "redocument" lines on stderr); then run `node
+.gs-superadmin/plugin/scripts/manifest.mjs report --manifest <kb>/_manifest.json`. FIXED: exit 0 at once, no
+"locked by another writer" wait. BROKEN: a wait of 30 s or the locked refusal → REOPEN F-546 with the holder it named.
+
+### R2 (F-552) — a rebuild during a live refresh
+
+While the scratch dashboard refreshes, run `rebuild <scratch>` in a second terminal. FIXED: exit 1, "already running:
+started by … — run rebuild again when it finishes"; after the refresh, the same line exits 0. BROKEN: the rebuild runs
+→ REOPEN F-552.
+
+### R3 (F-530, the window) — a list change with no store
+
+Remove the `.accounts.json` beside the scratch dashboard's latest snapshot, then `change <scratch>
+accounts.lists=@<file>` with one most-bounced list of 3 (the JSON in a file). FIXED: the admin page's About tab
+names the lists the last pull ranked and says "A change of the customer lists is waiting for the next refresh: the 3
+most bounced. Until then …", the panels show the old lists; after `refresh <scratch>` (a full pull this once, said)
+the waiting line is gone and the About tab names the 3 most bounced alone. BROKEN: the About tab names the 3 most
+bounced beside panels showing 25 → REOPEN F-530 (its third reopen is a defer under the valve).
+
+### R4 (F-536) — the @<file> line in PowerShell 5.1
+
+Write `{"target":"file-copy","config":{"to":"leaders","file":"<scratch>-leaders.html","datedCopies":false,"datasets":true}}`
+to a file and run `change <scratch> publish=@<that file> --kb <kb> --dry-run` from Windows PowerShell 5.1. FIXED:
+exit 0, `changed` naming publish[]. BROKEN: a refusal naming publish.target → REOPEN F-536 with what node received.
+
+### No live arm (F-541, F-542)
+
+No tenant produces a spec a tightened rule refuses, and the base-directory restart needs a knowledge base whose longest
+schedule period falls to the floor between a stop and its resume: the stand-in suite is the judge (test/dashboard.mjs
+"F-541 (reopened)", "F-542 (reopened)"), and the verdict says so.
+
+### Walk — email-engagement (model-invocable) and setup (slash-only)
+
+The tester invokes email-engagement to move the scratch dashboard's leaders' copy to the shared folder ("publish the
+scratch dashboard to the leaders folder"): record whether the model wrote the publish JSON to a file under
+`.gs-superadmin/tmp/` and ran `change <scratch> publish=@<file>` (the L2 offer's spelling), and whether a refresh's
+summary relay names `restarted` only when the summary carries it. setup's changed sentence (the pin-facts warning
+relayed as written) is reached only on a workspace whose CLI is not 1.0.12 — cannot be walked here; banked as a blind
+spot.

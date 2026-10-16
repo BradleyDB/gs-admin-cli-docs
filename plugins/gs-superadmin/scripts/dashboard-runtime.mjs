@@ -27,7 +27,7 @@
 //                 line when it does not. Every panel, tab and filter goes
 //                 through this pair; a leaders' page gets the statement alone.
 //   COPY_LINES    the deterministic entry command's lines (ruled 2026-10-05):
-//                 `change <slug> <path>=<json>`, `refresh <slug>`,
+//                 `change <slug> <path>=<value>`, `refresh <slug>`,
 //                 `health <slug> --program <id>`.
 //   the panels    one renderer per panel type — table, kpi, line, bar,
 //                 watchlist, and the four typed health views — each over the
@@ -211,8 +211,11 @@ export const NEEDS = Object.freeze({
 export const ENTRY_COMMAND = "node .gs-superadmin/plugin/scripts/dashboard.mjs";
 // Every line names the dashboard's knowledge-base folder with `--kb` (F-503, reopened 2026-10-12): a workspace that
 // holds two tenants refuses the verb without it, and the folder's NAME is not a machine path, so the page may carry it.
-// A page built with no folder known (the page builder run by hand) omits the flag.
-const kbFlag = (kb) => (kb ? ` --kb ${kb}` : "");
+// A page built with no folder known (the page builder run by hand) omits the flag. The folder's name is the user's
+// (setup takes one typed; nothing validates it), so a name holding a space or anything a shell reads goes in double
+// quotes, the one spelling the three shells pass whole (F-536; `pairWord`'s rule) — every copy line and every remedy
+// line names the folder through this one flag.
+export const kbFlag = (kb) => (kb ? ` --kb ${/^[A-Za-z0-9._:@\/-]+$/.test(String(kb)) ? kb : `"${kb}"`}` : "");
 /**
  * One word for a shell line: as it is when it holds only letters, digits and `. _ - / : @`, else in single quotes (a
  * quote inside closes the quotes, adds an escaped quote and opens them again, so the shell joins it back). A copy
@@ -1061,10 +1064,8 @@ export function createDashboard(engine, model) {
       const accounts = state.account ? record.kept.filter((k) => k === state.account) : record.kept;
       const order = sort ? [sort[0] === "account" ? { dim: "account", dir: sort[1] } : { metric: sort[0], dir: sort[1] }] : panel.query.sort;
       const result = engine.runQuery(snapshot, { ...filtersOf(state), accounts, accountBuckets: ["account"] }, { groupBy: ["account"], metrics: panel.query.metrics, sort: order });
-      if (whole && !sort && !result.unavailable) {
-        const at = new Map(record.kept.map((k, i) => [k, i]));
-        result.rows.sort((a, b) => at.get(a.key.account) - at.get(b.key.account));
-      }
+      // The pull's order, from the engine's one ordering (F-555: the report reads the same helper).
+      if (whole && !sort && !result.unavailable) engine.orderByKeys(result.rows, record.kept, (r) => r.key.account);
       return { record, result };
     });
     return { whole, reordered: !whole || !!sort, sections };
@@ -1094,6 +1095,9 @@ export function createDashboard(engine, model) {
     return `${open(panel, csvButton(panel))}${parts}${close}`;
   };
   const renderWatchlistPanel = (panel, state) => {
+    // A customer list's panel with a record runs its own per-record queries (listView): the panel's preset query is not
+    // run for it (F-555). With no record (accounts off, or none kept) the preset query says what is lacking.
+    if (panel.list && listRecords(panel).length) return renderListPanel(panel, state);
     const result = run(panel, state);
     if (result.unavailable) return `${open(panel)}${renderNotice(lackFacts(result.unavailable.reason))}${close}`;
     if (panel.list) return renderListPanel(panel, state);
@@ -1394,11 +1398,13 @@ export function createDashboard(engine, model) {
     } else if (panel.list) {
       // A customer list's export is its view (F-530): one line per account of the list in the order drawn, then one per
       // program under it, each line naming the list's segment for a per-segment list.
-      if (run(panel, state).unavailable) return null;
+      const view = listView(panel, state);
+      // The list's own queries say whether the facts are there (F-555: the preset query is not run for it).
+      if (view.sections.some((s) => s.result) && view.sections.every((s) => !s.result || s.result.unavailable)) return null;
       const cols = panel.query.metrics;
       const statusText = (row) => (row.label.statuses ?? []).map(engine.statusLabel).join(", ");
       headers = ["List", "Account", "Program", "Status", "Programs", ...figureHeads(cols)];
-      rows = listView(panel, state).sections.filter((s) => s.result && !s.result.unavailable).flatMap(({ record, result }) => {
+      rows = view.sections.filter((s) => s.result && !s.result.unavailable).flatMap(({ record, result }) => {
         const under = watchlistDetail(panel, state, result);
         const list = record.per ? `${engine.listPhrase(record)}: ${record.segment ?? "(none)"}` : engine.listPhrase(record);
         return result.rows.flatMap((row) => {

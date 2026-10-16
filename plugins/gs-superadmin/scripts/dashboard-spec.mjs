@@ -941,7 +941,10 @@ const DRAFT_KIND = "dashboard-spec-draft";
 /** A refusal with a message for the person, never a stack: the CLI prints it and exits 1. */
 export class SpecRefusal extends Error {}
 const refuse = (msg) => { throw new SpecRefusal(msg); };
-const problemsText = (problems) => problems.map((p) => `${p.path || "(spec)"} ${p.problem}`).join("; ");
+/** Problems in words, one way everywhere (the save's refusal, new's repair line, change's summary — F-555). */
+export const problemsText = (problems) => problems.map((p) => `${p.path || "(spec)"} ${p.problem}`).join("; ");
+/** A problem's identity: its path and its wording (a repair that shifts a list's indexes moves one; the save judges the rest). */
+const problemKey = (p) => `${p.path}${String.fromCharCode(0)}${p.problem}`;
 /**
  * Who holds a draft (ruled 2026-10-05, DSH-1 item 8): the name given, else the
  * operating system's user name. A draft records it, and another holder's
@@ -1082,7 +1085,7 @@ export function specStore(kbDir) {
       for (const key of answered) if (!/^[a-z0-9][a-z0-9-]*$/.test(String(key))) refuse(`--answered takes a plain key (lower-case letters, digits, hyphens), got "${printable(String(key), 40)}"`);
       // The problems the draft already has (a saved spec a tightened rule refuses, F-541): a change is held to adding
       // none, not to clearing them all at once — the save is where every problem must be gone.
-      const before = new Set(validateSpec(d.spec).problems.map((p) => `${p.path}\u0000${p.problem}`));
+      const before = new Set(validateSpec(d.spec).problems.map(problemKey));
       for (const [path, value] of sets) {
         try {
           setPath(d.spec, path, value);
@@ -1103,7 +1106,7 @@ export function specStore(kbDir) {
       // The whole draft, not the touched field: a change is refused when what it leaves is not a valid spec — or, on a
       // draft that already had problems, when it adds one (F-541); what remains is returned as `problems`.
       const { problems, notes } = validateSpec(d.spec);
-      const added = problems.filter((p) => !before.has(`${p.path}\u0000${p.problem}`));
+      const added = problems.filter((p) => !before.has(problemKey(p)));
       if (added.length) refuse(`not saved — ${problemsText(added)}`);
       // A publish setting set to another dashboard's file is refused here, before the draft is written (F-532).
       const clash = sets.some(([p]) => String(p).startsWith("publish")) ? publishClash(d.spec) : null;

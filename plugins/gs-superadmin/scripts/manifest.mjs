@@ -602,24 +602,27 @@ const manifestPath = opt("--manifest") || fail("--manifest <path> is required");
  * caller that may see "no manifest yet" (init) handles null and every other
  * verb gets the manifest or a failure exit — never a null to forget.
  * @overload
- * @param {{ mustExist: false }} o
+ * @param {{ mustExist: false, lock?: boolean }} o
  * @returns {GsManifest|null}
  */
 /**
  * @overload
- * @param {{ mustExist?: true }} [o]
+ * @param {{ mustExist?: true, lock?: boolean }} [o]
  * @returns {GsManifest}
  */
 /**
- * @param {{ mustExist?: boolean }} [o]
+ * @param {{ mustExist?: boolean, lock?: boolean }} [o]
  * @returns {GsManifest|null}
  */
-function load({ mustExist = true } = {}) {
+function load({ mustExist = true, lock = true } = {}) {
   if (!existsSync(manifestPath)) {
     if (mustExist) fail(`manifest not found: ${manifestPath} — run the init verb first`);
     return null;
   }
-  takeManifestLock();
+  // A verb that only READS passes lock false (F-546's reopen): save() writes the file atomically (a temp file renamed
+  // over it), so a reader sees a whole manifest without the lock, and a read never waits behind a writer, never fails
+  // on a folder the user cannot write, and never makes a writer wait.
+  if (lock) takeManifestLock();
   let m;
   try {
     // readJsonFile tolerates a leading BOM (F-118): the manifest is written
@@ -643,12 +646,16 @@ function load({ mustExist = true } = {}) {
 // skills, describe-batch and the dashboard's re-documentation all spawn it),
 // so two writers at once — two dashboards of one KB refreshed together —
 // used to lose each other's marks (load, load, save, save). The lock is a
-// sibling `_manifest.lock` taken by doc-lib's exclusive-create primitive on
-// the first load and released by save() or at exit; a fresh holder makes
-// this process wait (--lock-wait-seconds, default 30), then fail LOUDLY
-// naming the holder; a holder older than ten minutes died and is taken over.
-// init writes a NEW manifest without loading and takes no lock: two inits of
-// one KB are a setup fault, not a race this protects against.
+// sibling `_manifest.json.lock` taken by doc-lib's exclusive-create primitive
+// on the first load of a verb that writes and released by save(), at exit, or
+// on an interrupt (SIGINT, SIGTERM, SIGHUP: a Claude Code Esc or a tool's
+// timeout killing the process tree — the reopen's ten-minute lockout); a
+// fresh holder makes this process wait (--lock-wait-seconds, default 30),
+// then fail LOUDLY naming the holder; a holder whose process is gone, or
+// older than ten minutes, is taken over by the primitive. init writes a NEW
+// manifest without loading and takes no lock: two inits of one KB are a
+// setup fault, not a race this protects against. The read-only verbs (next,
+// report, crawl without --set, reconcile-docs --dry-run) take none.
 const MANIFEST_LOCK_STALE_MS = 10 * 60 * 1000;
 const lockWaitSeconds = Number(opt("--lock-wait-seconds") ?? 30);
 if (!Number.isFinite(lockWaitSeconds) || lockWaitSeconds < 0) fail("--lock-wait-seconds must be a number of seconds (0 waits not at all)");
@@ -660,12 +667,17 @@ function takeManifestLock() {
   if (!lock.taken) {
     const held = lock.held ?? {};
     fail(
-      `manifest is locked by another writer (${String(held.verb ?? "unknown verb")}, pid ${String(held.pid ?? "?")}, since ${String(held.at ?? "?")}) and it did not finish within ${lockWaitSeconds}s: ` +
-        `${lock.path} — wait for it, or remove the lock file if you know that process died (a lock older than ten minutes is taken over on its own)`
+      `manifest is locked by another writer (${held.unreadable ? "its record is being written" : `${String(held.verb ?? "unknown verb")}, pid ${String(held.pid ?? "?")}, since ${String(held.at ?? "?")}`}) and it did not finish within ${lockWaitSeconds}s: ` +
+        `${lock.path} — run this again when it finishes (a lock whose process is gone, or older than ten minutes, is taken over on its own)`
     );
   }
   manifestLock = lock;
-  process.on("exit", () => { if (manifestLock) manifestLock.release(); manifestLock = null; });
+  const release = () => { if (manifestLock) manifestLock.release(); manifestLock = null; };
+  process.on("exit", release);
+  // An interrupt skips the exit event: the lock is released on the way out, with the signal's exit code.
+  process.on("SIGINT", () => { release(); process.exit(130); });
+  process.on("SIGTERM", () => { release(); process.exit(143); });
+  process.on("SIGHUP", () => { release(); process.exit(129); });
 }
 /** @param {GsManifest} m */
 function save(m) {
@@ -1617,7 +1629,7 @@ if (verb === "init") {
   save(m);
   out(keysFile ? { ok: true, marked: keys.length, status } : { ok: true, key, status, depth: m.inventory[keys[0]].depth ?? null });
 } else if (verb === "next") {
-  const m = load();
+  const m = load({ lock: false });
   const limit = Number.parseInt(opt("--limit", "25"), 10);
   if (!Number.isFinite(limit) || limit < 1) fail("--limit must be a positive integer");
   const domain = opt("--domain");
@@ -1642,8 +1654,8 @@ if (verb === "init") {
     .map(([key, e]) => ({ key, ...e }));
   out({ ok: true, count: entries.length, entries });
 } else if (verb === "crawl") {
-  const m = load();
   const set = opt("--set");
+  const m = load({ lock: set !== undefined });
   if (set !== undefined) {
     if (!isCrawlMode(set)) fail("--set must be shallow or deep");
     m.crawl_mode = set;
@@ -1762,7 +1774,7 @@ if (verb === "init") {
   save(m);
   out({ ok: true, domain, describeState, stubbed, skippedFull, skippedMissing, outDir });
 } else if (verb === "report") {
-  const m = load();
+  const m = load({ lock: false });
   // Null-prototype accumulators (F-225): inventory domains/statuses are data
   // from a JSON file, and folding them as bare keys on a {} literal reads
   // inherited Object.prototype members for names like "constructor" — the
@@ -2205,7 +2217,7 @@ if (verb === "init") {
   domainOrFail(domain);
   const dryRun = argv.includes("--dry-run");
   const detailOut = opt("--out");
-  const m = load();
+  const m = load({ lock: !dryRun });
   // The folder every writer uses: <manifest-dir>/<domain>, and doc_path is
   // recorded exactly as stub records it — the folder as passed, forward
   // slashes, no trailing slash — so a path reconciled here is byte-identical

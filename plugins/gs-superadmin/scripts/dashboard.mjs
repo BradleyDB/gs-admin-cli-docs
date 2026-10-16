@@ -32,7 +32,7 @@
 //                        validates through the spec writer, writes, marks the
 //                        ask-once key; an action question acts (the dry run, the
 //                        estimate, the save and first refresh)
-//   change <slug> <path>=<json>... [--dry-run]
+//   change <slug> <path>=<value>... [--dry-run]
 //                        set through the writer; prints what changed and its
 //                        consequence from the COSTS table (in-page, "rebuild
 //                        only", or "the next refresh pulls everything again,
@@ -116,7 +116,7 @@
 //
 // Zero dependencies — Node built-ins only.
 // ─────────────────────────────────────────────────────────────────────────────
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, unlinkSync, copyFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, unlinkSync } from "node:fs";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
@@ -125,16 +125,16 @@ import { makeCliHelpers, findWorkspaceDir, findWorkspaceCatalog, makeCommandReso
 import { printable } from "./journal-lib.mjs";
 import {
   specStore, SpecRefusal, holderName, openSpec, validateSpec, SPEC_DESCRIPTIONS, PRESETS, TABS, DEFAULT_ACCOUNT_LISTS, defaultSpec,
-  accountLists, accountFields, kbSettings, windowOf, presetPanels, PUBLISH_TARGET_NAME_RE, defaultPublish,
+  accountLists, accountFields, kbSettings, windowOf, presetPanels, PUBLISH_TARGET_NAME_RE, defaultPublish, problemsText,
 } from "./dashboard-spec.mjs";
 import {
   resolveParams, prepareRun, runParamsMoved, fetchEngagement, reduceEngagement, loadRun, cliTransport, makeGate, parseWhoami, addMonths, monthsBetween, pickSchedule, describedProgram, EngagementRefusal, ROW_READERS, rpRunArgv, buildQuery,
   resolveAccountParams, reduceAccountTimeline, loadAccountRun, accountResolutionText, timelineSummary,
-  reduceWithStore, rankFromStore, readAccountStore, accountStorePath, accountStoreFits, isAccountStoreFile, writeSnapshotAndStore,
+  reduceWithStore, rankFromStore, readAccountStore, accountStorePath, accountStoreFits, isAccountStoreFile, writeSnapshotAndStore, copySnapshotWithStore, readAccountStoreHead,
 } from "./engagement.mjs";
 import { applyGroups, programTraitsOf, suggestionTable } from "./dashboard-groups.mjs";
 import { buildPage, buildTimelinePage, inlinedSources, pageFileName, buildDatasets, datasetsDirName, artifactContentOf } from "./dashboard-page.mjs";
-import { COPY_LINES, ENTRY_COMMAND, HOW_TO_REFRESH_TEXT } from "./dashboard-runtime.mjs";
+import { COPY_LINES, ENTRY_COMMAND, HOW_TO_REFRESH_TEXT, kbFlag } from "./dashboard-runtime.mjs";
 import { nativePlan, commandLine, describedReportId, readBack, dashboardSteps, NATIVE_OBJECT, TEST_PREFIX } from "./dashboard-native.mjs";
 import { writeReport, ReportRefusal } from "./engagement-report.mjs";
 import * as engine from "./engagement-query.mjs";
@@ -234,7 +234,7 @@ export const ADAPTER_MAPPING = Object.freeze([
  */
 /** The health pull is on when any page's Health tab is on (the one rule: the adapter's --health, a tab change's cost, a change's price). */
 const healthPulled = (spec) => spec.pages.some((pg) => pg.tabs.some((t) => t.id === "health" && t.enabled));
-const notStartedText = (from, thisMonth) => `sources[0].params.window.from (${from}) is a month that has not started (this month is ${thisMonth}): the window must start in this month or before — answer the window again, or change it with change <slug> 'sources.0.params.window.from="YYYY-MM"'`;
+const notStartedText = (from, thisMonth) => `sources[0].params.window.from (${from}) is a month that has not started (this month is ${thisMonth}): the window must start in this month or before — answer the window again, or change it with change <slug> sources.0.params.window.from=YYYY-MM`;
 export function adapterParams(spec, { today, forceFull = false, healthOnly = false, lookbackDays = null, categories = {}, preview = false }) {
   const p = src(spec);
   const w = windowOf(p);
@@ -337,8 +337,8 @@ export function changeCost(before, after, { longestPeriodDays = null } = {}) {
   return { changed, consequence };
 }
 
-/** Two lists of customer lists alike (kind, size, floor, segment field, in order). */
-const sameLists = (a, b) => a.length === b.length && a.every((l, i) => l.kind === b[i].kind && l.n === b[i].n && l.floor === b[i].floor && (l.per ?? null) === (b[i].per ?? null));
+/** Two lists of customer lists alike (kind, size, floor, segment field, in order): the engine's one list identity (F-555). */
+const sameLists = (a, b) => a.length === b.length && a.every((l, i) => engine.listIdentity(l) === engine.listIdentity(b[i]));
 /** One follow-up key per list: its kind, or kind and field (and its place) where two lists share one. */
 const listKeys = (lists) => lists.map((l, i) => { const k = l.per ? `${l.kind}-${l.per}` : l.kind; return lists.filter((x) => (x.per ? `${x.kind}-${x.per}` : x.kind) === k).length > 1 ? `${k}-${i + 1}` : k; });
 // ── The questions table (DSH-3, ruled 2026-10-05; every wording ruled 2026-10-12 at S5-V's I0, F-511) ──
@@ -829,15 +829,16 @@ function openContext(argv, opt) {
 const dirOf = (ctx, slug) => ctx.store.paths(slug).dir;
 const writeJson = (path, value) => writeFileAtomicSync(path, JSON.stringify(value, null, 2) + "\n");
 const readJsonOr = (path, fallback = null) => (existsSync(path) ? readJsonFile(path) : fallback);
-const savedSpec = (ctx, slug) => {
+/** The saved spec's JSON, or the one refusal for a dashboard that is a draft or does not exist (the one home, F-555). */
+const savedRawOrRefuse = (ctx, slug) => {
   const raw = ctx.store.readSaved(slug);
   if (!raw) refuse(ctx.store.readDraft(slug) ? `"${slug}" is a draft, not a saved dashboard yet — finish the questions (next/answer) and save it, or change it with --dry-run` : `no dashboard "${slug}" in ${basename(ctx.kbDir)} — list shows the ones there`);
-  return openSpec(raw);
+  return raw;
 };
+const savedSpec = (ctx, slug) => openSpec(savedRawOrRefuse(ctx, slug));
 /** The saved spec as it is, with this version's problems beside it (F-541): for the verbs that repair one. */
 const savedSpecLenient = (ctx, slug) => {
-  const raw = ctx.store.readSaved(slug);
-  if (!raw) savedSpec(ctx, slug);
+  const raw = savedRawOrRefuse(ctx, slug);
   return { spec: raw, problems: validateSpec(raw).problems };
 };
 // ── Snapshots: the latest, the one before, retention ─────────────────────────
@@ -908,15 +909,19 @@ function pruneSnapshots(ctx, slug) {
 // ── The lock ─────────────────────────────────────────────────────────────────
 // Taken FIRST, before the state file is read or removed (F-545): a second refresh during a live one is told "already
 // running", never "a stopped refresh is waiting to resume". The lock is doc-lib's exclusive-create primitive (no
-// check-then-write window; the release leaves a lock another taker took over), and the run's name is recorded on it
-// once known (`record`).
-function takeLock(ctx, slug, run = null) {
+// check-then-write window; a holder whose process is gone, or whose lock is older than two hours, is taken over; the
+// release leaves a lock another taker took over), and the run's name is recorded on it once known (`record`). A
+// rebuild and a change's rebuild take the same lock (F-552): the pages are never written from an older snapshot over
+// the ones a refresh just built, and a refresh never prunes the snapshot a rebuild is reading.
+function takeLock(ctx, slug, { run = null, action = "refresh" } = {}) {
   const path = join(dirOf(ctx, slug), LOCK_FILE);
   const lock = acquireFileLock(path, { owner: { by: ctx.by, run }, staleMs: LOCK_STALE_MS, waitMs: 0, nowMs: ctx.nowMs });
   if (!lock.taken) {
     const held = lock.held ?? {};
     const age = ctx.nowMs - Date.parse(String(held.at ?? ""));
-    refuse(`a refresh of "${slug}" is already running: started by ${held.by ?? "unknown"} at ${held.at} (${plural(Math.round(age / 60000), "minute")} ago) — wait for it, or remove ${path} if you know it died`);
+    const holder = held.unreadable ? "its lock is being written" : `started by ${held.by ?? "unknown"} at ${held.at} (${plural(Math.round(age / 60000), "minute")} ago${held.pid != null ? `, pid ${held.pid}` : ""})`;
+    const then = action === "refresh" ? "wait for it" : `run ${action} again when it finishes`;
+    refuse(`a refresh of "${slug}" is already running: ${holder} — ${then}; a refresh whose process is gone, or whose lock ${path} is older than two hours, is taken over on its own`);
   }
   // Said at the takeover, so a run refused later (the budget) still leaves a record of whose lock it took.
   if (lock.takenOver) ctx.log(`took over a stale refresh lock of "${slug}" held by ${lock.takenOver.by ?? "unknown"} since ${lock.takenOver.at}`);
@@ -938,7 +943,7 @@ const lockState = (ctx, slug) => {
 export const refreshRemedy = (ctx, slug, { full = false, healthOnly = false } = {}) => `${COPY_LINES.refresh(slug, basename(ctx.kbDir))}${full ? " --full" : ""}${healthOnly ? " --health-only" : ""}`;
 const remedyOf = (line, login) => ({ remedy: { login, line } });
 /** Any other verb's line, as a remedy prints it: the entry command, the words, `--kb` (F-523). */
-const entryLine = (ctx, ...words) => `${ENTRY_COMMAND} ${words.join(" ")} --kb ${basename(ctx.kbDir)}`;
+const entryLine = (ctx, ...words) => `${ENTRY_COMMAND} ${words.join(" ")}${kbFlag(basename(ctx.kbDir))}`;
 function preflight(ctx, spec, { owner = "this dashboard", again = null } = {}) {
   const r = ctx.live().run({ id: "whoami", argv: ["whoami"], timeoutMs: 60000 });
   if (!r.ok) refuse(`gs-admin whoami failed: ${r.stderr.trim() || `exit ${r.status}`}`);
@@ -956,13 +961,14 @@ function categoriesFor(ctx) {
   return { file: path, categories: c };
 }
 // ── The plan and the pull, through the adapter ───────────────────────────────
-function runAdapter(ctx, { spec, runId, phase, previousPath, forceFull = false, healthOnly = false, preview = false, lookbackDays = null }) {
+function runAdapter(ctx, { spec, runId, phase, previousPath, forceFull = false, healthOnly = false, preview = false, lookbackDays = null, previousStore = undefined }) {
   const { categories, file: categoriesFile } = categoriesFor(ctx);
   const paramsOn = (today) => resolveParams(adapterParams(spec, { today, forceFull, healthOnly, lookbackDays, categories, preview }));
   const previous = previousPath ? openSnapshotFile(previousPath) : null;
   // The account store beside the previous snapshot (F-548): a selective refresh with accounts carries every account's
-  // older months from it; with none of its own, the adapter's decideRefresh makes the refresh full and says why.
-  const previousStore = previousPath ? readAccountStore(accountStorePath(previousPath)) : null;
+  // older months from it; with none of its own, the adapter's decideRefresh makes the refresh full and says why. A
+  // refresh reads it ONCE and passes it to its plan, its re-plan and its pull (F-555: it is megabytes).
+  if (previousStore === undefined) previousStore = previousPath ? readAccountStore(accountStorePath(previousPath)) : null;
   // A resumed run keeps the day it was planned on unless --today was given (F-483), as the adapter's own CLI does.
   const { runDir, params, resumed } = prepareRun({ wsDir: ctx.wsDir, runId, params: paramsOn(ctx.today), previousPath, cliVersion: ctx.catalog.meta?.cliVersion ?? null, todayGiven: ctx.todayGiven, reparams: paramsOn });
   const summary = fetchEngagement({ params, runDir, kbDir: ctx.kbDir, previous, previousStore, phase, transport: ctx.live(), gate: ctx.gate, onCall: (line) => ctx.log(`${phase === "plan" ? "plan" : "pull"} ${line}`) });
@@ -970,6 +976,8 @@ function runAdapter(ctx, { spec, runId, phase, previousPath, forceFull = false, 
 }
 /** The plan twice when the derived lookback moves (ENG-2 item 3): the second plan is the one the pull resumes. */
 function planWithLookback(ctx, args) {
+  // The previous snapshot's store read once for both plans (F-555); a caller that read it already passes it.
+  if (args.previousStore === undefined) args = { ...args, previousStore: args.previousPath ? readAccountStore(accountStorePath(args.previousPath)) : null };
   const first = runAdapter(ctx, { ...args, phase: "plan" });
   if (first.summary.status !== "ok") return first;
   const longest = first.summary.estimate?.health?.lookback?.longestPeriodDays ?? null;
@@ -1098,7 +1106,7 @@ function buildPages(ctx, { spec, snapshot, delta, outDir }) {
   return built.map((b) => ({ ...b.report, path: join(outDir, b.report.file) }));
 }
 /** A list as the spec and the pull's echo both hold it, for comparing the two. */
-const listKey = (l) => JSON.stringify([l.kind, l.n, l.floor, l.per ?? null]);
+const listKey = engine.listIdentity;
 /** Whether a snapshot was ranked with the spec's customer lists (the pull's list echo, which a ranking from the store rewrites). */
 const listsAgree = (spec, snapshot) => accountLists(spec).map(listKey).join() === (snapshot.meta.params?.accounts?.lists ?? []).map(listKey).join();
 /**
@@ -1116,10 +1124,13 @@ function rankChangedLists(spec, snapshot, snapshotPath, { write = true } = {}) {
   if (write) writeFileAtomicSync(snapshotPath, JSON.stringify(ranked));
   return { snapshot: ranked, newlyKept: newlyKept.length, unnamed: ranked.meta.params.accounts.names ? ranked.dimensions.accounts.filter((a) => newlyKept.includes(a.key) && a.name == null).length : 0 };
 }
-function rebuildFrom(ctx, { spec, snapshotPath, previousPath, outDir }) {
+function rebuildFrom(ctx, { spec, snapshotPath, previousPath, outDir, keep = null }) {
   const opened = openSnapshotFile(snapshotPath);
   const listsRanked = rankChangedLists(spec, opened, snapshotPath);
   const pulled = listsRanked?.snapshot ?? opened;
+  // A caller that reads the snapshot after the build (a list change's "did it rank?") takes this one: megabytes parsed
+  // once, and never returned on the summary (F-555).
+  if (keep) keep.snapshot = pulled;
   const previous = previousPath ? openSnapshotFile(previousPath) : null;
   const { snapshot, resolution } = applyGroups(pulled, spec.groups, { previous });
   const delta = computeDelta(spec, snapshot, previous);
@@ -1230,7 +1241,7 @@ function publishLeadersOrThrow(ctx, { spec, snapshot }) {
     writeFileAtomicSync(file, artifactContentOf(readFileSync(local, "utf8")));
     const url = pub.config.url ?? null;
     ctx.log(`the leaders' page is ready to publish as a claude.ai artifact: ${file} (/gs-superadmin:email-engagement publishes it${url ? ` to ${url}` : ""})`);
-    return { ...offFolder, target: "claude-artifact", published: false, ready: true, file, url, title: `${spec.title} · ${page.title}`, capabilities: { downloads: true }, next: `Claude publishes this file as a claude.ai artifact (a target no longer offered: the Artifact tool reads the whole file first, several turns at a real page's size): /gs-superadmin:email-engagement publish ${spec.slug}${url ? `; it updates ${url}` : "; record the new link afterwards with " + entryLine(ctx, "change", spec.slug, `'publish.config.url="<link>"'`)}` };
+    return { ...offFolder, target: "claude-artifact", published: false, ready: true, file, url, title: `${spec.title} · ${page.title}`, capabilities: { downloads: true }, next: `Claude publishes this file as a claude.ai artifact (a target no longer offered: the Artifact tool reads the whole file first, several turns at a real page's size): /gs-superadmin:email-engagement publish ${spec.slug}${url ? `; it updates ${url}` : "; record the new link afterwards with " + entryLine(ctx, "change", spec.slug, "publish.config.url=<link>")}` };
   }
   // file-copy
   const c = pub.config;
@@ -1467,7 +1478,7 @@ function verbNew(ctx, slug, opt, argv) {
   const fastPathIgnored = fastPath && r.state !== "new" ? `--fast-path applies to a new dashboard only (this is ${r.state === "resumed" ? "a resumed draft, which keeps its answers" : "an edit, which starts from the saved settings"}); ignored` : null;
   // A saved spec this version refuses (F-541) opens as an edit with its problems named: the repair is a change of the
   // named setting, and the save is refused until every problem is gone.
-  const problems = (r.problems ?? []).map((p) => `${p.path} ${p.problem}`);
+  const problems = (r.problems ?? []).map((p) => problemsText([p]));
   return { ok: true, mode: "new", slug, state: r.state, fastPath: fastPath && r.state === "new", ...(fastPathIgnored ? { fastPathIgnored } : {}), by: r.by, answered, next: nextQuestionId(ctx, slug), ...(r.state === "editing-saved" ? { hint: `an edit of the saved dashboard: next goes to the closing step; next --question <id> changes one setting (${SETTING_QUESTIONS.join(", ")})` } : {}), ...(problems.length ? { problems, repair: `the saved settings no longer pass this version's checks: ${problems.join("; ")} — change the named setting (change ${slug} <path>=<value>, or next --question <id>); the save is refused until every problem is gone` } : {}) };
 }
 function interviewState(ctx, slug) { return readJsonOr(join(dirOf(ctx, slug), INTERVIEW_FILE), { plan: null, preview: null }); }
@@ -1502,7 +1513,10 @@ function interviewContext(ctx, slug, { draft }) {
   let preview;
   return {
     spec, answered: draft.answered, plan, planExact: exact ? plan : null, planRun, previewPath, fastPath: !!state.fastPath, kb: basename(ctx.kbDir), today: ctx.today,
-    get edit() { return savedRaw ? (edit ??= (() => { const saved = openSpec(savedRaw); const lp = lastPlan(ctx, slug); const cost = changeCost(saved, spec, { longestPeriodDays: lp?.estimate?.health?.lookback?.longestPeriodDays ?? null }); return { saved, ...cost, ...(cost.consequence === "reselect" ? { reselect: { ...reselectReadiness(ctx, slug), line: refreshRemedy(ctx, slug) } } : {}) }; })()) : null; },
+    // The saved spec as it is, never opened strictly (F-541, reopened at the 0.56.1 gate): an edit of a spec this version
+    // refuses is the repair path, and its closing step, estimate and save must reach the writer, which names what is
+    // still wrong; a stack here was the reopen.
+    get edit() { return savedRaw ? (edit ??= (() => { const saved = /** @type {import("./dashboard-spec.mjs").T11Spec} */ (savedRaw); const lp = lastPlan(ctx, slug); const cost = changeCost(saved, spec, { longestPeriodDays: lp?.estimate?.health?.lookback?.longestPeriodDays ?? null }); return { saved, ...cost, ...(cost.consequence === "reselect" ? { reselect: { ...reselectReadiness(ctx, slug), line: refreshRemedy(ctx, slug) } } : {}) }; })()) : null; },
     get hasSnapshot() { return !!latestSnapshotPath(ctx, slug); },
     get preview() { return previewPath ? (preview ??= openSnapshotFile(previewPath)) : null; },
     params: adapterParams(spec, { today: ctx.today }), programs: plan ? readJsonOr(join(planRun, "programs.json"), []) : [],
@@ -1754,9 +1768,9 @@ function verbAction(ctx, slug, q, value, ictx) {
 /** What a saved change needs, done: the pull, a re-selection of the customer lists from the account store, or a rebuild. */
 function doConsequence(ctx, slug, spec, consequence) {
   if (consequence === "pull") return { kind: "refresh", ...verbRefresh(ctx, slug, { full: false, healthOnly: false }) };
-  if (consequence === "reselect") return { kind: "reselect", ...reselectFromStore(ctx, slug, spec) };
+  if (consequence === "reselect") return { kind: "reselect", ...underLock(ctx, slug, "change", () => reselectFromStore(ctx, slug, spec)) };
   const files = snapshotFiles(ctx, slug);
-  return files.length ? { kind: "rebuild", ...rebuildFrom(ctx, { spec, snapshotPath: files.at(-1), previousPath: files.at(-2) ?? null, outDir: dirOf(ctx, slug) }) } : { kind: "rebuild", done: false, why: `no snapshot yet: run \`${refreshRemedy(ctx, slug)}\`` };
+  return files.length ? { kind: "rebuild", ...underLock(ctx, slug, "change", () => rebuildFrom(ctx, { spec, snapshotPath: files.at(-1), previousPath: files.at(-2) ?? null, outDir: dirOf(ctx, slug) })) } : { kind: "rebuild", done: false, why: `no snapshot yet: run \`${refreshRemedy(ctx, slug)}\`` };
 }
 /** The last plan this dashboard made (null until one exists): the minutes of a full refresh and the longest schedule period come from it. */
 function lastPlan(ctx, slug) {
@@ -1849,21 +1863,28 @@ function verbRefresh(ctx, slug, { full, healthOnly, planRun = null }) {
   // run's. A fresh name is one no directory holds.
   const runId = resuming ? state.run : continuesPlan ? planRun : freshName(runsRoot, `dash-${slug}-${snapshotStamp(new Date(ctx.nowMs).toISOString())}`);
   lock.record(runId);
-    const stateRecord = { run: runId, startedAt: resuming ? state.startedAt : new Date(ctx.nowMs).toISOString(), by: ctx.by, previousPath, full, healthOnly, lookbackDays: resuming ? state.lookbackDays ?? null : null };
+    const stateRecord = { run: runId, startedAt: resuming ? state.startedAt : new Date(ctx.nowMs).toISOString(), by: ctx.by, previousPath, full, healthOnly, lookbackDays: resuming ? state.lookbackDays ?? null : null, pullRun: resuming ? state.pullRun ?? null : null };
     writeJson(join(dir, STATE_FILE), stateRecord);
     // The plan, with the derived lookback. The pull is NOT held to the login (F-513, ruled 2026-10-12): it runs as far
     // as the token allows, the adapter stops it cleanly when the next call would outlast the token, and the next run
     // after a login continues it. What is said is how many logins a pull of this size takes.
-    const planned = planWithLookback(ctx, { spec, runId, previousPath, forceFull: full, healthOnly });
+    const previousStore = previousPath ? readAccountStore(accountStorePath(previousPath)) : null;
+    const planned = planWithLookback(ctx, { spec, runId, previousPath, forceFull: full, healthOnly, previousStore });
     // A resume whose derived lookback MOVED since the run was planned (re-documentation moved the knowledge base, so
     // the longest schedule period changed) plans and pulls in a fresh `-lb<days>` directory where nothing is reused
     // (F-542): said as a restart, with why, never as "the calls already made are reused". The planned lookback is
     // kept in the state once the plan is made, so the next resume can tell a move from a run that stopped before
     // its plan was done (whose plan calls the resume does reuse) and say what it moved from.
-    const restarted = resuming && planned.summary.status === "ok" && !planned.resumed && state.lookbackDays != null && state.lookbackDays !== planned.lookbackDays
-      ? { from: runId, run: basename(planned.runDir), lookbackDays: { from: state.lookbackDays, to: planned.lookbackDays } }
+    // A restart is the pull running in a DIFFERENT directory from the one the stopped run pulled in (the state records
+    // it as pullRun; reopened at the 0.56.1 gate: a lookback that moved BACK to the base plans in the base directory,
+    // which exists from the first plan, so "resumed" was true, and two derived values capped to one window name two
+    // directories with equal lookbacks — comparing lookbacks missed both). A state from before pullRun was recorded
+    // falls back to the lookback comparison.
+    const pulledIn = basename(planned.runDir);
+    const restarted = resuming && planned.summary.status === "ok" && (state.pullRun != null ? state.pullRun !== pulledIn : !planned.resumed && state.lookbackDays != null && state.lookbackDays !== planned.lookbackDays)
+      ? { from: state.pullRun ?? runId, run: pulledIn, lookbackDays: { from: state.lookbackDays, to: planned.lookbackDays } }
       : null;
-    if (planned.summary.status === "ok" && planned.lookbackDays !== stateRecord.lookbackDays) writeJson(join(dir, STATE_FILE), { ...stateRecord, lookbackDays: planned.lookbackDays });
+    if (planned.summary.status === "ok" && (planned.lookbackDays !== stateRecord.lookbackDays || stateRecord.pullRun !== pulledIn)) writeJson(join(dir, STATE_FILE), { ...stateRecord, lookbackDays: planned.lookbackDays, pullRun: pulledIn });
     const stopped = (r, logins = null) => {
       const code = r.summary.status === "token-expired" ? "token-expired" : r.summary.status === "partial" ? "partial" : "failed";
       const made = r.summary.calls ? ` after ${plural(r.summary.calls.made, "call")} this run${r.summary.calls.reused ? ` (${r.summary.calls.reused} reused from before)` : ""}` : "";
@@ -1888,7 +1909,7 @@ function verbRefresh(ctx, slug, { full, healthOnly, planRun = null }) {
     const budget = { neededSeconds: needed, planSeconds, continuing: !!resuming && !restarted, loginSecondsLeft: who.expiresInSeconds, fitsThisLogin: needed <= who.expiresInSeconds, loginsNeeded: loginsFor(needed) };
     const beyond = `it will run as far as the login allows (about ${plural(budget.loginsNeeded, "login")} of an hour in all) and continue after the next login`;
     const loginLeft = `the login has ${plural(minutesOf(who.expiresInSeconds), "minute")} left${budget.fitsThisLogin ? ", enough for it" : `: ${beyond}`}`;
-    if (restarted) ctx.log(`the refresh of "${slug}" starts its pull again (run ${restarted.run}, not ${runId}): the derived health lookback moved from ${restarted.lookbackDays.from} to ${restarted.lookbackDays.to} days since the run was planned (the longest schedule period in the knowledge base changed), so none of the calls already made applies; about ${plural(minutesOf(needed), "minute")} in all; ${loginLeft}`);
+    if (restarted) ctx.log(`the refresh of "${slug}" starts its pull again (run ${restarted.run}, not ${restarted.from}): the derived health lookback ${restarted.lookbackDays.from !== restarted.lookbackDays.to ? `moved from ${restarted.lookbackDays.from} to ${restarted.lookbackDays.to} days` : `moved (both values are capped to the window's ${restarted.lookbackDays.to} days, so the pull reads the same months from a new directory)`} since the run was planned (the longest schedule period in the knowledge base changed), so none of the calls already made applies; about ${plural(minutesOf(needed), "minute")} in all; ${loginLeft}`);
     else if (resuming) ctx.log(`continuing the refresh of "${slug}" (run ${runId}): about ${plural(minutesOf(needed), "minute")} of its ${plural(minutesOf(planSeconds), "minute")} remain, the calls already made are reused; ${loginLeft}`);
     else if (!budget.fitsThisLogin) ctx.log(`the refresh needs about ${plural(minutesOf(needed), "minute")} and the login has ${plural(minutesOf(who.expiresInSeconds), "minute")} left: ${beyond}`);
     // Re-documentation first (the fetch then re-reads the moved knowledge base: the run's KB copy is stamped). A login
@@ -1899,7 +1920,7 @@ function verbRefresh(ctx, slug, { full, healthOnly, planRun = null }) {
       refuse(`the refresh stopped during re-documentation (${plural(redocumented.calls, "describe")} made): the login expired — run gs-admin login, then run \`${again}\` again: it continues where it stopped; the last good pages are untouched${lock.takenOver ? `; a stale lock held by ${lock.takenOver.by ?? "unknown"} since ${lock.takenOver.at} was taken over` : ""}`, "token-expired", { ...takenOver, ...(abandoned ? { abandoned } : {}), redocumented, ...remedyOf(again, true) });
     }
     // The pull.
-    const pulledRun = runAdapter(ctx, { spec, runId: basename(planned.runDir), phase: "all", previousPath, forceFull: full, healthOnly, lookbackDays: planned.lookbackDays });
+    const pulledRun = runAdapter(ctx, { spec, runId: basename(planned.runDir), phase: "all", previousPath, forceFull: full, healthOnly, lookbackDays: planned.lookbackDays, previousStore });
     // What the stop says is still needed is the adapter's remainder over the records as they stand (F-518), priced the
     // way the resume's opening line is; never the plan's calls less this run's counts, which count unforeseen cuts.
     if (pulledRun.summary.status !== "ok") {
@@ -1943,8 +1964,13 @@ function verbRebuild(ctx, slug) {
   const spec = savedSpec(ctx, slug);
   const files = snapshotFiles(ctx, slug);
   if (!files.length) refuse(`no snapshot of "${slug}" yet — run \`${refreshRemedy(ctx, slug)}\` first`, "failed", remedyOf(refreshRemedy(ctx, slug), false));
-  const r = rebuildFrom(ctx, { spec, snapshotPath: files.at(-1), previousPath: files.at(-2) ?? null, outDir: dirOf(ctx, slug) });
+  const r = underLock(ctx, slug, "rebuild", () => rebuildFrom(ctx, { spec, snapshotPath: files.at(-1), previousPath: files.at(-2) ?? null, outDir: dirOf(ctx, slug) }));
   return { ok: true, mode: "rebuild", slug, pulledAt: r.pulledAt, ungrouped: r.ungrouped, delta: r.delta, pages: r.pages.map((p) => ({ page: p.page, path: p.path, megabytes: p.megabytes, warning: p.warning })), publish: r.publish };
+}
+/** A rebuild of the pages under the dashboard's lock (F-552): refused while a refresh runs, never raced with it. */
+function underLock(ctx, slug, action, work) {
+  const lock = takeLock(ctx, slug, { action });
+  try { return work(); } finally { lock.release(); }
 }
 /**
  * Whether a change of the customer lists can rank them now (F-548, which replaced F-529's narrow path): from the account
@@ -1970,7 +1996,8 @@ function reselectReadiness(ctx, slug) {
  * @param {*} snapshot the latest snapshot (T-10) @param {string} snapshotPath
  */
 function storeGap(snapshot, snapshotPath) {
-  if (!engine.accountAvailability(snapshot).pulled || accountStoreFits(readAccountStore(accountStorePath(snapshotPath)), snapshot)) return null;
+  // The store's head says which pull it is (F-555): its cells are not read to answer that.
+  if (!engine.accountAvailability(snapshot).pulled || accountStoreFits(readAccountStoreHead(accountStorePath(snapshotPath)), snapshot)) return null;
   return snapshot.meta.accountStore
     ? `the account store beside the latest snapshot (${snapshot.meta.pulledAt}) is missing or is not that snapshot's, so the customer lists need one full pull to rank again, and the next refresh is that pull`
     : `the latest snapshot (${snapshot.meta.pulledAt}) was made before the account store: the customer lists need one full pull to start ranking on every refresh, and the next refresh is that pull`;
@@ -1986,7 +2013,8 @@ const reselectText = (r, line) => (r.rank ? "the customer lists are ranked again
 function reselectFromStore(ctx, slug, spec) {
   const r = reselectReadiness(ctx, slug);
   const files = snapshotFiles(ctx, slug);
-  const rebuilt = files.length ? rebuildFrom(ctx, { spec, snapshotPath: files.at(-1), previousPath: files.at(-2) ?? null, outDir: dirOf(ctx, slug) }) : null;
+  const keep = { snapshot: null };
+  const rebuilt = files.length ? rebuildFrom(ctx, { spec, snapshotPath: files.at(-1), previousPath: files.at(-2) ?? null, outDir: dirOf(ctx, slug), keep }) : null;
   const pages = rebuilt ? { pages: rebuilt.pages.map((p) => ({ page: p.page, path: p.path })), publish: rebuilt.publish } : {};
   if (!r.rank) {
     const line = refreshRemedy(ctx, slug);
@@ -1999,7 +2027,7 @@ function reselectFromStore(ctx, slug, spec) {
       ...pages,
     };
   }
-  const snapshot = openSnapshotFile(r.latest);
+  const snapshot = keep.snapshot ?? openSnapshotFile(r.latest);
   // Ranked is what the snapshot now holds (the review's outcome-from-proxy note): its lists are the spec's. A change that
   // also turned the customer lists off ranks nothing, and says so.
   if (!listsAgree(spec, snapshot)) {
@@ -2010,7 +2038,7 @@ function reselectFromStore(ctx, slug, spec) {
   const unnamed = rebuilt?.listsRanked?.unnamed ?? 0;
   return {
     done: true, ranked: true, rebuilt: true, snapshot: r.latest, lists,
-    text: `The change is saved and the customer lists were ranked again from the account store beside the last pull (${snapshot.meta.pulledAt}), with no pull; the pages were rebuilt.${unnamed ? ` ${plural(unnamed, "account")} new to the lists show${unnamed === 1 ? "s" : ""} its key until the next refresh reads ${unnamed === 1 ? "its name" : "their names"}.` : ""}`,
+    text: `The change is saved and the customer lists were ranked again from the account store beside the last pull (${snapshot.meta.pulledAt}), with no pull; the pages were rebuilt.${unnamed ? ` ${plural(unnamed, "account")} new to the lists show${unnamed === 1 ? "s" : ""} its key until the next refresh reads ${unnamed === 1 ? "its name" : "their names"}.` : ""}${perSegmentLeftOut(rebuilt?.listsRanked?.newlyKept ?? 0, lists)}`,
     ...pages,
   };
 }
@@ -2071,7 +2099,7 @@ function verbChange(ctx, slug, pairs, dryRun) {
   // The pull's minutes are priced for the spec AFTER the change (F-511 instance 24), from the last plan's parts.
   const seconds = pullSecondsAfter(plan, saved, d.draft.spec);
   const says = consequence == null ? "nothing changed" : consequence === "pull" ? `the next refresh pulls everything again, ${seconds != null ? `about ${plural(minutesOf(seconds), "minute")}${seconds > LOGIN_SECONDS ? ` (about ${plural(loginsFor(seconds), "login")} of an hour)` : ""}` : "a first pull's time (no plan yet)"}` : consequence === "reselect" ? reselectText(reselectReadiness(ctx, slug), refreshRemedy(ctx, slug)) : "rebuild only (no pull)";
-  const summary = { ok: true, mode: "change", slug, by: started.by, draftHadEarlierChanges: had, changed, consequence, consequenceText: says, pullSeconds: consequence === "pull" ? seconds : null, costTable: COST_KINDS, dryRun, ...(savedProblems.length ? { savedProblems: savedProblems.map((p) => `${p.path} ${p.problem}`) } : {}) };
+  const summary = { ok: true, mode: "change", slug, by: started.by, draftHadEarlierChanges: had, changed, consequence, consequenceText: says, pullSeconds: consequence === "pull" ? seconds : null, costTable: COST_KINDS, dryRun, ...(savedProblems.length ? { savedProblems: savedProblems.map((p) => problemsText([p])) } : {}) };
   if (dryRun) {
     if (!had) ctx.store.discardDraft(slug);
     return { ...summary, saved: false, done: null };
@@ -2081,14 +2109,35 @@ function verbChange(ctx, slug, pairs, dryRun) {
   try {
     savedNow = ctx.store.save(slug);
   } catch (e) {
-    // A save the writer refuses (another dashboard's publish file, F-532) leaves no draft this change started.
+    if (e instanceof SpecRefusal) {
+      // A repair in progress (F-541, reopened at the 0.56.1 gate): a change that cleared SOME of a refused spec's
+      // problems is KEPT in the draft, so the next change builds on it and the save follows once every problem is
+      // gone — never the fix lost to the refusal that names the rest. A change that cleared none leaves no draft
+      // (another dashboard's publish file, F-532, the same).
+      const left = savedProblems.length ? validateSpec(d.draft.spec).problems : [];
+      if (left.length && left.length < savedProblems.length) refuse(`${e.message} — this change is kept in the draft (${plural(left.length, "problem")} left of ${savedProblems.length}): change the remaining setting${left.length === 1 ? "" : "s"} the same way, and the save follows`);
+      if (!had) ctx.store.discardDraft(slug);
+      refuse(e.message);
+    }
     if (!had) ctx.store.discardDraft(slug);
-    if (e instanceof SpecRefusal) refuse(e.message);
     throw e;
   }
   const spec = openSpec(savedNow.spec);
-  const done = doConsequence(ctx, slug, spec, consequence);
+  let done;
+  try {
+    done = doConsequence(ctx, slug, spec, consequence);
+  } catch (e) {
+    // The change IS saved; a rebuild refused under the lock (a refresh is running, F-552) says so and keeps its code.
+    if (e instanceof DashboardRefusal && consequence !== "pull") throw new DashboardRefusal(`the change of "${slug}" is saved; its rebuild did not run: ${e.message}`, e.code, e.details);
+    throw e;
+  }
   return { ...summary, saved: true, previousCopy: `${savedNow.path}.previous`, done };
+}
+/** The per-segment lists a change ranked from the store leave out the accounts it newly kept (their fields are not in the store): said with the result (F-554). */
+function perSegmentLeftOut(newlyKept, lists) {
+  const fields = [...new Set((lists ?? []).filter((l) => l.per).map((l) => l.per))];
+  if (!newlyKept || !fields.length) return "";
+  return ` ${plural(newlyKept, "account")} newly kept ${newlyKept === 1 ? "is" : "are"} left out of the per-${fields.join(" and per-")} list${fields.length === 1 ? "" : "s"} until the next refresh reads ${newlyKept === 1 ? "its" : "their"} fields.`;
 }
 /**
  * A full pull's seconds for the spec AFTER a change, from the last plan made on the spec BEFORE it: the plan prices each
@@ -2164,10 +2213,9 @@ function verbExport(ctx, slug, opt, argv) {
   if (argv.includes("--with-snapshot")) {
     if (!latest) refuse(`no snapshot of "${slug}" to export beside the spec — run \`${refreshRemedy(ctx, slug)}\` first, or export without --with-snapshot`, "failed", remedyOf(refreshRemedy(ctx, slug), false));
     snapshot = r.out.replace(/\.json$/i, "") + ".snapshot.json";
-    copyFileSync(latest, snapshot);
-    // The account store goes with its snapshot (F-548), beside it under the same rule, so the import ranks the customer
-    // lists on its first refresh with no full pull.
-    if (existsSync(accountStorePath(latest))) copyFileSync(accountStorePath(latest), (accountStore = accountStorePath(snapshot)));
+    // The account store goes with its snapshot (F-548), beside it under the one rule engagement.mjs owns, so the
+    // import ranks the customer lists on its first refresh with no full pull.
+    accountStore = copySnapshotWithStore(latest, snapshot);
   }
   const noStore = snapshot && !accountStore && engine.accountAvailability(openSnapshotFile(latest)).pulled;
   return { ok: true, mode: "export", slug, out: r.out, tenantHost: r.tenantHost, snapshot, accountStore, hint: snapshot ? `import --file <the export> --snapshot <the snapshot> on the other machine${accountStore ? " (the account store beside the snapshot goes with it)" : ""}: its first refresh is then ${noStore ? "a full pull, since the snapshot has no account store beside it to rank the customer lists from" : "selective, with a delta"}` : null };
@@ -2190,9 +2238,8 @@ function verbImport(ctx, opt, argv) {
   if (snapPath && pulled) {
     mkdirSync(join(dirOf(ctx, r.slug), SNAPSHOTS_DIR), { recursive: true });
     snapshot = join(dirOf(ctx, r.slug), SNAPSHOTS_DIR, `${freshName(join(dirOf(ctx, r.slug), SNAPSHOTS_DIR), snapshotStamp(pulled.meta.pulledAt), ".json")}.json`);
-    copyFileSync(snapPath, snapshot);
     // Its account store, when one is beside it (F-548): the first refresh then carries every account's older months.
-    if (existsSync(accountStorePath(snapPath))) copyFileSync(accountStorePath(snapPath), (accountStore = accountStorePath(snapshot)));
+    accountStore = copySnapshotWithStore(snapPath, snapshot);
   }
   return { ok: true, mode: "import", slug: r.slug, path: r.path, snapshot, accountStore, exportedAt: r.exportedAt, ...(r.publishRenamed ? { publishRenamed: { ...r.publishRenamed, text: `The leaders' copy of "${r.slug}" goes to ${r.publishRenamed.to}, not ${r.publishRenamed.from}: ${r.publishRenamed.why}.` } } : {}) };
 }
