@@ -5,6 +5,37 @@ marketplace doesn't pin versions — users get main — so entries describe what
 user who updates, not internal refactors. Entries before 0.8.0 were reconstructed from git
 history when this file was introduced.
 
+## 0.55.0 — 2026-10-15
+
+Customer lists that stay current. In 0.54.0 a routine refresh updated the figures of the
+accounts on the lists but never who was on them: membership changed only at a full pull.
+
+- **Every refresh ranks the customer lists.** Beside its latest snapshot each dashboard
+  now keeps an account store: every company's sends, deliveries, opens and bounces (and the
+  rest of the send figures) by program and month over the dashboard's window. It is plain
+  JSON, one line per company, program and month, in the dashboard's `snapshots` folder; it
+  is never put in a page, and only the latest snapshot's is kept. A routine refresh ranks
+  the lists from the months it carries (from the store) and the months it reads again, so
+  its lists are the ones a full pull would make. Its size follows how broadly the tenant
+  sends, not the dashboard's age: about 4.6 MB for 15,000 companies across 190 programs
+  over 13 months.
+- **A list change ranks with no pull.** Changing a customer list's size, floor or segment
+  (`change`, or the edit's closing step) ranks it again from the store and rebuilds the
+  pages, after a routine refresh too. A company new to a list shows its id until the next
+  refresh reads its name. A per-segment list over a company field the last pull did not
+  read says so, and the next refresh ranks it.
+- **The page shows the lists the pull ranked.** Each customer-list panel now lists that
+  list's own companies in the order the pull ranked them, with its size and floor (it used
+  to rank every company again with fixed numbers: 25, at least 10 delivered), and a list
+  per segment now reaches the page, one table per segment. The page, the report and the
+  About tab name the same list. A narrower date range or filter re-ranks the list's own
+  companies over what is shown, and says so. The report prints each list in the same order.
+- **Upgrading.** The first refresh of a dashboard pulled with 0.54.0 is a full pull, once:
+  the lists need it to start ranking on every refresh. The refresh says so, and the
+  report's offer to refresh prices it as the full pull it is. Nothing to do by hand.
+  `export --with-snapshot` carries the store, so a backup refresher's first pull stays
+  selective.
+
 ## 0.54.1 — 2026-10-15
 
 The plugin's account of the Gainsight CLI is correct again for a workspace whose installed
@@ -126,10 +157,8 @@ the versions 0.44.0 to 0.53.0 were staged on the way and never released on their
   families again. The pages say when the data was pulled and that they are not live. The
   README has a copy-paste scheduled-refresh recipe per OS, and the hand-over to a backup
   refresher (export with the snapshot, import).
-- **Customer lists are ranked at a full pull.** A routine refresh keeps that ranking (the
-  page dates it) and updates the figures; `refresh <slug> --full` ranks the lists again. A
-  list changed after a routine refresh is ranked at the next full refresh, and the change
-  says so, with that refresh's line.
+- **Customer lists are ranked at a full pull** in this version; a routine refresh keeps
+  that ranking. 0.55.0 ranks them on every refresh (below).
 - **The leaders' copy, published.** At the end of every successful refresh the leaders'
   page is copied into a folder you name (a synced OneDrive, SharePoint or network folder)
   under the same file name every time, with each table beside it as a CSV named after the

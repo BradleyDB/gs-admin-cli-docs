@@ -487,6 +487,7 @@ const CONTENT_KINDS = new Set(["content", "lookalike"]);
  * Build the tenant. Variants (all optional) reshape it for one scenario:
  *   cutoff          "YYYY-MM-DD" — sends on or after this day do not exist yet
  *   lateOpens       true — every unopened delivered send before 2026-07 is now opened
+ *   recentUnopened  true — no send on or after 2026-08 is opened (F-548: data that changed inside the months a refresh pulls)
  *   token           {state: "valid"|"expired"|"none", seconds}
  *   dropSchemaField {object, field} — the schema (and so the filter) lacks it
  *   noSurveyObject  true — survey_participant has no schema at all
@@ -529,6 +530,7 @@ export function buildTenant(variant = {}) {
     const rejected = (!sent && !bounced) || (!!variant.bothFlags && !sent && bounced && n % 4 === 0);
     let opened = sent && n % 3 !== 0;
     if (variant.lateOpens && sent && month < "2026-07") opened = true;
+    if (variant.recentUnopened && month >= "2026-08") opened = false;
     const mode = CLICK_MODE[tpl] ?? "none";
     let kinds = null;
     if (sent && opened && mode.startsWith("ownsite") && n % 2 === 0) {

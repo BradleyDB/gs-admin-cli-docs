@@ -165,7 +165,10 @@ that pull. When `snapshotAgeDays` is above 7, first say the date and the age, th
 whether to run `/gs-superadmin:email-engagement refresh <dashboard slug>` first or to answer
 from the older numbers; never answer from an old snapshot quietly. The ask prices that
 pull, a routine one: "about M minutes", M being the summary's price of
-`/gs-superadmin:email-engagement refresh <dashboard slug>`, `refreshMinutes`. When that is null
+`/gs-superadmin:email-engagement refresh <dashboard slug>`, `refreshMinutes`. When that pull
+is a full one this once (`refreshFullOnce` of `/gs-superadmin:email-engagement refresh <dashboard slug>`
+says why: the dashboard's last pull has no account store to rank the customer lists from),
+say so with that reason; the price is then the full pull's. When the routine price is null
 (no routine pull has been priced yet: the dashboard has had only its first, full pull),
 say instead "a routine pull re-reads only the recent months, so it is shorter than the
 first pull, which took about F minutes", F being the full pull's price,
@@ -593,9 +596,10 @@ end at `=` for a text setting: put the quoted value there. Relay `changed` (each
 re-issue without `--dry-run`: the script saves
 and DOES the consequence (a rebuild, a re-selection of the customer lists, or the pull);
 relay `done`. For a customer-list change, relay `done.text` as written: the lists are
-ranked again now only over a full pull's rows; after a routine pull they are ranked at the
-next full pull (`/gs-superadmin:email-engagement refresh <dash> --full`), and
-`done.remedy.line` is that pull's line (offer it; never run it unasked). The paths are the ones the pages' copy lines use and the ones
+ranked again now from the account store beside the last pull, with no pull. On a dashboard
+whose last pull has no account store of its own (one pulled before 0.55.0, or its store
+gone) they are ranked by the next pull of `/gs-superadmin:email-engagement refresh <dash>`, a
+full one this once, and `done.remedy.line` is that pull's line (offer it; never run it unasked). The paths are the ones the pages' copy lines use and the ones
 `node .gs-superadmin/plugin/scripts/dashboard.mjs costs` lists.
 
 ---

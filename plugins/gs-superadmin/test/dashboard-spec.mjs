@@ -20,7 +20,7 @@ import { makeTempDir, removeTempDir, writeFiles, runNode } from "../../../test/r
 import {
   defaultSpec, validateSpec, describeSpec, describePanel, openSpec, setPath, kbTenantHost, presetPanels, panelKnobs, SPEC_DESCRIPTIONS, SPEC_FILE, DRAFT_FILE, T11_SCHEMA_VERSION,
   ADAPTERS, FILTERS, TABS, CADENCES, PANEL_TYPES, PRESETS, HEALTH_PANEL_TYPES, TEMPLATE_PANEL_TYPES, KNOBBED_PANEL_TYPES, DATE_DEFAULTS, pageTemplateContent,
-  FRESHNESS_BY_CADENCE, windowOf, accountLists, accountFields, kbSettings, specStore, SpecRefusal,
+  FRESHNESS_BY_CADENCE, windowOf, accountLists, accountFields, kbSettings, specStore, SpecRefusal, isListPanel,
 } from "../scripts/dashboard-spec.mjs";
 import { METRICS } from "../scripts/engagement-query.mjs";
 
@@ -157,8 +157,12 @@ try {
         describePanel(d, execPanels[4]) === `"Top programs by open rate" on the engagement tab: a table of Sent, Open rate by program, the top 10 by Open rate.` &&
         // F-508: the direction names the end of the ranking a limit keeps, pinned on both preset directions.
         describePanel(d, execPanels[5]) === `"Lowest open rates" on the engagement tab: a table of Sent, Open rate by program, the 10 lowest by Open rate.` &&
-        describePanel(d, adminPanels.find((p) => p.id === "least-engaged")).endsWith("by account, the 25 lowest by Open rate.") && describePanel(d, adminPanels.find((p) => p.id === "most-engaged")).endsWith("by account, the top 25 by Open rate.") && describePanel(d, adminPanels.find((p) => p.id === "most-bounced")).endsWith("by account, the top 25 by Bounced.") &&
-        [...adminPanels, ...execPanels].filter((p) => p.query?.limit != null).every((p) => describePanel(d, p).includes(p.query.sort?.[0]?.dir === "asc" ? `the ${p.query.limit} lowest by` : `the top ${p.query.limit} by`)) &&
+        // A customer list's panel is described by the spec's list of its kind (F-530 reopened), never the preset query's
+        // limit; the sort's direction words (F-508) are held on a limited panel that names no customer list.
+        describePanel(d, adminPanels.find((p) => p.id === "least-engaged")).endsWith(": the 25 least engaged (at least 10 delivered), as the pull ranked it.") && describePanel(d, adminPanels.find((p) => p.id === "most-engaged")).endsWith(": the 25 most engaged (at least 10 delivered), as the pull ranked it.") && describePanel(d, adminPanels.find((p) => p.id === "most-bounced")).endsWith(": the 25 most bounced, as the pull ranked it.") &&
+        describePanel({ ...d, accounts: { ...d.accounts, lists: [{ kind: "most-bounced", n: 5, floor: 0 }] } }, adminPanels.find((p) => p.id === "most-engaged")).endsWith(": no most engaged list is kept (the customer lists name the lists the pull ranks).") &&
+        describePanel(d, { id: "bottom", tab: "engagement", type: "table", title: "Lowest", query: { groupBy: ["program"], metrics: ["openRate"], sort: [{ metric: "openRate", dir: "asc" }], limit: 10 } }).endsWith("by program, the 10 lowest by Open rate.") &&
+        [...adminPanels, ...execPanels].filter((p) => p.query?.limit != null && !isListPanel(p)).every((p) => describePanel(d, p).includes(p.query.sort?.[0]?.dir === "asc" ? `the ${p.query.limit} lowest by` : `the top ${p.query.limit} by`)) &&
         describePanel(d, adminPanels[11]) === `"Program health" on the health tab: ${PANEL_TYPES["health-silent"]}; the no-send threshold starts at 30 days (14, 30, 60 and 90 are one click away).` &&
         describePanel(d, { ...adminPanels[14], knobs: { months: 12 } }).endsWith("each program's sends over the last 12 months.") && describeSpec(d).find((x) => x.label === "Pages").text.length === 2 + adminPanels.length + execPanels.length &&
         describePanel(d, adminPanels[16]) === `"Emails: text and search" on the templates tab: ${PANEL_TYPES.templates}; a search hit shows 50 characters of context either side.` && describePanel(d, { ...adminPanels[16], knobs: { snippet: 40 } }).endsWith("shows 40 characters of context either side.") &&
