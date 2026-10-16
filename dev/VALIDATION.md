@@ -3304,3 +3304,37 @@ five checks green):
   order (all 25 checked from the page file, not five), the note naming size and floor; with August–September 2026 in the
   filter bar each note adds "re-ranked here over what is shown", and every account visible is in its own list only.
 Section status: OPEN on F-530 (reopened, three instances of consumer-parity); F-548 VERIFIED.
+
+## F-530 reopened — the customer lists in words, on every surface (banked 2026-10-15, builder, Session B's F-530 round @ <token>; verdict at the F-530 re-verification round)
+
+Owed by: the F-530 re-verification round, in the consumer workspace with the plugin loaded from feat/f548-ranking-every-refresh
+(a terminal in the workspace with --plugin-dir, canary <token> matched). NO PULL (Bradley's scoping, 2026-10-15): every arm runs on a
+SCRATCH import of the kept dashboard (it now carries its account store from B-V's pulls) or on the repo's suites. No refresh arm: this
+round's fix touches no ranking or store code (selectionOver, rankFromStore, carriedAccountCells, decideRefresh and the store's writer
+are unchanged; the handoff note says so). Token: <token>.
+
+THIS LIST IS COMPLETE.
+
+- N0 (setup and provenance). Canary matched; `export digital-outreach-health-v2 --out <tmp>/f530.json --with-snapshot --kb payscale-prod`
+  (its `accountStore` named), `import --file <tmp>/f530.json --slug f530-scratch --kb payscale-prod` (its `accountStore` copied).
+- N1 (the change). `change f530-scratch accounts.lists=[{"kind":"most-bounced","n":5,"floor":0}] --kb payscale-prod`. Pass bar: exit 0,
+  `done.ranked` true, no call made.
+- N2 (the page and its About tab). Open f530-scratch's latest-admin.html. Pass bar: the Most bounced customers panel lists exactly the
+  record's 5 in its order with the note "The 5 most bounced across programs over the whole window, as the pull of <date> ranked them.";
+  the About tab's Pages entries for the three list panels read "… the 5 most bounced, as the pull ranked it." for Most bounced and
+  "… no most engaged list is kept …" / "… no least engaged list is kept …" for the other two (never "the top 25" or "the 25 lowest");
+  its Accounts entry names "the 5 most bounced" and no other list.
+- N3 (the report). `report f530-scratch --kb payscale-prod`. Pass bar: the Account watch list opens "Across programs over the whole
+  window, the accounts this pull kept: the 5 most bounced. Possible bad contacts: never a verdict on a customer." — no "advocates", no
+  "disengagement", no low-cadence sentence — and its one table lists the same 5 in the same order.
+- N4 (the edit screen). `new f530-scratch`, `next f530-scratch --question customer-list-detail`. Pass bar: the ask says "This dashboard
+  makes 1 list across programs: the 5 most bounced." with no 25 anywhere; the first option reads "Keep the lists as they are (the
+  default)"; the size option has ONE follow-up, for the 5 most bounced. Answer keep (through the size option), then `default`: the
+  draft's lists stay [most-bounced 5/0] each time; answer "6 0": the draft holds [most-bounced 6/0] alone, and `next` (the closing ask)
+  says it changes 1 setting (accounts.lists[]). Read the question's wording to Bradley: is it what an admin should read? Discard the
+  draft (do not save).
+- N5 (the suites). On the branch: `node plugins/gs-superadmin/test/dashboard.mjs` (147, the class check among them),
+  dashboard-spec.mjs (47), dashboard-page.mjs (214), engagement-report.mjs (56) pass. CI green on PR #57 at its head.
+- Cleanup: remove f530-scratch and the export files.
+
+Results:
