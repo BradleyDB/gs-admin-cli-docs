@@ -153,7 +153,7 @@ Under test: dev · hb-20261015-03 · 2026-10-15
 Blind spots (hb-20261015-03): a post-release re-stamp after 0.54.0 (tag [v]0.54.0 at bb95a20), not a round: nothing new is under test; dev carries only the test-rig fix (PR #56, judged by its 3-OS run) and the deferred F-530/F-548 (Session B) and polish F-536/F-541/F-542/F-545/F-546
 
 
-<!-- builder 2026-10-15 (E1+V1 of gs-fortress build-kickoffs-1.0.12.md HANDED OFF — UNMERGED, riding doctrine-cli-1-0-11-plus (PR #58 to dev, open); F-549 (normal) OPEN -> FIXED on that branch; token hb-20261015-05; plugin 0.54.1 on the branch; no number claimed; next free F-550):
+<!-- builder 2026-10-15 (E1+V1 of gs-fortress build-kickoffs-1.0.12.md HANDED OFF — UNMERGED, riding doctrine-cli-1-0-11-plus (PR #58 to dev, open); F-549 (normal) OPEN -> FIXED -> VERIFIED on that branch (tester @ hb-20261015-05, 4b7914d: bar (1)-(5) pass, the six CP-6 live checks owed on a 1.0.11-or-later CLI; #57 reads MERGEABLE/CLEAN again at 28f1630); token hb-20261015-05; plugin 0.54.1 on the branch; no number claimed; next free F-550):
      Kickoff: open PRs to dev — #57 (Session B, F-548/F-530, green on its five checks, CONFLICTING against dev since the F-549
      emission landed on the tail of this file; keep both sides) and now #58; no OPEN polish (the five DEFERRED past 0.54.0 stay).
      Content: CP-2 (sc measures --id: cause named, fixed at 1.0.11, --name the default), CP-3 (libuv abort and the one-level
