@@ -55,7 +55,7 @@ gs-admin tokens migrate     # move tokens from legacy ~/.gs-admin/tokens.json to
 
 ## Token refresh & expiry
 
-As of v1.0.10 the CLI **never refreshes a token, on any path** — a token is used for its
+As of v1.0.12 the CLI **never refreshes a token, on any path** — a token is used for its
 whole lifetime as issued (about an hour) less one minute, then:
 
 - **Enrollment path** (the default — no `client_id`/`client_secret` stored): commands fail

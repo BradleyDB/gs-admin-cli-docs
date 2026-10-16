@@ -1676,6 +1676,11 @@ export function recordedDomainsByPath(domainsIndexed, resolveLine) {
 // single-version stamp withdrew the table from every workspace still on the
 // previous pin although nothing in it had changed (F-467). An adoption that
 // finds an entry changed drops the older versions instead of keeping them.
+// The 1.0.12 adoption (gs-fortress audit-1.0.12 §1.14) dropped 1.0.10 and
+// 1.0.9 — the `journey:email:templates` entry is changed from 1.0.11, whose
+// handler descends subfolders — and records 1.0.11, never a pin, because
+// 1.0.11's dist is byte-identical to 1.0.12's: every entry re-verified
+// against the 1.0.12 package is verified against 1.0.11 by the same reading.
 // test/domain-candidates.mjs holds every id to the bundled catalog and
 // refuses a notEnumerableBare entry the catalog has started to declare (a
 // dead entry).
@@ -1689,8 +1694,8 @@ export function recordedDomainsByPath(domainsIndexed, resolveLine) {
  */
 /** @type {Readonly<{ cliVersion: string, alsoVerifiedOn: ReadonlyArray<string>, commands: Readonly<Record<string, Readonly<GsPinFact>>> }>} */
 export const CLI_PIN_FACTS = Object.freeze({
-  cliVersion: "1.0.10",
-  alsoVerifiedOn: Object.freeze(["1.0.9"]),
+  cliVersion: "1.0.12",
+  alsoVerifiedOn: Object.freeze(["1.0.11"]),
   commands: Object.freeze({
     "rules-engine:rules:events": Object.freeze({
       notEnumerableBare: "--topic <topic>",
@@ -1708,6 +1713,12 @@ export const CLI_PIN_FACTS = Object.freeze({
       notEnumerableBare: "--id <id> or --name <name>",
       error: "--id or --name is required",
     }),
+    // 1.0.10's wording, kept as-is at the 1.0.12 adoption: the entry is
+    // rewritten from the live count on a 1.0.11-or-later CLI (dev
+    // VALIDATION, F-549 / CP-6 (c)) — or removed with its index-scope-notes.md
+    // subsection (check 23) if the list proves complete — and that check was
+    // still owed. The canon subsection already says which version each clause
+    // holds for (1.0.11 and later descend subfolders).
     "journey:email:templates": Object.freeze({
       scope: "flattens one folder level (templates in nested subfolders are dropped) and hides some top-level templates; the count is the CLI-reachable subset",
     }),
@@ -1955,7 +1966,7 @@ export function indexedElsewhere(inventory, ids, excludeDomain = null) {
 // copy). The constraint is the action VERB, not "declares a GET endpoint":
 // `jo p describe` is POST-only and a legitimate, shipped describe, so a GET
 // requirement would refuse the whole journey lane. This set admits the
-// read actions in the v1.0.10 catalog beyond the describe/list name shapes — the
+// read actions in the v1.0.12 catalog beyond the describe/list name shapes — the
 // two per-item describes under other names (`jo e template`, `sc measures`),
 // `jo dd get`, `jo s get`, the two `list-and-describe` combos, and the six
 // scheduling/Events-Framework reads added at 1.0.6 — and is re-audited by
@@ -1997,7 +2008,7 @@ export function isDescribeRead(verb, cmd) {
 }
 
 // The CLI's re-login instruction — the sentence every auth-path throw in the
-// v1.0.10 package's dist/core/auth/index.js ends with (F-458). Two literals,
+// v1.0.12 package's dist/core/auth/index.js ends with (F-458). Two literals,
 // both session-wide (the CLI cannot obtain a bearer token; no command after
 // them succeeds until `gs-admin login`): "No stored token found. Run
 // `gs-admin login` to authenticate."; "Access token has expired. Run
