@@ -21,8 +21,8 @@ installs two checker-only devDependencies; nothing runs from them).
 > are welcome, but this is not a support channel for Gainsight products: defects in the
 > CLI itself go to Gainsight, not here.
 >
-> **Currency.** This document was last updated on 2026-09-26 (against
-> `@gainsight/gs-admin-cli@1.0.10`) with reference to Gainsight's then-current pre-built and
+> **Currency.** This document was last updated on 2026-10-16 (against
+> `@gainsight/gs-admin-cli@1.0.12`) with reference to Gainsight's then-current pre-built and
 > generally available Admin CLI package. Gainsight may have updated its documentation and
 > available Admin CLI package since then. You can always find the latest version of
 > Gainsight's documentation and Admin CLI package at

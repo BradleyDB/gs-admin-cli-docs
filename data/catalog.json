@@ -2,8 +2,8 @@
   "meta": {
     "_generated": "GENERATED FILE — do not edit by hand. Regenerate with: npm run build:catalog (build/extract-catalog.mjs).",
     "cliPackage": "@gainsight/gs-admin-cli",
-    "cliVersion": "1.0.10",
-    "generatedAt": "2026-09-26T19:00:55.984Z",
+    "cliVersion": "1.0.12",
+    "generatedAt": "2026-10-16T03:36:08.553Z",
     "pkgResolvedVia": "npm root -g",
     "counts": {
       "domains": 10,
@@ -2969,7 +2969,7 @@
           "default": null,
           "enum": null,
           "csv": false,
-          "description": "Field to sort by",
+          "description": "Field to sort by: name, label, description, type, store, modified, created, modifiedBy, createdBy (sorted server-side across all objects). Other fields sort only the returned page.",
           "cliExposed": true
         },
         {

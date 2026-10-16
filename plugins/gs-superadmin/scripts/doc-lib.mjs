@@ -1676,6 +1676,11 @@ export function recordedDomainsByPath(domainsIndexed, resolveLine) {
 // single-version stamp withdrew the table from every workspace still on the
 // previous pin although nothing in it had changed (F-467). An adoption that
 // finds an entry changed drops the older versions instead of keeping them.
+// The 1.0.12 adoption (gs-fortress audit-1.0.12 §1.14) dropped 1.0.10 and
+// 1.0.9 — the `journey:email:templates` entry is changed from 1.0.11, whose
+// handler descends subfolders — and records 1.0.11, never a pin, because
+// 1.0.11's dist is byte-identical to 1.0.12's: every entry re-verified
+// against the 1.0.12 package is verified against 1.0.11 by the same reading.
 // test/domain-candidates.mjs holds every id to the bundled catalog and
 // refuses a notEnumerableBare entry the catalog has started to declare (a
 // dead entry).
@@ -1689,8 +1694,8 @@ export function recordedDomainsByPath(domainsIndexed, resolveLine) {
  */
 /** @type {Readonly<{ cliVersion: string, alsoVerifiedOn: ReadonlyArray<string>, commands: Readonly<Record<string, Readonly<GsPinFact>>> }>} */
 export const CLI_PIN_FACTS = Object.freeze({
-  cliVersion: "1.0.10",
-  alsoVerifiedOn: Object.freeze(["1.0.9"]),
+  cliVersion: "1.0.12",
+  alsoVerifiedOn: Object.freeze(["1.0.11"]),
   commands: Object.freeze({
     "rules-engine:rules:events": Object.freeze({
       notEnumerableBare: "--topic <topic>",
@@ -1708,8 +1713,12 @@ export const CLI_PIN_FACTS = Object.freeze({
       notEnumerableBare: "--id <id> or --name <name>",
       error: "--id or --name is required",
     }),
+    // Rewritten from the live count on a 1.0.12 CLI (dev VALIDATION, F-549 /
+    // CP-6 (c), cleared 2026-10-15; F-551): the list is not complete there
+    // either, so the entry stays and its canon subsection with it (check 23).
+    // The canon subsection says which version each clause holds for.
     "journey:email:templates": Object.freeze({
-      scope: "flattens one folder level (templates in nested subfolders are dropped) and hides some top-level templates; the count is the CLI-reachable subset",
+      scope: "on 1.0.11 and later descends nested folders but still hides a few templates (measured at 1.0.12: 3 of the 1180 a KB held, each in a folder whose other templates list); on 1.0.10 and earlier flattens one folder level (nested subfolders dropped) and hides some top-level templates; --folder matches a folder's own name only; the count is the CLI-reachable subset",
     }),
     "journey:surveys:list": Object.freeze({
       scope: "returns PUBLISH-state surveys only (closed surveys are invisible)",
@@ -1729,6 +1738,13 @@ export const CLI_PIN_FACTS = Object.freeze({
  * @param {{meta?: {cliVersion?: string}} | null | undefined} catalog
  * @returns {{ stamped: string, catalogVersion: ?string, applied: boolean, why: ?string, commands: Readonly<Record<string, Readonly<GsPinFact>>> }}
  */
+/** Two dotted versions compared numerically, part by part (1.0.9 before 1.0.12): negative, zero or positive. */
+const cmpVersions = (a, b) => {
+  const pa = String(a).split(".").map((x) => Number.parseInt(x, 10) || 0);
+  const pb = String(b).split(".").map((x) => Number.parseInt(x, 10) || 0);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) if ((pa[i] ?? 0) !== (pb[i] ?? 0)) return (pa[i] ?? 0) - (pb[i] ?? 0);
+  return 0;
+};
 export function pinFactsFor(catalog) {
   const stamped = CLI_PIN_FACTS.cliVersion;
   const verified = [...CLI_PIN_FACTS.alsoVerifiedOn, stamped];
@@ -1739,7 +1755,7 @@ export function pinFactsFor(catalog) {
     ? null
     : catalogVersion == null
       ? `the catalog carries no meta.cliVersion, so the per-pin CLI facts (stamped for ${stamped}${alsoOn}) were not applied`
-      : `the per-pin CLI facts are stamped for ${stamped}${alsoOn} and the catalog is ${catalogVersion} — not applied; re-verify doc-lib's CLI_PIN_FACTS against the installed package (check-stale-facts names the stamp)`;
+      : `the per-pin CLI facts are stamped for ${stamped}${alsoOn} and the catalog is ${catalogVersion} — not applied; ${cmpVersions(catalogVersion, stamped) < 0 ? `an older CLI: upgrade the installed CLI to ${stamped} (or a version the facts are verified on) and re-run the workspace catalog` : "a newer CLI: the plugin's facts must be re-verified against it (the maintainer's CLI-watch audit; check-stale-facts names the stamp), so wait for a plugin update"}`;
   return { stamped, catalogVersion, applied, why, commands: applied ? CLI_PIN_FACTS.commands : Object.freeze({}) };
 }
 
@@ -1955,7 +1971,7 @@ export function indexedElsewhere(inventory, ids, excludeDomain = null) {
 // copy). The constraint is the action VERB, not "declares a GET endpoint":
 // `jo p describe` is POST-only and a legitimate, shipped describe, so a GET
 // requirement would refuse the whole journey lane. This set admits the
-// read actions in the v1.0.10 catalog beyond the describe/list name shapes — the
+// read actions in the v1.0.12 catalog beyond the describe/list name shapes — the
 // two per-item describes under other names (`jo e template`, `sc measures`),
 // `jo dd get`, `jo s get`, the two `list-and-describe` combos, and the six
 // scheduling/Events-Framework reads added at 1.0.6 — and is re-audited by
@@ -1997,7 +2013,7 @@ export function isDescribeRead(verb, cmd) {
 }
 
 // The CLI's re-login instruction — the sentence every auth-path throw in the
-// v1.0.10 package's dist/core/auth/index.js ends with (F-458). Two literals,
+// v1.0.12 package's dist/core/auth/index.js ends with (F-458). Two literals,
 // both session-wide (the CLI cannot obtain a bearer token; no command after
 // them succeeds until `gs-admin login`): "No stored token found. Run
 // `gs-admin login` to authenticate."; "Access token has expired. Run
@@ -2779,4 +2795,108 @@ export function writeFileAtomicSync(target, data) {
 }
 export function removeFileSync(path) {
   withWindowsFsRetry(() => unlinkSync(path));
+}
+// ── The one advisory file lock (F-545, F-546; reopened at the 0.56.1 release gate) ──
+// Every lock a script takes on a file it shares with another process is this
+// primitive: an EXCLUSIVE create (`wx`) of a sibling lock file holding the
+// owner's record, so two takers can never both read "free" and both write
+// (the check-then-write race F-545 named in the dashboard's refresh lock).
+// The record is EVIDENCE of a holder, never the only evidence (the reopen's
+// class: every way of failing to read it was resolved toward takeover or
+// crash). A holder is dead when its pid is gone from this machine (ESRCH), or
+// when its record — or, while the record cannot be read, the FILE — is older
+// than `staleMs`; a record that cannot be read and is young is a taker inside
+// its own create (`wx` opens the file, then writes it) or a file a scanner
+// holds, and counts as held. A dead holder's file is CLAIMED by renaming it
+// away, which exactly one taker wins (the other gets ENOENT and tries the
+// create again), so two takers of one dead lock cannot both hold it. The
+// create and every removal go through the Windows retry (a delete-pending or
+// scanned file is a transient, never a crash or a lock left behind); a fresh
+// holder makes the taker wait up to `waitMs`, polling, then gives up and
+// reports the holder. `record` and `release` act ONLY while the file still
+// carries this taker's record — a lock taken over in the meantime belongs to
+// its new holder. Callers: manifest.mjs's load-change-save cycle (the KB-wide
+// manifest, F-546: the ONE manifest writer, so every writer has the property
+// by construction) and the dashboard's refresh, rebuild and change (F-545,
+// F-552).
+/** Whether a process of this machine is alive: ESRCH says gone; EPERM says alive and not ours to signal. */
+export const pidAlive = (pid) => {
+  try { process.kill(pid, 0); return true; } catch (e) { return /** @type {{code?: string}} */ (e)?.code !== "ESRCH"; }
+};
+/**
+ * @param {string} path  the lock file
+ * @param {{ owner?: Record<string, unknown>, staleMs: number, waitMs?: number, nowMs?: number }} opts
+ *   owner: fields recorded beside pid and at (who, which run); staleMs: a holder older than this is dead;
+ *   waitMs: how long to wait for a fresh holder (0: not at all); nowMs: the clock (the dashboard passes --now)
+ * @returns {{ taken: boolean, path: string, held: ?Record<string, unknown>, takenOver: ?Record<string, unknown>, record: (extra: Record<string, unknown>) => void, release: () => void }}
+ *   taken false: `held` is the fresh holder's record (`unreadable: true` when its file could not be read) and
+ *   record/release do nothing; taken true: `takenOver` is the dead holder's record when one was taken over
+ */
+export function acquireFileLock(path, { owner = {}, staleMs, waitMs = 0, nowMs = Date.now() }) {
+  /** @type {Record<string, unknown>} */
+  const mine = { ...owner, pid: process.pid, at: new Date(nowMs).toISOString() };
+  const body = () => JSON.stringify(mine, null, 2) + "\n";
+  /** The record as the file holds it, or null when the file cannot be read as one (empty, half-written, held by a scanner, gone). */
+  const readHeld = () => {
+    try {
+      const held = withWindowsFsRetry(() => readJsonFile(path));
+      return held && typeof held === "object" && !Array.isArray(held) ? /** @type {Record<string, unknown>} */ (held) : null;
+    } catch {
+      return null;
+    }
+  };
+  const isMine = (r) => !!r && r.pid === mine.pid && r.at === mine.at;
+  /** Whether the lock's holder is dead: by its pid when the record names one of this machine's, else by age (the record's, or the file's when there is no record). */
+  const dead = (held) => {
+    if (held && typeof held.pid === "number" && Number.isInteger(held.pid) && held.pid > 0 && !pidAlive(held.pid)) return true;
+    let at;
+    if (held) at = Date.parse(String(held.at ?? ""));
+    else { try { at = statSync(path).mtimeMs; } catch { return false; } }
+    const age = (held ? nowMs : Date.now()) - at;
+    return Number.isFinite(age) && age >= staleMs;
+  };
+  /** Claim a dead holder's file by renaming it away: one taker wins the rename, the rest see it gone. */
+  const claim = () => {
+    const claimed = `${path}.dead-${process.pid}-${Date.now().toString(36)}`;
+    try { replaceFileSync(path, claimed); } catch { return false; }
+    try { removeFileSync(claimed); } catch { /* a scanner holds the dead file; it is not a lock, and the next claim's name differs */ }
+    return true;
+  };
+  const deadline = Date.now() + waitMs;
+  /** @type {?Record<string, unknown>} */
+  let takenOver = null;
+  for (let claims = 0; ; ) {
+    try {
+      mkdirSync(dirname(path), { recursive: true });
+      withWindowsFsRetry(() => writeFileSync(path, body(), { flag: "wx" }));
+      break;
+    } catch (e) {
+      if (/** @type {{code?: string}} */ (e)?.code !== "EEXIST") throw e;
+    }
+    const held = readHeld();
+    if (dead(held) && claims < 3) {
+      claims++;
+      if (claim()) { takenOver = held ?? { unreadable: true }; continue; }
+      // Another taker claimed it first: its create is next, and this one reads a fresh record on the next turn.
+    } else if (!held && !existsSync(path)) {
+      continue; // released between the create and the read: try the create again at once
+    }
+    if (Date.now() >= deadline) return { taken: false, path, held: held ?? { unreadable: true }, takenOver: null, record() {}, release() {} };
+    sleepMs(Math.min(200, Math.max(1, deadline - Date.now())));
+  }
+  return {
+    taken: true,
+    path,
+    held: null,
+    takenOver,
+    record(extra) {
+      if (!isMine(readHeld())) return; // taken over meanwhile: the file is its new holder's
+      Object.assign(mine, extra);
+      writeFileAtomicSync(path, body());
+    },
+    release() {
+      if (!isMine(readHeld())) return;
+      try { removeFileSync(path); } catch { /* a scanner holds it past the retries: this process's exit makes it a dead holder's, taken over at once */ }
+    },
+  };
 }

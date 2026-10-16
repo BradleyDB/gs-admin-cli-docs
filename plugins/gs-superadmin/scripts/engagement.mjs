@@ -22,7 +22,9 @@
 //
 // What the code enforces, so no caller has to remember it (each has a named
 // test in test/engagement.mjs; the measurements behind them were taken on
-// CLI 1.0.10):
+// CLI 1.0.10. Where CLI 1.0.11 changed a behaviour, the bullet says what
+// 1.0.11 and later do instead — and the guard stays on every version: each is
+// stricter than the CLI's own refusal, and 1.0.10 users still need it; F-549):
 //   - Every `rp run` passes --page-size (rpRunArgv is the one builder). Omitted,
 //     the CLI returns 50 rows; the cut is silent and there is no total. A result
 //     as long as the page is treated as truncated and the call is split.
@@ -32,13 +34,24 @@
 //   - Nothing groups or aggregates on a LOOKUP field: it resolves to the
 //     target's name, which is empty, and collapses the groups. A fieldPath to
 //     the target's Gsid is used instead, and validateQuery refuses the rest.
+//     (Measured on 1.0.10; 1.0.11 and later join the lookup object's key
+//     instead — fixed upstream, measured live at 1.0.12: a company group-by
+//     returned one named group per company, equal counts to the Gsid path —
+//     and the rule stays: a guard, not a workaround.)
 //   - Every field a query names is checked against `rp schema` first: a filter
-//     on a field the schema lacks is silently dropped by the CLI, which widens
-//     the query instead of failing it.
+//     on a field the schema lacks is silently dropped by the CLI on 1.0.10 and
+//     earlier, which widens the query instead of failing it; 1.0.11 and later
+//     refuse it by name before any request (`Filter field "X" not found on
+//     <object>` — the query's shape to classifyFailure, never a missing asset).
+//     The check stays: the refusal is then ours, in the same words on every
+//     version.
 //   - No query shows a field it also groups by. The CLI keys a field by its
 //     object and name alone, aggregation ignored, and drops a show field whose
 //     key a group-by field has: silently when another show field is left, and
-//     with a refusal when none is. validateQuery refuses such a query first.
+//     with a refusal when none is (1.0.10 and earlier; on 1.0.11 and later a
+//     plain copy is still removed, and an AGGREGATE of a grouped field is
+//     refused by name before any request). validateQuery refuses such a query
+//     first.
 //   - A unit that is still a full page at one program, one day and one flag
 //     partition is cut by the recipient's address (contains a character, or
 //     does not): the measures are additive, so any cut of the sends adds up.
@@ -49,7 +62,10 @@
 //     count is asked through its own lookup alone, and the sends with no
 //     company link are read by their own calls (GsCompanyId IS_NULL).
 //   - A timed-out call is retried once on its own, then split. A "network
-//     outage" that survives one retry is a query-shape error and is not retried.
+//     outage" that survives one retry is a query-shape error and is not retried
+//     (1.0.10 and earlier, where a JSON-typed field aggregated or grouped came
+//     back as an outage; 1.0.11 and later refuse such a field by name before
+//     any request).
 //   - Calls run one at a time (parallel calls produced false errors), and a
 //     not-found is re-checked once before it is believed.
 //   - Every command is checked against the catalog before it is spawned, and a
@@ -88,9 +104,11 @@
 //     the bounce reason, grouped by program, template, month and type), the
 //     total beside them, "Other" = total less the categories, and a capped
 //     masked sample of the uncategorised text for discovery. The failed
-//     participant's reason field takes no filter at all on CLI 1.0.10 (its
-//     schema says so, and every operator tried was refused), so that part is
-//     a per-program total with no breakdown, and says so; the breakdown by
+//     participant's reason field takes no filter at all (on CLI 1.0.10 its
+//     schema says so, and every operator tried was refused by the server; on
+//     1.0.11 and later the CLI refuses a filter on a JSON-typed field itself,
+//     before any request), so that part is a per-program total with no
+//     breakdown, and says so; the breakdown by
 //     reason is a per-program SAMPLE of the most REPEATED refusals still
 //     happening in the day window (F-484, redesigned 2026-10-08).
 //   - A sample is read PER PROGRAM, never as the first page of a tenant-wide
@@ -108,8 +126,9 @@
 //     (programHealth); the pull stores facts, never a judgment.
 //   - A field a query filters or groups on must be declared filterable or
 //     groupable by `rp schema`: a filter on a field that is not is refused by
-//     the server with an "unrecognized data type" text, so validateQuery
-//     refuses it first.
+//     the server with an "unrecognized data type" text on 1.0.10 and earlier,
+//     and by the CLI itself on 1.0.11 and later when the field is JSON- or
+//     rich-text-typed, so validateQuery refuses it first on every version.
 //   - Before any family that reads plain rows or splits on a count, plan makes
 //     one server-side COUNT of what it would read (clicked sends; failed
 //     participants) and prices the family from it; a family that cannot be
@@ -365,7 +384,8 @@
  * @property {Array<{key: string, name: ?string, attrs?: Object<string, *>}>} accounts   the selected accounts; key is opaque. Empty when the account grain was not pulled (meta.accounts).
  *   attrs (additive, S5): the company fields the pull was asked to read beside the name (params.accounts.fields), each
  *   the row's value or null; absent on every account when no field was asked for. The selection itself (R24 per program,
- *   and the cross-program lists of DSH-2 ruling 4 with the low-cadence rule) is recorded in honesty.accountSelection
+ *   and the cross-program lists of DSH-2 ruling 4 with the low-cadence rule) is recorded in honesty.accountSelection;
+ *   every other account's figures are in the account store beside the snapshot (F-548), never in the snapshot
  * @property {string[]} months
  *
  * @typedef {object} T10TemplateContent
@@ -410,6 +430,10 @@
  *   reached per program (facts.uniques) is pulled either way. ABSENT on a
  *   snapshot made before the switch existed, which always pulled the grain:
  *   read it through accountAvailability, never directly.
+ * @property {?{schema: number, cells: number, accounts: number}} [accountStore]
+ *   (additive, F-548) the account store written beside this snapshot (AccountStore, accountStorePath): its schema and
+ *   size; null when the pull had no accounts; ABSENT on a snapshot made before the store, which a refresh continues by
+ *   one full pull (decideRefresh says so). Present with no store file beside it: the store is gone, the same full pull.
  * @property {{pulled: boolean, reason: ?string, asOf: ?string, dayWindow: ?{start: string, endExclusive: string}, parts: Object<string, {pulled: boolean, reason: ?string, basis?: string}>, categories?: Object<string, {counted: boolean, reason: ?string, ids: string[]}>, samples?: Object<string, {cap: number, sampled: number, carried: number, notSampled: Array<{programId: string, reason: string}>, programs?: string[], window?: {start: string, endExclusive: string}, counts?: Object<string, number>}>}} [health]
  *   whether facts.health was read (the run's choice: reason "health-off" when
  *   it was not), and then part by part (bounceReasons, participantFailures,
@@ -538,14 +562,14 @@
  * @property {(req: {id: string, argv: string[], timeoutMs: number}) => TransportResult} run
  * @typedef {{ok: boolean, status: ?number, stdout: string, stderr: string, timedOut: boolean, ms: number}} TransportResult
  */
-import { readFileSync, appendFileSync, existsSync, mkdirSync, statSync } from "node:fs";
+import { readFileSync, appendFileSync, existsSync, mkdirSync, statSync, copyFileSync, openSync, readSync, closeSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   makeCliHelpers, findWorkspaceDir, findWorkspaceCatalog, makeCommandResolver, assertReadOnlyCommand,
-  resolveCliArgv, isAuthDeath, readJsonFile, writeFileAtomicSync, isMainModule, stripBom, cmpKey, termKey,
+  resolveCliArgv, isAuthDeath, readJsonFile, writeFileAtomicSync, removeFileSync, isMainModule, stripBom, cmpKey, termKey,
   readKbIdentity,
 } from "./doc-lib.mjs";
 import { printable } from "./journal-lib.mjs";
@@ -665,14 +689,22 @@ export function parseWhoami(text) {
 }
 
 // ── Failure classes (stderr is text; a failure is exit 1 with empty stdout) ──
+// CLI 1.0.11 and later refuse an unknown show, group, order or filter field by
+// name before any request: `Field "X" not found on <object>` and `Filter field
+// "X" not found on <object>` (with "did you mean" suggestions). The words say
+// "not found", but it is the QUERY's shape that is wrong, never a missing asset
+// (F-549, CP-4): it is not retried as a not-found, and a describe never settles
+// it as a deleted program. Read before the not-found class, which it would match.
+export const FIELD_REFUSAL_RE = /\b(?:filter )?field "[^"\n]*" not found on\b/i;
 /**
  * @param {{stdout?: string, stderr?: string, timedOut?: boolean}} r a FAILED call
- * @returns {"auth-expired"|"timeout"|"not-found"|"outage"|"other"}
+ * @returns {"auth-expired"|"timeout"|"shape-error"|"not-found"|"outage"|"other"}
  */
 export function classifyFailure(r) {
   const stderr = String(r.stderr ?? "");
   if (isAuthDeath({ ok: false, stdout: String(r.stdout ?? ""), stderr })) return "auth-expired";
   if (r.timedOut || /The query has timed out/.test(stderr)) return "timeout";
+  if (FIELD_REFUSAL_RE.test(stderr)) return "shape-error";
   if (/\bnot found\b/i.test(stderr)) return "not-found";
   // Reads as transient, and is one once. Reproduced after a retry it is a
   // query-shape error (an aggregate the server cannot run), never an outage.
@@ -1872,10 +1904,12 @@ const sameUnsubscribeLinks = (previous, params) => sameList(previous?.meta?.para
  * unsubscribe links, same step-detail switch, same account selection, and a
  * window that reaches back at least as far. Months on or after the earlier of (the re-pull horizon's
  * first month, the month the previous snapshot was pulled in) are re-pulled;
- * older ones are carried, for the programs the previous snapshot already held.
+ * older ones are carried, for the programs the previous snapshot already held. With accounts, the previous
+ * snapshot's account store (F-548) is needed too: it carries every account's older months.
+ * @param {{params: *, previous: ?T10Snapshot, tenantHost: string, selectedIds: string[], store?: ?AccountStore}} args
  * @returns {{mode: "full"|"selective", why: string, pulledMonths: string[], carriedMonths: string[], carriedPrograms: Set<string>, previousPulledAt: ?string}}
  */
-export function decideRefresh({ params, previous, tenantHost, selectedIds }) {
+export function decideRefresh({ params, previous, tenantHost, selectedIds, store = null }) {
   const months = monthsBetween(params.window.from, params.window.to);
   // previousPulledAt names the pull this one continues from: none, when the snapshot given cannot be continued from.
   const full = (why) => ({ mode: /** @type {"full"} */ ("full"), why, pulledMonths: months, carriedMonths: [], carriedPrograms: new Set(), previousPulledAt: usablePrevious(previous, tenantHost)?.meta?.pulledAt ?? null });
@@ -1896,6 +1930,11 @@ export function decideRefresh({ params, previous, tenantHost, selectedIds }) {
   if (accountAvailability(previous).pulled !== params.accounts.pull)
     return full(params.accounts.pull ? "accounts were switched on and the previous snapshot holds none, so every table is pulled again" : "accounts were switched off, so every table is pulled again without them");
   if (params.accounts.pull && !sameList(accountSelection(pp.accounts), accountSelection(params.accounts))) return full("the account selection changed");
+  // The customer lists rank over every account and month on every refresh (F-548): the older months of every account
+  // come from the store written beside the previous snapshot. A snapshot with none (made before the store, or its store
+  // gone or not its own) is continued by one full pull, said here, with no hand step and no refusal.
+  if (params.accounts.pull && !accountStoreFits(store, previous))
+    return full(previous.meta.accountStore ? "the account store written beside the previous snapshot is missing or is not that snapshot's, so the customer lists need one full pull to rank again" : "the customer lists need one full pull to start ranking on every refresh (the previous snapshot was made before they could)");
   // Bounce reasons carry by month like the facts: a snapshot that holds none has none to give the carried months.
   if (params.health?.pull && !healthAvailability(previous).pulled) return full("health was switched on and the previous snapshot holds none, so every table is pulled again");
   // Carried bounce rows were counted under the previous pull's category list (or read as text, before categories):
@@ -2358,11 +2397,11 @@ const isRpRun = (d) => d.family in FAMILIES;
  * `<runDir>/calls/`, and a call whose file is already there is not made again.
  * Stops cleanly (status "token-expired") when the next call would outlast the
  * token or the CLI says the token died; the run directory stays resumable.
- * @param {{params: *, runDir: string, transport: EngagementTransport, gate: (argv: string[]) => ?string, kbDir?: ?string, previous?: ?T10Snapshot, phase?: "plan"|"all", now?: () => number, onCall?: (line: string) => void}} ctx
+ * @param {{params: *, runDir: string, transport: EngagementTransport, gate: (argv: string[]) => ?string, kbDir?: ?string, previous?: ?T10Snapshot, previousStore?: ?AccountStore, phase?: "plan"|"all", now?: () => number, onCall?: (line: string) => void}} ctx
  * @returns {*} the fetch summary (also written to `<runDir>/status.json`)
  */
 export function fetchEngagement(ctx) {
-  const { params, runDir, transport, gate, kbDir = null, previous: given = null, phase = "all", now = Date.now, onCall = () => {} } = ctx;
+  const { params, runDir, transport, gate, kbDir = null, previous: given = null, previousStore = null, phase = "all", now = Date.now, onCall = () => {} } = ctx;
   mkdirSync(join(runDir, "calls"), { recursive: true });
   const { records } = readFetchLog(runDir);
   const logPath = join(runDir, "fetch-log.jsonl");
@@ -2619,7 +2658,7 @@ export function fetchEngagement(ctx) {
   if (stop || failed.length) return conclude({ whoami });
   decision = decidePrograms({ listed, base, describes, selector: params.selector, sentSinceIds });
   const selectedIds = [...decision.selected.keys()];
-  const refresh = decideRefresh({ params, previous: given, tenantHost: whoami.host, selectedIds });
+  const refresh = decideRefresh({ params, previous: given, tenantHost: whoami.host, selectedIds, store: previousStore });
   const previous = usablePrevious(given, whoami.host);
   const health = params.health.pull ? { dayWindow: healthDayWindow(params), objects: healthObjects } : null;
   const units = planUnits({ params, base, selectedIds, refresh, surveyAvailable, health });
@@ -2668,14 +2707,14 @@ export function fetchEngagement(ctx) {
   // previous snapshot that holds none is a full refresh, so that side is planned under the refresh it would get.
   const withAccounts = { ...params, accounts: { ...params.accounts, pull: true } };
   const accountsOff = planUnits({ params: { ...params, accounts: { ...params.accounts, pull: false } }, base, selectedIds, refresh, surveyAvailable, health });
-  const accountsOn = planUnits({ params: withAccounts, base, selectedIds, refresh: decideRefresh({ params: withAccounts, previous: given, tenantHost: whoami.host, selectedIds }), surveyAvailable, health });
+  const accountsOn = planUnits({ params: withAccounts, base, selectedIds, refresh: decideRefresh({ params: withAccounts, previous: given, tenantHost: whoami.host, selectedIds, store: previousStore }), surveyAvailable, health });
   // The health facts' cost, the same way: this run's plan without them, against the plan WITH them under the
   // refresh it would get (on over a snapshot that holds none is a full refresh). With health off the two
   // objects only health reads were not looked up, so both are assumed to exist.
   const withHealth = { ...params, health: { ...params.health, pull: true } };
   const healthOff = planUnits({ params, base, selectedIds, refresh, surveyAvailable, health: null });
   const healthOn = planUnits({
-    params: withHealth, base, selectedIds, refresh: decideRefresh({ params: withHealth, previous: given, tenantHost: whoami.host, selectedIds }), surveyAvailable,
+    params: withHealth, base, selectedIds, refresh: decideRefresh({ params: withHealth, previous: given, tenantHost: whoami.host, selectedIds, store: previousStore }), surveyAvailable,
     health: health ?? { dayWindow: healthDayWindow(params), objects: Object.fromEntries(Object.keys(HEALTH_OBJECTS).map((part) => [part, true])) },
   });
   // Calls and seconds include the splits a program-month too large for a page will force.
@@ -2861,7 +2900,7 @@ export function fetchEngagement(ctx) {
 
   // Phase D: names for the accounts the selection keeps, and no others.
   if (params.accounts.names && types.get(COMPANY)) {
-    const keys = selectedAccountKeys({ params, units: rowsOf(accountRecs), selected: decision.selected, refresh, previous });
+    const keys = selectedAccountKeys({ params, units: rowsOf(accountRecs), selected: decision.selected, refresh, carry: carriedAccountCells(previousStore, refresh, decision.selected) });
     const nameFailures = failed.length;
     for (const b of batches(keys, NAME_BATCH)) {
       runUnit({ family: "account-names", cls: "all", keys: b, ...(params.accounts.fields?.length ? { fields: params.accounts.fields } : {}) });
@@ -3266,34 +3305,149 @@ const cellOf = (table, key) => {
   return e;
 };
 
-/** account → its measures over a program's pulled months, from account-grain units. */
-function accountTotals(units, accept) {
+// ── The account store (F-548, ruled 2026-10-15) ─────────────────────────────
+// Every company-linked account's send measures by program and month over the window, as reduce's account table holds
+// them (the all-recipients and internal measures of each cell; the sends with no company link as account null): the
+// figures the snapshot folds into one "all other accounts" row, kept BESIDE the snapshot and never in a page, so every
+// refresh ranks the customer lists over every account and month (the months it carries come from here, the months it
+// pulls from the tenant) and a list change ranks them with no pull. Plain JSON with one cell per line, a file a person
+// or a session can read (the ruling: no zipped file); one store, the latest snapshot's, since only the latest is ever
+// continued from. It holds the window's months only, so it grows with how broadly the tenant sends, never with age.
+/**
+ * @typedef {object} AccountStore
+ * @property {string} kind  ACCOUNT_STORE_KIND
+ * @property {number} schema  ACCOUNT_STORE_SCHEMA
+ * @property {string} pulledAt  the snapshot's meta.pulledAt: a store goes with the snapshot of the same pull, and no other
+ * @property {string} tenantHost
+ * @property {{from: string, to: string}} window
+ * @property {string[]} measures  the order of each cell's measure lists
+ * @property {string} cellShape  each cell in words
+ * @property {string[]} programs @property {string[]} accounts @property {string[]} months
+ * @property {Array<Array<*>>} cells  [program index, account index (null: no company link), month index, all-recipients measures, internal measures (left out when none)]; trailing zeros left out of each list
+ */
+export const ACCOUNT_STORE_SCHEMA = 1;
+export const ACCOUNT_STORE_KIND = "gs-superadmin/account-store";
+/** A snapshot file's store: beside it, `<name>.accounts.json` (one rule for the dashboard, an export and the CLI). */
+export const accountStorePath = (snapshotPath) => `${String(snapshotPath).replace(/\.json$/i, "")}.accounts.json`;
+/** Whether a file name is a store's, so a reader of snapshot files never takes one for a snapshot. */
+export const isAccountStoreFile = (name) => /\.accounts\.json$/i.test(String(name));
+/**
+ * Reduce's account table → the store.
+ * @param {Map<string, {key: Array<?string>, all: Object<string, number>, internal: Object<string, number>}>} table  [programId, accountKey|null, month] → measures
+ * @param {{pulledAt: string, tenantHost: string, window: {from: string, to: string}}} at
+ * @returns {AccountStore}
+ */
+export function encodeAccountStore(table, { pulledAt, tenantHost, window }) {
+  const entries = [...table.values()].filter((e) => anyNonZero(e.all) || anyNonZero(e.internal));
+  const sorted = (xs) => [...new Set(xs)].sort(cmpKey);
+  const programs = sorted(entries.map((e) => e.key[0]));
+  const accounts = sorted(entries.map((e) => e.key[1]).filter((a) => a != null));
+  const months = sorted(entries.map((e) => e.key[2]));
+  const index = (xs) => new Map(xs.map((x, i) => [x, i]));
+  const [pi, ai, mi] = [index(programs), index(accounts), index(months)];
+  const list = (m) => {
+    const v = SEND_MEASURES.map((k) => m[k]);
+    while (v.length && v[v.length - 1] === 0) v.pop();
+    return v;
+  };
+  const cells = entries
+    .map((e) => [pi.get(e.key[0]), e.key[1] == null ? null : ai.get(e.key[1]), mi.get(e.key[2]), list(e.all), ...(anyNonZero(e.internal) ? [list(e.internal)] : [])])
+    .sort((a, b) => a[0] - b[0] || a[2] - b[2] || (a[1] ?? -1) - (b[1] ?? -1));
+  return {
+    kind: ACCOUNT_STORE_KIND, schema: ACCOUNT_STORE_SCHEMA, pulledAt, tenantHost, window: { from: window.from, to: window.to }, measures: [...SEND_MEASURES],
+    cellShape: "[program index, account index (null: the sends with no company link), month index, the all-recipients measures, the internal-recipients measures (left out when none)]; each list in the order of measures, trailing zeros left out",
+    programs, accounts, months, cells,
+  };
+}
+/** The store as text: plain JSON, one cell per line, so it reads and greps like any file. */
+export function accountStoreText(store) {
+  const { cells, ...head } = store;
+  const nl = String.fromCharCode(10);
+  return `${JSON.stringify(head).slice(0, -1)},"cells":[${nl}${cells.map((c) => JSON.stringify(c)).join(`,${nl}`)}${nl}]}${nl}`;
+}
+/**
+ * The store → reduce's account table (its cells keyed as cellOf keys them). Measures the store does not name read 0.
+ * @param {AccountStore} store
+ */
+export function decodeAccountStore(store) {
+  // Decoded once per store object (F-555: the fetch's carry and the reduce's carry read one table, never two decodes
+  // of the same megabytes); the table is read, never changed, by its readers.
+  const cached = decodedStores.get(store);
+  if (cached) return cached;
+  const table = new Map();
+  const measures = (v = []) => ({ ...zero(), ...Object.fromEntries(store.measures.map((k, i) => [k, v[i] ?? 0])) });
+  for (const [p, a, m, all, internal] of store.cells) {
+    const key = [store.programs[p], a == null ? null : store.accounts[a], store.months[m]];
+    table.set(JSON.stringify(key), { key, all: measures(all), internal: measures(internal) });
+  }
+  decodedStores.set(store, table);
+  return table;
+}
+/** @type {WeakMap<object, Map<string, {key: Array<?string>, all: Object<string, number>, internal: Object<string, number>}>>} */
+const decodedStores = new WeakMap();
+/** A store file → the store, or null when it is missing or not a store of this schema (then the next refresh goes full). */
+export function readAccountStore(path) {
+  if (!path || !existsSync(path)) return null;
+  try {
+    const s = readJsonFile(path);
+    return s?.kind === ACCOUNT_STORE_KIND && s.schema === ACCOUNT_STORE_SCHEMA && Array.isArray(s.cells) && Array.isArray(s.measures) ? s : null;
+  } catch {
+    return null;
+  }
+}
+/** Whether a store is the given snapshot's own: the same pull, so its months are the ones that snapshot holds. */
+export function accountStoreFits(store, snapshot) {
+  return !!store && store.kind === ACCOUNT_STORE_KIND && store.schema === ACCOUNT_STORE_SCHEMA && snapshot?.meta?.pulledAt != null && store.pulledAt === snapshot.meta.pulledAt;
+}
+/** The store's cells a selective refresh carries: its carried programs' carried months (every other cell is pulled again). */
+function carriedAccountCells(store, refresh, selected) {
+  const out = new Map();
+  if (refresh.mode !== "selective" || !store) return out;
+  const months = new Set(refresh.carriedMonths);
+  for (const [k, e] of decodeAccountStore(store)) if (selected.has(e.key[0]) && refresh.carriedPrograms.has(e.key[0]) && months.has(e.key[2])) out.set(k, e);
+  return out;
+}
+
+/**
+ * account → its measures summed over a program's months, per program: the pulled months from account-grain units, the
+ * carried ones from the store's cells (F-548), so every refresh holds every account's whole window.
+ */
+function accountTotals(units, accept, carry = new Map()) {
   const perProgram = new Map();
+  const into = (p, account) => {
+    if (!perProgram.has(p)) perProgram.set(p, new Map());
+    const acc = perProgram.get(p);
+    if (!acc.has(account)) acc.set(account, zero());
+    return acc.get(account);
+  };
   for (const u of units) {
     if (u.family !== "account" || u.cls !== "all") continue;
     for (const row of u.rows) {
       const { programId: p, month: m, n, accountKey: account, flags } = ROW_READERS.account(row);
       if (p == null || m == null || n == null || account == null || !accept(p, m)) continue;
-      if (!perProgram.has(p)) perProgram.set(p, new Map());
-      const acc = perProgram.get(p);
-      if (!acc.has(account)) acc.set(account, zero());
-      addFlags(acc.get(account), n, flags);
+      addFlags(into(p, account), n, flags);
     }
+  }
+  return addCarriedCells(perProgram, carry);
+}
+/**
+ * The store's cells added to a per-program account table (the carried months of a selective pull; every month of a
+ * list change ranked from the store, rankFromStore — one step, F-555). The flags of a pulled row count every measure
+ * but clicked (clicks join from their own calls), and the carried cells add the same ones.
+ * @param {Map<string, Map<string, Object<string, number>>>} perProgram @param {Map<string, {key: Array<?string>, all: Object<string, number>}>} carry
+ */
+function addCarriedCells(perProgram, carry) {
+  for (const e of carry.values()) {
+    const [p, account] = e.key;
+    if (account == null) continue;
+    if (!perProgram.has(p)) perProgram.set(p, new Map());
+    const acc = perProgram.get(p);
+    if (!acc.has(account)) acc.set(account, zero());
+    const m = acc.get(account);
+    for (const k of SEND_MEASURES) if (k !== "clicked") m[k] += e.all[k];
   }
   return perProgram;
 }
-const previousSelection = (previous) => {
-  const out = new Map();
-  for (const r of previous?.facts?.byAccount ?? []) {
-    if (r.bucket !== "account") continue;
-    if (!out.has(r.programId)) out.set(r.programId, new Set());
-    out.get(r.programId).add(r.accountKey);
-  }
-  return out;
-};
-// The selection per program. A program carried from the previous snapshot
-// keeps the accounts that snapshot selected, so each one's row series stays
-// whole across carried and pulled months; ranking is redone on a full pull.
 // Per program over the window: attempts ÷ distinct people, from the base and the full-window distinct count. A
 // program whose ratio is at most LOW_CADENCE_MAX_RATIO sends about once per contact (null = no distinct count read).
 function cadenceRatios(units, selected) {
@@ -3308,62 +3462,19 @@ function cadenceRatios(units, selected) {
   return out;
 }
 /**
- * The cross-program lists a selective refresh keeps (F-521). It holds whole-window figures only for the accounts
- * already kept (every other account's carried months sit in the "all other accounts" row), so no ranking it could
- * make is the one a full pull makes: it carries the last full ranking, each list as it was ranked and when, and the
- * figures are counted again from the rows. A configured list the previous record does not hold as ranked (set since,
- * or a record from before this rule, ranked over part of the programs) is not ranked, and says why — never an empty
- * list read as a floor no account met.
- * @param {?T10Snapshot} previous @param {Array<{kind: string, n: number, floor: number, per?: ?string}>} configured
- * @returns {Array<{kind: string, n: number, floor: number, per: ?string, segment: ?string, keys: string[], rankedAt: ?string, carriedFrom: ?string, notRanked: ?string}>}
+ * The account selection over every account's whole window (R24 per program, and the cross-program lists, ruled
+ * 2026-10-05; on every refresh since F-548): per program, the R24 picks and the pinned accounts; across programs, each
+ * list ranked over every account's measures summed across the programs, the least-engaged list joined by the accounts a
+ * low-cadence program marks quiet. An account the lists keep gets its own rows on every program it is on. A per-segment
+ * list is ranked after the names are read (its company fields), over the kept accounts, and gives no rows of its own.
+ * ONE selection for a pull and for a list change ranked from the store (rankFromStore): the same totals give the same lists.
+ * @param {{params: *, programs: string[], totals: Map<string, Map<string, *>>, lowSet: Set<string>, rankedAt: ?string}} args
+ * @returns {{byProgram: Map<string, Set<string>>, lists: Array<*>, across: Map<string, *>}}
  */
-function carriedLists(previous, configured) {
-  const prior = previous?.honesty?.accountSelection?.lists ?? [];
-  const same = (a, l) => a.kind === l.kind && a.n === l.n && a.floor === l.floor && (a.per ?? null) === (l.per ?? null);
-  // Whether the list was set when the previous pull was made is that pull's own params echo, never inferred from its
-  // records: a per-segment list over an empty pool records no segment at all (selectAccountsAcross emits one record per
-  // segment), and it was set all the same.
-  const setThen = (l) => (previous?.meta?.params?.accounts?.lists ?? []).some((a) => same(a, l));
-  // Ranked over every program: a record that says so (a full pull's, or one carried from it); anything else is not.
-  const ranked = (a) => a.notRanked == null && a.selectedFrom === "every program";
-  const out = [];
-  // In the order a full pull records them: the lists over every account, then the per-segment ones.
-  for (const l of [...configured.filter((x) => !x.per), ...configured.filter((x) => x.per)]) {
-    const matches = prior.filter((a) => same(a, l));
-    const base = { kind: l.kind, n: l.n, floor: l.floor, per: l.per ?? null };
-    // A per-segment list set then with no segment then: carried as it was, with none (what a full pull records).
-    if (!matches.length && l.per && setThen(l) && prior.some(ranked)) continue;
-    if (!matches.length || !matches.every(ranked)) {
-      out.push({ ...base, segment: null, keys: [], rankedAt: null, carriedFrom: null, notRanked: setThen(l) ? "previous-not-ranked" : "list-set-since" });
-      continue;
-    }
-    for (const a of matches) out.push({ ...base, segment: a.segment ?? null, keys: [...a.kept], rankedAt: a.rankedAt ?? previous?.meta?.pulledAt ?? null, carriedFrom: previous?.meta?.pulledAt ?? null, notRanked: null });
-  }
-  return out;
-}
-/**
- * The account selection (R24 per program, and the cross-program lists, ruled 2026-10-05). A program carried from the
- * previous snapshot keeps the accounts that snapshot selected, so each one's row series stays whole across carried
- * and pulled months; ranking is redone on a full pull. The cross-program lists are ranked over every account row of
- * every program on a full pull, and carried from the previous snapshot on a selective one (carriedLists, F-521); an
- * account those lists keep gets its own rows on every program it is on, carried or pulled whole (a per-segment list
- * is ranked over the kept accounts' rows after the names are read, and gives its accounts no rows of their own).
- * @returns {{byProgram: Map<string, Set<string>>, lists: Array<*>, lowCadence: string[], ratios: Map<string, ?number>, across: Map<string, *>}}
- */
-function selectionFor({ params, units, selected, refresh, previous, attrs = new Map() }) {
-  const windowMonths = new Set(monthsBetween(params.window.from, params.window.to));
-  const pulled = new Set(refresh.pulledMonths);
-  const accept = (p, m) => selected.has(p) && (refresh.carriedPrograms.has(p) ? pulled.has(m) : windowMonths.has(m));
-  const totals = accountTotals(units, accept);
-  const prev = previousSelection(previous);
-  const ratios = cadenceRatios(units, selected);
-  const lowCadence = [...selected.keys()].filter((p) => ratios.get(p) != null && ratios.get(p) <= LOW_CADENCE_MAX_RATIO).sort(cmpKey);
-  const lowSet = new Set(lowCadence);
-  // Across the programs pulled whole: each account's measures summed, and the accounts a low-cadence program marks quiet.
+function selectionOver({ params, programs, totals, lowSet, rankedAt }) {
   const across = new Map();
   const quiet = new Set();
-  for (const p of selected.keys()) {
-    if (refresh.carriedPrograms.has(p)) continue;
+  for (const p of programs) {
     for (const [key, m] of totals.get(p) ?? []) {
       const a = across.get(key) ?? zero();
       for (const k of Object.keys(m)) a[k] = (a[k] ?? 0) + m[k];
@@ -3371,22 +3482,114 @@ function selectionFor({ params, units, selected, refresh, previous, attrs = new 
       if (lowSet.has(p) && m.delivered >= LOW_CADENCE_MIN_DELIVERED && m.opened === 0) quiet.add(key);
     }
   }
-  // A per-segment list needs each account's company fields, which the names call reads for the KEPT accounts only:
-  // it is ranked in reduce over the kept accounts, after the names are read; the selection here takes the rest. A
-  // selective refresh carries every list, the per-segment ones too (carriedLists).
   const configured = params.accounts.lists ?? [];
-  const lists = refresh.mode === "selective"
-    ? carriedLists(previous, configured)
-    : selectAccountsAcross(across, configured.filter((l) => !l.per), { quietOnLowCadence: quiet, attrs }).map((l) => ({ ...l, rankedAt: params.pulledAt ?? null, carriedFrom: null, notRanked: null }));
-  const crossKeys = new Set(lists.filter((l) => !l.per).flatMap((l) => l.keys));
+  const lists = selectAccountsAcross(across, configured.filter((l) => !l.per), { quietOnLowCadence: quiet }).map((l) => ({ ...l, rankedAt, notRanked: null }));
+  const crossKeys = new Set(lists.flatMap((l) => l.keys));
   const byProgram = new Map();
-  for (const p of selected.keys()) {
+  for (const p of programs) {
     const acc = totals.get(p) ?? new Map();
-    const listed = [...crossKeys].filter((k) => acc.has(k));
-    if (refresh.carriedPrograms.has(p)) byProgram.set(p, new Set([...(prev.get(p) ?? []), ...params.accounts.pinned.filter((k) => acc.has(k)), ...listed]));
-    else byProgram.set(p, new Set([...selectAccounts(acc, params.accounts, { lowCadence: lowSet.has(p) }), ...listed]));
+    byProgram.set(p, new Set([...selectAccounts(acc, params.accounts, { lowCadence: lowSet.has(p) }), ...[...crossKeys].filter((k) => acc.has(k))]));
   }
-  return { byProgram, lists, lowCadence, ratios, across };
+  return { byProgram, lists, across };
+}
+/**
+ * The account selection of a pull: its totals over every account's whole window (pulled months from the units, carried
+ * ones from the store), the programs it reads as low cadence, then selectionOver.
+ * @returns {{byProgram: Map<string, Set<string>>, lists: Array<*>, lowCadence: string[], ratios: Map<string, ?number>, across: Map<string, *>}}
+ */
+function selectionFor({ params, units, selected, refresh, carry = new Map() }) {
+  const windowMonths = new Set(monthsBetween(params.window.from, params.window.to));
+  const pulled = new Set(refresh.pulledMonths);
+  const accept = (p, m) => selected.has(p) && (refresh.carriedPrograms.has(p) ? pulled.has(m) : windowMonths.has(m));
+  const ratios = cadenceRatios(units, selected);
+  const lowCadence = [...selected.keys()].filter((p) => ratios.get(p) != null && ratios.get(p) <= LOW_CADENCE_MAX_RATIO).sort(cmpKey);
+  const chosen = selectionOver({ params, programs: [...selected.keys()], totals: accountTotals(units, accept, carry), lowSet: new Set(lowCadence), rankedAt: params.pulledAt ?? null });
+  return { ...chosen, lowCadence, ratios };
+}
+/**
+ * The account table's rows (T10AccountRow): each cell folded into its bucket (the account's own row where the selection
+ * keeps it on that program, else "all other accounts"; the sends with no company link their own), then split by
+ * recipient class. ONE fold for a pull and for a list change ranked from the store. `provenanceOf(programId, month)`
+ * gives each program-month's provenance and pull time; `onDeficit` hears an internal class above all recipients (the
+ * external row is then 0), for the pulled months only (a carried month's was heard by the pull that made it).
+ * @param {Array<Map<string, *>>} tables @param {Map<string, Set<string>>} selection
+ * @param {(programId: string, month: string) => {provenance: RowProvenance, pulledAt: string}} provenanceOf
+ * @param {?((d: *) => void)} [onDeficit]
+ */
+function accountRowsOf(tables, selection, provenanceOf, onDeficit = null) {
+  const buckets = new Map();
+  for (const table of tables) {
+    for (const e of table.values()) {
+      const [p, account, m] = e.key;
+      const bucket = account == null ? "no-company-link" : selection.get(p)?.has(account) ? "account" : "other";
+      const target = cellOf(buckets, [p, bucket, bucket === "account" ? account : null, m]);
+      for (const k of SEND_MEASURES) { target.all[k] += e.all[k]; target.internal[k] += e.internal[k]; }
+    }
+  }
+  const rows = [];
+  for (const e of buckets.values()) {
+    const [programId, bucket, accountKey, month] = e.key;
+    const prov = provenanceOf(programId, month);
+    const ext = zero();
+    for (const k of SEND_MEASURES) {
+      ext[k] = e.all[k] - e.internal[k];
+      if (ext[k] < 0) { if (onDeficit && prov.provenance === "pulled") onDeficit({ key: e.key, month, measure: k, left: e.internal[k], right: e.all[k] }); ext[k] = 0; }
+    }
+    const fields = { programId, bucket, accountKey, month };
+    if (anyNonZero(e.internal)) rows.push({ ...fields, recipientClass: "internal", ...e.internal, ...prov });
+    if (anyNonZero(ext)) rows.push({ ...fields, recipientClass: "external", ...ext, ...prov });
+  }
+  return rows.sort((a, b) => cmpKey(a.programId, b.programId) || cmpKey(a.month, b.month) || cmpKey(a.bucket, b.bucket) || cmpKey(a.accountKey ?? "", b.accountKey ?? "") || cmpKey(a.recipientClass, b.recipientClass));
+}
+/**
+ * The per-segment customer lists (S5): each ranked over the kept accounts' summed measures, one list per value of its
+ * company field. A list whose field the pull did not read (set since, by a change ranked with no pull) is not ranked:
+ * "field-not-read", until the next refresh reads it; never every account put under "(none)".
+ */
+function perSegmentListsOver({ lists, accountKeys, across, attrsOf, readFields, rankedAt }) {
+  const keptAcross = new Map(accountKeys.filter((k) => across.has(k)).map((k) => [k, across.get(k)]));
+  return lists.filter((l) => l.per).flatMap((l) => (readFields.includes(l.per)
+    ? selectAccountsAcross(keptAcross, [l], { attrs: attrsOf }).map((x) => ({ ...x, rankedAt, notRanked: null }))
+    : [{ kind: l.kind, n: l.n, floor: l.floor, per: l.per, segment: null, keys: [], rankedAt: null, notRanked: "field-not-read" }]));
+}
+/**
+ * A ranked list as the snapshot's selection record holds it (honesty.accountSelection.lists[]). carriedFrom is null on
+ * every list ranked since F-548 (every refresh ranks; the one producer says so here, F-555) and stays in the record for
+ * the readers of a snapshot made before it.
+ */
+const listRecord = (l) => ({ kind: l.kind, n: l.n, floor: l.floor, per: l.per, segment: l.segment, kept: l.keys, selectedFrom: l.notRanked ? null : "every program", rankedAt: l.rankedAt, carriedFrom: l.carriedFrom ?? null, notRanked: l.notRanked });
+/**
+ * A change of the customer lists ranked from the account store, with no pull (F-548; it replaces F-529's narrow path,
+ * which ranked only over a full pull's run directory): the snapshot's own pull's figures for every account and month,
+ * the selection made again as that pull makes it with the new lists, the account rows folded again (every program-month
+ * keeps its provenance), the selection record and the pull's list echo replaced. The figures are the pull's, so each
+ * list's rankedAt stays that pull's time. Names and company fields are the snapshot's own: an account newly kept shows
+ * its key until the next refresh reads its name, and a per-segment list ranks the kept accounts whose fields that pull
+ * read ("field-not-read" when it read none for its field). Pure.
+ * @param {{snapshot: T10Snapshot, store: AccountStore, lists: Array<{kind: string, n: number, floor: number, per?: ?string}>}} args
+ * @returns {{snapshot: T10Snapshot, newlyKept: string[]}}
+ */
+export function rankFromStore({ snapshot, store, lists }) {
+  if (!accountStoreFits(store, snapshot)) throw new Error("rankFromStore: the account store is not this snapshot's");
+  const s = structuredClone(snapshot);
+  const params = { ...s.meta.params, accounts: { ...s.meta.params.accounts, lists: lists.map((l) => ({ kind: l.kind, n: l.n, floor: l.floor, ...(l.per != null ? { per: l.per } : {}) })) } };
+  const programs = s.dimensions.programs.map((p) => p.id);
+  const held = new Set(programs);
+  const cells = new Map([...decodeAccountStore(store)].filter(([, e]) => held.has(e.key[0])));
+  const totals = addCarriedCells(new Map(), cells);
+  const { byProgram, lists: cross, across } = selectionOver({ params, programs, totals, lowSet: new Set(s.honesty?.accountSelection?.lowCadencePrograms ?? []), rankedAt: s.meta.pulledAt });
+  const made = new Map(s.facts.byAccount.map((r) => [JSON.stringify([r.programId, r.month]), { provenance: r.provenance, pulledAt: r.pulledAt }]));
+  s.facts.byAccount = accountRowsOf([cells], byProgram, (p, m) => made.get(JSON.stringify([p, m])) ?? { provenance: /** @type {RowProvenance} */ ("pulled"), pulledAt: s.meta.pulledAt });
+  const accountKeys = [...new Set(s.facts.byAccount.filter((r) => r.bucket === "account").map((r) => r.accountKey))].sort(cmpKey);
+  const before = new Map(s.dimensions.accounts.map((a) => [a.key, a]));
+  const fields = params.accounts.fields ?? [];
+  const attrsOf = new Map(s.dimensions.accounts.filter((a) => a.attrs).map((a) => [a.key, a.attrs]));
+  s.dimensions.accounts = accountKeys.map((key) => ({ key, name: params.accounts.names ? before.get(key)?.name ?? null : null, ...(fields.length ? { attrs: attrsOf.get(key) ?? Object.fromEntries(fields.map((f) => [f, null])) } : {}) }));
+  const perSegment = perSegmentListsOver({ lists: params.accounts.lists, accountKeys: accountKeys.filter((k) => attrsOf.has(k)), across, attrsOf, readFields: fields, rankedAt: s.meta.pulledAt });
+  s.honesty.accountSelection = { ...s.honesty.accountSelection, lists: [...cross, ...perSegment].map(listRecord) };
+  s.honesty.accountNames = { requested: params.accounts.names ? accountKeys.length : 0, resolved: params.accounts.names ? s.dimensions.accounts.filter((a) => a.name != null).length : 0 };
+  s.meta.params = params;
+  return { snapshot: s, newlyKept: accountKeys.filter((k) => !before.has(k)) };
 }
 function selectedAccountKeys(args) {
   const all = new Set();
@@ -3409,12 +3612,20 @@ export function decideClickState({ everClicked, reading }) {
 
 /**
  * Fetched payloads → the T-10 snapshot. Pure: no clock, no file, no call.
- * @param {{params: *, whoami: *, programPages: Array<*>, describes: Map<string, *>, units: Array<*>, kbSteps?: *, previous?: ?T10Snapshot, linkSettings?: *, surveyAvailable: boolean, healthState?: ?{unread: Object<string, Array<*>>, objects: Object<string, boolean>}, calls?: *, cliVersion?: ?string, pluginVersion?: ?string}} input
- *   healthState: which health parts were not read whole, and whether the objects only health reads exist on the tenant
+ * @param {{params: *, whoami: *, programPages: Array<*>, describes: Map<string, *>, units: Array<*>, kbSteps?: *, previous?: ?T10Snapshot, previousStore?: ?AccountStore, linkSettings?: *, surveyAvailable: boolean, healthState?: ?{unread: Object<string, Array<*>>, objects: Object<string, boolean>}, calls?: *, cliVersion?: ?string, pluginVersion?: ?string}} input
+ *   healthState: which health parts were not read whole, and whether the objects only health reads exist on the tenant;
+ *   previousStore: the account store written beside `previous` (F-548), which a selective refresh with accounts needs
  * @returns {T10Snapshot}
  */
 export function reduceEngagement(input) {
-  const { params, whoami, programPages, describes, units, kbSteps = null, previous: given = null, linkSettings = null, surveyAvailable, healthState = null, calls = {}, cliVersion = null, pluginVersion = null } = input;
+  return reduceWithStore(input).snapshot;
+}
+/**
+ * reduceEngagement, with the account store to write beside the snapshot (null when the pull has no accounts).
+ * @returns {{snapshot: T10Snapshot, store: ?AccountStore}}
+ */
+export function reduceWithStore(input) {
+  const { params, whoami, programPages, describes, units, kbSteps = null, previous: given = null, previousStore = null, linkSettings = null, surveyAvailable, healthState = null, calls = {}, cliVersion = null, pluginVersion = null } = input;
   const pulledAt = params.pulledAt;
   if (typeof pulledAt !== "string") throw new Error("engagement reduce: the run carries no pull time — its fact calls never started");
   const windowMonths = monthsBetween(params.window.from, params.window.to);
@@ -3429,7 +3640,7 @@ export function reduceEngagement(input) {
   const decision = decidePrograms({ listed, base, describes, selector: params.selector, sentSinceIds });
   if (decision.pendingDescribes.length) throw new Error(`engagement reduce: ${decision.pendingDescribes.length} program id(s) with sends were never described — the fetch is incomplete`);
   const { selected, deleted, unselected } = decision;
-  const refresh = decideRefresh({ params, previous: given, tenantHost: whoami.host, selectedIds: [...selected.keys()] });
+  const refresh = decideRefresh({ params, previous: given, tenantHost: whoami.host, selectedIds: [...selected.keys()], store: previousStore });
   // From here on the previous snapshot is this tenant's own history, or nothing.
   const previous = usablePrevious(given, whoami.host);
   const pulledSet = new Set(refresh.pulledMonths);
@@ -3550,16 +3761,15 @@ export function reduceEngagement(input) {
   const byTemplate = [...emit(tplTable, ([programId, templateId, month]) => ({ programId, templateId, month })), ...carried(previous?.facts?.byTemplate)]
     .sort(byKeys("programId", "month", "templateId", "recipientClass"));
 
-  const { byProgram: selection, lists: listSelection, lowCadence, ratios: cadenceRatioOf, across: acrossTotals } = selectionFor({ params, units, selected, refresh, previous });
-  const bucketTable = new Map();
-  for (const e of accTable.values()) {
-    const [p, account, m] = e.key;
-    const bucket = account == null ? "no-company-link" : selection.get(p)?.has(account) ? "account" : "other";
-    const target = cellOf(bucketTable, [p, bucket, bucket === "account" ? account : null, m]);
-    for (const k of SEND_MEASURES) { target.all[k] += e.all[k]; target.internal[k] += e.internal[k]; }
-  }
-  const byAccount = [...emit(bucketTable, ([programId, bucket, accountKey, month]) => ({ programId, bucket, accountKey, month })), ...carried(previous?.facts?.byAccount)]
-    .sort(byKeys("programId", "month", "bucket", "accountKey", "recipientClass"));
+  // The account grain over every account's whole window (F-548): the pulled months from the units, the carried months
+  // from the previous snapshot's account store (decideRefresh made this refresh selective only with that store), so the
+  // selection and the rows are a full pull's, and the carried rows keep the pull time their program-month was made at.
+  const carry = params.accounts.pull ? carriedAccountCells(previousStore, refresh, selected) : new Map();
+  const { byProgram: selection, lists: listSelection, lowCadence, ratios: cadenceRatioOf, across: acrossTotals } = selectionFor({ params, units, selected, refresh, carry });
+  const madeAt = new Map((previous?.facts?.byAccount ?? []).map((r) => [JSON.stringify([r.programId, r.month]), r.pulledAt]));
+  const accountProvenance = (p, m) => (refresh.carriedPrograms.has(p) && carriedSet.has(m) ? { provenance: /** @type {RowProvenance} */ ("carried"), pulledAt: madeAt.get(JSON.stringify([p, m])) ?? previous?.meta?.pulledAt ?? pulledAt } : provenance);
+  const byAccount = accountRowsOf([accTable, carry], selection, accountProvenance, (d) => deficits.push(d));
+  const accountStore = params.accounts.pull ? encodeAccountStore(new Map([...accTable, ...carry]), { pulledAt, tenantHost: whoami.host, window: params.window }) : null;
 
   // ── Step grain (step detail only) ──
   let byStep = null;
@@ -4110,10 +4320,9 @@ export function reduceEngagement(input) {
     accounts: accountKeys.map((key) => ({ key, name: params.accounts.names ? names.get(key) ?? null : null, ...(params.accounts.fields?.length ? { attrs: attrsOf.get(key) ?? Object.fromEntries(params.accounts.fields.map((f) => [f, null])) } : {}) })),
     months: windowMonths,
   };
-  // The per-segment customer lists (S5), ranked over the KEPT accounts' summed measures with the fields just read.
-  // A selective refresh carried them with the rest (carriedLists, F-521).
-  const keptAcross = new Map(accountKeys.filter((k) => acrossTotals.has(k)).map((k) => [k, acrossTotals.get(k)]));
-  const perSegmentLists = refresh.mode === "selective" ? [] : selectAccountsAcross(keptAcross, (params.accounts.lists ?? []).filter((l) => l.per), { attrs: attrsOf }).map((l) => ({ ...l, rankedAt: pulledAt, carriedFrom: null, notRanked: null }));
+  // The per-segment customer lists (S5), ranked over the KEPT accounts' summed measures with the fields just read (the
+  // names call reads them for every kept account, the newly listed ones included), on every refresh (F-548).
+  const perSegmentLists = perSegmentListsOver({ lists: params.accounts.lists ?? [], accountKeys, across: acrossTotals, attrsOf, readFields: params.accounts.fields ?? [], rankedAt: pulledAt });
 
   // ── Honesty and this snapshot's own caveats ──
   for (const u of of("classes")) {
@@ -4139,11 +4348,13 @@ export function reduceEngagement(input) {
     accountNames: { requested: params.accounts.names ? accountKeys.length : 0, resolved: namesResolved },
     // The account selection as made (S5): each cross-program list's kept accounts (a per-segment list per value), the
     // programs read as low cadence (about one send per contact) with every program's ratio, and the per-program rule.
-    // Each list (additive, F-521): rankedAt, the pull that ranked it over every program (this one on a full pull);
-    // carriedFrom, the snapshot a selective refresh carried it from (else null); notRanked, why a selective refresh
-    // holds no ranking for it ("list-set-since" | "previous-not-ranked"; then selectedFrom is null and kept empty).
+    // Each list (additive, F-521): rankedAt, the pull whose figures ranked it over every account (this pull: since
+    // F-548 every refresh ranks, from the pulled months and the account store's carried ones); carriedFrom, null since
+    // F-548 (a snapshot before it: the snapshot a selective refresh carried the list from); notRanked, why a list holds
+    // no ranking ("field-not-read": a per-segment list a change set over a company field the pull did not read; a
+    // snapshot before F-548 may say "list-set-since" or "previous-not-ranked"), and then selectedFrom is null and kept empty.
     accountSelection: !params.accounts.pull ? null : {
-      lists: [...listSelection, ...perSegmentLists].map((l) => ({ kind: l.kind, n: l.n, floor: l.floor, per: l.per, segment: l.segment, kept: l.keys, selectedFrom: l.notRanked ? null : "every program", rankedAt: l.rankedAt, carriedFrom: l.carriedFrom, notRanked: l.notRanked })),
+      lists: [...listSelection, ...perSegmentLists].map(listRecord),
       lowCadencePrograms: lowCadence,
       cadenceRatio: Object.fromEntries([...cadenceRatioOf].map(([p, r]) => [p, r == null ? null : Math.round(r * 100) / 100])),
       lowCadenceRule: { maxRatio: LOW_CADENCE_MAX_RATIO, minDelivered: LOW_CADENCE_MIN_DELIVERED },
@@ -4197,7 +4408,8 @@ export function reduceEngagement(input) {
   if (checks.some((c) => c.drift)) caveats.push({ id: "incomplete-period-drift", detail: { from: params.incompleteFrom, checks: checks.filter((c) => c.drift).map((c) => ({ id: c.id, drift: c.drift })) } });
 
   const facts = { byTemplate, ...(byStep ? { byStep } : {}), byAccount, responses, responseParticipants, uniques, health: healthFacts };
-  return {
+  /** @type {T10Snapshot} */
+  const snapshot = {
     schemaVersion: T10_SCHEMA_VERSION,
     kind: "engagement",
     meta: {
@@ -4216,6 +4428,9 @@ export function reduceEngagement(input) {
       dateBasis: { object: LOG, field: LOG_SRC.dateField, grain: "month", stepDetail: params.stepDetail ? { object: JO_LOG, field: JO_SRC.dateField } : null },
       stepDetail: params.stepDetail,
       accounts: { pulled: params.accounts.pull, reason: params.accounts.pull ? null : "accounts-off" },
+      // The account store written beside this snapshot (additive, F-548): its size; null when the pull has no accounts.
+      // Its presence tells a refresh that a missing store file is a store gone, not a snapshot made before stores.
+      accountStore: accountStore ? { schema: accountStore.schema, cells: accountStore.cells.length, accounts: accountStore.accounts.length } : null,
       participantRecords: { pulled: params.stepDetail, reason: params.stepDetail ? null : "step-detail-off" },
       health: healthMeta,
       // Template content (TPL-1) comes from the KB: a pull made without one holds none and says so.
@@ -4232,13 +4447,14 @@ export function reduceEngagement(input) {
     reconciliation,
     caveats,
   };
+  return { snapshot, store: accountStore };
 }
 
 /**
  * The run directory → reduce's input. Refuses a run that did not finish: a
  * snapshot is built from a complete pull or not at all.
  * @param {string} runDir
- * @param {{previous?: ?T10Snapshot, linkSettings?: *, cliVersion?: ?string, pluginVersion?: ?string}} [opts]
+ * @param {{previous?: ?T10Snapshot, previousStore?: ?AccountStore, linkSettings?: *, cliVersion?: ?string, pluginVersion?: ?string}} [opts]
  */
 export function loadRun(runDir, opts = {}) {
   const status = readJsonFile(join(runDir, "status.json"));
@@ -4271,6 +4487,7 @@ export function loadRun(runDir, opts = {}) {
     units: ok.filter((r) => r.family in FAMILIES && r.family !== SCHEDULE_DESCRIBE).map((r) => ({ ...r, rows: read(r) })),
     kbSteps: existsSync(kbPath) ? readJsonFile(kbPath) : null,
     previous: opts.previous ?? null,
+    previousStore: opts.previousStore ?? null,
     linkSettings: opts.linkSettings ?? null,
     surveyAvailable: !!(survey && schemaTypes(read(survey))),
     // Which health parts were not read whole, and whether the two objects only health reads exist here.
@@ -4708,14 +4925,13 @@ async function main() {
     const run = readJsonFile(join(resolve(runDir), "run.json"));
     const prevPath = opt("--previous") ?? run.previousPath;
     const linkPath = opt("--link-settings");
-    let snapshot;
+    let reduced;
     try {
-      snapshot = reduceEngagement(loadRun(resolve(runDir), { previous: prevPath ? readSnapshot(prevPath) : null, linkSettings: linkPath ? readJsonFile(resolve(linkPath)) : null, cliVersion: run.cliVersion, pluginVersion }));
+      reduced = reduceWithStore(loadRun(resolve(runDir), { previous: prevPath ? readSnapshot(prevPath) : null, previousStore: prevPath ? readAccountStore(accountStorePath(resolve(prevPath))) : null, linkSettings: linkPath ? readJsonFile(resolve(linkPath)) : null, cliVersion: run.cliVersion, pluginVersion }));
     } catch (e) {
       fail(e instanceof Error ? e.message : String(e));
     }
-    writeFileAtomicSync(resolve(outPath), JSON.stringify(snapshot));
-    await finish(reduceSummary(snapshot, resolve(outPath)));
+    await finish(reduceSummary(reduced.snapshot, resolve(outPath), writeSnapshotAndStore(resolve(outPath), reduced)));
   }
 
   const wsDir = opt("--workspace") ? resolve(opt("--workspace")) : findWorkspaceDir(process.cwd());
@@ -4812,6 +5028,7 @@ async function main() {
   if (mode === "run" && !opt("--out")) fail(`run needs --out <snapshot.json> — ${USAGE}`);
   const prevPath = opt("--previous") ? resolve(opt("--previous")) : null;
   const previous = prevPath ? readSnapshot(prevPath) : null;
+  const previousStore = prevPath ? readAccountStore(accountStorePath(prevPath)) : null;
   const runId = opt("--run") ?? stampClock(Date.now()).pulledAt.replace(/[^0-9]/g, "").slice(0, 14);
   let runDir;
   try {
@@ -4825,7 +5042,7 @@ async function main() {
   let summary;
   try {
     summary = fetchEngagement({
-      params, runDir, kbDir, previous, phase: mode === "plan" ? "plan" : "all",
+      params, runDir, kbDir, previous, previousStore, phase: mode === "plan" ? "plan" : "all",
       transport: cliTransport({ cliArgv: resolveCliArgv({ binOpt: opt("--bin"), fail }) }),
       gate: makeGate({ catalog, hooksDir: join(here, "..", "hooks") }),
       onCall: (line) => console.error(`engagement.mjs: ${line}`),
@@ -4839,16 +5056,63 @@ async function main() {
 
   const outPath = resolve(opt("--out"));
   const linkPath = opt("--link-settings");
-  const snapshot = reduceEngagement(loadRun(runDir, { previous, linkSettings: linkPath ? readJsonFile(resolve(linkPath)) : null, cliVersion: catalog.meta?.cliVersion ?? null, pluginVersion }));
+  const reduced = reduceWithStore(loadRun(runDir, { previous, previousStore, linkSettings: linkPath ? readJsonFile(resolve(linkPath)) : null, cliVersion: catalog.meta?.cliVersion ?? null, pluginVersion }));
+  await finish({ ...out, ...reduceSummary(reduced.snapshot, outPath, writeSnapshotAndStore(outPath, reduced)) });
+}
+
+/**
+ * A snapshot and its account store, written: the store first (beside the snapshot, accountStorePath), so a snapshot on
+ * disk has its store unless the write stopped between the two, which the next refresh reads as a store gone (one full
+ * pull, said). With no store (no accounts) a stale store of an earlier pull at that path is removed. The store's path, or null.
+ * @param {string} outPath @param {{snapshot: T10Snapshot, store: ?AccountStore}} reduced
+ */
+export function writeSnapshotAndStore(outPath, { snapshot, store }) {
+  const storePath = accountStorePath(outPath);
+  if (store) writeFileAtomicSync(storePath, accountStoreText(store));
+  else if (existsSync(storePath)) removeFileSync(storePath); // through the Windows retry (F-546's reopen): a scanned stale store never fails the finished pull
   writeFileAtomicSync(outPath, JSON.stringify(snapshot));
-  await finish({ ...out, ...reduceSummary(snapshot, outPath) });
+  return store ? storePath : null;
+}
+/**
+ * A snapshot copied with the store beside it (an export, an import, F-548): the one rule for the pair (F-555).
+ * @param {string} from the snapshot file @param {string} to the copy's path @returns {?string} the copied store's path, or null when there was none
+ */
+export function copySnapshotWithStore(from, to) {
+  copyFileSync(from, to);
+  if (!existsSync(accountStorePath(from))) return null;
+  copyFileSync(accountStorePath(from), accountStorePath(to));
+  return accountStorePath(to);
+}
+/**
+ * The store's head alone — kind, schema, pulledAt, tenantHost, window, measures — read from the file's first line (the
+ * text form keeps the cells on the lines after it), so a reader that only asks WHICH pull a store is (accountStoreFits)
+ * never parses megabytes of cells (F-555). Null as readAccountStore would be.
+ * @param {?string} path @returns {?{kind: string, schema: number, pulledAt: string, tenantHost: string, window: {from: string, to: string}, measures: string[]}}
+ */
+export function readAccountStoreHead(path) {
+  if (!path || !existsSync(path)) return null;
+  let fd = null;
+  try {
+    fd = openSync(path, "r");
+    const buf = Buffer.alloc(16384);
+    const n = readSync(fd, buf, 0, buf.length, 0);
+    const first = stripBom(buf.toString("utf8", 0, n)).split(/\r?\n/)[0] ?? "";
+    const cut = first.lastIndexOf(',"cells":[');
+    const head = JSON.parse(cut > 0 ? `${first.slice(0, cut)}}` : first);
+    return head?.kind === ACCOUNT_STORE_KIND && head.schema === ACCOUNT_STORE_SCHEMA && Array.isArray(head.measures) ? { ...head, cells: [] } : readAccountStore(path);
+  } catch {
+    return readAccountStore(path); // not the text form this writer makes (a hand-formatted file): the whole read decides
+  } finally {
+    if (fd != null) closeSync(fd);
+  }
 }
 
 // What a caller is told about a snapshot: counts and verdicts, never rows.
-function reduceSummary(s, outPath) {
+function reduceSummary(s, outPath, storePath = null) {
   return {
     ok: true,
     out: outPath,
+    accountStore: storePath,
     pulledAt: s.meta.pulledAt,
     window: s.meta.window,
     refresh: s.meta.refresh,

@@ -37,6 +37,7 @@ import * as engine from "../scripts/engagement-query.mjs";
 import { openSpec, SPEC_DESCRIPTIONS, PRESETS, presetPanels, describeSpec, setPath, validateSpec } from "../scripts/dashboard-spec.mjs";
 import { coveredPath } from "../scripts/dashboard.mjs";
 import { applyGroups } from "../scripts/dashboard-groups.mjs";
+import { buildReport } from "../scripts/engagement-report.mjs";
 import { kbFiles, FIXTURE_BOUNCE_CATEGORIES, HOSTILE_ACCOUNT_NAME } from "./fixtures/engagement/acme-tenant.mjs";
 import { HOW_TO_REFRESH_RULED_PARTS } from "./fixtures/engagement/ruled-text.mjs";
 
@@ -461,7 +462,7 @@ try {
     check("the facts come from one function: reason, the engine's wording, pull or rebuild, the setting and the line; a lack that depends on the data asks the caller which it is; a figure the snapshot predates and a health part the pull lost each get the refresh line",
       isDeepStrictEqual(app.lackFacts("accounts-off"), { reason: "accounts-off", text: reasonText("accounts-off"), known: true, needs: "pull", needsText: NEEDS.pull, setting: { path: "accounts.pull", how: "on", label: "Accounts" }, line: COPY_LINES.change("program-health", "accounts.pull", "true") }) &&
         app.lackFacts("tab-off", { held: true }).needs === "rebuild" && app.lackFacts("tab-off", { held: false }).needs === "pull" && app.lackFacts("measure-not-in-snapshot").line === COPY_LINES.refresh("program-health") && app.lackFacts("measure-not-in-snapshot").setting === null &&
-        app.lackFacts("call-failed").line === "node .gs-superadmin/plugin/scripts/dashboard.mjs refresh program-health" && app.lackFacts("no-internal-domain").line === "node .gs-superadmin/plugin/scripts/dashboard.mjs change program-health sources.0.params.internalDomains=");
+        app.lackFacts("call-failed").line === "node .gs-superadmin/plugin/scripts/dashboard.mjs refresh program-health" && app.lackFacts("no-internal-domain").line === 'node .gs-superadmin/plugin/scripts/dashboard.mjs change program-health "sources.0.params.internalDomains=<domains>"');
     // The actions seam (ruled 2026-10-05; the local app is LTR-10): a button when the page has one behind it, the copy line when it does not.
     const withActions = createDashboard(engine, { ...pageModel(SPEC_ACCOUNTS, GOLD, SPEC_ACCOUNTS.pages[0]), actions: { base: "http://127.0.0.1:1/", token: "never-in-markup" } });
     const button = withActions.renderNotice(withActions.lackFacts("accounts-off"));
@@ -513,10 +514,11 @@ try {
     // writer's own grammar (dotted, with indexes), never the descriptions' kind path with empty brackets, so it runs as
     // written: every emitted copy line's path is one setPath takes and validate accepts, and one the entry command's
     // cost table covers (the kind path is derived back from it).
-    const copyLines = (html, spec) => [...html.matchAll(/data-copy="[^"]*? change ([^ "]+) ([^="]+)=([^"]*)"/g)].map((m) => ({ slug: m[1], path: m[2], value: m[3], spec }));
+    // A pair printed in double quotes (F-536: a value a shell would read) is the same pair; the quotes are escaped in the attribute.
+    const copyLines = (html, spec) => [...html.matchAll(/data-copy="[^"]*? change ([^ "]+) ([^="]+)=([^"]*)"/g)].map((m) => ({ slug: m[1], path: m[2].replace(/^&quot;/, ""), value: m[3].replace(/&quot;$/, ""), spec }));
     // The pre-rendered pages' lines, plus the About tab's internal-domain line, which the runtime draws (its facts are checked above).
     const emitted = [...copyLines(offered.html, healthOff), ...copyLines(ADMIN.html, SPEC_ACCOUNTS), ...copyLines(ADMIN_P.html, SPEC_DEFAULTS), ...copyLines(build(specWith((s) => { s.sources[0].params.stepDetail = false; s.pages[0].panels = []; }), PULLED).html, specWith((s) => { s.sources[0].params.stepDetail = false; s.pages[0].panels = []; })),
-      { slug: "program-health", path: createDashboard(engine, pageModel(SPEC_ACCOUNTS, GOLD, SPEC_ACCOUNTS.pages[0])).lackFacts("no-internal-domain").line.replace(/^.* change program-health /, "").replace(/=.*$/, ""), value: "", spec: SPEC_ACCOUNTS }];
+      { slug: "program-health", path: createDashboard(engine, pageModel(SPEC_ACCOUNTS, GOLD, SPEC_ACCOUNTS.pages[0])).lackFacts("no-internal-domain").line.replace(/^.* change program-health /, "").replace(/^"/, "").replace(/=.*$/, ""), value: "", spec: SPEC_ACCOUNTS }];
     // "Runs as written": the writer takes the path and the value, and no validation problem is ABOUT that field (a page
     // whose hand-listed panels lack the tab's is the writer's own refusal, naming the panels, and says what to do).
     const runsAsWritten = (l) => {
@@ -639,7 +641,7 @@ try {
     const loaded = loadPage(page.html);
     check("no internal domain configured: the recipients toggle is drawn switched off with a one-line pointer beside it, never a control that does nothing; the full notice stands on the About tab beside the setting it names (ruled 2026-10-10): what it would take is a new pull with the domains filled in, and the line to copy ends at the = sign with the notice saying what to put there",
       /<input type="checkbox" role="switch" data-f="internal" checked disabled aria-checked="true">/.test(toggle) && /data-pointer="no-internal-domain"/.test(toggle) && lacksIn(toggle).length === 0 && toggle.includes("see About") && lacksIn(aboutNotice).includes("no-internal-domain") && aboutNotice.includes(esc(reasonText("no-internal-domain"))) && aboutNotice.includes(esc(NEEDS.pull)) && aboutNotice.includes(`Fill in &quot;Internal recipients&quot;`) && aboutNotice.includes(`<span class="gs-path">sources[].params.internalDomains[]</span>`) &&
-        aboutNotice.includes("sources.0.params.internalDomains=</code>") && aboutNotice.includes("ends at the = sign: put the value there"), toggle);
+        aboutNotice.includes("&quot;sources.0.params.internalDomains=&lt;domains&gt;&quot;</code>") && aboutNotice.includes(esc("put the company's email domains, separated by commas (acme.com,acme.co.uk) in place of <domains>, keeping the quotes round the pair")), toggle);
     check("and it cannot be switched on from outside either: a hash asking for external recipients is read as everyone, and a spec whose toggle starts on external starts on everyone here",
       loaded.call(`app.stateFromHash("rc=external").external`) === false && loaded.call(`app.filtersOf(app.stateFromHash("rc=external")).recipientClass`) === "all" &&
         loadPage(build(specWith((s) => { s.globalFilters.find((f) => f.id === "recipientClass").default = "external"; }), NO_DOMAIN).html).call(`app.defaultState().external`) === false);
@@ -781,24 +783,63 @@ try {
     const most = presetPanels(SPEC_DEFAULTS.pages[0]).find((p) => p.id === "most-engaged");
     const wl = build(specWith((s) => { s.pages[0].panels = []; s.pages[0].statusDefault = null; }), PULLED);
     const wlHtml = panelHtml(wl.html, "most-engaged");
-    const ranked = runQuery(GOLD, { recipientClass: "all", accountBuckets: ["account"] }, most.query);
-    const detail = runQuery(GOLD, { recipientClass: "all", accounts: ranked.rows.map((r) => r.key.account), accountBuckets: ["account"] }, { groupBy: ["account", "program"], metrics: most.query.metrics, sort: [{ metric: "delivered", dir: "desc" }] });
     const wlRows = anyRows(wlHtml).slice(1);
-    check("the cross-program watch list (ruled 2026-10-05): the accounts the engine ranks over every program under the floor and the top-N, each with how many programs touched it and its figures, and underneath each the per-program rows from a second engine call; the 'all other accounts' and 'no company link' rows never rank; the title never says churn",
-      ranked.rows.length > 0 && ranked.rows.every((r) => !["other", "no-company-link"].includes(r.key.account)) && wlRows.filter((r) => !r[1] === false || r[1] !== "").length >= ranked.rows.length &&
-        ranked.rows.every((r, i) => { const top = wlRows.find((row) => row[0].startsWith(r.label.account) && row[1] === String(detail.rows.filter((d) => d.key.account === r.key.account).length)); return !!top && top[2] === formatCell("delivered", r.cells.delivered) && top[4] === formatCell("openRate", { ...r.cells.openRate, state: "tracked" }).replace(/ \(tracking unknown\)$/, "") && i >= 0; }) &&
-        detail.rows.every((d) => wlRows.some((row) => row[0].startsWith(d.label.program) && row[2] === formatCell("delivered", d.cells.delivered))) && (wlHtml.match(/<tr class="gs-sub">/g) ?? []).length === detail.rows.length && !/All other accounts|No company link/.test(wlHtml) && !/churn/i.test(wlHtml) &&
-        wlHtml.includes("Ranked over the whole window") && panelHtml(wl.html, "least-engaged").includes("<h2>Least engaged customers</h2>") && !/\(possible/.test(wl.html) && panelHtml(wl.html, "most-bounced") !== null,
-      [wlRows.slice(0, 4), ranked.rows.map((r) => [r.key.account, r.cells.delivered.value])]);
-    check("the watch list over a narrower month range says it re-ranks the embedded rows (the pull selected the accounts over the whole window), and over a pull with accounts off each of the three lists shows the accounts-off notice",
-      loadPage(wl.html).call(`app.renderPanel(app.panels.find((p) => p.id === "most-engaged"), app.stateFromHash("m=2026-07..2026-08"), null)`).includes("the pull selected these accounts over the whole window, so this is a re-ranking of the embedded rows") &&
-        ["most-engaged", "least-engaged", "most-bounced"].every((id) => lacksIn(panelHtml(ADMIN_P.html, id)).join() === "accounts-off"));
+    // The customer lists' panels (F-530): the pull's ranking of each list, read from the selection record, never a
+    // second ranking with the preset's numbers.
+    const record = (s, kind) => s.honesty.accountSelection.lists.find((l) => l.kind === kind && !l.per);
+    const nameOf = (s, key) => s.dimensions.accounts.find((a) => a.key === key)?.name ?? key;
+    const kept = record(GOLD, "most-engaged").kept;
+    const keptRows = runQuery(GOLD, { recipientClass: "all", accounts: kept, accountBuckets: ["account"] }, { groupBy: ["account"], metrics: most.query.metrics });
+    const keptDetail = runQuery(GOLD, { recipientClass: "all", accounts: kept, accountBuckets: ["account"] }, { groupBy: ["account", "program"], metrics: most.query.metrics, sort: [{ metric: "delivered", dir: "desc" }] });
+    const topRows = wlRows.filter((row) => row[1] !== "");
+    check("F-530 a customer list's panel shows the pull's ranking: the selection record's kept accounts in the record's order (not a re-ranking under the preset's limit and floor), each with how many programs touched it and the engine's figures over the whole window, the per-program rows underneath from a second engine call; never the 'all other accounts' or 'no company link' rows; the note says what the list is and which pull ranked it; the title never says churn",
+      isDeepStrictEqual(topRows.map((row) => row[0].replace(/View$/, "").trim()), kept.map((k) => nameOf(GOLD, k))) &&
+        kept.every((k) => { const r = keptRows.rows.find((x) => x.key.account === k); const top = topRows.find((row) => row[0].startsWith(nameOf(GOLD, k))); return !!r && !!top && top[2] === formatCell("delivered", r.cells.delivered); }) &&
+        keptDetail.rows.every((d) => wlRows.some((row) => row[0].startsWith(d.label.program) && row[2] === formatCell("delivered", d.cells.delivered))) && !/All other accounts|No company link/.test(wlHtml) && !/churn/i.test(wlHtml) &&
+        wlHtml.includes(`The 25 most engaged (at least 10 delivered) across programs over the whole window, as the pull of ${GOLD.meta.pulledAt.slice(0, 10)} ranked them.`) && panelHtml(wl.html, "least-engaged").includes("<h2>Least engaged customers</h2>") && !/\(possible/.test(wl.html) && panelHtml(wl.html, "most-bounced") !== null,
+      [topRows.map((row) => row[0]), kept]);
+    // F-530's repro: the list set to the 3 least engaged with at least 3 delivered (the spec, and the record the pull ranked
+    // with it). The report, the page and the About tab say the same list: the three accounts, in the record's order.
+    const three = structuredClone(PULLED);
+    const least = three.honesty.accountSelection.lists.find((l) => l.kind === "least-engaged");
+    // The record's order reversed: an order no sort of the figures gives, so the page and the report are held to the
+    // record itself, never to a sort that happens to agree with it.
+    Object.assign(least, { n: 3, floor: 3, kept: least.kept.slice(0, 3).reverse() });
+    three.meta.params.accounts.lists = three.meta.params.accounts.lists.map((l) => (l.kind === "least-engaged" ? { ...l, n: 3, floor: 3 } : l));
+    const threePage = build(specWith((s) => { s.pages[0].panels = []; s.pages[0].statusDefault = null; s.accounts.lists = three.meta.params.accounts.lists; }), three);
+    const threeRows = anyRows(panelHtml(threePage.html, "least-engaged")).slice(1).filter((row) => row[1] !== "").map((row) => row[0].replace(/View$/, "").trim());
+    const threeReport = buildReport(applyGroups(three, SPEC.groups).snapshot, { all: true }).sections.find((x) => x.startsWith("## Account watch list")) ?? "";
+    const threeNames = least.kept.map((k) => nameOf(GOLD, k));
+    // The least-engaged list's own table: the other lists name the same accounts, so the order is read inside it alone.
+    const leastTable = (() => { const at = threeReport.indexOf("### Least engaged customers"); const next = threeReport.indexOf("###", at + 4); return at < 0 ? "" : threeReport.slice(at, next < 0 ? undefined : next); })();
+    const inOrder = (text) => threeNames.every((n, i) => i === 0 || text.indexOf(n, text.indexOf(threeNames[i - 1])) > text.indexOf(threeNames[i - 1]));
+    check("F-530 the report, the page and the About tab agree on a changed list (the 3 least engaged, at least 3 delivered): the page's panel lists exactly the record's three in its order and states its size and floor, the report lists the same three in the same order, and the About tab states the same list",
+      isDeepStrictEqual(threeRows, threeNames) && panelHtml(threePage.html, "least-engaged").includes("The 3 least engaged (at least 3 delivered) across programs over the whole window") &&
+        leastTable !== "" && threeNames.every((n) => leastTable.includes(n)) && inOrder(leastTable) && threeReport.includes("the 3 least engaged (at least 3 delivered)") && loadPage(threePage.html).call(`app.renderAbout()`).includes("the 3 least engaged (at least 3 delivered)"),
+      [threeRows, threeNames, threeReport.slice(0, 400)]);
+    // A per-segment list reaches the page (F-530: it never did): one table per segment under its field and value, each
+    // the record's kept accounts in its order; a list not ranked says why in the engine's words.
+    const seg = structuredClone(PULLED);
+    const segLists = [{ kind: "least-engaged", n: 2, floor: 1, per: "Industry", segment: "Retail", kept: least.kept.slice(0, 2) }, { kind: "least-engaged", n: 2, floor: 1, per: "Industry", segment: "Software", kept: least.kept.slice(2, 4) }, { kind: "most-bounced", n: 2, floor: 0, per: "Tier", segment: null, kept: [], notRanked: "field-not-read" }];
+    seg.honesty.accountSelection.lists.push(...segLists.map((l) => ({ selectedFrom: l.notRanked ? null : "every program", rankedAt: seg.meta.pulledAt, carriedFrom: null, notRanked: null, ...l })));
+    const segPage = build(specWith((s) => { s.pages[0].panels = []; s.pages[0].statusDefault = null; }), seg);
+    const segPanel = panelHtml(segPage.html, "least-engaged");
+    const tableAfter = (h4) => anyRows(segPanel.slice(segPanel.indexOf(h4))).slice(1).filter((row) => row[1] !== "").map((row) => row[0].replace(/View$/, "").trim());
+    check("F-530 a per-segment list reaches the page: the list's panel holds one table per segment under its field and value, each the record's kept accounts in its order with its own note; a list the pull could not rank says why in the engine's words",
+      segPanel.includes("<h4>Industry: Retail</h4>") && segPanel.includes("<h4>Industry: Software</h4>") && isDeepStrictEqual(tableAfter("<h4>Industry: Retail</h4>").slice(0, 2), least.kept.slice(0, 2).map((k) => nameOf(GOLD, k))) &&
+        segPanel.includes("The 2 least engaged (at least 1 delivered) per Industry") && panelHtml(segPage.html, "most-bounced").includes(esc(engine.reasonText("field-not-read"))),
+      [segPanel.match(/<h4>[^<]*<\/h4>/g), tableAfter("<h4>Industry: Retail</h4>")]);
+    const narrowed = loadPage(wl.html).call(`app.renderPanel(app.panels.find((p) => p.id === "most-engaged"), app.stateFromHash("m=2026-07..2026-08"), null)`);
+    const narrowedNames = anyRows(narrowed).slice(1).filter((row) => row[1] !== "").map((row) => row[0].replace(/View$/, "").trim());
+    check("a customer list over a narrower month range re-ranks the list's own accounts over what is shown and says so (the pull ranked them over the whole window); no account outside the list appears; over a pull with accounts off each of the three lists shows the accounts-off notice",
+      narrowed.includes("ranked them; re-ranked here over what is shown.") && narrowedNames.length > 0 && narrowedNames.every((n) => kept.some((k) => nameOf(GOLD, k) === n)) &&
+        ["most-engaged", "least-engaged", "most-bounced"].every((id) => lacksIn(panelHtml(ADMIN_P.html, id)).join() === "accounts-off"), [narrowedNames]);
     const wlCsv = parseCsv(loadPage(wl.html).call(`app.csvOf(app.panels.find((p) => p.id === "most-engaged"), app.defaultState(), null).text`));
-    check("the cross-program watch list's export is its view (R27): one line per ranked account carrying how many programs touched it, then one per program underneath with the program's status, every figure the engine's own, in the drawn order",
-      isDeepStrictEqual(wlCsv[0], ["Account", "Program", "Status", "Programs", ...most.query.metrics.flatMap((id) => (engine.metric(id).tracking ? [engine.metric(id).label, `${engine.metric(id).label} tracking`] : [engine.metric(id).label]))]) &&
-        wlCsv.length === 1 + ranked.rows.length + detail.rows.length &&
-        ranked.rows.every((r) => { const i = wlCsv.findIndex((line) => line[0] === r.label.account && line[1] === ""); const own = detail.rows.filter((d) => d.key.account === r.key.account); return i > 0 && wlCsv[i][3] === String(own.length) && wlCsv[i][4] === String(r.cells.delivered.value) && own.every((d, j) => wlCsv[i + 1 + j][0] === r.label.account && wlCsv[i + 1 + j][1] === d.label.program && wlCsv[i + 1 + j][3] === "" && wlCsv[i + 1 + j][4] === String(d.cells.delivered.value)); }),
-      [wlCsv.slice(0, 5), most.query.metrics]);
+    check("a customer list's export is its view (R27, F-530): one line per kept account in the record's order carrying the list and how many programs touched it, then one per program underneath with the program's status, every figure the engine's own",
+      isDeepStrictEqual(wlCsv[0], ["List", "Account", "Program", "Status", "Programs", ...most.query.metrics.flatMap((id) => (engine.metric(id).tracking ? [engine.metric(id).label, `${engine.metric(id).label} tracking`] : [engine.metric(id).label]))]) &&
+        wlCsv.length === 1 + kept.length + keptDetail.rows.length && isDeepStrictEqual(wlCsv.slice(1).filter((line) => line[2] === "").map((line) => line[1]), kept.map((k) => nameOf(GOLD, k))) &&
+        kept.every((k) => { const i = wlCsv.findIndex((line) => line[1] === nameOf(GOLD, k) && line[2] === ""); const own = keptDetail.rows.filter((d) => d.key.account === k); const r = keptRows.rows.find((x) => x.key.account === k); return i > 0 && wlCsv[i][0] === "the 25 most engaged (at least 10 delivered)" && wlCsv[i][4] === String(own.length) && wlCsv[i][5] === String(r.cells.delivered.value) && own.every((d) => wlCsv.slice(i + 1, i + 1 + own.length).some((line) => line[2] === d.label.program && line[5] === String(d.cells.delivered.value))); }),
+      [wlCsv.slice(0, 5), kept]);
     // Every panel of both presets renders, with no empty section and no unknown type.
     const sections = (html) => [...html.matchAll(/<section class="gs-panel" data-panel="([\w-]+)" data-type="([\w-]+)">([\s\S]*?)<\/section>/g)].map((m) => ({ id: m[1], type: m[2], body: m[3] }));
     check("every panel of the admin preset and of the leaders' preset renders over the signals pull, under its own type, each with a table, a chart or a notice (never a bare heading), and the download button on every panel that has rows",
@@ -1703,6 +1744,30 @@ try {
   }
 } finally {
   removeTempDir(ROOT);
+}
+
+// ── F-530, second reopen (redesigned at the 0.56.1 gate; ruled by Bradley 2026-10-16): what is shown is described ──
+// The About tab's customer lists are the ones the snapshot's pull RANKED (the record the panels and the report draw);
+// a change the spec holds that no pull has ranked yet is said as waiting, never described as if shown.
+{
+  const page = SPEC_DEFAULTS.pages[0];
+  const same = aboutSettings(SPEC_DEFAULTS, page, GOLD);
+  const accountsOf = (settings) => settings.find((d) => d.label === "Accounts").text;
+  check("F-530 (reopened) with the spec's lists the ones the snapshot was ranked with, the About tab reads as before: no waiting line",
+    isDeepStrictEqual(same.map((d) => d.text), aboutSettings(SPEC_DEFAULTS, page).map((d) => d.text)) && !JSON.stringify(same).includes("waiting for the next refresh"));
+  const changed = specWith((s) => { s.pages[0].panels = []; s.pages[0].statusDefault = null; s.accounts.lists = [{ kind: "most-bounced", n: 5, floor: 0 }]; });
+  const pending = aboutSettings(changed, page, GOLD);
+  const ranked = GOLD.meta.params.accounts.lists.map(engine.listPhrase);
+  check("F-530 (reopened) with the spec's lists changed and the snapshot ranked with the old ones, the About tab names the RANKED lists (the record's, as the panels show) in its Accounts entry and its list-panel lines, and adds the waiting line naming the change and the pull it waits behind",
+    ranked.every((phrase) => accountsOf(pending)[0].includes(phrase)) && !accountsOf(pending)[0].includes("the 5 most bounced") &&
+      accountsOf(pending).at(-1) === `A change of the customer lists is waiting for the next refresh: the 5 most bounced. Until then the pages show the lists the pull of ${GOLD.meta.pulledAt.slice(0, 10)} ranked.` &&
+      pending.find((d) => d.label === "Pages").text.some((t) => t.includes("the 25 most bounced") && t.includes("as the pull ranked")) && !JSON.stringify(pending.find((d) => d.label === "Pages").text).includes("the 5 most bounced"),
+    [accountsOf(pending), pending.find((d) => d.label === "Pages").text.filter((t) => /bounced/.test(t))]);
+  check("F-530 (reopened) with no snapshot (the spec writer's own rendering) the spec is described, as before", isDeepStrictEqual(aboutSettings(changed, page).map((d) => d.text), aboutSettings(changed, page, null).map((d) => d.text)) && accountsOf(aboutSettings(changed, page))[0].includes("the 5 most bounced"));
+  // F-536's --kb flag (reopened): a folder name a shell would split goes in double quotes on every line, the one spelling the three shells pass whole.
+  check("F-536 (reopened) every entry-command line quotes a knowledge-base folder name holding a space in double quotes, and leaves a plain name bare",
+    COPY_LINES.refresh("d", "Acme KB").endsWith(' --kb "Acme KB"') && COPY_LINES.change("d", "pages.0.title", "x", "acme-prod").endsWith(" --kb acme-prod") && COPY_LINES.health("d", "p-1", "a b").endsWith(' --kb "a b"'),
+    [COPY_LINES.refresh("d", "Acme KB")]);
 }
 
 if (failures) {

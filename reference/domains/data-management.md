@@ -321,7 +321,7 @@ List all Gainsight Data Management objects (custom, standard, system). Returns p
 | `--types` | `array` |  | `["custom","standard","system"]` | Object group types to include _(comma-separated)_ |
 | `--search` | `string` |  | — | Optional search text to filter objects |
 | `--limit` | `integer` |  | — | Max number of results to return |
-| `--sort-field` | `string` |  | — | Field to sort by |
+| `--sort-field` | `string` |  | — | Field to sort by: name, label, description, type, store, modified, created, modifiedBy, createdBy (sorted server-side across all objects). Other fields sort only the returned page. |
 | `--sort-dir` | `string` |  | `"DESC"` | Sort direction One of: `ASC`, `DESC`. |
 
 **Examples**

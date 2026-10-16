@@ -27,7 +27,7 @@
 //                 line when it does not. Every panel, tab and filter goes
 //                 through this pair; a leaders' page gets the statement alone.
 //   COPY_LINES    the deterministic entry command's lines (ruled 2026-10-05):
-//                 `change <slug> <path>=<json>`, `refresh <slug>`,
+//                 `change <slug> <path>=<value>`, `refresh <slug>`,
 //                 `health <slug> --program <id>`.
 //   the panels    one renderer per panel type — table, kpi, line, bar,
 //                 watchlist, and the four typed health views — each over the
@@ -154,7 +154,9 @@ export const LACKS = Object.freeze([
   { reason: "measure-not-in-snapshot", needs: "pull", setting: null, line: "refresh" },
   { reason: "accounts-not-on-page", needs: "rebuild", setting: { path: "pages[].accountNames", how: "on" }, line: "change" },
   { reason: "tab-off", needs: "by-data", setting: { path: "pages[].tabs[].enabled", how: "on" }, line: "change" },
-  { reason: "no-internal-domain", needs: "pull", setting: { path: "sources[].params.internalDomains[]", how: "fill" }, line: "change" },
+  // A `fill` setting's line carries a placeholder in the value (F-536): the notice says what to put in its place, and
+  // the pair is printed in double quotes, the one spelling Git Bash, PowerShell 5.1 and cmd all pass whole.
+  { reason: "no-internal-domain", needs: "pull", setting: { path: "sources[].params.internalDomains[]", how: "fill", placeholder: "<domains>", fillText: "the company's email domains, separated by commas (acme.com,acme.co.uk)" }, line: "change" },
   { reason: "test-accounts-need-accounts", needs: "pull", setting: { path: "accounts.pull", how: "on" }, line: "change" },
   // Health (DSH-4): the Health tab is the switch (ruled 2026-10-04), so a page whose tab is on and whose pull read no
   // health, or predates it, or continued from a pull that lacked a part, or lost a call, is a refresh away.
@@ -192,6 +194,7 @@ export const NOT_LACKS = Object.freeze({
   "account-not-kept-on-program": "a timeline's comparison with a dashboard: the dashboard's customer lists",
   "program-not-in-dashboard": "a timeline's comparison with a dashboard: the dashboard's programs",
   "no-send-in-months-compared": "a timeline's comparison with a dashboard: where the account's sends fall in the days",
+  "field-not-read": "a report's per-segment customer list: the next refresh reads its company field",
   "list-set-since": "a report's customer list after a selective refresh: only a full pull ranks it",
   "previous-not-ranked": "a report's customer list after a selective refresh: only a full pull ranks it",
 });
@@ -208,8 +211,11 @@ export const NEEDS = Object.freeze({
 export const ENTRY_COMMAND = "node .gs-superadmin/plugin/scripts/dashboard.mjs";
 // Every line names the dashboard's knowledge-base folder with `--kb` (F-503, reopened 2026-10-12): a workspace that
 // holds two tenants refuses the verb without it, and the folder's NAME is not a machine path, so the page may carry it.
-// A page built with no folder known (the page builder run by hand) omits the flag.
-const kbFlag = (kb) => (kb ? ` --kb ${kb}` : "");
+// A page built with no folder known (the page builder run by hand) omits the flag. The folder's name is the user's
+// (setup takes one typed; nothing validates it), so a name holding a space or anything a shell reads goes in double
+// quotes, the one spelling the three shells pass whole (F-536; `pairWord`'s rule) — every copy line and every remedy
+// line names the folder through this one flag.
+export const kbFlag = (kb) => (kb ? ` --kb ${/^[A-Za-z0-9._:@\/-]+$/.test(String(kb)) ? kb : `"${kb}"`}` : "");
 /**
  * One word for a shell line: as it is when it holds only letters, digits and `. _ - / : @`, else in single quotes (a
  * quote inside closes the quotes, adds an escaped quote and opens them again, so the shell joins it back). A copy
@@ -221,8 +227,13 @@ export const shellWord = (v) => {
   const s = String(v ?? "");
   return /^[A-Za-z0-9._\-/:@]+$/.test(s) ? s : `'${s.split("'").join(`'${"\\"}''`)}'`;
 };
+// A change pair as ONE word every shell passes whole (F-536): bare when the value holds nothing a shell reads, else the
+// whole pair in double quotes — Git Bash, cmd and Windows PowerShell 5.1 all pass "a=b,c" and "a=<x>" as written
+// (measured 2026-10-15), where a JSON string's own quotes survive none of them. A value holding a double quote, $, a
+// backtick, % or ! has no cross-shell spelling; no page line carries one.
+export const pairWord = (path, value) => (/^[A-Za-z0-9._:@\/-]*$/.test(String(value)) ? `${path}=${value}` : `"${path}=${value}"`);
 export const COPY_LINES = Object.freeze({
-  change: (slug, path, value, kb = null) => `${ENTRY_COMMAND} change ${slug} ${path}=${value}${kbFlag(kb)}`,
+  change: (slug, path, value, kb = null) => `${ENTRY_COMMAND} change ${slug} ${pairWord(path, value)}${kbFlag(kb)}`,
   refresh: (slug, kb = null) => `${ENTRY_COMMAND} refresh ${slug}${kbFlag(kb)}`,
   health: (slug, programId, kb = null) => `${ENTRY_COMMAND} health ${slug} --program ${programId}${kbFlag(kb)}`,
   // An account's timeline by day (ACC-2): a pull of its own, which a static page cannot make. By the account's GSID
@@ -406,7 +417,7 @@ export function createDashboard(engine, model) {
     if (!row) return { reason, text, known: false, needs: null, needsText: null, setting: null, line: null };
     const needs = row.needs === "by-data" ? (ctx.held ? "rebuild" : "pull") : row.needs;
     const setting = row.setting ? { ...row.setting, label: model.settingLabels[row.setting.path] ?? row.setting.path } : null;
-    const line = row.line === "refresh" || !setting ? COPY_LINES.refresh(model.slug, model.kb) : COPY_LINES.change(model.slug, concretePath(setting.path, ctx), setting.how === "on" ? "true" : "", model.kb);
+    const line = row.line === "refresh" || !setting ? COPY_LINES.refresh(model.slug, model.kb) : COPY_LINES.change(model.slug, concretePath(setting.path, ctx), setting.how === "on" ? "true" : setting.placeholder ?? "", model.kb);
     return { reason, text, known: true, needs, needsText: NEEDS[needs], setting, line };
   };
   /** The line to copy, or the button that runs it when the page has a local app behind it (the `actions` seam, LTR-10). */
@@ -423,7 +434,7 @@ export function createDashboard(engine, model) {
     if (heading) parts.push(`<p class="gs-notice-head">${esc(heading)}</p>`);
     parts.push(`<p class="gs-notice-what">${esc(facts.text)}</p>`);
     if (howTo && facts.known) {
-      const fill = facts.setting?.how === "fill" ? " The line below ends at the = sign: put the value there, as JSON." : "";
+      const fill = facts.setting?.how === "fill" ? ` In the line below, put ${facts.setting.fillText} in place of ${facts.setting.placeholder}, keeping the quotes round the pair: it then runs as written in Git Bash, PowerShell and cmd.` : "";
       const change = facts.setting ? `${facts.setting.how === "on" ? "Turn on" : "Fill in"} &quot;${esc(facts.setting.label)}&quot; in this dashboard's settings (<span class="gs-path">${esc(facts.setting.path)}</span>). ` : "";
       parts.push(`<p class="gs-notice-how">${change}${esc(facts.needsText)}${esc(fill)}</p>`);
       parts.push(renderLine(facts.line));
@@ -1021,9 +1032,75 @@ export function createDashboard(engine, model) {
   };
   /** The button that shows an account in the one-account view (ACC-2): only where the page has that view. */
   const viewAccountButton = (key) => (accountPanel && key != null && accountChoices.some((a) => a.key === key) ? ` <button type="button" class="gs-chip gs-text" data-act="account" data-account="${esc(key)}" title="Show this account month by month, with the line for its day-by-day timeline">View</button>` : "");
+  /** A cross-program watch list's table: each ranked account, with the programs that sent to it underneath. */
+  const watchTable = (panel, state, result) => {
+    const cols = panel.query.metrics;
+    const under = watchlistDetail(panel, state, result);
+    const head = `<tr><th scope="col">Account</th><th scope="col" class="gs-num">Programs</th>${cols.map((id) => `<th scope="col" class="gs-num">${esc(engine.metric(id).label)}</th>`).join("")}</tr>`;
+    const body = result.rows.map((row) => {
+      const own = under.get(row.key.account) ?? [];
+      const sub = own.map((d) => `<tr class="gs-sub"><td>${esc(d.label.program ?? d.key.program)}${badges(d.label.statuses)}</td><td></td>${cols.map((id) => metricCell(id, d.cells[id])).join("")}</tr>`).join("");
+      return `<tr><td>${esc(row.label.account ?? row.key.account)}${mark(row)}${viewAccountButton(row.key.account)}</td><td class="gs-num">${own.length}</td>${cols.map((id) => metricCell(id, row.cells[id])).join("")}</tr>${sub}`;
+    }).join("");
+    return `<div class="gs-scroll"><table><thead>${head}</thead><tbody>${body}</tbody></table></div>`;
+  };
+  // ── The customer lists' panels (F-530): the pull's ranking, never a second one ──
+  // A cross-program watch list the page model marks with a customer list's kind (panel.list) shows that list as the
+  // pull ranked it: the selection record's kept accounts in the record's order, its size and floor, one table per
+  // segment of a per-segment list. The report reads the same record, and the About tab the spec it was ranked from, so
+  // the three agree. Under a narrowing filter (months, programs, groups, statuses, the external class, one account) or
+  // a viewer's column sort, the list's own accounts are re-ranked over what is shown, and the note says so. ONE view
+  // for the panel and its CSV.
+  const listRecords = (panel) => (snapshot.honesty?.accountSelection?.lists ?? []).filter((l) => l.kind === panel.list);
+  const wholeView = (state) => {
+    const f = filtersOf(state);
+    return !f.months && !f.programs && !f.statuses && !f.supergroups && !f.groups && f.recipientClass === "all" && !state.account;
+  };
+  const listView = (panel, state) => {
+    const whole = wholeView(state);
+    const sort = state.so?.[panel.id];
+    const sections = listRecords(panel).map((record) => {
+      if (record.notRanked || !record.kept.length) return { record, result: null };
+      const accounts = state.account ? record.kept.filter((k) => k === state.account) : record.kept;
+      const order = sort ? [sort[0] === "account" ? { dim: "account", dir: sort[1] } : { metric: sort[0], dir: sort[1] }] : panel.query.sort;
+      const result = engine.runQuery(snapshot, { ...filtersOf(state), accounts, accountBuckets: ["account"] }, { groupBy: ["account"], metrics: panel.query.metrics, sort: order });
+      // The pull's order, from the engine's one ordering (F-555: the report reads the same helper).
+      if (whole && !sort && !result.unavailable) engine.orderByKeys(result.rows, record.kept, (r) => r.key.account);
+      return { record, result };
+    });
+    return { whole, reordered: !whole || !!sort, sections };
+  };
+  // The list's words are the engine's (listPhrase, LIST_KIND_WORDS): the page, the report and the About tab say one thing.
+  const kindWords = (kind) => engine.LIST_KIND_WORDS[kind]?.words ?? String(kind);
+  const ofList = (r) => engine.listPhrase(r).replace(/^the/, "The");
+  const segmentOf = (r) => (r.per ? `${r.per}: ${r.segment ?? "(none)"}` : null);
+  const listNote = (r, view) => {
+    const sel = snapshot.honesty?.accountSelection;
+    // The list in the words the About tab and the report use for it (the n, the floor, the segment field).
+    const quiet = r.kind === "least-engaged" && (sel?.lowCadencePrograms ?? []).length ? `; on a program that sends about once per contact, an account with at least ${sel.lowCadenceRule?.minDelivered ?? 3} delivered and no open joins it` : "";
+    const ranked = `${ofList(r)} across programs over the whole window, as the pull of ${String(r.rankedAt ?? snapshot.meta.pulledAt).slice(0, 10)} ranked them${quiet}`;
+    return view.reordered ? `${ranked}; re-ranked here over what is shown.` : `${ranked}.`;
+  };
+  const renderListPanel = (panel, state) => {
+    const view = listView(panel, state);
+    if (!view.sections.length) return `${open(panel)}<p class="gs-note">${esc(`This dashboard keeps no ${kindWords(panel.list)} list: the customer lists in its settings name the lists the pull ranks.`)}</p>${close}`;
+    const cols = panel.query.metrics;
+    const parts = view.sections.map(({ record: r, result }) => {
+      const head = segmentOf(r) ? `<h4>${esc(segmentOf(r))}</h4>` : "";
+      if (r.notRanked) return `${head}<p class="gs-note">${esc(engine.reasonText(r.notRanked))}</p>`;
+      if (!r.kept.length) return `${head}<p class="gs-note">${esc(`No account met this list's floor${r.floor > 0 ? ` (at least ${r.floor} delivered)` : ""}.`)}</p>`;
+      if (result.unavailable) return `${head}${renderNotice(lackFacts(result.unavailable.reason))}`;
+      return `${head}${watchTable(panel, state, result)}${result.rows.length ? "" : `<p class="gs-note">No account of this list has a send under the current filters.</p>`}<p class="gs-note">${esc(listNote(r, view))}</p>${notesBlock(whyNotes(result.rows, cols))}`;
+    }).join("");
+    return `${open(panel, csvButton(panel))}${parts}${close}`;
+  };
   const renderWatchlistPanel = (panel, state) => {
+    // A customer list's panel with a record runs its own per-record queries (listView): the panel's preset query is not
+    // run for it (F-555). With no record (accounts off, or none kept) the preset query says what is lacking.
+    if (panel.list && listRecords(panel).length) return renderListPanel(panel, state);
     const result = run(panel, state);
     if (result.unavailable) return `${open(panel)}${renderNotice(lackFacts(result.unavailable.reason))}${close}`;
+    if (panel.list) return renderListPanel(panel, state);
     const cols = panel.query.metrics;
     const cross = isCrossProgram(panel);
     const scope = result.scope;
@@ -1032,15 +1109,8 @@ export function createDashboard(engine, model) {
       const notes = whyNotes(result.rows, cols);
       return `${open(panel, csvButton(panel))}${tableOf(panel, result, cols)}${result.rows.length ? "" : `<p class="gs-note">Nothing matches the current filters.</p>`}${rank}${notesBlock(notes)}${close}`;
     }
-    const under = watchlistDetail(panel, state, result);
-    const head = `<tr><th scope="col">Account</th><th scope="col" class="gs-num">Programs</th>${cols.map((id) => `<th scope="col" class="gs-num">${esc(engine.metric(id).label)}</th>`).join("")}</tr>`;
-    const body = result.rows.map((row) => {
-      const own = under.get(row.key.account) ?? [];
-      const sub = own.map((d) => `<tr class="gs-sub"><td>${esc(d.label.program ?? d.key.program)}${badges(d.label.statuses)}</td><td></td>${cols.map((id) => metricCell(id, d.cells[id])).join("")}</tr>`).join("");
-      return `<tr><td>${esc(row.label.account ?? row.key.account)}${mark(row)}${viewAccountButton(row.key.account)}</td><td class="gs-num">${own.length}</td>${cols.map((id) => metricCell(id, row.cells[id])).join("")}</tr>${sub}`;
-    }).join("");
     const notes = whyNotes(result.rows, cols);
-    return `${open(panel, csvButton(panel))}<div class="gs-scroll"><table><thead>${head}</thead><tbody>${body}</tbody></table></div>${result.rows.length ? "" : `<p class="gs-note">No account clears the floor under the current filters.</p>`}${rank}${notesBlock(notes)}${close}`;
+    return `${open(panel, csvButton(panel))}${watchTable(panel, state, result)}${result.rows.length ? "" : `<p class="gs-note">No account clears the floor under the current filters.</p>`}${rank}${notesBlock(notes)}${close}`;
   };
 
   // ── The health views ───────────────────────────────────────────────────────
@@ -1325,6 +1395,24 @@ export function createDashboard(engine, model) {
           ...(p.steps ?? []).map((s) => [r.name ?? r.templateId, r.templateId, p.name ?? p.programId, (p.statuses ?? []).map(engine.statusLabel).join(", "), s.step ?? s.stepId ?? "", s.variant ?? s.variantId ?? "", "", "", "", ...figuresOf(cols, s.cells)]),
         ]),
       ]);
+    } else if (panel.list) {
+      // A customer list's export is its view (F-530): one line per account of the list in the order drawn, then one per
+      // program under it, each line naming the list's segment for a per-segment list.
+      const view = listView(panel, state);
+      // The list's own queries say whether the facts are there (F-555: the preset query is not run for it).
+      if (view.sections.some((s) => s.result) && view.sections.every((s) => !s.result || s.result.unavailable)) return null;
+      const cols = panel.query.metrics;
+      const statusText = (row) => (row.label.statuses ?? []).map(engine.statusLabel).join(", ");
+      headers = ["List", "Account", "Program", "Status", "Programs", ...figureHeads(cols)];
+      rows = view.sections.filter((s) => s.result && !s.result.unavailable).flatMap(({ record, result }) => {
+        const under = watchlistDetail(panel, state, result);
+        const list = record.per ? `${engine.listPhrase(record)}: ${record.segment ?? "(none)"}` : engine.listPhrase(record);
+        return result.rows.flatMap((row) => {
+          const own = under.get(row.key.account) ?? [];
+          const account = dimText("account", row) ?? "";
+          return [[list, account, "", "", own.length, ...figuresOf(cols, row.cells)], ...own.map((d) => [list, account, dimText("program", d) ?? "", statusText(d), "", ...figuresOf(cols, d.cells)])];
+        });
+      });
     } else {
       if (panel.type === "account" && !state.account) return null;
       const result = run(panel, state);

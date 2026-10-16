@@ -43,7 +43,7 @@ import { mkdirSync, readFileSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
 import { makeCliHelpers, readJsonFile, writeFileAtomicSync, isMainModule } from "./doc-lib.mjs";
 import * as engine from "./engagement-query.mjs";
-import { openSpec, SPEC_DESCRIPTIONS, TABS, KNOBBED_PANEL_TYPES, presetPanels, pageDateDefault, pageTemplateContent, panelKnobs, describeSpec, kbDirOfSpecFile } from "./dashboard-spec.mjs";
+import { openSpec, SPEC_DESCRIPTIONS, TABS, KNOBBED_PANEL_TYPES, isListPanel, presetPanels, pageDateDefault, pageTemplateContent, panelKnobs, describeSpec, kbDirOfSpecFile, accountLists } from "./dashboard-spec.mjs";
 import { applyGroups, resolveGroups, programTraits, describeRule, modelNamesOf, UNGROUPED } from "./dashboard-groups.mjs";
 import { createDashboard, createTimeline, csvText, LACKS, PAGE_MODEL_VERSION, TIMELINE_MODEL_VERSION } from "./dashboard-runtime.mjs";
 import { DEFAULT_THEME, validateTheme, tokensCss } from "./dashboard-theme.mjs";
@@ -154,13 +154,23 @@ const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
  * domain and link VALUES (ruled 2026-10-05).
  * @param {T11Spec} spec @param {T11Page} page
  */
-export function aboutSettings(spec, page) {
+export function aboutSettings(spec, page, snapshot = null) {
   // The settings the pages do not read are not listed (ruled 2026-10-12, F-511 ruling 11): the cadence and the freshness
   // stay in the spec, and the purpose line is the About tab's own paragraph. Keyed on the covered path, never the label.
   // The group rules are not listed here either: the About tab draws them once, as they resolved, with what each
   // matched (the S5-V second sitting read the Groups part twice, 2026-10-12).
   const unlisted = ["refresh.cadence", "freshness.maxAgeDays", "purpose", "groups.rules[]"];
-  const said = describeSpec(spec).filter((d) => !d.covers.some((c) => unlisted.includes(c)));
+  // What is shown is what is described (F-530, redesigned at the 0.56.1 gate; ruled by Bradley 2026-10-16): the
+  // customer lists the About tab names — the Accounts entry and each list panel's line — are the ones the snapshot's
+  // pull RANKED (meta.params.accounts.lists: the record the panels and the report draw), and a change the spec holds
+  // that no pull has ranked yet (no account store to rank from, F-548's window) is said as waiting, never described as
+  // if it were shown. With no snapshot (the spec writer's own rendering) the spec is described.
+  const ranked = snapshot?.meta?.params?.accounts?.lists ?? null;
+  const wanted = accountLists(spec);
+  const pending = ranked && spec.accounts?.pull && (wanted.length !== ranked.length || wanted.some((l, i) => engine.listIdentity(l) !== engine.listIdentity(ranked[i]))) ? wanted : null;
+  const shown = pending ? { ...spec, accounts: { ...spec.accounts, lists: ranked } } : spec;
+  const waiting = pending ? `A change of the customer lists is waiting for the next refresh: ${pending.length ? pending.map(engine.listPhrase).join("; ") : "no list"}. Until then the pages show the lists the pull of ${String(snapshot.meta.pulledAt).slice(0, 10)} ranked.` : null;
+  const said = describeSpec(shown).filter((d) => !d.covers.some((c) => unlisted.includes(c))).map((d) => (waiting && d.covers.includes("accounts.lists[]") ? { ...d, text: [...d.text, waiting] } : d));
   if (page.sourceDetail) return said.map((d) => ({ label: d.label, text: d.text }));
   const domains = spec.sources.reduce((n, s) => n + s.params.internalDomains.length, 0);
   const links = spec.sources.reduce((n, s) => n + s.params.unsubscribeLinks.length, 0);
@@ -217,8 +227,10 @@ export function pageModel(spec, snapshot, page, { delta = null, kb = null } = {}
     page: {
       // `index`: the page's place in the spec's list, so a copy line can name it (`pages.N…`, F-503).
       id: page.id, index: spec.pages.findIndex((p) => p.id === page.id), preset: page.preset, title: page.title, statusDefault: page.statusDefault, dateDefault: pageDateDefault(page), tabs,
-      // The panels, each typed view (the health four, the templates view) with its knobs resolved against the spec (the page cannot read the spec).
-      panels: presetPanels(page).filter((p) => on.has(p.tab)).map((p) => (p.type in KNOBBED_PANEL_TYPES ? { ...p, knobs: panelKnobs(spec, p) } : p)),
+      // The panels, each typed view (the health four, the templates view) with its knobs resolved against the spec (the page cannot read the spec),
+      // and each cross-program watch list named for a customer list marked with that list's kind (F-530): it shows the
+      // pull's ranking of that list, the selection record's kept accounts, never a second ranking of its own.
+      panels: presetPanels(page).filter((p) => on.has(p.tab)).map((p) => (p.type in KNOBBED_PANEL_TYPES ? { ...p, knobs: panelKnobs(spec, p) } : isListPanel(p) ? { ...p, list: p.id } : p)),
     },
     filters: { dateRange: offered("dateRange"), programs: offered("programs"), group: offered("group"), status: offered("status"), recipientClass: { enabled: !!recipients?.enabled, default: recipients?.default ?? "all" } },
     testAccounts: spec.sources.reduce((n, s) => n + s.params.testAccounts.length, 0),
@@ -237,7 +249,7 @@ export function pageModel(spec, snapshot, page, { delta = null, kb = null } = {}
       sourceDetail: page.sourceDetail,
       // The admin's own sentence, when one was set through `change` (the purpose question is dropped; ruled 2026-10-12).
       purpose: spec.purpose ?? null,
-      settings: aboutSettings(spec, page),
+      settings: aboutSettings(spec, page, snapshot),
       groups: { rules: spec.groups.rules.map((r, i) => ({ text: describeRule(r, { names: ruleNames }), matched: matched[i] })), ungrouped: resolution.ungrouped.map((id) => ({ id, name: names.get(id) ?? null })), overrides: Object.keys(spec.groups.overrides).length },
     },
     snapshot: { ...kept, dimensions: packAll(kept.dimensions), facts: packAll(kept.facts) },

@@ -23,11 +23,11 @@
 // Run:  node plugins/gs-superadmin/test/manifest-ops.mjs
 // Zero dependencies — Node built-ins only.
 // ─────────────────────────────────────────────────────────────────────────────
-import { mkdirSync, rmSync, readFileSync, writeFileSync, existsSync, readdirSync } from "node:fs";
+import { mkdirSync, rmSync, readFileSync, writeFileSync, existsSync, readdirSync, utimesSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { tmpdir } from "node:os";
-import { spawnSync } from "node:child_process";
+import { spawnSync, spawn } from "node:child_process";
 
 const SCRIPT = join(dirname(fileURLToPath(import.meta.url)), "..", "scripts", "manifest.mjs");
 const ROOT = join(tmpdir(), `gs-superadmin-manifest-ops-${process.pid}`);
@@ -1794,6 +1794,75 @@ check("fingerprint: malformed value rejected (exit 1)", r.code === 1 && /40-char
   check("c1 reconcile: --domain is required", r.code === 1 && /--domain/.test(r.stderr), r.stderr);
   r = run("reconcile-docs", ["--manifest", MC, "--domain", "__proto__"]);
   check("c1 reconcile: the domain-name grammar applies (prototype-shaped name refused)", r.code === 1, r.stderr.slice(0, 120));
+}
+
+// ── F-546: the KB-wide lock around every load-change-save cycle ──────────────
+// manifest.mjs is the ONE manifest writer, so the lock it takes beside the
+// manifest is the property for every writer: two dashboards of one KB refreshed
+// at once (each re-documenting through this script) cannot lose each other's
+// marks. A fresh holder makes a writer wait, then fail loudly naming it; a dead
+// holder (older than ten minutes) is taken over; a normal verb leaves no lock.
+{
+  check("F-546 no verb of this suite left a lock file beside the first manifest", !existsSync(`${M}.lock`));
+  const ML = join(ROOT, "f546", "_manifest.json");
+  run("init", ["--manifest", ML, "--slug", "acme-f546", "--base-url", "https://a.example"]);
+  run("upsert-batch", ["--manifest", ML, "--file", listFile, "--domain", "journey-email-templates", "--id-field", "templateId", "--name-field", "title"]);
+  const LOCK = `${ML}.lock`;
+  const inv = () => JSON.parse(readFileSync(ML, "utf8")).inventory;
+  check("F-546 init and upsert-batch left no lock file beside the manifest, and the entry the checks mark exists", !existsSync(LOCK) && inv()["journey-email-templates/t-2"]?.status === "pending", inv()["journey-email-templates/t-2"]);
+  // The holder's record is evidence, never the only evidence (F-546, reopened at the 0.56.1 gate): a holder is dead
+  // when its pid is gone from this machine or its record is older than ten minutes; a record that cannot be read is
+  // held while its FILE is young (a taker inside its own create, or a scanned file) and a dead writer's once old. The
+  // fakes below name THIS process as the live holder, and a child that has exited as the dead one.
+  const gone = spawnSync(process.execPath, ["-e", "process.exit(0)"]).pid;
+  const held = JSON.stringify({ verb: "upsert-batch", pid: process.pid, at: new Date().toISOString() });
+  writeFileSync(LOCK, held);
+  const before = readFileSync(ML, "utf8");
+  let r = run("mark", ["--manifest", ML, "--key", "journey-email-templates/t-2", "--status", "stale", "--lock-wait-seconds", "0"]);
+  check("F-546 a fresh lock held by another writer (a live process): mark (waiting 0 s) fails loudly naming the holder's verb, pid and time and the lock file, says the lock is taken over on its own when its process is gone, the manifest byte-equal, the holder's lock untouched",
+    r.code === 1 && new RegExp(`manifest is locked by another writer \\(upsert-batch, pid ${process.pid}, since `).test(r.stderr) && r.stderr.includes(LOCK) && /whose process is gone, or older than ten minutes, is taken over on its own/.test(r.stderr) && readFileSync(ML, "utf8") === before && readFileSync(LOCK, "utf8") === held, r.stderr.slice(0, 300));
+  // The lock released while a writer waits: the writer then lands its mark (spawned, the lock removed after 400 ms).
+  const waiting = spawn(process.execPath, [SCRIPT, "mark", "--manifest", ML, "--key", "journey-email-templates/t-2", "--status", "stale", "--lock-wait-seconds", "10"], { stdio: ["ignore", "pipe", "pipe"] });
+  const waited = await new Promise((resolveP) => {
+    let out = "";
+    let err = "";
+    waiting.stdout.on("data", (d) => { out += d; });
+    waiting.stderr.on("data", (d) => { err += d; });
+    const t0 = Date.now();
+    setTimeout(() => rmSync(LOCK, { force: true }), 400);
+    waiting.on("close", (code) => resolveP({ code, out, err, ms: Date.now() - t0 }));
+  });
+  check("F-546 a writer waits for a held lock and lands once it is released: mark exits 0 after the release (at least 400 ms in), the entry is stale, and the lock is gone",
+    waited.code === 0 && waited.ms >= 400 && inv()["journey-email-templates/t-2"].status === "stale" && !existsSync(LOCK), [waited.code, waited.ms, waited.err.slice(0, 200)]);
+  writeFileSync(LOCK, JSON.stringify({ verb: "mark", pid: gone, at: new Date().toISOString() }));
+  let t0 = Date.now();
+  r = run("mark", ["--manifest", ML, "--key", "journey-email-templates/t-2", "--status", "documented", "--doc-path", join(ROOT, "f546", "t-2.md"), "--lock-wait-seconds", "5"]);
+  check("F-546 a FRESH lock whose process is gone (a killed writer's) is a dead writer's: taken over at once (no wait), the mark lands, no lock left",
+    r.code === 0 && Date.now() - t0 < 3000 && inv()["journey-email-templates/t-2"].status === "documented" && !existsSync(LOCK), [r.code, Date.now() - t0, r.stderr.slice(0, 200)]);
+  writeFileSync(LOCK, JSON.stringify({ verb: "mark", pid: process.pid, at: new Date(Date.now() - 11 * 60 * 1000).toISOString() }));
+  r = run("mark", ["--manifest", ML, "--key", "journey-email-templates/t-2", "--status", "stale", "--lock-wait-seconds", "0"]);
+  check("F-546 a lock older than ten minutes is a dead writer's even with its process alive (a hung holder): taken over, the mark lands, no lock left", r.code === 0 && inv()["journey-email-templates/t-2"].status === "stale" && !existsSync(LOCK), r.stderr.slice(0, 200));
+  writeFileSync(LOCK, "not json");
+  r = run("mark", ["--manifest", ML, "--key", "journey-email-templates/t-2", "--status", "documented", "--doc-path", join(ROOT, "f546", "t-2.md"), "--lock-wait-seconds", "0"]);
+  check("F-546 an unreadable lock file that is YOUNG is held (a taker inside its own create, or a scanned file), never a dead writer's: mark (waiting 0 s) fails saying the record is being written, the file untouched, the manifest byte-equal",
+    r.code === 1 && /manifest is locked by another writer \(its record is being written\)/.test(r.stderr) && readFileSync(LOCK, "utf8") === "not json" && inv()["journey-email-templates/t-2"].status === "stale", r.stderr.slice(0, 300));
+  const old = new Date(Date.now() - 11 * 60 * 1000);
+  utimesSync(LOCK, old, old);
+  r = run("mark", ["--manifest", ML, "--key", "journey-email-templates/t-2", "--status", "documented", "--doc-path", join(ROOT, "f546", "t-2.md"), "--lock-wait-seconds", "0"]);
+  check("F-546 an unreadable lock file older than ten minutes is a dead writer's: taken over, the mark lands, no lock left", r.code === 0 && inv()["journey-email-templates/t-2"].status === "documented" && !existsSync(LOCK), r.stderr.slice(0, 200));
+  r = run("report", ["--manifest", ML, "--lock-wait-seconds", "abc"]);
+  check("F-546 --lock-wait-seconds takes a number of seconds", r.code === 1 && /--lock-wait-seconds must be a number/.test(r.stderr), r.stderr.slice(0, 200));
+  // A verb that only reads takes no lock (the reopen's polish instance): it never waits behind a writer, never fails
+  // on a folder it cannot write, and never makes a writer wait.
+  writeFileSync(LOCK, held);
+  t0 = Date.now();
+  const read = run("report", ["--manifest", ML]);
+  const probe = run("next", ["--manifest", ML, "--limit", "1"]);
+  check("F-546 the read-only verbs (report, next) run while a live writer holds the lock: exit 0 at once, no wait, the holder's lock untouched",
+    read.code === 0 && probe.code === 0 && Date.now() - t0 < 5000 && readFileSync(LOCK, "utf8") === held, [read.code, probe.code, Date.now() - t0, read.stderr.slice(0, 200), probe.stderr.slice(0, 200)]);
+  rmSync(LOCK, { force: true });
+  r = run("report", ["--manifest", M]);
+  check("F-546 a read-only verb (report) leaves no lock", r.code === 0 && !existsSync(LOCK), r.stderr.slice(0, 200));
 }
 
 rmSync(ROOT, { recursive: true, force: true });

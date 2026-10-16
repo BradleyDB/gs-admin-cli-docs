@@ -5,7 +5,7 @@ the rest before indexing the journey-side domains (`jo email templates`,
 `jo surveys list`, `jo data-designer list`) or reasoning about Data Designer
 coverage. Pagination proves paging completeness only — the scope limits below are
 about what the CLI can SEE, and paging cannot fix them.
-Facts here were verified against CLI v1.0.10 (this line is the stale-facts
+Facts here were verified against CLI v1.0.12 (this line is the stale-facts
 checker's per-upgrade tripwire for this file; the bare versions below date the
 original observations).
 
@@ -48,13 +48,19 @@ UI count, record the gap (UI vs CLI-reachable, date, suspected cause) in
 
 ### journey email templates
 
-Flattens only one level of the folder tree — templates in nested subfolders are
-dropped (validated live on 1.0.4; subfolder nodes appear as field-less rows carrying
-only `folderName` — skip them, they have no id) — and additionally hides some
-top-level templates (residual `source=COMMS`/state filter, cause unconfirmed). The
-command fetches its whole already-scope-filtered result server-side and caps
-client-side at 50 by default, so pass a large `--limit` (Phase 4's paging bullets).
-Templates the list cannot see are recoverable by id — the last section.
+On CLI 1.0.10 and earlier, flattens only one level of the folder tree — templates in
+nested subfolders are dropped (validated live on 1.0.4; subfolder nodes appear as
+field-less rows carrying only `folderName` — skip them, they have no id); on 1.0.11 and
+later the handler descends into subfolders instead (fixed upstream; measured live at
+1.0.12 on one tenant: the list reached 1239 templates where 1.0.10 reached 648, with no
+field-less rows, and 3 of the 1180 the KB held were still absent, each in a folder whose
+other templates list — a per-template gap, not a second nesting defect; `--folder` still
+matches a folder's own name only, never a path, so a parent's name reaches only its
+direct templates — KI-030). On every version it additionally hides some templates
+(residual `source=COMMS`/state filter, cause unconfirmed). The command fetches its
+whole already-scope-filtered result server-side and caps client-side at 50 by default,
+so pass a large `--limit` (Phase 4's paging bullets). Templates the list cannot see are
+recoverable by id — the last section.
 
 ### journey surveys list
 

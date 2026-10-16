@@ -12,18 +12,22 @@ plugin (created in the skill's Phase 2), relative to the working dir.
 
 ## Scorecards (`scorecard`)
 
-- **Scorecard exception (CLI 1.0.4 auth race)**: describe scorecards by *name*, not id
-  — `gs-admin --json sc measures --name '<name>'` (single-quoted; the name is in the
-  manifest entry). `sc measures --id` makes its first authenticated call a concurrent
-  fan-out, and it fails with a false "No stored token found": on CLI 1.0.9 and earlier
-  once the token passes half-life (a token-refresh race), and on 1.0.10 every time, a
-  fresh token included (measured live 2026-09-26; no refresh there, cause unknown — see
-  "Known CLI issues" in the operating model). If two scorecards share a name, try `--id`
-  once (on 1.0.9 and earlier a fresh token usually survives; on 1.0.10 expect the
-  failure); if it fails that way, mark the entry failed with error
-  "known CLI auth race (sc measures --id)".
+- **Scorecard exception (CLI 1.0.10 and earlier: an auth race)**: describe scorecards by
+  *name*, not id — `gs-admin --json sc measures --name '<name>'` (single-quoted; the name
+  is in the manifest entry). `sc measures --id` makes its first authenticated call a
+  concurrent fan-out, and on CLI 1.0.10 and earlier it fails with a false "No stored token
+  found": on 1.0.9 and earlier once the token passes half-life (a token-refresh race), and
+  on 1.0.10 every time, a fresh token included (measured live 2026-09-26; a keychain-load
+  race between the two concurrent first requests — see "Known CLI issues" in the
+  operating model). Fixed upstream at 1.0.11, so on 1.0.11 and later `--id` works (measured
+  live at 1.0.12); `--name` works on every version and stays the default. If two
+  scorecards share a name, try `--id` once: on 1.0.11 and later it is expected to
+  succeed; on 1.0.9 and earlier a fresh token usually survives; on 1.0.10 expect the
+  failure. If it fails that way on 1.0.10 or earlier, mark the entry failed with error
+  "known CLI auth race (sc measures --id)"; on 1.0.11 or later a failure is not this
+  race — record the actual error and report it.
 - **Scorecard output semantics (verified live on CLI 1.0.4; statically re-checked at
-  v1.0.10 — the scorecard handler is byte-identical from 1.0.8 through 1.0.10, and the 1.0.8 handler change only adds a `_total` count on the four
+  v1.0.12 — the scorecard handler is byte-identical from 1.0.8 through 1.0.12, and the 1.0.8 handler change only adds a `_total` count on the four
   list responses and touches nothing in the measures-tree shape, so the note stands
   as written; re-verify after the next CLI upgrade)**:
   the CLI flattens exactly one level of the measures tree, so the shape of
