@@ -3246,3 +3246,100 @@ whose words say "not found" is never filed as a missing asset.
   commit; #57 (session B, F-548/F-530, 0.55.0) reads MERGEABLE/CLEAN with five checks green at 28f1630 (no longer
   CONFLICTING). Neither merged by the tester; the Fix note's numbering rule for whichever lands second stands.
   Verdict: VERIFIED.
+
+## F-550 — FIXED
+Reported: 2026-10-15 (builder, session E2 of gs-fortress ledger/reports/build-kickoffs-1.0.12.md — the gated
+adoption, CP-1 + CP-7, spawned on the adopt decision recorded in the gs-fortress ledger on 2026-10-15; audit:
+ledger/reports/audit-1.0.12.md §0, §1.3, §1.5, §1.8, §1.10, §1.12, §1.14, §5)
+Severity: normal — shipped behaviour is wrong for a user whose installed CLI is 1.0.11 or 1.0.12 (npm latest since
+2026-10-15, so every new install): the plugin's bundled catalog, cheatsheet and ask-rules document 1.0.10, and the
+per-pin CLI facts table (doc-lib CLI_PIN_FACTS) is withdrawn from such a workspace with its "not applied —
+re-verify" warning, so setup's candidate gate stops bucketing the four `re rules` per-asset reads and report stops
+relaying the scope limits (audit §1.14's interim effect) — while every one of those facts still holds there
+What: the pin is 1.0.10 and the documented CLI is three releases behind what a user installs. The range 1.0.10 ->
+1.0.12 moves no command, flag or tool (audit §0: counts 10 / 188 = 170+12+6 / 182 unchanged, zero adds, removes,
+renames or mutating flips; nonMutatingWrites strict 0 and withPost 20 on the identical id list; the full catalog
+walk finds one difference beyond the meta stamps, the `dm o list --sort-field` description), and 1.0.12 is 1.0.11's
+dist byte for byte plus one dependency pin — so the adoption is a regen plus the version prose and the three
+check-stale-facts fact carriers, each cleared by re-verification. One entry of CLI_PIN_FACTS is known changed from
+the handler diff (journey:email:templates: 1.0.11's listEmailTemplates descends subfolders), and its rewrite is
+specified from the live count CP-6 (c) banks (dev/VALIDATION.md § F-549 / CP-6 (c)) — still owed at this round.
+Repro (no tenant needed): `node plugins/gs-superadmin/scripts/domain-candidates.mjs diff` over a scratch workspace
+whose .gs-superadmin/catalog.json carries meta.cliVersion "1.0.12" (or "1.0.11"): pinFacts.applied false, the
+"stamped for 1.0.10 (also verified on 1.0.9)" warning, notEnumerableBareCount 0; `gs-admin --version` on a fresh
+install prints 1.0.12 while plugins/gs-superadmin/reference/version.json says 1.0.10.
+Expected: CP-1 — the global CLI at 1.0.12 and a full npm run build; counts unchanged, nonMutatingWrites 0 strict /
+20 withPost on the same id list, data/catalog.json differing from 1.0.10's ONLY in meta.cliVersion, generatedAt and
+the dm o list --sort-field description, data/reader-shapes.json only in cliVersion (anything else: stop and log
+here). CP-7 — check-stale-facts drives the bulk version pass; SEMANTICS_BASIS records 1.0.11 and 1.0.12 (never
+re-derived: rules-engine handler and manifest byte-identical); the CLAUDE.md counts line; the operating model's
+Known CLI issues header restated for 1.0.12; the three FACT_CARRIERS stamps in doc-lib.mjs cleared by
+re-verification, never by loosening a pattern: (a) the auth-death literals re-read from 1.0.12's
+dist/core/auth/index.js (AUTH_DEATH untouched — narrowing it is a frozen-contract violation), (b) READ_VERB_EXACT
+re-audited (zero commands moved), (c) every CLI_PIN_FACTS entry hand re-verified, the stamp 1.0.12, the templates
+entry rewritten from CP-6 (c) or removed with its index-scope-notes.md heading (check 23), alsoVerifiedOn per F-467
+as written. Plugin bump + CHANGELOG. check-stale-facts and check-doc-drift green; the full battery green.
+Not in scope: the live checks themselves (CP-6, owed on a 1.0.11-or-later CLI with a token); CP-8 (gs-fortress);
+CP-9 (Bradley's memo); any doctrine sentence (E1, merged in PR #58).
+Plan: gs-fortress ledger/reports/build-kickoffs-1.0.12.md, session E2 (CP-1, CP-7); close-out after the merge:
+close-out.mjs 1.0.12 --session E2 --pr 59 --commit, and again with --release once tagged (never typed by hand).
+Fix: 2026-10-15 (builder, session E2; branch claude/adopt-cli-1-0-12-483229, PR #59 to dev, UNMERGED; plugin
+0.55.0). The class, in one sentence: a current-version claim is a fact with a pin stamp, and an adoption moves
+every stamp together — the regen, the prose the checker pins, and the three code carriers — each by re-reading the
+new package, never by editing the pattern that holds it.
+  CP-1: global @gainsight/gs-admin-cli 1.0.10 -> 1.0.12; npm run build. Measured against the pre-regen snapshot
+  with a full JSON walk: catalog 3 differences (meta.cliVersion, meta.generatedAt, commands[17].flags[5].description
+  — `dm o list --sort-field`, now naming the nine server-sortable keys), reader-shapes 1 (cliVersion); command id
+  list, mutating flags and the 20-strong withPost id list identical; strict 0. Generated outputs: reference/domains
+  (the one description + the stamp), the plugin bundle (version.json, cheatsheet header, catalog), the wiki and the
+  comparison page (version stamps only).
+  CP-7: the bulk pass — 19 v-prefixed/package citations in 15 files plus the two README Currency dates (the checker
+  pins them to meta.generatedAt) — each read in context before moving: the scorecard handler is byte-identical from
+  1.0.8 through 1.0.12 (document-domain-notes, setup SKILL.md), the rules-engine surface identical (change-request's
+  two set-source claims), the token lifecycle identical (reference/auth.md: token-store.js byte-identical), no
+  artifact action mcp.hidden (reference/mcp.md). Known CLI issues header: what 1.0.11 changed (report,
+  data-management and journey handlers, error exits, token-store loading; the entries say which version each holds
+  for) and that 1.0.11 -> 1.0.12 changed nothing in dist. SEMANTICS_BASIS gains 1.0.11 and 1.0.12 as a record; the
+  four expected-map lines refreshed through the test's own refresh flag (diff reviewed: the string only).
+  Carrier (a): 1.0.12's dist/core/auth/index.js throws exactly the two literals the comment lists (lines 28 and 31:
+  "No stored token found. Run `gs-admin login` to authenticate." / "Access token has expired. Run `gs-admin login`
+  to re-authenticate."); no other `gs-admin login` sentence in dist/core/auth is a throw; AUTH_DEATH unchanged.
+  Carrier (b): over the 1.0.12 catalog, 97 non-mutating commands, 60 with a trailing verb outside the describe/list
+  shapes, and the set admits exactly the ones it did at 1.0.10 — template, measures, get (x2), schedules, topics,
+  events, s3-tasks, event-curl (x2) — on the identical command id list; unchanged.
+  Carrier (c): the four rules-engine notEnumerableBare entries and the two other scope entries re-verified unchanged
+  (manifests and handlers byte-identical through 1.0.12); stamp 1.0.12. alsoVerifiedOn: F-467 as written — "the
+  table applies at every CLI version its entries were verified on", and "an adoption that finds an entry changed
+  drops the older versions" — so 1.0.10 and 1.0.9 drop (the templates entry is changed from 1.0.11), and 1.0.11 IS
+  a version the entries are verified on, by the same reading that verifies them at 1.0.12 (dist byte-identical) —
+  recorded as ["1.0.11"] with that basis in the comment, per audit §1.14; no per-entry version scoping was
+  improvised, and no bus finding is needed since the repo's own rule permits it. The journey:email:templates entry
+  KEEPS the 1.0.10 wording: CP-6 (c) is not CLEARED (the tester's CLI was 1.0.10; all six live checks owed), so
+  the rewrite — or the removal with its heading — waits for the count; a comment beside the entry says so; the
+  canon subsection (index-scope-notes.md) already says which version each clause holds for. Consequence, stated: a
+  1.0.11/1.0.12 workspace's report relays the 1.0.10 scope line for that one domain until (c) clears, in exchange
+  for the four still-true per-asset facts and the two other scope limits coming back.
+  Plugin 0.54.1 -> 0.55.0 (a CLI adoption was a minor at 0.43.0) with a CHANGELOG entry naming the effect; the
+  number collides with #57's 0.55.0 on purpose (the PR template: never rebase to chase a number — whichever merges
+  second takes the next one).
+Judge: for CP-1, a differential rather than the audit's word — the full JSON walk of the pre-regen snapshot against
+the regen, and the id-list / mutating-flag / withPost equalities computed from both catalogs (the predicted set
+held exactly); for CP-7, the checker is the judge of completeness (23 reds at the regen, 0 after, none cleared by
+a pattern edit — `git diff build/check-stale-facts.mjs` is empty) and the installed 1.0.12 package is the judge of
+each carrier (the literals grepped from its dist, the allowlist re-derived from its catalog, the pin facts read
+against its manifests and handlers); the one judgment the fixer could not make — the templates entry's new
+scope — is left to CP-6 (c)'s live count, not guessed.
+Sibling sweep: every other version-keyed carrier a stale-facts red would not reach — hooks/ask-overrides.json
+(entries retire on catalog content, verifiedOnCli feeds prompt text only; its two counts 0 / 20 unchanged, pinned
+by FACT_CARRIERS), the guard's catalog-version union (equality, by design), the token pre-flight canon ("1.0.10 and
+later" — true at 1.0.12, token-store.js byte-identical), describe-batch's fake-CLI literals (1.0.12's own two throw
+texts) — none moves. Bare "1.0.10" prose outside the checker's patterns grepped across CLAUDE.md, the READMEs,
+CONTRIBUTING and building-on-gs-admin: no current-pin claim in the bare form.
+Battery: 62 steps, 62 pass, 0 red (20:48 to 21:39 local, 51 minutes on this host) — both workflow step lists verbatim (validate-plugin.yml validate + manifests; docs-drift.yml
+full arm) on this worktree.
+Ordering against #57 (session B, F-548 / F-530, feat/f548-ranking-every-refresh, CONFLICTING against dev again since
+PR #58's bus lines landed): no file overlap beyond the tail of dev/FEEDBACK.md and plugin.json/CHANGELOG (both bump
+to 0.55.0); whichever merges second rebases and takes the next number — Bradley's call; neither PR merged by its
+author.
+Reload: the regen reaches a workspace through setup Phase 3 / refresh (the bundled catalog is the fallback); the
+pin facts through any domain-candidates or manifest report run; /reload-plugins for the skill references.
