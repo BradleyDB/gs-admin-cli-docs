@@ -27,7 +27,7 @@ plugin (created in the skill's Phase 2), relative to the working dir.
   "known CLI auth race (sc measures --id)"; on 1.0.11 or later a failure is not this
   race — record the actual error and report it.
 - **Scorecard output semantics (verified live on CLI 1.0.4; statically re-checked at
-  v1.0.10 — the scorecard handler is byte-identical from 1.0.8 through 1.0.10, and the 1.0.8 handler change only adds a `_total` count on the four
+  v1.0.12 — the scorecard handler is byte-identical from 1.0.8 through 1.0.12, and the 1.0.8 handler change only adds a `_total` count on the four
   list responses and touches nothing in the measures-tree shape, so the note stands
   as written; re-verify after the next CLI upgrade)**:
   the CLI flattens exactly one level of the measures tree, so the shape of
