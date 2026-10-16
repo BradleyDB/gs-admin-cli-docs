@@ -846,6 +846,10 @@ export const FAULT_TEXT = {
   auth: "Error: Access token has expired. Run `gs-admin login` to re-authenticate.",
   outage: `Error: The communication with the external API could not be established due to a network outage. Try again later. If the issue persists, contact Gainsight Support for further assistance.\n${REQUEST_ID}`,
   generic: `Error: The request could not be processed. Contact Gainsight Support for more information.\n${REQUEST_ID}`,
+  // CLI 1.0.11 and later refuse an unknown field by name before any request (F-549): the
+  // words carry "not found", but they describe the query, not a missing asset.
+  "field-refused": `Error: Field "Nmae" not found on email_log_v2. Did you mean: Name?\n${REQUEST_ID}`,
+  "filter-field-refused": `Error: Filter field "GsCompanyID" not found on email_log_v2. Did you mean: GsCompanyId?\n${REQUEST_ID}`,
 };
 const WARN_TEXT = "[report] normalizeGroupByDedup: removed 1 showField(s) already present in groupByFields.";
 
