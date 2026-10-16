@@ -149,8 +149,8 @@ what the gate counts (F-444). The gate refuses both. Sections from F-360 on; the
 rule also reads the archive.
 
 
-Under test: doctrine-cli-1-0-11-plus · hb-20261015-05 · 2026-10-15
-Blind spots (hb-20261015-05): no CLI 1.0.11 or 1.0.12 and no tenant token in this builder session, so every version-conditional clause rests on the audit's static reading and the six CP-6 checks in dev/VALIDATION.md § F-549 / CP-6 (a)-(f) are owed live; the two 1.0.11 refusal texts in the engagement fixture are paraphrases of the handler's two throw sites, to be replaced by the real stderr at CP-6 (f); the setup references changed are prose (walked by the tester, no CI reads them); the rebase against PR #57 (session B, 0.55.0) is not performed — whichever merges second takes the next number
+Under test: claude/adopt-cli-1-0-12-483229 · hb-20261015-07 · 2026-10-15
+Blind spots (hb-20261015-07): no tenant token in this builder session, so CP-6 (c) (the live template count on a 1.0.11-or-later CLI) is still owed and CLI_PIN_FACTS' journey:email:templates entry keeps the 1.0.10 wording with a comment beside it; the six CP-6 live checks (dev/VALIDATION.md § F-549 / CP-6) stay owed; the global CLI on this host is now 1.0.12, so a tester here measures the regen against the installed package but no tenant; the prose changes are version citations only (walked by the tester as prose, no CI reads them); the rebase against PR #57 (session B, also 0.55.0) is not performed — whichever merges second takes the next number; the battery is this host's run (62/62), the PR's ubuntu suite is the release-grade one
 
 
 <!-- builder 2026-10-15 (E1+V1 of gs-fortress build-kickoffs-1.0.12.md HANDED OFF — UNMERGED, riding doctrine-cli-1-0-11-plus (PR #58 to dev, open); F-549 (normal) OPEN -> FIXED -> VERIFIED on that branch (tester @ hb-20261015-05, 4b7914d: bar (1)-(5) pass, the six CP-6 live checks owed on a 1.0.11-or-later CLI; #57 reads MERGEABLE/CLEAN again at 28f1630); token hb-20261015-05; plugin 0.54.1 on the branch; no number claimed; next free F-550):
