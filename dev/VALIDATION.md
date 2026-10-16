@@ -3602,8 +3602,10 @@ verdict says so.
 
 ### R1 (F-536) — the page's no-internal-domain line in the three real shells
 
-On a dashboard whose page shows the no-internal-domain notice (a scratch import with its domains emptied:
-`change <scratch> sources.0.params.internalDomains=none`, then `rebuild <scratch>`), open the admin page's About tab
+On a dashboard whose page shows the no-internal-domain notice — the notice reads the snapshot's
+`recipient-class-not-configured` caveat, which a PULL writes only with no internal domain AND no test account, so a
+scratch dashboard pulled with both emptied (the builder's first wording, "domains emptied then rebuild", draws nothing:
+corrected from the tester's R1 at hb-20261015-10) — open the admin page's About tab
 and copy the line as printed (`… change <scratch> "sources.0.params.internalDomains=<domains>" --kb <kb>`). Put two
 domains in place of `<domains>` (keep the quotes), append ` --dry-run`, and paste it from the workspace folder in
 Git Bash, Windows PowerShell 5.1 and cmd in turn. Record each shell's exit code and the `changed` row.
