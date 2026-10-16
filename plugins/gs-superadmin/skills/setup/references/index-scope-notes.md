@@ -48,13 +48,16 @@ UI count, record the gap (UI vs CLI-reachable, date, suspected cause) in
 
 ### journey email templates
 
-Flattens only one level of the folder tree — templates in nested subfolders are
-dropped (validated live on 1.0.4; subfolder nodes appear as field-less rows carrying
-only `folderName` — skip them, they have no id) — and additionally hides some
-top-level templates (residual `source=COMMS`/state filter, cause unconfirmed). The
-command fetches its whole already-scope-filtered result server-side and caps
-client-side at 50 by default, so pass a large `--limit` (Phase 4's paging bullets).
-Templates the list cannot see are recoverable by id — the last section.
+On CLI 1.0.10 and earlier, flattens only one level of the folder tree — templates in
+nested subfolders are dropped (validated live on 1.0.4; subfolder nodes appear as
+field-less rows carrying only `folderName` — skip them, they have no id); on 1.0.11 and
+later the handler descends into subfolders instead (fixed upstream; the count it then
+reaches is not yet measured live, and `--folder` still matches a folder's own name only,
+never a path). On every version it additionally hides some top-level templates
+(residual `source=COMMS`/state filter, cause unconfirmed). The command fetches its
+whole already-scope-filtered result server-side and caps client-side at 50 by default,
+so pass a large `--limit` (Phase 4's paging bullets). Templates the list cannot see are
+recoverable by id — the last section.
 
 ### journey surveys list
 

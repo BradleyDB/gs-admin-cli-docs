@@ -526,6 +526,17 @@ try {
     check("a seeded false not-found is re-checked and cleared: the program is in the snapshot, not among the deleted", falseNf.snapshot.dimensions.programs.some((p) => p.id === "p-unlisted") && falseNf.snapshot.honesty.excluded.deletedPrograms.programs === 1 && falseNf.argv.filter((a) => a.includes("describe") && a.includes("p-unlisted")).length === 2);
     check("classifyFailure sorts stderr into auth-expired / timeout / not-found / outage / other",
       isDeepStrictEqual(["auth", "timeout", "not-found", "outage", "generic"].map((k) => classifyFailure({ stderr: FAULT_TEXT[k] })), ["auth-expired", "timeout", "not-found", "outage", "other"]) && classifyFailure({ stderr: "", timedOut: true }) === "timeout");
+    // F-549 (CP-4): CLI 1.0.11 and later refuse an unknown field by name before any request. The words say
+    // "not found", but it is the query's shape: classified shape-error, never retried, never settled as a
+    // deleted program. The differential is the outage case above: the same unit, one call instead of two.
+    check("F-549: a 1.0.11-and-later field refusal (Field \"X\" not found on <object>; Filter field …) is a shape-error to classifyFailure, never a not-found",
+      classifyFailure({ stderr: FAULT_TEXT["field-refused"] }) === "shape-error" && classifyFailure({ stderr: FAULT_TEXT["filter-field-refused"] }) === "shape-error" && classifyFailure({ stderr: FAULT_TEXT["not-found"] }) === "not-found");
+    const fieldRefused = pull({ faults: [{ match: '"name":"Source"},{"name":"AddressType"}', kind: "filter-field-refused", times: 99 }] });
+    check("F-549: a field refusal on an rp run is made once (not retried as a not-found) and recorded as shape-error; the run is partial",
+      fieldRefused.summary.status === "partial" && fieldRefused.summary.failed.length === 1 && fieldRefused.summary.failed[0].kind === "shape-error" && fieldRefused.argv.filter((a) => a.join(" ").includes('"name":"Source"},{"name":"AddressType"}')).length === 1, fieldRefused.summary);
+    const describeRefused = pull({ faults: [{ match: ["describe", "p-unlisted"], kind: "field-refused", times: 99 }] });
+    check("F-549: a field refusal on a describe is never settled as a deleted program: one call, failed as shape-error, no notFound record",
+      describeRefused.argv.filter((a) => a.includes("describe") && a.includes("p-unlisted")).length === 1 && describeRefused.summary.failed.some((f) => f.family === "describe" && f.kind === "shape-error") && !readFileSync(join(describeRefused.runDir, "fetch-log.jsonl"), "utf8").split("\n").some((l) => l.includes("p-unlisted") && l.includes('"notFound":true')), describeRefused.summary);
   }
 
   // ── The token ────────────────────────────────────────────────────────────
@@ -2346,13 +2357,14 @@ try {
     "pitfall: cost against the token": "cost: plan estimates the calls and seconds",
     "fact 1: --page-size sets the rows; equal length is truncated": "a result as long as the page is treated as truncated and split",
     "fact 2: --limit above 2000 is refused client-side": "no rp run passes --limit",
-    "fact 3: LOOKUP grouping resolves to an empty name": "nothing groups or aggregates on a LOOKUP field by name",
+    "fact 3: LOOKUP grouping resolves to an empty name (CLI 1.0.10 and earlier; 1.0.11 and later join the lookup object's key — fixed upstream, live confirmation pending; the rule stays)": "nothing groups or aggregates on a LOOKUP field by name",
     "fact 4: non-sent rows are attempts; Sent counts all rows": "Sent counts every attempt",
     "fact 5: timeouts are unpredictable and transient": "timeouts are transient",
     "fact 6: a reproducible 'network outage' is a query-shape error": "a reproducible 'network outage' is a query-shape error",
-    "fact 7: formula rejections are a generic error": "a generic refusal is not retried",
+    "fact 7: formula rejections are a generic error (CLI 1.0.10 and earlier; on 1.0.11 and later an aggregation nested in a formula is refused by the CLI by name before any request)": "a generic refusal is not retried",
     "fact 8: stderr warnings with exit 0": "non-empty stderr is not a failure",
-    "fact 9: an unknown filter field is silently dropped": "every filter field is validated against rp schema first",
+    "fact 9: an unknown filter field is silently dropped (CLI 1.0.10 and earlier; on 1.0.11 and later refused by name before any request — Filter field \"X\" not found on <object>, a shape-error to the adapter, never a not-found)": "every filter field is validated against rp schema first",
+    "F-549: a 1.0.11-and-later field refusal is the query's shape, never a missing asset": "F-549: a 1.0.11-and-later field refusal",
     "fact 10: null dates act as later than any date; window on ExecutedDate / CreatedAt": "the hazard the rule exists for: a single-sided bound",
     "fact 11: month buckets keyed by k, rows unordered": "month buckets are read from k",
     "fact 12: null group values have no v key; boolean cells": "a send with no template id keeps its own row",
