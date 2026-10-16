@@ -22,7 +22,9 @@
 //
 // What the code enforces, so no caller has to remember it (each has a named
 // test in test/engagement.mjs; the measurements behind them were taken on
-// CLI 1.0.10):
+// CLI 1.0.10. Where CLI 1.0.11 changed a behaviour, the bullet says what
+// 1.0.11 and later do instead — and the guard stays on every version: each is
+// stricter than the CLI's own refusal, and 1.0.10 users still need it; F-549):
 //   - Every `rp run` passes --page-size (rpRunArgv is the one builder). Omitted,
 //     the CLI returns 50 rows; the cut is silent and there is no total. A result
 //     as long as the page is treated as truncated and the call is split.
@@ -32,13 +34,22 @@
 //   - Nothing groups or aggregates on a LOOKUP field: it resolves to the
 //     target's name, which is empty, and collapses the groups. A fieldPath to
 //     the target's Gsid is used instead, and validateQuery refuses the rest.
+//     (Measured on 1.0.10; 1.0.11 and later join the lookup object's key
+//     instead — fixed upstream, live confirmation pending — and the rule stays.)
 //   - Every field a query names is checked against `rp schema` first: a filter
-//     on a field the schema lacks is silently dropped by the CLI, which widens
-//     the query instead of failing it.
+//     on a field the schema lacks is silently dropped by the CLI on 1.0.10 and
+//     earlier, which widens the query instead of failing it; 1.0.11 and later
+//     refuse it by name before any request (`Filter field "X" not found on
+//     <object>` — the query's shape to classifyFailure, never a missing asset).
+//     The check stays: the refusal is then ours, in the same words on every
+//     version.
 //   - No query shows a field it also groups by. The CLI keys a field by its
 //     object and name alone, aggregation ignored, and drops a show field whose
 //     key a group-by field has: silently when another show field is left, and
-//     with a refusal when none is. validateQuery refuses such a query first.
+//     with a refusal when none is (1.0.10 and earlier; on 1.0.11 and later a
+//     plain copy is still removed, and an AGGREGATE of a grouped field is
+//     refused by name before any request). validateQuery refuses such a query
+//     first.
 //   - A unit that is still a full page at one program, one day and one flag
 //     partition is cut by the recipient's address (contains a character, or
 //     does not): the measures are additive, so any cut of the sends adds up.
@@ -49,7 +60,10 @@
 //     count is asked through its own lookup alone, and the sends with no
 //     company link are read by their own calls (GsCompanyId IS_NULL).
 //   - A timed-out call is retried once on its own, then split. A "network
-//     outage" that survives one retry is a query-shape error and is not retried.
+//     outage" that survives one retry is a query-shape error and is not retried
+//     (1.0.10 and earlier, where a JSON-typed field aggregated or grouped came
+//     back as an outage; 1.0.11 and later refuse such a field by name before
+//     any request).
 //   - Calls run one at a time (parallel calls produced false errors), and a
 //     not-found is re-checked once before it is believed.
 //   - Every command is checked against the catalog before it is spawned, and a
@@ -88,9 +102,11 @@
 //     the bounce reason, grouped by program, template, month and type), the
 //     total beside them, "Other" = total less the categories, and a capped
 //     masked sample of the uncategorised text for discovery. The failed
-//     participant's reason field takes no filter at all on CLI 1.0.10 (its
-//     schema says so, and every operator tried was refused), so that part is
-//     a per-program total with no breakdown, and says so; the breakdown by
+//     participant's reason field takes no filter at all (on CLI 1.0.10 its
+//     schema says so, and every operator tried was refused by the server; on
+//     1.0.11 and later the CLI refuses a filter on a JSON-typed field itself,
+//     before any request), so that part is a per-program total with no
+//     breakdown, and says so; the breakdown by
 //     reason is a per-program SAMPLE of the most REPEATED refusals still
 //     happening in the day window (F-484, redesigned 2026-10-08).
 //   - A sample is read PER PROGRAM, never as the first page of a tenant-wide
@@ -108,8 +124,9 @@
 //     (programHealth); the pull stores facts, never a judgment.
 //   - A field a query filters or groups on must be declared filterable or
 //     groupable by `rp schema`: a filter on a field that is not is refused by
-//     the server with an "unrecognized data type" text, so validateQuery
-//     refuses it first.
+//     the server with an "unrecognized data type" text on 1.0.10 and earlier,
+//     and by the CLI itself on 1.0.11 and later when the field is JSON- or
+//     rich-text-typed, so validateQuery refuses it first on every version.
 //   - Before any family that reads plain rows or splits on a count, plan makes
 //     one server-side COUNT of what it would read (clicked sends; failed
 //     participants) and prices the family from it; a family that cannot be
@@ -670,14 +687,22 @@ export function parseWhoami(text) {
 }
 
 // ── Failure classes (stderr is text; a failure is exit 1 with empty stdout) ──
+// CLI 1.0.11 and later refuse an unknown show, group, order or filter field by
+// name before any request: `Field "X" not found on <object>` and `Filter field
+// "X" not found on <object>` (with "did you mean" suggestions). The words say
+// "not found", but it is the QUERY's shape that is wrong, never a missing asset
+// (F-549, CP-4): it is not retried as a not-found, and a describe never settles
+// it as a deleted program. Read before the not-found class, which it would match.
+export const FIELD_REFUSAL_RE = /\b(?:filter )?field "[^"\n]*" not found on\b/i;
 /**
  * @param {{stdout?: string, stderr?: string, timedOut?: boolean}} r a FAILED call
- * @returns {"auth-expired"|"timeout"|"not-found"|"outage"|"other"}
+ * @returns {"auth-expired"|"timeout"|"shape-error"|"not-found"|"outage"|"other"}
  */
 export function classifyFailure(r) {
   const stderr = String(r.stderr ?? "");
   if (isAuthDeath({ ok: false, stdout: String(r.stdout ?? ""), stderr })) return "auth-expired";
   if (r.timedOut || /The query has timed out/.test(stderr)) return "timeout";
+  if (FIELD_REFUSAL_RE.test(stderr)) return "shape-error";
   if (/\bnot found\b/i.test(stderr)) return "not-found";
   // Reads as transient, and is one once. Reproduced after a retry it is a
   // query-shape error (an aggregate the server cannot run), never an outage.

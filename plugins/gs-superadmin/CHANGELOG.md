@@ -36,6 +36,36 @@ accounts on the lists but never who was on them: membership changed only at a fu
   `export --with-snapshot` carries the store, so a backup refresher's first pull stays
   selective.
 
+## 0.54.1 — 2026-10-15
+
+The plugin's account of the Gainsight CLI is correct again for a workspace whose installed
+CLI is 1.0.11 or 1.0.12 (the same code; 1.0.12 moves one dependency pin), and unchanged
+for 1.0.10 and earlier (F-549; gs-fortress audit-1.0.12, CP-2 to CP-5). CLI 1.0.11 fixed
+several defects the plugin documented as standing, and the doctrine said so for nobody:
+every affected statement now names the version it holds for.
+
+- **`sc measures --id` works on CLI 1.0.11 and later.** The operating model's Known CLI
+  issues entry, its General rule and setup's scorecard exception name the real cause of the
+  1.0.10-and-earlier failure (a keychain-load race between the command's two concurrent
+  first requests, fixed upstream) instead of calling it unknown, and the duplicate-name
+  fallback records a "known CLI auth race" failure only on 1.0.10 and earlier. `--name`
+  stays the default on every version.
+- **Nested email-template folders are reachable on CLI 1.0.11 and later.** The scope note
+  for `journey email templates` and the operating model's scope-filter entry scope the
+  one-level flattening and the field-less folder rows to 1.0.10 and earlier; the residual
+  top-level filter stays on every version, and the count reachable on 1.0.11 or later is
+  marked as not yet measured live.
+- **The libuv error-path abort is scoped to CLI 1.0.10 and earlier.** The entry says what
+  1.0.11 changed (no `process.exit()` on error paths) and keeps "parse stderr, never trust
+  the exit code" on every version until the clean exit is measured live.
+- **The engagement adapter says which CLI its facts were measured on**, keeps every query
+  guard and the one-call-at-a-time rule (a cross-process observation that the in-process
+  fix upstream does not retire), and classifies a 1.0.11-and-later field refusal
+  (`Field "X" not found on <object>`, `Filter field "X" not found on <object>`) as the
+  query's shape rather than a missing asset: it is no longer retried once as a not-found,
+  a `describe` never settles it as a deleted program, and a refresh records it as
+  `shape-error`.
+
 ## 0.54.0 — 2026-10-14
 
 Email engagement, from a one-off report to a dashboard you refresh with one command. A new
