@@ -3338,6 +3338,43 @@ THIS LIST IS COMPLETE.
 - Cleanup: remove f530-scratch and the export files.
 
 Results:
+(F-530 re-verification round, 2026-10-15 @ hb-20261015-06, tester; feat/f548-ranking-every-refresh at 14e46a6, clean and level; a
+terminal in the workspace with --plugin-dir, canary matched; the production KB, NO PULL. The only tenant read was the closing step's
+whoami, after one by-hand login. Pages were read as a headless Chrome DOM dump of the rendered page, scripts stripped.)
+- N0 PASS. `export digital-outreach-health-v2 --with-snapshot` named its `accountStore`; `import --slug f530-scratch` copied it
+  (the snapshot and its `.accounts.json` side by side).
+- N1 PASS. `change f530-scratch accounts.lists=[{"kind":"most-bounced","n":5,"floor":0}]`: exit 0, `done.ranked` true,
+  `done.lists` [most-bounced, kept 5], done.text "…ranked again from the account store beside the last pull (…), with no pull; the
+  pages were rebuilt." No call was made: the token was expired at the time, and the verb exited 0.
+- N2 PASS. The Most bounced customers panel lists exactly the record's 5 kept accounts, in the record's order, with the note "The 5
+  most bounced across programs over the whole window, as the pull of 2026-10-15 ranked them." The other two panels read "This
+  dashboard keeps no most engaged list: …" / "… no least engaged list: …". The About tab's Pages entries: "…: the 5 most bounced, as the
+  pull ranked it.", "…: no most engaged list is kept (the customer lists name the lists the pull ranks).", "…: no least engaged list is
+  kept (…)". Accounts entry: "Customer lists are on: across programs over the whole window, the 5 most bounced; …", and no other list.
+  No "top 25", "25 lowest" or "the 25" in the rendered text. The leaders' copy's one "the 25 least engaged" is listPhrase's doc
+  comment inside its script, not rendered.
+- N3 PASS. The report's Account watch list reads, verbatim: "Across programs over the whole window, the accounts this pull kept: the 5
+  most bounced. Possible bad contacts: never a verdict on a customer." No advocates, no disengagement, no low-cadence sentence. Its
+  one table ("Most bounced customers") lists the same 5 in the same order.
+- N4 PASS, with one sentence ruled out. The ask: "How should the customer lists be built? This dashboard makes 1 list across
+  programs: the 5 most bounced. On a program that sends about once per contact, a least-engaged list uses at least 3 delivered and no
+  open instead of its floor. You can change …" No 25 anywhere. Options: "Keep the lists as they are (the default)" · "Change a list's
+  size or floor" (ONE follow-up: "The 5 most bounced accounts, with no delivered floor: …") · "Add per-segment lists". The draft's
+  lists: keep through the size option → [most-bounced 5/0]; `default` → [most-bounced 5/0]; "6 0" → [most-bounced 6/0] alone.
+  The closing ask: "Compared with the saved dashboard it changes 1 setting (accounts.lists[]): the customer lists are ranked again
+  from the account store beside the last pull (a rebuild, no pull)." (The first try stopped exit 3 on the expired token; it ran
+  after a login.) Wording read to Bradley: the low-cadence sentence describes a least-engaged list on a dashboard that keeps none,
+  which is the rule the Fix gave the report (instance 2) but not the question. Bradley's ruling: one line of prose, drop it, no
+  reopen; the tester makes it (role inversion). Made at dashboard.mjs's customer-list-detail ask: the sentence prints only when a
+  least-engaged list is among the lists. Re-read: on the scratch draft the sentence is gone; on a sibling draft with
+  [most-bounced 5/0, least-engaged 10/5] it is present. The draft was not saved (it was removed with the scratch).
+- N5 PASS. On 14e46a6: dashboard 147, dashboard-spec 47, dashboard-page 214, engagement-report 56, all pass. PR #57's five checks
+  (drift (full), changes, validate (ubuntu-latest), manifests, GitGuardian) are green at 14e46a6. After the role-inverted edit:
+  dashboard 147, dashboard-spec 47, dashboard-page 214, engagement-report 56, all pass.
+- Not read (the builder's named gap): mutant N4 (the report's intro naming a per-segment list once per segment) survived by
+  prediction, and no arm here puts a per-segment list in the report. A per-segment list over a field the last pull did not read
+  needs a pull.
+- Cleanup: f530-scratch and the export files were removed.
 
 ## F-549 / CP-6 — six live checks on CLI 1.0.11 or later: what the 1.0.11 fixes the doctrine now names actually do on a tenant (banked 2026-10-15, builder, session E1+V1 on doctrine-cli-1-0-11-plus; verdict at the branch's handoff token)
 
