@@ -344,7 +344,7 @@ try {
   const afterSegments = readJson(draftFile()).spec.accounts;
   check("the lists' detail (ruling 16) through its follow-ups: a size and floor per list ('keep' leaves one), then a per-segment list over a company field, added beside the three (the field recorded); a malformed size is refused naming the list",
     sized.code === 0 && isDeepStrictEqual(afterSizes.lists.map((l) => [l.kind, l.n, l.floor]), [["most-engaged", 3, 2], ["least-engaged", 3, 2], ["most-bounced", 25, 0]]) && segmented.code === 0 && afterSegments.lists.length === 4 && isDeepStrictEqual(afterSegments.lists[3], { ...DEFAULT_ACCOUNT_LISTS.find((l) => l.kind === "least-engaged"), per: "Industry" }) && isDeepStrictEqual(afterSegments.fields, ["Industry"]) &&
-      /the most engaged list: give a size and a floor as two numbers/.test(run("answer", [SLUG, "customer-list-detail", "sizes:lots|keep|keep"]).json?.error ?? ""), [sized.json, segmented.json, afterSegments]);
+      /the most engaged list: give a size and a floor as two numbers/.test(run("answer", [SLUG, "customer-list-detail", "sizes:lots|keep|keep|keep"]).json?.error ?? ""), [sized.json, segmented.json, afterSegments]);
   const stepQ = run("next", [SLUG]);
   run("answer", [SLUG, "step-detail", "no"]);
   const reasonsQ = run("next", [SLUG]);
@@ -1006,18 +1006,51 @@ try {
     // The edit screen (F-516's closing step) says the same over a routine refresh: its consequence and its first option.
     run("new", [SLUG]);
     const detail = run("next", [SLUG, "--question", "customer-list-detail"]);
-    run("answer", [SLUG, "customer-list-detail", composeAnswer(detail.json.question.options[1], { "most-engaged": "4 1", "least-engaged": "keep", "most-bounced": "keep" })]);
+    run("answer", [SLUG, "customer-list-detail", composeAnswer(detail.json.question.options[1], { "most-bounced": "4 1" })]);
     const editClose = run("next", [SLUG]);
     const editPreview = run("answer", [SLUG, "dry-run", "yes"]);
     const previewAdmin = editPreview.json?.preview?.pages?.find((p) => p.page === "admin")?.path;
-    check("F-548 the edit's preview from the last pull (no call) ranks the draft's customer lists from the store in memory: its Most engaged panel states the draft's list (4, at least 1 delivered), as its About tab does, and the saved snapshot is not rewritten",
-      editPreview.code === 0 && editPreview.json.preview?.fromLastPull === true && !!previewAdmin && readFileSync(previewAdmin, "utf8").includes("The 4 most engaged (at least 1 delivered) across programs") && readSnap().meta.params.accounts.lists.every((l) => l.kind !== "most-engaged" || l.n !== 4),
+    check("F-548 the edit's preview from the last pull (no call) ranks the draft's customer lists from the store in memory: its Most bounced panel states the draft's list (4, at least 1 delivered; the saved dashboard's one list, so the question offered that list alone), as its About tab does, and the saved snapshot is not rewritten",
+      editPreview.code === 0 && editPreview.json.preview?.fromLastPull === true && !!previewAdmin && readFileSync(previewAdmin, "utf8").includes("The 4 most bounced (at least 1 delivered) across programs") && readSnap().meta.params.accounts.lists.every((l) => l.n !== 4),
       [editPreview.json?.preview ?? editPreview.json?.error, readSnap().meta.params.accounts.lists]);
     run("answer", [SLUG, "estimate", "yes"]);
     const editDone = run("answer", [SLUG, "save", "yes"]);
     check("F-548 the edit's closing step over a routine refresh: the ask says the customer lists are ranked again from the account store (a rebuild, no pull), the first option reads 'Save and rank the customer lists again now (no pull)', and the save's done says ranked true",
       editClose.code === 0 && /the customer lists are ranked again from the account store beside the last pull \(a rebuild, no pull\)/.test(editClose.json.closing.ask) && editClose.json.closing.options[0].text === "Save and rank the customer lists again now (no pull)" &&
         editDone.code === 0 && editDone.json.done?.kind === "reselect" && editDone.json.done.ranked === true && editDone.json.done.rebuilt === true, [editClose.json?.closing, editDone.json?.done ?? editDone.json?.error]);
+    // F-530 reopened at B-V — the CLASS, not its three samples: with the lists set to one most-bounced list of 5 and no
+    // floor, every text any surface renders about the customer lists names that list alone, its 5 and its floor (the
+    // page's panel and its About tab's Pages and Accounts entries, the report, the edit's question, follow-ups and
+    // closing ask), and an edit answered keep (or default) leaves the saved lists as they were.
+    const one = run("change", [SLUG, 'accounts.lists=[{"kind":"most-bounced","n":5,"floor":0}]']);
+    const visible = (html) => html.replace(/<script[\s\S]*?<\/script>/g, "");
+    const listDds = (html) => [...visible(html).matchAll(/<dd>([^<]*customers[^<]*)<\/dd>/g)].map((m) => m[1]);
+    const panelOf = (html, id) => visible(html).split(`data-panel="${id}"`)[1]?.split("</section>")[0] ?? "";
+    const accountsDd = (html) => visible(html).match(/<dt>Accounts<\/dt>\s*<dd>([^<]*)<\/dd>/)?.[1] ?? "";
+    const admin = pageText("admin");
+    const oneReport = run("report", [SLUG]);
+    const intro = oneReport.code === 0 ? (readFileSync(oneReport.json.report, "utf8").split("## Account watch list")[1] ?? "").split("\n").find((l) => l.startsWith("Across programs")) ?? "" : "";
+    run("new", [SLUG]);
+    const oneQ = run("next", [SLUG, "--question", "customer-list-detail"]);
+    const sizes = oneQ.json?.question?.options?.find((o) => o.id.startsWith("sizes:"));
+    run("answer", [SLUG, "customer-list-detail", composeAnswer(sizes, { "most-bounced": "keep" })]);
+    const afterKeep = readJson(draftFile()).spec.accounts.lists;
+    run("answer", [SLUG, "customer-list-detail", "default"]);
+    const afterDefault = readJson(draftFile()).spec.accounts.lists;
+    run("answer", [SLUG, "customer-list-detail", composeAnswer(sizes, { "most-bounced": "6 0" })]);
+    const afterSix = readJson(draftFile()).spec.accounts.lists;
+    const oneClose = run("next", [SLUG]);
+    rmSync(draftFile(), { force: true });
+    const texts = [...listDds(admin), accountsDd(admin), intro, oneQ.json?.question?.ask ?? "", ...(sizes?.followUps ?? []).map((f) => f.ask)];
+    check("F-530 the class: one most-bounced list of 5 with no floor is the list every surface names — the About tab's three list panels (the most-bounced one 'the 5 most bounced', the other two 'no … list is kept') and its Accounts entry, the panel's note, the report's intro (its one reading, no low-cadence sentence), the edit's question and its one follow-up — and no list text says 25 or names another list; keep and default leave the saved list as it was, '6 0' changes it alone, and the closing ask counts one setting",
+      one.code === 0 && one.json.done?.ranked === true && listDds(admin).length === 3 && listDds(admin).some((t) => /Most bounced customers.*the 5 most bounced, as the pull ranked it\./.test(t)) && listDds(admin).filter((t) => /no most engaged list is kept|no least engaged list is kept/.test(t)).length === 2 &&
+        /the 5 most bounced/.test(accountsDd(admin)) && !/most engaged|least engaged/.test(accountsDd(admin)) && panelOf(admin, "most-bounced").includes("The 5 most bounced across programs over the whole window") &&
+        /kept: the 5 most bounced\. Possible bad contacts: never a verdict on a customer\.$/.test(intro) &&
+        /This dashboard makes 1 list across programs: the 5 most bounced\./.test(oneQ.json?.question?.ask ?? "") && oneQ.json.question.options[0].text === "Keep the lists as they are (the default)" && isDeepStrictEqual(sizes?.followUps?.map((f) => f.key), ["most-bounced"]) &&
+        texts.every((t) => !/\b25\b/.test(t)) &&
+        isDeepStrictEqual(afterKeep, [{ kind: "most-bounced", n: 5, floor: 0 }]) && isDeepStrictEqual(afterDefault, [{ kind: "most-bounced", n: 5, floor: 0 }]) && isDeepStrictEqual(afterSix, [{ kind: "most-bounced", n: 6, floor: 0 }]) &&
+        /changes 1 setting \(accounts\.lists\[\]\)/.test(oneClose.json?.closing?.ask ?? ""),
+      [one.json?.done ?? one.json?.error, listDds(admin), accountsDd(admin), intro, oneQ.json?.question?.ask, afterKeep, afterDefault, afterSix, oneClose.json?.closing?.ask?.slice(0, 200)]);
     // F-544: snapshots are ordered by the instant their pull time parses to, never by the name. A pull an hour LATER
     // named EARLIER (the clock moved back: its local time with the offset dropped sorts first), and a same-second pair
     // whose collision suffix sorts before the plain name: the latest is the newest instant; retention trims the oldest.

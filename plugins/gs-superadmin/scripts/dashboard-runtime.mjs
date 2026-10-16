@@ -1062,13 +1062,15 @@ export function createDashboard(engine, model) {
     });
     return { whole, reordered: !whole || !!sort, sections };
   };
-  const kindWords = (kind) => String(kind).replace("-", " ");
+  // The list's words are the engine's (listPhrase, LIST_KIND_WORDS): the page, the report and the About tab say one thing.
+  const kindWords = (kind) => engine.LIST_KIND_WORDS[kind]?.words ?? String(kind);
+  const ofList = (r) => engine.listPhrase(r).replace(/^the/, "The");
   const segmentOf = (r) => (r.per ? `${r.per}: ${r.segment ?? "(none)"}` : null);
   const listNote = (r, view) => {
     const sel = snapshot.honesty?.accountSelection;
     // The list in the words the About tab and the report use for it (the n, the floor, the segment field).
     const quiet = r.kind === "least-engaged" && (sel?.lowCadencePrograms ?? []).length ? `; on a program that sends about once per contact, an account with at least ${sel.lowCadenceRule?.minDelivered ?? 3} delivered and no open joins it` : "";
-    const ranked = `The ${r.n} ${kindWords(r.kind)}${r.floor > 0 ? ` (at least ${r.floor} delivered)` : ""}${r.per ? ` per ${r.per}` : ""} across programs over the whole window, as the pull of ${String(r.rankedAt ?? snapshot.meta.pulledAt).slice(0, 10)} ranked them${quiet}`;
+    const ranked = `${ofList(r)} across programs over the whole window, as the pull of ${String(r.rankedAt ?? snapshot.meta.pulledAt).slice(0, 10)} ranked them${quiet}`;
     return view.reordered ? `${ranked}; re-ranked here over what is shown.` : `${ranked}.`;
   };
   const renderListPanel = (panel, state) => {
@@ -1391,7 +1393,7 @@ export function createDashboard(engine, model) {
       headers = ["List", "Account", "Program", "Status", "Programs", ...figureHeads(cols)];
       rows = listView(panel, state).sections.filter((s) => s.result && !s.result.unavailable).flatMap(({ record, result }) => {
         const under = watchlistDetail(panel, state, result);
-        const list = segmentOf(record) ?? `the ${record.n} ${kindWords(record.kind)}`;
+        const list = record.per ? `${engine.listPhrase(record)}: ${record.segment ?? "(none)"}` : engine.listPhrase(record);
         return result.rows.flatMap((row) => {
           const own = under.get(row.key.account) ?? [];
           const account = dimText("account", row) ?? "";

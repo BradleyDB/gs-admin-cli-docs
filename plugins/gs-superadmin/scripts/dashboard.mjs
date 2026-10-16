@@ -337,6 +337,10 @@ export function changeCost(before, after, { longestPeriodDays = null } = {}) {
   return { changed, consequence };
 }
 
+/** Two lists of customer lists alike (kind, size, floor, segment field, in order). */
+const sameLists = (a, b) => a.length === b.length && a.every((l, i) => l.kind === b[i].kind && l.n === b[i].n && l.floor === b[i].floor && (l.per ?? null) === (b[i].per ?? null));
+/** One follow-up key per list: its kind, or kind and field (and its place) where two lists share one. */
+const listKeys = (lists) => lists.map((l, i) => { const k = l.per ? `${l.kind}-${l.per}` : l.kind; return lists.filter((x) => (x.per ? `${x.kind}-${x.per}` : x.kind) === k).length > 1 ? `${k}-${i + 1}` : k; });
 // ── The questions table (DSH-3, ruled 2026-10-05; every wording ruled 2026-10-12 at S5-V's I0, F-511) ──
 // One row per question, as DATA: its id (the ask-once key), its wording in the user's terms (a string, or a function
 // of the context when the ask quotes the plan's minutes), its kind, its options (from the context), the spec path it
@@ -657,28 +661,41 @@ export const QUESTIONS = Object.freeze([
   },
   {
     id: "customer-list-detail", kind: "json", path: "accounts.lists[]", judgment: false, default: "default", skip: (ctx) => !ctx.spec.accounts.pull,
-    ask: (() => {
-      const by = Object.fromEntries(DEFAULT_ACCOUNT_LISTS.map((l) => [l.kind, l]));
-      return `How should the customer lists be built? Three lists are made across programs: the ${by["most-engaged"].n} most engaged, the ${by["least-engaged"].n} least engaged and the ${by["most-bounced"].n} most bounced accounts. Each needs at least ${by["most-engaged"].floor} delivered emails across programs before an account can appear, so one unopened email is not a risk; on a program that sends about once per contact, the least-engaged list uses at least 3 delivered and no open instead. You can change the size and the floor of each list, and you can add "per segment" lists, which rank the same lists within each value of a company field you name, such as Industry or Segment. Do you want to change the defaults?`;
-    })(),
-    options: () => [
-      { id: "default", text: "Keep the three lists as described (the default)" },
-      // A list with no delivered floor says so, never "at least 0 delivered" (F-511 instance 23).
-      { id: `sizes:${DEFAULT_ACCOUNT_LISTS.map((l) => `<${l.kind}>`).join("|")}`, text: "Change a list's size or floor", followUps: DEFAULT_ACCOUNT_LISTS.map((l) => ({ key: l.kind, kind: "text", ask: `The ${l.n} ${l.kind.replace("-", " ")} accounts, ${l.floor > 0 ? `with at least ${l.floor} delivered` : "with no delivered floor"}: give a new size and floor as two numbers (size floor; 0 for no floor), or keep.` })) },
-      { id: "segments:<field>|<lists>", text: "Add per-segment lists", followUps: [{ key: "field", kind: "text", ask: "Which company field? (Industry, Segment, …)" }, { key: "lists", kind: "text", ask: "Which lists per segment: most engaged, least engaged, most bounced, or all?" }] },
-    ],
+    // The question names the dashboard's OWN lists (F-530 reopened at B-V: an edit over a saved list of 5 asked about
+    // "the 25 most engaged, the 25 least engaged and the 25 most bounced", and keep wrote the defaults back). On the
+    // default lists it is the ruled wording, word for word; "default" keeps the lists as they are, and a size change
+    // asks one follow-up per list the dashboard has.
+    ask: (ctx) => {
+      const lists = accountLists(ctx?.spec ?? {});
+      if (sameLists(lists, DEFAULT_ACCOUNT_LISTS)) {
+        const by = Object.fromEntries(DEFAULT_ACCOUNT_LISTS.map((l) => [l.kind, l]));
+        return `How should the customer lists be built? Three lists are made across programs: the ${by["most-engaged"].n} most engaged, the ${by["least-engaged"].n} least engaged and the ${by["most-bounced"].n} most bounced accounts. Each needs at least ${by["most-engaged"].floor} delivered emails across programs before an account can appear, so one unopened email is not a risk; on a program that sends about once per contact, the least-engaged list uses at least 3 delivered and no open instead. You can change the size and the floor of each list, and you can add "per segment" lists, which rank the same lists within each value of a company field you name, such as Industry or Segment. Do you want to change the defaults?`;
+      }
+      return `How should the customer lists be built? This dashboard makes ${lists.length ? `${plural(lists.length, "list")} across programs: ${lists.map(engine.listPhrase).join("; ")}` : "no customer list"}. On a program that sends about once per contact, a least-engaged list uses at least 3 delivered and no open instead of its floor. You can change the size and the floor of each list, and you can add "per segment" lists, which rank the same lists within each value of a company field you name, such as Industry or Segment. Do you want to change them?`;
+    },
+    options: (ctx) => {
+      const lists = accountLists(ctx?.spec ?? {});
+      const keys = listKeys(lists);
+      return [
+        { id: "default", text: sameLists(lists, DEFAULT_ACCOUNT_LISTS) ? "Keep the three lists as described (the default)" : "Keep the lists as they are (the default)" },
+        // A list with no delivered floor says so, never "at least 0 delivered" (F-511 instance 23).
+        ...(lists.length ? [{ id: `sizes:${keys.map((k) => `<${k}>`).join("|")}`, text: "Change a list's size or floor", followUps: lists.map((l, i) => ({ key: keys[i], kind: "text", ask: `The ${l.n} ${engine.LIST_KIND_WORDS[l.kind].words} accounts${l.per ? ` per ${l.per}` : ""}, ${l.floor > 0 ? `with at least ${l.floor} delivered` : "with no delivered floor"}: give a new size and floor as two numbers (size floor; 0 for no floor), or keep.` })) }] : []),
+        { id: "segments:<field>|<lists>", text: "Add per-segment lists", followUps: [{ key: "field", kind: "text", ask: "Which company field? (Industry, Segment, …)" }, { key: "lists", kind: "text", ask: "Which lists per segment: most engaged, least engaged, most bounced, or all?" }] },
+      ];
+    },
     apply: (v, ctx) => {
       const s = String(v).trim();
-      const defaults = () => DEFAULT_ACCOUNT_LISTS.map((l) => ({ ...l }));
-      if (s === "default") return { sets: [["accounts.lists", defaults()], ["accounts.fields", []]] };
+      const current = accountLists(ctx.spec);
+      // "default" keeps the lists the dashboard has (the defaults on a new one): never the defaults over a saved list.
+      if (s === "default") return { sets: [["accounts.lists", current.map((l) => ({ ...l }))], ["accounts.fields", accountFields(ctx.spec)]] };
       if (s.startsWith("sizes:")) {
         const parts = s.slice(6).split("|");
-        if (parts.length !== DEFAULT_ACCOUNT_LISTS.length) refuse(`sizes: takes one answer per list (${DEFAULT_ACCOUNT_LISTS.map((l) => l.kind).join(", ")}), separated by |`);
-        const lists = DEFAULT_ACCOUNT_LISTS.map((l, i) => {
+        if (parts.length !== current.length) refuse(`sizes: takes one answer per list (${listKeys(current).join(", ")}), separated by |`);
+        const lists = current.map((l, i) => {
           const a = parts[i].trim();
           if (["", "keep"].includes(a.toLowerCase())) return { ...l };
           const m = a.match(/^(\d+)\s+(?:floor\s+)?(\d+)$/);
-          if (!m) refuse(`the ${l.kind.replace("-", " ")} list: give a size and a floor as two numbers (25 10), or keep (got "${printable(a, 20)}")`);
+          if (!m) refuse(`the ${engine.LIST_KIND_WORDS[l.kind].words}${l.per ? ` per ${l.per}` : ""} list: give a size and a floor as two numbers (25 10), or keep (got "${printable(a, 20)}")`);
           return { ...l, n: Number(m[1]), floor: Number(m[2]) };
         });
         return { sets: [["accounts.lists", lists], ["accounts.fields", accountFields(ctx.spec)]] };
@@ -690,11 +707,11 @@ export const QUESTIONS = Object.freeze([
         if (!field) refuse("segments: needs the company field to rank within");
         const kinds = which === "all" || which === "" ? DEFAULT_ACCOUNT_LISTS.map((l) => l.kind) : DEFAULT_ACCOUNT_LISTS.map((l) => l.kind).filter((k) => which.includes(k.replace("-", " ")) || which.includes(k));
         if (!kinds.length) refuse(`segments: names no list (most engaged, least engaged, most bounced, or all; got "${printable(which, 40)}")`);
-        const current = accountLists(ctx.spec).filter((l) => !l.per || l.per !== field);
-        return { sets: [["accounts.lists", [...current, ...kinds.map((k) => ({ ...DEFAULT_ACCOUNT_LISTS.find((l) => l.kind === k), per: field }))]], ["accounts.fields", [...new Set([...accountFields(ctx.spec), field])]]], notes: [`${plural(kinds.length, "per-segment list")} added, ranked within each ${field}`] };
+        const kept = current.filter((l) => !l.per || l.per !== field);
+        return { sets: [["accounts.lists", [...kept, ...kinds.map((k) => ({ ...DEFAULT_ACCOUNT_LISTS.find((l) => l.kind === k), per: field }))]], ["accounts.fields", [...new Set([...accountFields(ctx.spec), field])]]], notes: [`${plural(kinds.length, "per-segment list")} added, ranked within each ${field}`] };
       }
       const j = jsonValue(s);
-      return { sets: [["accounts.fields", Array.isArray(j.fields) ? j.fields : []], ["accounts.lists", Array.isArray(j.lists) ? j.lists : defaults()]] };
+      return { sets: [["accounts.fields", Array.isArray(j.fields) ? j.fields : []], ["accounts.lists", Array.isArray(j.lists) ? j.lists : DEFAULT_ACCOUNT_LISTS.map((l) => ({ ...l }))]] };
     },
   },
   {
