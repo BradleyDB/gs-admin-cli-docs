@@ -36,7 +36,7 @@ never measured; a session that auto-approves asks records the hook's decision ob
 says the rendered prompt is unmeasured.
 Entry hint: read this header for the Under test line, then grep '^## F-' for the live
 findings and read at those offsets. Released sections are moved to
-dev/FEEDBACK-archive.md after each release (last move: 2026-10-15, after release 0.54.0 — F-469..F-547, 72 sections, with 25 header Walk lines; the seven DEFERRED past 0.54.0 stay live: F-530, F-536, F-541, F-542, F-545, F-546, F-548; the 0.43.4 move (a hotfix cut from main) took F-487; the 0.43.3 move took F-461 and F-466, leaving no live section; the 0.43.0 move took F-462, F-463, F-464, F-465, F-467 and F-468; the 0.42.0 move took F-448..F-460 with their round blocks and the four header Walk lines; the 0.37.0 move took
+dev/FEEDBACK-archive.md after each release (last move: 2026-10-16, after release 0.56.2 — F-530..F-555, 14 sections, with 4 header Walk lines, leaving no live section and no DEFERRED one; the 0.54.0 move took F-469..F-547, 72 sections, with 25 header Walk lines; the 0.43.4 move (a hotfix cut from main) took F-487; the 0.43.3 move took F-461 and F-466, leaving no live section; the 0.43.0 move took F-462, F-463, F-464, F-465, F-467 and F-468; the 0.42.0 move took F-448..F-460 with their round blocks and the four header Walk lines; the 0.37.0 move took
 F-414..F-447 with their round blocks; the 0.36.3 move took F-410..F-413; the 0.36.2 move took F-390, F-391,
 F-396..F-409; the 0.36.1 move took F-387..F-389 and F-392..F-395;
 the 0.35.4 move took F-360..F-386, the 0.35.0 move F-357..F-359, the 0.34.3 move F-224..F-356
@@ -154,6 +154,50 @@ Blind spots (hb-20261016-03): a post-merge re-stamp after the R14 fix round (PR 
 Blind spots (hb-20261016-02): 2026-10-16 (tester) — F-546's killed writer was never caught live inside a mark (two kills, a 2 ms poll, both after the release): the dead-pid lock was laid by hand in a killed mark's shape, so the kill-to-lock path itself is the suite's; the writers' SIGINT/SIGTERM release does not exist on Windows and was not exercised; the held-handle and kill arms ran on this Windows host alone; the four-process contention driver was not re-run. F-541 and F-542 are judged by the stand-in suite alone, F-542's base-directory variant by construction; no live refresh restarted, so the skill's restarted relay is read, not walked. F-552's display-change half is suite-only. F-553/F-554/F-555 by reading; of F-555's Judge only the dashboard and page suites were run. R4 and the walk ran through the session's own shell tools, not a human paste into a terminal; cmd was not run. setup's changed sentence is unwalkable at CLI 1.0.12. The guard ask's rendering is Bradley's report; prompts are invisible to the session.
 Blind spots (hb-20261015-10): 2026-10-16 (tester) — F-546's lock never met a second writer live: the production KB is current (both R2 plans: 0 programs behind, 0 undocumented, 0 templates), so neither refresh re-documented and the manifest stayed byte-equal — the lock is measured by test/manifest-ops.mjs alone; the natural live arm is any later refresh whose plan finds programs behind. F-541, F-542 and F-545 are judged by the suite alone (no tenant can produce their states, VALIDATION § R13 R3). F-536's three shells: Git Bash and Windows PowerShell 5.1 ran the line through the session's own shell tools, cmd from a .bat file run by `cmd /d /c` — none was a human paste into a terminal window. The guard ask's rendering is Bradley's report; prompts are invisible to the session.
 
+
+<!-- builder 2026-10-16 ([v]0.56.2 RELEASED — post-release housekeeping; next free F-556):
+     Payload: the file lock that never loses a holder, the customer lists ranked on every refresh from an account store with every surface
+       describing what is shown, the CLI pin 1.0.12 with the doctrine version-conditional for 1.0.11 and later, and every printed change line
+       running as written in Git Bash, PowerShell 5.1 and cmd. Staged versions folded in: none — 0.54.1, 0.55.0, 0.56.0, 0.56.1 and 0.56.2
+       each keep their own CHANGELOG entry (the rules fold nothing; R12 folded by decision).
+     Gate 1 (bus): terminal — F-530, F-536, F-541, F-542, F-545, F-546, F-548, F-549, F-550, F-551, F-552, F-553, F-554, F-555 all VERIFIED
+       (step 0 at the first cut and again at the recut: no section DEFERRED past an older version, no OPEN polish to auto-defer); open PRs to
+       dev: none (#61 merged at 2b4ae28 before the recut). VALIDATION §§ F-548, F-530 reopened, F-549 / CP-6, R13 and R14 CLEARED.
+     Gate 2 (review): /code-review MEDIUM over origin/main...dev at the first cut (2026-10-16, 96460e2; five finder angles on opus, 40
+       candidates, 23 verified in six batches by file): 5 normal findings, each inside a mechanism this release shipped, so REOPENED (F-530 a
+       second reopen with its Redesign, F-536, F-541, F-545, F-546), F-542 reopened at polish, F-552..F-555 logged polish; /security-review —
+       run, no finding above the bar; highest severity none. The cut STOPPED; Bradley ruled fix round A (PR #61, plugin 0.56.2), judged by its
+       verdict round (tester @ hb-20261016-02: all ten VERIFIED on the sandbox, no finding logged) — never re-reviewed.
+     Cut: release/[v]0.56.2 from dev @ c917d99 (the post-merge re-stamp hb-20261016-03), ONE commit beyond (the strip, daedab6): rev-list
+       reads 1, no declared path survives, merge-tree against main conflict-free, no ours-merge needed (main's three extra commits strip the
+       same set); stripped tree: both strict validates PASS; battery verbatim from both YAMLs in temp worktrees, the two in parallel: 52/52 on
+       the stripped tree and 53/53 on the dev tip (29 min each; the one substitution each: the Install Claude Code step read the local claude;
+       the stripped arm's depth-1 fetch of dev's bus run without --depth=1 so the shared object store stayed whole — the R12 trap avoided).
+     CI on the release PR #62 (daedab6), first cut, QUOTED per job after completion:
+         validate-plugin 38970591547: changes success / manifests success / validate (ubuntu-latest) success (10 m 40 s) /
+           validate (windows-latest) success (12 m 58 s) / validate (macos-latest) success (7 m 32 s)
+         docs-drift 38970592790: drift (full) success (3 m 45 s)
+         pr-target-guard 38970591549: guard success
+       GitGuardian: pass (scanned this time; the R12 PR was "too large to scan").
+     Merged by Bradley (main @ 25b9997); tag [v]0.56.2 pushed by hand at origin/main (dev-utils release-finish not used: it switches the
+       checkout to dev, which this worktree cannot hold while the main checkout has it); release branch gone remote and local; this worktree
+       left on a branch at dev's tip; the main checkout untouched (on dev, behind origin by this round's commits — the pull there is Bradley's).
+     Housekeeping: F-530..F-555 (14 sections) moved VERBATIM to the archive by dev-utils archive, with 4 header Walk lines (hb-20261015-04,
+       hb-20261015-06, hb-20261015-10, hb-20261016-02) into its Walks block (live 14 -> 0, archive 94 -> 108, sum 108; 602 lines removed
+       equal the 602 added, the sorted sets byte-equal; block sha256 a26e1e114ac1831fe82da4e29a2c80fbeee25bda7d8c03ea9bdfd7414eacb3ac).
+       No DEFERRED section exists. Entry hint updated. Under test + canary -> dev · hb-20261016-04 by dev-utils handoff (a post-release
+       re-stamp, not a round). Next free number F-556. Released: 0.56.2; dev stages nothing.
+     Now live from main: nothing — no workflow or Dependabot file changed since 0.54.0.
+     GitHub Release: https://github.com/BradleyDB/gs-admin-cli-docs/releases/tag/v0.56.2 (notes = .github/release-intro.md and the five
+       CHANGELOG entries since the previous tag, newest first; not a draft, not a prerelease; Latest).
+     Consumer refresh: claude plugin marketplace update gs-admin-cli-docs; claude plugin update gs-superadmin@gs-admin-cli-docs.
+     Carried forward (not in this release): the R14 tester's three report-only notes, polish by the bus question, unlogged pending Bradley's
+       read — re-documentation through the dashboard records a template's doc_path absolute where its neighbours are KB-relative
+       (describe-batch reached with an absolute --out-dir); a refresh whose lock a handle keeps says nothing of it (the next taker cures it);
+       "no snapshot yet" precedes "already running" for a rebuild during a FIRST refresh — and the R13 round's carried notes (a false "token
+       expired" under two concurrent refreshes; change saves before its consequence's tenant pre-flight; refresh accepts an unknown --dry-run
+       silently; the comma-list sentence holds for interview-list settings only). Issues #11 and #12 open (help wanted). The companion
+       gs-fortress repo runs its close-out --release for E1/V1/E2 against the tag of 0.56.2. -->
 
 <!-- builder 2026-10-16 (R14 fix round CLOSED — PR #61 MERGED to dev at 2b4ae28 on Bradley's word ("go ahead and merge the pr and continue with the release ceremony"); F-530, F-536, F-541, F-542, F-545, F-546, F-552, F-553, F-554, F-555 VERIFIED (tester @ hb-20261016-02, 830afee); plugin 0.56.2 on dev beside 0.56.1, 0.56.0, 0.55.0 and 0.54.1; no number claimed; next free F-556):
      Merge evidence (PR #61 at 830afee, quoted per job): GitGuardian pass (1 s); changes pass (6 s, run 38965249876); manifests pass (12 s, run
