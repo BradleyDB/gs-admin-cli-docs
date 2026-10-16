@@ -3593,3 +3593,44 @@ BROKEN (a refusal absent at <version>): a call exits 0 (the 1.0.10 silent drop, 
 or fails with a Request ID (the server refused, not the CLI). Record which; that KI stays open with the version, and
 the matching version-conditional clause in the engagement adapter's header reverts to the 1.0.10 wording for every
 version (REOPEN F-549 for that clause only).
+
+## R13 polish round — live arms for F-536 and F-546, and the walk (banked 2026-10-15, builder, claude/polish-pre-release-r13-6bdd49; verdict at hb-20261015-10)
+
+Owed by: the tester round on hb-20261015-10 (a terminal in the workspace with --plugin-dir, canary matched; the
+production KB, reads only; NO PULL beyond what R2 makes). R3 has no live arm: the stand-in suite is its judge, and the
+verdict says so.
+
+### R1 (F-536) — the page's no-internal-domain line in the three real shells
+
+On a dashboard whose page shows the no-internal-domain notice (a scratch import with its domains emptied:
+`change <scratch> sources.0.params.internalDomains=none`, then `rebuild <scratch>`), open the admin page's About tab
+and copy the line as printed (`… change <scratch> "sources.0.params.internalDomains=<domains>" --kb <kb>`). Put two
+domains in place of `<domains>` (keep the quotes), append ` --dry-run`, and paste it from the workspace folder in
+Git Bash, Windows PowerShell 5.1 and cmd in turn. Record each shell's exit code and the `changed` row.
+FIXED: each shell exits 0 with `changed` naming `sources[].params.internalDomains[]` and two example paths — the pair
+arrived whole. BROKEN: any shell refuses, or one item arrives → REOPEN F-536 naming the shell and what node received
+(`node -e "console.log(process.argv)"` with the same words shows the arrival).
+
+### R2 (F-546) — two dashboards of one KB refreshed at once
+
+Two saved dashboards on the one KB (the kept one and the scratch import), both with re-documentation on. In two
+terminals, start `refresh <a>` and `refresh <b>` within a few seconds of each other (the second's re-documentation
+waits on the first's manifest marks; the wait is silent when it is seconds). Record both summaries and the manifest's
+`inventory` status of the programs each re-documented.
+FIXED: both refreshes finish (exit 0, or 3 on the token — the lock is not the stop), neither prints "manifest is locked
+by another writer", and both runs' marks are in the manifest after. BROKEN: "manifest is locked by another writer …
+did not finish within 30s" → the default wait is short for a real re-documentation: log it under F-546 with how long
+the holder's mark ran; a lost mark (a program one run documented reads pending or stale after the other finished) is
+the F-546 defect again → REOPEN.
+
+### R3 (F-541, F-542, F-545) — no live arm
+
+No tenant can produce the F-541 spec (a validator tightening between versions), F-542 needs a schedule change between
+a stop and its resume, and F-545 a second refresh during a live one on a tenant pull: each is judged by the stand-in
+suite's scenario (test/dashboard.mjs "F-541", "F-542", "F-545") and the verdict states it.
+
+### Walk — email-engagement, the change grammar
+
+The skill is model-invocable (no disable-model-invocation): the tester invokes it with a one-setting change ("rename
+the leaders' page of <scratch> to …") and records the `change` line the model composed (bare value, or the pair in
+double quotes), the shell it ran in, and whether it ran as written with `--dry-run` first and the consequence relayed.
