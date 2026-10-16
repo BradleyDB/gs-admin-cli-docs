@@ -3304,6 +3304,7 @@ five checks green):
   order (all 25 checked from the page file, not five), the note naming size and floor; with August–September 2026 in the
   filter bar each note adds "re-ranked here over what is shown", and every account visible is in its own list only.
 Section status: OPEN on F-530 (reopened, three instances of consumer-parity); F-548 VERIFIED.
+Section status (release prep, 2026-10-16, builder): CLEARED — F-530 VERIFIED at the re-verification round (the section below, N0–N5; tester @ hb-20261015-06), so every arm here is judged. Spent for 0.56.1.
 
 ## F-530 reopened — the customer lists in words, on every surface (banked 2026-10-15, builder, Session B's F-530 round @ hb-20261015-06; verdict at the F-530 re-verification round)
 
@@ -3375,6 +3376,7 @@ whoami, after one by-hand login. Pages were read as a headless Chrome DOM dump o
   prediction, and no arm here puts a per-segment list in the report. A per-segment list over a field the last pull did not read
   needs a pull.
 - Cleanup: f530-scratch and the export files were removed.
+Section status (release prep, 2026-10-16, builder): CLEARED — N0–N5 PASSED as recorded above, the role-inverted line confirmed by the builder (PR #57 merged at df5dfec); F-530 VERIFIED on the bus; N4's mutant stays the builder's named gap. Spent for 0.56.1.
 
 ## F-549 / CP-6 — six live checks on CLI 1.0.11 or later: what the 1.0.11 fixes the doctrine now names actually do on a tenant (banked 2026-10-15, builder, session E1+V1 on doctrine-cli-1-0-11-plus; verdict at the branch's handoff token — CLEARED 2026-10-15 @ hb-20261015-07: all six FIXED at 1.0.12; KI-030 persists)
 
@@ -3637,3 +3639,5 @@ suite's scenario (test/dashboard.mjs "F-541", "F-542", "F-545") and the verdict 
 The skill is model-invocable (no disable-model-invocation): the tester invokes it with a one-setting change ("rename
 the leaders' page of <scratch> to …") and records the `change` line the model composed (bare value, or the pair in
 double quotes), the shell it ran in, and whether it ran as written with `--dry-run` first and the consequence relayed.
+
+Section status (release prep, 2026-10-16, builder): CLEARED — R1 measured in the three shells on the page's own line (F-536), R2 run small (two one-program scratch pulls; the lock's bar held vacuously, the manifest suite the judge of record, F-546), R3 by the stand-in suite as banked (F-541, F-542, F-545), the walk done (the tester @ hb-20261015-10; the bus's Walk and Blind spots lines keyed to that token carry the record); F-536, F-541, F-542, F-545, F-546, F-551 VERIFIED. Spent for 0.56.1.
