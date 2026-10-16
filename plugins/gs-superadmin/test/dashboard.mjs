@@ -1051,6 +1051,14 @@ try {
         isDeepStrictEqual(afterKeep, [{ kind: "most-bounced", n: 5, floor: 0 }]) && isDeepStrictEqual(afterDefault, [{ kind: "most-bounced", n: 5, floor: 0 }]) && isDeepStrictEqual(afterSix, [{ kind: "most-bounced", n: 6, floor: 0 }]) &&
         /changes 1 setting \(accounts\.lists\[\]\)/.test(oneClose.json?.closing?.ask ?? ""),
       [one.json?.done ?? one.json?.error, listDds(admin), accountsDd(admin), intro, oneQ.json?.question?.ask, afterKeep, afterDefault, afterSix, oneClose.json?.closing?.ask?.slice(0, 200)]);
+    // The tester's role-inverted line (F-530, B-V re-verification, N4; Bradley's ruling): the edit question's low-cadence
+    // sentence is said only beside a least-engaged list, the rule the report's intro follows. Held both ways here (the
+    // tester noted no suite asserted it); the builder's confirm.
+    const LOW = "On a program that sends about once per contact, a least-engaged list uses at least 3 delivered and no open instead of its floor.";
+    const detailAsk = (lists) => askText(q("customer-list-detail"), { ...PLAN_CTX, spec: { ...PLAN_CTX.spec, accounts: { ...PLAN_CTX.spec.accounts, lists } } });
+    check("F-530 (the tester's role-inverted line, confirmed by the builder): the edit question's low-cadence sentence is said beside a least-engaged list and only there — absent over one most-bounced list, present over a most-bounced and a least-engaged list; the default lists keep the ruled wording",
+      !detailAsk([{ kind: "most-bounced", n: 5, floor: 0 }]).includes(LOW) && detailAsk([{ kind: "most-bounced", n: 5, floor: 0 }, { kind: "least-engaged", n: 10, floor: 5 }]).includes(LOW) && askText(q("customer-list-detail"), PLAN_CTX) === RULED["customer-list-detail"],
+      [detailAsk([{ kind: "most-bounced", n: 5, floor: 0 }]), detailAsk([{ kind: "most-bounced", n: 5, floor: 0 }, { kind: "least-engaged", n: 10, floor: 5 }])]);
     // F-544: snapshots are ordered by the instant their pull time parses to, never by the name. A pull an hour LATER
     // named EARLIER (the clock moved back: its local time with the offset dropped sorts first), and a same-second pair
     // whose collision suffix sorts before the plain name: the latest is the newest instant; retention trims the oldest.
