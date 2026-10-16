@@ -262,7 +262,7 @@ script cannot make:
   scope-limited — next bullet). The scorecard family works either way; the audit
   skill's `sc list --limit 10000` single fetch is the precedent (its bare defaults
   truncate — `sc m list` serves 20 rows by default, measured on 1.0.4; since CLI
-  1.0.8 (re-checked at v1.0.10) the four `sc` list commands return a top-level `_total` the mode reconciles
+  1.0.8 (re-checked at v1.0.12) the four `sc` list commands return a top-level `_total` the mode reconciles
   against).
 - On `suspect`, re-verify with a larger limit captured to a **separate** file (never
   overwrite the baseline being compared against); where no larger fetch exists (the

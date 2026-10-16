@@ -5,6 +5,35 @@ marketplace doesn't pin versions — users get main — so entries describe what
 user who updates, not internal refactors. Entries before 0.8.0 were reconstructed from git
 history when this file was introduced.
 
+## 0.56.0 — 2026-10-15
+
+CLI pin 1.0.10 → 1.0.12 (gs-fortress audit-1.0.12, CP-1 and CP-7). The pin skips 1.0.11:
+1.0.12 ships 1.0.11's code unchanged with one dependency pin moved, so a workspace on either
+reads the same. What a user gets by updating:
+
+- **Reference bundle regenerated from 1.0.12** (catalog, cheatsheet, ask-rules, version).
+  The command surface did not move: 188 commands / 182 MCP tools / 10 domains, no mutating
+  flag moves, the guard untouched, the 20 non-mutating POST fetches the same list. The one
+  catalog difference beyond the version stamps is `dm o list --sort-field`'s description,
+  which now names the nine keys the server sorts on.
+- **The per-pin CLI facts table is back for workspaces on 1.0.11 or 1.0.12.** It is stamped
+  1.0.12 and also verified on 1.0.11 (the same code), so setup's candidate gate again buckets
+  the four `re rules` per-asset reads and `report` again relays the scope limits there. A
+  workspace still on 1.0.10 or 1.0.9 now gets the table withdrawn with the "re-verify"
+  warning instead: the `journey email templates` entry changed at 1.0.11 (the list descends
+  subfolders), and an entry found changed drops the older versions. That entry itself still
+  carries the 1.0.10 wording — the live count is measured now (F-549 / CP-6 (c): the list
+  descends subfolders, three templates still unreachable) and the rewrite is F-551, a later
+  round — while the scope note it points at already says which version each clause holds
+  for.
+- **Version prose re-checked at 1.0.12** across the skills, setup references, operating model
+  and READMEs. The Known CLI issues header says what 1.0.11 changed (the report,
+  data-management and journey handlers, the error exits, the token-store loading) and that
+  1.0.12 changed nothing further; the read-verb allowlist and the CLI's two re-login
+  sentences re-verified unchanged against the 1.0.12 package; relationships-build's
+  semantics basis records 1.0.11 and 1.0.12 (the rules-engine handler and manifest are
+  byte-identical from 1.0.10).
+
 ## 0.55.0 — 2026-10-15
 
 Customer lists that stay current. In 0.54.0 a routine refresh updated the figures of the
@@ -35,7 +64,6 @@ accounts on the lists but never who was on them: membership changed only at a fu
   report's offer to refresh prices it as the full pull it is. Nothing to do by hand.
   `export --with-snapshot` carries the store, so a backup refresher's first pull stays
   selective.
-
 ## 0.54.1 — 2026-10-15
 
 The plugin's account of the Gainsight CLI is correct again for a workspace whose installed
