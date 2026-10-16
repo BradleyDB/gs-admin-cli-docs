@@ -3611,17 +3611,18 @@ FIXED: each shell exits 0 with `changed` naming `sources[].params.internalDomain
 arrived whole. BROKEN: any shell refuses, or one item arrives → REOPEN F-536 naming the shell and what node received
 (`node -e "console.log(process.argv)"` with the same words shows the arrival).
 
-### R2 (F-546) — two dashboards of one KB refreshed at once
+### R2 (F-546) — two dashboards of one KB refreshed at once: SMALL, or none (re-scoped 2026-10-16, Bradley)
 
-Two saved dashboards on the one KB (the kept one and the scratch import), both with re-documentation on. In two
-terminals, start `refresh <a>` and `refresh <b>` within a few seconds of each other (the second's re-documentation
-waits on the first's manifest marks; the wait is silent when it is seconds). Record both summaries and the manifest's
-`inventory` status of the programs each re-documented.
-FIXED: both refreshes finish (exit 0, or 3 on the token — the lock is not the stop), neither prints "manifest is locked
-by another writer", and both runs' marks are in the manifest after. BROKEN: "manifest is locked by another writer …
-did not finish within 30s" → the default wait is short for a real re-documentation: log it under F-546 with how long
-the holder's mark ran; a lost mark (a program one run documented reads pending or stale after the other finished) is
-the F-546 defect again → REOPEN.
+NEVER a refresh of the kept dashboard (an hour of production pull each; a polish lock does not buy that). The judge of
+record is test/manifest-ops.mjs "F-546" (a held lock refused naming the holder, a released lock landed, a stale lock
+taken over); this arm is optional and cheap or it is skipped: two SCRATCH dashboards (`new <a>` / `new <b>` with a
+`names:` selector of one program each, Health off, customer lists off, re-documentation on), each a refresh of a few
+calls. In two terminals start `refresh <a>` and `refresh <b>` within a second of each other. Record both summaries.
+FIXED: both finish (exit 0, or 3 on the token — the lock is not the stop) and neither prints "manifest is locked by
+another writer". BROKEN: that line → log it under F-546 with how long the holder ran; a lost mark (a program one run
+documented reads pending or stale after the other finished) is the F-546 defect again → REOPEN. SKIPPED: say so on the
+verdict ("R2 not run; the suite's judge stands") — a FIXED → VERIFIED on the suite alone is the expected reading here.
+Remove the two scratch dashboards after.
 
 ### R3 (F-541, F-542, F-545) — no live arm
 
