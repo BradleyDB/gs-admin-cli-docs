@@ -153,6 +153,18 @@ Under test: dev · hb-20261015-03 · 2026-10-15
 Blind spots (hb-20261015-03): a post-release re-stamp after 0.54.0 (tag [v]0.54.0 at bb95a20), not a round: nothing new is under test; dev carries only the test-rig fix (PR #56, judged by its 3-OS run) and the deferred F-530/F-548 (Session B) and polish F-536/F-541/F-542/F-545/F-546
 
 
+<!-- builder 2026-10-15 (E1+V1 of gs-fortress build-kickoffs-1.0.12.md HANDED OFF — UNMERGED, riding doctrine-cli-1-0-11-plus (PR #58 to dev, open); F-549 (normal) OPEN -> FIXED on that branch; token hb-20261015-05; plugin 0.54.1 on the branch; no number claimed; next free F-550):
+     Kickoff: open PRs to dev — #57 (Session B, F-548/F-530, green on its five checks, CONFLICTING against dev since the F-549
+     emission landed on the tail of this file; keep both sides) and now #58; no OPEN polish (the five DEFERRED past 0.54.0 stay).
+     Content: CP-2 (sc measures --id: cause named, fixed at 1.0.11, --name the default), CP-3 (libuv abort and the one-level
+     template-folder flattening scoped to 1.0.10 and earlier, parse-stderr kept on every version, the ### heading untouched),
+     CP-4 (engagement.mjs header facts version-stamped, one-at-a-time rule and every validateQuery guard kept, classifyFailure
+     reads a 1.0.11+ field refusal as shape-error before the not-found class — mutation-proved: 3 FAILED of 380 with the branch
+     removed), CP-5 (0.54.0 -> 0.54.1 + CHANGELOG), CP-6 (six live checks banked in dev/VALIDATION.md § F-549 / CP-6 (a)-(f)).
+     Battery 60 steps 0 red locally; npm run build NOT run (ungated leg; the regen is the gated session E2).
+     Ordering vs #57: both edit scripts/engagement.mjs and test/engagement.mjs and both bump from 0.54.0 (#57 -> 0.55.0, #58 ->
+     0.54.1); whichever merges second rebases and takes the next number — Bradley's call. Close-out after the merge: gs-fortress
+     close-out.mjs 1.0.12 --session E1,V1 --pr 58 (never typed). -->
 <!-- builder 2026-10-15 (Session B — F-548 redesign round HANDED OFF — UNMERGED, riding feat/f548-ranking-every-refresh (PR #57 to dev, open); F-548 and F-530 (both normal) OPEN -> FIXED on that branch, re-opened from DEFERRED (past 0.54.0) by their defers' trigger; token hb-20261015-04; plugin 0.55.0; no number claimed; next free F-549):
      Kickoff: no open PR to dev; no OPEN polish (F-536, F-541, F-542, F-545, F-546 stay DEFERRED past 0.54.0, auto, and
        block the next release ceremony as the skill says: carried, not in this round).
