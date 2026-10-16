@@ -660,13 +660,42 @@ export const REASONS = deepFreeze({
   "account-not-kept-on-program": "The dashboard did not keep this account there: it holds no row of the account on the program over its window.",
   "program-not-in-dashboard": "The program is not in the dashboard.",
   "no-send-in-months-compared": "The dashboard kept this account there, but the account's sends on it fall only outside the whole months compared (the first, partial month of these days, or the provisional month), so there was nothing to compare.",
-  // Why a selective refresh holds no ranking for a cross-program customer list (F-521): it carries the last full
-  // ranking, and these have none to carry. A full pull ranks every list again.
-  "list-set-since": "This list was set after the full pull that ranked the others, and a pull that continues from an earlier one cannot rank it: a full pull (a dashboard's refresh with --full) ranks it over every account.",
-  "previous-not-ranked": "The pull this one continued from held no ranking of this list over every program, so there was none to keep: a full pull (a dashboard's refresh with --full) ranks it over every account.",
+  // Why a customer list holds no ranking. Since F-548 every refresh ranks every list, so only a per-segment list a
+  // change set over a company field the pull did not read is not ranked (until the next refresh reads it). The two
+  // after it are a snapshot made before F-548, when a selective refresh carried the last full ranking (F-521).
+  "field-not-read": "This list is split by a company field the last pull did not read, so it is not ranked yet: the next refresh reads the field and ranks it.",
+  "list-set-since": "This list was set after the full pull that ranked the others, and a pull that continued from an earlier one could not rank it then: the next pull ranks it over every account.",
+  "previous-not-ranked": "The pull this one continued from held no ranking of this list over every program, so there was none to keep: the next pull ranks it over every account.",
 });
 /** @param {?string} id @returns {string} the reason in words; an id the table lacks is shown as itself */
 export const reasonText = (id) => (id == null ? "" : REASONS[id] ?? `No value (${id}).`);
+
+// ── A customer list in words (F-530, reopened at B-V: the class "a surface states the preset's lists, not the ones
+// kept") ── ONE home for how every surface names a cross-program customer list: the About tab's Accounts and Pages
+// entries, the page's list panels, the report, the interview's questions. Each kind's words, its panel title and what
+// it may show (the labels never say churn); listPhrase names one list exactly as configured or ranked.
+export const LIST_KIND_WORDS = Object.freeze({
+  "most-engaged": Object.freeze({ words: "most engaged", title: "Most engaged customers", reading: "possible advocates" }),
+  "least-engaged": Object.freeze({ words: "least engaged", title: "Least engaged customers", reading: "possible bad contacts or disengagement" }),
+  "most-bounced": Object.freeze({ words: "most bounced", title: "Most bounced customers", reading: "possible bad contacts" }),
+});
+/** One list, as every surface names it: "the 5 most bounced", "the 25 least engaged (at least 10 delivered) per Industry". */
+export const listPhrase = (l) => `the ${l.n} ${LIST_KIND_WORDS[l.kind]?.words ?? l.kind}${l.floor > 0 ? ` (at least ${l.floor} delivered)` : ""}${l.per ? ` per ${l.per}` : ""}`;
+/** ONE identity of a customer list (kind, size, floor, segment field): every comparison of lists reads it (F-555). */
+export const listIdentity = (l) => JSON.stringify([l.kind, l.n, l.floor, l.per ?? null]);
+/** The lists as configured, once each: a selection record holds a per-segment list once per segment. */
+export const distinctLists = (lists) => [...new Map((lists ?? []).map((l) => [listIdentity(l), l])).values()];
+/**
+ * Rows put in a given key order, in place (the pull's ranking of a customer list: the page's panel and the report show
+ * the record's order, with the engine's sort only breaking ties — F-530, one home F-555); a row whose key the order
+ * does not hold goes last, in the order it had.
+ * @template T @param {T[]} rows @param {string[]} keys @param {(row: T) => string} keyOf @returns {T[]} the same array
+ */
+export const orderByKeys = (rows, keys, keyOf) => {
+  const at = new Map(keys.map((k, i) => [k, i]));
+  const was = new Map(rows.map((r, i) => [r, i]));
+  return rows.sort((a, b) => (at.get(keyOf(a)) ?? Infinity) - (at.get(keyOf(b)) ?? Infinity) || was.get(a) - was.get(b));
+};
 /**
  * The programs a timeline's dashboard comparison left out, grouped by why (F-520): one group per reason, its words and
  * the programs' names, the whole comparison's own reason left out (it is said once, as the comparison's). The one

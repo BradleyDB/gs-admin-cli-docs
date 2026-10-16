@@ -487,6 +487,7 @@ const CONTENT_KINDS = new Set(["content", "lookalike"]);
  * Build the tenant. Variants (all optional) reshape it for one scenario:
  *   cutoff          "YYYY-MM-DD" — sends on or after this day do not exist yet
  *   lateOpens       true — every unopened delivered send before 2026-07 is now opened
+ *   recentUnopened  true — no send on or after 2026-08 is opened (F-548: data that changed inside the months a refresh pulls)
  *   token           {state: "valid"|"expired"|"none", seconds}
  *   dropSchemaField {object, field} — the schema (and so the filter) lacks it
  *   noSurveyObject  true — survey_participant has no schema at all
@@ -529,6 +530,7 @@ export function buildTenant(variant = {}) {
     const rejected = (!sent && !bounced) || (!!variant.bothFlags && !sent && bounced && n % 4 === 0);
     let opened = sent && n % 3 !== 0;
     if (variant.lateOpens && sent && month < "2026-07") opened = true;
+    if (variant.recentUnopened && month >= "2026-08") opened = false;
     const mode = CLICK_MODE[tpl] ?? "none";
     let kinds = null;
     if (sent && opened && mode.startsWith("ownsite") && n % 2 === 0) {
@@ -846,6 +848,14 @@ export const FAULT_TEXT = {
   auth: "Error: Access token has expired. Run `gs-admin login` to re-authenticate.",
   outage: `Error: The communication with the external API could not be established due to a network outage. Try again later. If the issue persists, contact Gainsight Support for further assistance.\n${REQUEST_ID}`,
   generic: `Error: The request could not be processed. Contact Gainsight Support for more information.\n${REQUEST_ID}`,
+  // CLI 1.0.11 and later refuse an unknown field by name before any request (F-549): the
+  // words carry "not found", but they describe the query, not a missing asset. The two
+  // lines are the real stderr captured at 1.0.12 (F-551; dev VALIDATION, CP-6 (f)): no
+  // Request ID — the CLI refused before any request — and a case-only miss is ACCEPTED
+  // there (the filter field resolves case-insensitively), so the example is a name that
+  // is really unknown.
+  "field-refused": `Error: Field "Nmae" not found on email_log_v2. Did you mean "Name"? List the object's fields with \`rp schema email_log_v2\`.`,
+  "filter-field-refused": `Error: Filter field "NoSuchField" not found on email_log_v2. List the object's fields with \`rp schema email_log_v2\`.`,
 };
 const WARN_TEXT = "[report] normalizeGroupByDedup: removed 1 showField(s) already present in groupByFields.";
 

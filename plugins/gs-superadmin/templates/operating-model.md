@@ -218,7 +218,7 @@ you at the spelling the guard understands. Use the installed `gs-admin` binary.
   are behind (or have a `.new` waiting for you) and points at setup; apart from the
   `plugin` link above, nothing under `.gs-superadmin/` is written outside a setup run.
 
-## Known CLI issues (observed live on 1.0.4; statically re-checked at v1.0.10 — the run-now catalog mislabel below was fixed upstream at 1.0.8, the rest still stand: from 1.0.8 to 1.0.9 only the two connectors artifacts changed, and 1.0.10 changed only the auth module (token refresh removed, so the `sc measures --id` entry's stated mechanism is scoped to 1.0.9 and earlier) — every artifact, handler and core/config file is byte-identical from 1.0.9 to 1.0.10; two issues first observed live at 1.0.9 are listed below (`sc scheme list`, ledger KI-016; the libuv error-path abort, ledger KI-017) — recheck after CLI upgrades)
+## Known CLI issues (observed live on 1.0.4; statically re-checked at v1.0.12 — the run-now catalog mislabel below was fixed upstream at 1.0.8; from 1.0.8 to 1.0.9 only the two connectors artifacts changed, and 1.0.10 changed only the auth module (token refresh removed, so the `sc measures --id` entry's stated mechanism is scoped to 1.0.9 and earlier); 1.0.11 changed the report, data-management and journey handlers, the error exits (no `process.exit()` on error paths) and the token-store loading, which resolved several entries below for 1.0.11 and later — each such entry says which version it holds for, and the rest still stand; from 1.0.11 to 1.0.12 nothing in the package's dist changed, only one dependency pin; two issues first observed live at 1.0.9 are listed below (`sc scheme list`, ledger KI-016; the libuv error-path abort, ledger KI-017) — recheck after CLI upgrades)
 
 When a `gs-admin` command misbehaves in a Known-CLI-issue-like way that this list does
 **not** cover (wrong/missing flag, false auth error, silent truncation, mislabeled
@@ -226,18 +226,23 @@ mutating flag, state left behind), suggest `/gs-superadmin:report-bug` to the us
 right away — it captures a vendor-ready "prompt and problem" report while the verbatim
 commands and output are still in this session.
 
-- **`sc measures --id` fails with a false "No stored token found"** even though
-  `gs-admin whoami` shows the token valid. On CLI 1.0.9 and earlier it fails once the
-  stored token is past half its lifetime: the CLI refreshes tokens with no single-flight
-  guard, and this is its only command whose *first* authenticated call is a concurrent
-  fan-out — the concurrent refresh corrupts the credential read, which is then misreported
-  as a missing token. On CLI 1.0.10, which has no token refresh, it fails **every time**,
-  a fresh token included (measured live 2026-09-26: 7 of 7 across four scorecards, from
-  3589 s down to 1057 s remaining). The cause there is unknown — the concurrent first
-  call is still there, so a concurrent credential read is the suspect (read from the
-  1.0.10 handler, not confirmed). **Use
-  `sc measures --name '<scorecard name>'` instead** on any version (resolves name→id
-  sequentially, which primes auth first — unaffected).
+- **`sc measures --id` fails with a false "No stored token found" on CLI 1.0.10 and
+  earlier** even though `gs-admin whoami` shows the token valid. On CLI 1.0.9 and earlier
+  it fails once the stored token is past half its lifetime: the CLI refreshes tokens with
+  no single-flight guard, and this is its only command whose *first* authenticated call
+  is a concurrent fan-out — the concurrent refresh corrupts the credential read, which is
+  then misreported as a missing token. On CLI 1.0.10, which has no token refresh, it fails
+  **every time**, a fresh token included (measured live 2026-09-26: 7 of 7 across four
+  scorecards, from 3589 s down to 1057 s remaining). The cause there, read from what
+  1.0.11 fixed: a keychain-load race between the command's two concurrent first requests
+  — each built its own token store, and the second missed the OS keychain and reported no
+  token (the concurrent credential read the 1.0.10 handler made the suspect). **Fixed
+  upstream at 1.0.11** (gs-fortress ledger KI-028): one keychain load and one token store
+  per process, so on CLI 1.0.11 and later `--id` works (measured live at 1.0.12: three
+  first-call `--id` reads after a fresh login, each returning the tree `--name` returns).
+  **Use `sc measures --name '<scorecard name>'` instead** on any
+  version (resolves name→id sequentially, which primes auth first — unaffected on every
+  version); on 1.0.10 and earlier it is the only form that works.
 - **`sc measures` flattens only one level of the measures tree**, so on rollup-enabled
   scorecards its rows are measure *groups* presented as measures (the real measures stay
   nested in each row's `children`; `_groupName` is the rollup's display name). Classify
@@ -330,12 +335,18 @@ commands and output are still in this session.
   the CLI's own artifact manifests**, with no flag to lift them, and reported totals are
   *post-filter* (so `returned == totalAfterFilters` proves paging completeness, not
   inventory completeness). Known cases: `jo email templates` reaches only part of the
-  library (validated on a live tenant 2026-07: 619 of 1,336 reachable) — two causes:
-  its handler flattens ONE level of the folder tree, so templates inside nested
-  subfolders are dropped (642 on that tenant) and the subfolders surface as field-less
-  rows carrying only a `folderName` (no id — skip them); plus a residual filter that
-  hides some top-level templates too (~75 on that tenant; suspected `source=COMMS`
-  scope or template state — unconfirmed). **Workaround (validated live)**: the gap is
+  library (validated on a live tenant 2026-07, CLI 1.0.4: 619 of 1,336 reachable) — two
+  causes: on CLI 1.0.10 and earlier its handler flattens ONE level of the folder tree, so
+  templates inside nested subfolders are dropped (642 on that tenant) and the subfolders
+  surface as field-less rows carrying only a `folderName` (no id — skip them) — on 1.0.11
+  and later the handler descends into child folders instead (fixed upstream, gs-fortress
+  ledger KI-003; measured live at 1.0.12 on one tenant: 1239 templates listed where 1.0.10
+  listed 648, no field-less rows, and 3 of the 1180 the KB held still absent, each in a
+  folder whose other templates list; `--folder` still matches a folder's own name only,
+  never a path — KI-030); plus, on every version, a residual filter that hides some
+  templates too (~75 top-level on the 2026-07 tenant, 3 on the 1.0.12 one; suspected
+  `source=COMMS` scope or template state — unconfirmed). **Workaround
+  (validated live)**: the gap is
   discovery-only — `jo email template --id <id>` uses a different endpoint and returns
   list-invisible templates fine, so any template whose id is known (e.g. from a UI
   export) is fully documentable. KB docs for email templates store metadata + the
@@ -360,8 +371,8 @@ commands and output are still in this session.
   signature on a full list, and an already-recorded workspace re-dates once with
   `--no-date-field --allow-redate`. Sibling `sc list` / `sc m list` / measure-group lists
   are unaffected (observed live on 1.0.9; ledger KI-016).
-- **Every error path aborts on a libuv assertion instead of exiting cleanly.** After
-  printing a correct API error, the process aborts with
+- **Every error path aborts on a libuv assertion instead of exiting cleanly (CLI 1.0.10
+  and earlier).** After printing a correct API error, the process aborts with
   `Assertion failed: !(handle->flags & UV_HANDLE_CLOSING), file src\win\async.c, line 94`
   and exits with a crash status — the raw process status on Windows is 0xC0000409
   (3221226505, a Windows fail-fast; measured 2026-09-14 from a Node spawn with no shell),
@@ -372,20 +383,33 @@ commands and output are still in this session.
   without `--json`. The success path exits 0 cleanly. **Parse stderr for the `Error:`
   line rather than trusting the exit code**; treat exit 127, 255 or 3221226505 from
   `gs-admin` as "check stderr", never as "the CLI is not installed" (observed live on 1.0.9; ledger KI-017).
+  On CLI 1.0.11 and later upstream no longer calls `process.exit()` on its error paths —
+  the shared command handler sets the exit code (2 for a validation error, 1 otherwise)
+  and returns, and the envelope printer and the version gate do the same — which is
+  upstream's account of this abort, and measured live at 1.0.12 (Git Bash and Windows
+  PowerShell 5.1, with and without `--json`): the API error on stderr with a Request ID,
+  exit 1 in both shells, no assertion. So the crash codes above are 1.0.10-and-earlier
+  measurements; **parse stderr on every version** all the same — the exit code says a
+  call failed, the `Error:` line says why.
 - **`re rules topics` and `jo email connectors` always fail server-side** — `Error: Server
   Error Occurred, Please contact support` and `Error: HTTP 500` respectively, with a fresh
   Gainsight Request ID on every call (8 attempts across two tokens and two shells, on two
   independent tenants; 0 successes). Both are non-mutating tenant-wide list commands with no
-  required flags, so there is no alternate spelling to try and no workaround. Both also abort
-  on the libuv assertion above, so the exit code is a crash code (raw 0xC0000409; 127 under Git Bash,
-  255 under PowerShell), **not** an auth or server status — do not mistake it for token
+  required flags, so there is no alternate spelling to try and no workaround. On CLI 1.0.10
+  and earlier both also abort on the libuv assertion above, so the exit code is a crash code
+  (raw 0xC0000409; 127 under Git Bash, 255 under PowerShell), **not** an auth or server
+  status (on 1.0.11 and later it is exit 1 with the error on stderr) — do not mistake it for token
   expiry (on CLI 1.0.9 and earlier, the half-life defect) and do not loop on re-login.
   Record such a command as **blocked with a
   re-check date, never excluded**: "returns 500 today" is not a durable reason to bury a
   domain (observed live on 1.0.8 and 1.0.9; ledger KI-018).
-- **General rule**: any "No stored token found" while `whoami` succeeds is this bug class,
-  not a logged-out state. Prefer a sequential variant of the command or `gs-admin login`
-  to mint a fresh token; do not conclude auth is broken or loop on re-login.
+- **General rule**: on CLI 1.0.10 and earlier, any "No stored token found" while `whoami`
+  succeeds is this bug class, not a logged-out state. Prefer a sequential variant of the
+  command or `gs-admin login` to mint a fresh token; do not conclude auth is broken or
+  loop on re-login. On 1.0.11 and later the one known trigger (`sc measures --id`) is
+  fixed, so the same symptom there has no known cause: still prefer the sequential variant
+  or a fresh login, still never loop on re-login, and capture it with
+  `/gs-superadmin:report-bug`.
 
 ---
 

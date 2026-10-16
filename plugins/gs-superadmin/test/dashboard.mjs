@@ -25,17 +25,18 @@
 // Run:  node plugins/gs-superadmin/test/dashboard.mjs
 // Zero dependencies — Node built-ins only.
 // ─────────────────────────────────────────────────────────────────────────────
-import { readFileSync, writeFileSync, existsSync, readdirSync, mkdirSync, rmSync, renameSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync, readdirSync, mkdirSync, rmSync } from "node:fs";
 import { join, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { isDeepStrictEqual } from "node:util";
 import { makeTempDir, removeTempDir, writeFiles, runNode } from "../../../test/rig.mjs";
-import { COSTS, COST_KINDS, ADAPTER_MAPPING, QUESTIONS, CLOSING_ASK, CLOSING_OPTIONS, askText, defaultAnswer, composeAnswer, defaultGroupRules, categoryCostText, changeCost, coveredPath, computeDelta, adapterParams, pullSecondsAfter, loginsFor, LOGIN_SECONDS, EXIT, KEEP_SNAPSHOTS, LOCK_STALE_MS, LOCK_FILE, STATE_FILE, SNAPSHOTS_DIR, PREVIEW_DIR, SUGGESTION_FILE, ACCOUNTS_DIR, PUBLISH_TARGETS_FILE, PUBLISH_DIR, NATIVE_READ_PATHS, runOwner } from "../scripts/dashboard.mjs";
+import { COSTS, COST_KINDS, ADAPTER_MAPPING, QUESTIONS, CLOSING_ASK, CLOSING_OPTIONS, askText, defaultAnswer, composeAnswer, defaultGroupRules, categoryCostText, changeCost, changeValue, coveredPath, computeDelta, adapterParams, pullSecondsAfter, loginsFor, LOGIN_SECONDS, EXIT, KEEP_SNAPSHOTS, LOCK_STALE_MS, LOCK_FILE, STATE_FILE, SNAPSHOTS_DIR, PREVIEW_DIR, SUGGESTION_FILE, ACCOUNTS_DIR, PUBLISH_TARGETS_FILE, PUBLISH_DIR, NATIVE_READ_PATHS, runOwner } from "../scripts/dashboard.mjs";
+import { spawnSync } from "node:child_process";
 import { resolveGroups, programTraits } from "../scripts/dashboard-groups.mjs";
-import { SPEC_DESCRIPTIONS, defaultSpec, openSpec, DEFAULT_ACCOUNT_LISTS } from "../scripts/dashboard-spec.mjs";
+import { SPEC_DESCRIPTIONS, defaultSpec, openSpec, DEFAULT_ACCOUNT_LISTS, presetPanels } from "../scripts/dashboard-spec.mjs";
 import { HOW_TO_REFRESH_RULED } from "./fixtures/engagement/ruled-text.mjs";
-import { LACKS, HOW_TO_REFRESH_TEXT } from "../scripts/dashboard-runtime.mjs";
-import { openSnapshot } from "../scripts/engagement-query.mjs";
+import { LACKS, HOW_TO_REFRESH_TEXT, COPY_LINES } from "../scripts/dashboard-runtime.mjs";
+import { openSnapshot, listPhrase } from "../scripts/engagement-query.mjs";
 import { nativePlan, TEST_PREFIX } from "../scripts/dashboard-native.mjs";
 import { makeGate, resolveParams } from "../scripts/engagement.mjs";
 import { kbFiles, OWN_SITE_UNSUBSCRIBE, TEMPLATES_DOMAIN, buildTenant, FIXTURE_BOUNCE_CATEGORIES } from "./fixtures/engagement/acme-tenant.mjs";
@@ -89,7 +90,9 @@ const draftFile = (slug = SLUG, kb = KB) => join(dash(slug, kb), "spec.draft.jso
 const specFile = (slug = SLUG, kb = KB) => join(dash(slug, kb), "spec.json");
 const readJson = (p) => JSON.parse(readFileSync(p, "utf8"));
 const argvLines = () => (existsSync(join(STATE, "argv.jsonl")) ? readFileSync(join(STATE, "argv.jsonl"), "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l).argv.join(" ")) : []);
-const snapshots = (slug = SLUG, kb = KB) => (existsSync(join(dash(slug, kb), SNAPSHOTS_DIR)) ? readdirSync(join(dash(slug, kb), SNAPSHOTS_DIR)).filter((f) => f.endsWith(".json")).sort() : []);
+// The snapshots, never the account store beside the latest (F-548: `<stamp>.accounts.json`), which stores() lists.
+const snapshots = (slug = SLUG, kb = KB) => (existsSync(join(dash(slug, kb), SNAPSHOTS_DIR)) ? readdirSync(join(dash(slug, kb), SNAPSHOTS_DIR)).filter((f) => f.endsWith(".json") && !f.endsWith(".accounts.json")).sort() : []);
+const stores = (slug = SLUG, kb = KB) => (existsSync(join(dash(slug, kb), SNAPSHOTS_DIR)) ? readdirSync(join(dash(slug, kb), SNAPSHOTS_DIR)).filter((f) => f.endsWith(".accounts.json")).sort() : []);
 const pageText = (page, slug = SLUG, kb = KB) => readFileSync(join(dash(slug, kb), `latest-${page}.html`), "utf8");
 const manifest = (kb = KB) => readJson(join(kb, "_manifest.json"));
 const runDirs = () => (existsSync(join(WS, ".gs-superadmin", "tmp", "engagement")) ? readdirSync(join(WS, ".gs-superadmin", "tmp", "engagement")) : []);
@@ -342,7 +345,7 @@ try {
   const afterSegments = readJson(draftFile()).spec.accounts;
   check("the lists' detail (ruling 16) through its follow-ups: a size and floor per list ('keep' leaves one), then a per-segment list over a company field, added beside the three (the field recorded); a malformed size is refused naming the list",
     sized.code === 0 && isDeepStrictEqual(afterSizes.lists.map((l) => [l.kind, l.n, l.floor]), [["most-engaged", 3, 2], ["least-engaged", 3, 2], ["most-bounced", 25, 0]]) && segmented.code === 0 && afterSegments.lists.length === 4 && isDeepStrictEqual(afterSegments.lists[3], { ...DEFAULT_ACCOUNT_LISTS.find((l) => l.kind === "least-engaged"), per: "Industry" }) && isDeepStrictEqual(afterSegments.fields, ["Industry"]) &&
-      /the most engaged list: give a size and a floor as two numbers/.test(run("answer", [SLUG, "customer-list-detail", "sizes:lots|keep|keep"]).json?.error ?? ""), [sized.json, segmented.json, afterSegments]);
+      /the most engaged list: give a size and a floor as two numbers/.test(run("answer", [SLUG, "customer-list-detail", "sizes:lots|keep|keep|keep"]).json?.error ?? ""), [sized.json, segmented.json, afterSegments]);
   const stepQ = run("next", [SLUG]);
   run("answer", [SLUG, "step-detail", "no"]);
   const reasonsQ = run("next", [SLUG]);
@@ -424,7 +427,7 @@ try {
     purposed.code === 0 && purposed.json.consequence === "rebuild" && pageText("admin").includes(`<p class="gs-purpose">Which programs need attention this month.</p>`) && argvLines().length === callsBeforeChange, purposed.json);
   const relisted = run("change", [SLUG, 'accounts.lists=[{"kind":"most-bounced","n":2,"floor":0}]']);
   const snapshot1b = openSnapshot(readJson(join(dash(), SNAPSHOTS_DIR, snap1[0])));
-  check("change (the customer lists): a re-selection over the last run directory's rows (reduce again, no pull): the snapshot's selection record now holds the one list of 2 and the pages are rebuilt",
+  check("change (the customer lists): a re-selection from the account store beside the last pull (F-548: no pull, no run directory): the snapshot's selection record now holds the one list of 2 and the pages are rebuilt",
     relisted.code === 0 && relisted.json.consequence === "reselect" && relisted.json.done.done === true && isDeepStrictEqual(relisted.json.done.lists, [{ kind: "most-bounced", kept: 2 }]) && argvLines().length === callsBeforeChange && snapshot1b.honesty.accountSelection.lists.length === 1 && snapshot1b.honesty.accountSelection.lists[0].kept.length === 2, relisted.json);
   // The last plan is the one the latest snapshot was pulled from (its run directory, the derived-lookback one), never
   // the preview's or an older plan's.
@@ -443,7 +446,7 @@ try {
   const callsBeforeHealth = argvLines().length;
   const healthOnly = run("refresh", [SLUG, "--health-only"]);
   check("refresh --health-only: a selective pull that reads the current month's facts again with the health families and carries the rest (fewer calls than the full pull), then rebuilds", healthOnly.code === 0 && healthOnly.json.healthOnly === true && healthOnly.json.pull.mode === "selective" && snapshots().length === 3 && healthOnly.json.pull.calls.made < pulled.json.done.pull.calls.made && argvLines().length > callsBeforeHealth, [healthOnly.json?.pull, pulled.json?.done?.pull?.calls]);
-  writeFileSync(join(dash(), LOCK_FILE), JSON.stringify({ by: "ben", at: new Date().toISOString(), pid: 1 }));
+  writeFileSync(join(dash(), LOCK_FILE), JSON.stringify({ by: "ben", at: new Date().toISOString(), pid: process.pid }));
   const locked = run("refresh", [SLUG]);
   check("the lock: a second refresh is refused naming the holder and the time, before any call", locked.code === 1 && /already running: started by ben at /.test(locked.json?.error ?? "") && snapshots().length === 3, locked.json);
   const staleAt = new Date(Date.now() - LOCK_STALE_MS - 60000).toISOString();
@@ -663,10 +666,12 @@ try {
   const health = run("health", [SLUG, "--program", "p-onboard"]);
   check("health: a program's masked bounce reasons, participant failures, step failures and the 'Other' samples to the terminal", health.code === 0 && health.json.program.id === "p-onboard" && health.json.bounceReasons.length > 0 && Array.isArray(health.json.otherSamples) && health.json.health.pulled === true, health.json?.program);
   const exported = run("export", [SLUG, "--out", join(ROOT, "handover", "acme-health.json"), "--with-snapshot"]);
-  check("export --with-snapshot: the spec's portable file and the latest snapshot beside it", exported.code === 0 && existsSync(exported.json.out) && existsSync(exported.json.snapshot) && exported.json.snapshot.endsWith("acme-health.snapshot.json"), exported.json);
+  check("export --with-snapshot: the spec's portable file and the latest snapshot beside it, with its account store beside that (F-548), so the import's first refresh ranks with no full pull", exported.code === 0 && existsSync(exported.json.out) && existsSync(exported.json.snapshot) && exported.json.snapshot.endsWith("acme-health.snapshot.json") &&
+    exported.json.accountStore?.endsWith("acme-health.snapshot.accounts.json") && existsSync(exported.json.accountStore) && readJson(exported.json.accountStore).pulledAt === readJson(exported.json.snapshot).meta.pulledAt && /selective/.test(exported.json.hint), exported.json);
   const imported = run("import", ["--file", join(ROOT, "handover", "acme-health.json")], { flags: ["--workspace", WS2, "--kb", KB2, "--bin", FAKE, "--today", TODAY, "--by", "cy"] });
   const rebuilt = run("rebuild", [SLUG], { flags: ["--workspace", WS2, "--kb", KB2, "--bin", FAKE, "--today", TODAY, "--by", "cy"] });
   const status2 = run("status", [SLUG], { flags: ["--workspace", WS2, "--kb", KB2, "--bin", FAKE, "--today", TODAY, "--by", "cy"] });
+  check("import carries the account store beside the snapshot into the dashboard's snapshots folder, paired with the imported snapshot (F-548)", imported.json?.accountStore != null && existsSync(imported.json.accountStore) && readJson(imported.json.accountStore).pulledAt === readJson(imported.json.snapshot).meta.pulledAt && imported.json.accountStore === imported.json.snapshot.replace(/[.]json$/, ".accounts.json"), imported.json);
   check("import on a second workspace of the same tenant: the spec and the snapshot land, the pages rebuild from it with no pull, and status reads the carried pull", imported.code === 0 && imported.json.snapshot != null && rebuilt.code === 0 && rebuilt.json.pages.length === 2 && status2.json?.lastPull?.pulledAt === readJson(join(dash(), SNAPSHOTS_DIR, snapshots().at(-1))).meta.pulledAt, [imported.json, rebuilt.json, status2.json?.lastPull]);
   const wrongImport = run("import", ["--file", join(ROOT, "handover", "acme-health.json")], { flags: ["--workspace", WS2, "--kb", KB2, "--bin", FAKE, "--today", TODAY] });
   check("import never overwrites silently: the same slug again is refused without --replace", wrongImport.code === 1 && /already saved here/.test(wrongImport.json?.error ?? ""), wrongImport.json);
@@ -709,7 +714,8 @@ try {
     const lines = [...new Set([...prerender.matchAll(/data-copy="([^"]*)"/g)].map((m) => m[1].replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&")))];
     const fromWorkspace = (argv) => { const x = runNode(SCRIPT, [...argv, "--bin", FAKE, "--today", TODAY, "--by", "ana"], { cwd: WS, env: { ...process.env, FAKE_STATE: STATE, FAKE_TENANT: JSON.stringify(TENANT) } }); let json = null; try { json = JSON.parse(x.stdout); } catch { /* a stack */ } return { code: x.status, json, stderr: x.stderr }; };
     // A fill line is run with its value put where the line says (a change line's value after `=`; the account line's name between its empty quotes, ACC-2).
-    const asArgv = (line) => line.replace(/^node \.gs-superadmin\/plugin\/scripts\/dashboard\.mjs /, "").replace("<program id>", "p-onboard").replace(/=$/, '=["example.com"]').split(" ").map((t, i, all) => (t === "''" && all[i - 1] === "--account-name" ? "Acme Customer 01" : t));
+    // (the shell's part is simulated here: a pair in double quotes is one word with the quotes removed, F-536; the real shells judge it below in the R13 block)
+    const asArgv = (line) => line.replace(/^node \.gs-superadmin\/plugin\/scripts\/dashboard\.mjs /, "").replace("<program id>", "p-onboard").replace("<domains>", "example.com").split(" ").map((t, i, all) => (t === "''" && all[i - 1] === "--account-name" ? "Acme Customer 01" : /^".*"$/.test(t) ? t.slice(1, -1) : t));
     const results = lines.map((line) => { const argv = asArgv(line); return { line, ...fromWorkspace(argv[0] === "change" ? [...argv, "--dry-run"] : argv) }; });
     const bare = fromWorkspace(asArgv(lines.find((l) => / refresh /.test(l))).filter((a, i, all) => !(a === "--kb" || all[i - 1] === "--kb")));
     check("F-503 every copy line the admin page emits (the How to refresh line, every notice's change line, the health line, the account timeline's line) carries --kb <folder> and runs as drawn from the workspace folder with two tenant KB folders present (a change line as a dry run, the refresh and health lines for real); the same refresh line without --kb is refused naming the two folders, as the tester saw",
@@ -957,49 +963,115 @@ try {
     const dryList = run("change", [SLUG, `accounts.lists=${JSON.stringify(lists3)}`, "--dry-run"]);
     const sel = run("change", [SLUG, 'title="Acme health lists"', `accounts.lists=${JSON.stringify(lists3)}`]);
     const afterSel = readSnap();
-    check("F-529 a list change over a SELECTIVE latest pull (a routine refresh) ranks nothing and says so: the dry run's consequence names the routine refresh and the next full refresh's line; the change saves, exits 0, done false and ranked false with the reason, a full pull's minutes and the `refresh … --full` line as its remedy; the snapshot's lists are as before; the pages are rebuilt with the other change of the same command (the title); no call",
-      routine.code === 0 && routine.json.pull.mode === "selective" && dryList.code === 0 && dryList.json.consequence === "reselect" && /routine refresh/.test(dryList.json.consequenceText) && /ranked at the next full refresh \(`node \S+ refresh acme-health --kb acme-prod --full`\)/.test(dryList.json.consequenceText) &&
-        sel.code === 0 && sel.json.saved === true && sel.json.done?.kind === "reselect" && sel.json.done.done === false && sel.json.done.ranked === false && sel.json.done.rebuilt === true && /routine refresh/.test(sel.json.done.why) && sel.json.done.remedy?.line?.endsWith("refresh acme-health --kb acme-prod --full") && typeof sel.json.done.fullRefreshMinutes === "number" && /ranked at the next full refresh/.test(sel.json.done.text) &&
-        isDeepStrictEqual(rk(afterSel), rk(before)) && pageText("admin").includes("Acme health lists") && argvLines().length === callsBefore,
-      [dryList.json?.consequenceText, sel.json?.done ?? sel.json?.error ?? sel.stderr?.slice(-400), rk(before), rk(afterSel)]);
-    const remedy = asPrinted(sel.json?.done?.remedy?.line ?? "");
-    const ranked = readSnap();
-    const l0 = ranked.honesty?.accountSelection?.lists?.[0];
-    check("F-529 the remedy runs as printed (from the workspace folder): its full refresh ranks the changed list over every program (one list, accounts kept, no notRanked)",
-      remedy.code === 0 && remedy.json?.pull?.mode === "full" && ranked.honesty.accountSelection.lists.length === 1 && l0?.kind === "most-bounced" && l0.n === 3 && l0.kept.length > 0 && l0.notRanked == null && l0.selectedFrom === "every program", [remedy.json?.error ?? remedy.stderr?.slice(-300), rk(ranked)]);
-    // Over a FULL latest pull the change ranks, as before the narrowing.
-    const fullRank = run("change", [SLUG, 'accounts.lists=[{"kind":"most-bounced","n":2,"floor":0}]']);
-    check("F-529 over a FULL latest pull a list change ranks again with no pull, as before: done true, ranked true, the snapshot's one list of 2",
-      fullRank.code === 0 && fullRank.json.done.done === true && fullRank.json.done.ranked === true && isDeepStrictEqual(fullRank.json.done.lists, [{ kind: "most-bounced", kept: 2 }]) && readSnap().honesty.accountSelection.lists[0].kept.length === 2, fullRank.json?.done ?? fullRank.json?.error);
-    // Instance (3): the full pull's run directory rewritten to phase plan (as an edit's plan resuming it does): a refusal
-    // of the ranking, said, never loadRun's stack trace; the other changes still land.
-    const root = join(WS, ".gs-superadmin", "tmp", "engagement");
-    const statusFile = join(root, remedy.json?.run ?? "none", "status.json");
-    const statusBefore = existsSync(statusFile) ? readFileSync(statusFile, "utf8") : null;
-    if (statusBefore) writeFileSync(statusFile, JSON.stringify({ ...JSON.parse(statusBefore), phase: "plan" }));
-    const inPlan = run("change", [SLUG, 'accounts.lists=[{"kind":"most-bounced","n":4,"floor":0}]', 'pages.0.title="Admin in plan"']);
-    if (statusBefore) writeFileSync(statusFile, statusBefore);
-    check("F-529 instance (3): a list change whose full pull's run directory is in plan phase exits 0 with no stack trace, ranks nothing and says why (not a finished pull), and still rebuilds the pages with the other change",
-      statusBefore != null && inPlan.code === 0 && inPlan.json.done.ranked === false && /not a finished pull now \(status ok, phase plan/.test(inPlan.json.done.why) && inPlan.json.done.rebuilt === true && pageText("admin").includes("Admin in plan") && !/\n\s+at /.test(inPlan.stderr), [inPlan.json?.done ?? inPlan.stderr?.slice(-500)]);
-    // Instance (2): the run directory gone (a cleaned tmp): the other changes still land, the ranking waits.
-    const moved = join(ROOT, "moved-run");
-    if (existsSync(join(root, remedy.json?.run ?? "none"))) renameSync(join(root, remedy.json.run), moved);
-    const gone = run("change", [SLUG, 'accounts.lists=[{"kind":"most-bounced","n":5,"floor":0}]', 'pages.0.title="Admin rows gone"']);
-    if (existsSync(moved)) renameSync(moved, join(root, remedy.json.run));
-    check("F-529 instance (2): with the pull's rows gone a list change rebuilds the other changed settings (the page title), ranks nothing, and says the rows are gone and the full refresh's line",
-      gone.code === 0 && gone.json.done.ranked === false && gone.json.done.rebuilt === true && /no longer in the workspace/.test(gone.json.done.why) && pageText("admin").includes("Admin rows gone") && gone.json.done.remedy.line.endsWith("--full"), gone.json?.done ?? gone.json?.error);
+    check("F-548 (F-529's root) a list change over a SELECTIVE latest pull (a routine refresh) is ranked from the account store with no pull: the dry run says so; the change saves, exits 0, done and ranked true; the snapshot holds the changed list ranked over that pull's figures; the pages are rebuilt with the other change (the title); no call; one store, the latest snapshot's",
+      routine.code === 0 && routine.json.pull.mode === "selective" && routine.json.accountStore?.endsWith(".accounts.json") && dryList.code === 0 && dryList.json.consequence === "reselect" && /ranked again from the account store/.test(dryList.json.consequenceText) &&
+        sel.code === 0 && sel.json.saved === true && sel.json.done?.kind === "reselect" && sel.json.done.done === true && sel.json.done.ranked === true && sel.json.done.rebuilt === true && /ranked again from the account store/.test(sel.json.done.text) &&
+        isDeepStrictEqual(rk(afterSel), [["most-bounced", 3, 0, 3, null]]) && afterSel.honesty.accountSelection.lists[0].rankedAt === before.meta.pulledAt && pageText("admin").includes("Acme health lists") && argvLines().length === callsBefore &&
+        isDeepStrictEqual(stores(), [snapshots().at(-1).replace(/[.]json$/, ".accounts.json")]),
+      [dryList.json?.consequenceText, sel.json?.done ?? sel.json?.error ?? sel.stderr?.slice(-400), rk(before), rk(afterSel), stores(), snapshots()]);
+    // The store stays beside the snapshot (F-548): no page carries it, the leaders' page least of all. Every account in
+    // the store but the kept ones would otherwise reach a page; the kept accounts are all a page names.
+    const storeKeys = readJson(join(dash(), SNAPSHOTS_DIR, stores()[0])).accounts;
+    // The settings name accounts too (the test accounts, any pinned one): those are the spec's, never the store's.
+    const keptKeys = new Set([...afterSel.dimensions.accounts.map((a) => a.key), ...(afterSel.meta.params.testAccounts ?? []), ...(afterSel.meta.params.accounts.pinned ?? [])]);
+    const unkept = storeKeys.filter((k) => !keptKeys.has(k));
+    check("F-548 no page carries the account store: neither the admin page nor the leaders' page holds its kind or any account it holds that the lists did not keep (and the settings do not name)",
+      unkept.length > 0 && ["admin", "exec"].every((p) => !pageText(p).includes("gs-superadmin/account-store") && unkept.every((k) => !pageText(p).includes(`"${k}"`))), [unkept.slice(0, 5), ["admin", "exec"].map((p) => { const t = pageText(p); const k = unkept.find((x) => t.includes(`"${x}"`)); return k ? t.slice(Math.max(0, t.indexOf(`"${k}"`) - 200), t.indexOf(`"${k}"`) + 40) : null; })]);
+    // The judge, at the runner: a full refresh over the same stand-in data ranks the changed list to the same accounts,
+    // in order; a routine refresh after it ranks them itself, to the same accounts again.
+    const keptAfterChange = afterSel.honesty.accountSelection.lists.map((l) => l.kept);
+    const fullAfter = run("refresh", [SLUG, "--full"]);
+    const fullSnap = readSnap();
+    const routineAfter = run("refresh", [SLUG]);
+    const routineSnap = readSnap();
+    check("F-548 the list ranked from the store equals a full refresh's over the same data (the same kept accounts, in order, and the same accounts kept on the page), and a routine refresh after it ranks the list itself to the same accounts: ranked by its own pull, carried from nothing",
+      fullAfter.code === 0 && fullAfter.json.pull.mode === "full" && isDeepStrictEqual(fullSnap.honesty.accountSelection.lists.map((l) => l.kept), keptAfterChange) && isDeepStrictEqual(fullSnap.dimensions.accounts.map((a) => a.key), afterSel.dimensions.accounts.map((a) => a.key)) &&
+        routineAfter.code === 0 && routineAfter.json.pull.mode === "selective" && isDeepStrictEqual(routineSnap.honesty.accountSelection.lists.map((l) => l.kept), keptAfterChange) && routineSnap.honesty.accountSelection.lists.every((l) => l.rankedAt === routineSnap.meta.pulledAt && l.carriedFrom == null && l.notRanked == null) && stores().length === 1,
+      [fullAfter.json?.error ?? fullAfter.stderr?.slice(-300), keptAfterChange, fullSnap.honesty?.accountSelection?.lists?.map((l) => l.kept), routineSnap.honesty?.accountSelection?.lists?.map((l) => l.kept)]);
+    // MIGRATION (Bradley's contract): the latest snapshot made as 0.54.0 made it (no account store, no marker).
+    const latestPath = join(dash(), SNAPSHOTS_DIR, snapshots().at(-1));
+    const as054 = readJson(latestPath);
+    delete as054.meta.accountStore;
+    writeFileSync(latestPath, JSON.stringify(as054));
+    for (const f of stores()) rmSync(join(dash(), SNAPSHOTS_DIR, f));
+    const migReport = run("report", [SLUG]);
+    const oldChange = run("change", [SLUG, 'accounts.lists=[{"kind":"most-bounced","n":2,"floor":0}]', 'pages.0.title="Admin before the store"']);
+    const aboutInWindow = pageText("admin");
+    const migrate = asPrinted(oldChange.json?.done?.remedy?.line ?? "");
+    const migrated = readSnap();
+    const nextRoutine = run("refresh", [SLUG]);
+    check("F-548 MIGRATION: over a snapshot made before the account store the report prices the refresh it offers as the full pull it will be, with why; a list change saves, rebuilds the other change, ranks nothing and says the lists need one full pull to start ranking on every refresh, with the plain refresh line and a full pull's minutes; that line run as printed is the full pull, said (pull.why) and priced above a routine one, exit 0, no hand step and no refusal; it writes the store and ranks the changed list; the refresh after it is selective",
+      oldChange.code === 0 && oldChange.json.done.ranked === false && oldChange.json.done.rebuilt === true && /made before the account store: the customer lists need one full pull to start ranking on every refresh/.test(oldChange.json.done.why) && /refresh acme-health --kb acme-prod$/.test(oldChange.json.done.remedy.line) && typeof oldChange.json.done.fullRefreshMinutes === "number" && pageText("admin").includes("Admin before the store") &&
+        migrate.code === 0 && migrate.json?.pull?.mode === "full" && /the customer lists need one full pull to start ranking on every refresh/.test(migrate.json.pull.why) && migrate.json.budget.planSeconds > routineAfter.json.budget.planSeconds && stores().length === 1 &&
+        isDeepStrictEqual(rk(migrated), [["most-bounced", 2, 0, 2, null]]) && nextRoutine.code === 0 && nextRoutine.json.pull.mode === "selective" &&
+        migReport.code === 0 && /start ranking on every refresh/.test(migReport.json.refreshFullOnce ?? "") && migReport.json.refreshMinutes === migReport.json.fullRefreshMinutes && typeof migReport.json.refreshMinutes === "number",
+      [oldChange.json?.done ?? oldChange.json?.error, migrate.json?.pull ?? migrate.json?.error ?? migrate.stderr?.slice(-300), migrate.json?.budget, routineAfter.json?.budget, rk(migrated)]);
+    // F-530, second reopen (redesigned at the 0.56.1 gate; ruled by Bradley 2026-10-16: what is shown is described): in
+    // the window where a list change could not rank (no store), the About tab names the lists the pull RANKED — the
+    // record's, which the panels and the report draw — and says the change is waiting; once the full pull ranked the new
+    // list, the waiting line is gone and the About tab names the new list alone.
+    const waitingLine = `A change of the customer lists is waiting for the next refresh: the 2 most bounced. Until then the pages show the lists the pull of ${String(as054.meta.pulledAt).slice(0, 10)} ranked.`;
+    const rankedThen = as054.meta.params.accounts.lists.map(listPhrase);
+    const migratedLists = readSnap().meta.params.accounts.lists;
+    check("F-530 (reopened) the About tab in the no-store window describes what is shown: the lists the old snapshot was ranked with (named as the pull ranked them), with the waiting line naming the change (the 2 most bounced) and the pull it waits behind; after the full pull the About tab names the 2 most bounced alone, with no waiting line",
+      aboutInWindow.includes(waitingLine) && rankedThen.every((p) => aboutInWindow.includes(p)) && !pageText("admin").includes("waiting for the next refresh") && pageText("admin").includes("the 2 most bounced") && migratedLists.length === 1,
+      [aboutInWindow.includes(waitingLine), rankedThen, rankedThen.map((p) => aboutInWindow.includes(p)), pageText("admin").includes("waiting for the next refresh"), migratedLists]);
     // The edit screen (F-516's closing step) says the same over a routine refresh: its consequence and its first option.
-    run("refresh", [SLUG]);
     run("new", [SLUG]);
     const detail = run("next", [SLUG, "--question", "customer-list-detail"]);
-    run("answer", [SLUG, "customer-list-detail", composeAnswer(detail.json.question.options[1], { "most-engaged": "4 1", "least-engaged": "keep", "most-bounced": "keep" })]);
+    run("answer", [SLUG, "customer-list-detail", composeAnswer(detail.json.question.options[1], { "most-bounced": "4 1" })]);
     const editClose = run("next", [SLUG]);
-    run("answer", [SLUG, "dry-run", "no"]);
+    const editPreview = run("answer", [SLUG, "dry-run", "yes"]);
+    const previewAdmin = editPreview.json?.preview?.pages?.find((p) => p.page === "admin")?.path;
+    check("F-548 the edit's preview from the last pull (no call) ranks the draft's customer lists from the store in memory: its Most bounced panel states the draft's list (4, at least 1 delivered; the saved dashboard's one list, so the question offered that list alone), as its About tab does, and the saved snapshot is not rewritten",
+      editPreview.code === 0 && editPreview.json.preview?.fromLastPull === true && !!previewAdmin && readFileSync(previewAdmin, "utf8").includes("The 4 most bounced (at least 1 delivered) across programs") && readSnap().meta.params.accounts.lists.every((l) => l.n !== 4),
+      [editPreview.json?.preview ?? editPreview.json?.error, readSnap().meta.params.accounts.lists]);
     run("answer", [SLUG, "estimate", "yes"]);
     const editDone = run("answer", [SLUG, "save", "yes"]);
-    check("F-529 the edit's closing step over a routine refresh: the ask says the pages are rebuilt and the lists ranked at the next full refresh (with its line), the first option reads 'Save and rebuild the pages now (no pull; the customer lists are ranked at the next full refresh)', and the save's done says ranked false",
-      editClose.code === 0 && /the pages are rebuilt with no pull, and the changed customer lists are ranked at the next full refresh \(`node \S+ refresh acme-health --kb acme-prod --full`\): the latest pull \([^)]+\) was a routine refresh/.test(editClose.json.closing.ask) && editClose.json.closing.options[0].text === "Save and rebuild the pages now (no pull; the customer lists are ranked at the next full refresh)" &&
-        editDone.code === 0 && editDone.json.done?.kind === "reselect" && editDone.json.done.ranked === false && editDone.json.done.rebuilt === true, [editClose.json?.closing, editDone.json?.done ?? editDone.json?.error]);
+    check("F-548 the edit's closing step over a routine refresh: the ask says the customer lists are ranked again from the account store (a rebuild, no pull), the first option reads 'Save and rank the customer lists again now (no pull)', and the save's done says ranked true",
+      editClose.code === 0 && /the customer lists are ranked again from the account store beside the last pull \(a rebuild, no pull\)/.test(editClose.json.closing.ask) && editClose.json.closing.options[0].text === "Save and rank the customer lists again now (no pull)" &&
+        editDone.code === 0 && editDone.json.done?.kind === "reselect" && editDone.json.done.ranked === true && editDone.json.done.rebuilt === true, [editClose.json?.closing, editDone.json?.done ?? editDone.json?.error]);
+    // F-530 reopened at B-V — the CLASS, not its three samples: with the lists set to one most-bounced list of 5 and no
+    // floor, every text any surface renders about the customer lists names that list alone, its 5 and its floor (the
+    // page's panel and its About tab's Pages and Accounts entries, the report, the edit's question, follow-ups and
+    // closing ask), and an edit answered keep (or default) leaves the saved lists as they were.
+    const one = run("change", [SLUG, 'accounts.lists=[{"kind":"most-bounced","n":5,"floor":0}]']);
+    const visible = (html) => html.replace(/<script[\s\S]*?<\/script>/g, "");
+    const listDds = (html) => [...visible(html).matchAll(/<dd>([^<]*customers[^<]*)<\/dd>/g)].map((m) => m[1]);
+    const panelOf = (html, id) => visible(html).split(`data-panel="${id}"`)[1]?.split("</section>")[0] ?? "";
+    const accountsDd = (html) => visible(html).match(/<dt>Accounts<\/dt>\s*<dd>([^<]*)<\/dd>/)?.[1] ?? "";
+    const admin = pageText("admin");
+    const oneReport = run("report", [SLUG]);
+    const intro = oneReport.code === 0 ? (readFileSync(oneReport.json.report, "utf8").split("## Account watch list")[1] ?? "").split("\n").find((l) => l.startsWith("Across programs")) ?? "" : "";
+    run("new", [SLUG]);
+    const oneQ = run("next", [SLUG, "--question", "customer-list-detail"]);
+    const sizes = oneQ.json?.question?.options?.find((o) => o.id.startsWith("sizes:"));
+    run("answer", [SLUG, "customer-list-detail", composeAnswer(sizes, { "most-bounced": "keep" })]);
+    const afterKeep = readJson(draftFile()).spec.accounts.lists;
+    run("answer", [SLUG, "customer-list-detail", "default"]);
+    const afterDefault = readJson(draftFile()).spec.accounts.lists;
+    run("answer", [SLUG, "customer-list-detail", composeAnswer(sizes, { "most-bounced": "6 0" })]);
+    const afterSix = readJson(draftFile()).spec.accounts.lists;
+    const oneClose = run("next", [SLUG]);
+    rmSync(draftFile(), { force: true });
+    const texts = [...listDds(admin), accountsDd(admin), intro, oneQ.json?.question?.ask ?? "", ...(sizes?.followUps ?? []).map((f) => f.ask)];
+    check("F-530 the class: one most-bounced list of 5 with no floor is the list every surface names — the About tab's three list panels (the most-bounced one 'the 5 most bounced', the other two 'no … list is kept') and its Accounts entry, the panel's note, the report's intro (its one reading, no low-cadence sentence), the edit's question and its one follow-up — and no list text says 25 or names another list; keep and default leave the saved list as it was, '6 0' changes it alone, and the closing ask counts one setting",
+      one.code === 0 && one.json.done?.ranked === true && listDds(admin).length === 3 && listDds(admin).some((t) => /Most bounced customers.*the 5 most bounced, as the pull ranked it\./.test(t)) && listDds(admin).filter((t) => /no most engaged list is kept|no least engaged list is kept/.test(t)).length === 2 &&
+        /the 5 most bounced/.test(accountsDd(admin)) && !/most engaged|least engaged/.test(accountsDd(admin)) && panelOf(admin, "most-bounced").includes("The 5 most bounced across programs over the whole window") &&
+        /kept: the 5 most bounced\. Possible bad contacts: never a verdict on a customer\.$/.test(intro) &&
+        /This dashboard makes 1 list across programs: the 5 most bounced\./.test(oneQ.json?.question?.ask ?? "") && oneQ.json.question.options[0].text === "Keep the lists as they are (the default)" && isDeepStrictEqual(sizes?.followUps?.map((f) => f.key), ["most-bounced"]) &&
+        texts.every((t) => !/\b25\b/.test(t)) &&
+        isDeepStrictEqual(afterKeep, [{ kind: "most-bounced", n: 5, floor: 0 }]) && isDeepStrictEqual(afterDefault, [{ kind: "most-bounced", n: 5, floor: 0 }]) && isDeepStrictEqual(afterSix, [{ kind: "most-bounced", n: 6, floor: 0 }]) &&
+        /changes 1 setting \(accounts\.lists\[\]\)/.test(oneClose.json?.closing?.ask ?? ""),
+      [one.json?.done ?? one.json?.error, listDds(admin), accountsDd(admin), intro, oneQ.json?.question?.ask, afterKeep, afterDefault, afterSix, oneClose.json?.closing?.ask?.slice(0, 200)]);
+    // The tester's role-inverted line (F-530, B-V re-verification, N4; Bradley's ruling): the edit question's low-cadence
+    // sentence is said only beside a least-engaged list, the rule the report's intro follows. Held both ways here (the
+    // tester noted no suite asserted it); the builder's confirm.
+    const LOW = "On a program that sends about once per contact, a least-engaged list uses at least 3 delivered and no open instead of its floor.";
+    const detailAsk = (lists) => askText(q("customer-list-detail"), { ...PLAN_CTX, spec: { ...PLAN_CTX.spec, accounts: { ...PLAN_CTX.spec.accounts, lists } } });
+    check("F-530 (the tester's role-inverted line, confirmed by the builder): the edit question's low-cadence sentence is said beside a least-engaged list and only there — absent over one most-bounced list, present over a most-bounced and a least-engaged list; the default lists keep the ruled wording",
+      !detailAsk([{ kind: "most-bounced", n: 5, floor: 0 }]).includes(LOW) && detailAsk([{ kind: "most-bounced", n: 5, floor: 0 }, { kind: "least-engaged", n: 10, floor: 5 }]).includes(LOW) && askText(q("customer-list-detail"), PLAN_CTX) === RULED["customer-list-detail"],
+      [detailAsk([{ kind: "most-bounced", n: 5, floor: 0 }]), detailAsk([{ kind: "most-bounced", n: 5, floor: 0 }, { kind: "least-engaged", n: 10, floor: 5 }])]);
     // F-544: snapshots are ordered by the instant their pull time parses to, never by the name. A pull an hour LATER
     // named EARLIER (the clock moved back: its local time with the offset dropped sorts first), and a same-second pair
     // whose collision suffix sorts before the plain name: the latest is the newest instant; retention trims the oldest.
@@ -1197,6 +1269,187 @@ try {
         readme.includes("### The engagement dashboard") && !offer.test(readmeRead) && repoReadme.includes("/gs-superadmin:email-engagement") && !offer.test(repoReadme) &&
         at >= 0 && /Native Gainsight reports are not offered/.test(changelog.slice(at)) && !/native/i.test(entry),
       { skill: where(skillRead), readme: where(readmeRead), repoReadme: where(repoReadme), description: description.slice(-160), rule: groundRules.match(/.{0,60}(except|but for|exception|native).{0,60}/i)?.[0], entry: entry.match(/.{0,80}native.{0,80}/i)?.[0] });
+  }
+  // ══ R13 polish round (2026-10-15): F-536 the value grammar, F-541 the repair path, F-545 the lock first, F-542 the restart ══
+  {
+    rmSync(join(STATE, "faults.json"), { force: true });
+    const specBefore = readFileSync(specFile(), "utf8");
+    // F-536: the parser, in process — JSON when it parses; a bare value by the setting's kind; @file; a cmd-literal pair.
+    const refusal = (fn) => { try { fn(); return null; } catch (e) { return e.message; } };
+    const groupsFile = join(ROOT, "groups-f536.json");
+    writeFileSync(groupsFile, JSON.stringify({ rules: [], overrides: {} }));
+    check("F-536 change's value: JSON when it parses (true, 45, a JSON list); otherwise by the setting's kind — a list as comma-separated items, trimmed, `none` empty, a shell-stripped [a,b] the same list; a yes/no setting as yes or no (anything else refused by name); any other setting the bare text; @<file> the file's JSON; a missing file a refusal naming it",
+      changeValue("accounts.pull", "true") === true && changeValue("health.silentDays", "45") === 45 && isDeepStrictEqual(changeValue("sources.0.params.internalDomains", '["acme.com"]'), ["acme.com"]) &&
+        isDeepStrictEqual(changeValue("sources.0.params.internalDomains", "acme.com, acme.co.uk"), ["acme.com", "acme.co.uk"]) && isDeepStrictEqual(changeValue("sources.0.params.internalDomains", "[acme.com,acme.co.uk]"), ["acme.com", "acme.co.uk"]) &&
+        isDeepStrictEqual(changeValue("sources.0.params.internalDomains", "none"), []) && isDeepStrictEqual(changeValue("sources.0.params.testAccounts", "c-1"), ["c-1"]) &&
+        changeValue("sources.0.params.stepDetail", "yes") === true && changeValue("accounts.pull", "no") === false && /is not yes or no/.test(refusal(() => changeValue("accounts.pull", "maybe")) ?? "") &&
+        changeValue("title", "Renewals EMEA") === "Renewals EMEA" && changeValue("pages.1.title", "2026 plan") === "2026 plan" &&
+        isDeepStrictEqual(changeValue("groups", `@${groupsFile}`), { rules: [], overrides: {} }) && /cannot read the value as JSON from .*missing-f536\.json/.test(refusal(() => changeValue("groups", `@${join(ROOT, "missing-f536.json")}`)) ?? ""),
+      [refusal(() => changeValue("accounts.pull", "maybe")), changeValue("sources.0.params.internalDomains", "acme.com, acme.co.uk")]);
+    // (the saved spec holds one domain, so two new ones are two changed items — the dry run's diff against the saved spec)
+    const sq = run("change", [SLUG, "'sources.0.params.internalDomains=example.org,example.net'", "--dry-run"]);
+    check("F-536 a pair wrapped in single quotes, as cmd passes it, is the same pair: a dry run names the internal domains changed with two items",
+      sq.code === 0 && sq.json?.changed?.length === 1 && sq.json.changed[0].path === "sources[].params.internalDomains[]" && sq.json.changed[0].examples.length === 2, sq.json ?? sq.stderr?.slice(-300));
+    // The judge, independent of the parser: the no-internal-domain line as the page prints it (the runtime's LACKS row
+    // through COPY_LINES — test/dashboard-page.mjs holds the drawn page to this same line), the placeholder filled, run
+    // through the REAL shells from the workspace folder — Git Bash everywhere, plus cmd and Windows PowerShell 5.1 on
+    // Windows — as a dry run; each must deliver the pair whole (two items changed). The script's path stands in for
+    // the workspace link the page's line assumes, in double quotes, the one spelling all three accept.
+    const noDomainRow = LACKS.find((r) => r.reason === "no-internal-domain");
+    const pageLine = COPY_LINES.change(SLUG, "sources.0.params.internalDomains", noDomainRow?.setting?.placeholder ?? "", "acme-prod");
+    const shellLine = `node "${SCRIPT}" ${pageLine.replace(/^node \S+ /, "").replace("<domains>", "example.org,example.net")} --dry-run --bin "${FAKE}" --today ${TODAY} --by ana`;
+    const shells = [
+      { name: "bash", file: "f536.sh", script: `${shellLine}\n`, argv: (f) => ["bash", [f]] },
+      ...(process.platform === "win32" ? [
+        { name: "cmd", file: "f536.cmd", script: `@echo off\r\n${shellLine}\r\n`, argv: (f) => ["cmd.exe", ["/d", "/c", f]] },
+        { name: "powershell", file: "f536.ps1", script: `${shellLine}\r\nexit $LASTEXITCODE\r\n`, argv: (f) => ["powershell.exe", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", f]] },
+      ] : []),
+    ].map((sh) => {
+      const file = join(ROOT, sh.file);
+      writeFileSync(file, sh.script);
+      const [cmd, args] = /** @type {[string, string[]]} */ (sh.argv(file));
+      const x = spawnSync(cmd, args, { cwd: WS, encoding: "utf8", env: { ...process.env, FAKE_STATE: STATE, FAKE_TENANT: JSON.stringify(TENANT) } });
+      let json = null;
+      try { json = JSON.parse(x.stdout); } catch { /* a refusal or a shell error */ }
+      return { shell: sh.name, code: x.status, error: /** @type {?{code?: string}} */ (x.error)?.code ?? null, json, stderr: String(x.stderr ?? "").slice(-300) };
+    });
+    check("F-536 JUDGE (the real shells): the admin page's no-internal-domain line, as printed with the domains in place of <domains>, runs as a dry run from the workspace folder through Git Bash" + (process.platform === "win32" ? ", cmd and Windows PowerShell 5.1" : "") + ", and every shell delivers the pair whole: two internal domains changed, exit 0",
+      /change acme-health "sources\.0\.params\.internalDomains=<domains>" --kb acme-prod$/.test(pageLine) && shells.length === (process.platform === "win32" ? 3 : 1) &&
+        shells.every((s) => s.error === null && s.code === 0 && s.json?.ok === true && s.json.dryRun === true && s.json.changed?.length === 1 && s.json.changed[0].path === "sources[].params.internalDomains[]" && s.json.changed[0].examples.length === 2),
+      [pageLine, ...shells.map((s) => [s.shell, s.code, s.error, s.json?.changed ?? s.json?.error ?? s.stderr])]);
+    // F-541: a saved spec a tightened rule refuses (templates on, the preset's panels written out without the templates
+    // tab's: valid under S4b, refused under S4c) is repaired through the writer, never by hand.
+    const broken = JSON.parse(specBefore);
+    broken.pages[0].tabs.find((t) => t.id === "templates").enabled = true;
+    broken.pages[0].panels = presetPanels(broken.pages[0]).filter((p) => p.tab !== "templates");
+    const brokenProblem = refusal(() => openSpec(broken));
+    writeFileSync(specFile(), JSON.stringify(broken, null, 2) + "\n");
+    const opened = run("new", [SLUG]);
+    const other = run("change", [SLUG, "title=Acme repaired"]);
+    const specAfterOther = readFileSync(specFile(), "utf8");
+    const repaired = run("change", [SLUG, "pages.0.panels=[]"]);
+    const repairedSpec = refusal(() => openSpec(readJson(specFile())));
+    check("F-541 a saved spec this version's validator refuses opens as an edit naming the problem (new: problems + the repair line); a change of another setting is refused at the save naming the problem, nothing saved and no draft left; the repair itself (the panel list emptied) is saved through the writer, and the spec passes again",
+      /pages\[0\]\.panels lists no panel for the templates tab/.test(brokenProblem ?? "") && opened.code === 0 && opened.json?.state === "editing-saved" && opened.json.problems?.length === 1 && /lists no panel for the templates tab/.test(opened.json.problems[0]) && /change acme-health <path>=<value>/.test(opened.json.repair) &&
+        other.code === 1 && /not saved — pages\[0\]\.panels lists no panel for the templates tab/.test(other.json?.error ?? "") && !existsSync(draftFile()) &&
+        repaired.code === 0 && repaired.json?.saved === true && ["rebuild", "in-page"].includes(repaired.json.consequence) && repairedSpec === null && !existsSync(draftFile()),
+      [brokenProblem, opened.json?.problems, opened.json?.repair, other.json?.error ?? other.stderr?.slice(-300), repaired.json?.error ?? repaired.json?.consequence, repairedSpec]);
+    // The draft `new` opened above is the one `other` and `repaired` took over (the same holder); back to the walk's spec.
+    writeFileSync(specFile(), specBefore);
+    rmSync(draftFile(), { force: true });
+    check("(F-541 the other change was refused with the spec byte-equal)", specAfterOther === JSON.stringify(broken, null, 2) + "\n");
+    // F-541, reopened at the 0.56.1 gate: the repair holds through the INTERVIEW too — new's own hint (next to the
+    // closing step; next --question <id>) reaches the closing step, the dry-run answer lands, and the save is REFUSED
+    // naming the problem; never a stack (the edit getter opened the saved spec strictly).
+    writeFileSync(specFile(), JSON.stringify(broken, null, 2) + "\n");
+    const reopened = run("new", [SLUG]);
+    const toClosing = run("next", [SLUG]);
+    const oneQuestion = run("next", [SLUG, "--question", "tabs"]);
+    const noDryRun = run("answer", [SLUG, "dry-run", "no"]);
+    const later = run("answer", [SLUG, "save", "later"]);
+    const specAfterLater = readFileSync(specFile(), "utf8");
+    const repairedAgain = run("change", [SLUG, "pages.0.panels=[]"]);
+    check("F-541 (reopened) the interview over a refused saved spec: next reaches the closing step (exit 0, an action question), next --question tabs shows the question, answer dry-run no lands, and the save is REFUSED naming the problem (exit 1, a refusal, no stack), the spec untouched; the repair through change then saves",
+      reopened.code === 0 && reopened.json?.state === "editing-saved" && toClosing.code === 0 && toClosing.json?.question?.kind === "action" && oneQuestion.code === 0 && oneQuestion.json?.question?.id === "tabs" && noDryRun.code === 0 &&
+        later.code === 1 && /not saved — pages\[0\]\.panels lists no panel for the templates tab/.test(later.json?.error ?? "") && ![toClosing, oneQuestion, noDryRun, later].some((r) => /at openSpec|Error: dashboard spec:/.test(r.stderr ?? "")) &&
+        specAfterLater === JSON.stringify(broken, null, 2) + "\n" && repairedAgain.code === 0 && repairedAgain.json?.saved === true && !existsSync(draftFile()),
+      [toClosing.json?.question?.id ?? toClosing.json?.error ?? toClosing.stderr?.slice(-300), oneQuestion.json?.question?.id ?? oneQuestion.stderr?.slice(-200), noDryRun.json?.error ?? noDryRun.stderr?.slice(-200), later.json?.error ?? later.stderr?.slice(-300), repairedAgain.json?.error ?? repairedAgain.stderr?.slice(-200)]);
+    // Two problems from a tightened rule (the reopen's polish instance), repaired one change at a time: the first change
+    // is refused at the save naming the other problem but KEPT in the draft, the second builds on it and saves.
+    const twice = JSON.parse(specBefore);
+    for (const i of [0, 1]) {
+      twice.pages[i].tabs.find((t) => t.id === "templates").enabled = true;
+      twice.pages[i].panels = presetPanels(twice.pages[i]).filter((p) => p.tab !== "templates");
+    }
+    writeFileSync(specFile(), JSON.stringify(twice, null, 2) + "\n");
+    rmSync(draftFile(), { force: true });
+    const firstFix = run("change", [SLUG, "pages.0.panels=[]"]);
+    const draftKept = existsSync(draftFile());
+    const secondFix = run("change", [SLUG, "pages.1.panels=[]"]);
+    check("F-541 (reopened) two problems repaired one change at a time: the first is refused at the save naming the other problem and says the change is kept in the draft (1 problem left of 2), the draft stays, the second builds on it (draftHadEarlierChanges) and saves, and the spec passes again with no draft left",
+      firstFix.code === 1 && /not saved — pages\[1\]\.panels lists no panel for the templates tab.* — this change is kept in the draft \(1 problem left of 2\): change the remaining setting the same way, and the save follows$/.test(firstFix.json?.error ?? "") && draftKept &&
+        secondFix.code === 0 && secondFix.json?.saved === true && secondFix.json.draftHadEarlierChanges === true && refusal(() => openSpec(readJson(specFile()))) === null && !existsSync(draftFile()),
+      [firstFix.json?.error ?? firstFix.stderr?.slice(-300), draftKept, secondFix.json?.error ?? secondFix.stderr?.slice(-200)]);
+    writeFileSync(specFile(), specBefore);
+    rmSync(draftFile(), { force: true });
+    // F-545: a second refresh during a live one, with a stopped run's state file present, is told "already running"
+    // first — the lock is taken before the state file is read (the old order read the state first and said "waiting
+    // to resume … or remove refresh-state.json", the F-545 failure).
+    const stoppedRoutine = run("refresh", [SLUG], { env: { FAKE_FAULTS: JSON.stringify([{ match: "rp run", kind: "auth", skip: 30, times: 9999 }]) } });
+    // A LIVE holder names a process of this machine (the reopen: a holder whose process is gone is dead at once).
+    const liveLock = JSON.stringify({ by: "ben", at: new Date().toISOString(), pid: process.pid, run: "dash-acme-health-live" });
+    writeFileSync(join(dash(), LOCK_FILE), liveLock);
+    const during = run("refresh", [SLUG, "--full"]);
+    check("F-545 during a live refresh (a fresh lock) with a stopped run's state file present, a second refresh with other flags is refused as already running, naming the holder, never as waiting to resume; the state file and the holder's lock are untouched",
+      stoppedRoutine.code === EXIT["token-expired"] && existsSync(join(dash(), STATE_FILE)) && during.code === 1 && /already running: started by ben at /.test(during.json?.error ?? "") && !/waiting to resume/.test(during.json?.error ?? "") && !/refresh-state\.json/.test(during.json?.error ?? "") &&
+        existsSync(join(dash(), STATE_FILE)) && readFileSync(join(dash(), LOCK_FILE), "utf8") === liveLock, during.json ?? during.stderr?.slice(-300));
+    rmSync(join(dash(), LOCK_FILE), { force: true });
+    rmSync(join(STATE, "faults.json"), { force: true });
+    const finished = run("refresh", [SLUG]);
+    check("(F-545 the stopped run then resumes and finishes once the lock is gone)", finished.code === 0 && finished.json?.resumed === true && !existsSync(join(dash(), STATE_FILE)) && !existsSync(join(dash(), LOCK_FILE)), finished.json?.error ?? finished.stderr?.slice(-300));
+    // F-552: a rebuild, and a change's rebuild, take the refresh lock — refused while a refresh runs, never raced with it.
+    const titleBefore = readJson(specFile()).pages[0].title;
+    writeFileSync(join(dash(), LOCK_FILE), liveLock);
+    const rebuildDuring = run("rebuild", [SLUG]);
+    const changeDuring = run("change", [SLUG, "pages.0.title=Admin during a refresh"]);
+    check("F-552 while a refresh holds the lock, rebuild is refused as already running (the holder named, 'run rebuild again when it finishes'), and a display change is SAVED but its rebuild refused the same way (exit 1, the message saying the change is saved); the holder's lock untouched",
+      rebuildDuring.code === 1 && /already running: started by ben at .*run rebuild again when it finishes/.test(rebuildDuring.json?.error ?? "") && changeDuring.code === 1 && /^the change of "acme-health" is saved; its rebuild did not run: a refresh of "acme-health" is already running/.test(changeDuring.json?.error ?? "") && readJson(specFile()).pages[0].title === "Admin during a refresh" && readFileSync(join(dash(), LOCK_FILE), "utf8") === liveLock,
+      [rebuildDuring.json?.error ?? rebuildDuring.stderr?.slice(-300), changeDuring.json?.error ?? changeDuring.stderr?.slice(-300)]);
+    rmSync(join(dash(), LOCK_FILE), { force: true });
+    const rebuildAfter = run("rebuild", [SLUG]);
+    check("(F-552 the rebuild runs once the lock is gone, leaves none, and the page carries the saved change)", rebuildAfter.code === 0 && !existsSync(join(dash(), LOCK_FILE)) && pageText("admin").includes("Admin during a refresh"), rebuildAfter.json?.error ?? rebuildAfter.stderr?.slice(-200));
+    run("change", [SLUG, `pages.0.title=${titleBefore}`]);
+    // F-542: a resume whose derived health lookback moved since the run was planned — re-documentation moved the
+    // knowledge base (here: a selected program's doc now carries a six-monthly schedule) — plans and pulls in a fresh
+    // -lb<days> directory, and SAYS it starts again and why, never "the calls already made are reused".
+    const stoppedFull = run("refresh", [SLUG, "--full"], { env: { FAKE_FAULTS: JSON.stringify([{ match: "rp run", kind: "auth", skip: 30, times: 9999 }]) } });
+    const stateAfterStop = readJson(join(dash(), STATE_FILE));
+    const docPath = join(KB, "journey", "p-onboard.md");
+    const docBefore = readFileSync(docPath, "utf8");
+    // The schedule sits in the doc's JSON-encoded scheduleInfo string (escaped quotes); p-onboard's weekly CRON becomes a
+    // six-monthly RECURRING one (the type the schedule audit classifies recurring for a month-stepping cron, as p-quarter's).
+    const sixMonthly = docBefore.replace(/type\\":\\"CRON\\",\\"cronExpression\\":\\"[^\\]*\\"/, 'type\\":\\"RECURRING\\",\\"cronExpression\\":\\"0 0 9 1 1/6 ? *\\"');
+    if (sixMonthly === docBefore) throw new Error("F-542 scenario: p-onboard's doc carries no cronExpression to move");
+    writeFileSync(docPath, sixMonthly);
+    // Re-documentation writes the manifest (a mark), which moves the knowledge base's stamp the plan reads; the plan
+    // re-reads the docs only when the stamp moved, so the manifest is rewritten here as the mark would.
+    const manifestPath = join(KB, "_manifest.json");
+    writeFileSync(manifestPath, JSON.stringify({ ...readJson(manifestPath), last_refresh: new Date().toISOString() }, null, 2) + "\n");
+    rmSync(join(STATE, "faults.json"), { force: true });
+    const moved = run("refresh", [SLUG, "--full"]);
+    writeFileSync(docPath, docBefore);
+    const restartLine = moved.stderr.split("\n").find((l) => /starts its pull again/.test(l)) ?? null;
+    check("F-542 a stopped run records the lookback it was planned with; when the knowledge base's longest schedule period rises before the resume, the resume plans in a fresh -lb<days> directory and says it starts the pull again, from which lookback to which and why, with the whole pull's minutes — never that the calls already made are reused; the summary records the restart (resumed false, restarted from/run/lookbackDays, continuing false) and the pull ran at the new lookback",
+      stoppedFull.code === EXIT["token-expired"] && stateAfterStop.lookbackDays != null && typeof stateAfterStop.pullRun === "string" && moved.code === 0 && moved.json?.resumed === false && moved.json.budget?.continuing === false &&
+        // `from` names the directory the stopped run PULLED in (the state's pullRun; reopened at the 0.56.1 gate), never the base name
+        moved.json.restarted?.from === stateAfterStop.pullRun && moved.json.restarted.lookbackDays.from === stateAfterStop.lookbackDays && moved.json.restarted.lookbackDays.to > stateAfterStop.lookbackDays &&
+        // (the directory is named for the DERIVED lookback; the pull runs at the window-capped one, which `to` reports)
+        moved.json.restarted.run.startsWith(`${stateAfterStop.run}-lb`) && moved.json.restarted.run !== stateAfterStop.pullRun && moved.json.run === moved.json.restarted.run && moved.json.pull.lookbackDays === moved.json.restarted.lookbackDays.to &&
+        restartLine != null && new RegExp(`starts its pull again \\(run ${moved.json.restarted.run}, not ${stateAfterStop.pullRun}\\): the derived health lookback moved from ${stateAfterStop.lookbackDays} to ${moved.json.restarted.lookbackDays.to} days since the run was planned \\(the longest schedule period in the knowledge base changed\\), so none of the calls already made applies; about \\d+ minutes? in all; the login has`).test(restartLine) &&
+        !/calls already made are reused/.test(moved.stderr) && !existsSync(join(dash(), STATE_FILE)),
+      [stateAfterStop, moved.json?.restarted ?? moved.json?.error ?? moved.stderr?.slice(-400), restartLine]);
+    const plain = run("refresh", [SLUG, "--full"], { env: { FAKE_FAULTS: JSON.stringify([{ match: "rp run", kind: "auth", skip: 30, times: 9999 }]) } });
+    rmSync(join(STATE, "faults.json"), { force: true });
+    const plainResume = run("refresh", [SLUG, "--full"]);
+    check("(F-542 control: the same stop and resume with the knowledge base unchanged is a resume — the calls already made are reused, nothing restarted)",
+      plain.code === EXIT["token-expired"] && plainResume.code === 0 && plainResume.json?.resumed === true && plainResume.json.restarted === undefined && plainResume.json.pull.calls.reused > 0 && /the calls already made are reused/.test(plainResume.stderr), plainResume.json?.error ?? plainResume.stderr?.slice(-300));
+    // F-542, reopened at the 0.56.1 gate: the lookback moving BACK to the base before the resume — a run planned at the
+    // raised lookback stops, the knowledge base's longest period drops — is a restart too (the pull runs in the base
+    // directory, where no fact call was made), said as one: the state names the directory the stopped run pulled in.
+    writeFileSync(docPath, sixMonthly);
+    writeFileSync(manifestPath, JSON.stringify({ ...readJson(manifestPath), last_refresh: new Date().toISOString() }, null, 2) + "\n");
+    const stoppedRaised = run("refresh", [SLUG, "--full"], { env: { FAKE_FAULTS: JSON.stringify([{ match: "rp run", kind: "auth", skip: 30, times: 9999 }]) } });
+    const stateRaised = readJson(join(dash(), STATE_FILE));
+    writeFileSync(docPath, docBefore);
+    writeFileSync(manifestPath, JSON.stringify({ ...readJson(manifestPath), last_refresh: new Date().toISOString() }, null, 2) + "\n");
+    rmSync(join(STATE, "faults.json"), { force: true });
+    const back = run("refresh", [SLUG, "--full"]);
+    const backLine = back.stderr.split("\n").find((l) => /starts its pull again/.test(l)) ?? null;
+    check("F-542 (reopened) the lookback moving BACK before the resume is a restart: the state names the -lb directory the stopped run pulled in (pullRun), the resume pulls in the directory of the lower lookback (here the fixture's own derived one; the base directory when the longest period drops to the floor) and says it starts again (from the raised run to that run, the lookback from the raised days down), resumed false, continuing false; never 'the calls already made are reused'",
+      stoppedRaised.code === EXIT["token-expired"] && typeof stateRaised.pullRun === "string" && /-lb\d+$/.test(stateRaised.pullRun) && back.code === 0 && back.json?.resumed === false && back.json.budget?.continuing === false &&
+        back.json.restarted?.from === stateRaised.pullRun && back.json.restarted.run !== stateRaised.pullRun && back.json.restarted.run.startsWith(stateRaised.run) && back.json.restarted.lookbackDays.from > back.json.restarted.lookbackDays.to && back.json.pull.lookbackDays === back.json.restarted.lookbackDays.to &&
+        backLine != null && new RegExp(`starts its pull again \\(run ${back.json.restarted.run}, not ${stateRaised.pullRun}\\): the derived health lookback moved from ${stateRaised.lookbackDays} to ${back.json.restarted.lookbackDays.to} days`).test(backLine) && !/calls already made are reused/.test(back.stderr) && !existsSync(join(dash(), STATE_FILE)),
+      [stateRaised, back.json?.restarted ?? back.json?.error ?? back.stderr?.slice(-400), backLine]);
   }
   check("refusals: an unknown verb, a missing slug, a refresh of a draft, an unknown question (purpose, dropped, among them), and a workspace with no KB each exit 1 with one line",
     run("frobnicate", []).code === 1 && run("status", []).code === 1 && run("refresh", ["quick"]).code === 1 && /is a draft, not a saved dashboard/.test(run("refresh", ["quick"]).json?.error ?? "") && run("answer", [SLUG, "nope", "x"]).code === 1 && /no question is called "purpose"/.test(run("answer", ["quick", "purpose", "x"]).json?.error ?? "") && run("list", [], { flags: ["--workspace", join(ROOT, "nowhere"), "--bin", FAKE] }).code === 1);

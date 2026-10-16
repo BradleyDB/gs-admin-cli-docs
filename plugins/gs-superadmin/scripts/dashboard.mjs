@@ -32,7 +32,7 @@
 //                        validates through the spec writer, writes, marks the
 //                        ask-once key; an action question acts (the dry run, the
 //                        estimate, the save and first refresh)
-//   change <slug> <path>=<json>... [--dry-run]
+//   change <slug> <path>=<value>... [--dry-run]
 //                        set through the writer; prints what changed and its
 //                        consequence from the COSTS table (in-page, "rebuild
 //                        only", or "the next refresh pulls everything again,
@@ -116,24 +116,25 @@
 //
 // Zero dependencies — Node built-ins only.
 // ─────────────────────────────────────────────────────────────────────────────
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, unlinkSync, copyFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, unlinkSync } from "node:fs";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { makeCliHelpers, findWorkspaceDir, findWorkspaceCatalog, makeCommandResolver, resolveCliArgv, readJsonFile, writeFileAtomicSync, isMainModule, readKbIdentity, cmpKey, RECORDED_LANES } from "./doc-lib.mjs";
+import { makeCliHelpers, findWorkspaceDir, findWorkspaceCatalog, makeCommandResolver, resolveCliArgv, readJsonFile, writeFileAtomicSync, acquireFileLock, isMainModule, readKbIdentity, cmpKey, RECORDED_LANES } from "./doc-lib.mjs";
 import { printable } from "./journal-lib.mjs";
 import {
-  specStore, SpecRefusal, holderName, openSpec, SPEC_DESCRIPTIONS, PRESETS, TABS, DEFAULT_ACCOUNT_LISTS, defaultSpec,
-  accountLists, accountFields, kbSettings, windowOf, presetPanels, PUBLISH_TARGET_NAME_RE, defaultPublish,
+  specStore, SpecRefusal, holderName, openSpec, validateSpec, SPEC_DESCRIPTIONS, PRESETS, TABS, DEFAULT_ACCOUNT_LISTS, defaultSpec,
+  accountLists, accountFields, kbSettings, windowOf, presetPanels, PUBLISH_TARGET_NAME_RE, defaultPublish, problemsText,
 } from "./dashboard-spec.mjs";
 import {
   resolveParams, prepareRun, runParamsMoved, fetchEngagement, reduceEngagement, loadRun, cliTransport, makeGate, parseWhoami, addMonths, monthsBetween, pickSchedule, describedProgram, EngagementRefusal, ROW_READERS, rpRunArgv, buildQuery,
   resolveAccountParams, reduceAccountTimeline, loadAccountRun, accountResolutionText, timelineSummary,
+  reduceWithStore, rankFromStore, readAccountStore, accountStorePath, accountStoreFits, isAccountStoreFile, writeSnapshotAndStore, copySnapshotWithStore, readAccountStoreHead,
 } from "./engagement.mjs";
 import { applyGroups, programTraitsOf, suggestionTable } from "./dashboard-groups.mjs";
 import { buildPage, buildTimelinePage, inlinedSources, pageFileName, buildDatasets, datasetsDirName, artifactContentOf } from "./dashboard-page.mjs";
-import { COPY_LINES, ENTRY_COMMAND, HOW_TO_REFRESH_TEXT } from "./dashboard-runtime.mjs";
+import { COPY_LINES, ENTRY_COMMAND, HOW_TO_REFRESH_TEXT, kbFlag } from "./dashboard-runtime.mjs";
 import { nativePlan, commandLine, describedReportId, readBack, dashboardSteps, NATIVE_OBJECT, TEST_PREFIX } from "./dashboard-native.mjs";
 import { writeReport, ReportRefusal } from "./engagement-report.mjs";
 import * as engine from "./engagement-query.mjs";
@@ -233,7 +234,7 @@ export const ADAPTER_MAPPING = Object.freeze([
  */
 /** The health pull is on when any page's Health tab is on (the one rule: the adapter's --health, a tab change's cost, a change's price). */
 const healthPulled = (spec) => spec.pages.some((pg) => pg.tabs.some((t) => t.id === "health" && t.enabled));
-const notStartedText = (from, thisMonth) => `sources[0].params.window.from (${from}) is a month that has not started (this month is ${thisMonth}): the window must start in this month or before — answer the window again, or change it with change <slug> 'sources.0.params.window.from="YYYY-MM"'`;
+const notStartedText = (from, thisMonth) => `sources[0].params.window.from (${from}) is a month that has not started (this month is ${thisMonth}): the window must start in this month or before — answer the window again, or change it with change <slug> sources.0.params.window.from=YYYY-MM`;
 export function adapterParams(spec, { today, forceFull = false, healthOnly = false, lookbackDays = null, categories = {}, preview = false }) {
   const p = src(spec);
   const w = windowOf(p);
@@ -266,13 +267,13 @@ export function adapterParams(spec, { today, forceFull = false, healthOnly = fal
 // What changing a setting costs, as DATA: `pull` (the next refresh pulls everything again) is DERIVED from the
 // adapter mapping above; `rebuild` is a page rebuilt from the last snapshot with no pull; `in-page` is a starting value
 // a viewer can also change on the page (the saved value is what a page starts on, so the rebuild applies it);
-// `reselect` re-ranks the customer lists over the last FULL pull's run directory (a rebuild) when the latest pull was
-// full and its rows are still there; else the pages are rebuilt and the lists wait for the next full refresh (F-529);
+// `reselect` ranks the customer lists again from the account store beside the latest snapshot (a rebuild, F-548);
+// when that snapshot has no store of its own the pages are rebuilt and the lists are ranked by the next refresh;
 // `identity` cannot change. Every SPEC_DESCRIPTIONS path has exactly one cost (the suite holds it both
 // ways), and the page's LACKS rows must agree with it (the suite holds that too).
 export const COST_KINDS = Object.freeze({
   pull: "the next refresh pulls everything again",
-  reselect: "the customer lists are ranked again over the last full pull's rows (a rebuild); after a routine refresh, or when those rows are gone, the pages are rebuilt and the lists are ranked at the next full refresh (refresh --full)",
+  reselect: "the customer lists are ranked again from the account store beside the last pull (a rebuild, no pull); when the last pull has no store of its own (made before it, or the store gone), the pages are rebuilt and the lists are ranked by the next refresh, one full pull",
   rebuild: "the pages are rebuilt from the last snapshot, with no pull",
   "in-page": "a starting value a viewer can also change on the page; the pages are rebuilt so they start on it",
   identity: "cannot be changed: it names the dashboard or its tenant",
@@ -336,6 +337,10 @@ export function changeCost(before, after, { longestPeriodDays = null } = {}) {
   return { changed, consequence };
 }
 
+/** Two lists of customer lists alike (kind, size, floor, segment field, in order): the engine's one list identity (F-555). */
+const sameLists = (a, b) => a.length === b.length && a.every((l, i) => engine.listIdentity(l) === engine.listIdentity(b[i]));
+/** One follow-up key per list: its kind, or kind and field (and its place) where two lists share one. */
+const listKeys = (lists) => lists.map((l, i) => { const k = l.per ? `${l.kind}-${l.per}` : l.kind; return lists.filter((x) => (x.per ? `${x.kind}-${x.per}` : x.kind) === k).length > 1 ? `${k}-${i + 1}` : k; });
 // ── The questions table (DSH-3, ruled 2026-10-05; every wording ruled 2026-10-12 at S5-V's I0, F-511) ──
 // One row per question, as DATA: its id (the ask-once key), its wording in the user's terms (a string, or a function
 // of the context when the ask quotes the plan's minutes), its kind, its options (from the context), the spec path it
@@ -415,7 +420,7 @@ export const CLOSING_ASK = (ctx) => {
   const slug = ctx?.spec?.slug ?? "<slug>";
   const edit = ctx?.edit ?? null;
   const head = edit
-    ? `Ready to save this edit. ${edit.consequence == null ? "Nothing changed against the saved dashboard." : `Compared with the saved dashboard it changes ${plural(edit.changed.length, "setting")} (${edit.changed.map((c) => c.path).join(", ")}): ${edit.consequence === "pull" ? `the next refresh pulls everything again, about ${N(e, (x) => minutesOf(x.full.seconds), "M")} minutes; ${login("the refresh")}` : edit.consequence === "reselect" ? (edit.reselect ? reselectText(edit.reselect, edit.reselect.line) : "the customer lists are ranked again over the last full pull's rows (a rebuild, no pull)") : "the pages are rebuilt from the data already pulled, no pull"}.`}`
+    ? `Ready to save this edit. ${edit.consequence == null ? "Nothing changed against the saved dashboard." : `Compared with the saved dashboard it changes ${plural(edit.changed.length, "setting")} (${edit.changed.map((c) => c.path).join(", ")}): ${edit.consequence === "pull" ? `the next refresh pulls everything again, about ${N(e, (x) => minutesOf(x.full.seconds), "M")} minutes; ${login("the refresh")}` : edit.consequence === "reselect" ? (edit.reselect ? reselectText(edit.reselect, edit.reselect.line) : "the customer lists are ranked again from the account store (a rebuild, no pull)") : "the pages are rebuilt from the data already pulled, no pull"}.`}`
     : `Ready to save. A full refresh with these settings is about ${N(e, (x) => x.full.calls, "N")} calls and ${mins(e, (x) => x.full.seconds, "M")} on this tenant; ${login("the first refresh")}.`;
   return `${head} ${HOW_TO_REFRESH_TEXT(slug, ctx?.kb ?? null)}`;
 };
@@ -431,7 +436,7 @@ export const CLOSING_OPTIONS = (ctx) => {
     ? { id: "save-now", text: `Save and run the first refresh now (${mins(e, (x) => x.full.seconds, "M")})`, answers: [["dry-run", "no"], ["estimate", "yes"], ["save", "yes"]] }
     : edit.consequence == null ? null
       : edit.consequence === "pull" ? { id: "save-now", text: `Save and run the refresh now (${mins(e, (x) => x.full.seconds, "M")})`, answers: [["dry-run", "no"], ["estimate", "yes"], ["save", "yes"]] }
-        : { id: "save-now", text: edit.consequence === "reselect" ? (edit.reselect && !edit.reselect.rank ? "Save and rebuild the pages now (no pull; the customer lists are ranked at the next full refresh)" : "Save and rank the customer lists again now (no pull)") : "Save and rebuild the pages now (no pull)", answers: [["dry-run", "no"], ["estimate", "yes"], ["save", "yes"]] };
+        : { id: "save-now", text: edit.consequence === "reselect" ? (edit.reselect && !edit.reselect.rank ? "Save and rebuild the pages now (no pull; the customer lists are ranked at the next refresh)" : "Save and rank the customer lists again now (no pull)") : "Save and rebuild the pages now (no pull)", answers: [["dry-run", "no"], ["estimate", "yes"], ["save", "yes"]] };
   // On an edit with a pull already made, the preview is rebuilt from the last pull with no call (the themed preview
   // UX-2 promises, at no login cost); a new dashboard's dry run is the cheap program-level pull.
   const previewFromPull = edit && ctx?.hasSnapshot;
@@ -656,28 +661,41 @@ export const QUESTIONS = Object.freeze([
   },
   {
     id: "customer-list-detail", kind: "json", path: "accounts.lists[]", judgment: false, default: "default", skip: (ctx) => !ctx.spec.accounts.pull,
-    ask: (() => {
-      const by = Object.fromEntries(DEFAULT_ACCOUNT_LISTS.map((l) => [l.kind, l]));
-      return `How should the customer lists be built? Three lists are made across programs: the ${by["most-engaged"].n} most engaged, the ${by["least-engaged"].n} least engaged and the ${by["most-bounced"].n} most bounced accounts. Each needs at least ${by["most-engaged"].floor} delivered emails across programs before an account can appear, so one unopened email is not a risk; on a program that sends about once per contact, the least-engaged list uses at least 3 delivered and no open instead. You can change the size and the floor of each list, and you can add "per segment" lists, which rank the same lists within each value of a company field you name, such as Industry or Segment. Do you want to change the defaults?`;
-    })(),
-    options: () => [
-      { id: "default", text: "Keep the three lists as described (the default)" },
-      // A list with no delivered floor says so, never "at least 0 delivered" (F-511 instance 23).
-      { id: `sizes:${DEFAULT_ACCOUNT_LISTS.map((l) => `<${l.kind}>`).join("|")}`, text: "Change a list's size or floor", followUps: DEFAULT_ACCOUNT_LISTS.map((l) => ({ key: l.kind, kind: "text", ask: `The ${l.n} ${l.kind.replace("-", " ")} accounts, ${l.floor > 0 ? `with at least ${l.floor} delivered` : "with no delivered floor"}: give a new size and floor as two numbers (size floor; 0 for no floor), or keep.` })) },
-      { id: "segments:<field>|<lists>", text: "Add per-segment lists", followUps: [{ key: "field", kind: "text", ask: "Which company field? (Industry, Segment, …)" }, { key: "lists", kind: "text", ask: "Which lists per segment: most engaged, least engaged, most bounced, or all?" }] },
-    ],
+    // The question names the dashboard's OWN lists (F-530 reopened at B-V: an edit over a saved list of 5 asked about
+    // "the 25 most engaged, the 25 least engaged and the 25 most bounced", and keep wrote the defaults back). On the
+    // default lists it is the ruled wording, word for word; "default" keeps the lists as they are, and a size change
+    // asks one follow-up per list the dashboard has.
+    ask: (ctx) => {
+      const lists = accountLists(ctx?.spec ?? {});
+      if (sameLists(lists, DEFAULT_ACCOUNT_LISTS)) {
+        const by = Object.fromEntries(DEFAULT_ACCOUNT_LISTS.map((l) => [l.kind, l]));
+        return `How should the customer lists be built? Three lists are made across programs: the ${by["most-engaged"].n} most engaged, the ${by["least-engaged"].n} least engaged and the ${by["most-bounced"].n} most bounced accounts. Each needs at least ${by["most-engaged"].floor} delivered emails across programs before an account can appear, so one unopened email is not a risk; on a program that sends about once per contact, the least-engaged list uses at least 3 delivered and no open instead. You can change the size and the floor of each list, and you can add "per segment" lists, which rank the same lists within each value of a company field you name, such as Industry or Segment. Do you want to change the defaults?`;
+      }
+      return `How should the customer lists be built? This dashboard makes ${lists.length ? `${plural(lists.length, "list")} across programs: ${lists.map(engine.listPhrase).join("; ")}` : "no customer list"}.${lists.some((l) => l.kind === "least-engaged") ? " On a program that sends about once per contact, a least-engaged list uses at least 3 delivered and no open instead of its floor." : ""} You can change the size and the floor of each list, and you can add "per segment" lists, which rank the same lists within each value of a company field you name, such as Industry or Segment. Do you want to change them?`;
+    },
+    options: (ctx) => {
+      const lists = accountLists(ctx?.spec ?? {});
+      const keys = listKeys(lists);
+      return [
+        { id: "default", text: sameLists(lists, DEFAULT_ACCOUNT_LISTS) ? "Keep the three lists as described (the default)" : "Keep the lists as they are (the default)" },
+        // A list with no delivered floor says so, never "at least 0 delivered" (F-511 instance 23).
+        ...(lists.length ? [{ id: `sizes:${keys.map((k) => `<${k}>`).join("|")}`, text: "Change a list's size or floor", followUps: lists.map((l, i) => ({ key: keys[i], kind: "text", ask: `The ${l.n} ${engine.LIST_KIND_WORDS[l.kind].words} accounts${l.per ? ` per ${l.per}` : ""}, ${l.floor > 0 ? `with at least ${l.floor} delivered` : "with no delivered floor"}: give a new size and floor as two numbers (size floor; 0 for no floor), or keep.` })) }] : []),
+        { id: "segments:<field>|<lists>", text: "Add per-segment lists", followUps: [{ key: "field", kind: "text", ask: "Which company field? (Industry, Segment, …)" }, { key: "lists", kind: "text", ask: "Which lists per segment: most engaged, least engaged, most bounced, or all?" }] },
+      ];
+    },
     apply: (v, ctx) => {
       const s = String(v).trim();
-      const defaults = () => DEFAULT_ACCOUNT_LISTS.map((l) => ({ ...l }));
-      if (s === "default") return { sets: [["accounts.lists", defaults()], ["accounts.fields", []]] };
+      const current = accountLists(ctx.spec);
+      // "default" keeps the lists the dashboard has (the defaults on a new one): never the defaults over a saved list.
+      if (s === "default") return { sets: [["accounts.lists", current.map((l) => ({ ...l }))], ["accounts.fields", accountFields(ctx.spec)]] };
       if (s.startsWith("sizes:")) {
         const parts = s.slice(6).split("|");
-        if (parts.length !== DEFAULT_ACCOUNT_LISTS.length) refuse(`sizes: takes one answer per list (${DEFAULT_ACCOUNT_LISTS.map((l) => l.kind).join(", ")}), separated by |`);
-        const lists = DEFAULT_ACCOUNT_LISTS.map((l, i) => {
+        if (parts.length !== current.length) refuse(`sizes: takes one answer per list (${listKeys(current).join(", ")}), separated by |`);
+        const lists = current.map((l, i) => {
           const a = parts[i].trim();
           if (["", "keep"].includes(a.toLowerCase())) return { ...l };
           const m = a.match(/^(\d+)\s+(?:floor\s+)?(\d+)$/);
-          if (!m) refuse(`the ${l.kind.replace("-", " ")} list: give a size and a floor as two numbers (25 10), or keep (got "${printable(a, 20)}")`);
+          if (!m) refuse(`the ${engine.LIST_KIND_WORDS[l.kind].words}${l.per ? ` per ${l.per}` : ""} list: give a size and a floor as two numbers (25 10), or keep (got "${printable(a, 20)}")`);
           return { ...l, n: Number(m[1]), floor: Number(m[2]) };
         });
         return { sets: [["accounts.lists", lists], ["accounts.fields", accountFields(ctx.spec)]] };
@@ -689,11 +707,11 @@ export const QUESTIONS = Object.freeze([
         if (!field) refuse("segments: needs the company field to rank within");
         const kinds = which === "all" || which === "" ? DEFAULT_ACCOUNT_LISTS.map((l) => l.kind) : DEFAULT_ACCOUNT_LISTS.map((l) => l.kind).filter((k) => which.includes(k.replace("-", " ")) || which.includes(k));
         if (!kinds.length) refuse(`segments: names no list (most engaged, least engaged, most bounced, or all; got "${printable(which, 40)}")`);
-        const current = accountLists(ctx.spec).filter((l) => !l.per || l.per !== field);
-        return { sets: [["accounts.lists", [...current, ...kinds.map((k) => ({ ...DEFAULT_ACCOUNT_LISTS.find((l) => l.kind === k), per: field }))]], ["accounts.fields", [...new Set([...accountFields(ctx.spec), field])]]], notes: [`${plural(kinds.length, "per-segment list")} added, ranked within each ${field}`] };
+        const kept = current.filter((l) => !l.per || l.per !== field);
+        return { sets: [["accounts.lists", [...kept, ...kinds.map((k) => ({ ...DEFAULT_ACCOUNT_LISTS.find((l) => l.kind === k), per: field }))]], ["accounts.fields", [...new Set([...accountFields(ctx.spec), field])]]], notes: [`${plural(kinds.length, "per-segment list")} added, ranked within each ${field}`] };
       }
       const j = jsonValue(s);
-      return { sets: [["accounts.fields", Array.isArray(j.fields) ? j.fields : []], ["accounts.lists", Array.isArray(j.lists) ? j.lists : defaults()]] };
+      return { sets: [["accounts.fields", Array.isArray(j.fields) ? j.fields : []], ["accounts.lists", Array.isArray(j.lists) ? j.lists : DEFAULT_ACCOUNT_LISTS.map((l) => ({ ...l }))]] };
     },
   },
   {
@@ -811,10 +829,17 @@ function openContext(argv, opt) {
 const dirOf = (ctx, slug) => ctx.store.paths(slug).dir;
 const writeJson = (path, value) => writeFileAtomicSync(path, JSON.stringify(value, null, 2) + "\n");
 const readJsonOr = (path, fallback = null) => (existsSync(path) ? readJsonFile(path) : fallback);
-const savedSpec = (ctx, slug) => {
+/** The saved spec's JSON, or the one refusal for a dashboard that is a draft or does not exist (the one home, F-555). */
+const savedRawOrRefuse = (ctx, slug) => {
   const raw = ctx.store.readSaved(slug);
   if (!raw) refuse(ctx.store.readDraft(slug) ? `"${slug}" is a draft, not a saved dashboard yet — finish the questions (next/answer) and save it, or change it with --dry-run` : `no dashboard "${slug}" in ${basename(ctx.kbDir)} — list shows the ones there`);
-  return openSpec(raw);
+  return raw;
+};
+const savedSpec = (ctx, slug) => openSpec(savedRawOrRefuse(ctx, slug));
+/** The saved spec as it is, with this version's problems beside it (F-541): for the verbs that repair one. */
+const savedSpecLenient = (ctx, slug) => {
+  const raw = savedRawOrRefuse(ctx, slug);
+  return { spec: raw, problems: validateSpec(raw).problems };
 };
 // ── Snapshots: the latest, the one before, retention ─────────────────────────
 const snapshotStamp = (pulledAt) => String(pulledAt).replace(/[^0-9T]/g, "").slice(0, 15);
@@ -843,7 +868,7 @@ const suffixOf = (f) => Number(/-(\d+)\.json$/.exec(f)?.[1] ?? 1);
 function snapshotFiles(ctx, slug) {
   const dir = join(dirOf(ctx, slug), SNAPSHOTS_DIR);
   if (!existsSync(dir)) return [];
-  return readdirSync(dir).filter((f) => /\.json$/.test(f) && !f.startsWith("preview")).map((f) => ({ f, path: join(dir, f) })).map((x) => ({ ...x, at: snapshotInstant(x.path) }))
+  return readdirSync(dir).filter((f) => /\.json$/.test(f) && !f.startsWith("preview") && !isAccountStoreFile(f)).map((f) => ({ f, path: join(dir, f) })).map((x) => ({ ...x, at: snapshotInstant(x.path) }))
     .sort((a, b) => a.at - b.at || cmpKey(a.f.replace(/-\d+\.json$/, ".json"), b.f.replace(/-\d+\.json$/, ".json")) || suffixOf(a.f) - suffixOf(b.f)).map((x) => x.path);
 }
 // ── A run directory's owner (F-535) ──────────────────────────────────────────
@@ -867,6 +892,14 @@ function pullRunDirs(ctx, slug) {
 }
 const latestSnapshotPath = (ctx, slug) => snapshotFiles(ctx, slug).at(-1) ?? null;
 const openSnapshotFile = (path) => engine.openSnapshot(readJsonFile(path));
+/** One account store per dashboard, the latest snapshot's (ruled 2026-10-15, F-548): every other store in its snapshots folder is removed. */
+function pruneStores(ctx, slug, keep) {
+  const dir = join(dirOf(ctx, slug), SNAPSHOTS_DIR);
+  if (!existsSync(dir)) return [];
+  const gone = readdirSync(dir).filter((f) => isAccountStoreFile(f) && join(dir, f) !== keep);
+  for (const f of gone) rmSync(join(dir, f), { force: true });
+  return gone;
+}
 function pruneSnapshots(ctx, slug) {
   const files = snapshotFiles(ctx, slug);
   const pruned = files.slice(0, Math.max(0, files.length - KEEP_SNAPSHOTS));
@@ -874,19 +907,25 @@ function pruneSnapshots(ctx, slug) {
   return pruned.map((f) => basename(f));
 }
 // ── The lock ─────────────────────────────────────────────────────────────────
-function takeLock(ctx, slug, run) {
+// Taken FIRST, before the state file is read or removed (F-545): a second refresh during a live one is told "already
+// running", never "a stopped refresh is waiting to resume". The lock is doc-lib's exclusive-create primitive (no
+// check-then-write window; a holder whose process is gone, or whose lock is older than two hours, is taken over; the
+// release leaves a lock another taker took over), and the run's name is recorded on it once known (`record`). A
+// rebuild and a change's rebuild take the same lock (F-552): the pages are never written from an older snapshot over
+// the ones a refresh just built, and a refresh never prunes the snapshot a rebuild is reading.
+function takeLock(ctx, slug, { run = null, action = "refresh" } = {}) {
   const path = join(dirOf(ctx, slug), LOCK_FILE);
-  let takenOver = null;
-  if (existsSync(path)) {
-    const held = readJsonOr(path, {});
-    const age = ctx.nowMs - Date.parse(held.at ?? 0);
-    if (Number.isFinite(age) && age < LOCK_STALE_MS) refuse(`a refresh of "${slug}" is already running: started by ${held.by ?? "unknown"} at ${held.at} (${plural(Math.round(age / 60000), "minute")} ago) — wait for it, or remove ${path} if you know it died`);
-    takenOver = held;
-    // Said at the takeover, so a run refused later (the budget) still leaves a record of whose lock it took.
-    ctx.log(`took over a stale refresh lock of "${slug}" held by ${held.by ?? "unknown"} since ${held.at}`);
+  const lock = acquireFileLock(path, { owner: { by: ctx.by, run }, staleMs: LOCK_STALE_MS, waitMs: 0, nowMs: ctx.nowMs });
+  if (!lock.taken) {
+    const held = lock.held ?? {};
+    const age = ctx.nowMs - Date.parse(String(held.at ?? ""));
+    const holder = held.unreadable ? "its lock is being written" : `started by ${held.by ?? "unknown"} at ${held.at} (${plural(Math.round(age / 60000), "minute")} ago${held.pid != null ? `, pid ${held.pid}` : ""})`;
+    const then = action === "refresh" ? "wait for it" : `run ${action} again when it finishes`;
+    refuse(`a refresh of "${slug}" is already running: ${holder} — ${then}; a refresh whose process is gone, or whose lock ${path} is older than two hours, is taken over on its own`);
   }
-  writeJson(path, { by: ctx.by, at: new Date(ctx.nowMs).toISOString(), pid: process.pid, run });
-  return { path, release: () => rmSync(path, { force: true }), takenOver };
+  // Said at the takeover, so a run refused later (the budget) still leaves a record of whose lock it took.
+  if (lock.takenOver) ctx.log(`took over a stale refresh lock of "${slug}" held by ${lock.takenOver.by ?? "unknown"} since ${lock.takenOver.at}`);
+  return { path, release: lock.release, record: (name) => lock.record({ run: name }), takenOver: lock.takenOver };
 }
 const lockState = (ctx, slug) => {
   const path = join(dirOf(ctx, slug), LOCK_FILE);
@@ -904,7 +943,7 @@ const lockState = (ctx, slug) => {
 export const refreshRemedy = (ctx, slug, { full = false, healthOnly = false } = {}) => `${COPY_LINES.refresh(slug, basename(ctx.kbDir))}${full ? " --full" : ""}${healthOnly ? " --health-only" : ""}`;
 const remedyOf = (line, login) => ({ remedy: { login, line } });
 /** Any other verb's line, as a remedy prints it: the entry command, the words, `--kb` (F-523). */
-const entryLine = (ctx, ...words) => `${ENTRY_COMMAND} ${words.join(" ")} --kb ${basename(ctx.kbDir)}`;
+const entryLine = (ctx, ...words) => `${ENTRY_COMMAND} ${words.join(" ")}${kbFlag(basename(ctx.kbDir))}`;
 function preflight(ctx, spec, { owner = "this dashboard", again = null } = {}) {
   const r = ctx.live().run({ id: "whoami", argv: ["whoami"], timeoutMs: 60000 });
   if (!r.ok) refuse(`gs-admin whoami failed: ${r.stderr.trim() || `exit ${r.status}`}`);
@@ -922,17 +961,23 @@ function categoriesFor(ctx) {
   return { file: path, categories: c };
 }
 // ── The plan and the pull, through the adapter ───────────────────────────────
-function runAdapter(ctx, { spec, runId, phase, previousPath, forceFull = false, healthOnly = false, preview = false, lookbackDays = null }) {
+function runAdapter(ctx, { spec, runId, phase, previousPath, forceFull = false, healthOnly = false, preview = false, lookbackDays = null, previousStore = undefined }) {
   const { categories, file: categoriesFile } = categoriesFor(ctx);
   const paramsOn = (today) => resolveParams(adapterParams(spec, { today, forceFull, healthOnly, lookbackDays, categories, preview }));
   const previous = previousPath ? openSnapshotFile(previousPath) : null;
+  // The account store beside the previous snapshot (F-548): a selective refresh with accounts carries every account's
+  // older months from it; with none of its own, the adapter's decideRefresh makes the refresh full and says why. A
+  // refresh reads it ONCE and passes it to its plan, its re-plan and its pull (F-555: it is megabytes).
+  if (previousStore === undefined) previousStore = previousPath ? readAccountStore(accountStorePath(previousPath)) : null;
   // A resumed run keeps the day it was planned on unless --today was given (F-483), as the adapter's own CLI does.
   const { runDir, params, resumed } = prepareRun({ wsDir: ctx.wsDir, runId, params: paramsOn(ctx.today), previousPath, cliVersion: ctx.catalog.meta?.cliVersion ?? null, todayGiven: ctx.todayGiven, reparams: paramsOn });
-  const summary = fetchEngagement({ params, runDir, kbDir: ctx.kbDir, previous, phase, transport: ctx.live(), gate: ctx.gate, onCall: (line) => ctx.log(`${phase === "plan" ? "plan" : "pull"} ${line}`) });
-  return { runDir, params, resumed, summary, previous, categoriesFile };
+  const summary = fetchEngagement({ params, runDir, kbDir: ctx.kbDir, previous, previousStore, phase, transport: ctx.live(), gate: ctx.gate, onCall: (line) => ctx.log(`${phase === "plan" ? "plan" : "pull"} ${line}`) });
+  return { runDir, params, resumed, summary, previous, previousStore, categoriesFile };
 }
 /** The plan twice when the derived lookback moves (ENG-2 item 3): the second plan is the one the pull resumes. */
 function planWithLookback(ctx, args) {
+  // The previous snapshot's store read once for both plans (F-555); a caller that read it already passes it.
+  if (args.previousStore === undefined) args = { ...args, previousStore: args.previousPath ? readAccountStore(accountStorePath(args.previousPath)) : null };
   const first = runAdapter(ctx, { ...args, phase: "plan" });
   if (first.summary.status !== "ok") return first;
   const longest = first.summary.estimate?.health?.lookback?.longestPeriodDays ?? null;
@@ -1060,13 +1105,37 @@ function buildPages(ctx, { spec, snapshot, delta, outDir }) {
   for (const b of built) if (b.report.warning) ctx.log(`page "${b.report.page}": ${b.report.warning}`);
   return built.map((b) => ({ ...b.report, path: join(outDir, b.report.file) }));
 }
-function rebuildFrom(ctx, { spec, snapshotPath, previousPath, outDir }) {
-  const pulled = openSnapshotFile(snapshotPath);
+/** A list as the spec and the pull's echo both hold it, for comparing the two. */
+const listKey = engine.listIdentity;
+/** Whether a snapshot was ranked with the spec's customer lists (the pull's list echo, which a ranking from the store rewrites). */
+const listsAgree = (spec, snapshot) => accountLists(spec).map(listKey).join() === (snapshot.meta.params?.accounts?.lists ?? []).map(listKey).join();
+/**
+ * The customer lists follow the saved spec on every build (F-548, F-530: the pages, the report and the About tab read
+ * one ranking): when the spec's lists are not the ones this snapshot was ranked with, they are ranked again from the
+ * snapshot's account store with no pull, and the snapshot is rewritten in place. Null when nothing was ranked: the lists
+ * already agree, the pull holds no accounts, or the snapshot has no store of its own (the next refresh ranks them).
+ */
+function rankChangedLists(spec, snapshot, snapshotPath, { write = true } = {}) {
+  if (spec.accounts?.pull === false || !engine.accountAvailability(snapshot).pulled) return null;
+  if (listsAgree(spec, snapshot)) return null;
+  const store = readAccountStore(accountStorePath(snapshotPath));
+  if (!accountStoreFits(store, snapshot)) return null;
+  const { snapshot: ranked, newlyKept } = rankFromStore({ snapshot, store, lists: accountLists(spec) });
+  if (write) writeFileAtomicSync(snapshotPath, JSON.stringify(ranked));
+  return { snapshot: ranked, newlyKept: newlyKept.length, unnamed: ranked.meta.params.accounts.names ? ranked.dimensions.accounts.filter((a) => newlyKept.includes(a.key) && a.name == null).length : 0 };
+}
+function rebuildFrom(ctx, { spec, snapshotPath, previousPath, outDir, keep = null }) {
+  const opened = openSnapshotFile(snapshotPath);
+  const listsRanked = rankChangedLists(spec, opened, snapshotPath);
+  const pulled = listsRanked?.snapshot ?? opened;
+  // A caller that reads the snapshot after the build (a list change's "did it rank?") takes this one: megabytes parsed
+  // once, and never returned on the summary (F-555).
+  if (keep) keep.snapshot = pulled;
   const previous = previousPath ? openSnapshotFile(previousPath) : null;
   const { snapshot, resolution } = applyGroups(pulled, spec.groups, { previous });
   const delta = computeDelta(spec, snapshot, previous);
   const pages = buildPages(ctx, { spec, snapshot, delta, outDir });
-  return { pages, ungrouped: resolution.line, delta: delta ? { previousPulledAt: delta.previousPulledAt, closedMonths: delta.closedMonths.length, programs: delta.programs } : null, pulledAt: snapshot.meta.pulledAt, publish: publishLeaders(ctx, { spec, snapshot }) };
+  return { pages, ungrouped: resolution.line, delta: delta ? { previousPulledAt: delta.previousPulledAt, closedMonths: delta.closedMonths.length, programs: delta.programs } : null, pulledAt: snapshot.meta.pulledAt, listsRanked: listsRanked ? { newlyKept: listsRanked.newlyKept, unnamed: listsRanked.unnamed } : null, publish: publishLeaders(ctx, { spec, snapshot }) };
 }
 
 // ── The leaders' copy, published (PUB-3; ruled 2026-10-13 at X1, 2026-10-14 at S7's kickoff) ──────────────────
@@ -1172,7 +1241,7 @@ function publishLeadersOrThrow(ctx, { spec, snapshot }) {
     writeFileAtomicSync(file, artifactContentOf(readFileSync(local, "utf8")));
     const url = pub.config.url ?? null;
     ctx.log(`the leaders' page is ready to publish as a claude.ai artifact: ${file} (/gs-superadmin:email-engagement publishes it${url ? ` to ${url}` : ""})`);
-    return { ...offFolder, target: "claude-artifact", published: false, ready: true, file, url, title: `${spec.title} · ${page.title}`, capabilities: { downloads: true }, next: `Claude publishes this file as a claude.ai artifact (a target no longer offered: the Artifact tool reads the whole file first, several turns at a real page's size): /gs-superadmin:email-engagement publish ${spec.slug}${url ? `; it updates ${url}` : "; record the new link afterwards with " + entryLine(ctx, "change", spec.slug, `'publish.config.url="<link>"'`)}` };
+    return { ...offFolder, target: "claude-artifact", published: false, ready: true, file, url, title: `${spec.title} · ${page.title}`, capabilities: { downloads: true }, next: `Claude publishes this file as a claude.ai artifact (a target no longer offered: the Artifact tool reads the whole file first, several turns at a real page's size): /gs-superadmin:email-engagement publish ${spec.slug}${url ? `; it updates ${url}` : "; record the new link afterwards with " + entryLine(ctx, "change", spec.slug, "publish.config.url=<link>")}` };
   }
   // file-copy
   const c = pub.config;
@@ -1407,7 +1476,10 @@ function verbNew(ctx, slug, opt, argv) {
   }
   // --fast-path applies to a NEW dashboard: an edit starts from the saved settings and a resumed draft keeps its own; said, never dropped in silence.
   const fastPathIgnored = fastPath && r.state !== "new" ? `--fast-path applies to a new dashboard only (this is ${r.state === "resumed" ? "a resumed draft, which keeps its answers" : "an edit, which starts from the saved settings"}); ignored` : null;
-  return { ok: true, mode: "new", slug, state: r.state, fastPath: fastPath && r.state === "new", ...(fastPathIgnored ? { fastPathIgnored } : {}), by: r.by, answered, next: nextQuestionId(ctx, slug), ...(r.state === "editing-saved" ? { hint: `an edit of the saved dashboard: next goes to the closing step; next --question <id> changes one setting (${SETTING_QUESTIONS.join(", ")})` } : {}) };
+  // A saved spec this version refuses (F-541) opens as an edit with its problems named: the repair is a change of the
+  // named setting, and the save is refused until every problem is gone.
+  const problems = (r.problems ?? []).map((p) => problemsText([p]));
+  return { ok: true, mode: "new", slug, state: r.state, fastPath: fastPath && r.state === "new", ...(fastPathIgnored ? { fastPathIgnored } : {}), by: r.by, answered, next: nextQuestionId(ctx, slug), ...(r.state === "editing-saved" ? { hint: `an edit of the saved dashboard: next goes to the closing step; next --question <id> changes one setting (${SETTING_QUESTIONS.join(", ")})` } : {}), ...(problems.length ? { problems, repair: `the saved settings no longer pass this version's checks: ${problems.join("; ")} — change the named setting (change ${slug} <path>=<value>, or next --question <id>); the save is refused until every problem is gone` } : {}) };
 }
 function interviewState(ctx, slug) { return readJsonOr(join(dirOf(ctx, slug), INTERVIEW_FILE), { plan: null, preview: null }); }
 function saveInterviewState(ctx, slug, state) { mkdirSync(dirOf(ctx, slug), { recursive: true }); writeJson(join(dirOf(ctx, slug), INTERVIEW_FILE), state); }
@@ -1441,7 +1513,10 @@ function interviewContext(ctx, slug, { draft }) {
   let preview;
   return {
     spec, answered: draft.answered, plan, planExact: exact ? plan : null, planRun, previewPath, fastPath: !!state.fastPath, kb: basename(ctx.kbDir), today: ctx.today,
-    get edit() { return savedRaw ? (edit ??= (() => { const saved = openSpec(savedRaw); const lp = lastPlan(ctx, slug); const cost = changeCost(saved, spec, { longestPeriodDays: lp?.estimate?.health?.lookback?.longestPeriodDays ?? null }); return { saved, ...cost, ...(cost.consequence === "reselect" ? { reselect: { ...reselectReadiness(ctx, slug), line: refreshRemedy(ctx, slug, { full: true }) } } : {}) }; })()) : null; },
+    // The saved spec as it is, never opened strictly (F-541, reopened at the 0.56.1 gate): an edit of a spec this version
+    // refuses is the repair path, and its closing step, estimate and save must reach the writer, which names what is
+    // still wrong; a stack here was the reopen.
+    get edit() { return savedRaw ? (edit ??= (() => { const saved = /** @type {import("./dashboard-spec.mjs").T11Spec} */ (savedRaw); const lp = lastPlan(ctx, slug); const cost = changeCost(saved, spec, { longestPeriodDays: lp?.estimate?.health?.lookback?.longestPeriodDays ?? null }); return { saved, ...cost, ...(cost.consequence === "reselect" ? { reselect: { ...reselectReadiness(ctx, slug), line: refreshRemedy(ctx, slug) } } : {}) }; })()) : null; },
     get hasSnapshot() { return !!latestSnapshotPath(ctx, slug); },
     get preview() { return previewPath ? (preview ??= openSnapshotFile(previewPath)) : null; },
     params: adapterParams(spec, { today: ctx.today }), programs: plan ? readJsonOr(join(planRun, "programs.json"), []) : [],
@@ -1636,7 +1711,10 @@ function verbAction(ctx, slug, q, value, ictx) {
       // An edit's preview: the draft's settings over the LAST PULL, no call (the review of 2026-10-12: a dry run that
       // pulls for an edit that needs no pull spends login minutes on nothing; a pull-cost edit still previews what the
       // last pull holds, said so).
-      const pulled = openSnapshotFile(lastPull);
+      const opened = openSnapshotFile(lastPull);
+      // The draft's customer lists, ranked from the store in memory (never written: the draft is not saved), so the
+      // preview's panels and its About tab name the same lists (F-530).
+      const pulled = rankChangedLists(spec, opened, lastPull, { write: false })?.snapshot ?? opened;
       const previewDir = join(dirOf(ctx, slug), PREVIEW_DIR);
       const { snapshot, resolution } = applyGroups(pulled, spec.groups);
       const pages = buildPages(ctx, { spec, snapshot, delta: null, outDir: previewDir });
@@ -1672,7 +1750,7 @@ function verbAction(ctx, slug, q, value, ictx) {
   const planRun = ictx.planExact && ictx.planRun && !latestSnapshotPath(ctx, slug) ? basename(ictx.planRun) : null;
   const edit = ictx.edit;
   const saved = verbSave(ctx, slug);
-  if (yes !== "yes") return { ...saved, mode: "answer", question: q.id, refresh: null, done: null, hint: edit && edit.consequence !== "pull" ? (edit.consequence == null ? "nothing changed" : edit.consequence === "reselect" ? `rebuild ${slug} shows the other changes when ready; a rebuild ranks no list: the changed customer lists are ranked at the next full refresh (\`${refreshRemedy(ctx, slug, { full: true })}\`)` : `rebuild ${slug} when ready`) : `refresh ${slug} when ready` };
+  if (yes !== "yes") return { ...saved, mode: "answer", question: q.id, refresh: null, done: null, hint: edit && edit.consequence !== "pull" ? (edit.consequence == null ? "nothing changed" : edit.consequence === "reselect" ? (edit.reselect?.rank ? `rebuild ${slug} when ready: it ranks the changed customer lists from the account store, with no pull` : `rebuild ${slug} shows the other changes when ready; the changed customer lists are ranked at the next refresh (\`${refreshRemedy(ctx, slug)}\`)`) : `rebuild ${slug} when ready`) : `refresh ${slug} when ready` };
   try {
     // An edit DOES its consequence (F-516): the pull, a re-selection of the lists, or a rebuild; nothing when nothing changed.
     if (edit) {
@@ -1687,12 +1765,12 @@ function verbAction(ctx, slug, q, value, ictx) {
     throw e;
   }
 }
-/** What a saved change needs, done: the pull, a re-selection of the customer lists over the last rows, or a rebuild. */
+/** What a saved change needs, done: the pull, a re-selection of the customer lists from the account store, or a rebuild. */
 function doConsequence(ctx, slug, spec, consequence) {
   if (consequence === "pull") return { kind: "refresh", ...verbRefresh(ctx, slug, { full: false, healthOnly: false }) };
-  if (consequence === "reselect") return { kind: "reselect", ...reselectFromRun(ctx, slug, spec) };
+  if (consequence === "reselect") return { kind: "reselect", ...underLock(ctx, slug, "change", () => reselectFromStore(ctx, slug, spec)) };
   const files = snapshotFiles(ctx, slug);
-  return files.length ? { kind: "rebuild", ...rebuildFrom(ctx, { spec, snapshotPath: files.at(-1), previousPath: files.at(-2) ?? null, outDir: dirOf(ctx, slug) }) } : { kind: "rebuild", done: false, why: `no snapshot yet: run \`${refreshRemedy(ctx, slug)}\`` };
+  return files.length ? { kind: "rebuild", ...underLock(ctx, slug, "change", () => rebuildFrom(ctx, { spec, snapshotPath: files.at(-1), previousPath: files.at(-2) ?? null, outDir: dirOf(ctx, slug) })) } : { kind: "rebuild", done: false, why: `no snapshot yet: run \`${refreshRemedy(ctx, slug)}\`` };
 }
 /** The last plan this dashboard made (null until one exists): the minutes of a full refresh and the longest schedule period come from it. */
 function lastPlan(ctx, slug) {
@@ -1746,7 +1824,11 @@ function verbStatus(ctx, slug) {
 function verbRefresh(ctx, slug, { full, healthOnly, planRun = null }) {
   const spec = savedSpec(ctx, slug);
   const dir = dirOf(ctx, slug);
-  // The tenant and the token, before any call, before the lock.
+  // The lock first (F-545): before the state file is read, before any call. Then the tenant and the token, before
+  // any tenant call; a refusal there releases the lock on the way out.
+  const lock = takeLock(ctx, slug);
+  const takenOver = lock.takenOver ? { lockTakenOver: { by: lock.takenOver.by ?? null, at: lock.takenOver.at ?? null } } : {};
+  try {
   const who = preflight(ctx, spec, { again: refreshRemedy(ctx, slug, { full, healthOnly }) });
   let state = readJsonOr(join(dir, STATE_FILE), null);
   const previousPath = latestSnapshotPath(ctx, slug);
@@ -1780,14 +1862,29 @@ function verbRefresh(ctx, slug, { full, healthOnly, planRun = null }) {
   // in the same second: CI's runner did it on 2026-10-12), and prepareRun would then refuse the "fresh" run as another
   // run's. A fresh name is one no directory holds.
   const runId = resuming ? state.run : continuesPlan ? planRun : freshName(runsRoot, `dash-${slug}-${snapshotStamp(new Date(ctx.nowMs).toISOString())}`);
-  const lock = takeLock(ctx, slug, runId);
-  const takenOver = lock.takenOver ? { lockTakenOver: { by: lock.takenOver.by ?? null, at: lock.takenOver.at ?? null } } : {};
-  try {
-    writeJson(join(dir, STATE_FILE), { run: runId, startedAt: new Date(ctx.nowMs).toISOString(), by: ctx.by, previousPath, full, healthOnly });
+  lock.record(runId);
+    const stateRecord = { run: runId, startedAt: resuming ? state.startedAt : new Date(ctx.nowMs).toISOString(), by: ctx.by, previousPath, full, healthOnly, lookbackDays: resuming ? state.lookbackDays ?? null : null, pullRun: resuming ? state.pullRun ?? null : null };
+    writeJson(join(dir, STATE_FILE), stateRecord);
     // The plan, with the derived lookback. The pull is NOT held to the login (F-513, ruled 2026-10-12): it runs as far
     // as the token allows, the adapter stops it cleanly when the next call would outlast the token, and the next run
     // after a login continues it. What is said is how many logins a pull of this size takes.
-    const planned = planWithLookback(ctx, { spec, runId, previousPath, forceFull: full, healthOnly });
+    const previousStore = previousPath ? readAccountStore(accountStorePath(previousPath)) : null;
+    const planned = planWithLookback(ctx, { spec, runId, previousPath, forceFull: full, healthOnly, previousStore });
+    // A resume whose derived lookback MOVED since the run was planned (re-documentation moved the knowledge base, so
+    // the longest schedule period changed) plans and pulls in a fresh `-lb<days>` directory where nothing is reused
+    // (F-542): said as a restart, with why, never as "the calls already made are reused". The planned lookback is
+    // kept in the state once the plan is made, so the next resume can tell a move from a run that stopped before
+    // its plan was done (whose plan calls the resume does reuse) and say what it moved from.
+    // A restart is the pull running in a DIFFERENT directory from the one the stopped run pulled in (the state records
+    // it as pullRun; reopened at the 0.56.1 gate: a lookback that moved BACK to the base plans in the base directory,
+    // which exists from the first plan, so "resumed" was true, and two derived values capped to one window name two
+    // directories with equal lookbacks — comparing lookbacks missed both). A state from before pullRun was recorded
+    // falls back to the lookback comparison.
+    const pulledIn = basename(planned.runDir);
+    const restarted = resuming && planned.summary.status === "ok" && (state.pullRun != null ? state.pullRun !== pulledIn : !planned.resumed && state.lookbackDays != null && state.lookbackDays !== planned.lookbackDays)
+      ? { from: state.pullRun ?? runId, run: pulledIn, lookbackDays: { from: state.lookbackDays, to: planned.lookbackDays } }
+      : null;
+    if (planned.summary.status === "ok" && (planned.lookbackDays !== stateRecord.lookbackDays || stateRecord.pullRun !== pulledIn)) writeJson(join(dir, STATE_FILE), { ...stateRecord, lookbackDays: planned.lookbackDays, pullRun: pulledIn });
     const stopped = (r, logins = null) => {
       const code = r.summary.status === "token-expired" ? "token-expired" : r.summary.status === "partial" ? "partial" : "failed";
       const made = r.summary.calls ? ` after ${plural(r.summary.calls.made, "call")} this run${r.summary.calls.reused ? ` (${r.summary.calls.reused} reused from before)` : ""}` : "";
@@ -1809,9 +1906,11 @@ function verbRefresh(ctx, slug, { full, healthOnly, planRun = null }) {
     const remaining = estimate.thisRun.remaining ?? estimate.thisRun;
     const needed = remaining.seconds + redocSeconds + 30;
     const planSeconds = estimate.thisRun.seconds + redocSeconds + 30;
-    const budget = { neededSeconds: needed, planSeconds, continuing: !!resuming, loginSecondsLeft: who.expiresInSeconds, fitsThisLogin: needed <= who.expiresInSeconds, loginsNeeded: loginsFor(needed) };
+    const budget = { neededSeconds: needed, planSeconds, continuing: !!resuming && !restarted, loginSecondsLeft: who.expiresInSeconds, fitsThisLogin: needed <= who.expiresInSeconds, loginsNeeded: loginsFor(needed) };
     const beyond = `it will run as far as the login allows (about ${plural(budget.loginsNeeded, "login")} of an hour in all) and continue after the next login`;
-    if (resuming) ctx.log(`continuing the refresh of "${slug}" (run ${runId}): about ${plural(minutesOf(needed), "minute")} of its ${plural(minutesOf(planSeconds), "minute")} remain, the calls already made are reused; the login has ${plural(minutesOf(who.expiresInSeconds), "minute")} left${budget.fitsThisLogin ? ", enough for it" : `: ${beyond}`}`);
+    const loginLeft = `the login has ${plural(minutesOf(who.expiresInSeconds), "minute")} left${budget.fitsThisLogin ? ", enough for it" : `: ${beyond}`}`;
+    if (restarted) ctx.log(`the refresh of "${slug}" starts its pull again (run ${restarted.run}, not ${restarted.from}): the derived health lookback ${restarted.lookbackDays.from !== restarted.lookbackDays.to ? `moved from ${restarted.lookbackDays.from} to ${restarted.lookbackDays.to} days` : `moved (both values are capped to the window's ${restarted.lookbackDays.to} days, so the pull reads the same months from a new directory)`} since the run was planned (the longest schedule period in the knowledge base changed), so none of the calls already made applies; about ${plural(minutesOf(needed), "minute")} in all; ${loginLeft}`);
+    else if (resuming) ctx.log(`continuing the refresh of "${slug}" (run ${runId}): about ${plural(minutesOf(needed), "minute")} of its ${plural(minutesOf(planSeconds), "minute")} remain, the calls already made are reused; ${loginLeft}`);
     else if (!budget.fitsThisLogin) ctx.log(`the refresh needs about ${plural(minutesOf(needed), "minute")} and the login has ${plural(minutesOf(who.expiresInSeconds), "minute")} left: ${beyond}`);
     // Re-documentation first (the fetch then re-reads the moved knowledge base: the run's KB copy is stamped). A login
     // that dies under it is the same stop as one that dies under the pull: exit 3, resumable, "log in, then run again".
@@ -1821,7 +1920,7 @@ function verbRefresh(ctx, slug, { full, healthOnly, planRun = null }) {
       refuse(`the refresh stopped during re-documentation (${plural(redocumented.calls, "describe")} made): the login expired — run gs-admin login, then run \`${again}\` again: it continues where it stopped; the last good pages are untouched${lock.takenOver ? `; a stale lock held by ${lock.takenOver.by ?? "unknown"} since ${lock.takenOver.at} was taken over` : ""}`, "token-expired", { ...takenOver, ...(abandoned ? { abandoned } : {}), redocumented, ...remedyOf(again, true) });
     }
     // The pull.
-    const pulledRun = runAdapter(ctx, { spec, runId: basename(planned.runDir), phase: "all", previousPath, forceFull: full, healthOnly, lookbackDays: planned.lookbackDays });
+    const pulledRun = runAdapter(ctx, { spec, runId: basename(planned.runDir), phase: "all", previousPath, forceFull: full, healthOnly, lookbackDays: planned.lookbackDays, previousStore });
     // What the stop says is still needed is the adapter's remainder over the records as they stand (F-518), priced the
     // way the resume's opening line is; never the plan's calls less this run's counts, which count unforeseen cuts.
     if (pulledRun.summary.status !== "ok") {
@@ -1830,14 +1929,17 @@ function verbRefresh(ctx, slug, { full, healthOnly, planRun = null }) {
       const left = pulledRun.summary.remaining ?? estimate.thisRun.remaining ?? null;
       stopped(pulledRun, left == null ? null : left.calls === 0 ? 0 : loginsFor(left.seconds));
     }
-    const pulled = reduceEngagement(loadRun(pulledRun.runDir, { previous: pulledRun.previous, cliVersion: ctx.catalog.meta?.cliVersion ?? null, pluginVersion: ctx.pluginVersion }));
+    const reduced = reduceWithStore(loadRun(pulledRun.runDir, { previous: pulledRun.previous, previousStore: pulledRun.previousStore, cliVersion: ctx.catalog.meta?.cliVersion ?? null, pluginVersion: ctx.pluginVersion }));
+    const pulled = reduced.snapshot;
     const previous = pulledRun.previous;
     const { snapshot, resolution } = applyGroups(pulled, spec.groups, { previous });
     // The snapshot, then retention, then the pages (all or nothing), then the state is cleared.
     mkdirSync(join(dir, SNAPSHOTS_DIR), { recursive: true });
     // The same second-resolution stamp names the snapshot; a second pull stamped in the same second never overwrites the first.
     const snapshotPath = join(dir, SNAPSHOTS_DIR, `${freshName(join(dir, SNAPSHOTS_DIR), snapshotStamp(snapshot.meta.pulledAt), ".json")}.json`);
-    writeFileAtomicSync(snapshotPath, JSON.stringify(snapshot));
+    // The account store beside it (F-548), written first; one store per dashboard, so the earlier ones go.
+    const accountStore = writeSnapshotAndStore(snapshotPath, { snapshot, store: reduced.store });
+    pruneStores(ctx, slug, accountStore);
     const pruned = pruneSnapshots(ctx, slug);
     const delta = computeDelta(spec, snapshot, previous);
     const pages = buildPages(ctx, { spec, snapshot, delta, outDir: dir });
@@ -1845,9 +1947,9 @@ function verbRefresh(ctx, slug, { full, healthOnly, planRun = null }) {
     // The leaders' copy, after the pages are written and the run is closed: a publish that fails is said, never undone.
     const published = publishLeaders(ctx, { spec, snapshot });
     return {
-      ok: true, mode: "refresh", slug, status: "ok", run: basename(pulledRun.runDir), resumed: !!resuming, full, healthOnly, budget, ...(abandoned ? { abandoned } : {}),
+      ok: true, mode: "refresh", slug, status: "ok", run: basename(pulledRun.runDir), resumed: !!resuming && !restarted, ...(restarted ? { restarted } : {}), full, healthOnly, budget, ...(abandoned ? { abandoned } : {}),
       pull: { mode: snapshot.meta.refresh.mode, why: snapshot.meta.refresh.why, pulledAt: snapshot.meta.pulledAt, programs: snapshot.dimensions.programs.length, calls: pulledRun.summary.calls, reconciled: snapshot.reconciliation.ok, health: engine.healthAvailability(snapshot).pulled, accounts: engine.accountAvailability(snapshot).pulled, lookbackDays: planned.lookbackDays, lookbackDerivedFrom: planned.lookbackDerivedFrom ?? null },
-      redocumented, snapshot: snapshotPath, pruned, ungrouped: resolution.line, kbBehind: snapshot.honesty?.kb ?? null,
+      redocumented, snapshot: snapshotPath, accountStore, pruned, ungrouped: resolution.line, kbBehind: snapshot.honesty?.kb ?? null,
       delta: delta ? { previousPulledAt: delta.previousPulledAt, closedMonths: delta.closedMonths.length, programs: delta.programs, metrics: Object.fromEntries(Object.entries(delta.metrics).map(([k, v]) => [k, v.change])) } : null,
       pages: pages.map((p) => ({ page: p.page, path: p.path, megabytes: p.megabytes, warning: p.warning })),
       lockTakenOver: lock.takenOver ? { by: lock.takenOver.by, at: lock.takenOver.at } : null,
@@ -1862,75 +1964,121 @@ function verbRebuild(ctx, slug) {
   const spec = savedSpec(ctx, slug);
   const files = snapshotFiles(ctx, slug);
   if (!files.length) refuse(`no snapshot of "${slug}" yet — run \`${refreshRemedy(ctx, slug)}\` first`, "failed", remedyOf(refreshRemedy(ctx, slug), false));
-  const r = rebuildFrom(ctx, { spec, snapshotPath: files.at(-1), previousPath: files.at(-2) ?? null, outDir: dirOf(ctx, slug) });
+  const r = underLock(ctx, slug, "rebuild", () => rebuildFrom(ctx, { spec, snapshotPath: files.at(-1), previousPath: files.at(-2) ?? null, outDir: dirOf(ctx, slug) }));
   return { ok: true, mode: "rebuild", slug, pulledAt: r.pulledAt, ungrouped: r.ungrouped, delta: r.delta, pages: r.pages.map((p) => ({ page: p.page, path: p.path, megabytes: p.megabytes, warning: p.warning })), publish: r.publish };
 }
+/** A rebuild of the pages under the dashboard's lock (F-552): refused while a refresh runs, never raced with it. */
+function underLock(ctx, slug, action, work) {
+  const lock = takeLock(ctx, slug, { action });
+  try { return work(); } finally { lock.release(); }
+}
 /**
- * Whether a change of the customer lists can rank them now, and over which rows (F-529, ruled 2026-10-15). A list is
- * ranked only over a FULL pull's rows: a routine (selective) refresh keeps the last full ranking and folds every other
- * account's older months away (F-521, F-548), so re-reducing its run cannot rank a new or resized list. Ranked now: the
- * latest snapshot is a full pull and its run directory (matched by the exact pull time, among this dashboard's own
- * runs) is a finished pull. Anything else is said, never a stack trace: no pull yet, a routine refresh, the rows gone
- * (an import, a cleaned tmp), or a run directory that is not a finished pull (one an edit's plan resumed, phase plan).
- * @returns {{rank: boolean, why: ?string, latest: ?string, runDir: ?string}}
+ * Whether a change of the customer lists can rank them now (F-548, which replaced F-529's narrow path): from the account
+ * store beside the latest snapshot, with no pull. Not when there is no pull yet, when the latest pull holds no accounts,
+ * or when the latest snapshot has no store of its own (made before the store, or its store gone): then the next refresh
+ * is the one full pull that starts the store, and the change says so with its line. The store itself is not returned
+ * (it is megabytes; rebuildFrom reads it), so this can ride an edit's context.
+ * @returns {{rank: boolean, why: ?string, latest: ?string}}
  */
 function reselectReadiness(ctx, slug) {
   const latest = latestSnapshotPath(ctx, slug);
-  if (!latest) return { rank: false, latest: null, runDir: null, why: "the dashboard has no pull yet: its first refresh ranks the lists" };
-  const meta = readJsonOr(latest, null)?.meta ?? {};
-  if (meta.refresh?.mode !== "full") return { rank: false, latest, runDir: null, why: `the latest pull (${meta.pulledAt}) was a routine refresh, which keeps the ranking of the last full pull and holds no rows to rank a changed list over` };
-  const root = join(ctx.wsDir, ".gs-superadmin", "tmp", "engagement");
-  const runDir = pullRunDirs(ctx, slug).map((d) => join(root, d)).find((d) => readJsonOr(join(d, "run.json"), null)?.params?.pulledAt === meta.pulledAt) ?? null;
-  if (!runDir) return { rank: false, latest, runDir: null, why: `the rows of the latest pull (${meta.pulledAt}, a full one) are no longer in the workspace` };
-  const status = readJsonOr(join(runDir, "status.json"), null);
-  if (status?.status !== "ok" || status?.phase !== "all") return { rank: false, latest, runDir, why: `the run directory of the latest pull (${basename(runDir)}) is not a finished pull now (status ${status?.status ?? "missing"}, phase ${status?.phase ?? "missing"}: a plan made since resumed it)` };
-  return { rank: true, latest, runDir, why: null };
+  if (!latest) return { rank: false, latest: null, why: "the dashboard has no pull yet: its first refresh ranks the lists" };
+  const snapshot = openSnapshotFile(latest);
+  if (!engine.accountAvailability(snapshot).pulled) return { rank: false, latest, why: `the latest pull (${snapshot.meta.pulledAt}) holds no accounts: the lists are ranked by the first pull with customer lists on` };
+  const gap = storeGap(snapshot, latest);
+  return gap ? { rank: false, latest, why: gap } : { rank: true, latest, why: null };
+}
+/**
+ * Why the next refresh of a dashboard with customer lists is a full pull this once (F-548's migration, Bradley's
+ * contract: detected, priced and said, with no hand step): its latest snapshot has accounts and no account store of its
+ * own (made before the store, or the store gone). Null when it has one, or holds no accounts. The adapter's decideRefresh
+ * makes the same decision at the pull; this is the runner saying it before (a list change, the report's offer).
+ * @param {*} snapshot the latest snapshot (T-10) @param {string} snapshotPath
+ */
+function storeGap(snapshot, snapshotPath) {
+  // The store's head says which pull it is (F-555): its cells are not read to answer that.
+  if (!engine.accountAvailability(snapshot).pulled || accountStoreFits(readAccountStoreHead(accountStorePath(snapshotPath)), snapshot)) return null;
+  return snapshot.meta.accountStore
+    ? `the account store beside the latest snapshot (${snapshot.meta.pulledAt}) is missing or is not that snapshot's, so the customer lists need one full pull to rank again, and the next refresh is that pull`
+    : `the latest snapshot (${snapshot.meta.pulledAt}) was made before the account store: the customer lists need one full pull to start ranking on every refresh, and the next refresh is that pull`;
 }
 /** What a list change does, said before it runs (`change`'s consequenceText, the edit's closing ask and its option). */
-const reselectText = (r, line) => (r.rank ? "the customer lists are ranked again over the last full pull's rows (a rebuild, no pull)" : `the pages are rebuilt with no pull, and the changed customer lists are ranked at the next full refresh (\`${line}\`): ${r.why}`);
+const reselectText = (r, line) => (r.rank ? "the customer lists are ranked again from the account store beside the last pull (a rebuild, no pull)" : `the pages are rebuilt with no pull, and the changed customer lists are ranked at the next refresh (\`${line}\`): ${r.why}`);
 /**
- * A change of the customer lists, done (ruled 2026-10-05, narrowed 2026-10-15 at F-529): over a full pull's run
- * directory, reduce again with the new lists (ranked, no pull); otherwise rank nothing, rebuild the pages so every other
- * changed setting of the same change lands, and say that the lists are ranked at the next full refresh, with its line
- * and its minutes. `done` is true only when the lists were ranked.
+ * A change of the customer lists, done (ruled 2026-10-05; F-548): the pages are rebuilt, and rebuildFrom ranks the
+ * changed lists from the account store with no pull. With no store of the latest snapshot's own, the lists wait for the
+ * next refresh (the one full pull that starts the store), said with its line and minutes, and every other changed
+ * setting of the same change still lands. `done` is true only when the lists were ranked.
  */
-function reselectFromRun(ctx, slug, spec) {
+function reselectFromStore(ctx, slug, spec) {
   const r = reselectReadiness(ctx, slug);
+  const files = snapshotFiles(ctx, slug);
+  const keep = { snapshot: null };
+  const rebuilt = files.length ? rebuildFrom(ctx, { spec, snapshotPath: files.at(-1), previousPath: files.at(-2) ?? null, outDir: dirOf(ctx, slug), keep }) : null;
+  const pages = rebuilt ? { pages: rebuilt.pages.map((p) => ({ page: p.page, path: p.path })), publish: rebuilt.publish } : {};
   if (!r.rank) {
-    const line = refreshRemedy(ctx, slug, { full: true });
+    const line = refreshRemedy(ctx, slug);
     const plan = lastPlan(ctx, slug);
     const fullMinutes = plan?.estimate?.full?.seconds != null ? minutesOf(plan.estimate.full.seconds) : null;
-    const files = snapshotFiles(ctx, slug);
-    const rebuilt = files.length ? rebuildFrom(ctx, { spec, snapshotPath: files.at(-1), previousPath: files.at(-2) ?? null, outDir: dirOf(ctx, slug) }) : null;
     return {
       done: false, ranked: false, rebuilt: !!rebuilt, why: r.why, fullRefreshMinutes: fullMinutes,
-      text: `The change is saved. The customer lists were not ranked again: ${r.why}. They are ranked at the next full refresh (${fullMinutes != null ? `about ${plural(fullMinutes, "minute")}` : "a full pull's time"}): \`${line}\`; a routine refresh keeps the current ranking. ${rebuilt ? "The pages were rebuilt with the other changes." : "There are no pages to rebuild yet."}`,
+      text: `The change is saved. The customer lists were not ranked again: ${r.why}. They are ranked at the next refresh (a full pull this once, ${fullMinutes != null ? `about ${plural(fullMinutes, "minute")}` : "a full pull's time"}): \`${line}\`. ${rebuilt ? "The pages were rebuilt with the other changes." : "There are no pages to rebuild yet."}`,
       remedy: { login: false, line },
-      ...(rebuilt ? { pages: rebuilt.pages.map((p) => ({ page: p.page, path: p.path })), publish: rebuilt.publish } : {}),
+      ...pages,
     };
   }
-  const run = readJsonOr(join(r.runDir, "run.json"), {});
-  const input = loadRun(r.runDir, { previous: run.previousPath && existsSync(run.previousPath) ? openSnapshotFile(run.previousPath) : null, cliVersion: run.cliVersion ?? null, pluginVersion: ctx.pluginVersion });
-  input.params.accounts.lists = accountLists(spec);
-  const pulled = reduceEngagement(input);
-  const previous = input.previous;
-  const { snapshot } = applyGroups(pulled, spec.groups, { previous });
-  writeFileAtomicSync(r.latest, JSON.stringify(snapshot));
-  const delta = computeDelta(spec, snapshot, previous);
-  const pages = buildPages(ctx, { spec, snapshot, delta, outDir: dirOf(ctx, slug) });
-  const lists = snapshot.honesty?.accountSelection?.lists?.map((l) => ({ kind: l.kind, kept: l.kept.length })) ?? [];
-  return { done: true, ranked: true, text: `The change is saved and the customer lists were ranked again over the last full pull's rows (${snapshot.meta.pulledAt}), no pull; the pages were rebuilt.`, publish: publishLeaders(ctx, { spec, snapshot }), snapshot: r.latest, lists, pages: pages.map((p) => ({ page: p.page, path: p.path })) };
+  const snapshot = keep.snapshot ?? openSnapshotFile(r.latest);
+  // Ranked is what the snapshot now holds (the review's outcome-from-proxy note): its lists are the spec's. A change that
+  // also turned the customer lists off ranks nothing, and says so.
+  if (!listsAgree(spec, snapshot)) {
+    const why = spec.accounts?.pull === false ? "the customer lists are turned off for this dashboard (accounts.pull is false): the lists are kept and unused until they are turned on" : "the lists the snapshot holds are not the saved ones";
+    return { done: false, ranked: false, rebuilt: !!rebuilt, why, text: `The change is saved. The customer lists were not ranked again: ${why}. ${rebuilt ? "The pages were rebuilt with the other changes." : ""}`.trim(), ...pages };
+  }
+  const lists = snapshot.honesty?.accountSelection?.lists?.map((l) => ({ kind: l.kind, kept: l.kept.length, ...(l.per ? { per: l.per, segment: l.segment } : {}), ...(l.notRanked ? { notRanked: l.notRanked } : {}) })) ?? [];
+  const unnamed = rebuilt?.listsRanked?.unnamed ?? 0;
+  return {
+    done: true, ranked: true, rebuilt: true, snapshot: r.latest, lists,
+    text: `The change is saved and the customer lists were ranked again from the account store beside the last pull (${snapshot.meta.pulledAt}), with no pull; the pages were rebuilt.${unnamed ? ` ${plural(unnamed, "account")} new to the lists show${unnamed === 1 ? "s" : ""} its key until the next refresh reads ${unnamed === 1 ? "its name" : "their names"}.` : ""}${perSegmentLeftOut(rebuilt?.listsRanked?.newlyKept ?? 0, lists)}`,
+    ...pages,
+  };
+}
+/**
+ * A change pair's value (F-536): JSON when it parses; otherwise a BARE value read by the setting's kind, because a JSON
+ * string's quotes survive no shell bare — Git Bash and cmd strip them from a bare word, and Windows PowerShell 5.1
+ * strips them even inside a single-quoted pair (measured 2026-10-15) — while a bare value, or the whole pair in double
+ * quotes, survives all three. The kind is the interview question's that covers the path (QUESTIONS, the one home): a
+ * list takes its items separated by commas (`none` is empty; a shell-stripped `[a,b]` reads the same), a boolean
+ * yes/no, anything else the bare text (the writer's validation then judges it against the field). `@<file>` reads the
+ * value as JSON from a file: the object-valued settings (a window, the groups) whose JSON no shell carries whole.
+ * @param {string} path the writer's dotted path @param {string} raw the text after the `=`
+ */
+export function changeValue(path, raw) {
+  if (/^@./.test(raw)) {
+    const file = resolve(raw.slice(1));
+    try { return readJsonFile(file); } catch (e) { return refuse(`change ${path}: cannot read the value as JSON from ${file} (${e instanceof Error ? e.message : String(e)})`); }
+  }
+  try { return JSON.parse(raw); } catch { /* a bare value, by the setting's kind */ }
+  const covered = coveredPath(path);
+  const kind = QUESTIONS.find((q) => q.path && coveredPath(q.path) === covered)?.kind ?? null;
+  const s = raw.trim();
+  if (kind === "list") { const inner = /^\[.*\]$/.test(s) ? s.slice(1, -1) : s; return noneValue(inner) ? [] : listValue(inner); }
+  if (kind === "boolean") return boolValue(s);
+  return raw;
 }
 function verbChange(ctx, slug, pairs, dryRun) {
-  const saved = savedSpec(ctx, slug);
-  if (!pairs.length) refuse("nothing to change — pass <path>=<json>, like accounts.pull=true");
+  // The saved spec, opened leniently (F-541): one this version's validator refuses is still changed through the writer
+  // (the repair path) — the save names what is still wrong, never a stack here.
+  const { spec: saved, problems: savedProblems } = savedSpecLenient(ctx, slug);
+  if (!pairs.length) refuse("nothing to change — pass <path>=<value>, like accounts.pull=true");
   // The pairs are read before any draft exists, so a malformed one leaves nothing behind.
-  const sets = pairs.map((pair) => {
+  const sets = pairs.map((given) => {
+    // cmd passes single quotes through literally (Git Bash and PowerShell strip them), so a pair wrapped in a
+    // matching pair of them is the same pair (F-536).
+    const pair = /^'.*'$/.test(given) ? given.slice(1, -1) : given;
     const cut = pair.indexOf("=");
-    if (cut < 1) refuse(`change takes <path>=<json> (got "${printable(pair, 80)}")`);
+    if (cut < 1) refuse(`change takes <path>=<value> (got "${printable(pair, 80)}")`);
     const path = pair.slice(0, cut).replace(/\[\]/g, "").replace(/\[(\d+)\]/g, ".$1");
-    let value;
-    try { value = JSON.parse(pair.slice(cut + 1)); } catch { refuse(`change ${path}: the value is not JSON — quote text ("Renewals"), and write lists and objects as JSON`); }
+    const value = changeValue(path, pair.slice(cut + 1));
     for (const id of IDENTITY_PATHS) if (coveredPath(path) === id) refuse(`${path} ${COST_KINDS.identity}`);
     return [path, value];
   });
@@ -1950,8 +2098,8 @@ function verbChange(ctx, slug, pairs, dryRun) {
   const { changed, consequence } = changeCost(saved, d.draft.spec, { longestPeriodDays: plan?.estimate?.health?.lookback?.longestPeriodDays ?? null });
   // The pull's minutes are priced for the spec AFTER the change (F-511 instance 24), from the last plan's parts.
   const seconds = pullSecondsAfter(plan, saved, d.draft.spec);
-  const says = consequence == null ? "nothing changed" : consequence === "pull" ? `the next refresh pulls everything again, ${seconds != null ? `about ${plural(minutesOf(seconds), "minute")}${seconds > LOGIN_SECONDS ? ` (about ${plural(loginsFor(seconds), "login")} of an hour)` : ""}` : "a first pull's time (no plan yet)"}` : consequence === "reselect" ? reselectText(reselectReadiness(ctx, slug), refreshRemedy(ctx, slug, { full: true })) : "rebuild only (no pull)";
-  const summary = { ok: true, mode: "change", slug, by: started.by, draftHadEarlierChanges: had, changed, consequence, consequenceText: says, pullSeconds: consequence === "pull" ? seconds : null, costTable: COST_KINDS, dryRun };
+  const says = consequence == null ? "nothing changed" : consequence === "pull" ? `the next refresh pulls everything again, ${seconds != null ? `about ${plural(minutesOf(seconds), "minute")}${seconds > LOGIN_SECONDS ? ` (about ${plural(loginsFor(seconds), "login")} of an hour)` : ""}` : "a first pull's time (no plan yet)"}` : consequence === "reselect" ? reselectText(reselectReadiness(ctx, slug), refreshRemedy(ctx, slug)) : "rebuild only (no pull)";
+  const summary = { ok: true, mode: "change", slug, by: started.by, draftHadEarlierChanges: had, changed, consequence, consequenceText: says, pullSeconds: consequence === "pull" ? seconds : null, costTable: COST_KINDS, dryRun, ...(savedProblems.length ? { savedProblems: savedProblems.map((p) => problemsText([p])) } : {}) };
   if (dryRun) {
     if (!had) ctx.store.discardDraft(slug);
     return { ...summary, saved: false, done: null };
@@ -1961,14 +2109,35 @@ function verbChange(ctx, slug, pairs, dryRun) {
   try {
     savedNow = ctx.store.save(slug);
   } catch (e) {
-    // A save the writer refuses (another dashboard's publish file, F-532) leaves no draft this change started.
+    if (e instanceof SpecRefusal) {
+      // A repair in progress (F-541, reopened at the 0.56.1 gate): a change that cleared SOME of a refused spec's
+      // problems is KEPT in the draft, so the next change builds on it and the save follows once every problem is
+      // gone — never the fix lost to the refusal that names the rest. A change that cleared none leaves no draft
+      // (another dashboard's publish file, F-532, the same).
+      const left = savedProblems.length ? validateSpec(d.draft.spec).problems : [];
+      if (left.length && left.length < savedProblems.length) refuse(`${e.message} — this change is kept in the draft (${plural(left.length, "problem")} left of ${savedProblems.length}): change the remaining setting${left.length === 1 ? "" : "s"} the same way, and the save follows`);
+      if (!had) ctx.store.discardDraft(slug);
+      refuse(e.message);
+    }
     if (!had) ctx.store.discardDraft(slug);
-    if (e instanceof SpecRefusal) refuse(e.message);
     throw e;
   }
   const spec = openSpec(savedNow.spec);
-  const done = doConsequence(ctx, slug, spec, consequence);
+  let done;
+  try {
+    done = doConsequence(ctx, slug, spec, consequence);
+  } catch (e) {
+    // The change IS saved; a rebuild refused under the lock (a refresh is running, F-552) says so and keeps its code.
+    if (e instanceof DashboardRefusal && consequence !== "pull") throw new DashboardRefusal(`the change of "${slug}" is saved; its rebuild did not run: ${e.message}`, e.code, e.details);
+    throw e;
+  }
   return { ...summary, saved: true, previousCopy: `${savedNow.path}.previous`, done };
+}
+/** The per-segment lists a change ranked from the store leave out the accounts it newly kept (their fields are not in the store): said with the result (F-554). */
+function perSegmentLeftOut(newlyKept, lists) {
+  const fields = [...new Set((lists ?? []).filter((l) => l.per).map((l) => l.per))];
+  if (!newlyKept || !fields.length) return "";
+  return ` ${plural(newlyKept, "account")} newly kept ${newlyKept === 1 ? "is" : "are"} left out of the per-${fields.join(" and per-")} list${fields.length === 1 ? "" : "s"} until the next refresh reads ${newlyKept === 1 ? "its" : "their"} fields.`;
 }
 /**
  * A full pull's seconds for the spec AFTER a change, from the last plan made on the spec BEFORE it: the plan prices each
@@ -2011,10 +2180,13 @@ function verbReport(ctx, slug, opt, argv) {
   // routine (selective) one, its own run's figure; after only a full pull no routine refresh has been priced yet, so the
   // figure is null and the full pull's minutes ride beside it for the skill's wording.
   const plan = lastPlan(ctx, slug);
-  const refreshSeconds = plan?.estimate?.mode === "selective" && plan.estimate.thisRun?.seconds != null ? plan.estimate.thisRun.seconds : null;
+  // A dashboard whose latest snapshot has no account store of its own (F-548's migration) gets a full pull this once:
+  // the routine refresh offered is then priced as that full pull, and why rides beside it for the skill to say.
+  const refreshFullOnce = storeGap(snapshot, latest);
+  const refreshSeconds = refreshFullOnce ? plan?.estimate?.full?.seconds ?? null : plan?.estimate?.mode === "selective" && plan.estimate.thisRun?.seconds != null ? plan.estimate.thisRun.seconds : null;
   const refreshMinutes = refreshSeconds != null ? minutesOf(refreshSeconds) : null;
   const fullRefreshMinutes = plan?.estimate?.full?.seconds != null ? minutesOf(plan.estimate.full.seconds) : null;
-  return { ...summary, mode: "report", slug, snapshotAgeDays: ageDays, refreshMinutes, refreshSeconds, fullRefreshMinutes, held: heldBy(snapshot, summary.statusesShown) };
+  return { ...summary, mode: "report", slug, snapshotAgeDays: ageDays, refreshMinutes, refreshSeconds, fullRefreshMinutes, refreshFullOnce, held: heldBy(snapshot, summary.statusesShown) };
 }
 /**
  * What a dashboard's snapshot holds, for the question it is asked (F-534): the pull's selection and window in words and
@@ -2036,13 +2208,17 @@ function verbExport(ctx, slug, opt, argv) {
   if (!opt("--out")) refuse("export needs --out <file>");
   const r = ctx.store.exportSpec(slug, opt("--out"));
   let snapshot = null;
+  let accountStore = null;
+  const latest = latestSnapshotPath(ctx, slug);
   if (argv.includes("--with-snapshot")) {
-    const latest = latestSnapshotPath(ctx, slug);
     if (!latest) refuse(`no snapshot of "${slug}" to export beside the spec — run \`${refreshRemedy(ctx, slug)}\` first, or export without --with-snapshot`, "failed", remedyOf(refreshRemedy(ctx, slug), false));
     snapshot = r.out.replace(/\.json$/i, "") + ".snapshot.json";
-    copyFileSync(latest, snapshot);
+    // The account store goes with its snapshot (F-548), beside it under the one rule engagement.mjs owns, so the
+    // import ranks the customer lists on its first refresh with no full pull.
+    accountStore = copySnapshotWithStore(latest, snapshot);
   }
-  return { ok: true, mode: "export", slug, out: r.out, tenantHost: r.tenantHost, snapshot, hint: snapshot ? "import --file <the export> --snapshot <the snapshot> on the other machine: its first refresh is then selective, with a delta" : null };
+  const noStore = snapshot && !accountStore && engine.accountAvailability(openSnapshotFile(latest)).pulled;
+  return { ok: true, mode: "export", slug, out: r.out, tenantHost: r.tenantHost, snapshot, accountStore, hint: snapshot ? `import --file <the export> --snapshot <the snapshot> on the other machine${accountStore ? " (the account store beside the snapshot goes with it)" : ""}: its first refresh is then ${noStore ? "a full pull, since the snapshot has no account store beside it to rank the customer lists from" : "selective, with a delta"}` : null };
 }
 function verbImport(ctx, opt, argv) {
   if (!opt("--file")) refuse("import needs --file <export>");
@@ -2058,12 +2234,14 @@ function verbImport(ctx, opt, argv) {
   };
   const r = ctx.store.importSpec({ file: opt("--file"), slug: opt("--slug") ?? null, replace: argv.includes("--replace"), beforeWrite: checkSnapshot });
   let snapshot = null;
+  let accountStore = null;
   if (snapPath && pulled) {
     mkdirSync(join(dirOf(ctx, r.slug), SNAPSHOTS_DIR), { recursive: true });
     snapshot = join(dirOf(ctx, r.slug), SNAPSHOTS_DIR, `${freshName(join(dirOf(ctx, r.slug), SNAPSHOTS_DIR), snapshotStamp(pulled.meta.pulledAt), ".json")}.json`);
-    copyFileSync(snapPath, snapshot);
+    // Its account store, when one is beside it (F-548): the first refresh then carries every account's older months.
+    accountStore = copySnapshotWithStore(snapPath, snapshot);
   }
-  return { ok: true, mode: "import", slug: r.slug, path: r.path, snapshot, exportedAt: r.exportedAt, ...(r.publishRenamed ? { publishRenamed: { ...r.publishRenamed, text: `The leaders' copy of "${r.slug}" goes to ${r.publishRenamed.to}, not ${r.publishRenamed.from}: ${r.publishRenamed.why}.` } } : {}) };
+  return { ok: true, mode: "import", slug: r.slug, path: r.path, snapshot, accountStore, exportedAt: r.exportedAt, ...(r.publishRenamed ? { publishRenamed: { ...r.publishRenamed, text: `The leaders' copy of "${r.slug}" goes to ${r.publishRenamed.to}, not ${r.publishRenamed.from}: ${r.publishRenamed.why}.` } } : {}) };
 }
 function verbHealth(ctx, slug, opt) {
   const programId = opt("--program");

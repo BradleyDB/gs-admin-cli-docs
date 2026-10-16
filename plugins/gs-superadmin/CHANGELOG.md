@@ -5,6 +5,189 @@ marketplace doesn't pin versions — users get main — so entries describe what
 user who updates, not internal refactors. Entries before 0.8.0 were reconstructed from git
 history when this file was introduced.
 
+## 0.56.2 — 2026-10-16
+
+The release gate's fix round (F-530, F-536, F-541, F-542, F-545, F-546 reopened; F-552,
+F-553, F-554, F-555): what the 0.56.1 review found inside the mechanisms that release
+shipped, fixed before the cut.
+
+- **The file lock no longer loses a holder (F-545, F-546).** The lock record is evidence of
+  a holder, never the only evidence: a holder whose process is gone is taken over at once
+  (a killed describe or refresh no longer locks the knowledge base for ten minutes, or a
+  dashboard for two hours), a record that cannot be read yet is held while its file is
+  young (a taker inside its own create, or a file a scanner holds) and taken over only once
+  old, a dead lock is claimed by one taker (never two), the create and the removals go
+  through the Windows retry (a scanned lock file is a transient, never a crash or a lock
+  left behind), and a release or a record touches this taker's own record alone. The
+  manifest's read-only verbs (`next`, `report`, `crawl` without `--set`,
+  `reconcile-docs --dry-run`) take no lock, and an interrupted writer releases its lock on
+  the way out. The "locked" refusal says the lock clears on its own.
+- **A rebuild, and a change's rebuild, take the refresh lock (F-552).** While a refresh
+  runs, `rebuild` and a display change's rebuild are refused naming it ("run rebuild again
+  when it finishes"; the change itself is saved), so the pages are never written from an
+  older snapshot over the ones a refresh just built.
+- **The repair of a refused saved dashboard holds through the interview (F-541).** `new`'s
+  own hint (`next` to the closing step, `next --question <id>`) and the save's refusal now
+  reach the writer instead of a stack trace; and with two problems from a tightened rule, a
+  change that clears one is kept in the draft and says so, so the next change builds on it
+  and the save follows.
+- **What is shown is what is described (F-530).** In the window where a list change could
+  not be ranked (no account store beside the latest snapshot: an upgrade from 0.54.0 before
+  its first refresh), the About tab names the lists the pull ranked — the ones the panels
+  and the report draw — and adds that a change of the customer lists is waiting for the
+  next refresh, naming it; it no longer describes lists the page does not show.
+- **A restart is told as one on every path (F-542).** A resume whose derived health lookback
+  moved back to the base, or whose two values were capped to one window, pulls in a fresh
+  directory and says so (the state records which directory the stopped run pulled in);
+  the skill relays `restarted`.
+- **Every line runs as written (F-536).** The skill's shared-folder offer writes the publish
+  setting through `@<file>` (inline JSON survives no Windows shell), the README and the
+  usage headers state the value grammar the script reads, the two remedy lines use the bare
+  spelling, and a knowledge-base folder name holding a space is double-quoted on every copy
+  and remedy line.
+- **Three relayed statements name their case (F-554):** the `--previous` row says a snapshot
+  with no account store beside it makes the pull full; the per-pin facts warning tells a
+  workspace on an older CLI to upgrade it (and a newer one to wait for the plugin); a list
+  change ranked from the store says the accounts it newly kept are left out of the
+  per-field lists until the next refresh reads their fields.
+- Housekeeping (F-553, F-555): the maintainers' tables name the lock and the account store;
+  one list identity, one ordering by the pull's ranking, one problems text and one
+  snapshot-plus-store copy serve every surface; the account store is read once per refresh
+  and decoded once, and a reader that only asks which pull a store is reads its first line.
+
+## 0.56.1 — 2026-10-15
+
+The polish round before the release (F-536, F-541, F-542, F-545, F-546, F-551): six
+findings the 0.54.0 release gate logged as polish and deferred once, all on the engagement
+dashboard's entry command and the knowledge base it re-documents, plus the wording the
+1.0.12 live checks settled.
+
+- **A dashboard setting is changed with a value every shell passes whole (F-536).**
+  `change <dash> <path>=<value>` takes JSON when it parses and otherwise a bare value by
+  the setting's kind: a list as items separated by commas
+  (`"sources.0.params.internalDomains=acme.com,acme.co.uk"`, `none` to empty it), a yes/no
+  setting as `yes` or `no`, a text setting as the text itself; the whole pair in double
+  quotes is the one spelling Git Bash, PowerShell 5.1 and cmd all deliver as written, where
+  a JSON string's own quotes survive none of them bare. An object-valued setting takes its
+  JSON from a file (`<path>=@<file>`). The page's "no internal domain" line now carries a
+  `<domains>` placeholder inside the quoted pair, with the notice saying what to put there,
+  and runs as printed in all three shells.
+- **A saved dashboard that a newer version's checks refuse is repaired through the writer
+  (F-541).** `new` opens it as an edit naming the problem and the repair line; a change may
+  not add a problem; the save is refused until none remains. No hand edit of the saved
+  file, and no stack trace.
+- **A resume whose health lookback moved says it starts again (F-542).** When
+  re-documentation moved the knowledge base so the derived lookback rose, the resumed
+  refresh plans and pulls in a fresh run directory and its opening line says so, from which
+  lookback to which and why, instead of "the calls already made are reused"; the summary
+  records the restart.
+- **A second refresh during a live one is told "already running" first (F-545).** The
+  per-dashboard lock is taken before the stopped-run state is read, with an exclusive
+  create (no check-then-write window), and a release never removes a lock another refresh
+  took over.
+- **Two dashboards of one knowledge base can refresh at once without losing each other's
+  marks (F-546).** The manifest script, the one writer of `_manifest.json`, takes a lock
+  beside it for each load-change-save; a second writer waits up to 30 seconds
+  (`--lock-wait-seconds`), then fails naming the holder; a lock older than ten minutes is a
+  dead writer's and is taken over.
+- **The 1.0.11-and-later wording states what the 1.0.12 live checks measured (F-551).** The
+  email-template scope note, the operating model's scope-filter entry and the per-pin facts
+  entry carry the measured count (the list descends subfolders; a few templates are still
+  hidden, each in a folder whose other templates list; `--folder` matches a folder's own
+  name only); "live confirmation pending" is lifted from the `sc measures --id` and LOOKUP
+  entries; the error-exit entry scopes the crash codes to 1.0.10 and earlier; the engagement
+  test fixture carries the CLI's real field-refusal text.
+
+## 0.56.0 — 2026-10-15
+
+CLI pin 1.0.10 → 1.0.12 (gs-fortress audit-1.0.12, CP-1 and CP-7). The pin skips 1.0.11:
+1.0.12 ships 1.0.11's code unchanged with one dependency pin moved, so a workspace on either
+reads the same. What a user gets by updating:
+
+- **Reference bundle regenerated from 1.0.12** (catalog, cheatsheet, ask-rules, version).
+  The command surface did not move: 188 commands / 182 MCP tools / 10 domains, no mutating
+  flag moves, the guard untouched, the 20 non-mutating POST fetches the same list. The one
+  catalog difference beyond the version stamps is `dm o list --sort-field`'s description,
+  which now names the nine keys the server sorts on.
+- **The per-pin CLI facts table is back for workspaces on 1.0.11 or 1.0.12.** It is stamped
+  1.0.12 and also verified on 1.0.11 (the same code), so setup's candidate gate again buckets
+  the four `re rules` per-asset reads and `report` again relays the scope limits there. A
+  workspace still on 1.0.10 or 1.0.9 now gets the table withdrawn with the "re-verify"
+  warning instead: the `journey email templates` entry changed at 1.0.11 (the list descends
+  subfolders), and an entry found changed drops the older versions. That entry itself still
+  carries the 1.0.10 wording — the live count is measured now (F-549 / CP-6 (c): the list
+  descends subfolders, three templates still unreachable) and the rewrite is F-551, a later
+  round — while the scope note it points at already says which version each clause holds
+  for.
+- **Version prose re-checked at 1.0.12** across the skills, setup references, operating model
+  and READMEs. The Known CLI issues header says what 1.0.11 changed (the report,
+  data-management and journey handlers, the error exits, the token-store loading) and that
+  1.0.12 changed nothing further; the read-verb allowlist and the CLI's two re-login
+  sentences re-verified unchanged against the 1.0.12 package; relationships-build's
+  semantics basis records 1.0.11 and 1.0.12 (the rules-engine handler and manifest are
+  byte-identical from 1.0.10).
+
+## 0.55.0 — 2026-10-15
+
+Customer lists that stay current. In 0.54.0 a routine refresh updated the figures of the
+accounts on the lists but never who was on them: membership changed only at a full pull.
+
+- **Every refresh ranks the customer lists.** Beside its latest snapshot each dashboard
+  now keeps an account store: every company's sends, deliveries, opens and bounces (and the
+  rest of the send figures) by program and month over the dashboard's window. It is plain
+  JSON, one line per company, program and month, in the dashboard's `snapshots` folder; it
+  is never put in a page, and only the latest snapshot's is kept. A routine refresh ranks
+  the lists from the months it carries (from the store) and the months it reads again, so
+  its lists are the ones a full pull would make. Its size follows how broadly the tenant
+  sends, not the dashboard's age: about 4.6 MB for 15,000 companies across 190 programs
+  over 13 months.
+- **A list change ranks with no pull.** Changing a customer list's size, floor or segment
+  (`change`, or the edit's closing step) ranks it again from the store and rebuilds the
+  pages, after a routine refresh too. A company new to a list shows its id until the next
+  refresh reads its name. A per-segment list over a company field the last pull did not
+  read says so, and the next refresh ranks it.
+- **The page shows the lists the pull ranked.** Each customer-list panel now lists that
+  list's own companies in the order the pull ranked them, with its size and floor (it used
+  to rank every company again with fixed numbers: 25, at least 10 delivered), and a list
+  per segment now reaches the page, one table per segment. The page, the report and the
+  About tab name the same list. A narrower date range or filter re-ranks the list's own
+  companies over what is shown, and says so. The report prints each list in the same order.
+- **Upgrading.** The first refresh of a dashboard pulled with 0.54.0 is a full pull, once:
+  the lists need it to start ranking on every refresh. The refresh says so, and the
+  report's offer to refresh prices it as the full pull it is. Nothing to do by hand.
+  `export --with-snapshot` carries the store, so a backup refresher's first pull stays
+  selective.
+
+## 0.54.1 — 2026-10-15
+
+The plugin's account of the Gainsight CLI is correct again for a workspace whose installed
+CLI is 1.0.11 or 1.0.12 (the same code; 1.0.12 moves one dependency pin), and unchanged
+for 1.0.10 and earlier (F-549; gs-fortress audit-1.0.12, CP-2 to CP-5). CLI 1.0.11 fixed
+several defects the plugin documented as standing, and the doctrine said so for nobody:
+every affected statement now names the version it holds for.
+
+- **`sc measures --id` works on CLI 1.0.11 and later.** The operating model's Known CLI
+  issues entry, its General rule and setup's scorecard exception name the real cause of the
+  1.0.10-and-earlier failure (a keychain-load race between the command's two concurrent
+  first requests, fixed upstream) instead of calling it unknown, and the duplicate-name
+  fallback records a "known CLI auth race" failure only on 1.0.10 and earlier. `--name`
+  stays the default on every version.
+- **Nested email-template folders are reachable on CLI 1.0.11 and later.** The scope note
+  for `journey email templates` and the operating model's scope-filter entry scope the
+  one-level flattening and the field-less folder rows to 1.0.10 and earlier; the residual
+  top-level filter stays on every version, and the count reachable on 1.0.11 or later is
+  marked as not yet measured live.
+- **The libuv error-path abort is scoped to CLI 1.0.10 and earlier.** The entry says what
+  1.0.11 changed (no `process.exit()` on error paths) and keeps "parse stderr, never trust
+  the exit code" on every version until the clean exit is measured live.
+- **The engagement adapter says which CLI its facts were measured on**, keeps every query
+  guard and the one-call-at-a-time rule (a cross-process observation that the in-process
+  fix upstream does not retire), and classifies a 1.0.11-and-later field refusal
+  (`Field "X" not found on <object>`, `Filter field "X" not found on <object>`) as the
+  query's shape rather than a missing asset: it is no longer retried once as a not-found,
+  a `describe` never settles it as a deleted program, and a refresh records it as
+  `shape-error`.
+
 ## 0.54.0 — 2026-10-14
 
 Email engagement, from a one-off report to a dashboard you refresh with one command. A new
@@ -96,10 +279,8 @@ the versions 0.44.0 to 0.53.0 were staged on the way and never released on their
   families again. The pages say when the data was pulled and that they are not live. The
   README has a copy-paste scheduled-refresh recipe per OS, and the hand-over to a backup
   refresher (export with the snapshot, import).
-- **Customer lists are ranked at a full pull.** A routine refresh keeps that ranking (the
-  page dates it) and updates the figures; `refresh <slug> --full` ranks the lists again. A
-  list changed after a routine refresh is ranked at the next full refresh, and the change
-  says so, with that refresh's line.
+- **Customer lists are ranked at a full pull** in this version; a routine refresh keeps
+  that ranking. 0.55.0 ranks them on every refresh (below).
 - **The leaders' copy, published.** At the end of every successful refresh the leaders'
   page is copied into a folder you name (a synced OneDrive, SharePoint or network folder)
   under the same file name every time, with each table beside it as a CSV named after the

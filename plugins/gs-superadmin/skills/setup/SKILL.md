@@ -262,7 +262,7 @@ script cannot make:
   scope-limited — next bullet). The scorecard family works either way; the audit
   skill's `sc list --limit 10000` single fetch is the precedent (its bare defaults
   truncate — `sc m list` serves 20 rows by default, measured on 1.0.4; since CLI
-  1.0.8 (re-checked at v1.0.10) the four `sc` list commands return a top-level `_total` the mode reconciles
+  1.0.8 (re-checked at v1.0.12) the four `sc` list commands return a top-level `_total` the mode reconciles
   against).
 - On `suspect`, re-verify with a larger limit captured to a **separate** file (never
   overwrite the baseline being compared against); where no larger fetch exists (the
@@ -385,8 +385,9 @@ so no overlap check can run: pass `--no-check "<the runtime error>"` in place of
 `--check`, step 3) — the flag is advisory, so still run it once rather than excluding
 on the hint alone, and report the command so the shipped list can carry it at the next
 pin. If the diff warns that the shipped list was not applied (`pinFacts.applied` false —
-the workspace catalog is at another CLI version), relay the warning: every sublist is
-then ordinary undecided work again until the plugin is updated. A candidate carrying a non-null `requiredEnumFlags` is runnable
+the workspace catalog is at another CLI version), relay the warning as written: every
+sublist is then ordinary undecided work again until the version the warning names is in
+place (an older CLI is upgraded by the user; a newer one waits for a plugin update). A candidate carrying a non-null `requiredEnumFlags` is runnable
 tenant-wide only through those enum flags (e.g. `--type` over `MDA|SFDC`): to evaluate
 or adopt it, run the list once per enum value and combine the captures — a decision on
 such a candidate covers every value, and its reason should say so.
