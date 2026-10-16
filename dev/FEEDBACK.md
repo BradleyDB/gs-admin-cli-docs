@@ -3429,3 +3429,26 @@ by re-reading the new package, never by editing the pattern that holds it.
   0.55.0) MERGEABLE/BLOCKED. Neither merged by the tester; the Fix note's numbering rule for whichever lands second
   stands.
   Verdict: VERIFIED.
+
+## F-551 — OPEN
+Reported: 2026-10-15 (tester, F-550 verdict round @ hb-20261015-07)
+Severity: polish — wording only. The scope line overstates one 1.0.10 limit to 1.0.11/1.0.12 workspaces. Its caveat,
+that the count is the CLI-reachable subset, stays true, so no decision taken from it goes wrong. Picked up in a later
+session per Bradley (2026-10-15), never gating PR #59.
+What: CP-6 (c) cleared live at 1.0.12 (dev/VALIDATION.md § "F-549 / CP-6" (c), CLEARED @ hb-20261015-07): the template
+list now descends nested subfolders and still omits a few templates (3 of the 1180 the sandbox KB holds, each in a
+folder whose other templates list), and `--folder` matches a folder's own name only (KI-030). Three sites still carry
+the pre-measurement wording, and check 23 holds them together:
+  (i) plugins/gs-superadmin/scripts/doc-lib.mjs CLI_PIN_FACTS "journey:email:templates" scope ("flattens one folder
+  level (templates in nested subfolders are dropped) and hides some top-level templates …"), plus the CP-6 (c) comment
+  above it;
+  (ii) plugins/gs-superadmin/skills/setup/references/index-scope-notes.md § "journey email templates" (:55, "not yet
+  measured live");
+  (iii) plugins/gs-superadmin/templates/operating-model.md's scope-filter entry (:342, "not yet measured live").
+The same kind of wording, owed by the other CP-6 FIXED paths, rides the same edit: the "live confirmation pending"
+lifts for (a) and (d) (the phrase wraps across lines — at c58a176, operating-model.md:242, document-domain-notes.md:23,
+scripts/engagement.mjs:38, test/engagement.mjs:2309, plus the operating model's General rule); (b)'s crash-code scoping
+(operating-model.md:387); (f)'s real stderr into the engagement fixture's FAULT_TEXT.
+Repro: read the three sites against VALIDATION (c)'s CLEARED paragraph.
+Expected: the three sites state (c)'s result (a rewrite, not a removal: the list is not complete); check 23 still
+reads 3 of 3; the CLI_PIN_FACTS stamp does not move. Rides the next substantive round.
