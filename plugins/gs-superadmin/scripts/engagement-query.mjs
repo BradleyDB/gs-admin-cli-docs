@@ -669,6 +669,20 @@ export const REASONS = deepFreeze({
 });
 /** @param {?string} id @returns {string} the reason in words; an id the table lacks is shown as itself */
 export const reasonText = (id) => (id == null ? "" : REASONS[id] ?? `No value (${id}).`);
+
+// ── A customer list in words (F-530, reopened at B-V: the class "a surface states the preset's lists, not the ones
+// kept") ── ONE home for how every surface names a cross-program customer list: the About tab's Accounts and Pages
+// entries, the page's list panels, the report, the interview's questions. Each kind's words, its panel title and what
+// it may show (the labels never say churn); listPhrase names one list exactly as configured or ranked.
+export const LIST_KIND_WORDS = Object.freeze({
+  "most-engaged": Object.freeze({ words: "most engaged", title: "Most engaged customers", reading: "possible advocates" }),
+  "least-engaged": Object.freeze({ words: "least engaged", title: "Least engaged customers", reading: "possible bad contacts or disengagement" }),
+  "most-bounced": Object.freeze({ words: "most bounced", title: "Most bounced customers", reading: "possible bad contacts" }),
+});
+/** One list, as every surface names it: "the 5 most bounced", "the 25 least engaged (at least 10 delivered) per Industry". */
+export const listPhrase = (l) => `the ${l.n} ${LIST_KIND_WORDS[l.kind]?.words ?? l.kind}${l.floor > 0 ? ` (at least ${l.floor} delivered)` : ""}${l.per ? ` per ${l.per}` : ""}`;
+/** The lists as configured, once each: a selection record holds a per-segment list once per segment. */
+export const distinctLists = (lists) => [...new Map((lists ?? []).map((l) => [JSON.stringify([l.kind, l.n, l.floor, l.per ?? null]), l])).values()];
 /**
  * The programs a timeline's dashboard comparison left out, grouped by why (F-520): one group per reason, its words and
  * the programs' names, the whole comparison's own reason left out (it is said once, as the comparison's). The one

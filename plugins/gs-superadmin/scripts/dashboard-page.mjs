@@ -43,7 +43,7 @@ import { mkdirSync, readFileSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
 import { makeCliHelpers, readJsonFile, writeFileAtomicSync, isMainModule } from "./doc-lib.mjs";
 import * as engine from "./engagement-query.mjs";
-import { openSpec, SPEC_DESCRIPTIONS, TABS, KNOBBED_PANEL_TYPES, ACCOUNT_LIST_KINDS, presetPanels, pageDateDefault, pageTemplateContent, panelKnobs, describeSpec, kbDirOfSpecFile } from "./dashboard-spec.mjs";
+import { openSpec, SPEC_DESCRIPTIONS, TABS, KNOBBED_PANEL_TYPES, isListPanel, presetPanels, pageDateDefault, pageTemplateContent, panelKnobs, describeSpec, kbDirOfSpecFile } from "./dashboard-spec.mjs";
 import { applyGroups, resolveGroups, programTraits, describeRule, modelNamesOf, UNGROUPED } from "./dashboard-groups.mjs";
 import { createDashboard, createTimeline, csvText, LACKS, PAGE_MODEL_VERSION, TIMELINE_MODEL_VERSION } from "./dashboard-runtime.mjs";
 import { DEFAULT_THEME, validateTheme, tokensCss } from "./dashboard-theme.mjs";
@@ -148,8 +148,6 @@ export function pageSnapshot(snapshot, page) {
   return { ...snapshot, meta, dimensions, facts, honesty };
 }
 const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
-/** A cross-program watch list whose id names a customer list's kind (the presets' three): the page shows that list (F-530). */
-const isListPanel = (p) => p.type === "watchlist" && (p.query?.groupBy ?? []).join() === "account" && Object.hasOwn(ACCOUNT_LIST_KINDS, p.id);
 /**
  * The spec in words for the About tab, as this page may say it: on a page with
  * no source detail the recipients sentences keep their meaning and drop the
