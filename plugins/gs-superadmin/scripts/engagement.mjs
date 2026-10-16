@@ -35,7 +35,9 @@
 //     target's name, which is empty, and collapses the groups. A fieldPath to
 //     the target's Gsid is used instead, and validateQuery refuses the rest.
 //     (Measured on 1.0.10; 1.0.11 and later join the lookup object's key
-//     instead — fixed upstream, live confirmation pending — and the rule stays.)
+//     instead — fixed upstream, measured live at 1.0.12: a company group-by
+//     returned one named group per company, equal counts to the Gsid path —
+//     and the rule stays: a guard, not a workaround.)
 //   - Every field a query names is checked against `rp schema` first: a filter
 //     on a field the schema lacks is silently dropped by the CLI on 1.0.10 and
 //     earlier, which widens the query instead of failing it; 1.0.11 and later

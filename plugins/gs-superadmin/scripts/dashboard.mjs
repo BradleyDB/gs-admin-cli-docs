@@ -121,10 +121,10 @@ import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "nod
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { makeCliHelpers, findWorkspaceDir, findWorkspaceCatalog, makeCommandResolver, resolveCliArgv, readJsonFile, writeFileAtomicSync, isMainModule, readKbIdentity, cmpKey, RECORDED_LANES } from "./doc-lib.mjs";
+import { makeCliHelpers, findWorkspaceDir, findWorkspaceCatalog, makeCommandResolver, resolveCliArgv, readJsonFile, writeFileAtomicSync, acquireFileLock, isMainModule, readKbIdentity, cmpKey, RECORDED_LANES } from "./doc-lib.mjs";
 import { printable } from "./journal-lib.mjs";
 import {
-  specStore, SpecRefusal, holderName, openSpec, SPEC_DESCRIPTIONS, PRESETS, TABS, DEFAULT_ACCOUNT_LISTS, defaultSpec,
+  specStore, SpecRefusal, holderName, openSpec, validateSpec, SPEC_DESCRIPTIONS, PRESETS, TABS, DEFAULT_ACCOUNT_LISTS, defaultSpec,
   accountLists, accountFields, kbSettings, windowOf, presetPanels, PUBLISH_TARGET_NAME_RE, defaultPublish,
 } from "./dashboard-spec.mjs";
 import {
@@ -834,6 +834,12 @@ const savedSpec = (ctx, slug) => {
   if (!raw) refuse(ctx.store.readDraft(slug) ? `"${slug}" is a draft, not a saved dashboard yet — finish the questions (next/answer) and save it, or change it with --dry-run` : `no dashboard "${slug}" in ${basename(ctx.kbDir)} — list shows the ones there`);
   return openSpec(raw);
 };
+/** The saved spec as it is, with this version's problems beside it (F-541): for the verbs that repair one. */
+const savedSpecLenient = (ctx, slug) => {
+  const raw = ctx.store.readSaved(slug);
+  if (!raw) savedSpec(ctx, slug);
+  return { spec: raw, problems: validateSpec(raw).problems };
+};
 // ── Snapshots: the latest, the one before, retention ─────────────────────────
 const snapshotStamp = (pulledAt) => String(pulledAt).replace(/[^0-9T]/g, "").slice(0, 15);
 /** `base`, or `base-2`, `base-3`, …: the first name no entry of `dir` holds (with `ext` for a file). */
@@ -900,19 +906,21 @@ function pruneSnapshots(ctx, slug) {
   return pruned.map((f) => basename(f));
 }
 // ── The lock ─────────────────────────────────────────────────────────────────
-function takeLock(ctx, slug, run) {
+// Taken FIRST, before the state file is read or removed (F-545): a second refresh during a live one is told "already
+// running", never "a stopped refresh is waiting to resume". The lock is doc-lib's exclusive-create primitive (no
+// check-then-write window; the release leaves a lock another taker took over), and the run's name is recorded on it
+// once known (`record`).
+function takeLock(ctx, slug, run = null) {
   const path = join(dirOf(ctx, slug), LOCK_FILE);
-  let takenOver = null;
-  if (existsSync(path)) {
-    const held = readJsonOr(path, {});
-    const age = ctx.nowMs - Date.parse(held.at ?? 0);
-    if (Number.isFinite(age) && age < LOCK_STALE_MS) refuse(`a refresh of "${slug}" is already running: started by ${held.by ?? "unknown"} at ${held.at} (${plural(Math.round(age / 60000), "minute")} ago) — wait for it, or remove ${path} if you know it died`);
-    takenOver = held;
-    // Said at the takeover, so a run refused later (the budget) still leaves a record of whose lock it took.
-    ctx.log(`took over a stale refresh lock of "${slug}" held by ${held.by ?? "unknown"} since ${held.at}`);
+  const lock = acquireFileLock(path, { owner: { by: ctx.by, run }, staleMs: LOCK_STALE_MS, waitMs: 0, nowMs: ctx.nowMs });
+  if (!lock.taken) {
+    const held = lock.held ?? {};
+    const age = ctx.nowMs - Date.parse(String(held.at ?? ""));
+    refuse(`a refresh of "${slug}" is already running: started by ${held.by ?? "unknown"} at ${held.at} (${plural(Math.round(age / 60000), "minute")} ago) — wait for it, or remove ${path} if you know it died`);
   }
-  writeJson(path, { by: ctx.by, at: new Date(ctx.nowMs).toISOString(), pid: process.pid, run });
-  return { path, release: () => rmSync(path, { force: true }), takenOver };
+  // Said at the takeover, so a run refused later (the budget) still leaves a record of whose lock it took.
+  if (lock.takenOver) ctx.log(`took over a stale refresh lock of "${slug}" held by ${lock.takenOver.by ?? "unknown"} since ${lock.takenOver.at}`);
+  return { path, release: lock.release, record: (name) => lock.record({ run: name }), takenOver: lock.takenOver };
 }
 const lockState = (ctx, slug) => {
   const path = join(dirOf(ctx, slug), LOCK_FILE);
@@ -1457,7 +1465,10 @@ function verbNew(ctx, slug, opt, argv) {
   }
   // --fast-path applies to a NEW dashboard: an edit starts from the saved settings and a resumed draft keeps its own; said, never dropped in silence.
   const fastPathIgnored = fastPath && r.state !== "new" ? `--fast-path applies to a new dashboard only (this is ${r.state === "resumed" ? "a resumed draft, which keeps its answers" : "an edit, which starts from the saved settings"}); ignored` : null;
-  return { ok: true, mode: "new", slug, state: r.state, fastPath: fastPath && r.state === "new", ...(fastPathIgnored ? { fastPathIgnored } : {}), by: r.by, answered, next: nextQuestionId(ctx, slug), ...(r.state === "editing-saved" ? { hint: `an edit of the saved dashboard: next goes to the closing step; next --question <id> changes one setting (${SETTING_QUESTIONS.join(", ")})` } : {}) };
+  // A saved spec this version refuses (F-541) opens as an edit with its problems named: the repair is a change of the
+  // named setting, and the save is refused until every problem is gone.
+  const problems = (r.problems ?? []).map((p) => `${p.path} ${p.problem}`);
+  return { ok: true, mode: "new", slug, state: r.state, fastPath: fastPath && r.state === "new", ...(fastPathIgnored ? { fastPathIgnored } : {}), by: r.by, answered, next: nextQuestionId(ctx, slug), ...(r.state === "editing-saved" ? { hint: `an edit of the saved dashboard: next goes to the closing step; next --question <id> changes one setting (${SETTING_QUESTIONS.join(", ")})` } : {}), ...(problems.length ? { problems, repair: `the saved settings no longer pass this version's checks: ${problems.join("; ")} — change the named setting (change ${slug} <path>=<value>, or next --question <id>); the save is refused until every problem is gone` } : {}) };
 }
 function interviewState(ctx, slug) { return readJsonOr(join(dirOf(ctx, slug), INTERVIEW_FILE), { plan: null, preview: null }); }
 function saveInterviewState(ctx, slug, state) { mkdirSync(dirOf(ctx, slug), { recursive: true }); writeJson(join(dirOf(ctx, slug), INTERVIEW_FILE), state); }
@@ -1799,7 +1810,11 @@ function verbStatus(ctx, slug) {
 function verbRefresh(ctx, slug, { full, healthOnly, planRun = null }) {
   const spec = savedSpec(ctx, slug);
   const dir = dirOf(ctx, slug);
-  // The tenant and the token, before any call, before the lock.
+  // The lock first (F-545): before the state file is read, before any call. Then the tenant and the token, before
+  // any tenant call; a refusal there releases the lock on the way out.
+  const lock = takeLock(ctx, slug);
+  const takenOver = lock.takenOver ? { lockTakenOver: { by: lock.takenOver.by ?? null, at: lock.takenOver.at ?? null } } : {};
+  try {
   const who = preflight(ctx, spec, { again: refreshRemedy(ctx, slug, { full, healthOnly }) });
   let state = readJsonOr(join(dir, STATE_FILE), null);
   const previousPath = latestSnapshotPath(ctx, slug);
@@ -1833,14 +1848,22 @@ function verbRefresh(ctx, slug, { full, healthOnly, planRun = null }) {
   // in the same second: CI's runner did it on 2026-10-12), and prepareRun would then refuse the "fresh" run as another
   // run's. A fresh name is one no directory holds.
   const runId = resuming ? state.run : continuesPlan ? planRun : freshName(runsRoot, `dash-${slug}-${snapshotStamp(new Date(ctx.nowMs).toISOString())}`);
-  const lock = takeLock(ctx, slug, runId);
-  const takenOver = lock.takenOver ? { lockTakenOver: { by: lock.takenOver.by ?? null, at: lock.takenOver.at ?? null } } : {};
-  try {
-    writeJson(join(dir, STATE_FILE), { run: runId, startedAt: new Date(ctx.nowMs).toISOString(), by: ctx.by, previousPath, full, healthOnly });
+  lock.record(runId);
+    const stateRecord = { run: runId, startedAt: resuming ? state.startedAt : new Date(ctx.nowMs).toISOString(), by: ctx.by, previousPath, full, healthOnly, lookbackDays: resuming ? state.lookbackDays ?? null : null };
+    writeJson(join(dir, STATE_FILE), stateRecord);
     // The plan, with the derived lookback. The pull is NOT held to the login (F-513, ruled 2026-10-12): it runs as far
     // as the token allows, the adapter stops it cleanly when the next call would outlast the token, and the next run
     // after a login continues it. What is said is how many logins a pull of this size takes.
     const planned = planWithLookback(ctx, { spec, runId, previousPath, forceFull: full, healthOnly });
+    // A resume whose derived lookback MOVED since the run was planned (re-documentation moved the knowledge base, so
+    // the longest schedule period changed) plans and pulls in a fresh `-lb<days>` directory where nothing is reused
+    // (F-542): said as a restart, with why, never as "the calls already made are reused". The planned lookback is
+    // kept in the state once the plan is made, so the next resume can tell a move from a run that stopped before
+    // its plan was done (whose plan calls the resume does reuse) and say what it moved from.
+    const restarted = resuming && planned.summary.status === "ok" && !planned.resumed && state.lookbackDays != null && state.lookbackDays !== planned.lookbackDays
+      ? { from: runId, run: basename(planned.runDir), lookbackDays: { from: state.lookbackDays, to: planned.lookbackDays } }
+      : null;
+    if (planned.summary.status === "ok" && planned.lookbackDays !== stateRecord.lookbackDays) writeJson(join(dir, STATE_FILE), { ...stateRecord, lookbackDays: planned.lookbackDays });
     const stopped = (r, logins = null) => {
       const code = r.summary.status === "token-expired" ? "token-expired" : r.summary.status === "partial" ? "partial" : "failed";
       const made = r.summary.calls ? ` after ${plural(r.summary.calls.made, "call")} this run${r.summary.calls.reused ? ` (${r.summary.calls.reused} reused from before)` : ""}` : "";
@@ -1862,9 +1885,11 @@ function verbRefresh(ctx, slug, { full, healthOnly, planRun = null }) {
     const remaining = estimate.thisRun.remaining ?? estimate.thisRun;
     const needed = remaining.seconds + redocSeconds + 30;
     const planSeconds = estimate.thisRun.seconds + redocSeconds + 30;
-    const budget = { neededSeconds: needed, planSeconds, continuing: !!resuming, loginSecondsLeft: who.expiresInSeconds, fitsThisLogin: needed <= who.expiresInSeconds, loginsNeeded: loginsFor(needed) };
+    const budget = { neededSeconds: needed, planSeconds, continuing: !!resuming && !restarted, loginSecondsLeft: who.expiresInSeconds, fitsThisLogin: needed <= who.expiresInSeconds, loginsNeeded: loginsFor(needed) };
     const beyond = `it will run as far as the login allows (about ${plural(budget.loginsNeeded, "login")} of an hour in all) and continue after the next login`;
-    if (resuming) ctx.log(`continuing the refresh of "${slug}" (run ${runId}): about ${plural(minutesOf(needed), "minute")} of its ${plural(minutesOf(planSeconds), "minute")} remain, the calls already made are reused; the login has ${plural(minutesOf(who.expiresInSeconds), "minute")} left${budget.fitsThisLogin ? ", enough for it" : `: ${beyond}`}`);
+    const loginLeft = `the login has ${plural(minutesOf(who.expiresInSeconds), "minute")} left${budget.fitsThisLogin ? ", enough for it" : `: ${beyond}`}`;
+    if (restarted) ctx.log(`the refresh of "${slug}" starts its pull again (run ${restarted.run}, not ${runId}): the derived health lookback moved from ${restarted.lookbackDays.from} to ${restarted.lookbackDays.to} days since the run was planned (the longest schedule period in the knowledge base changed), so none of the calls already made applies; about ${plural(minutesOf(needed), "minute")} in all; ${loginLeft}`);
+    else if (resuming) ctx.log(`continuing the refresh of "${slug}" (run ${runId}): about ${plural(minutesOf(needed), "minute")} of its ${plural(minutesOf(planSeconds), "minute")} remain, the calls already made are reused; ${loginLeft}`);
     else if (!budget.fitsThisLogin) ctx.log(`the refresh needs about ${plural(minutesOf(needed), "minute")} and the login has ${plural(minutesOf(who.expiresInSeconds), "minute")} left: ${beyond}`);
     // Re-documentation first (the fetch then re-reads the moved knowledge base: the run's KB copy is stamped). A login
     // that dies under it is the same stop as one that dies under the pull: exit 3, resumable, "log in, then run again".
@@ -1901,7 +1926,7 @@ function verbRefresh(ctx, slug, { full, healthOnly, planRun = null }) {
     // The leaders' copy, after the pages are written and the run is closed: a publish that fails is said, never undone.
     const published = publishLeaders(ctx, { spec, snapshot });
     return {
-      ok: true, mode: "refresh", slug, status: "ok", run: basename(pulledRun.runDir), resumed: !!resuming, full, healthOnly, budget, ...(abandoned ? { abandoned } : {}),
+      ok: true, mode: "refresh", slug, status: "ok", run: basename(pulledRun.runDir), resumed: !!resuming && !restarted, ...(restarted ? { restarted } : {}), full, healthOnly, budget, ...(abandoned ? { abandoned } : {}),
       pull: { mode: snapshot.meta.refresh.mode, why: snapshot.meta.refresh.why, pulledAt: snapshot.meta.pulledAt, programs: snapshot.dimensions.programs.length, calls: pulledRun.summary.calls, reconciled: snapshot.reconciliation.ok, health: engine.healthAvailability(snapshot).pulled, accounts: engine.accountAvailability(snapshot).pulled, lookbackDays: planned.lookbackDays, lookbackDerivedFrom: planned.lookbackDerivedFrom ?? null },
       redocumented, snapshot: snapshotPath, accountStore, pruned, ungrouped: resolution.line, kbBehind: snapshot.honesty?.kb ?? null,
       delta: delta ? { previousPulledAt: delta.previousPulledAt, closedMonths: delta.closedMonths.length, programs: delta.programs, metrics: Object.fromEntries(Object.entries(delta.metrics).map(([k, v]) => [k, v.change])) } : null,
@@ -1989,16 +2014,43 @@ function reselectFromStore(ctx, slug, spec) {
     ...pages,
   };
 }
+/**
+ * A change pair's value (F-536): JSON when it parses; otherwise a BARE value read by the setting's kind, because a JSON
+ * string's quotes survive no shell bare — Git Bash and cmd strip them from a bare word, and Windows PowerShell 5.1
+ * strips them even inside a single-quoted pair (measured 2026-10-15) — while a bare value, or the whole pair in double
+ * quotes, survives all three. The kind is the interview question's that covers the path (QUESTIONS, the one home): a
+ * list takes its items separated by commas (`none` is empty; a shell-stripped `[a,b]` reads the same), a boolean
+ * yes/no, anything else the bare text (the writer's validation then judges it against the field). `@<file>` reads the
+ * value as JSON from a file: the object-valued settings (a window, the groups) whose JSON no shell carries whole.
+ * @param {string} path the writer's dotted path @param {string} raw the text after the `=`
+ */
+export function changeValue(path, raw) {
+  if (/^@./.test(raw)) {
+    const file = resolve(raw.slice(1));
+    try { return readJsonFile(file); } catch (e) { return refuse(`change ${path}: cannot read the value as JSON from ${file} (${e instanceof Error ? e.message : String(e)})`); }
+  }
+  try { return JSON.parse(raw); } catch { /* a bare value, by the setting's kind */ }
+  const covered = coveredPath(path);
+  const kind = QUESTIONS.find((q) => q.path && coveredPath(q.path) === covered)?.kind ?? null;
+  const s = raw.trim();
+  if (kind === "list") { const inner = /^\[.*\]$/.test(s) ? s.slice(1, -1) : s; return noneValue(inner) ? [] : listValue(inner); }
+  if (kind === "boolean") return boolValue(s);
+  return raw;
+}
 function verbChange(ctx, slug, pairs, dryRun) {
-  const saved = savedSpec(ctx, slug);
-  if (!pairs.length) refuse("nothing to change — pass <path>=<json>, like accounts.pull=true");
+  // The saved spec, opened leniently (F-541): one this version's validator refuses is still changed through the writer
+  // (the repair path) — the save names what is still wrong, never a stack here.
+  const { spec: saved, problems: savedProblems } = savedSpecLenient(ctx, slug);
+  if (!pairs.length) refuse("nothing to change — pass <path>=<value>, like accounts.pull=true");
   // The pairs are read before any draft exists, so a malformed one leaves nothing behind.
-  const sets = pairs.map((pair) => {
+  const sets = pairs.map((given) => {
+    // cmd passes single quotes through literally (Git Bash and PowerShell strip them), so a pair wrapped in a
+    // matching pair of them is the same pair (F-536).
+    const pair = /^'.*'$/.test(given) ? given.slice(1, -1) : given;
     const cut = pair.indexOf("=");
-    if (cut < 1) refuse(`change takes <path>=<json> (got "${printable(pair, 80)}")`);
+    if (cut < 1) refuse(`change takes <path>=<value> (got "${printable(pair, 80)}")`);
     const path = pair.slice(0, cut).replace(/\[\]/g, "").replace(/\[(\d+)\]/g, ".$1");
-    let value;
-    try { value = JSON.parse(pair.slice(cut + 1)); } catch { refuse(`change ${path}: the value is not JSON — quote text ("Renewals"), and write lists and objects as JSON`); }
+    const value = changeValue(path, pair.slice(cut + 1));
     for (const id of IDENTITY_PATHS) if (coveredPath(path) === id) refuse(`${path} ${COST_KINDS.identity}`);
     return [path, value];
   });
@@ -2019,7 +2071,7 @@ function verbChange(ctx, slug, pairs, dryRun) {
   // The pull's minutes are priced for the spec AFTER the change (F-511 instance 24), from the last plan's parts.
   const seconds = pullSecondsAfter(plan, saved, d.draft.spec);
   const says = consequence == null ? "nothing changed" : consequence === "pull" ? `the next refresh pulls everything again, ${seconds != null ? `about ${plural(minutesOf(seconds), "minute")}${seconds > LOGIN_SECONDS ? ` (about ${plural(loginsFor(seconds), "login")} of an hour)` : ""}` : "a first pull's time (no plan yet)"}` : consequence === "reselect" ? reselectText(reselectReadiness(ctx, slug), refreshRemedy(ctx, slug)) : "rebuild only (no pull)";
-  const summary = { ok: true, mode: "change", slug, by: started.by, draftHadEarlierChanges: had, changed, consequence, consequenceText: says, pullSeconds: consequence === "pull" ? seconds : null, costTable: COST_KINDS, dryRun };
+  const summary = { ok: true, mode: "change", slug, by: started.by, draftHadEarlierChanges: had, changed, consequence, consequenceText: says, pullSeconds: consequence === "pull" ? seconds : null, costTable: COST_KINDS, dryRun, ...(savedProblems.length ? { savedProblems: savedProblems.map((p) => `${p.path} ${p.problem}`) } : {}) };
   if (dryRun) {
     if (!had) ctx.store.discardDraft(slug);
     return { ...summary, saved: false, done: null };

@@ -30,11 +30,12 @@ import { join, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { isDeepStrictEqual } from "node:util";
 import { makeTempDir, removeTempDir, writeFiles, runNode } from "../../../test/rig.mjs";
-import { COSTS, COST_KINDS, ADAPTER_MAPPING, QUESTIONS, CLOSING_ASK, CLOSING_OPTIONS, askText, defaultAnswer, composeAnswer, defaultGroupRules, categoryCostText, changeCost, coveredPath, computeDelta, adapterParams, pullSecondsAfter, loginsFor, LOGIN_SECONDS, EXIT, KEEP_SNAPSHOTS, LOCK_STALE_MS, LOCK_FILE, STATE_FILE, SNAPSHOTS_DIR, PREVIEW_DIR, SUGGESTION_FILE, ACCOUNTS_DIR, PUBLISH_TARGETS_FILE, PUBLISH_DIR, NATIVE_READ_PATHS, runOwner } from "../scripts/dashboard.mjs";
+import { COSTS, COST_KINDS, ADAPTER_MAPPING, QUESTIONS, CLOSING_ASK, CLOSING_OPTIONS, askText, defaultAnswer, composeAnswer, defaultGroupRules, categoryCostText, changeCost, changeValue, coveredPath, computeDelta, adapterParams, pullSecondsAfter, loginsFor, LOGIN_SECONDS, EXIT, KEEP_SNAPSHOTS, LOCK_STALE_MS, LOCK_FILE, STATE_FILE, SNAPSHOTS_DIR, PREVIEW_DIR, SUGGESTION_FILE, ACCOUNTS_DIR, PUBLISH_TARGETS_FILE, PUBLISH_DIR, NATIVE_READ_PATHS, runOwner } from "../scripts/dashboard.mjs";
+import { spawnSync } from "node:child_process";
 import { resolveGroups, programTraits } from "../scripts/dashboard-groups.mjs";
-import { SPEC_DESCRIPTIONS, defaultSpec, openSpec, DEFAULT_ACCOUNT_LISTS } from "../scripts/dashboard-spec.mjs";
+import { SPEC_DESCRIPTIONS, defaultSpec, openSpec, DEFAULT_ACCOUNT_LISTS, presetPanels } from "../scripts/dashboard-spec.mjs";
 import { HOW_TO_REFRESH_RULED } from "./fixtures/engagement/ruled-text.mjs";
-import { LACKS, HOW_TO_REFRESH_TEXT } from "../scripts/dashboard-runtime.mjs";
+import { LACKS, HOW_TO_REFRESH_TEXT, COPY_LINES } from "../scripts/dashboard-runtime.mjs";
 import { openSnapshot } from "../scripts/engagement-query.mjs";
 import { nativePlan, TEST_PREFIX } from "../scripts/dashboard-native.mjs";
 import { makeGate, resolveParams } from "../scripts/engagement.mjs";
@@ -713,7 +714,8 @@ try {
     const lines = [...new Set([...prerender.matchAll(/data-copy="([^"]*)"/g)].map((m) => m[1].replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&")))];
     const fromWorkspace = (argv) => { const x = runNode(SCRIPT, [...argv, "--bin", FAKE, "--today", TODAY, "--by", "ana"], { cwd: WS, env: { ...process.env, FAKE_STATE: STATE, FAKE_TENANT: JSON.stringify(TENANT) } }); let json = null; try { json = JSON.parse(x.stdout); } catch { /* a stack */ } return { code: x.status, json, stderr: x.stderr }; };
     // A fill line is run with its value put where the line says (a change line's value after `=`; the account line's name between its empty quotes, ACC-2).
-    const asArgv = (line) => line.replace(/^node \.gs-superadmin\/plugin\/scripts\/dashboard\.mjs /, "").replace("<program id>", "p-onboard").replace(/=$/, '=["example.com"]').split(" ").map((t, i, all) => (t === "''" && all[i - 1] === "--account-name" ? "Acme Customer 01" : t));
+    // (the shell's part is simulated here: a pair in double quotes is one word with the quotes removed, F-536; the real shells judge it below in the R13 block)
+    const asArgv = (line) => line.replace(/^node \.gs-superadmin\/plugin\/scripts\/dashboard\.mjs /, "").replace("<program id>", "p-onboard").replace("<domains>", "example.com").split(" ").map((t, i, all) => (t === "''" && all[i - 1] === "--account-name" ? "Acme Customer 01" : /^".*"$/.test(t) ? t.slice(1, -1) : t));
     const results = lines.map((line) => { const argv = asArgv(line); return { line, ...fromWorkspace(argv[0] === "change" ? [...argv, "--dry-run"] : argv) }; });
     const bare = fromWorkspace(asArgv(lines.find((l) => / refresh /.test(l))).filter((a, i, all) => !(a === "--kb" || all[i - 1] === "--kb")));
     check("F-503 every copy line the admin page emits (the How to refresh line, every notice's change line, the health line, the account timeline's line) carries --kb <folder> and runs as drawn from the workspace folder with two tenant KB folders present (a change line as a dry run, the refresh and health lines for real); the same refresh line without --kb is refused naming the two folders, as the tester saw",
@@ -1256,6 +1258,122 @@ try {
         readme.includes("### The engagement dashboard") && !offer.test(readmeRead) && repoReadme.includes("/gs-superadmin:email-engagement") && !offer.test(repoReadme) &&
         at >= 0 && /Native Gainsight reports are not offered/.test(changelog.slice(at)) && !/native/i.test(entry),
       { skill: where(skillRead), readme: where(readmeRead), repoReadme: where(repoReadme), description: description.slice(-160), rule: groundRules.match(/.{0,60}(except|but for|exception|native).{0,60}/i)?.[0], entry: entry.match(/.{0,80}native.{0,80}/i)?.[0] });
+  }
+  // ══ R13 polish round (2026-10-15): F-536 the value grammar, F-541 the repair path, F-545 the lock first, F-542 the restart ══
+  {
+    rmSync(join(STATE, "faults.json"), { force: true });
+    const specBefore = readFileSync(specFile(), "utf8");
+    // F-536: the parser, in process — JSON when it parses; a bare value by the setting's kind; @file; a cmd-literal pair.
+    const refusal = (fn) => { try { fn(); return null; } catch (e) { return e.message; } };
+    const groupsFile = join(ROOT, "groups-f536.json");
+    writeFileSync(groupsFile, JSON.stringify({ rules: [], overrides: {} }));
+    check("F-536 change's value: JSON when it parses (true, 45, a JSON list); otherwise by the setting's kind — a list as comma-separated items, trimmed, `none` empty, a shell-stripped [a,b] the same list; a yes/no setting as yes or no (anything else refused by name); any other setting the bare text; @<file> the file's JSON; a missing file a refusal naming it",
+      changeValue("accounts.pull", "true") === true && changeValue("health.silentDays", "45") === 45 && isDeepStrictEqual(changeValue("sources.0.params.internalDomains", '["acme.com"]'), ["acme.com"]) &&
+        isDeepStrictEqual(changeValue("sources.0.params.internalDomains", "acme.com, acme.co.uk"), ["acme.com", "acme.co.uk"]) && isDeepStrictEqual(changeValue("sources.0.params.internalDomains", "[acme.com,acme.co.uk]"), ["acme.com", "acme.co.uk"]) &&
+        isDeepStrictEqual(changeValue("sources.0.params.internalDomains", "none"), []) && isDeepStrictEqual(changeValue("sources.0.params.testAccounts", "c-1"), ["c-1"]) &&
+        changeValue("sources.0.params.stepDetail", "yes") === true && changeValue("accounts.pull", "no") === false && /is not yes or no/.test(refusal(() => changeValue("accounts.pull", "maybe")) ?? "") &&
+        changeValue("title", "Renewals EMEA") === "Renewals EMEA" && changeValue("pages.1.title", "2026 plan") === "2026 plan" &&
+        isDeepStrictEqual(changeValue("groups", `@${groupsFile}`), { rules: [], overrides: {} }) && /cannot read the value as JSON from .*missing-f536\.json/.test(refusal(() => changeValue("groups", `@${join(ROOT, "missing-f536.json")}`)) ?? ""),
+      [refusal(() => changeValue("accounts.pull", "maybe")), changeValue("sources.0.params.internalDomains", "acme.com, acme.co.uk")]);
+    // (the saved spec holds one domain, so two new ones are two changed items — the dry run's diff against the saved spec)
+    const sq = run("change", [SLUG, "'sources.0.params.internalDomains=example.org,example.net'", "--dry-run"]);
+    check("F-536 a pair wrapped in single quotes, as cmd passes it, is the same pair: a dry run names the internal domains changed with two items",
+      sq.code === 0 && sq.json?.changed?.length === 1 && sq.json.changed[0].path === "sources[].params.internalDomains[]" && sq.json.changed[0].examples.length === 2, sq.json ?? sq.stderr?.slice(-300));
+    // The judge, independent of the parser: the no-internal-domain line as the page prints it (the runtime's LACKS row
+    // through COPY_LINES — test/dashboard-page.mjs holds the drawn page to this same line), the placeholder filled, run
+    // through the REAL shells from the workspace folder — Git Bash everywhere, plus cmd and Windows PowerShell 5.1 on
+    // Windows — as a dry run; each must deliver the pair whole (two items changed). The script's path stands in for
+    // the workspace link the page's line assumes, in double quotes, the one spelling all three accept.
+    const noDomainRow = LACKS.find((r) => r.reason === "no-internal-domain");
+    const pageLine = COPY_LINES.change(SLUG, "sources.0.params.internalDomains", noDomainRow?.setting?.placeholder ?? "", "acme-prod");
+    const shellLine = `node "${SCRIPT}" ${pageLine.replace(/^node \S+ /, "").replace("<domains>", "example.org,example.net")} --dry-run --bin "${FAKE}" --today ${TODAY} --by ana`;
+    const shells = [
+      { name: "bash", file: "f536.sh", script: `${shellLine}\n`, argv: (f) => ["bash", [f]] },
+      ...(process.platform === "win32" ? [
+        { name: "cmd", file: "f536.cmd", script: `@echo off\r\n${shellLine}\r\n`, argv: (f) => ["cmd.exe", ["/d", "/c", f]] },
+        { name: "powershell", file: "f536.ps1", script: `${shellLine}\r\nexit $LASTEXITCODE\r\n`, argv: (f) => ["powershell.exe", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", f]] },
+      ] : []),
+    ].map((sh) => {
+      const file = join(ROOT, sh.file);
+      writeFileSync(file, sh.script);
+      const [cmd, args] = /** @type {[string, string[]]} */ (sh.argv(file));
+      const x = spawnSync(cmd, args, { cwd: WS, encoding: "utf8", env: { ...process.env, FAKE_STATE: STATE, FAKE_TENANT: JSON.stringify(TENANT) } });
+      let json = null;
+      try { json = JSON.parse(x.stdout); } catch { /* a refusal or a shell error */ }
+      return { shell: sh.name, code: x.status, error: /** @type {?{code?: string}} */ (x.error)?.code ?? null, json, stderr: String(x.stderr ?? "").slice(-300) };
+    });
+    check("F-536 JUDGE (the real shells): the admin page's no-internal-domain line, as printed with the domains in place of <domains>, runs as a dry run from the workspace folder through Git Bash" + (process.platform === "win32" ? ", cmd and Windows PowerShell 5.1" : "") + ", and every shell delivers the pair whole: two internal domains changed, exit 0",
+      /change acme-health "sources\.0\.params\.internalDomains=<domains>" --kb acme-prod$/.test(pageLine) && shells.length === (process.platform === "win32" ? 3 : 1) &&
+        shells.every((s) => s.error === null && s.code === 0 && s.json?.ok === true && s.json.dryRun === true && s.json.changed?.length === 1 && s.json.changed[0].path === "sources[].params.internalDomains[]" && s.json.changed[0].examples.length === 2),
+      [pageLine, ...shells.map((s) => [s.shell, s.code, s.error, s.json?.changed ?? s.json?.error ?? s.stderr])]);
+    // F-541: a saved spec a tightened rule refuses (templates on, the preset's panels written out without the templates
+    // tab's: valid under S4b, refused under S4c) is repaired through the writer, never by hand.
+    const broken = JSON.parse(specBefore);
+    broken.pages[0].tabs.find((t) => t.id === "templates").enabled = true;
+    broken.pages[0].panels = presetPanels(broken.pages[0]).filter((p) => p.tab !== "templates");
+    const brokenProblem = refusal(() => openSpec(broken));
+    writeFileSync(specFile(), JSON.stringify(broken, null, 2) + "\n");
+    const opened = run("new", [SLUG]);
+    const other = run("change", [SLUG, "title=Acme repaired"]);
+    const specAfterOther = readFileSync(specFile(), "utf8");
+    const repaired = run("change", [SLUG, "pages.0.panels=[]"]);
+    const repairedSpec = refusal(() => openSpec(readJson(specFile())));
+    check("F-541 a saved spec this version's validator refuses opens as an edit naming the problem (new: problems + the repair line); a change of another setting is refused at the save naming the problem, nothing saved and no draft left; the repair itself (the panel list emptied) is saved through the writer, and the spec passes again",
+      /pages\[0\]\.panels lists no panel for the templates tab/.test(brokenProblem ?? "") && opened.code === 0 && opened.json?.state === "editing-saved" && opened.json.problems?.length === 1 && /lists no panel for the templates tab/.test(opened.json.problems[0]) && /change acme-health <path>=<value>/.test(opened.json.repair) &&
+        other.code === 1 && /not saved — pages\[0\]\.panels lists no panel for the templates tab/.test(other.json?.error ?? "") && !existsSync(draftFile()) &&
+        repaired.code === 0 && repaired.json?.saved === true && ["rebuild", "in-page"].includes(repaired.json.consequence) && repairedSpec === null && !existsSync(draftFile()),
+      [brokenProblem, opened.json?.problems, opened.json?.repair, other.json?.error ?? other.stderr?.slice(-300), repaired.json?.error ?? repaired.json?.consequence, repairedSpec]);
+    // The draft `new` opened above is the one `other` and `repaired` took over (the same holder); back to the walk's spec.
+    writeFileSync(specFile(), specBefore);
+    rmSync(draftFile(), { force: true });
+    check("(F-541 the other change was refused with the spec byte-equal)", specAfterOther === JSON.stringify(broken, null, 2) + "\n");
+    // F-545: a second refresh during a live one, with a stopped run's state file present, is told "already running"
+    // first — the lock is taken before the state file is read (the old order read the state first and said "waiting
+    // to resume … or remove refresh-state.json", the F-545 failure).
+    const stoppedRoutine = run("refresh", [SLUG], { env: { FAKE_FAULTS: JSON.stringify([{ match: "rp run", kind: "auth", skip: 30, times: 9999 }]) } });
+    const liveLock = JSON.stringify({ by: "ben", at: new Date().toISOString(), pid: 1, run: "dash-acme-health-live" });
+    writeFileSync(join(dash(), LOCK_FILE), liveLock);
+    const during = run("refresh", [SLUG, "--full"]);
+    check("F-545 during a live refresh (a fresh lock) with a stopped run's state file present, a second refresh with other flags is refused as already running, naming the holder, never as waiting to resume; the state file and the holder's lock are untouched",
+      stoppedRoutine.code === EXIT["token-expired"] && existsSync(join(dash(), STATE_FILE)) && during.code === 1 && /already running: started by ben at /.test(during.json?.error ?? "") && !/waiting to resume/.test(during.json?.error ?? "") && !/refresh-state\.json/.test(during.json?.error ?? "") &&
+        existsSync(join(dash(), STATE_FILE)) && readFileSync(join(dash(), LOCK_FILE), "utf8") === liveLock, during.json ?? during.stderr?.slice(-300));
+    rmSync(join(dash(), LOCK_FILE), { force: true });
+    rmSync(join(STATE, "faults.json"), { force: true });
+    const finished = run("refresh", [SLUG]);
+    check("(F-545 the stopped run then resumes and finishes once the lock is gone)", finished.code === 0 && finished.json?.resumed === true && !existsSync(join(dash(), STATE_FILE)) && !existsSync(join(dash(), LOCK_FILE)), finished.json?.error ?? finished.stderr?.slice(-300));
+    // F-542: a resume whose derived health lookback moved since the run was planned — re-documentation moved the
+    // knowledge base (here: a selected program's doc now carries a six-monthly schedule) — plans and pulls in a fresh
+    // -lb<days> directory, and SAYS it starts again and why, never "the calls already made are reused".
+    const stoppedFull = run("refresh", [SLUG, "--full"], { env: { FAKE_FAULTS: JSON.stringify([{ match: "rp run", kind: "auth", skip: 30, times: 9999 }]) } });
+    const stateAfterStop = readJson(join(dash(), STATE_FILE));
+    const docPath = join(KB, "journey", "p-onboard.md");
+    const docBefore = readFileSync(docPath, "utf8");
+    // The schedule sits in the doc's JSON-encoded scheduleInfo string (escaped quotes); p-onboard's weekly CRON becomes a
+    // six-monthly RECURRING one (the type the schedule audit classifies recurring for a month-stepping cron, as p-quarter's).
+    const sixMonthly = docBefore.replace(/type\\":\\"CRON\\",\\"cronExpression\\":\\"[^\\]*\\"/, 'type\\":\\"RECURRING\\",\\"cronExpression\\":\\"0 0 9 1 1/6 ? *\\"');
+    if (sixMonthly === docBefore) throw new Error("F-542 scenario: p-onboard's doc carries no cronExpression to move");
+    writeFileSync(docPath, sixMonthly);
+    // Re-documentation writes the manifest (a mark), which moves the knowledge base's stamp the plan reads; the plan
+    // re-reads the docs only when the stamp moved, so the manifest is rewritten here as the mark would.
+    const manifestPath = join(KB, "_manifest.json");
+    writeFileSync(manifestPath, JSON.stringify({ ...readJson(manifestPath), last_refresh: new Date().toISOString() }, null, 2) + "\n");
+    rmSync(join(STATE, "faults.json"), { force: true });
+    const moved = run("refresh", [SLUG, "--full"]);
+    writeFileSync(docPath, docBefore);
+    const restartLine = moved.stderr.split("\n").find((l) => /starts its pull again/.test(l)) ?? null;
+    check("F-542 a stopped run records the lookback it was planned with; when the knowledge base's longest schedule period rises before the resume, the resume plans in a fresh -lb<days> directory and says it starts the pull again, from which lookback to which and why, with the whole pull's minutes — never that the calls already made are reused; the summary records the restart (resumed false, restarted from/run/lookbackDays, continuing false) and the pull ran at the new lookback",
+      stoppedFull.code === EXIT["token-expired"] && stateAfterStop.lookbackDays != null && moved.code === 0 && moved.json?.resumed === false && moved.json.budget?.continuing === false &&
+        moved.json.restarted?.from === stateAfterStop.run && moved.json.restarted.lookbackDays.from === stateAfterStop.lookbackDays && moved.json.restarted.lookbackDays.to > stateAfterStop.lookbackDays &&
+        // (the directory is named for the DERIVED lookback; the pull runs at the window-capped one, which `to` reports)
+        moved.json.restarted.run.startsWith(`${stateAfterStop.run}-lb`) && moved.json.run === moved.json.restarted.run && moved.json.pull.lookbackDays === moved.json.restarted.lookbackDays.to &&
+        restartLine != null && new RegExp(`starts its pull again \\(run ${moved.json.restarted.run}, not ${stateAfterStop.run}\\): the derived health lookback moved from ${stateAfterStop.lookbackDays} to ${moved.json.restarted.lookbackDays.to} days since the run was planned \\(the longest schedule period in the knowledge base changed\\), so none of the calls already made applies; about \\d+ minutes? in all; the login has`).test(restartLine) &&
+        !/calls already made are reused/.test(moved.stderr) && !existsSync(join(dash(), STATE_FILE)),
+      [stateAfterStop, moved.json?.restarted ?? moved.json?.error ?? moved.stderr?.slice(-400), restartLine]);
+    const plain = run("refresh", [SLUG, "--full"], { env: { FAKE_FAULTS: JSON.stringify([{ match: "rp run", kind: "auth", skip: 30, times: 9999 }]) } });
+    rmSync(join(STATE, "faults.json"), { force: true });
+    const plainResume = run("refresh", [SLUG, "--full"]);
+    check("(F-542 control: the same stop and resume with the knowledge base unchanged is a resume — the calls already made are reused, nothing restarted)",
+      plain.code === EXIT["token-expired"] && plainResume.code === 0 && plainResume.json?.resumed === true && plainResume.json.restarted === undefined && plainResume.json.pull.calls.reused > 0 && /the calls already made are reused/.test(plainResume.stderr), plainResume.json?.error ?? plainResume.stderr?.slice(-300));
   }
   check("refusals: an unknown verb, a missing slug, a refresh of a draft, an unknown question (purpose, dropped, among them), and a workspace with no KB each exit 1 with one line",
     run("frobnicate", []).code === 1 && run("status", []).code === 1 && run("refresh", ["quick"]).code === 1 && /is a draft, not a saved dashboard/.test(run("refresh", ["quick"]).json?.error ?? "") && run("answer", [SLUG, "nope", "x"]).code === 1 && /no question is called "purpose"/.test(run("answer", ["quick", "purpose", "x"]).json?.error ?? "") && run("list", [], { flags: ["--workspace", join(ROOT, "nowhere"), "--bin", FAKE] }).code === 1);

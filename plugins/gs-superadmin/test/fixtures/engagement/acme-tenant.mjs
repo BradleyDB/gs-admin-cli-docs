@@ -849,9 +849,13 @@ export const FAULT_TEXT = {
   outage: `Error: The communication with the external API could not be established due to a network outage. Try again later. If the issue persists, contact Gainsight Support for further assistance.\n${REQUEST_ID}`,
   generic: `Error: The request could not be processed. Contact Gainsight Support for more information.\n${REQUEST_ID}`,
   // CLI 1.0.11 and later refuse an unknown field by name before any request (F-549): the
-  // words carry "not found", but they describe the query, not a missing asset.
-  "field-refused": `Error: Field "Nmae" not found on email_log_v2. Did you mean: Name?\n${REQUEST_ID}`,
-  "filter-field-refused": `Error: Filter field "GsCompanyID" not found on email_log_v2. Did you mean: GsCompanyId?\n${REQUEST_ID}`,
+  // words carry "not found", but they describe the query, not a missing asset. The two
+  // lines are the real stderr captured at 1.0.12 (F-551; dev VALIDATION, CP-6 (f)): no
+  // Request ID — the CLI refused before any request — and a case-only miss is ACCEPTED
+  // there (the filter field resolves case-insensitively), so the example is a name that
+  // is really unknown.
+  "field-refused": `Error: Field "Nmae" not found on email_log_v2. Did you mean "Name"? List the object's fields with \`rp schema email_log_v2\`.`,
+  "filter-field-refused": `Error: Filter field "NoSuchField" not found on email_log_v2. List the object's fields with \`rp schema email_log_v2\`.`,
 };
 const WARN_TEXT = "[report] normalizeGroupByDedup: removed 1 showField(s) already present in groupByFields.";
 

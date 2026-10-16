@@ -1713,14 +1713,12 @@ export const CLI_PIN_FACTS = Object.freeze({
       notEnumerableBare: "--id <id> or --name <name>",
       error: "--id or --name is required",
     }),
-    // 1.0.10's wording, kept as-is at the 1.0.12 adoption: the entry is
-    // rewritten from the live count on a 1.0.11-or-later CLI (dev
-    // VALIDATION, F-549 / CP-6 (c)) — or removed with its index-scope-notes.md
-    // subsection (check 23) if the list proves complete — and that check was
-    // still owed. The canon subsection already says which version each clause
-    // holds for (1.0.11 and later descend subfolders).
+    // Rewritten from the live count on a 1.0.12 CLI (dev VALIDATION, F-549 /
+    // CP-6 (c), cleared 2026-10-15; F-551): the list is not complete there
+    // either, so the entry stays and its canon subsection with it (check 23).
+    // The canon subsection says which version each clause holds for.
     "journey:email:templates": Object.freeze({
-      scope: "flattens one folder level (templates in nested subfolders are dropped) and hides some top-level templates; the count is the CLI-reachable subset",
+      scope: "on 1.0.11 and later descends nested folders but still hides a few templates (measured at 1.0.12: 3 of the 1180 a KB held, each in a folder whose other templates list); on 1.0.10 and earlier flattens one folder level (nested subfolders dropped) and hides some top-level templates; --folder matches a folder's own name only; the count is the CLI-reachable subset",
     }),
     "journey:surveys:list": Object.freeze({
       scope: "returns PUBLISH-state surveys only (closed surveys are invisible)",
@@ -2790,4 +2788,77 @@ export function writeFileAtomicSync(target, data) {
 }
 export function removeFileSync(path) {
   withWindowsFsRetry(() => unlinkSync(path));
+}
+// ── The one advisory file lock (F-545, F-546) ─────────────────────────────────
+// Every lock a script takes on a file it shares with another process is this
+// primitive: an EXCLUSIVE create (`wx`) of a sibling lock file holding the
+// owner's record, so two takers can never both read "free" and both write
+// (the check-then-write race F-545 named in the dashboard's refresh lock).
+// A holder whose record is older than `staleMs` is taken over (it died
+// without releasing); a fresh holder makes the taker wait up to `waitMs`,
+// polling, then gives up and reports the holder. The release removes the
+// file ONLY while it still carries this taker's record — a lock taken over
+// in the meantime belongs to its new holder. Callers: manifest.mjs's
+// load-change-save cycle (the KB-wide manifest, F-546: the ONE manifest
+// writer, so every writer has the property by construction) and the
+// dashboard's per-dashboard refresh lock (F-545).
+/**
+ * @param {string} path  the lock file
+ * @param {{ owner?: Record<string, unknown>, staleMs: number, waitMs?: number, nowMs?: number }} opts
+ *   owner: fields recorded beside pid and at (who, which run); staleMs: a holder older than this is dead;
+ *   waitMs: how long to wait for a fresh holder (0: not at all); nowMs: the clock (the dashboard passes --now)
+ * @returns {{ taken: boolean, path: string, held: ?Record<string, unknown>, takenOver: ?Record<string, unknown>, record: (extra: Record<string, unknown>) => void, release: () => void }}
+ *   taken false: `held` is the fresh holder's record and record/release do nothing; taken true: `takenOver` is the
+ *   dead holder's record when one was taken over
+ */
+export function acquireFileLock(path, { owner = {}, staleMs, waitMs = 0, nowMs = Date.now() }) {
+  /** @type {Record<string, unknown>} */
+  const mine = { ...owner, pid: process.pid, at: new Date(nowMs).toISOString() };
+  const body = () => JSON.stringify(mine, null, 2) + "\n";
+  /** @returns {Record<string, unknown>} */
+  const readHeld = () => {
+    try {
+      const held = readJsonFile(path);
+      return held && typeof held === "object" && !Array.isArray(held) ? held : {};
+    } catch {
+      return {};
+    }
+  };
+  const deadline = Date.now() + waitMs;
+  /** @type {?Record<string, unknown>} */
+  let takenOver = null;
+  for (let takeovers = 0; ; ) {
+    try {
+      mkdirSync(dirname(path), { recursive: true });
+      writeFileSync(path, body(), { flag: "wx" });
+      break;
+    } catch (e) {
+      if (/** @type {{code?: string}} */ (e)?.code !== "EEXIST") throw e;
+    }
+    const held = readHeld();
+    const age = nowMs - Date.parse(String(held.at ?? ""));
+    const stale = !Number.isFinite(age) || age >= staleMs;
+    if (stale && takeovers < 2) {
+      // A dead holder's file is removed and the create tried again: two takers
+      // removing the same dead file both reach the create, and `wx` lets one in.
+      takenOver = held;
+      takeovers++;
+      try { unlinkSync(path); } catch { /* the other taker removed it first */ }
+      continue;
+    }
+    if (Date.now() >= deadline) return { taken: false, path, held, takenOver: null, record() {}, release() {} };
+    sleepMs(Math.min(200, Math.max(1, deadline - Date.now())));
+  }
+  return {
+    taken: true,
+    path,
+    held: null,
+    takenOver,
+    record(extra) { Object.assign(mine, extra); writeFileAtomicSync(path, body()); },
+    release() {
+      const now = readHeld();
+      if (Object.keys(now).length && !(now.pid === mine.pid && now.at === mine.at)) return;
+      try { unlinkSync(path); } catch { /* already gone */ }
+    },
+  };
 }
