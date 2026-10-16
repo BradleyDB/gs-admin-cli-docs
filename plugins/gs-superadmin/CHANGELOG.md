@@ -33,6 +33,7 @@ reads the same. What a user gets by updating:
   sentences re-verified unchanged against the 1.0.12 package; relationships-build's
   semantics basis records 1.0.11 and 1.0.12 (the rules-engine handler and manifest are
   byte-identical from 1.0.10).
+
 ## 0.55.0 — 2026-10-15
 
 Customer lists that stay current. In 0.54.0 a routine refresh updated the figures of the
