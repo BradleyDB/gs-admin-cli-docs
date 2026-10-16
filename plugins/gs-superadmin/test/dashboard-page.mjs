@@ -1746,6 +1746,30 @@ try {
   removeTempDir(ROOT);
 }
 
+// ── F-530, second reopen (redesigned at the 0.56.1 gate; ruled by Bradley 2026-10-16): what is shown is described ──
+// The About tab's customer lists are the ones the snapshot's pull RANKED (the record the panels and the report draw);
+// a change the spec holds that no pull has ranked yet is said as waiting, never described as if shown.
+{
+  const page = SPEC_DEFAULTS.pages[0];
+  const same = aboutSettings(SPEC_DEFAULTS, page, GOLD);
+  const accountsOf = (settings) => settings.find((d) => d.label === "Accounts").text;
+  check("F-530 (reopened) with the spec's lists the ones the snapshot was ranked with, the About tab reads as before: no waiting line",
+    isDeepStrictEqual(same.map((d) => d.text), aboutSettings(SPEC_DEFAULTS, page).map((d) => d.text)) && !JSON.stringify(same).includes("waiting for the next refresh"));
+  const changed = specWith((s) => { s.pages[0].panels = []; s.pages[0].statusDefault = null; s.accounts.lists = [{ kind: "most-bounced", n: 5, floor: 0 }]; });
+  const pending = aboutSettings(changed, page, GOLD);
+  const ranked = GOLD.meta.params.accounts.lists.map(engine.listPhrase);
+  check("F-530 (reopened) with the spec's lists changed and the snapshot ranked with the old ones, the About tab names the RANKED lists (the record's, as the panels show) in its Accounts entry and its list-panel lines, and adds the waiting line naming the change and the pull it waits behind",
+    ranked.every((phrase) => accountsOf(pending)[0].includes(phrase)) && !accountsOf(pending)[0].includes("the 5 most bounced") &&
+      accountsOf(pending).at(-1) === `A change of the customer lists is waiting for the next refresh: the 5 most bounced. Until then the pages show the lists the pull of ${GOLD.meta.pulledAt.slice(0, 10)} ranked.` &&
+      pending.find((d) => d.label === "Pages").text.some((t) => t.includes("the 25 most bounced") && t.includes("as the pull ranked")) && !JSON.stringify(pending.find((d) => d.label === "Pages").text).includes("the 5 most bounced"),
+    [accountsOf(pending), pending.find((d) => d.label === "Pages").text.filter((t) => /bounced/.test(t))]);
+  check("F-530 (reopened) with no snapshot (the spec writer's own rendering) the spec is described, as before", isDeepStrictEqual(aboutSettings(changed, page).map((d) => d.text), aboutSettings(changed, page, null).map((d) => d.text)) && accountsOf(aboutSettings(changed, page))[0].includes("the 5 most bounced"));
+  // F-536's --kb flag (reopened): a folder name a shell would split goes in double quotes on every line, the one spelling the three shells pass whole.
+  check("F-536 (reopened) every entry-command line quotes a knowledge-base folder name holding a space in double quotes, and leaves a plain name bare",
+    COPY_LINES.refresh("d", "Acme KB").endsWith(' --kb "Acme KB"') && COPY_LINES.change("d", "pages.0.title", "x", "acme-prod").endsWith(" --kb acme-prod") && COPY_LINES.health("d", "p-1", "a b").endsWith(' --kb "a b"'),
+    [COPY_LINES.refresh("d", "Acme KB")]);
+}
+
 if (failures) {
   console.log(`\ndashboard-page: ${failures} FAILED of ${ran}`);
   process.exit(1);

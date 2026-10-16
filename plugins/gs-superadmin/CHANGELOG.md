@@ -5,6 +5,56 @@ marketplace doesn't pin versions — users get main — so entries describe what
 user who updates, not internal refactors. Entries before 0.8.0 were reconstructed from git
 history when this file was introduced.
 
+## 0.56.2 — 2026-10-16
+
+The release gate's fix round (F-530, F-536, F-541, F-542, F-545, F-546 reopened; F-552,
+F-553, F-554, F-555): what the 0.56.1 review found inside the mechanisms that release
+shipped, fixed before the cut.
+
+- **The file lock no longer loses a holder (F-545, F-546).** The lock record is evidence of
+  a holder, never the only evidence: a holder whose process is gone is taken over at once
+  (a killed describe or refresh no longer locks the knowledge base for ten minutes, or a
+  dashboard for two hours), a record that cannot be read yet is held while its file is
+  young (a taker inside its own create, or a file a scanner holds) and taken over only once
+  old, a dead lock is claimed by one taker (never two), the create and the removals go
+  through the Windows retry (a scanned lock file is a transient, never a crash or a lock
+  left behind), and a release or a record touches this taker's own record alone. The
+  manifest's read-only verbs (`next`, `report`, `crawl` without `--set`,
+  `reconcile-docs --dry-run`) take no lock, and an interrupted writer releases its lock on
+  the way out. The "locked" refusal says the lock clears on its own.
+- **A rebuild, and a change's rebuild, take the refresh lock (F-552).** While a refresh
+  runs, `rebuild` and a display change's rebuild are refused naming it ("run rebuild again
+  when it finishes"; the change itself is saved), so the pages are never written from an
+  older snapshot over the ones a refresh just built.
+- **The repair of a refused saved dashboard holds through the interview (F-541).** `new`'s
+  own hint (`next` to the closing step, `next --question <id>`) and the save's refusal now
+  reach the writer instead of a stack trace; and with two problems from a tightened rule, a
+  change that clears one is kept in the draft and says so, so the next change builds on it
+  and the save follows.
+- **What is shown is what is described (F-530).** In the window where a list change could
+  not be ranked (no account store beside the latest snapshot: an upgrade from 0.54.0 before
+  its first refresh), the About tab names the lists the pull ranked — the ones the panels
+  and the report draw — and adds that a change of the customer lists is waiting for the
+  next refresh, naming it; it no longer describes lists the page does not show.
+- **A restart is told as one on every path (F-542).** A resume whose derived health lookback
+  moved back to the base, or whose two values were capped to one window, pulls in a fresh
+  directory and says so (the state records which directory the stopped run pulled in);
+  the skill relays `restarted`.
+- **Every line runs as written (F-536).** The skill's shared-folder offer writes the publish
+  setting through `@<file>` (inline JSON survives no Windows shell), the README and the
+  usage headers state the value grammar the script reads, the two remedy lines use the bare
+  spelling, and a knowledge-base folder name holding a space is double-quoted on every copy
+  and remedy line.
+- **Three relayed statements name their case (F-554):** the `--previous` row says a snapshot
+  with no account store beside it makes the pull full; the per-pin facts warning tells a
+  workspace on an older CLI to upgrade it (and a newer one to wait for the plugin); a list
+  change ranked from the store says the accounts it newly kept are left out of the
+  per-field lists until the next refresh reads their fields.
+- Housekeeping (F-553, F-555): the maintainers' tables name the lock and the account store;
+  one list identity, one ordering by the pull's ranking, one problems text and one
+  snapshot-plus-store copy serve every surface; the account store is read once per refresh
+  and decoded once, and a reader that only asks which pull a store is reads its first line.
+
 ## 0.56.1 — 2026-10-15
 
 The polish round before the release (F-536, F-541, F-542, F-545, F-546, F-551): six
@@ -107,6 +157,7 @@ accounts on the lists but never who was on them: membership changed only at a fu
   report's offer to refresh prices it as the full pull it is. Nothing to do by hand.
   `export --with-snapshot` carries the store, so a backup refresher's first pull stays
   selective.
+
 ## 0.54.1 — 2026-10-15
 
 The plugin's account of the Gainsight CLI is correct again for a workspace whose installed

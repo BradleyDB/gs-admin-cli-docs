@@ -369,7 +369,9 @@ never in a page) with every company's send figures by program and month, so a se
 pull ranks from the months it carries and the months it reads again. A dashboard last
 pulled before the store existed gets one full pull, and the refresh says why. A pull that stops (the login expired, a call failed) leaves the last good pages
 untouched and continues on the next run, and a setting changed in between does not strand
-it: the pull is then planned afresh for the new settings.
+it: the pull is then planned afresh for the new settings. A resume whose derived health
+lookback moved (re-documentation changed the longest schedule period) starts its pull again
+in a fresh run directory and says so, never that the calls already made were reused.
 
 Every line below names the tenant's knowledge-base folder with `--kb <folder>` (here
 `acme-prod`): a workspace can hold more than one tenant, and the command refuses to guess
@@ -452,8 +454,10 @@ which dashboard folder a bare slug means. The pages' own copy lines carry it the
   rebuild with no pull, the customer lists ranked again from the account store with no pull,
   or the next pull with its minutes, priced for the dashboard as it will be after the change;
   on a dashboard with no account store yet a changed list is ranked at the next refresh, and
-  the change says so with that line); without `--dry-run` it saves and does it. The value is JSON: a text setting goes in JSON quotes inside the
-  shell's (`'pages.1.title="Leadership"'`). The lines the pages offer to copy are these.
+  the change says so with that line); without `--dry-run` it saves and does it. The value is JSON when it parses (`true`, `45`), else a bare value
+  by the setting's kind — a list as items separated by commas, yes/no, or the text itself (`"pages.1.title=Leadership page"`, the whole
+  pair in double quotes when it holds a space: the one spelling Git Bash, PowerShell 5.1 and cmd all pass whole) — or `@<file>` for an
+  object-valued setting's JSON. The lines the pages offer to copy are these.
 - **Handing over to a backup refresher:** `… export program-health --out handover.json
   --with-snapshot --kb acme-prod`, then on their machine `… import --file handover.json --kb
   acme-prod`: the account store goes with the snapshot, and their first pull is selective,
