@@ -3085,7 +3085,7 @@ What: Class, in one sentence: the cross-program lists are ranked only from data 
 Expected: the snapshot (or a sidecar beside the pages, never embedded in a page) keeps compact per-account totals by program and month for every account, so every refresh re-ranks exactly: stored months plus pulled months give the full pull's ranking (the judge: over unchanged data, a selective refresh's lists equal a full pull's, kind, n, floor, per, segment, kept, in order); a list change re-ranks from the store at no pull; the low-cadence quiet rule (per program) and per-segment lists (company fields for newly listed accounts) are kept. Contract: a 0.54.0 snapshot without the store is detected and the next refresh goes full, priced and said, with no hand step and no refusal. The store's size is measured on the kept dashboard's run directories before building, and the design stops if it is prohibitive.
 Defer: 2026-10-15 (Bradley, R12 release gate) - past 0.54.0. Why not now: shipping 0.54.0 sooner is worth more than current membership on routine refreshes — a day-1 adopter's build is a full pull, most will not refresh for a month, the staleness is dated on the page and stated in the release notes, and the cost of waiting is one extra full refresh after session B. Reopen: session B, the fast follow after the 0.54.0 release (with F-530 and F-529's root).
 
-## F-549 — OPEN
+## F-549 — FIXED
 Reported: 2026-10-15 (carried from gs-fortress ledger/reports/audit-1.0.12.md §1.12,
 §1.15, §1.16 and §1.18 by the watch's kickoffs step; DECOUPLED from the adopt decision
 per that audit's §5; this emission supersedes the 1.0.11 audit's, which was never
@@ -3140,3 +3140,49 @@ ledger/reports/build-kickoffs-1.0.12.md, on Bradley's clock). Also not in scope:
 any validateQuery guard or the one-at-a-time rule.
 Plan: gs-fortress ledger/reports/build-kickoffs-1.0.12.md, session E1 (CP-2, CP-3, CP-4,
 CP-5) + V1 (CP-6).
+Fix: 2026-10-15 (builder, session E1+V1 of gs-fortress build-kickoffs-1.0.12.md; branch doctrine-cli-1-0-11-plus,
+PR #58 to dev, UNMERGED; plugin 0.54.1). The class, in one sentence: a doctrine statement about a CLI defect that
+carries no version bound becomes false for every user on the CLI that fixed it while staying needed by every user
+on the CLI that has it — so the repair is a version condition on each such statement ("1.0.10 and earlier" keeps
+today's wording, "1.0.11 and later" gets the new behaviour), never a replacement, and never "1.0.12" (the same dist).
+  CP-2: the operating model's "sc measures --id" entry and General rule, setup's document-domain-notes.md Scorecard
+  exception — the 1.0.9 and 1.0.10 clauses kept, the cause named (a keychain-load race between the two concurrent
+  first requests; gs-fortress KI-028), --id works on 1.0.11 and later ("live confirmation pending": CP-6 a), --name
+  the default on every version, the duplicate-name fallback records the race failure only on 1.0.10 and earlier.
+  CP-3: the libuv entry scoped to 1.0.10 and earlier with what 1.0.11 changed, "parse stderr on every version" kept
+  until CP-6 (b) clears; the scope-filter entry's jo email templates sentences and index-scope-notes.md's body scoped
+  to 1.0.10 and earlier, the residual top-level filter on every version, the reachable count "not yet measured live"
+  (CP-6 c); the ### heading untouched (check 23: 3 scope entries match 3 subsections both ways).
+  CP-4: engagement.mjs's header facts version-stamped (the LOOKUP rule, the silent filter drop, show∩group, the
+  "network outage", the participant reason filter, "unrecognized data type"); "Calls run one at a time" untouched
+  (cross-process; KI-028's fix is in-process); classifyFailure reads FIELD_REFUSAL_RE before the not-found class and
+  returns shape-error — the call is not retried and a describe never settles it as a deleted program; validateQuery
+  untouched (frozen contract). test/engagement.mjs: three F-549 checks, LEDGER facts 3, 7 and 9 version-stamped plus
+  one new ledger line; the fixture's FAULT_TEXT gains the two 1.0.11 refusal texts (fictional field names).
+  CP-5: plugin.json 0.54.0 → 0.54.1 with a CHANGELOG entry naming the effect (correct on 1.0.11 and later, unchanged
+  on 1.0.10). CP-6 (V1): six live checks banked in dev/VALIDATION.md § "F-549 / CP-6" (a)–(f), each recording the
+  CLI version it runs on, with FIXED / BROKEN lines and the reopen a BROKEN verdict causes.
+  Siblings the finding did not list, checked with zero new code: the KI-018 entry's "both also abort on the libuv
+  assertion above" now reads against a version-scoped entry and is named in CP-6 (b)'s FIXED line as the sentence
+  that takes the same scope when (b) clears; report-bug's SKILL.md names the sc measures --id entry only as an
+  example of a documented issue (no version claim) — untouched; doc-lib's AUTH_DEATH literal list and
+  describe-batch's fake-CLI literals are 1.0.12's own two throw texts, unchanged (audit §1.12) — untouched.
+Judge: for the code, a mutation differential rather than the fixer's list — the pre-fix classification restored on a
+copy of the tree must make the engagement suite red (below); for the doctrine, the live checks of CP-6 (a)–(f) on a
+1.0.11-or-later CLI, each banked with the verdict that reopens this section, since no fixture can decide what a CLI
+does on a tenant.
+Mutation copy-out (source: the classifier's one new decision point, deleted on a copy of plugins/ + test/):
+    mutant classifyFailure without `if (FIELD_REFUSAL_RE.test(stderr)) return "shape-error";` (the old /\bnot found\b/
+    class first again) — pred:KILL → KILLED: 3 FAIL (the three F-549 checks: the classifier; an rp run refusal retried
+    as a not-found; a describe refusal settled as a deleted program) — the suite's own line `engagement: 3 FAILED of 380`, exit 1. On the tree: 0 FAIL, exit 0.
+Battery: 60 steps, 0 red — the AGENTS.md list verbatim, plus the five no-CLI generators with `git diff --exit-code` on
+their outputs (no drift), on this worktree. `npm run build` NOT run (house rule 7: nothing here regenerates).
+Ordering against session B (F-548 / F-530, feat/f548-ranking-every-refresh, PR #57, open and green on its five
+checks but CONFLICTING against dev since this emission landed — both touch the tail of dev/FEEDBACK.md; the
+section format resolves it by keeping both sides): both branches edit scripts/engagement.mjs and test/engagement.mjs
+and both bump from 0.54.0 (B to 0.55.0, this one to 0.54.1). Whichever merges second rebases and takes the next
+number (this branch becomes 0.55.1 if #57 lands first; #57 stays 0.55.0 if this lands first). CP-4's hunks are the
+header comment block, classifyFailure, the test's fault block and its LEDGER — none of them in B's diff — so the
+rebase is expected to be mechanical. Which lands first is Bradley's call; neither PR is merged by its author.
+Reload: /reload-plugins does not reach a shipped template — the operating model is copied into a workspace at setup
+or refresh — so the tester reads the branch's files, and walks setup's references as prose (no CI reads them).
