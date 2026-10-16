@@ -19,8 +19,8 @@ plugin (created in the skill's Phase 2), relative to the working dir.
   found": on 1.0.9 and earlier once the token passes half-life (a token-refresh race), and
   on 1.0.10 every time, a fresh token included (measured live 2026-09-26; a keychain-load
   race between the two concurrent first requests — see "Known CLI issues" in the
-  operating model). Fixed upstream at 1.0.11, so on 1.0.11 and later `--id` works (live
-  confirmation pending); `--name` works on every version and stays the default. If two
+  operating model). Fixed upstream at 1.0.11, so on 1.0.11 and later `--id` works (measured
+  live at 1.0.12); `--name` works on every version and stays the default. If two
   scorecards share a name, try `--id` once: on 1.0.11 and later it is expected to
   succeed; on 1.0.9 and earlier a fresh token usually survives; on 1.0.10 expect the
   failure. If it fails that way on 1.0.10 or earlier, mark the entry failed with error

@@ -462,7 +462,7 @@ try {
     check("the facts come from one function: reason, the engine's wording, pull or rebuild, the setting and the line; a lack that depends on the data asks the caller which it is; a figure the snapshot predates and a health part the pull lost each get the refresh line",
       isDeepStrictEqual(app.lackFacts("accounts-off"), { reason: "accounts-off", text: reasonText("accounts-off"), known: true, needs: "pull", needsText: NEEDS.pull, setting: { path: "accounts.pull", how: "on", label: "Accounts" }, line: COPY_LINES.change("program-health", "accounts.pull", "true") }) &&
         app.lackFacts("tab-off", { held: true }).needs === "rebuild" && app.lackFacts("tab-off", { held: false }).needs === "pull" && app.lackFacts("measure-not-in-snapshot").line === COPY_LINES.refresh("program-health") && app.lackFacts("measure-not-in-snapshot").setting === null &&
-        app.lackFacts("call-failed").line === "node .gs-superadmin/plugin/scripts/dashboard.mjs refresh program-health" && app.lackFacts("no-internal-domain").line === "node .gs-superadmin/plugin/scripts/dashboard.mjs change program-health sources.0.params.internalDomains=");
+        app.lackFacts("call-failed").line === "node .gs-superadmin/plugin/scripts/dashboard.mjs refresh program-health" && app.lackFacts("no-internal-domain").line === 'node .gs-superadmin/plugin/scripts/dashboard.mjs change program-health "sources.0.params.internalDomains=<domains>"');
     // The actions seam (ruled 2026-10-05; the local app is LTR-10): a button when the page has one behind it, the copy line when it does not.
     const withActions = createDashboard(engine, { ...pageModel(SPEC_ACCOUNTS, GOLD, SPEC_ACCOUNTS.pages[0]), actions: { base: "http://127.0.0.1:1/", token: "never-in-markup" } });
     const button = withActions.renderNotice(withActions.lackFacts("accounts-off"));
@@ -514,10 +514,11 @@ try {
     // writer's own grammar (dotted, with indexes), never the descriptions' kind path with empty brackets, so it runs as
     // written: every emitted copy line's path is one setPath takes and validate accepts, and one the entry command's
     // cost table covers (the kind path is derived back from it).
-    const copyLines = (html, spec) => [...html.matchAll(/data-copy="[^"]*? change ([^ "]+) ([^="]+)=([^"]*)"/g)].map((m) => ({ slug: m[1], path: m[2], value: m[3], spec }));
+    // A pair printed in double quotes (F-536: a value a shell would read) is the same pair; the quotes are escaped in the attribute.
+    const copyLines = (html, spec) => [...html.matchAll(/data-copy="[^"]*? change ([^ "]+) ([^="]+)=([^"]*)"/g)].map((m) => ({ slug: m[1], path: m[2].replace(/^&quot;/, ""), value: m[3].replace(/&quot;$/, ""), spec }));
     // The pre-rendered pages' lines, plus the About tab's internal-domain line, which the runtime draws (its facts are checked above).
     const emitted = [...copyLines(offered.html, healthOff), ...copyLines(ADMIN.html, SPEC_ACCOUNTS), ...copyLines(ADMIN_P.html, SPEC_DEFAULTS), ...copyLines(build(specWith((s) => { s.sources[0].params.stepDetail = false; s.pages[0].panels = []; }), PULLED).html, specWith((s) => { s.sources[0].params.stepDetail = false; s.pages[0].panels = []; })),
-      { slug: "program-health", path: createDashboard(engine, pageModel(SPEC_ACCOUNTS, GOLD, SPEC_ACCOUNTS.pages[0])).lackFacts("no-internal-domain").line.replace(/^.* change program-health /, "").replace(/=.*$/, ""), value: "", spec: SPEC_ACCOUNTS }];
+      { slug: "program-health", path: createDashboard(engine, pageModel(SPEC_ACCOUNTS, GOLD, SPEC_ACCOUNTS.pages[0])).lackFacts("no-internal-domain").line.replace(/^.* change program-health /, "").replace(/^"/, "").replace(/=.*$/, ""), value: "", spec: SPEC_ACCOUNTS }];
     // "Runs as written": the writer takes the path and the value, and no validation problem is ABOUT that field (a page
     // whose hand-listed panels lack the tab's is the writer's own refusal, naming the panels, and says what to do).
     const runsAsWritten = (l) => {
@@ -640,7 +641,7 @@ try {
     const loaded = loadPage(page.html);
     check("no internal domain configured: the recipients toggle is drawn switched off with a one-line pointer beside it, never a control that does nothing; the full notice stands on the About tab beside the setting it names (ruled 2026-10-10): what it would take is a new pull with the domains filled in, and the line to copy ends at the = sign with the notice saying what to put there",
       /<input type="checkbox" role="switch" data-f="internal" checked disabled aria-checked="true">/.test(toggle) && /data-pointer="no-internal-domain"/.test(toggle) && lacksIn(toggle).length === 0 && toggle.includes("see About") && lacksIn(aboutNotice).includes("no-internal-domain") && aboutNotice.includes(esc(reasonText("no-internal-domain"))) && aboutNotice.includes(esc(NEEDS.pull)) && aboutNotice.includes(`Fill in &quot;Internal recipients&quot;`) && aboutNotice.includes(`<span class="gs-path">sources[].params.internalDomains[]</span>`) &&
-        aboutNotice.includes("sources.0.params.internalDomains=</code>") && aboutNotice.includes("ends at the = sign: put the value there"), toggle);
+        aboutNotice.includes("&quot;sources.0.params.internalDomains=&lt;domains&gt;&quot;</code>") && aboutNotice.includes(esc("put the company's email domains, separated by commas (acme.com,acme.co.uk) in place of <domains>, keeping the quotes round the pair")), toggle);
     check("and it cannot be switched on from outside either: a hash asking for external recipients is read as everyone, and a spec whose toggle starts on external starts on everyone here",
       loaded.call(`app.stateFromHash("rc=external").external`) === false && loaded.call(`app.filtersOf(app.stateFromHash("rc=external")).recipientClass`) === "all" &&
         loadPage(build(specWith((s) => { s.globalFilters.find((f) => f.id === "recipientClass").default = "external"; }), NO_DOMAIN).html).call(`app.defaultState().external`) === false);

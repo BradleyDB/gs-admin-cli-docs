@@ -5,6 +5,49 @@ marketplace doesn't pin versions — users get main — so entries describe what
 user who updates, not internal refactors. Entries before 0.8.0 were reconstructed from git
 history when this file was introduced.
 
+## 0.56.1 — 2026-10-15
+
+The polish round before the release (F-536, F-541, F-542, F-545, F-546, F-551): six
+findings the 0.54.0 release gate logged as polish and deferred once, all on the engagement
+dashboard's entry command and the knowledge base it re-documents, plus the wording the
+1.0.12 live checks settled.
+
+- **A dashboard setting is changed with a value every shell passes whole (F-536).**
+  `change <dash> <path>=<value>` takes JSON when it parses and otherwise a bare value by
+  the setting's kind: a list as items separated by commas
+  (`"sources.0.params.internalDomains=acme.com,acme.co.uk"`, `none` to empty it), a yes/no
+  setting as `yes` or `no`, a text setting as the text itself; the whole pair in double
+  quotes is the one spelling Git Bash, PowerShell 5.1 and cmd all deliver as written, where
+  a JSON string's own quotes survive none of them bare. An object-valued setting takes its
+  JSON from a file (`<path>=@<file>`). The page's "no internal domain" line now carries a
+  `<domains>` placeholder inside the quoted pair, with the notice saying what to put there,
+  and runs as printed in all three shells.
+- **A saved dashboard that a newer version's checks refuse is repaired through the writer
+  (F-541).** `new` opens it as an edit naming the problem and the repair line; a change may
+  not add a problem; the save is refused until none remains. No hand edit of the saved
+  file, and no stack trace.
+- **A resume whose health lookback moved says it starts again (F-542).** When
+  re-documentation moved the knowledge base so the derived lookback rose, the resumed
+  refresh plans and pulls in a fresh run directory and its opening line says so, from which
+  lookback to which and why, instead of "the calls already made are reused"; the summary
+  records the restart.
+- **A second refresh during a live one is told "already running" first (F-545).** The
+  per-dashboard lock is taken before the stopped-run state is read, with an exclusive
+  create (no check-then-write window), and a release never removes a lock another refresh
+  took over.
+- **Two dashboards of one knowledge base can refresh at once without losing each other's
+  marks (F-546).** The manifest script, the one writer of `_manifest.json`, takes a lock
+  beside it for each load-change-save; a second writer waits up to 30 seconds
+  (`--lock-wait-seconds`), then fails naming the holder; a lock older than ten minutes is a
+  dead writer's and is taken over.
+- **The 1.0.11-and-later wording states what the 1.0.12 live checks measured (F-551).** The
+  email-template scope note, the operating model's scope-filter entry and the per-pin facts
+  entry carry the measured count (the list descends subfolders; a few templates are still
+  hidden, each in a folder whose other templates list; `--folder` matches a folder's own
+  name only); "live confirmation pending" is lifted from the `sc measures --id` and LOOKUP
+  entries; the error-exit entry scopes the crash codes to 1.0.10 and earlier; the engagement
+  test fixture carries the CLI's real field-refusal text.
+
 ## 0.56.0 — 2026-10-15
 
 CLI pin 1.0.10 → 1.0.12 (gs-fortress audit-1.0.12, CP-1 and CP-7). The pin skips 1.0.11:

@@ -2357,7 +2357,7 @@ try {
     "pitfall: cost against the token": "cost: plan estimates the calls and seconds",
     "fact 1: --page-size sets the rows; equal length is truncated": "a result as long as the page is treated as truncated and split",
     "fact 2: --limit above 2000 is refused client-side": "no rp run passes --limit",
-    "fact 3: LOOKUP grouping resolves to an empty name (CLI 1.0.10 and earlier; 1.0.11 and later join the lookup object's key — fixed upstream, live confirmation pending; the rule stays)": "nothing groups or aggregates on a LOOKUP field by name",
+    "fact 3: LOOKUP grouping resolves to an empty name (CLI 1.0.10 and earlier; 1.0.11 and later join the lookup object's key — fixed upstream, measured live at 1.0.12; the rule stays)": "nothing groups or aggregates on a LOOKUP field by name",
     "fact 4: non-sent rows are attempts; Sent counts all rows": "Sent counts every attempt",
     "fact 5: timeouts are unpredictable and transient": "timeouts are transient",
     "fact 6: a reproducible 'network outage' is a query-shape error": "a reproducible 'network outage' is a query-shape error",
