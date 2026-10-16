@@ -3247,7 +3247,7 @@ whose words say "not found" is never filed as a missing asset.
   CONFLICTING). Neither merged by the tester; the Fix note's numbering rule for whichever lands second stands.
   Verdict: VERIFIED.
 
-## F-550 — OPEN
+## F-550 — VERIFIED
 Reported: 2026-10-15 (builder, session E2 of gs-fortress ledger/reports/build-kickoffs-1.0.12.md — the gated
 adoption, CP-1 + CP-7, spawned on the adopt decision recorded in the gs-fortress ledger on 2026-10-15; audit:
 ledger/reports/audit-1.0.12.md §0, §1.3, §1.5, §1.8, §1.10, §1.12, §1.14, §5)
@@ -3429,33 +3429,3 @@ by re-reading the new package, never by editing the pattern that holds it.
   0.55.0) MERGEABLE/BLOCKED. Neither merged by the tester; the Fix note's numbering rule for whichever lands second
   stands.
   Verdict: VERIFIED.
-Reopened: 2026-10-15 (tester, same round @ hb-20261015-07; Bradley's call after reading the verdict) — VERIFIED -> OPEN.
-The verdict above was given against the kickoff's bar (3), which held the templates entry at its 1.0.10 wording. But
-this section's own Expected requires "the templates entry rewritten from CP-6 (c) or removed with its
-index-scope-notes.md heading", and the gs-fortress plan's session map gates E2 on "CP-6 (c) cleared for the templates
-entry". (c) cleared in this round (dev/VALIDATION.md § "F-549 / CP-6" (c), CLEARED @ hb-20261015-07). So the one
-Expected item the Fix note deferred is now unblocked and undone, and the section is not complete. This is not a
-reopen of the fix's model: every carrier the Fix moved holds, as measured above. Rule 5's count still takes it.
-Owed, one change across the three sites check 23 holds together (rewrite, NOT removal — the list is not complete):
-  (i) plugins/gs-superadmin/scripts/doc-lib.mjs CLI_PIN_FACTS "journey:email:templates" scope — its clause "flattens
-  one folder level (templates in nested subfolders are dropped)" is false at 1.0.11 and 1.0.12 (stamp and
-  alsoVerifiedOn), so a 1.0.11/1.0.12 workspace's manifest report relays a wrong limit. Rewrite it from (c): the list
-  descends nested subfolders and still omits a few templates (3 of the 1180 the sandbox KB holds, each in a folder whose
-  other templates list), so the count is still the CLI-reachable subset; `--folder` matches a folder's own name only
-  (KI-030). Remove the CP-6 (c) comment above the entry, replacing it with the basis.
-  (ii) plugins/gs-superadmin/skills/setup/references/index-scope-notes.md § "journey email templates" (:55, "is not yet
-  measured live") and (iii) plugins/gs-superadmin/templates/operating-model.md's scope-filter entry (:342, "the
-  reachable count on 1.0.11 or later is not yet measured live") take the measured result in place of "not yet
-  measured live"; the ### heading stays (check 23).
-Also owed from the same CP-6 verdict, F-549's FIXED paths, polish (they ride this round): lift "live confirmation
-pending" at (a)'s three sites (operating model sc measures --id entry and General rule, setup's document-domain-notes
-Scorecard exception) and at (d)'s (engagement.mjs header LOOKUP note, test LEDGER fact 3) — the phrase wraps across
-lines, so a one-line grep misses most of them; at c58a176 they sit at operating-model.md:242,
-document-domain-notes.md:23, scripts/engagement.mjs:38 and test/engagement.mjs:2309 (find the General rule's by reading); (b)'s crash-code scoping
-in the operating model's libuv entry (operating-model.md:387 "Not yet measured live") and the KI-018 sentence; (f)'s
-real stderr into test/fixtures/engagement/acme-tenant.mjs FAULT_TEXT (no Request ID line, `Did you mean "X"?` form,
-the filter example a truly unknown name, not a case variant), then test/engagement.mjs re-run.
-Expected for the next verdict: the three sites agree with VALIDATION (c) and check 23 still reads 3 of 3; the F-467
-shape probe unchanged (the stamp does not move); a plugin CHANGELOG line under the unreleased 0.55.0 entry (no
-second bump). Then this section flips FIXED -> VERIFIED on its own round. Severity unchanged (normal): it gates the
-release, not the merge — but landing it on PR #59 before merge keeps 0.55.0 from shipping the 1.0.10 line.
