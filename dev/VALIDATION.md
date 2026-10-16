@@ -3694,3 +3694,5 @@ scratch dashboard to the leaders folder"): record whether the model wrote the pu
 summary relay names `restarted` only when the summary carries it. setup's changed sentence (the pin-facts warning
 relayed as written) is reached only on a workspace whose CLI is not 1.0.12 — cannot be walked here; banked as a blind
 spot.
+
+Section status (tester @ hb-20261016-02, 2026-10-16; recorded by the builder at the post-merge re-stamp): CLEARED — run on the SANDBOX KB as the kickoff ruled (this section's "production KB" followed the R13 precedent and was not a requirement): R1 the held handle and a dead-pid lock taken over at once (the kill-to-lock path itself laid by hand, the suite's), R2 the rebuild refused during a refresh, R3 the About tab's waiting line in the no-store window and gone after the full pull, R4 the @<file> publish line in PowerShell 5.1; F-541 and F-542 by the stand-in suite; the email-engagement walk done. F-530, F-536, F-541, F-542, F-545, F-546, F-552, F-553, F-554, F-555 VERIFIED. Spent for the release carrying 0.56.2.
