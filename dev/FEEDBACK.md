@@ -154,6 +154,36 @@ Blind spots (hb-20261015-04): the live arm on the kept dashboard (VALIDATION § 
 Walk (hb-20261015-04): 2026-10-15 (tester) — B-V @ hb-20261015-04 (feat/f548-ranking-every-refresh at cc7a69a, clean and level; a terminal in the workspace with --plugin-dir, canary matched), the ACCEPTANCE of F-548 (VERIFIED) and F-530 (REOPENED) on production, reads only, one call at a time, three by-hand logins; PR #57's five checks green, which clears this round's CI blind spot. The changed SKILL.md (email-engagement, model-invocable) was invoked by the session itself: step P relayed both refreshes (the full-this-once pull's Pull line with pull.why as written, then the selective one); step D's changed relay was walked at L3 (done.text "…ranked again from the account store beside the last pull (…), with no pull; the pages were rebuilt.", Bradley: "the wording seems fine"). NOT walked: step R2's new full-this-once sentence, spoken only over a snapshot older than 7 days (the kept one was 2 days old, and had its store after L1); its script side was measured (refreshFullOnce, 72 = 72). Guard-wiring: `gs-admin jo p pause --help` drew the ask "Mutating Gainsight command: gs-admin journey programs pause. … ⚠ At least one of these tenants is PRODUCTION (recorded at setup) — verify the target before approving." (rendered, read and declined by Bradley). Report-only notes: both pulls ran long against their prices (105 min vs 72; 80.5 vs 43); the full-this-once reason has two wordings (the report's "made before the account store", pull.why's "made before they could"); a refresh's `pruned` reads [] although the previous store was removed (it names snapshots only); a report written at 19:45 local was named engagement-2026-10-16.md (a UTC date).
 
 
+<!-- builder 2026-10-15 (E1+V1 of gs-fortress build-kickoffs-1.0.12.md HANDED OFF — UNMERGED, riding doctrine-cli-1-0-11-plus (PR #58 to dev, open); F-549 (normal) OPEN -> FIXED on that branch; token hb-20261015-05; plugin 0.54.1 on the branch; no number claimed; next free F-550):
+     Kickoff: open PRs to dev — #57 (Session B, F-548/F-530, green on its five checks, CONFLICTING against dev since the F-549
+     emission landed on the tail of this file; keep both sides) and now #58; no OPEN polish (the five DEFERRED past 0.54.0 stay).
+     Content: CP-2 (sc measures --id: cause named, fixed at 1.0.11, --name the default), CP-3 (libuv abort and the one-level
+     template-folder flattening scoped to 1.0.10 and earlier, parse-stderr kept on every version, the ### heading untouched),
+     CP-4 (engagement.mjs header facts version-stamped, one-at-a-time rule and every validateQuery guard kept, classifyFailure
+     reads a 1.0.11+ field refusal as shape-error before the not-found class — mutation-proved: 3 FAILED of 380 with the branch
+     removed), CP-5 (0.54.0 -> 0.54.1 + CHANGELOG), CP-6 (six live checks banked in dev/VALIDATION.md § F-549 / CP-6 (a)-(f)).
+     Battery 60 steps 0 red locally; npm run build NOT run (ungated leg; the regen is the gated session E2).
+     Ordering vs #57: both edit scripts/engagement.mjs and test/engagement.mjs and both bump from 0.54.0 (#57 -> 0.55.0, #58 ->
+     0.54.1); whichever merges second rebases and takes the next number — Bradley's call. Close-out after the merge: gs-fortress
+     close-out.mjs 1.0.12 --session E1,V1 --pr 58 (never typed). -->
+<!-- builder 2026-10-15 (Session B — F-548 redesign round HANDED OFF — UNMERGED, riding feat/f548-ranking-every-refresh (PR #57 to dev, open); F-548 and F-530 (both normal) OPEN -> FIXED on that branch, re-opened from DEFERRED (past 0.54.0) by their defers' trigger; token hb-20261015-04; plugin 0.55.0; no number claimed; next free F-549):
+     Kickoff: no open PR to dev; no OPEN polish (F-536, F-541, F-542, F-545, F-546 stay DEFERRED past 0.54.0, auto, and
+       block the next release ceremony as the skill says: carried, not in this round).
+     Step 1 (measured, then ruled): the account store measured offline on the kept dashboard's full run directory
+       (15,436 accounts, 185,675 cells, 4.56 MB plain JSON; the full pull's lists reproduced in order); Bradley ruled
+       BUILD, plain JSON (no zipped file), one store for the latest snapshot only (F-548's Measured: and Ruling: lines).
+     Built: every refresh ranks the customer lists over every account and month (stored months + pulled months); a list
+       change ranks from the store with no pull (F-529's narrow path replaced); a 0.54.0 snapshot is continued by one
+       full pull, said and priced, no hand step; the page's list panels show the pull's ranking (F-530); T-10 additive
+       (meta.accountStore). Redesign: carry-the-last-ranking (F-521) replaced.
+     Judge: engagement 384, dashboard 146, dashboard-page 214, engagement-report 56, contract-conformance 318; 13
+       mutants KILLED pred:KILL (M7 after its check was strengthened); /code-review medium 6 findings (3 fixed, 2
+       polish skipped, 1 no change); local battery on a temp worktree (quoted on the branch's Fix note).
+     Owed: the verdict round, LIVE on the kept dashboard (VALIDATION § F-548 — ranking on every refresh, L0-L4: the
+       migration first, then a full and a selective pull, about two hours; a list change on a scratch import; the
+       skill's changed lines walked). Ordering: nothing pending re-arranges what is verified.
+-->
+
 <!-- builder 2026-10-15 ([v]0.54.0 RELEASED — post-release housekeeping; R12, the JO-dashboards release, one folded entry; next free F-549):
      Payload: email engagement, from a one-off report to a dashboard refreshed with one command — the new
        /gs-superadmin:email-engagement skill (report, dashboards from an interview, refresh with no model in the loop,
@@ -3097,3 +3127,59 @@ Mutation copy-out — sweep (source: each guard or branch this round added, reve
 Sibling sweep: every reader that ranked or selected over a selective refresh's partial rows, read one by one: the per-program R24 picks on a carried program (a sibling not handed: they kept the previous snapshot's picks; now selected over the whole window from the store), the per-segment lists (skipped on a selective refresh; now ranked), the low-cadence quiet set (it read only the programs pulled whole; now every program), the names call's keys (Phase D: the same selection, the store's carried cells given to it), the page's custom watch lists (they re-rank the embedded rows and say so: unchanged, by design), the report's per-program tables (among the accounts the snapshot kept, said: unchanged).
 Run: 2026-10-15 (builder) — the local battery (every node step of validate-plugin.yml and docs-drift.yml in workflow order, the regenerate-and-diff block, npm run typecheck and claude plugin validate) on a temp worktree of the FULL tree, twice: at dcdda0c (before the review's fixes) 47 steps, 0 red; at 6a979eb (the head handed off, plugin code final) 47 steps, 0 red. CI on PR #57 runs on this commit (the head before it was skip-tagged).
 Verified: 2026-10-15 @ hb-20261015-04 (tester, Session B-V ACCEPTANCE round; feat/f548-ranking-every-refresh at cc7a69a, clean and level, canary matched; production, reads only, one call at a time, three by-hand logins; PR #57's five checks green) — the Redesign's model holds on the kept dashboard (VALIDATION § F-548 Results, L0-L4): the migration from a snapshot made before the store (by 0.52.0) went full on the plain refresh, no `--full` typed and no hand step, said in pull.why ("the customer lists need one full pull to start ranking on every refresh (the previous snapshot was made before they could)") and priced by the report as the full pull (refreshFullOnce; 72 = 72 minutes); one store, 5,192,723 bytes, 185,996 cells, 15,438 accounts, plain JSON with one cell per line, equal to meta.accountStore; the selective refresh straight after ranked all three lists EQUAL to the full pull's in kind, n, floor, per, segment and kept IN ORDER (25/25 each), rankedAt its own pull, carriedFrom null, one store left; a list change on a scratch import ranked from the store in 3 s with no call, and the edit's closing ask and first option say so. Report-only: both pulls ran long against their prices (105 min vs 72; 80.5 vs 43). Rule 5's count is not reset by this; F-530's reopen in the same round is a consumer of the record, not the ranking.
+
+## F-549 — OPEN
+Reported: 2026-10-15 (carried from gs-fortress ledger/reports/audit-1.0.12.md §1.12,
+§1.15, §1.16 and §1.18 by the watch's kickoffs step; DECOUPLED from the adopt decision
+per that audit's §5; this emission supersedes the 1.0.11 audit's, which was never
+pasted)
+Severity: normal — shipped behaviour is wrong for a user whose installed CLI is 1.0.11
+or 1.0.12 (the same dist; 1.0.12 is npm latest since 2026-10-15): the operating model
+and the setup scope notes tell the agent that jo email templates cannot see nested
+subfolders and that sc measures --id fails for an unknown cause, and the engagement
+adapter files 1.0.11's named field refusals as not-found, all on the strength of 1.0.10
+behaviour that 1.0.11 changed
+What: CLI 1.0.11 changes no command or payload shape the plugin reads (measured at dev
+efe5caf and at the shipped [v]0.54.0 alike), and 1.0.12 is 1.0.11's dist with one
+dependency pin moved; but 1.0.11 fixes several defects the plugin documents as
+standing. sc measures --id: its two concurrent first requests each built a token store
+and the second missed the OS keychain; 1.0.11 shares one load and one store, so --id
+works (gs-fortress KI-028, resolved statically). jo email templates: the handler now
+recurses into child folders instead of emitting them as field-less rows (KI-003, live
+confirmation pending). Error exits: the shared handler, the runtime envelope printer and
+the version gate no longer call process.exit(), upstream's account of the libuv
+UV_HANDLE_CLOSING abort (KI-017, live confirmation pending). rp run: unknown fields and
+filter fields, JSON and rich-text fields where the server cannot use them, aggregations
+nested in formulas and an aggregate of a grouped field are refused by name before any
+request, and the LOOKUP auto-join now joins the lookup object's key. The doctrine sites:
+templates/operating-model.md (the sc measures --id entry and the General rule; the libuv
+entry; the jo email templates sentences of the scope-filter entry),
+skills/setup/references/document-domain-notes.md (Scorecard exception),
+skills/setup/references/index-scope-notes.md (journey email templates), and
+scripts/engagement.mjs (header facts; classifyFailure's not-found pattern, which also
+matches 1.0.11's 'Field "X" not found on <object>' refusal) with test/engagement.mjs's
+LEDGER facts 3, 7 and 9. The adapter's one-at-a-time rule is NOT retired: it is a
+cross-process observation and KI-028's fix is in-process. Nothing breaks - validateQuery
+already refuses every shape 1.0.11 newly refuses, and the 0.54.0 engagement families and
+the native-report payload send none of them - and every current sentence stays right for
+1.0.10 users, so the repair is version-conditional ("1.0.11 and later"), never a
+replacement. Session B (F-548, F-530) edits scripts/engagement.mjs too: order the two
+branches here.
+Repro (no tenant needed): read the scope note's "flattens one level of the folder tree"
+beside the 1.0.11 listEmailTemplates recursion quoted in the audit's §0; feed
+classifyFailure the stderr 'Error: Field "Nmae" not found on email_log_v2.' and observe
+"not-found".
+Expected: CP-2 (sc measures --id version-conditional, cause named), CP-3 (libuv and
+nested-folder sentences scoped to 1.0.10 and earlier, workarounds kept, the ### heading
+untouched), CP-4 (engagement facts version-stamped, guards and the sequential rule kept,
+the field refusal not retried as not-found), CP-5 (bump + CHANGELOG); CP-6's live checks
+banked in dev/VALIDATION.md on the same branch, on a 1.0.11-or-later CLI. Lock: a mutant
+that restores the not-found classification of a field refusal must produce a COUNTED,
+REPORTED miss in the engagement suite.
+Not in scope: adopting 1.0.12 (catalog regen, version prose, the three check-stale-facts
+fact-carrier stamps in plugins/gs-superadmin/scripts/doc-lib.mjs, and CLI_PIN_FACTS'
+journey:email:templates entry - the gated session E2 in gs-fortress
+ledger/reports/build-kickoffs-1.0.12.md, on Bradley's clock). Also not in scope: removing
+any validateQuery guard or the one-at-a-time rule.
+Plan: gs-fortress ledger/reports/build-kickoffs-1.0.12.md, session E1 (CP-2, CP-3, CP-4,
+CP-5) + V1 (CP-6).
