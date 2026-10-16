@@ -149,8 +149,8 @@ what the gate counts (F-444). The gate refuses both. Sections from F-360 on; the
 rule also reads the archive.
 
 
-Under test: dev · hb-20261015-03 · 2026-10-15
-Blind spots (hb-20261015-03): a post-release re-stamp after 0.54.0 (tag [v]0.54.0 at bb95a20), not a round: nothing new is under test; dev carries only the test-rig fix (PR #56, judged by its 3-OS run) and the deferred F-530/F-548 (Session B) and polish F-536/F-541/F-542/F-545/F-546
+Under test: doctrine-cli-1-0-11-plus · hb-20261015-05 · 2026-10-15
+Blind spots (hb-20261015-05): no CLI 1.0.11 or 1.0.12 and no tenant token in this builder session, so every version-conditional clause rests on the audit's static reading and the six CP-6 checks in dev/VALIDATION.md § F-549 / CP-6 (a)-(f) are owed live; the two 1.0.11 refusal texts in the engagement fixture are paraphrases of the handler's two throw sites, to be replaced by the real stderr at CP-6 (f); the setup references changed are prose (walked by the tester, no CI reads them); the rebase against PR #57 (session B, 0.55.0) is not performed — whichever merges second takes the next number
 
 
 <!-- builder 2026-10-15 (E1+V1 of gs-fortress build-kickoffs-1.0.12.md HANDED OFF — UNMERGED, riding doctrine-cli-1-0-11-plus (PR #58 to dev, open); F-549 (normal) OPEN -> FIXED -> VERIFIED on that branch (tester @ hb-20261015-05, 4b7914d: bar (1)-(5) pass, the six CP-6 live checks owed on a 1.0.11-or-later CLI; #57 reads MERGEABLE/CLEAN again at 28f1630); token hb-20261015-05; plugin 0.54.1 on the branch; no number claimed; next free F-550):
@@ -3097,7 +3097,7 @@ What: Class, in one sentence: the cross-program lists are ranked only from data 
 Expected: the snapshot (or a sidecar beside the pages, never embedded in a page) keeps compact per-account totals by program and month for every account, so every refresh re-ranks exactly: stored months plus pulled months give the full pull's ranking (the judge: over unchanged data, a selective refresh's lists equal a full pull's, kind, n, floor, per, segment, kept, in order); a list change re-ranks from the store at no pull; the low-cadence quiet rule (per program) and per-segment lists (company fields for newly listed accounts) are kept. Contract: a 0.54.0 snapshot without the store is detected and the next refresh goes full, priced and said, with no hand step and no refusal. The store's size is measured on the kept dashboard's run directories before building, and the design stops if it is prohibitive.
 Defer: 2026-10-15 (Bradley, R12 release gate) - past 0.54.0. Why not now: shipping 0.54.0 sooner is worth more than current membership on routine refreshes — a day-1 adopter's build is a full pull, most will not refresh for a month, the staleness is dated on the page and stated in the release notes, and the cost of waiting is one extra full refresh after session B. Reopen: session B, the fast follow after the 0.54.0 release (with F-530 and F-529's root).
 
-## F-549 — OPEN
+## F-549 — VERIFIED
 Reported: 2026-10-15 (carried from gs-fortress ledger/reports/audit-1.0.12.md §1.12,
 §1.15, §1.16 and §1.18 by the watch's kickoffs step; DECOUPLED from the adopt decision
 per that audit's §5; this emission supersedes the 1.0.11 audit's, which was never
@@ -3152,3 +3152,97 @@ ledger/reports/build-kickoffs-1.0.12.md, on Bradley's clock). Also not in scope:
 any validateQuery guard or the one-at-a-time rule.
 Plan: gs-fortress ledger/reports/build-kickoffs-1.0.12.md, session E1 (CP-2, CP-3, CP-4,
 CP-5) + V1 (CP-6).
+Fix: 2026-10-15 (builder, session E1+V1 of gs-fortress build-kickoffs-1.0.12.md; branch doctrine-cli-1-0-11-plus,
+PR #58 to dev, UNMERGED; plugin 0.54.1). The class, in one sentence: a doctrine statement about a CLI defect that
+carries no version bound becomes false for every user on the CLI that fixed it while staying needed by every user
+on the CLI that has it — so the repair is a version condition on each such statement ("1.0.10 and earlier" keeps
+today's wording, "1.0.11 and later" gets the new behaviour), never a replacement, and never "1.0.12" (the same dist).
+  CP-2: the operating model's "sc measures --id" entry and General rule, setup's document-domain-notes.md Scorecard
+  exception — the 1.0.9 and 1.0.10 clauses kept, the cause named (a keychain-load race between the two concurrent
+  first requests; gs-fortress KI-028), --id works on 1.0.11 and later ("live confirmation pending": CP-6 a), --name
+  the default on every version, the duplicate-name fallback records the race failure only on 1.0.10 and earlier.
+  CP-3: the libuv entry scoped to 1.0.10 and earlier with what 1.0.11 changed, "parse stderr on every version" kept
+  until CP-6 (b) clears; the scope-filter entry's jo email templates sentences and index-scope-notes.md's body scoped
+  to 1.0.10 and earlier, the residual top-level filter on every version, the reachable count "not yet measured live"
+  (CP-6 c); the ### heading untouched (check 23: 3 scope entries match 3 subsections both ways).
+  CP-4: engagement.mjs's header facts version-stamped (the LOOKUP rule, the silent filter drop, show∩group, the
+  "network outage", the participant reason filter, "unrecognized data type"); "Calls run one at a time" untouched
+  (cross-process; KI-028's fix is in-process); classifyFailure reads FIELD_REFUSAL_RE before the not-found class and
+  returns shape-error — the call is not retried and a describe never settles it as a deleted program; validateQuery
+  untouched (frozen contract). test/engagement.mjs: three F-549 checks, LEDGER facts 3, 7 and 9 version-stamped plus
+  one new ledger line; the fixture's FAULT_TEXT gains the two 1.0.11 refusal texts (fictional field names).
+  CP-5: plugin.json 0.54.0 → 0.54.1 with a CHANGELOG entry naming the effect (correct on 1.0.11 and later, unchanged
+  on 1.0.10). CP-6 (V1): six live checks banked in dev/VALIDATION.md § "F-549 / CP-6" (a)–(f), each recording the
+  CLI version it runs on, with FIXED / BROKEN lines and the reopen a BROKEN verdict causes.
+  Siblings the finding did not list, checked with zero new code: the KI-018 entry's "both also abort on the libuv
+  assertion above" now reads against a version-scoped entry and is named in CP-6 (b)'s FIXED line as the sentence
+  that takes the same scope when (b) clears; report-bug's SKILL.md names the sc measures --id entry only as an
+  example of a documented issue (no version claim) — untouched; doc-lib's AUTH_DEATH literal list and
+  describe-batch's fake-CLI literals are 1.0.12's own two throw texts, unchanged (audit §1.12) — untouched.
+Judge: for the code, a mutation differential rather than the fixer's list — the pre-fix classification restored on a
+copy of the tree must make the engagement suite red (below); for the doctrine, the live checks of CP-6 (a)–(f) on a
+1.0.11-or-later CLI, each banked with the verdict that reopens this section, since no fixture can decide what a CLI
+does on a tenant.
+Mutation copy-out (source: the classifier's one new decision point, deleted on a copy of plugins/ + test/):
+    mutant classifyFailure without `if (FIELD_REFUSAL_RE.test(stderr)) return "shape-error";` (the old /\bnot found\b/
+    class first again) — pred:KILL → KILLED: 3 FAIL (the three F-549 checks: the classifier; an rp run refusal retried
+    as a not-found; a describe refusal settled as a deleted program) — the suite's own line `engagement: 3 FAILED of 380`, exit 1. On the tree: 0 FAIL, exit 0.
+Battery: 60 steps, 0 red — the AGENTS.md list verbatim, plus the five no-CLI generators with `git diff --exit-code` on
+their outputs (no drift), on this worktree. `npm run build` NOT run (house rule 7: nothing here regenerates).
+Ordering against session B (F-548 / F-530, feat/f548-ranking-every-refresh, PR #57, open and green on its five
+checks but CONFLICTING against dev since this emission landed — both touch the tail of dev/FEEDBACK.md; the
+section format resolves it by keeping both sides): both branches edit scripts/engagement.mjs and test/engagement.mjs
+and both bump from 0.54.0 (B to 0.55.0, this one to 0.54.1). Whichever merges second rebases and takes the next
+number (this branch becomes 0.55.1 if #57 lands first; #57 stays 0.55.0 if this lands first). CP-4's hunks are the
+header comment block, classifyFailure, the test's fault block and its LEDGER — none of them in B's diff — so the
+rebase is expected to be mechanical. Which lands first is Bradley's call; neither PR is merged by its author.
+Reload: /reload-plugins does not reach a shipped template — the operating model is copied into a workspace at setup
+or refresh — so the tester reads the branch's files, and walks setup's references as prose (no CI reads them).
+Verified: 2026-10-15 (tester, F-549 re-verification @ hb-20261015-05; branch doctrine-cli-1-0-11-plus at 179a27e, PR #58 to
+dev unmerged, clean and level with origin; the dev-canary skill read hb-20261015-05 in session, loaded from this worktree;
+installed CLI 1.0.10, no tenant call made) — pass bar stated in the kickoff before measuring: (1) the four doctrine sites
+never say --id fails on 1.0.11 or later, keep the 1.0.10 failure and the 1.0.9 half-life clause, scope the nested-folder
+and libuv claims to 1.0.10 and earlier with the workarounds kept on every version, leave the ### heading unchanged, and
+use bare version numbers; (2) every validateQuery guard and "Calls run one at a time" unchanged, the header facts naming
+their version; (3) the Fix note's mutant reproduced; (4) the gates green on the tree; (5) CP-6 (a)–(f) banked complete;
+(6) the live arm only on a 1.0.11-or-later CLI with a token. Class measured, not a list: a statement about a CLI defect
+carries the version bound of the CLI that has it while its workaround holds on every version, and a query-shape refusal
+whose words say "not found" is never filed as a missing asset.
+  (1) PASS — the diff against the dev merge-base d95a2b7 on operating-model.md (the sc measures --id entry, the General
+  rule, the scope-filter entry's jo email templates sentences, the libuv entry), document-domain-notes.md's Scorecard
+  exception and index-scope-notes.md: every 1.0.11-and-later clause says works / descends / clean exit with "live
+  confirmation pending" or "not yet measured live"; the 1.0.10 every-time failure and the 1.0.9 half-life race stand;
+  `--name` stays the default, the template-by-id recovery and "parse stderr on every version" are unscoped; the heading
+  reads `### journey email templates`; no vX.Y.Z and no 1.0.12 on any added line.
+  (2) PASS — validateQuery has no hunk; "Calls run one at a time (parallel calls produced false errors)" is an unchanged
+  context line; the header opens on the 1.0.10 measurements and each 1.0.11 note names its version.
+  (3) PASS — predictions written to a scratch file before any run. Copy-out on a copy of plugins/ + test/ (+ README.md,
+  package.json):
+    M1 classifyFailure without `if (FIELD_REFUSAL_RE.test(stderr)) return "shape-error";` — pred:KILL → KILLED: the three
+    F-549 checks FAIL, the suite's line `engagement: 3 FAILED of 380`, exit 1. Tree: `engagement: all 380 checks passed`,
+    exit 0.
+  A judge past the fixture: the published 1.0.12 dist (npm pack, read only) throws `Field "<name>" not found on <object>.`
+  (handlers/report.js:289) and `Filter field "<name>" not found on <object>.` (:644), each with an optional ` Did you mean
+  "a" / "b"?` and a closing `rp schema` pointer — FIELD_REFUSAL_RE matches both, so the fixture's paraphrases are
+  shape-faithful; CP-6 (f) still owes the real stderr.
+  (4) PASS — check-doc-drift exit 0 ("check 23: 3 scope-limit entries in CLI_PIN_FACTS match the 3 canon subsections both
+  ways"); check-stale-facts exit 0; test/engagement.mjs 380 of 380, exit 0.
+  (5) PASS — (a)–(f) each carry Steps, a FIXED line and a BROKEN line with `<version>`, under a preamble that has the
+  version recorded on every verdict; (a)–(d) and (f) name the F-549 reopen, (e) names none and says why (no plugin text
+  names KI-013 or KI-014 — a grep of plugins/gs-superadmin confirms).
+  (6) NOT RUN — the installed CLI reports 1.0.10; no partial run was improvised.
+  Walk (prose, setup Phase 5): both references read as the agent would read them; the 1.0.10-and-earlier and
+  1.0.11-and-later instructions are unambiguous, and setup's first step prints `gs-admin --version` and takes "the rule
+  for the installed CLI", so the split is actionable.
+  Guard-wiring: in a scratch workspace (an untracked `.gs-superadmin/` marker inside the worktree, removed after — this
+  session's cwd cannot leave the worktree) `gs-admin jo p pause --help` drew the plugin's PreToolUse ask; Bradley read the
+  rendered text: "Mutating Gainsight command: gs-admin journey programs pause. This workspace is read-only by default.
+  Confirm the active tenant (`gs-admin whoami`) is the intended target before approving. [plugin:gs-superadmin]" —
+  declined, not run.
+  Blind spots: all six CP-6 live checks stay OWED on a 1.0.11-or-later CLI with a sandbox token — (a) KI-028, (b) KI-017,
+  (c) KI-003/KI-030, (d) KI-022, (e) KI-013/KI-014, (f) the four 1.0.11 refusals; until they run, the "live confirmation
+  pending" clauses stand, and a BROKEN verdict there reopens this section as each entry names.
+  Open PRs to dev: #58 (this branch, 0.54.1) MERGEABLE/CLEAN with five checks green at 179a27e before this verdict
+  commit; #57 (session B, F-548/F-530, 0.55.0) reads MERGEABLE/CLEAN with five checks green at 28f1630 (no longer
+  CONFLICTING). Neither merged by the tester; the Fix note's numbering rule for whichever lands second stands.
+  Verdict: VERIFIED.
