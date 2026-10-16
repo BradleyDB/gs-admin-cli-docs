@@ -153,6 +153,12 @@ Under test: doctrine-cli-1-0-11-plus · hb-20261015-05 · 2026-10-15
 Blind spots (hb-20261015-05): no CLI 1.0.11 or 1.0.12 and no tenant token in this builder session, so every version-conditional clause rests on the audit's static reading and the six CP-6 checks in dev/VALIDATION.md § F-549 / CP-6 (a)-(f) are owed live; the two 1.0.11 refusal texts in the engagement fixture are paraphrases of the handler's two throw sites, to be replaced by the real stderr at CP-6 (f); the setup references changed are prose (walked by the tester, no CI reads them); the rebase against PR #57 (session B, 0.55.0) is not performed — whichever merges second takes the next number
 
 
+<!-- builder 2026-10-15 (Session B's F-530 round HANDED OFF — UNMERGED, riding feat/f548-ranking-every-refresh (PR #57 to dev, open, HELD on Bradley's ruling); re-stamps the Session B comment below: F-548 VERIFIED on that branch (B-V @ hb-20261015-04), F-530 re-opened at B-V then FIXED again on it (all three instances, the class check); token hb-20261015-06; dev merged into the branch (5f0a2de: F-549 / 0.54.1 beside 0.55.0); no number claimed; next free F-550):
+     Owed: the F-530 re-verification round, NO PULL (Bradley's scoping: VALIDATION § F-530 reopened, N0-N5, a scratch import
+       of the kept dashboard). No ranking or store code changed, so no refresh arm. No local battery this round (Bradley):
+       PR #57's CI on its head is the battery, and the final send-off runs CI again.
+-->
+
 <!-- builder 2026-10-15 (E1+V1 of gs-fortress build-kickoffs-1.0.12.md HANDED OFF — UNMERGED, riding doctrine-cli-1-0-11-plus (PR #58 to dev, open); F-549 (normal) OPEN -> FIXED -> VERIFIED on that branch (tester @ hb-20261015-05, 4b7914d: bar (1)-(5) pass, the six CP-6 live checks owed on a 1.0.11-or-later CLI; #57 reads MERGEABLE/CLEAN again at 28f1630); token hb-20261015-05; plugin 0.54.1 on the branch; no number claimed; next free F-550):
      Kickoff: open PRs to dev — #57 (Session B, F-548/F-530, green on its five checks, CONFLICTING against dev since the F-549
      emission landed on the tail of this file; keep both sides) and now #58; no OPEN polish (the five DEFERRED past 0.54.0 stay).
