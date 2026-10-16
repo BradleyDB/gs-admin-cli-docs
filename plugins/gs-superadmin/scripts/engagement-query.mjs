@@ -681,8 +681,21 @@ export const LIST_KIND_WORDS = Object.freeze({
 });
 /** One list, as every surface names it: "the 5 most bounced", "the 25 least engaged (at least 10 delivered) per Industry". */
 export const listPhrase = (l) => `the ${l.n} ${LIST_KIND_WORDS[l.kind]?.words ?? l.kind}${l.floor > 0 ? ` (at least ${l.floor} delivered)` : ""}${l.per ? ` per ${l.per}` : ""}`;
+/** ONE identity of a customer list (kind, size, floor, segment field): every comparison of lists reads it (F-555). */
+export const listIdentity = (l) => JSON.stringify([l.kind, l.n, l.floor, l.per ?? null]);
 /** The lists as configured, once each: a selection record holds a per-segment list once per segment. */
-export const distinctLists = (lists) => [...new Map((lists ?? []).map((l) => [JSON.stringify([l.kind, l.n, l.floor, l.per ?? null]), l])).values()];
+export const distinctLists = (lists) => [...new Map((lists ?? []).map((l) => [listIdentity(l), l])).values()];
+/**
+ * Rows put in a given key order, in place (the pull's ranking of a customer list: the page's panel and the report show
+ * the record's order, with the engine's sort only breaking ties — F-530, one home F-555); a row whose key the order
+ * does not hold goes last, in the order it had.
+ * @template T @param {T[]} rows @param {string[]} keys @param {(row: T) => string} keyOf @returns {T[]} the same array
+ */
+export const orderByKeys = (rows, keys, keyOf) => {
+  const at = new Map(keys.map((k, i) => [k, i]));
+  const was = new Map(rows.map((r, i) => [r, i]));
+  return rows.sort((a, b) => (at.get(keyOf(a)) ?? Infinity) - (at.get(keyOf(b)) ?? Infinity) || was.get(a) - was.get(b));
+};
 /**
  * The programs a timeline's dashboard comparison left out, grouped by why (F-520): one group per reason, its words and
  * the programs' names, the whole comparison's own reason left out (it is said once, as the comparison's). The one

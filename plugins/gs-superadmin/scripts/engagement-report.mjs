@@ -45,7 +45,7 @@ import { makeCliHelpers, readJsonFile, readKbIdentity, isMainModule, shq, termKe
 import { renderReport, reportPath, mdTable, toCsv, nowIso, ACTIVE_STATUSES } from "./jo-report.mjs";
 import {
   openSnapshot, accountAvailability, runQuery, formatCell, glossary, glossaryNotes, caveatsFor, dataPulledLine, provisionalText, reasonText, statusLabel, metric, NO_VALUE, STATUS_LABELS,
-  LIST_KIND_WORDS, listPhrase, distinctLists,
+  LIST_KIND_WORDS, listPhrase, distinctLists, orderByKeys,
 } from "./engagement-query.mjs";
 
 /** @typedef {import("./engagement.mjs").T10Snapshot} T10Snapshot */
@@ -263,9 +263,8 @@ export function buildReport(snapshot, opts = {}) {
         // The lists were selected over EVERY program, so their rows are read over every status (the recipient class
         // still applies); the per-program tables below keep the status filter.
         const across = (query) => runQuery(snapshot, { recipientClass, accounts: l.kept, accountBuckets: /** @type {Array<"account">} */ (["account"]) }, query);
-        // In the list's own order (F-530): the pull's ranking, the order the page shows; the sort only breaks no tie.
-        const at = new Map(l.kept.map((k, i) => [k, i]));
-        const rows = across({ groupBy: ["account"], metrics: CROSS_METRICS, sort }).rows.sort((a, b) => (at.get(a.key.account) ?? Infinity) - (at.get(b.key.account) ?? Infinity));
+        // In the list's own order (F-530): the pull's ranking, the order the page shows, from the engine's one ordering (F-555).
+        const rows = orderByKeys(across({ groupBy: ["account"], metrics: CROSS_METRICS, sort }).rows, l.kept, (r) => r.key.account);
         const name = (r) => r.label.account ?? r.key.account;
         // The programs each kept account is on: the engine's own program × account rows, counted per account.
         const touched = new Map();
