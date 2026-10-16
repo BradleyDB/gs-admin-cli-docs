@@ -3260,4 +3260,47 @@ THIS LIST IS COMPLETE.
   each against `honesty.accountSelection.lists`), with the note naming its size and floor; pick a two-month range in the
   filter bar: the note adds "re-ranked here over what is shown" and only the list's own accounts appear.
 
-Results:
+Results (B-V, 2026-10-15 @ hb-20261015-04, tester; feat/f548-ranking-every-refresh at cc7a69a, clean and level; a terminal in
+the workspace with --plugin-dir, canary matched; production, reads only, one call at a time, three by-hand logins; PR #57's
+five checks green):
+- L0 PASSED with a NOTE: the latest snapshot (20261013T230929) had no meta.accountStore and no `*.accounts.json` beside it;
+  its lists 25/25/25 (most-engaged 25/10, least-engaged 25/10, most-bounced 25/0, rankedAt = carriedFrom = the
+  2026-10-13 21:12 full pull). Note: it was made by plugin 0.52.0, not 0.54.0 — a snapshot from before the store either
+  way, which is the contract.
+- L1 PASSED: before it, `report` returned refreshFullOnce ("the latest snapshot (…) was made before the account store: the
+  customer lists need one full pull to start ranking on every refresh, and the next refresh is that pull") and
+  refreshMinutes 72 = fullRefreshMinutes 72. The plain refresh, no `--full` (the run state full:false), invoked through
+  the skill: exit 3 at 284 calls (the token), Bradley's login, the remedy line as printed, exit 0. pull.mode full, pull.why
+  "the customer lists need one full pull to start ranking on every refresh (the previous snapshot was made before they
+  could)", relayed in the skill's Pull line; nothing by hand. accountStore `snapshots/20261015T162212.accounts.json`, the
+  only store, beside the new snapshot; plain JSON, a header line then one cell per line; its pulledAt the snapshot's.
+  STORE: 5,192,723 bytes, 185,996 cells, 15,438 accounts (24 no-link cells), 191 programs, 13 months; meta.accountStore
+  {schema 1, cells 185996, accounts 15438}, the same (larger than the 4.56 MB measured: nine measures and the internal
+  class, one cell per line). MINUTES: 105 of pulling (55.5 before the stop, 49.7 after; 743 calls, 76 split, 1 retried)
+  against 72 priced. Lists: most-engaged 25/10, least-engaged 25/10, most-bounced 25/0, per and segment null, rankedAt
+  their own pull, carriedFrom null; each the same 25 accounts in the same order as the 2026-10-13 full ranking.
+- L2 PASSED: the same plain refresh (a login first, then exit 3 at 423 calls, a login, the remedy line, exit 0): pull.mode
+  selective, pull.why "months before 2026-09 are carried from the snapshot pulled 2026-10-15T16:22:12-07:00", pulled
+  2026-09 and 2026-10. MINUTES: 80.5 of pulling (58.8 + 21.7; 598 calls, 62 split, 2 retried) against 43 planned. All
+  three lists equal L1's in kind, n, floor, per, segment and kept IN ORDER (25/25 each); rankedAt 2026-10-15T18:23:42 (its
+  own pull), carriedFrom null; one store in the folder (20261015T182342.accounts.json, 5,192,723 bytes, cells and accounts
+  as L1's); L1's store gone (the summary's `pruned` read [] — it names snapshots only).
+- L3 PASSED on its bar: export named accountStore and hinted "its first refresh is then selective" (its import line
+  carries `--snapshot`, which this list's line lacks: followed the hint); import copied accountStore beside the imported
+  snapshot; the dry run's consequence "the customer lists are ranked again from the account store beside the last pull (a
+  rebuild, no pull)"; the change exit 0 in 3 s, no progress line (no call), done.ranked true, done.text "The change is
+  saved and the customer lists were ranked again from the account store beside the last pull (2026-10-15T18:23:42-07:00),
+  with no pull; the pages were rebuilt."; the Most bounced panel exactly the record's 5 in its order with the note "The 5
+  most bounced across programs over the whole window, as the pull of 2026-10-15 ranked them."; the dropped lists' panels
+  "This dashboard keeps no most engaged list: …" / "… no least engaged list: …"; `report f548-scratch` the same 5 in the
+  same order; the About tab's Accounts entry "the 5 most bounced". Bradley on the panel, done.text and dropped-list notes:
+  "the wording seems fine". Edit screen: the closing ask "…changes 1 setting (accounts.lists[]): the customer lists are
+  ranked again from the account store beside the last pull (a rebuild, no pull)…", first option "Save and rank the
+  customer lists again now (no pull)". Draft not saved; f548-scratch and the export files removed. PROBED PAST THE BAR (F-530
+  reopened, its Reopened line): the About tab's Pages entry "the top 25 by Bounced" beside the panel of 5; the report's
+  intro naming all three lists' meanings over one list; the edit question stating the 25s and re-adding the two dropped
+  lists on keep|keep|6 0.
+- L4 PASSED (Bradley's eye, three screenshots): each of the three panels lists all 25 of the record's kept accounts in its
+  order (all 25 checked from the page file, not five), the note naming size and floor; with August–September 2026 in the
+  filter bar each note adds "re-ranked here over what is shown", and every account visible is in its own list only.
+Section status: OPEN on F-530 (reopened, three instances of consumer-parity); F-548 VERIFIED.
