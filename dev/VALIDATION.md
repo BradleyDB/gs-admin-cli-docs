@@ -3208,7 +3208,18 @@ Results (builder close-out, 2026-10-15, fix/r12a-v-f534-held-words at e1c2c1f; n
   after the amendment (validate-plugin run 38770931304, docs-drift run 38770931245; CLEAN).
 Section status: CLEARED — F-534 VERIFIED (builder, the verdict of record).
 
-## F-549 / CP-6 — six live checks on CLI 1.0.11 or later: what the 1.0.11 fixes the doctrine now names actually do on a tenant (banked 2026-10-15, builder, session E1+V1 on doctrine-cli-1-0-11-plus; verdict at the branch's handoff token)
+## F-549 / CP-6 — six live checks on CLI 1.0.11 or later: what the 1.0.11 fixes the doctrine now names actually do on a tenant (banked 2026-10-15, builder, session E1+V1 on doctrine-cli-1-0-11-plus; verdict at the branch's handoff token — CLEARED 2026-10-15 @ hb-20261015-07: all six FIXED at 1.0.12; KI-030 persists)
+
+CLEARED 2026-10-15 (tester, F-550 verdict round on claude/adopt-cli-1-0-12-483229) @ hb-20261015-07. `gs-admin
+--version`: 1.0.12 (win32-x64, Node 24.16.0). Tenant: the sandbox, on a fresh `gs-admin login --base-url <sandbox>`
+made for this round (the host's saved config pointed at production; reads only, every command checked `mutating:
+false` in the catalog first, the four (f) calls refused client-side). Order: (a) first, because its bar is the fresh
+login; then (c), (b), (e), (d), (f). Every verdict is per its own FIXED/BROKEN lines below; no BROKEN path fired, so
+nothing reopens F-549. Owed from the FIXED paths (polish, riding the next round per each check's text): (a) drop "live
+confirmation pending" at its three sites; (b) CP-3's follow-up scoping of the crash codes; (c) the two scope notes take
+the measured count and `CLI_PIN_FACTS`' `journey:email:templates` entry is rewritten from (c)'s result — NOT removed,
+the list is not complete (residual 3); (d) the header's "live confirmation pending" and LEDGER fact 3's note; (f) the
+real stderr copied into the engagement fixture (its wording differs; the regex still matches).
 
 Every check below is read-only and runs on a workspace whose installed CLI is **1.0.11 or later** (1.0.12 ships the
 same `dist/`; its one change is a dependency pin). Each verdict line RECORDS the version `gs-admin --version` prints —
@@ -3222,6 +3233,13 @@ Owed by: the tester round on this branch's token, or the first session with a 1.
 Tenant: the sandbox. Reads only. Windows host for (b) (the assertion is in the CLI's Windows event loop).
 
 ### (a) KI-028 — `sc measures --id` on a fresh login (decides CP-2's "live confirmation pending")
+
+CLEARED 2026-10-15 @ hb-20261015-07 — FIXED (KI-028 resolved live at 1.0.12). Fresh login, `whoami` valid (3578 s),
+`--version` 1.0.12; three scorecard ids from the sandbox KB's scorecard domain, two of them rollup-enabled. Each
+`gs-admin --json sc measures --id '<id>'` (each its own process, the first measures call after login): exit 0,
+`result: true`, no "No stored token found". Each `--name` call on the same scorecard: exit 0. Compared by
+`levelType` + `measureMapId` + `measureId`, recursing `children`: identical sets, 38 (7 GROUP, 31 MEASURE), 9 (4, 5)
+and 9 (2, 7) nodes, nothing on one side only.
 
 Steps:
 1. `gs-admin login` (fresh token; `gs-admin whoami` reads valid), then `gs-admin --version` — record it.
@@ -3241,6 +3259,13 @@ version; the gs-fortress ledger's KI-028 flips back to open, with the version.
 
 ### (b) KI-017 — an error exit with no libuv assertion, under Git Bash and PowerShell (decides CP-3's crash-code scoping)
 
+CLEARED 2026-10-15 @ hb-20261015-07 — FIXED (KI-017 resolved live at 1.0.12). Git Bash, `--json`: stderr "Error: Rule
+does not exist" plus a Request ID line, exit 1. Git Bash without `--json`: "Error: HTTP 500" plus a Request ID, exit
+1. Windows PowerShell 5.1 (`powershell.exe -NoProfile`), `--json`: "Error: HTTP 500" plus a Request ID,
+`$LASTEXITCODE` 1. No `Assertion failed` and no `src\win\async.c` in any stderr. Control `re r list --limit 1`: exit
+0. The server's own message varied between the three calls (one "Rule does not exist", two "HTTP 500") — a server
+answer, not the exit path; the exit code was 1 every time.
+
 Steps:
 1. Under Git Bash: `gs-admin --json re r describe --id 'no-such-rule-id'; echo "exit=$?"`. Keep the full stderr.
 2. Under Windows PowerShell 5.1 (`powershell.exe -NoProfile`): the same command, then `$LASTEXITCODE`.
@@ -3258,6 +3283,23 @@ exit 1" clause is wrong — upstream's `process.exit()` removal is not the whole
 version; the gs-fortress ledger's KI-017 stays open with the version and the shell.
 
 ### (c) KI-003 / KI-030 — the email-template list descends nested folders (feeds CP-3's numbers and the gated CP-7's `CLI_PIN_FACTS` entry)
+
+CLEARED 2026-10-15 @ hb-20261015-07 — FIXED (KI-003 resolved live at 1.0.12); KI-030 persists. Step 1: 1239 rows,
+`pageInfo` returned 1239 / totalAfterFilters 1239, 0 rows without `templateId` (the 1.0.10 field-less rows are gone;
+rows key the id as `templateId`, not `id`), 1239 distinct ids, 62 distinct `folderName` values. Step 2: (i) the
+sandbox KB holds 1180 templates; 1177 are in the list and 3 are not; (ii) 1239 against 1.0.10's 648 on this tenant.
+The six largest folders that were wholly missing at 1.0.10 (84, 80, 68, 41, 35 and 30 templates — the nesting
+signature) are now listed in full. Residual gap: 3. Each one opens with `jo email template --id` (`result: true`).
+Each sits in a folder whose other templates ARE listed (two in the default folder, one in a 10-template folder with 9
+listed). So the gap is per template, not per folder: it fits the "hides some templates" clause, not a second nesting
+defect. No field in the describe payload separates the 3 from listed siblings (`source` and state absent from both).
+Seen beside the bar: the list holds 62 templates the KB has never had (modified 2022-05 to 2025-10, none after the KB's
+last verify) — the KB was built while 1.0.10 hid them; a refresh picks them up. Step 3: a subfolder that was wholly
+missing at 1.0.10 (35 templates): `--folder '<its own name>'` returns all 35, its known template included. A parent
+whose 1.0.10 payload carried a field-less child-folder row: `--folder '<the parent's name>'` returns 10 rows, every one
+`folderName` equal to the parent's name, none from a nested folder. KI-030: name only — the parent's name reaches only
+its direct templates, and no row carries a folder path (as the 1.0.11 handler reads: `folderName: folder.name` of the
+immediate folder, `--folder` a case-insensitive contains match). It stays open at 1.0.12.
 
 Steps:
 1. `gs-admin --json jo email templates --limit 10000 > templates.json` on the sandbox. Record the row count, the count
@@ -3284,6 +3326,16 @@ for every version; the gs-fortress ledger's KI-003 stays open with the version.
 
 ### (d) KI-022 — a LOOKUP group-by returns real names (decides CP-4's "live confirmation pending" on the LOOKUP rule)
 
+CLEARED 2026-10-15 @ hb-20261015-07 — FIXED (KI-022 resolved live at 1.0.12). Window: the sandbox's send log ends in
+2026-06, so the week of Monday 2026-05-04 was used. That week's step 1 filled the 2000-row page (4557 sends), so the
+comparison ran on ONE day, 2026-05-04 to 2026-05-05 (250 sends), where every group fits. Filters as written (Source
+"Advanced Outreach", AddressType "To"). Step 1, group-by `[{"name":"GsCompanyId"}]`: exit 0, 233 groups, column
+`company_GsCompanyId__gr_Name`, every label a real company name, 0 empty labels, counts summing to 250. Step 2, the
+adapter's own shape (`fieldPath: {leaf: "Gsid", hops: [{through: "GsCompanyId", to: "company"}]}` — the step's
+`"fieldPath":"GsCompanyId.Gsid"` is a sketch, not the CLI's shape): 233 groups, sum 250. Keyed by the company Gsid
+both carry: 233 of 233 per-group counts equal, none on one side only. (The full week through both shapes also
+returned named groups; it was not compared because the page truncated it.)
+
 Steps:
 1. One week of sends, grouped by the company lookup's NAME (the shape the adapter refuses on every version — issue it
    by hand, once): `gs-admin --json rp run --object email_log_v2 --show-fields '[{"name":"Gsid","aggregation":"COUNT"}]'
@@ -3303,6 +3355,14 @@ wording for every version; KI-022 stays open with the version.
 
 ### (e) KI-013 / KI-014 — `dm o list --search` works and `--sort-field` sorts server-side
 
+CLEARED 2026-10-15 @ hb-20261015-07 — FIXED (KI-013 and KI-014 resolved live at 1.0.12). Step 1: exit 0, 35 rows
+(`totalNumberOfObjects` 35) of the tenant's 593. 33 contain the term in label or name; the other 2 contain it only in
+`description`. The server's search covers description too, so the bar's "label or name" is narrower than what the
+server matches — recorded, not a BROKEN reading (BROKEN is every object coming back). Step 2: ASC p1 starts with a
+digit-led label, ASC p2 continues it (no overlap); DESC p1 starts with a lowercase-led label, DESC p2 continues it. ASC
+p1 ≠ DESC p1, and each page is ordered by label in code-point order (uppercase before lowercase — server-side
+collation, not a locale sort), so the sort spans pages.
+
 Steps:
 1. `gs-admin --json dm o list --search 'Company' --limit 50`: exit 0, every row's label or name contains the term.
 2. `gs-admin --json dm o list --sort-field label --sort-dir ASC --limit 20 --page 1` and the same with `DESC`; then
@@ -3316,6 +3376,30 @@ BROKEN: step 1 returns every object, or the two orders are equal, or page 2 rest
 version; the two KI entries stay open. No plugin change is owed either way.
 
 ### (f) The 1.0.11 refusals — one call each for KI-021, KI-023, KI-024 and KI-029: exit 1 with the named error, no request, no assertion
+
+CLEARED 2026-10-15 @ hb-20261015-07 — FIXED (the four refusals present at 1.0.12): each exits 1, the refusal on
+stderr, NO Request ID, no assertion. Two deviations from the steps as written, both forced by the tenant or the
+shape:
+  1 (KI-021): `email_log_v2` carries no opaque-typed field on the sandbox (`LinkClickedJson` is STRING, so a COUNT_DISTINCT
+  of it went to the server and came back as a server error with a Request ID — not this check). Run instead on
+  `company.Summary` (RICHTEXTAREA):
+    Error: COUNT_DISTINCT is not supported on "Summary" (RICHTEXTAREA): reports can't aggregate JSON or rich-text fields. […]
+  2 (KI-023): the step's formula sketch leaves out `kind` on `lhs`/`rhs`; the CLI refuses that client-side ("Unknown
+  formula kind "undefined""). With `lhs {kind: aggregation, fn: COUNT, field: Gsid}` and `rhs {kind: field, name:
+  LinkClickedCount}`:
+    Error: Formula "ratio" puts an aggregation inside arithmetic. Reports only accept an aggregation as the whole formula […]
+  3 (KI-024), as written:
+    Error: Filter field "NoSuchField" not found on email_log_v2. List the object's fields with `rp schema email_log_v2`.
+  4 (KI-029), as written:
+    Error: COUNT of "EmailTemplateId" can't be combined with grouping by "EmailTemplateId": reports can't aggregate a field they group by. […]
+CP-4's fixture against the real text: it DIFFERS. The real refusal carries no Request ID line, where both fixture
+lines append one. Its suggestion form is `Did you mean "Name"?` plus the `rp schema` pointer (measured with a show
+field "Nmae": "Error: Field "Nmae" not found on email_log_v2. Did you mean "Name"? List the object's fields with `rp
+schema email_log_v2`."), where the fixture has `Did you mean: Name?`. And the fixture's filter case, a case-only miss
+(`GsCompanyID`), is ACCEPTED at 1.0.12 (exit 0: the filter field resolves case-insensitively). `FIELD_REFUSAL_RE`
+matches the real stderr, measured directly against the captured text, so nothing reopens. The fixture copy and the
+`test/engagement.mjs` re-run are owed (builder, polish): the fixture's filter-field example needs a name that is
+really unknown, not a case variant.
 
 Steps (each on `email_log_v2`, `--page-size 10`, the week window of (d); record stderr and the exit code of each):
 1. KI-021 — a distinct count of a JSON-typed field: `--show-fields '[{"name":"LinkClickedJson","aggregation":

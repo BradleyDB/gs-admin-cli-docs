@@ -3247,7 +3247,7 @@ whose words say "not found" is never filed as a missing asset.
   CONFLICTING). Neither merged by the tester; the Fix note's numbering rule for whichever lands second stands.
   Verdict: VERIFIED.
 
-## F-550 — FIXED
+## F-550 — VERIFIED
 Reported: 2026-10-15 (builder, session E2 of gs-fortress ledger/reports/build-kickoffs-1.0.12.md — the gated
 adoption, CP-1 + CP-7, spawned on the adopt decision recorded in the gs-fortress ledger on 2026-10-15; audit:
 ledger/reports/audit-1.0.12.md §0, §1.3, §1.5, §1.8, §1.10, §1.12, §1.14, §5)
@@ -3343,3 +3343,89 @@ to 0.55.0); whichever merges second rebases and takes the next number — Bradle
 author.
 Reload: the regen reaches a workspace through setup Phase 3 / refresh (the bundled catalog is the fallback); the
 pin facts through any domain-candidates or manifest report run; /reload-plugins for the skill references.
+Verified: 2026-10-15 (tester, F-550 verdict round @ hb-20261015-07; branch claude/adopt-cli-1-0-12-483229 at 9a3d150, PR
+#59 to dev unmerged, clean and level with origin; the dev-canary skill read hb-20261015-07 in session, loaded from this
+worktree; installed CLI 1.0.12; tenant: the sandbox, fresh login, reads only) — round type: RE-VERIFICATION of F-550 plus
+ACCEPTANCE of one new mechanism (CLI_PIN_FACTS stamped 1.0.12 with alsoVerifiedOn ["1.0.11"]). Pass bar, stated in the
+kickoff before measuring: (1) catalog vs dev's differs in exactly meta.cliVersion, meta.generatedAt and
+commands[17].flags[5].description, reader-shapes in cliVersion only, counts 10 / 188 / 182; (2) check-stale-facts and
+check-doc-drift green, the checker untouched vs dev, check 23 3 of 3; (3) AUTH_DEATH and READ_VERB_EXACT unchanged,
+CLI_PIN_FACTS 1.0.12 / ["1.0.11"], the templates scope string dev's with a CP-6 (c) comment, and exactly two
+`gs-admin login` throws in the installed dist/core/auth/index.js; (4) the F-467 shape probe applies at 1.0.12 and 1.0.11
+and not at 1.0.10; (5) no v-prefixed 1.0.10/1.0.11 citation left in hand prose, the Known CLI issues header restated,
+F-549's "1.0.11 and later" sentences untouched; (6) the two changed skills walked, plus the guard-wiring line; (7) the
+live arm. Class measured, not a list: a current-version claim carries a pin stamp, and an adoption moves every stamp
+by re-reading the new package, never by editing the pattern that holds it.
+  (1) PASS — a full JSON walk of origin/dev's data/catalog.json against the branch's: 3 differences, exactly those named
+  (cliVersion "1.0.10" -> "1.0.12"; generatedAt; flags[5] of data-management:objects:list, sortField, "Field to sort by"
+  -> the nine server-sortable keys). reader-shapes: 1 difference, cliVersion. meta.counts: domains 10, artifact 170,
+  runtime 12, static 6, totalCliCommands 188, mcpTools 182.
+  (2) PASS — check-stale-facts exit 0 ("SEMANTICS_BASIS cites the pin … the non-md fact carriers agree with the
+  catalog"); check-doc-drift exit 0 ("check 23: 3 scope-limit entries in CLI_PIN_FACTS match the 3 canon subsections
+  both ways"); `git diff origin/dev..HEAD -- build/check-stale-facts.mjs` is 0 lines.
+  (3) PASS — doc-lib's diff against dev is 4 hunks: the alsoVerifiedOn rationale comment; the stamp pair
+  ("1.0.12" / ["1.0.11"]) with the CP-6 (c) comment above the templates entry; and two comment-only citation moves; the
+  AUTH_DEATH line and READ_VERB_EXACT's set are byte-equal to dev's, and the templates `scope:` string is an unchanged
+  context line. The installed package (package.json 1.0.12): dist/core/auth/index.js holds 3 throws, 2 of them the
+  `gs-admin login` literals (lines 28 and 31, exactly the comment's two texts); the third (line 74, "No authentication
+  configured…") carries no such sentence; every other `gs-admin login` hit in that file is a comment.
+  (4) PASS — scratch workspace in the session scratchpad (.gs-superadmin/catalog.json copied from the bundled catalog,
+  the change-request fixture's _manifest.json under kb/acme-prod/), the copy's meta.cliVersion set in turn:
+    1.0.12: pinFacts {stamped 1.0.12, catalogVersion 1.0.12, applied true}; notEnumerableBareCount 4 = re r events /
+    executions / s3-tasks / schedules; 0 warnings
+    1.0.11: pinFacts {stamped 1.0.12, catalogVersion 1.0.11, applied true}; the same four; 0 warnings
+    1.0.10: pinFacts {stamped 1.0.12, catalogVersion 1.0.10, applied false}; notEnumerableBareCount 0; warning "the
+    per-pin CLI facts are stamped for 1.0.12 (also verified on 1.0.11) and the catalog is 1.0.10 — not applied;
+    re-verify doc-lib's CLI_PIN_FACTS against the installed package (check-stale-facts names the stamp)"
+  Never run against a real workspace.
+  (5) PASS — the v-prefixed 1.0.10/1.0.11 grep over tracked .md outside dev/, wiki/, data/, reference/domains/,
+  plugins/gs-superadmin/reference/ and the CHANGELOGs finds nothing (with the CHANGELOGs included, still nothing).
+  templates/operating-model.md:221's header says what 1.0.11 changed (report, data-management and journey handlers,
+  error exits, token-store loading — "each such entry says which version it holds for") and "from 1.0.11 to 1.0.12
+  nothing in the package's dist changed, only one dependency pin". Of the 7 files carrying "1.0.11 and later" (or
+  "or later"), 4 changed on the branch; per-file phrase counts dev -> branch are equal everywhere except
+  operating-model.md (5 -> 6, the new header itself) and doc-lib.mjs (0 -> 1, the new CP-6 (c) comment). A word diff of
+  operating-model.md and document-domain-notes.md touches one line each: the header restatement and a citation move.
+  The skill diffs are citation moves only: change-request two (`set-source` recheck, prepare-dataset), setup one,
+  references three stamp lines plus document-domain-notes' one.
+  (6) Walks — both changed skills carry disable-model-invocation, so Bradley typed each once in this session:
+  /gs-superadmin:setup — Phase 1 ran `gs-admin --version` (1.0.12) and `whoami` (valid; the auto-enrollment "Auth
+  mode: not configured" line read as not-a-failure, as the skill says); the pre-flight took the 1.0.10-and-later rule
+  (usable ≈ remaining − 60s). Phase 2 found no --slug and no manifest in the working dir, and its first ask was the
+  first-run production-or-sandbox question, before any write. Declined; nothing written. Walker error, not a skill
+  defect: the ask proposed a shortened folder name where the skill's first-DNS-label rule gives the label whole.
+  /gs-superadmin:change-request — step 1 ran `whoami` (valid) and found no `*/_manifest.json` in the working dir. Its
+  first and only output was the stop "run /gs-superadmin:setup first"; no ask, nothing written. (The missing
+  change-request argument would have been asked for after step 1, but step 1 stops first.)
+  Guard-wiring: an untracked, empty `.gs-superadmin/` marker in the worktree root (this session's cwd), removed right
+  after. `gs-admin jo p pause --help` drew the plugin's PreToolUse ask through the real loader; Bradley read the
+  rendered text and declined:
+    Mutating Gainsight command: gs-admin journey programs pause. This workspace is read-only by default. Confirm the
+    active tenant (`gs-admin whoami`) is the intended target before approving. [plugin:gs-superadmin]
+  Before the marker, the hook was also fed directly with a scratch-workspace cwd and `gs-admin re r delete-schedule
+  --rule-id 'no-such-rule-id'` (catalog mutating: true): permissionDecision "ask", reason "Mutating Gainsight command:
+  gs-admin rules-engine rules delete-schedule. …"; with the repo as cwd, no output (inert, by design).
+  (7) RUN — all six CP-6 live checks, on the sandbox, at 1.0.12, banked in dev/VALIDATION.md § "F-549 / CP-6" (CLEARED
+  @ hb-20261015-07): (a) FIXED 3 of 3; (b) FIXED, exit 1 in both shells, no assertion; (c) FIXED, 1239 rows, 0
+  field-less, residual gap 3 (per template, not per folder), KI-030 persists (name-only); (d) FIXED, 233 named groups
+  with equal counts; (e) FIXED; (f) FIXED, 4 of 4 refused client-side, FIELD_REFUSAL_RE matches the real text but the
+  fixture's wording differs. No BROKEN path fired, so F-549 stays VERIFIED.
+  What (7) unblocks, and this verdict does not settle: the Fix note held the journey:email:templates entry at its
+  1.0.10 wording until CP-6 (c), and bar (3) required that string unchanged. (c) has now measured: 1.0.12 descends
+  subfolders, and the list still omits a few templates. So the entry's first clause ("flattens one folder level
+  (templates in nested subfolders are dropped)") is false at 1.0.11 and 1.0.12. The rewrite (not removal) owed by (c)'s
+  FIXED path is the builder's to land, before or after this merge — the Fix note's stated consequence stands until
+  then: a 1.0.11/1.0.12 workspace's report relays the 1.0.10 scope line for that domain. Also owed from the FIXED paths
+  (polish): the "live confirmation pending" lifts for (a) and (d), CP-3's crash-code scoping for (b), and the
+  engagement fixture's two refusal texts for (f).
+  Blind spots: the battery was not re-run (the PR's five checks read pass at 9a3d150 — validate
+  (ubuntu-latest), drift (full), manifests, changes, GitGuardian); the walks stopped at their first ask/stop by rule,
+  so neither skill's later phases ran against the 1.0.12 text beyond the citations read in (5); (c)'s KI-030 parent
+  read relies on 1.0.10's field-less row to prove the parent has a subfolder (the CLI exposes no folder tree); (d) ran
+  on one day, not the week, because of the 2000-row page; (e)'s bar wording is narrower than the server's search; (f)1
+  ran on a company field because email_log_v2 has no opaque-typed field on the sandbox; the CHANGELOG entry's prose was
+  read, not walked.
+  Open PRs to dev: #59 (this branch) MERGEABLE/CLEAN, five checks pass at 9a3d150; #57 (session B, F-548/F-530, also
+  0.55.0) MERGEABLE/BLOCKED. Neither merged by the tester; the Fix note's numbering rule for whichever lands second
+  stands.
+  Verdict: VERIFIED.
