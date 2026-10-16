@@ -43,7 +43,7 @@ import { mkdirSync, readFileSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
 import { makeCliHelpers, readJsonFile, writeFileAtomicSync, isMainModule } from "./doc-lib.mjs";
 import * as engine from "./engagement-query.mjs";
-import { openSpec, SPEC_DESCRIPTIONS, TABS, KNOBBED_PANEL_TYPES, presetPanels, pageDateDefault, pageTemplateContent, panelKnobs, describeSpec, kbDirOfSpecFile } from "./dashboard-spec.mjs";
+import { openSpec, SPEC_DESCRIPTIONS, TABS, KNOBBED_PANEL_TYPES, isListPanel, presetPanels, pageDateDefault, pageTemplateContent, panelKnobs, describeSpec, kbDirOfSpecFile } from "./dashboard-spec.mjs";
 import { applyGroups, resolveGroups, programTraits, describeRule, modelNamesOf, UNGROUPED } from "./dashboard-groups.mjs";
 import { createDashboard, createTimeline, csvText, LACKS, PAGE_MODEL_VERSION, TIMELINE_MODEL_VERSION } from "./dashboard-runtime.mjs";
 import { DEFAULT_THEME, validateTheme, tokensCss } from "./dashboard-theme.mjs";
@@ -217,8 +217,10 @@ export function pageModel(spec, snapshot, page, { delta = null, kb = null } = {}
     page: {
       // `index`: the page's place in the spec's list, so a copy line can name it (`pages.N…`, F-503).
       id: page.id, index: spec.pages.findIndex((p) => p.id === page.id), preset: page.preset, title: page.title, statusDefault: page.statusDefault, dateDefault: pageDateDefault(page), tabs,
-      // The panels, each typed view (the health four, the templates view) with its knobs resolved against the spec (the page cannot read the spec).
-      panels: presetPanels(page).filter((p) => on.has(p.tab)).map((p) => (p.type in KNOBBED_PANEL_TYPES ? { ...p, knobs: panelKnobs(spec, p) } : p)),
+      // The panels, each typed view (the health four, the templates view) with its knobs resolved against the spec (the page cannot read the spec),
+      // and each cross-program watch list named for a customer list marked with that list's kind (F-530): it shows the
+      // pull's ranking of that list, the selection record's kept accounts, never a second ranking of its own.
+      panels: presetPanels(page).filter((p) => on.has(p.tab)).map((p) => (p.type in KNOBBED_PANEL_TYPES ? { ...p, knobs: panelKnobs(spec, p) } : isListPanel(p) ? { ...p, list: p.id } : p)),
     },
     filters: { dateRange: offered("dateRange"), programs: offered("programs"), group: offered("group"), status: offered("status"), recipientClass: { enabled: !!recipients?.enabled, default: recipients?.default ?? "all" } },
     testAccounts: spec.sources.reduce((n, s) => n + s.params.testAccounts.length, 0),

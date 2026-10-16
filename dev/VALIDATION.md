@@ -3208,6 +3208,174 @@ Results (builder close-out, 2026-10-15, fix/r12a-v-f534-held-words at e1c2c1f; n
   after the amendment (validate-plugin run 38770931304, docs-drift run 38770931245; CLEAN).
 Section status: CLEARED — F-534 VERIFIED (builder, the verdict of record).
 
+## F-548 — ranking on every refresh (banked 2026-10-15, builder, Session B @ hb-20261015-04; verdict at the F-548 verdict round)
+
+Owed by: the F-548 verdict round, in the consumer workspace (Gainsight_Workspace) with the plugin loaded from the branch
+under test (a terminal in the workspace with --plugin-dir, canary hb-20261015-04 matched). LIVE: about two hours of pulls on
+the KEPT dashboard (digital-outreach-health-v2), production, reads only, one call at a time, as many logins as the pulls
+take (the runner checkpoints across them). Order matters: L1 runs while the kept dashboard's latest snapshot is still
+the one 0.54.0 made (no account store beside it, no meta.accountStore), so the migration arm is first. L3 runs on a
+SCRATCH import (f548-scratch), never a list change on the kept dashboard. Token: hb-20261015-04. Why it is banked: the suites
+judge the store over the fixture tenant and the stand-in; what only the kept dashboard can show is the migration on a
+real 0.54.0 snapshot, the store's real size and time, a selective refresh's lists against a full one's on real data,
+and the skill relaying the new words (no suite reads skill prose).
+
+THIS LIST IS COMPLETE.
+
+- L0 (provenance). `git -C <repo> status -sb` on the branch under test; the dev-canary token equals hb-20261015-04. Before any
+  pull: the kept dashboard's latest snapshot has no `meta.accountStore` and no `<stamp>.accounts.json` beside it in
+  `payscale-prod/dashboards/digital-outreach-health-v2/snapshots/`. Record its three lists' kept counts (25/25/25).
+- L1 (the migration, the full pull; the skill walk). In the tester session, invoke `/gs-superadmin:email-engagement`
+  (model-invocable: the session invokes it itself) to refresh digital-outreach-health-v2, the plain refresh with NO
+  `--full`. Before it runs, `dashboard.mjs report digital-outreach-health-v2 --kb payscale-prod` returns
+  `refreshFullOnce` (the latest snapshot "was made before the account store: the customer lists need one full pull to
+  start ranking on every refresh …") and `refreshMinutes` equal to `fullRefreshMinutes`. Pass bar: the refresh exits 0
+  (across logins if it must: each stop says exit 3, `gs-admin login`, the line again, and continues); `pull.mode` full and
+  `pull.why` the sentence above, relayed by the skill in its Pull line; no `--full` was typed and nothing was done by
+  hand; `accountStore` names `snapshots/<stamp>.accounts.json`, the only store in the folder, beside the new snapshot;
+  the store is plain JSON with one cell per line (open it), its `pulledAt` the snapshot's, its size about 4.6 MB (record
+  bytes, cells and accounts: the snapshot's `meta.accountStore` holds the same counts); the pull's minutes (record them,
+  about 67 expected). Record the three lists (kind, n, floor, kept in order).
+- L2 (a selective refresh's lists against the full one's). Right after L1, the same plain refresh again. Pass bar:
+  `pull.mode` selective (record the minutes, about 44 expected); its three lists equal L1's in kind, n, floor, per,
+  segment and kept IN ORDER, each `rankedAt` its OWN pull time and `carriedFrom` null; one store in the folder (the new
+  one). If a list differs, compare the two snapshots' byTemplate totals over the months L2 pulled (meta.refresh
+  .pulledMonths): unchanged totals with different lists is a FAIL; moved totals make the difference legitimate only if a
+  full pull agrees, so then run `refresh … --full` (a third pull) and compare its lists with L2's: equal is a pass.
+- L3 (a list change with no pull, the page, the report and the About tab; on a scratch import). `export
+  digital-outreach-health-v2 --out <tmp>/f548.json --with-snapshot --kb payscale-prod` (the summary names
+  `accountStore`, and its hint says the import's first pull is selective), `import --file <tmp>/f548.json --slug
+  f548-scratch --kb payscale-prod` (`accountStore` copied beside the imported snapshot), then `change f548-scratch
+  accounts.lists=[{"kind":"most-bounced","n":5,"floor":0}] --kb payscale-prod --dry-run` and the same without
+  `--dry-run`. Pass bar: the consequence says the lists are ranked again from the account store (a rebuild, no pull);
+  the change exits 0, `done.ranked` true, no call made (no login needed); f548-scratch's admin page's Most bounced
+  customers panel lists exactly 5 accounts with the note "The 5 most bounced across programs over the whole window, as
+  the pull of <date> ranked them."; `report f548-scratch` lists the same 5 in the same order; the page's About tab
+  says "the 5 most bounced". Read the panel and the done.text to Bradley: is it what an admin should read? Then the edit
+  screen: `new f548-scratch`, `next f548-scratch --question customer-list-detail`, one size changed, `next`: the closing
+  ask says the lists are ranked again from the account store, and its first option reads "Save and rank the customer
+  lists again now (no pull)"; discard the draft. Remove f548-scratch and the export files at the end.
+- L4 (the page on the kept dashboard, F-530). Open the kept dashboard's latest-admin.html after L2. Pass bar: each of the
+  three customer-list panels lists the snapshot's kept accounts in the record's order (spot-check the first five of
+  each against `honesty.accountSelection.lists`), with the note naming its size and floor; pick a two-month range in the
+  filter bar: the note adds "re-ranked here over what is shown" and only the list's own accounts appear.
+
+Results (B-V, 2026-10-15 @ hb-20261015-04, tester; feat/f548-ranking-every-refresh at cc7a69a, clean and level; a terminal in
+the workspace with --plugin-dir, canary matched; production, reads only, one call at a time, three by-hand logins; PR #57's
+five checks green):
+- L0 PASSED with a NOTE: the latest snapshot (20261013T230929) had no meta.accountStore and no `*.accounts.json` beside it;
+  its lists 25/25/25 (most-engaged 25/10, least-engaged 25/10, most-bounced 25/0, rankedAt = carriedFrom = the
+  2026-10-13 21:12 full pull). Note: it was made by plugin 0.52.0, not 0.54.0 — a snapshot from before the store either
+  way, which is the contract.
+- L1 PASSED: before it, `report` returned refreshFullOnce ("the latest snapshot (…) was made before the account store: the
+  customer lists need one full pull to start ranking on every refresh, and the next refresh is that pull") and
+  refreshMinutes 72 = fullRefreshMinutes 72. The plain refresh, no `--full` (the run state full:false), invoked through
+  the skill: exit 3 at 284 calls (the token), Bradley's login, the remedy line as printed, exit 0. pull.mode full, pull.why
+  "the customer lists need one full pull to start ranking on every refresh (the previous snapshot was made before they
+  could)", relayed in the skill's Pull line; nothing by hand. accountStore `snapshots/20261015T162212.accounts.json`, the
+  only store, beside the new snapshot; plain JSON, a header line then one cell per line; its pulledAt the snapshot's.
+  STORE: 5,192,723 bytes, 185,996 cells, 15,438 accounts (24 no-link cells), 191 programs, 13 months; meta.accountStore
+  {schema 1, cells 185996, accounts 15438}, the same (larger than the 4.56 MB measured: nine measures and the internal
+  class, one cell per line). MINUTES: 105 of pulling (55.5 before the stop, 49.7 after; 743 calls, 76 split, 1 retried)
+  against 72 priced. Lists: most-engaged 25/10, least-engaged 25/10, most-bounced 25/0, per and segment null, rankedAt
+  their own pull, carriedFrom null; each the same 25 accounts in the same order as the 2026-10-13 full ranking.
+- L2 PASSED: the same plain refresh (a login first, then exit 3 at 423 calls, a login, the remedy line, exit 0): pull.mode
+  selective, pull.why "months before 2026-09 are carried from the snapshot pulled 2026-10-15T16:22:12-07:00", pulled
+  2026-09 and 2026-10. MINUTES: 80.5 of pulling (58.8 + 21.7; 598 calls, 62 split, 2 retried) against 43 planned. All
+  three lists equal L1's in kind, n, floor, per, segment and kept IN ORDER (25/25 each); rankedAt 2026-10-15T18:23:42 (its
+  own pull), carriedFrom null; one store in the folder (20261015T182342.accounts.json, 5,192,723 bytes, cells and accounts
+  as L1's); L1's store gone (the summary's `pruned` read [] — it names snapshots only).
+- L3 PASSED on its bar: export named accountStore and hinted "its first refresh is then selective" (its import line
+  carries `--snapshot`, which this list's line lacks: followed the hint); import copied accountStore beside the imported
+  snapshot; the dry run's consequence "the customer lists are ranked again from the account store beside the last pull (a
+  rebuild, no pull)"; the change exit 0 in 3 s, no progress line (no call), done.ranked true, done.text "The change is
+  saved and the customer lists were ranked again from the account store beside the last pull (2026-10-15T18:23:42-07:00),
+  with no pull; the pages were rebuilt."; the Most bounced panel exactly the record's 5 in its order with the note "The 5
+  most bounced across programs over the whole window, as the pull of 2026-10-15 ranked them."; the dropped lists' panels
+  "This dashboard keeps no most engaged list: …" / "… no least engaged list: …"; `report f548-scratch` the same 5 in the
+  same order; the About tab's Accounts entry "the 5 most bounced". Bradley on the panel, done.text and dropped-list notes:
+  "the wording seems fine". Edit screen: the closing ask "…changes 1 setting (accounts.lists[]): the customer lists are
+  ranked again from the account store beside the last pull (a rebuild, no pull)…", first option "Save and rank the
+  customer lists again now (no pull)". Draft not saved; f548-scratch and the export files removed. PROBED PAST THE BAR (F-530
+  reopened, its Reopened line): the About tab's Pages entry "the top 25 by Bounced" beside the panel of 5; the report's
+  intro naming all three lists' meanings over one list; the edit question stating the 25s and re-adding the two dropped
+  lists on keep|keep|6 0.
+- L4 PASSED (Bradley's eye, three screenshots): each of the three panels lists all 25 of the record's kept accounts in its
+  order (all 25 checked from the page file, not five), the note naming size and floor; with August–September 2026 in the
+  filter bar each note adds "re-ranked here over what is shown", and every account visible is in its own list only.
+Section status: OPEN on F-530 (reopened, three instances of consumer-parity); F-548 VERIFIED.
+
+## F-530 reopened — the customer lists in words, on every surface (banked 2026-10-15, builder, Session B's F-530 round @ hb-20261015-06; verdict at the F-530 re-verification round)
+
+Owed by: the F-530 re-verification round, in the consumer workspace with the plugin loaded from feat/f548-ranking-every-refresh
+(a terminal in the workspace with --plugin-dir, canary hb-20261015-06 matched). NO PULL (Bradley's scoping, 2026-10-15): every arm runs on a
+SCRATCH import of the kept dashboard (it now carries its account store from B-V's pulls) or on the repo's suites. No refresh arm: this
+round's fix touches no ranking or store code (selectionOver, rankFromStore, carriedAccountCells, decideRefresh and the store's writer
+are unchanged; the handoff note says so). Token: hb-20261015-06.
+
+THIS LIST IS COMPLETE.
+
+- N0 (setup and provenance). Canary matched; `export digital-outreach-health-v2 --out <tmp>/f530.json --with-snapshot --kb payscale-prod`
+  (its `accountStore` named), `import --file <tmp>/f530.json --slug f530-scratch --kb payscale-prod` (its `accountStore` copied).
+- N1 (the change). `change f530-scratch accounts.lists=[{"kind":"most-bounced","n":5,"floor":0}] --kb payscale-prod`. Pass bar: exit 0,
+  `done.ranked` true, no call made.
+- N2 (the page and its About tab). Open f530-scratch's latest-admin.html. Pass bar: the Most bounced customers panel lists exactly the
+  record's 5 in its order with the note "The 5 most bounced across programs over the whole window, as the pull of <date> ranked them.";
+  the About tab's Pages entries for the three list panels read "… the 5 most bounced, as the pull ranked it." for Most bounced and
+  "… no most engaged list is kept …" / "… no least engaged list is kept …" for the other two (never "the top 25" or "the 25 lowest");
+  its Accounts entry names "the 5 most bounced" and no other list.
+- N3 (the report). `report f530-scratch --kb payscale-prod`. Pass bar: the Account watch list opens "Across programs over the whole
+  window, the accounts this pull kept: the 5 most bounced. Possible bad contacts: never a verdict on a customer." — no "advocates", no
+  "disengagement", no low-cadence sentence — and its one table lists the same 5 in the same order.
+- N4 (the edit screen). `new f530-scratch`, `next f530-scratch --question customer-list-detail`. Pass bar: the ask says "This dashboard
+  makes 1 list across programs: the 5 most bounced." with no 25 anywhere; the first option reads "Keep the lists as they are (the
+  default)"; the size option has ONE follow-up, for the 5 most bounced. Answer keep (through the size option), then `default`: the
+  draft's lists stay [most-bounced 5/0] each time; answer "6 0": the draft holds [most-bounced 6/0] alone, and `next` (the closing ask)
+  says it changes 1 setting (accounts.lists[]). Read the question's wording to Bradley: is it what an admin should read? Discard the
+  draft (do not save).
+- N5 (the suites). On the branch: `node plugins/gs-superadmin/test/dashboard.mjs` (147, the class check among them),
+  dashboard-spec.mjs (47), dashboard-page.mjs (214), engagement-report.mjs (56) pass. CI green on PR #57 at its head.
+- Cleanup: remove f530-scratch and the export files.
+
+Results:
+(F-530 re-verification round, 2026-10-15 @ hb-20261015-06, tester; feat/f548-ranking-every-refresh at 14e46a6, clean and level; a
+terminal in the workspace with --plugin-dir, canary matched; the production KB, NO PULL. The only tenant read was the closing step's
+whoami, after one by-hand login. Pages were read as a headless Chrome DOM dump of the rendered page, scripts stripped.)
+- N0 PASS. `export digital-outreach-health-v2 --with-snapshot` named its `accountStore`; `import --slug f530-scratch` copied it
+  (the snapshot and its `.accounts.json` side by side).
+- N1 PASS. `change f530-scratch accounts.lists=[{"kind":"most-bounced","n":5,"floor":0}]`: exit 0, `done.ranked` true,
+  `done.lists` [most-bounced, kept 5], done.text "…ranked again from the account store beside the last pull (…), with no pull; the
+  pages were rebuilt." No call was made: the token was expired at the time, and the verb exited 0.
+- N2 PASS. The Most bounced customers panel lists exactly the record's 5 kept accounts, in the record's order, with the note "The 5
+  most bounced across programs over the whole window, as the pull of 2026-10-15 ranked them." The other two panels read "This
+  dashboard keeps no most engaged list: …" / "… no least engaged list: …". The About tab's Pages entries: "…: the 5 most bounced, as the
+  pull ranked it.", "…: no most engaged list is kept (the customer lists name the lists the pull ranks).", "…: no least engaged list is
+  kept (…)". Accounts entry: "Customer lists are on: across programs over the whole window, the 5 most bounced; …", and no other list.
+  No "top 25", "25 lowest" or "the 25" in the rendered text. The leaders' copy's one "the 25 least engaged" is listPhrase's doc
+  comment inside its script, not rendered.
+- N3 PASS. The report's Account watch list reads, verbatim: "Across programs over the whole window, the accounts this pull kept: the 5
+  most bounced. Possible bad contacts: never a verdict on a customer." No advocates, no disengagement, no low-cadence sentence. Its
+  one table ("Most bounced customers") lists the same 5 in the same order.
+- N4 PASS, with one sentence ruled out. The ask: "How should the customer lists be built? This dashboard makes 1 list across
+  programs: the 5 most bounced. On a program that sends about once per contact, a least-engaged list uses at least 3 delivered and no
+  open instead of its floor. You can change …" No 25 anywhere. Options: "Keep the lists as they are (the default)" · "Change a list's
+  size or floor" (ONE follow-up: "The 5 most bounced accounts, with no delivered floor: …") · "Add per-segment lists". The draft's
+  lists: keep through the size option → [most-bounced 5/0]; `default` → [most-bounced 5/0]; "6 0" → [most-bounced 6/0] alone.
+  The closing ask: "Compared with the saved dashboard it changes 1 setting (accounts.lists[]): the customer lists are ranked again
+  from the account store beside the last pull (a rebuild, no pull)." (The first try stopped exit 3 on the expired token; it ran
+  after a login.) Wording read to Bradley: the low-cadence sentence describes a least-engaged list on a dashboard that keeps none,
+  which is the rule the Fix gave the report (instance 2) but not the question. Bradley's ruling: one line of prose, drop it, no
+  reopen; the tester makes it (role inversion). Made at dashboard.mjs's customer-list-detail ask: the sentence prints only when a
+  least-engaged list is among the lists. Re-read: on the scratch draft the sentence is gone; on a sibling draft with
+  [most-bounced 5/0, least-engaged 10/5] it is present. The draft was not saved (it was removed with the scratch).
+- N5 PASS. On 14e46a6: dashboard 147, dashboard-spec 47, dashboard-page 214, engagement-report 56, all pass. PR #57's five checks
+  (drift (full), changes, validate (ubuntu-latest), manifests, GitGuardian) are green at 14e46a6. After the role-inverted edit:
+  dashboard 147, dashboard-spec 47, dashboard-page 214, engagement-report 56, all pass.
+- Not read (the builder's named gap): mutant N4 (the report's intro naming a per-segment list once per segment) survived by
+  prediction, and no arm here puts a per-segment list in the report. A per-segment list over a field the last pull did not read
+  needs a pull.
+- Cleanup: f530-scratch and the export files were removed.
+
 ## F-549 / CP-6 — six live checks on CLI 1.0.11 or later: what the 1.0.11 fixes the doctrine now names actually do on a tenant (banked 2026-10-15, builder, session E1+V1 on doctrine-cli-1-0-11-plus; verdict at the branch's handoff token)
 
 Every check below is read-only and runs on a workspace whose installed CLI is **1.0.11 or later** (1.0.12 ships the

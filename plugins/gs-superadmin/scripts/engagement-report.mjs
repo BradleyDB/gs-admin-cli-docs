@@ -45,6 +45,7 @@ import { makeCliHelpers, readJsonFile, readKbIdentity, isMainModule, shq, termKe
 import { renderReport, reportPath, mdTable, toCsv, nowIso, ACTIVE_STATUSES } from "./jo-report.mjs";
 import {
   openSnapshot, accountAvailability, runQuery, formatCell, glossary, glossaryNotes, caveatsFor, dataPulledLine, provisionalText, reasonText, statusLabel, metric, NO_VALUE, STATUS_LABELS,
+  LIST_KIND_WORDS, listPhrase, distinctLists,
 } from "./engagement-query.mjs";
 
 /** @typedef {import("./engagement.mjs").T10Snapshot} T10Snapshot */
@@ -242,12 +243,19 @@ export function buildReport(snapshot, opts = {}) {
     use([...LOW_METRICS, ...BOUNCE_METRICS, ...CROSS_METRICS]);
     if (lists.length) {
       const lowCadence = selection.lowCadencePrograms ?? [];
-      parts.push("", `Across programs over the whole window, the accounts this pull kept: ${lists.map((l) => `the ${l.n} ${l.kind.replace("-", " ")}${l.floor > 0 ? ` (at least ${l.floor} delivered)` : ""}${l.per ? ` per ${l.per}` : ""}`).join("; ")}. Possible advocates, possible bad contacts or disengagement, possible bad contacts: never a verdict on a customer.${lowCadence.length ? ` On ${lowCadence.length} program(s) that send about once per contact, the least-engaged signal is at least ${selection.lowCadenceRule?.minDelivered ?? 3} delivered and no open.` : ""}`);
+      // The lists as configured, once each (a per-segment list is recorded once per segment), in the engine's words; what
+      // each kind may show, for the kinds kept only; the low-cadence rule only beside a least-engaged list (F-530 reopened).
+      const configured = distinctLists(lists);
+      const kinds = [...new Set(configured.map((l) => l.kind))];
+      const readings = kinds.map((k) => LIST_KIND_WORDS[k]?.reading).filter(Boolean);
+      const reading = readings.length ? ` ${readings.join(", ").replace(/^p/, "P")}: never a verdict on a customer.` : "";
+      const quiet = lowCadence.length && kinds.includes("least-engaged") ? ` On ${lowCadence.length} program(s) that send about once per contact, the least-engaged signal is at least ${selection.lowCadenceRule?.minDelivered ?? 3} delivered and no open.` : "";
+      parts.push("", `Across programs over the whole window, the accounts this pull kept: ${configured.map(listPhrase).join("; ")}.${reading}${quiet}`);
       // A selective refresh carries the lists the last full pull ranked (F-521): said once, with when they were ranked.
       const carriedAt = [...new Set(lists.filter((l) => l.carriedFrom && l.rankedAt).map((l) => l.rankedAt))];
-      if (carriedAt.length) parts.push("", `These lists were ranked by the full pull of ${carriedAt.join(" and ")}: this pull continued from an earlier one, kept the accounts those lists held and counted their figures again. A full pull (a dashboard's refresh with --full) ranks every account again.`);
+      if (carriedAt.length) parts.push("", `These lists were ranked by the full pull of ${carriedAt.join(" and ")}: this pull continued from an earlier one, kept the accounts those lists held and counted their figures again. The next pull ranks every account again.`);
       for (const l of lists) {
-        const title = `${l.kind === "most-engaged" ? "Most engaged" : l.kind === "least-engaged" ? "Least engaged" : "Most bounced"} customers${l.per ? ` (${l.per}: ${l.segment})` : ""}`;
+        const title = `${LIST_KIND_WORDS[l.kind]?.title ?? l.kind}${l.per ? ` (${l.per}: ${l.segment})` : ""}`;
         if (l.notRanked) { parts.push("", `### ${title}`, "", `_Not ranked on this pull. ${reasonText(l.notRanked)}_`); continue; }
         if (!l.kept.length) { parts.push("", `### ${title}`, "", `_No account met this list's floor${l.carriedFrom && l.rankedAt ? ` at the full pull of ${l.rankedAt}` : ""}._`); continue; }
         crossLists++;
@@ -255,7 +263,9 @@ export function buildReport(snapshot, opts = {}) {
         // The lists were selected over EVERY program, so their rows are read over every status (the recipient class
         // still applies); the per-program tables below keep the status filter.
         const across = (query) => runQuery(snapshot, { recipientClass, accounts: l.kept, accountBuckets: /** @type {Array<"account">} */ (["account"]) }, query);
-        const rows = across({ groupBy: ["account"], metrics: CROSS_METRICS, sort }).rows;
+        // In the list's own order (F-530): the pull's ranking, the order the page shows; the sort only breaks no tie.
+        const at = new Map(l.kept.map((k, i) => [k, i]));
+        const rows = across({ groupBy: ["account"], metrics: CROSS_METRICS, sort }).rows.sort((a, b) => (at.get(a.key.account) ?? Infinity) - (at.get(b.key.account) ?? Infinity));
         const name = (r) => r.label.account ?? r.key.account;
         // The programs each kept account is on: the engine's own program × account rows, counted per account.
         const touched = new Map();
