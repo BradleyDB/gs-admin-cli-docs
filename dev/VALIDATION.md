@@ -3207,3 +3207,138 @@ Results (builder close-out, 2026-10-15, fix/r12a-v-f534-held-words at e1c2c1f; n
 - C3 FAILED at 1aa9b49 (validate-plugin run 38769298383: engagement-report's bare-word prose check), PASSED at e1c2c1f
   after the amendment (validate-plugin run 38770931304, docs-drift run 38770931245; CLEAN).
 Section status: CLEARED — F-534 VERIFIED (builder, the verdict of record).
+
+## F-549 / CP-6 — six live checks on CLI 1.0.11 or later: what the 1.0.11 fixes the doctrine now names actually do on a tenant (banked 2026-10-15, builder, session E1+V1 on doctrine-cli-1-0-11-plus; verdict at the branch's handoff token)
+
+Every check below is read-only and runs on a workspace whose installed CLI is **1.0.11 or later** (1.0.12 ships the
+same `dist/`; its one change is a dependency pin). Each verdict line RECORDS the version `gs-admin --version` prints —
+the entries are per-version measurements, not per-release ones. On a 1.0.10 CLI none of these is owed: every (a)–(f)
+is a 1.0.10-and-earlier defect the plugin already documents. Plan: gs-fortress ledger/reports/build-kickoffs-1.0.12.md
+CP-6 (a)–(f), banked from audit-1.0.12 §0, §1.12, §1.15, §2 and §6. The doctrine the branch ships (CP-2, CP-3, CP-4)
+is version-conditional and says "live confirmation pending" where a check below decides it; a FIXED verdict lifts that
+clause, a BROKEN one reopens F-549 with the wording to restore. Nothing here mutates the tenant.
+
+Owed by: the tester round on this branch's token, or the first session with a 1.0.11-or-later CLI and a tenant token.
+Tenant: the sandbox. Reads only. Windows host for (b) (the assertion is in the CLI's Windows event loop).
+
+### (a) KI-028 — `sc measures --id` on a fresh login (decides CP-2's "live confirmation pending")
+
+Steps:
+1. `gs-admin login` (fresh token; `gs-admin whoami` reads valid), then `gs-admin --version` — record it.
+2. Take three scorecard ids from the sandbox KB (the scorecard domain's manifest entries), one of them a
+   rollup-enabled scorecard.
+3. For each: `gs-admin --json sc measures --id '<id>'` immediately after login, as the FIRST authenticated call of a
+   fresh process. Then `gs-admin --json sc measures --name '<the same scorecard's name>'`.
+4. Compare the two payloads per scorecard: the same set of `MEASURE` and `GROUP` nodes by id (recurse `children`;
+   order may differ).
+
+FIXED (KI-028 resolved live at <version>): 3 of 3 `--id` calls exit 0 with no "No stored token found", and each returns
+the measures tree `--name` returns. The operating model's entry, its General rule and setup's scorecard exception drop
+"live confirmation pending" (polish; rides the next round); the gs-fortress ledger's KI-028 closes on the measurement.
+BROKEN (KI-028 persists at <version>): any `--id` call fails with "No stored token found" while `whoami` reads valid.
+REOPEN F-549: the 1.0.11-and-later clauses in those three sites are wrong and revert to the 1.0.10 wording for every
+version; the gs-fortress ledger's KI-028 flips back to open, with the version.
+
+### (b) KI-017 — an error exit with no libuv assertion, under Git Bash and PowerShell (decides CP-3's crash-code scoping)
+
+Steps:
+1. Under Git Bash: `gs-admin --json re r describe --id 'no-such-rule-id'; echo "exit=$?"`. Keep the full stderr.
+2. Under Windows PowerShell 5.1 (`powershell.exe -NoProfile`): the same command, then `$LASTEXITCODE`.
+3. Repeat step 1 without `--json` once.
+4. Control: the success path — `gs-admin --json re r list --limit 1` exits 0.
+
+FIXED (KI-017 resolved live at <version>): each run prints the API error on stderr (an `Error:` line, with a Request ID),
+exits **1** in both shells, and stderr carries no `Assertion failed: !(handle->flags & UV_HANDLE_CLOSING)` and no
+`src\win\async.c` line. CP-3's follow-up then lands: the operating model's entry scopes the crash codes (127 under Git
+Bash, 255 under PowerShell, raw 0xC0000409) to 1.0.10 and earlier and keeps "parse stderr" as advice, not as the only
+safe reading; the gs-fortress ledger's KI-017 closes on the measurement. The KI-018 entry's "both also abort on the
+libuv assertion" sentence takes the same scope.
+BROKEN (KI-017 persists at <version>): the error, then the assertion; exit 127 / 255. REOPEN F-549: the "expect a clean
+exit 1" clause is wrong — upstream's `process.exit()` removal is not the whole cause — and the entry says so for every
+version; the gs-fortress ledger's KI-017 stays open with the version and the shell.
+
+### (c) KI-003 / KI-030 — the email-template list descends nested folders (feeds CP-3's numbers and the gated CP-7's `CLI_PIN_FACTS` entry)
+
+Steps:
+1. `gs-admin --json jo email templates --limit 10000 > templates.json` on the sandbox. Record the row count, the count
+   of rows with no `id` (the 1.0.10 field-less folder rows), and the distinct `folderName` values.
+2. Compare the row count with (i) the sandbox KB's template count (the `journey-email-templates` domain's manifest
+   entries, plus the gap list the engagement refresh keeps, if one exists) and (ii) 1.0.10's count on the same
+   tenant — 648 at the last live measurement. Record the residual gap: templates the KB or the UI knows that the list
+   still lacks, and whether every one of them sits at the top level (the `source=COMMS` / state suspicion) or in a
+   folder (a second nesting defect).
+3. Pick a template inside a SUBFOLDER (a `folderName` that is not a top-level folder). `gs-admin --json jo email
+   templates --folder '<the subfolder's own name>' --limit 10000` must return it; `--folder '<its parent folder's
+   name>' --limit 10000` is the KI-030 read — record whether the parent's name returns the nested template (a path
+   or a descent) or only the parent's own direct templates (name only, as the 1.0.11 handler reads).
+
+FIXED (KI-003 resolved live at <version>): zero field-less rows; the count is at least 1.0.10's and every template the
+KB holds from a subfolder is in the list; the residual gap is recorded with its size and where it sits. The two
+scope notes (templates/operating-model.md's scope-filter entry; setup's index-scope-notes.md `### journey email
+templates`) take the measured count in place of "not yet measured live" (polish; rides the next round), and E2's
+`CLI_PIN_FACTS` `journey:email:templates` scope entry is rewritten from this result (or the pair is removed if the
+list proves complete — check 23 holds them together). KI-030's verdict is recorded beside it, whichever way it reads.
+BROKEN (KI-003 persists at <version>): field-less folder rows still present, or a subfolder's templates still absent
+from the full list. REOPEN F-549: the "descends into subfolders" clauses are wrong and revert to the 1.0.10 wording
+for every version; the gs-fortress ledger's KI-003 stays open with the version.
+
+### (d) KI-022 — a LOOKUP group-by returns real names (decides CP-4's "live confirmation pending" on the LOOKUP rule)
+
+Steps:
+1. One week of sends, grouped by the company lookup's NAME (the shape the adapter refuses on every version — issue it
+   by hand, once): `gs-admin --json rp run --object email_log_v2 --show-fields '[{"name":"Gsid","aggregation":"COUNT"}]'
+   --group-by '[{"name":"GsCompanyId"}]' --where-filters '{"conditions":[<ExecutedDate GTE <monday>>, <ExecutedDate LT
+   <next monday>>, <Source EQ "Advanced Outreach">, <AddressType EQ "To">]}' --page-size 2000`.
+2. The adapter's own shape for the same week: the same call with `--group-by '[{"name":"GsCompanyId","fieldPath":
+   "GsCompanyId.Gsid"}]'` (and, for the names, a show of `GsCompanyId.Name` through the same path).
+3. Compare: the number of groups, the group labels, and the per-group counts.
+
+FIXED (KI-022 resolved live at <version>): step 1 returns one group per company with the company's real name as the
+label (no single empty-name group collapsing them), and its per-group counts equal step 2's. The adapter's LOOKUP rule
+stays (it is a guard, not a workaround — the comment says so), and the header's "live confirmation pending" and the
+test LEDGER's fact 3 note take the verdict (polish); the gs-fortress ledger's KI-022 closes on the measurement.
+BROKEN (KI-022 persists at <version>): step 1 collapses to one group with an empty label, or its counts differ from
+step 2's. REOPEN F-549: the "1.0.11 and later join the lookup object's key" clause is wrong; it reverts to the 1.0.10
+wording for every version; KI-022 stays open with the version.
+
+### (e) KI-013 / KI-014 — `dm o list --search` works and `--sort-field` sorts server-side
+
+Steps:
+1. `gs-admin --json dm o list --search 'Company' --limit 50`: exit 0, every row's label or name contains the term.
+2. `gs-admin --json dm o list --sort-field label --sort-dir ASC --limit 20 --page 1` and the same with `DESC`; then
+   `--page 2` of each. Record the first and last labels of each page.
+
+FIXED (KI-013 and KI-014 resolved live at <version>): step 1 exits 0 with matching rows only (on 1.0.10 the search was
+not sent, so every object came back); the ASC and DESC first pages differ, each is ordered by label, and page 2
+continues the order (the sort spans pages — server-side, not a per-page local sort). The gs-fortress ledger's KI-013
+and KI-014 close on the measurement; no plugin text names either defect, so nothing is owed on the branch.
+BROKEN: step 1 returns every object, or the two orders are equal, or page 2 restarts the order. Record which, with the
+version; the two KI entries stay open. No plugin change is owed either way.
+
+### (f) The 1.0.11 refusals — one call each for KI-021, KI-023, KI-024 and KI-029: exit 1 with the named error, no request, no assertion
+
+Steps (each on `email_log_v2`, `--page-size 10`, the week window of (d); record stderr and the exit code of each):
+1. KI-021 — a distinct count of a JSON-typed field: `--show-fields '[{"name":"LinkClickedJson","aggregation":
+   "COUNT_DISTINCT"}]'`.
+2. KI-023 — an aggregation nested in a formula: a `--show-fields` entry of the documented formula shape (reference
+   `rp create` example: `{"name":"ratio","formula":{"kind":"arithmetic","operator":"/","lhs":…,"rhs":…}}`) whose `lhs`
+   is an aggregated field (`COUNT` of `Gsid`) and whose `rhs` a plain field — the shape the engagement adapter's test
+   LEDGER fact 7 records as a generic error on 1.0.10.
+3. KI-024 — an unknown filter field: `--where-filters '{"conditions":[{"leftOperand":{"fieldName":"NoSuchField"},
+   "operator":"EQ","rightOperand":{"value":"x"}}]}'` with a plain `--show-fields '[{"name":"Gsid","aggregation":"COUNT"}]'`.
+4. KI-029 — an aggregate of a grouped field: `--show-fields '[{"name":"EmailTemplateId","aggregation":"COUNT"}]'
+   --group-by '[{"name":"EmailTemplateId"}]'`.
+
+FIXED (the four refusals present at <version>): each exits 1 with the refusal on stderr naming the field or the shape
+(`Field "NoSuchField" not found on email_log_v2` / `Filter field … not found on …` with a "did you mean" list for 3;
+the opaque-type refusal for 1; the nested-aggregation refusal for 2; the grouped-aggregate refusal for 4), and the
+stderr carries NO Gainsight Request ID — the CLI refused before any request — and no libuv assertion. CP-4's
+classification of 3 as `shape-error` is then measured against the real text: if the real wording differs from the
+fixture's two lines in `test/fixtures/engagement/acme-tenant.mjs` (`FAULT_TEXT["field-refused"]`,
+`["filter-field-refused"]`), copy the real stderr into the fixture (masked of ids) and re-run `test/engagement.mjs`
+(the regex `FIELD_REFUSAL_RE` must still match; a miss REOPENS F-549). The gs-fortress ledger's four KI entries close
+on the measurement.
+BROKEN (a refusal absent at <version>): a call exits 0 (the 1.0.10 silent drop, for 3; a server answer for 1, 2 or 4),
+or fails with a Request ID (the server refused, not the CLI). Record which; that KI stays open with the version, and
+the matching version-conditional clause in the engagement adapter's header reverts to the 1.0.10 wording for every
+version (REOPEN F-549 for that clause only).
