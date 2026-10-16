@@ -1060,9 +1060,13 @@ export function specStore(kbDir) {
       const now = new Date().toISOString();
       const d = { kind: DRAFT_KIND, spec: from ?? defaultSpec({ slug, title, owner, tenantHost }), answered: [], by: isText(by) ? by : null, startedAt: now, updatedAt: now };
       const { problems } = validateSpec(d.spec);
-      if (problems.length) refuse(`cannot start the draft: ${problemsText(problems)}`);
+      // A saved spec this version's validator refuses (a rule tightened since it was saved, F-541) still opens as a
+      // draft, with its problems named: the repair runs through the writer — a change may not add a problem (setDraft),
+      // and the save is refused while any remains — never through a hand edit of the saved file. The defaults
+      // themselves failing is a fault of this version, refused loudly.
+      if (problems.length && !from) refuse(`cannot start the draft: ${problemsText(problems)}`);
       writeSpecFile(draft, d);
-      return { state: from ? "editing-saved" : "new", draft: d, ...summary(slug, d) };
+      return { state: from ? "editing-saved" : "new", draft: d, problems, ...summary(slug, d) };
     },
     /**
      * Change the draft: each set is [path, value]. The WHOLE draft is validated first; a change that makes it
@@ -1076,6 +1080,9 @@ export function specStore(kbDir) {
       claim(d, by, takeOver);
       if (!sets.length && !unset.length && !answered.length) refuse("nothing to set — pass --set <path>=<json> and/or --answered <key>");
       for (const key of answered) if (!/^[a-z0-9][a-z0-9-]*$/.test(String(key))) refuse(`--answered takes a plain key (lower-case letters, digits, hyphens), got "${printable(String(key), 40)}"`);
+      // The problems the draft already has (a saved spec a tightened rule refuses, F-541): a change is held to adding
+      // none, not to clearing them all at once — the save is where every problem must be gone.
+      const before = new Set(validateSpec(d.spec).problems.map((p) => `${p.path}\u0000${p.problem}`));
       for (const [path, value] of sets) {
         try {
           setPath(d.spec, path, value);
@@ -1093,16 +1100,18 @@ export function specStore(kbDir) {
       }
       if (d.spec.slug !== slug) refuse("slug cannot be changed with set: the dashboard's folder is named for it (export it and import it under the new slug)");
       if (d.spec.tenantHost !== tenantHost) refuse(`tenantHost cannot be changed: this KB belongs to ${tenantHost}`);
-      // The whole draft, not the touched field: a change is refused when what it leaves is not a valid spec.
+      // The whole draft, not the touched field: a change is refused when what it leaves is not a valid spec — or, on a
+      // draft that already had problems, when it adds one (F-541); what remains is returned as `problems`.
       const { problems, notes } = validateSpec(d.spec);
-      if (problems.length) refuse(`not saved — ${problemsText(problems)}`);
+      const added = problems.filter((p) => !before.has(`${p.path}\u0000${p.problem}`));
+      if (added.length) refuse(`not saved — ${problemsText(added)}`);
       // A publish setting set to another dashboard's file is refused here, before the draft is written (F-532).
       const clash = sets.some(([p]) => String(p).startsWith("publish")) ? publishClash(d.spec) : null;
       if (clash) refuse(`not saved — ${clashText(d.spec, clash)}`);
       d.answered = [...new Set([...d.answered, ...answered])];
       d.updatedAt = new Date().toISOString();
       writeSpecFile(draft, d);
-      return { set: sets.map(([p]) => p), notes, draft: d, ...summary(slug, d) };
+      return { set: sets.map(([p]) => p), notes, problems, draft: d, ...summary(slug, d) };
     },
     /** Every problem of the draft (or the saved spec), each with its field; and the notes. */
     validate(slug, { saved = false } = {}) {

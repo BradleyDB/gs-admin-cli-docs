@@ -463,7 +463,7 @@ import { fileURLToPath } from "node:url";
 // Doc filename for an asset id — the shared copy every doc writer imports
 // (sanitized ids get a short raw-id hash so distinct ids that clean to the
 // same base can never collide).
-import { docNameClaimer, docNameMatcher, docPathFor, docDirNorm, readJsonFile, writeFileAtomicSync, cmpKey, getPath as get, findItemsArray, extractIds, makeCliHelpers, STUB_MARKER, DESCRIBE_NONE, idPathHint, ZERO_RESOLVE_HEAD, findWorkspaceCatalog, makeCommandResolver, pinFactsFor } from "./doc-lib.mjs";
+import { docNameClaimer, docNameMatcher, docPathFor, docDirNorm, readJsonFile, writeFileAtomicSync, acquireFileLock, cmpKey, getPath as get, findItemsArray, extractIds, makeCliHelpers, STUB_MARKER, DESCRIBE_NONE, idPathHint, ZERO_RESOLVE_HEAD, findWorkspaceCatalog, makeCommandResolver, pinFactsFor } from "./doc-lib.mjs";
 const here = dirname(fileURLToPath(import.meta.url));
 
 // The date-failure head refresh/SKILL.md's post-upgrade migration note quotes
@@ -619,6 +619,7 @@ function load({ mustExist = true } = {}) {
     if (mustExist) fail(`manifest not found: ${manifestPath} — run the init verb first`);
     return null;
   }
+  takeManifestLock();
   let m;
   try {
     // readJsonFile tolerates a leading BOM (F-118): the manifest is written
@@ -637,12 +638,42 @@ function load({ mustExist = true } = {}) {
   return m;
 }
 
+// The KB-wide lock around every load-change-save cycle (F-546): the manifest
+// is one file per knowledge base and this script is its ONE writer (the
+// skills, describe-batch and the dashboard's re-documentation all spawn it),
+// so two writers at once — two dashboards of one KB refreshed together —
+// used to lose each other's marks (load, load, save, save). The lock is a
+// sibling `_manifest.lock` taken by doc-lib's exclusive-create primitive on
+// the first load and released by save() or at exit; a fresh holder makes
+// this process wait (--lock-wait-seconds, default 30), then fail LOUDLY
+// naming the holder; a holder older than ten minutes died and is taken over.
+// init writes a NEW manifest without loading and takes no lock: two inits of
+// one KB are a setup fault, not a race this protects against.
+const MANIFEST_LOCK_STALE_MS = 10 * 60 * 1000;
+const lockWaitSeconds = Number(opt("--lock-wait-seconds") ?? 30);
+if (!Number.isFinite(lockWaitSeconds) || lockWaitSeconds < 0) fail("--lock-wait-seconds must be a number of seconds (0 waits not at all)");
+/** @type {?{ release: () => void }} */
+let manifestLock = null;
+function takeManifestLock() {
+  if (manifestLock) return;
+  const lock = acquireFileLock(`${manifestPath}.lock`, { owner: { verb }, staleMs: MANIFEST_LOCK_STALE_MS, waitMs: lockWaitSeconds * 1000 });
+  if (!lock.taken) {
+    const held = lock.held ?? {};
+    fail(
+      `manifest is locked by another writer (${String(held.verb ?? "unknown verb")}, pid ${String(held.pid ?? "?")}, since ${String(held.at ?? "?")}) and it did not finish within ${lockWaitSeconds}s: ` +
+        `${lock.path} — wait for it, or remove the lock file if you know that process died (a lock older than ten minutes is taken over on its own)`
+    );
+  }
+  manifestLock = lock;
+  process.on("exit", () => { if (manifestLock) manifestLock.release(); manifestLock = null; });
+}
 /** @param {GsManifest} m */
 function save(m) {
   // atomic temp+rename with the Windows retry (F-133 — an AV/sync-client lock
   // window used to abort a batch's mark loop mid-run): doc-lib's single copy,
   // shared with the orphan list below and every other integrity-owning writer
   writeFileAtomicSync(manifestPath, JSON.stringify(m, null, 2) + "\n");
+  if (manifestLock) { manifestLock.release(); manifestLock = null; }
 }
 
 // get / findItems live in doc-lib (getPath / findItemsArray — F-108): the
