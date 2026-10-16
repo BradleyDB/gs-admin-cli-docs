@@ -3305,13 +3305,13 @@ five checks green):
   filter bar each note adds "re-ranked here over what is shown", and every account visible is in its own list only.
 Section status: OPEN on F-530 (reopened, three instances of consumer-parity); F-548 VERIFIED.
 
-## F-530 reopened — the customer lists in words, on every surface (banked 2026-10-15, builder, Session B's F-530 round @ <token>; verdict at the F-530 re-verification round)
+## F-530 reopened — the customer lists in words, on every surface (banked 2026-10-15, builder, Session B's F-530 round @ hb-20261015-06; verdict at the F-530 re-verification round)
 
 Owed by: the F-530 re-verification round, in the consumer workspace with the plugin loaded from feat/f548-ranking-every-refresh
-(a terminal in the workspace with --plugin-dir, canary <token> matched). NO PULL (Bradley's scoping, 2026-10-15): every arm runs on a
+(a terminal in the workspace with --plugin-dir, canary hb-20261015-06 matched). NO PULL (Bradley's scoping, 2026-10-15): every arm runs on a
 SCRATCH import of the kept dashboard (it now carries its account store from B-V's pulls) or on the repo's suites. No refresh arm: this
 round's fix touches no ranking or store code (selectionOver, rankFromStore, carriedAccountCells, decideRefresh and the store's writer
-are unchanged; the handoff note says so). Token: <token>.
+are unchanged; the handoff note says so). Token: hb-20261015-06.
 
 THIS LIST IS COMPLETE.
 
