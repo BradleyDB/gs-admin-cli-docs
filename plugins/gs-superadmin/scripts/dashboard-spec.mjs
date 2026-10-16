@@ -195,7 +195,7 @@ import { userInfo } from "node:os";
 import { makeCliHelpers, readJsonFile, writeFileAtomicSync, isMainModule, readKbIdentity, cmpKey } from "./doc-lib.mjs";
 import { printable } from "./journal-lib.mjs";
 import { parseUnsubscribeLink, parseSentSince, ACCOUNT_LIST_KINDS, DEFAULT_ACCOUNT_LISTS } from "./engagement.mjs";
-import { METRICS, DIMENSIONS, STATUS_LABELS, statusLabel, SILENT_DAYS_DEFAULT } from "./engagement-query.mjs";
+import { METRICS, DIMENSIONS, STATUS_LABELS, statusLabel, SILENT_DAYS_DEFAULT, LIST_KIND_WORDS, listPhrase } from "./engagement-query.mjs";
 import { validateGroups, describeRule, UNGROUPED } from "./dashboard-groups.mjs";
 import { themeShapeProblems, validateTheme, COLOR_KEYS, LOGO_MAX_BYTES } from "./dashboard-theme.mjs";
 
@@ -314,6 +314,11 @@ const HEALTH_PANELS = Object.freeze([
   { id: "one-time", tab: "health", type: "health-one-time", title: "One-time and ad-hoc programs", knobs: { months: 6 } },
   { id: "error-rate", tab: "health", type: "table", title: "Error rate by program", query: { groupBy: ["program"], metrics: ["sent", "failed", "errorRate", "bounced", "bounceRate", "rejected", "rejectedRate", "unsubscribed", "unsubscribeRate", "spamComplaints", "spamRate"], sort: [{ metric: "errorRate", dir: "desc" }], having: [{ metric: "sent", gte: 1 }] }, columns: ["sent", "failed", "errorRate", "bounceRate", "rejectedRate", "unsubscribeRate", "spamRate"] },
 ]);
+// A customer list's panel: its id is the list's kind, and the page shows the pull's ranking of that list (the selection
+// record's kept accounts, n, floor and segments; F-530). The query's sort orders a re-ranking under a narrowing filter;
+// its having and limit apply only to a watch list that names no customer list.
+/** A cross-program watch list whose id names a customer list's kind (the presets' three): it shows that list (F-530). */
+export const isListPanel = (p) => p.type === "watchlist" && (p.query?.groupBy ?? []).join() === "account" && Object.hasOwn(ACCOUNT_LIST_KINDS, p.id);
 const ACCOUNT_LIST = (id, title, sort, having) => ({ id, tab: "engagement", type: "watchlist", title, query: { groupBy: ["account"], metrics: ["delivered", "opened", "openRate", "bounced"], sort: [sort], having: [having], limit: 25 } });
 // The Templates tab's one panel (TPL-2), on both presets; a leaders' page draws it only when its Templates tab is turned on.
 const TEMPLATES_PANEL = /** @type {T11Panel} */ (Object.freeze({ id: "templates", tab: "templates", type: "templates", title: "Emails: text and search", knobs: {} }));
@@ -331,9 +336,9 @@ export const PRESETS = Object.freeze({
       { id: "steps", tab: "engagement", type: "table", title: "Steps", query: { groupBy: ["program", "step", "variant"], metrics: ["sent", "delivered", "opened", "openRate", "clickRate"], sort: [{ metric: "sent", dir: "desc" }] } },
       { id: "survey-responses", tab: "engagement", type: "table", title: "Survey responses", query: { groupBy: ["program"], metrics: ["surveyParticipants", "submitted", "partiallySubmitted", "anyResponse", "responseRate"], having: [{ metric: "anyResponse", gte: 0 }], sort: [{ metric: "responseRate", dir: "desc" }] } },
       // The parentheticals dropped from the three titles (ruled 2026-10-11, D0 choice 2).
-      ACCOUNT_LIST("most-engaged", "Most engaged customers", { metric: "openRate", dir: "desc" }, { metric: "delivered", gte: 10 }),
-      ACCOUNT_LIST("least-engaged", "Least engaged customers", { metric: "openRate", dir: "asc" }, { metric: "delivered", gte: 10 }),
-      ACCOUNT_LIST("most-bounced", "Most bounced customers", { metric: "bounced", dir: "desc" }, { metric: "bounced", gt: 0 }),
+      ACCOUNT_LIST("most-engaged", LIST_KIND_WORDS["most-engaged"].title, { metric: "openRate", dir: "desc" }, { metric: "delivered", gte: 10 }),
+      ACCOUNT_LIST("least-engaged", LIST_KIND_WORDS["least-engaged"].title, { metric: "openRate", dir: "asc" }, { metric: "delivered", gte: 10 }),
+      ACCOUNT_LIST("most-bounced", LIST_KIND_WORDS["most-bounced"].title, { metric: "bounced", dir: "desc" }, { metric: "bounced", gt: 0 }),
       ...HEALTH_PANELS,
       TEMPLATES_PANEL,
       // The in-page account view (ACC-2), drawn on the Engagement tab after the customer lists (a tab draws its panels in
@@ -431,6 +436,12 @@ export function describePanel(spec, panel) {
     return `${head}; ${Object.entries(KNOBBED_PANEL_TYPES[panel.type].knobs).map(([k, d]) => d.say(knobs[k])).join("; ")}.`;
   }
   const q = panel.query ?? { metrics: [] };
+  // A customer list's panel shows the list the pull ranked (F-530): it is described by the spec's lists of its kind,
+  // which every build ranks to, never by the preset query's limit (reopened at B-V: "the top 25" beside a list of 5).
+  if (isListPanel(panel)) {
+    const lists = accountLists(spec).filter((l) => l.kind === panel.id);
+    return `${head} of ${listed(q.metrics.map(metricLabel), "nothing")}: ${lists.length ? `${lists.map(listPhrase).join("; ")}, as the pull ranked ${lists.length === 1 ? "it" : "them"}` : `no ${LIST_KIND_WORDS[panel.id].words} list is kept (the customer lists name the lists the pull ranks)`}.`;
+  }
   const by = q.groupBy?.length ? ` by ${q.groupBy.join(" and ")}` : "";
   // The sort's direction names the end of the ranking a limit keeps (F-508): "the 10 lowest by Open rate" is not "the top 10".
   const top = q.limit != null ? `, the ${q.sort?.[0]?.dir === "asc" ? `${q.limit} lowest` : `top ${q.limit}`}${q.sort?.[0]?.metric ? ` by ${metricLabel(q.sort[0].metric)}` : ""}` : "";
@@ -475,7 +486,7 @@ export const SPEC_DESCRIPTIONS = Object.freeze([
   {
     covers: ["accounts.pull", "accounts.busiest", "accounts.lowEngagement", "accounts.mostBounces", "accounts.lowEngagementMinDelivered", "accounts.lists[]", "accounts.fields[]"], label: "Accounts",
     say: (s) => {
-      const lists = accountLists(s).map((l) => `the ${l.n} ${l.kind.replace("-", " ")}${l.floor > 0 ? ` (at least ${l.floor} delivered)` : ""}${l.per ? `, per ${l.per}` : ""}`);
+      const lists = accountLists(s).map(listPhrase);
       const perProgram = s.accounts.busiest + s.accounts.lowEngagement + s.accounts.mostBounces > 0
         ? ` Per program as well: the ${s.accounts.busiest} busiest accounts, the ${s.accounts.lowEngagement} lowest open rates among accounts with at least ${s.accounts.lowEngagementMinDelivered} delivered, and the ${s.accounts.mostBounces} with the most bounces.`
         : "";

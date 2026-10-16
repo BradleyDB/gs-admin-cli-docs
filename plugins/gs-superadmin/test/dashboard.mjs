@@ -25,7 +25,7 @@
 // Run:  node plugins/gs-superadmin/test/dashboard.mjs
 // Zero dependencies — Node built-ins only.
 // ─────────────────────────────────────────────────────────────────────────────
-import { readFileSync, writeFileSync, existsSync, readdirSync, mkdirSync, rmSync, renameSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync, readdirSync, mkdirSync, rmSync } from "node:fs";
 import { join, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { isDeepStrictEqual } from "node:util";
@@ -89,7 +89,9 @@ const draftFile = (slug = SLUG, kb = KB) => join(dash(slug, kb), "spec.draft.jso
 const specFile = (slug = SLUG, kb = KB) => join(dash(slug, kb), "spec.json");
 const readJson = (p) => JSON.parse(readFileSync(p, "utf8"));
 const argvLines = () => (existsSync(join(STATE, "argv.jsonl")) ? readFileSync(join(STATE, "argv.jsonl"), "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l).argv.join(" ")) : []);
-const snapshots = (slug = SLUG, kb = KB) => (existsSync(join(dash(slug, kb), SNAPSHOTS_DIR)) ? readdirSync(join(dash(slug, kb), SNAPSHOTS_DIR)).filter((f) => f.endsWith(".json")).sort() : []);
+// The snapshots, never the account store beside the latest (F-548: `<stamp>.accounts.json`), which stores() lists.
+const snapshots = (slug = SLUG, kb = KB) => (existsSync(join(dash(slug, kb), SNAPSHOTS_DIR)) ? readdirSync(join(dash(slug, kb), SNAPSHOTS_DIR)).filter((f) => f.endsWith(".json") && !f.endsWith(".accounts.json")).sort() : []);
+const stores = (slug = SLUG, kb = KB) => (existsSync(join(dash(slug, kb), SNAPSHOTS_DIR)) ? readdirSync(join(dash(slug, kb), SNAPSHOTS_DIR)).filter((f) => f.endsWith(".accounts.json")).sort() : []);
 const pageText = (page, slug = SLUG, kb = KB) => readFileSync(join(dash(slug, kb), `latest-${page}.html`), "utf8");
 const manifest = (kb = KB) => readJson(join(kb, "_manifest.json"));
 const runDirs = () => (existsSync(join(WS, ".gs-superadmin", "tmp", "engagement")) ? readdirSync(join(WS, ".gs-superadmin", "tmp", "engagement")) : []);
@@ -342,7 +344,7 @@ try {
   const afterSegments = readJson(draftFile()).spec.accounts;
   check("the lists' detail (ruling 16) through its follow-ups: a size and floor per list ('keep' leaves one), then a per-segment list over a company field, added beside the three (the field recorded); a malformed size is refused naming the list",
     sized.code === 0 && isDeepStrictEqual(afterSizes.lists.map((l) => [l.kind, l.n, l.floor]), [["most-engaged", 3, 2], ["least-engaged", 3, 2], ["most-bounced", 25, 0]]) && segmented.code === 0 && afterSegments.lists.length === 4 && isDeepStrictEqual(afterSegments.lists[3], { ...DEFAULT_ACCOUNT_LISTS.find((l) => l.kind === "least-engaged"), per: "Industry" }) && isDeepStrictEqual(afterSegments.fields, ["Industry"]) &&
-      /the most engaged list: give a size and a floor as two numbers/.test(run("answer", [SLUG, "customer-list-detail", "sizes:lots|keep|keep"]).json?.error ?? ""), [sized.json, segmented.json, afterSegments]);
+      /the most engaged list: give a size and a floor as two numbers/.test(run("answer", [SLUG, "customer-list-detail", "sizes:lots|keep|keep|keep"]).json?.error ?? ""), [sized.json, segmented.json, afterSegments]);
   const stepQ = run("next", [SLUG]);
   run("answer", [SLUG, "step-detail", "no"]);
   const reasonsQ = run("next", [SLUG]);
@@ -424,7 +426,7 @@ try {
     purposed.code === 0 && purposed.json.consequence === "rebuild" && pageText("admin").includes(`<p class="gs-purpose">Which programs need attention this month.</p>`) && argvLines().length === callsBeforeChange, purposed.json);
   const relisted = run("change", [SLUG, 'accounts.lists=[{"kind":"most-bounced","n":2,"floor":0}]']);
   const snapshot1b = openSnapshot(readJson(join(dash(), SNAPSHOTS_DIR, snap1[0])));
-  check("change (the customer lists): a re-selection over the last run directory's rows (reduce again, no pull): the snapshot's selection record now holds the one list of 2 and the pages are rebuilt",
+  check("change (the customer lists): a re-selection from the account store beside the last pull (F-548: no pull, no run directory): the snapshot's selection record now holds the one list of 2 and the pages are rebuilt",
     relisted.code === 0 && relisted.json.consequence === "reselect" && relisted.json.done.done === true && isDeepStrictEqual(relisted.json.done.lists, [{ kind: "most-bounced", kept: 2 }]) && argvLines().length === callsBeforeChange && snapshot1b.honesty.accountSelection.lists.length === 1 && snapshot1b.honesty.accountSelection.lists[0].kept.length === 2, relisted.json);
   // The last plan is the one the latest snapshot was pulled from (its run directory, the derived-lookback one), never
   // the preview's or an older plan's.
@@ -663,10 +665,12 @@ try {
   const health = run("health", [SLUG, "--program", "p-onboard"]);
   check("health: a program's masked bounce reasons, participant failures, step failures and the 'Other' samples to the terminal", health.code === 0 && health.json.program.id === "p-onboard" && health.json.bounceReasons.length > 0 && Array.isArray(health.json.otherSamples) && health.json.health.pulled === true, health.json?.program);
   const exported = run("export", [SLUG, "--out", join(ROOT, "handover", "acme-health.json"), "--with-snapshot"]);
-  check("export --with-snapshot: the spec's portable file and the latest snapshot beside it", exported.code === 0 && existsSync(exported.json.out) && existsSync(exported.json.snapshot) && exported.json.snapshot.endsWith("acme-health.snapshot.json"), exported.json);
+  check("export --with-snapshot: the spec's portable file and the latest snapshot beside it, with its account store beside that (F-548), so the import's first refresh ranks with no full pull", exported.code === 0 && existsSync(exported.json.out) && existsSync(exported.json.snapshot) && exported.json.snapshot.endsWith("acme-health.snapshot.json") &&
+    exported.json.accountStore?.endsWith("acme-health.snapshot.accounts.json") && existsSync(exported.json.accountStore) && readJson(exported.json.accountStore).pulledAt === readJson(exported.json.snapshot).meta.pulledAt && /selective/.test(exported.json.hint), exported.json);
   const imported = run("import", ["--file", join(ROOT, "handover", "acme-health.json")], { flags: ["--workspace", WS2, "--kb", KB2, "--bin", FAKE, "--today", TODAY, "--by", "cy"] });
   const rebuilt = run("rebuild", [SLUG], { flags: ["--workspace", WS2, "--kb", KB2, "--bin", FAKE, "--today", TODAY, "--by", "cy"] });
   const status2 = run("status", [SLUG], { flags: ["--workspace", WS2, "--kb", KB2, "--bin", FAKE, "--today", TODAY, "--by", "cy"] });
+  check("import carries the account store beside the snapshot into the dashboard's snapshots folder, paired with the imported snapshot (F-548)", imported.json?.accountStore != null && existsSync(imported.json.accountStore) && readJson(imported.json.accountStore).pulledAt === readJson(imported.json.snapshot).meta.pulledAt && imported.json.accountStore === imported.json.snapshot.replace(/[.]json$/, ".accounts.json"), imported.json);
   check("import on a second workspace of the same tenant: the spec and the snapshot land, the pages rebuild from it with no pull, and status reads the carried pull", imported.code === 0 && imported.json.snapshot != null && rebuilt.code === 0 && rebuilt.json.pages.length === 2 && status2.json?.lastPull?.pulledAt === readJson(join(dash(), SNAPSHOTS_DIR, snapshots().at(-1))).meta.pulledAt, [imported.json, rebuilt.json, status2.json?.lastPull]);
   const wrongImport = run("import", ["--file", join(ROOT, "handover", "acme-health.json")], { flags: ["--workspace", WS2, "--kb", KB2, "--bin", FAKE, "--today", TODAY] });
   check("import never overwrites silently: the same slug again is refused without --replace", wrongImport.code === 1 && /already saved here/.test(wrongImport.json?.error ?? ""), wrongImport.json);
@@ -957,49 +961,104 @@ try {
     const dryList = run("change", [SLUG, `accounts.lists=${JSON.stringify(lists3)}`, "--dry-run"]);
     const sel = run("change", [SLUG, 'title="Acme health lists"', `accounts.lists=${JSON.stringify(lists3)}`]);
     const afterSel = readSnap();
-    check("F-529 a list change over a SELECTIVE latest pull (a routine refresh) ranks nothing and says so: the dry run's consequence names the routine refresh and the next full refresh's line; the change saves, exits 0, done false and ranked false with the reason, a full pull's minutes and the `refresh … --full` line as its remedy; the snapshot's lists are as before; the pages are rebuilt with the other change of the same command (the title); no call",
-      routine.code === 0 && routine.json.pull.mode === "selective" && dryList.code === 0 && dryList.json.consequence === "reselect" && /routine refresh/.test(dryList.json.consequenceText) && /ranked at the next full refresh \(`node \S+ refresh acme-health --kb acme-prod --full`\)/.test(dryList.json.consequenceText) &&
-        sel.code === 0 && sel.json.saved === true && sel.json.done?.kind === "reselect" && sel.json.done.done === false && sel.json.done.ranked === false && sel.json.done.rebuilt === true && /routine refresh/.test(sel.json.done.why) && sel.json.done.remedy?.line?.endsWith("refresh acme-health --kb acme-prod --full") && typeof sel.json.done.fullRefreshMinutes === "number" && /ranked at the next full refresh/.test(sel.json.done.text) &&
-        isDeepStrictEqual(rk(afterSel), rk(before)) && pageText("admin").includes("Acme health lists") && argvLines().length === callsBefore,
-      [dryList.json?.consequenceText, sel.json?.done ?? sel.json?.error ?? sel.stderr?.slice(-400), rk(before), rk(afterSel)]);
-    const remedy = asPrinted(sel.json?.done?.remedy?.line ?? "");
-    const ranked = readSnap();
-    const l0 = ranked.honesty?.accountSelection?.lists?.[0];
-    check("F-529 the remedy runs as printed (from the workspace folder): its full refresh ranks the changed list over every program (one list, accounts kept, no notRanked)",
-      remedy.code === 0 && remedy.json?.pull?.mode === "full" && ranked.honesty.accountSelection.lists.length === 1 && l0?.kind === "most-bounced" && l0.n === 3 && l0.kept.length > 0 && l0.notRanked == null && l0.selectedFrom === "every program", [remedy.json?.error ?? remedy.stderr?.slice(-300), rk(ranked)]);
-    // Over a FULL latest pull the change ranks, as before the narrowing.
-    const fullRank = run("change", [SLUG, 'accounts.lists=[{"kind":"most-bounced","n":2,"floor":0}]']);
-    check("F-529 over a FULL latest pull a list change ranks again with no pull, as before: done true, ranked true, the snapshot's one list of 2",
-      fullRank.code === 0 && fullRank.json.done.done === true && fullRank.json.done.ranked === true && isDeepStrictEqual(fullRank.json.done.lists, [{ kind: "most-bounced", kept: 2 }]) && readSnap().honesty.accountSelection.lists[0].kept.length === 2, fullRank.json?.done ?? fullRank.json?.error);
-    // Instance (3): the full pull's run directory rewritten to phase plan (as an edit's plan resuming it does): a refusal
-    // of the ranking, said, never loadRun's stack trace; the other changes still land.
-    const root = join(WS, ".gs-superadmin", "tmp", "engagement");
-    const statusFile = join(root, remedy.json?.run ?? "none", "status.json");
-    const statusBefore = existsSync(statusFile) ? readFileSync(statusFile, "utf8") : null;
-    if (statusBefore) writeFileSync(statusFile, JSON.stringify({ ...JSON.parse(statusBefore), phase: "plan" }));
-    const inPlan = run("change", [SLUG, 'accounts.lists=[{"kind":"most-bounced","n":4,"floor":0}]', 'pages.0.title="Admin in plan"']);
-    if (statusBefore) writeFileSync(statusFile, statusBefore);
-    check("F-529 instance (3): a list change whose full pull's run directory is in plan phase exits 0 with no stack trace, ranks nothing and says why (not a finished pull), and still rebuilds the pages with the other change",
-      statusBefore != null && inPlan.code === 0 && inPlan.json.done.ranked === false && /not a finished pull now \(status ok, phase plan/.test(inPlan.json.done.why) && inPlan.json.done.rebuilt === true && pageText("admin").includes("Admin in plan") && !/\n\s+at /.test(inPlan.stderr), [inPlan.json?.done ?? inPlan.stderr?.slice(-500)]);
-    // Instance (2): the run directory gone (a cleaned tmp): the other changes still land, the ranking waits.
-    const moved = join(ROOT, "moved-run");
-    if (existsSync(join(root, remedy.json?.run ?? "none"))) renameSync(join(root, remedy.json.run), moved);
-    const gone = run("change", [SLUG, 'accounts.lists=[{"kind":"most-bounced","n":5,"floor":0}]', 'pages.0.title="Admin rows gone"']);
-    if (existsSync(moved)) renameSync(moved, join(root, remedy.json.run));
-    check("F-529 instance (2): with the pull's rows gone a list change rebuilds the other changed settings (the page title), ranks nothing, and says the rows are gone and the full refresh's line",
-      gone.code === 0 && gone.json.done.ranked === false && gone.json.done.rebuilt === true && /no longer in the workspace/.test(gone.json.done.why) && pageText("admin").includes("Admin rows gone") && gone.json.done.remedy.line.endsWith("--full"), gone.json?.done ?? gone.json?.error);
+    check("F-548 (F-529's root) a list change over a SELECTIVE latest pull (a routine refresh) is ranked from the account store with no pull: the dry run says so; the change saves, exits 0, done and ranked true; the snapshot holds the changed list ranked over that pull's figures; the pages are rebuilt with the other change (the title); no call; one store, the latest snapshot's",
+      routine.code === 0 && routine.json.pull.mode === "selective" && routine.json.accountStore?.endsWith(".accounts.json") && dryList.code === 0 && dryList.json.consequence === "reselect" && /ranked again from the account store/.test(dryList.json.consequenceText) &&
+        sel.code === 0 && sel.json.saved === true && sel.json.done?.kind === "reselect" && sel.json.done.done === true && sel.json.done.ranked === true && sel.json.done.rebuilt === true && /ranked again from the account store/.test(sel.json.done.text) &&
+        isDeepStrictEqual(rk(afterSel), [["most-bounced", 3, 0, 3, null]]) && afterSel.honesty.accountSelection.lists[0].rankedAt === before.meta.pulledAt && pageText("admin").includes("Acme health lists") && argvLines().length === callsBefore &&
+        isDeepStrictEqual(stores(), [snapshots().at(-1).replace(/[.]json$/, ".accounts.json")]),
+      [dryList.json?.consequenceText, sel.json?.done ?? sel.json?.error ?? sel.stderr?.slice(-400), rk(before), rk(afterSel), stores(), snapshots()]);
+    // The store stays beside the snapshot (F-548): no page carries it, the leaders' page least of all. Every account in
+    // the store but the kept ones would otherwise reach a page; the kept accounts are all a page names.
+    const storeKeys = readJson(join(dash(), SNAPSHOTS_DIR, stores()[0])).accounts;
+    // The settings name accounts too (the test accounts, any pinned one): those are the spec's, never the store's.
+    const keptKeys = new Set([...afterSel.dimensions.accounts.map((a) => a.key), ...(afterSel.meta.params.testAccounts ?? []), ...(afterSel.meta.params.accounts.pinned ?? [])]);
+    const unkept = storeKeys.filter((k) => !keptKeys.has(k));
+    check("F-548 no page carries the account store: neither the admin page nor the leaders' page holds its kind or any account it holds that the lists did not keep (and the settings do not name)",
+      unkept.length > 0 && ["admin", "exec"].every((p) => !pageText(p).includes("gs-superadmin/account-store") && unkept.every((k) => !pageText(p).includes(`"${k}"`))), [unkept.slice(0, 5), ["admin", "exec"].map((p) => { const t = pageText(p); const k = unkept.find((x) => t.includes(`"${x}"`)); return k ? t.slice(Math.max(0, t.indexOf(`"${k}"`) - 200), t.indexOf(`"${k}"`) + 40) : null; })]);
+    // The judge, at the runner: a full refresh over the same stand-in data ranks the changed list to the same accounts,
+    // in order; a routine refresh after it ranks them itself, to the same accounts again.
+    const keptAfterChange = afterSel.honesty.accountSelection.lists.map((l) => l.kept);
+    const fullAfter = run("refresh", [SLUG, "--full"]);
+    const fullSnap = readSnap();
+    const routineAfter = run("refresh", [SLUG]);
+    const routineSnap = readSnap();
+    check("F-548 the list ranked from the store equals a full refresh's over the same data (the same kept accounts, in order, and the same accounts kept on the page), and a routine refresh after it ranks the list itself to the same accounts: ranked by its own pull, carried from nothing",
+      fullAfter.code === 0 && fullAfter.json.pull.mode === "full" && isDeepStrictEqual(fullSnap.honesty.accountSelection.lists.map((l) => l.kept), keptAfterChange) && isDeepStrictEqual(fullSnap.dimensions.accounts.map((a) => a.key), afterSel.dimensions.accounts.map((a) => a.key)) &&
+        routineAfter.code === 0 && routineAfter.json.pull.mode === "selective" && isDeepStrictEqual(routineSnap.honesty.accountSelection.lists.map((l) => l.kept), keptAfterChange) && routineSnap.honesty.accountSelection.lists.every((l) => l.rankedAt === routineSnap.meta.pulledAt && l.carriedFrom == null && l.notRanked == null) && stores().length === 1,
+      [fullAfter.json?.error ?? fullAfter.stderr?.slice(-300), keptAfterChange, fullSnap.honesty?.accountSelection?.lists?.map((l) => l.kept), routineSnap.honesty?.accountSelection?.lists?.map((l) => l.kept)]);
+    // MIGRATION (Bradley's contract): the latest snapshot made as 0.54.0 made it (no account store, no marker).
+    const latestPath = join(dash(), SNAPSHOTS_DIR, snapshots().at(-1));
+    const as054 = readJson(latestPath);
+    delete as054.meta.accountStore;
+    writeFileSync(latestPath, JSON.stringify(as054));
+    for (const f of stores()) rmSync(join(dash(), SNAPSHOTS_DIR, f));
+    const migReport = run("report", [SLUG]);
+    const oldChange = run("change", [SLUG, 'accounts.lists=[{"kind":"most-bounced","n":2,"floor":0}]', 'pages.0.title="Admin before the store"']);
+    const migrate = asPrinted(oldChange.json?.done?.remedy?.line ?? "");
+    const migrated = readSnap();
+    const nextRoutine = run("refresh", [SLUG]);
+    check("F-548 MIGRATION: over a snapshot made before the account store the report prices the refresh it offers as the full pull it will be, with why; a list change saves, rebuilds the other change, ranks nothing and says the lists need one full pull to start ranking on every refresh, with the plain refresh line and a full pull's minutes; that line run as printed is the full pull, said (pull.why) and priced above a routine one, exit 0, no hand step and no refusal; it writes the store and ranks the changed list; the refresh after it is selective",
+      oldChange.code === 0 && oldChange.json.done.ranked === false && oldChange.json.done.rebuilt === true && /made before the account store: the customer lists need one full pull to start ranking on every refresh/.test(oldChange.json.done.why) && /refresh acme-health --kb acme-prod$/.test(oldChange.json.done.remedy.line) && typeof oldChange.json.done.fullRefreshMinutes === "number" && pageText("admin").includes("Admin before the store") &&
+        migrate.code === 0 && migrate.json?.pull?.mode === "full" && /the customer lists need one full pull to start ranking on every refresh/.test(migrate.json.pull.why) && migrate.json.budget.planSeconds > routineAfter.json.budget.planSeconds && stores().length === 1 &&
+        isDeepStrictEqual(rk(migrated), [["most-bounced", 2, 0, 2, null]]) && nextRoutine.code === 0 && nextRoutine.json.pull.mode === "selective" &&
+        migReport.code === 0 && /start ranking on every refresh/.test(migReport.json.refreshFullOnce ?? "") && migReport.json.refreshMinutes === migReport.json.fullRefreshMinutes && typeof migReport.json.refreshMinutes === "number",
+      [oldChange.json?.done ?? oldChange.json?.error, migrate.json?.pull ?? migrate.json?.error ?? migrate.stderr?.slice(-300), migrate.json?.budget, routineAfter.json?.budget, rk(migrated)]);
     // The edit screen (F-516's closing step) says the same over a routine refresh: its consequence and its first option.
-    run("refresh", [SLUG]);
     run("new", [SLUG]);
     const detail = run("next", [SLUG, "--question", "customer-list-detail"]);
-    run("answer", [SLUG, "customer-list-detail", composeAnswer(detail.json.question.options[1], { "most-engaged": "4 1", "least-engaged": "keep", "most-bounced": "keep" })]);
+    run("answer", [SLUG, "customer-list-detail", composeAnswer(detail.json.question.options[1], { "most-bounced": "4 1" })]);
     const editClose = run("next", [SLUG]);
-    run("answer", [SLUG, "dry-run", "no"]);
+    const editPreview = run("answer", [SLUG, "dry-run", "yes"]);
+    const previewAdmin = editPreview.json?.preview?.pages?.find((p) => p.page === "admin")?.path;
+    check("F-548 the edit's preview from the last pull (no call) ranks the draft's customer lists from the store in memory: its Most bounced panel states the draft's list (4, at least 1 delivered; the saved dashboard's one list, so the question offered that list alone), as its About tab does, and the saved snapshot is not rewritten",
+      editPreview.code === 0 && editPreview.json.preview?.fromLastPull === true && !!previewAdmin && readFileSync(previewAdmin, "utf8").includes("The 4 most bounced (at least 1 delivered) across programs") && readSnap().meta.params.accounts.lists.every((l) => l.n !== 4),
+      [editPreview.json?.preview ?? editPreview.json?.error, readSnap().meta.params.accounts.lists]);
     run("answer", [SLUG, "estimate", "yes"]);
     const editDone = run("answer", [SLUG, "save", "yes"]);
-    check("F-529 the edit's closing step over a routine refresh: the ask says the pages are rebuilt and the lists ranked at the next full refresh (with its line), the first option reads 'Save and rebuild the pages now (no pull; the customer lists are ranked at the next full refresh)', and the save's done says ranked false",
-      editClose.code === 0 && /the pages are rebuilt with no pull, and the changed customer lists are ranked at the next full refresh \(`node \S+ refresh acme-health --kb acme-prod --full`\): the latest pull \([^)]+\) was a routine refresh/.test(editClose.json.closing.ask) && editClose.json.closing.options[0].text === "Save and rebuild the pages now (no pull; the customer lists are ranked at the next full refresh)" &&
-        editDone.code === 0 && editDone.json.done?.kind === "reselect" && editDone.json.done.ranked === false && editDone.json.done.rebuilt === true, [editClose.json?.closing, editDone.json?.done ?? editDone.json?.error]);
+    check("F-548 the edit's closing step over a routine refresh: the ask says the customer lists are ranked again from the account store (a rebuild, no pull), the first option reads 'Save and rank the customer lists again now (no pull)', and the save's done says ranked true",
+      editClose.code === 0 && /the customer lists are ranked again from the account store beside the last pull \(a rebuild, no pull\)/.test(editClose.json.closing.ask) && editClose.json.closing.options[0].text === "Save and rank the customer lists again now (no pull)" &&
+        editDone.code === 0 && editDone.json.done?.kind === "reselect" && editDone.json.done.ranked === true && editDone.json.done.rebuilt === true, [editClose.json?.closing, editDone.json?.done ?? editDone.json?.error]);
+    // F-530 reopened at B-V — the CLASS, not its three samples: with the lists set to one most-bounced list of 5 and no
+    // floor, every text any surface renders about the customer lists names that list alone, its 5 and its floor (the
+    // page's panel and its About tab's Pages and Accounts entries, the report, the edit's question, follow-ups and
+    // closing ask), and an edit answered keep (or default) leaves the saved lists as they were.
+    const one = run("change", [SLUG, 'accounts.lists=[{"kind":"most-bounced","n":5,"floor":0}]']);
+    const visible = (html) => html.replace(/<script[\s\S]*?<\/script>/g, "");
+    const listDds = (html) => [...visible(html).matchAll(/<dd>([^<]*customers[^<]*)<\/dd>/g)].map((m) => m[1]);
+    const panelOf = (html, id) => visible(html).split(`data-panel="${id}"`)[1]?.split("</section>")[0] ?? "";
+    const accountsDd = (html) => visible(html).match(/<dt>Accounts<\/dt>\s*<dd>([^<]*)<\/dd>/)?.[1] ?? "";
+    const admin = pageText("admin");
+    const oneReport = run("report", [SLUG]);
+    const intro = oneReport.code === 0 ? (readFileSync(oneReport.json.report, "utf8").split("## Account watch list")[1] ?? "").split("\n").find((l) => l.startsWith("Across programs")) ?? "" : "";
+    run("new", [SLUG]);
+    const oneQ = run("next", [SLUG, "--question", "customer-list-detail"]);
+    const sizes = oneQ.json?.question?.options?.find((o) => o.id.startsWith("sizes:"));
+    run("answer", [SLUG, "customer-list-detail", composeAnswer(sizes, { "most-bounced": "keep" })]);
+    const afterKeep = readJson(draftFile()).spec.accounts.lists;
+    run("answer", [SLUG, "customer-list-detail", "default"]);
+    const afterDefault = readJson(draftFile()).spec.accounts.lists;
+    run("answer", [SLUG, "customer-list-detail", composeAnswer(sizes, { "most-bounced": "6 0" })]);
+    const afterSix = readJson(draftFile()).spec.accounts.lists;
+    const oneClose = run("next", [SLUG]);
+    rmSync(draftFile(), { force: true });
+    const texts = [...listDds(admin), accountsDd(admin), intro, oneQ.json?.question?.ask ?? "", ...(sizes?.followUps ?? []).map((f) => f.ask)];
+    check("F-530 the class: one most-bounced list of 5 with no floor is the list every surface names — the About tab's three list panels (the most-bounced one 'the 5 most bounced', the other two 'no … list is kept') and its Accounts entry, the panel's note, the report's intro (its one reading, no low-cadence sentence), the edit's question and its one follow-up — and no list text says 25 or names another list; keep and default leave the saved list as it was, '6 0' changes it alone, and the closing ask counts one setting",
+      one.code === 0 && one.json.done?.ranked === true && listDds(admin).length === 3 && listDds(admin).some((t) => /Most bounced customers.*the 5 most bounced, as the pull ranked it\./.test(t)) && listDds(admin).filter((t) => /no most engaged list is kept|no least engaged list is kept/.test(t)).length === 2 &&
+        /the 5 most bounced/.test(accountsDd(admin)) && !/most engaged|least engaged/.test(accountsDd(admin)) && panelOf(admin, "most-bounced").includes("The 5 most bounced across programs over the whole window") &&
+        /kept: the 5 most bounced\. Possible bad contacts: never a verdict on a customer\.$/.test(intro) &&
+        /This dashboard makes 1 list across programs: the 5 most bounced\./.test(oneQ.json?.question?.ask ?? "") && oneQ.json.question.options[0].text === "Keep the lists as they are (the default)" && isDeepStrictEqual(sizes?.followUps?.map((f) => f.key), ["most-bounced"]) &&
+        texts.every((t) => !/\b25\b/.test(t)) &&
+        isDeepStrictEqual(afterKeep, [{ kind: "most-bounced", n: 5, floor: 0 }]) && isDeepStrictEqual(afterDefault, [{ kind: "most-bounced", n: 5, floor: 0 }]) && isDeepStrictEqual(afterSix, [{ kind: "most-bounced", n: 6, floor: 0 }]) &&
+        /changes 1 setting \(accounts\.lists\[\]\)/.test(oneClose.json?.closing?.ask ?? ""),
+      [one.json?.done ?? one.json?.error, listDds(admin), accountsDd(admin), intro, oneQ.json?.question?.ask, afterKeep, afterDefault, afterSix, oneClose.json?.closing?.ask?.slice(0, 200)]);
+    // The tester's role-inverted line (F-530, B-V re-verification, N4; Bradley's ruling): the edit question's low-cadence
+    // sentence is said only beside a least-engaged list, the rule the report's intro follows. Held both ways here (the
+    // tester noted no suite asserted it); the builder's confirm.
+    const LOW = "On a program that sends about once per contact, a least-engaged list uses at least 3 delivered and no open instead of its floor.";
+    const detailAsk = (lists) => askText(q("customer-list-detail"), { ...PLAN_CTX, spec: { ...PLAN_CTX.spec, accounts: { ...PLAN_CTX.spec.accounts, lists } } });
+    check("F-530 (the tester's role-inverted line, confirmed by the builder): the edit question's low-cadence sentence is said beside a least-engaged list and only there — absent over one most-bounced list, present over a most-bounced and a least-engaged list; the default lists keep the ruled wording",
+      !detailAsk([{ kind: "most-bounced", n: 5, floor: 0 }]).includes(LOW) && detailAsk([{ kind: "most-bounced", n: 5, floor: 0 }, { kind: "least-engaged", n: 10, floor: 5 }]).includes(LOW) && askText(q("customer-list-detail"), PLAN_CTX) === RULED["customer-list-detail"],
+      [detailAsk([{ kind: "most-bounced", n: 5, floor: 0 }]), detailAsk([{ kind: "most-bounced", n: 5, floor: 0 }, { kind: "least-engaged", n: 10, floor: 5 }])]);
     // F-544: snapshots are ordered by the instant their pull time parses to, never by the name. A pull an hour LATER
     // named EARLIER (the clock moved back: its local time with the offset dropped sorts first), and a same-second pair
     // whose collision suffix sorts before the plain name: the latest is the newest instant; retention trims the oldest.
