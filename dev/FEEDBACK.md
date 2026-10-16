@@ -155,6 +155,8 @@ Blind spots (hb-20261016-02): 2026-10-16 (tester) — F-546's killed writer was 
 Blind spots (hb-20261015-10): 2026-10-16 (tester) — F-546's lock never met a second writer live: the production KB is current (both R2 plans: 0 programs behind, 0 undocumented, 0 templates), so neither refresh re-documented and the manifest stayed byte-equal — the lock is measured by test/manifest-ops.mjs alone; the natural live arm is any later refresh whose plan finds programs behind. F-541, F-542 and F-545 are judged by the suite alone (no tenant can produce their states, VALIDATION § R13 R3). F-536's three shells: Git Bash and Windows PowerShell 5.1 ran the line through the session's own shell tools, cmd from a .bat file run by `cmd /d /c` — none was a human paste into a terminal window. The guard ask's rendering is Bradley's report; prompts are invisible to the session.
 
 
+<!-- builder 2026-10-16 (after the 0.56.2 close-out: the R14 tester's three report-only notes LOGGED as polish on Bradley's word ("log them as polish") — F-556 (the absolute doc_path from the dashboard's re-documentation), F-557 (a lock left at release goes unsaid), F-558 (the no-snapshot refusal before the lock's on a first refresh); OPEN, to ride the next substantive round's handoff; the R13 round's four carried notes stay unlogged; numbers F-556, F-557, F-558 claimed; next free F-559): -->
+
 <!-- builder 2026-10-16 ([v]0.56.2 RELEASED — post-release housekeeping; next free F-556):
      Payload: the file lock that never loses a holder, the customer lists ranked on every refresh from an account store with every surface
        describing what is shown, the CLI pin 1.0.12 with the doctrine version-conditional for 1.0.11 and later, and every printed change line
