@@ -3084,3 +3084,59 @@ Severity: normal — with customer lists on, list membership is frozen at the la
 What: Class, in one sentence: the cross-program lists are ranked only from data a full pull holds and the snapshot then folds away. A full pull reads every account's figures for every month, ranks, and keeps per-account rows only for the kept (listed, pinned) accounts; every other account's months become one "all other accounts" row per program and month. A selective refresh re-reads every account for the months it pulls (account units are planned per program per pulled month for all accounts), but the older months of the non-kept accounts are gone, so it cannot rank and carries the last full ranking (F-521, by design: rankedAt and carriedFrom say so). F-529's reselect is the same limit met at edit time.
 Expected: the snapshot (or a sidecar beside the pages, never embedded in a page) keeps compact per-account totals by program and month for every account, so every refresh re-ranks exactly: stored months plus pulled months give the full pull's ranking (the judge: over unchanged data, a selective refresh's lists equal a full pull's, kind, n, floor, per, segment, kept, in order); a list change re-ranks from the store at no pull; the low-cadence quiet rule (per program) and per-segment lists (company fields for newly listed accounts) are kept. Contract: a 0.54.0 snapshot without the store is detected and the next refresh goes full, priced and said, with no hand step and no refusal. The store's size is measured on the kept dashboard's run directories before building, and the design stops if it is prohibitive.
 Defer: 2026-10-15 (Bradley, R12 release gate) - past 0.54.0. Why not now: shipping 0.54.0 sooner is worth more than current membership on routine refreshes — a day-1 adopter's build is a full pull, most will not refresh for a month, the staleness is dated on the page and stated in the release notes, and the cost of waiting is one extra full refresh after session B. Reopen: session B, the fast follow after the 0.54.0 release (with F-530 and F-529's root).
+
+## F-549 — OPEN
+Reported: 2026-10-15 (carried from gs-fortress ledger/reports/audit-1.0.12.md §1.12,
+§1.15, §1.16 and §1.18 by the watch's kickoffs step; DECOUPLED from the adopt decision
+per that audit's §5; this emission supersedes the 1.0.11 audit's, which was never
+pasted)
+Severity: normal — shipped behaviour is wrong for a user whose installed CLI is 1.0.11
+or 1.0.12 (the same dist; 1.0.12 is npm latest since 2026-10-15): the operating model
+and the setup scope notes tell the agent that jo email templates cannot see nested
+subfolders and that sc measures --id fails for an unknown cause, and the engagement
+adapter files 1.0.11's named field refusals as not-found, all on the strength of 1.0.10
+behaviour that 1.0.11 changed
+What: CLI 1.0.11 changes no command or payload shape the plugin reads (measured at dev
+efe5caf and at the shipped [v]0.54.0 alike), and 1.0.12 is 1.0.11's dist with one
+dependency pin moved; but 1.0.11 fixes several defects the plugin documents as
+standing. sc measures --id: its two concurrent first requests each built a token store
+and the second missed the OS keychain; 1.0.11 shares one load and one store, so --id
+works (gs-fortress KI-028, resolved statically). jo email templates: the handler now
+recurses into child folders instead of emitting them as field-less rows (KI-003, live
+confirmation pending). Error exits: the shared handler, the runtime envelope printer and
+the version gate no longer call process.exit(), upstream's account of the libuv
+UV_HANDLE_CLOSING abort (KI-017, live confirmation pending). rp run: unknown fields and
+filter fields, JSON and rich-text fields where the server cannot use them, aggregations
+nested in formulas and an aggregate of a grouped field are refused by name before any
+request, and the LOOKUP auto-join now joins the lookup object's key. The doctrine sites:
+templates/operating-model.md (the sc measures --id entry and the General rule; the libuv
+entry; the jo email templates sentences of the scope-filter entry),
+skills/setup/references/document-domain-notes.md (Scorecard exception),
+skills/setup/references/index-scope-notes.md (journey email templates), and
+scripts/engagement.mjs (header facts; classifyFailure's not-found pattern, which also
+matches 1.0.11's 'Field "X" not found on <object>' refusal) with test/engagement.mjs's
+LEDGER facts 3, 7 and 9. The adapter's one-at-a-time rule is NOT retired: it is a
+cross-process observation and KI-028's fix is in-process. Nothing breaks - validateQuery
+already refuses every shape 1.0.11 newly refuses, and the 0.54.0 engagement families and
+the native-report payload send none of them - and every current sentence stays right for
+1.0.10 users, so the repair is version-conditional ("1.0.11 and later"), never a
+replacement. Session B (F-548, F-530) edits scripts/engagement.mjs too: order the two
+branches here.
+Repro (no tenant needed): read the scope note's "flattens one level of the folder tree"
+beside the 1.0.11 listEmailTemplates recursion quoted in the audit's §0; feed
+classifyFailure the stderr 'Error: Field "Nmae" not found on email_log_v2.' and observe
+"not-found".
+Expected: CP-2 (sc measures --id version-conditional, cause named), CP-3 (libuv and
+nested-folder sentences scoped to 1.0.10 and earlier, workarounds kept, the ### heading
+untouched), CP-4 (engagement facts version-stamped, guards and the sequential rule kept,
+the field refusal not retried as not-found), CP-5 (bump + CHANGELOG); CP-6's live checks
+banked in dev/VALIDATION.md on the same branch, on a 1.0.11-or-later CLI. Lock: a mutant
+that restores the not-found classification of a field refusal must produce a COUNTED,
+REPORTED miss in the engagement suite.
+Not in scope: adopting 1.0.12 (catalog regen, version prose, the three check-stale-facts
+fact-carrier stamps in plugins/gs-superadmin/scripts/doc-lib.mjs, and CLI_PIN_FACTS'
+journey:email:templates entry - the gated session E2 in gs-fortress
+ledger/reports/build-kickoffs-1.0.12.md, on Bradley's clock). Also not in scope: removing
+any validateQuery guard or the one-at-a-time rule.
+Plan: gs-fortress ledger/reports/build-kickoffs-1.0.12.md, session E1 (CP-2, CP-3, CP-4,
+CP-5) + V1 (CP-6).
