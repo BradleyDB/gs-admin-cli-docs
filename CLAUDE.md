@@ -143,7 +143,12 @@ in this repo must not get wrong:
   with a draft PR to `dev` from day one) never bumps while it lives; it bumps, with its
   CHANGELOG entry, at landing — right after `dev-utils catch-up --landing` and before its
   merge commit — so by the time a release branch is cut the bump is on `dev` as the rule
-  says. Do not improvise a release from this file: the bullets
+  says. Such a branch is named `feat/<topic>`, which puts it under the `feat/**` ruleset
+  (no force-push, no delete: after landing the maintainer deletes it from the GitHub UI,
+  never `gh pr merge --delete-branch`), and its day one is first commit (the
+  `## Unreleased` CHANGELOG draft), then push, then the draft PR — a PR with no commit
+  behind it is refused. CONTRIBUTING "Submitting changes" is the rule of record for
+  all of this. Do not improvise a release from this file: the bullets
   here are invariants, not a runbook, and the rest of the ceremony lives in the
   maintainer's release procedure. If you are contributing a change, open a PR to `dev`
   and stop there.

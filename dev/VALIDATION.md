@@ -3723,15 +3723,20 @@ it, fixed on a short branch before the first real long branch opens. Record the 
 minted, each verb's output, and each CI run id with its conclusion.
 
 Steps:
-1. `git worktree add <a path outside PROJECTS_ROOT/*> -b feat/rehearsal dev`; push;
+1. `git worktree add <a path outside PROJECTS_ROOT/*> -b feat/rehearsal dev`; the FIRST
+   COMMIT, before any push: the CHANGELOG's `## Unreleased` heading above the newest
+   entry with one body line (CONTRIBUTING "Submitting changes", the day-one order fixed by
+   F-560 — GitHub refuses a PR between two branches with no commit between them); push;
    `gh pr create --draft --base dev`; the ONE pointer comment on dev (branch, draft PR
-   number, worktree path) pushed to dev — AGENTS.md's long-branch pointer, as written.
+   number, worktree spelled `<PROJECTS_ROOT>\..\worktrees\<name>` — never its real path,
+   which check-instance-data refuses at push, F-561) pushed to dev — AGENTS.md's
+   long-branch pointer, as written.
 2. In the worktree: `dev-utils log "rehearsal: a finding of the throwaway branch"
    --severity polish --why "rehearsal, never to land" --commit`. EXPECTED: F-559 (above
    dev's F-556..F-558 sections). Record the number.
-3. Commit a CHANGELOG draft: an `## Unreleased` heading above the newest entry with one
-   body line; push; `node build/check-doc-drift.mjs` in the worktree, then the draft PR's
-   docs-drift run. EXPECTED: check 7 green both places (plugin.json still 0.56.2).
+3. The CHANGELOG draft is step 1's first commit (since F-560; before it this step made the
+   commit); here run `node build/check-doc-drift.mjs` in the worktree, then read the draft
+   PR's docs-drift run. EXPECTED: check 7 green both places (plugin.json still 0.56.2).
 4. `dev-utils catch-up` in the worktree (dev holds step 1's pointer commit, so there is
    something to merge); push. EXPECTED: one merge commit; the branch's Under test, Blind
    spots lines and canary unchanged; `dev-utils status` shows `branch gate:` and
