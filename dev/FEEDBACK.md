@@ -40,9 +40,10 @@ dev/FEEDBACK-archive.md after each release (last move: 2026-10-16, after release
 F-414..F-447 with their round blocks; the 0.36.3 move took F-410..F-413; the 0.36.2 move took F-390, F-391,
 F-396..F-409; the 0.36.1 move took F-387..F-389 and F-392..F-395;
 the 0.35.4 move took F-360..F-386, the 0.35.0 move F-357..F-359, the 0.34.3 move F-224..F-356
-and the older comment history; the sections a verdict cites may therefore live in the archive). The NEXT FREE NUMBER is the max
-across BOTH files' '^## F-' section headers plus the numbers claimed in header
-comments — a bus with zero live sections does not restart at F-001.
+and the older comment history; the sections a verdict cites may therefore live in the archive). The NEXT FREE NUMBER is what
+`dev-utils log` mints: the max across BOTH files' '^## F-' section headers on every ref
+and in every worktree, after a fetch (header-comment claims are not read, 2026-10-17) — a
+bus with zero live sections does not restart at F-001.
 Seed note (2026-09-09): this bus was seeded EMPTY from the private predecessor repo; its
 archive, which ended at F-447, is not carried, so dev/FEEDBACK-archive.md began fresh at the 0.42.0 move (F-448..F-460)
 and the NEXT FREE NUMBER is F-448 — numbering continues rather than restarting, so new
@@ -59,14 +60,17 @@ full run inside one token lifetime (help wanted). Closed since (hint updated 202
 corroborate-live caveat (re-homed from F-465, which closed on the bus as WONTFIX with a
 Re-homed: line — the bus has no status for a move), by #31 (7a75662, plugin 0.43.1), its
 live walk banked in dev/VALIDATION.md.
-Round-assessment hint (F-161, extended by F-223): ANY status transition — a fix, a
-verdict, a WONTFIX, a flip back to OPEN — may ride an UNMERGED PR. Assess a round with
-`gh pr list` as well as the dev log. The role landing a transition on an unmerged
-branch says so in a bus comment ON DEV (branch + PR number), not only in the entry's
-note on that branch, and RE-STAMPS that comment whenever the branch's statuses change.
-The same comment claims any finding NUMBER the branch consumes, at logging time — and
-a session picking a next number takes the max across both '^## F-' section headers and
-header-comment claims, after a fresh pull. Rule of record: AGENTS.md § Review-gate rules.
+Round-assessment hint (F-161, extended by F-223; reconciled for long-lived branches
+2026-10-17): ANY status transition — a fix, a verdict, a WONTFIX, a flip back to OPEN —
+may ride an UNMERGED PR. Assess a round with `gh pr list` as well as the dev log. On a
+short branch the role landing a transition says so in a bus comment ON DEV (branch + PR
+number), not only in the entry's note on that branch, and RE-STAMPS that comment whenever
+the branch's statuses change. A long-lived branch owes ONE pointer (branch, draft PR,
+worktree) when it opens, re-stamped at landing; the draft PR and the branch's own bus
+carry the rounds between. A finding NUMBER is claimed by its committed '^## F-' section,
+never by a comment: `dev-utils log` numbers above every ref's bus and archive and every
+worktree, and reads no header comment — a session picking a next number fetches first
+and runs `dev-utils log`. Rule of record: AGENTS.md § Review-gate rules.
 CI-dispatch hint (CI-cost round 2026-08-27; the repo has been PUBLIC since 2026-09-09, so
 Actions minutes are free — the discipline stands because the 3-OS matrix is slow and its
 signal is per handoff, not per edit): the local verbatim battery is the mid-wave evidence, NOT CI.
