@@ -160,6 +160,24 @@ Blind spots (hb-20261016-02): 2026-10-16 (tester) — F-546's killed writer was 
 Blind spots (hb-20261015-10): 2026-10-16 (tester) — F-546's lock never met a second writer live: the production KB is current (both R2 plans: 0 programs behind, 0 undocumented, 0 templates), so neither refresh re-documented and the manifest stayed byte-equal — the lock is measured by test/manifest-ops.mjs alone; the natural live arm is any later refresh whose plan finds programs behind. F-541, F-542 and F-545 are judged by the suite alone (no tenant can produce their states, VALIDATION § R13 R3). F-536's three shells: Git Bash and Windows PowerShell 5.1 ran the line through the session's own shell tools, cmd from a .bat file run by `cmd /d /c` — none was a human paste into a terminal window. The guard ask's rendering is Bradley's report; prompts are invisible to the session.
 
 
+<!-- builder 2026-10-17 (LB-1 rehearsal findings HANDED OFF — UNMERGED, riding docs/lb1-rehearsal-findings (PR #65 to dev, open); token hb-20261017-02 on that branch's bus and canary — the same string the rehearsal's feat/rehearsal handoff minted, re-issued because that branch's deletion dropped its handoff commit from the ledger; the tester's "@ hb-20261017-02" below names the rehearsal, this line names PR #65):
+     On that branch F-560, F-561, F-562 are OPEN -> FIXED (builder, docs only): CONTRIBUTING "Submitting changes" gives
+       a long branch's day-one order (branch in its own worktree, FIRST COMMIT = the CHANGELOG ## Unreleased draft,
+       push, then the draft PR) and names the feat/<topic> prefix and ruleset 25315908 (force-push + delete refused;
+       merge with gh pr merge --merge alone; the maintainer deletes the landed branch from the GitHub UI); CLAUDE.md
+       carries the paraphrase + pointer; AGENTS.md's F-161/F-223 bullet spells the pointer's worktree relative to
+       PROJECTS_ROOT or by folder name, never its real path; VALIDATION LB-1 steps 1 and 3 and this header's
+       round-assessment hint follow. Class on all three: a long-branch rule stated without the step that makes it
+       runnable. The /dev-loop skill's own item 2 is upstream (superfriends), not patched here — noted for its
+       maintainer in the session group's side notes.
+     Judge (each Fix note): the first real long branch's day one, pointer push and cleanup, run from the texts as
+       written — or an LB-1 step 1 re-run on a throwaway branch.
+     Ordering: no unreliable manual step was retired this round; the three were worked together as one docs batch.
+     Carried: F-556, F-557, F-558 OPEN polish — in scope at kickoff, left for the next substantive plugin round
+       (this round is docs-only, no plugin bytes). Open PRs to dev at kickoff: none; at close-out: #65 (this one).
+     Gates on the branch tip: check-doc-drift, check-stale-facts, check-instance-data, test-check-doc-drift 210/210,
+       all green. Numbers: none claimed. Next free number: F-563. Released: nothing; plugin 0.56.2 untouched. -->
+
 <!-- tester 2026-10-17 (LB-1 rehearsal VERDICT — NOT CLEARED @ hb-20261017-02 (the branch's token), the verdict round for hb-20261017-01; re-stamps the pointer below: feat/rehearsal's draft PR #64 CLOSED unmerged ("LB-1 rehearsal — never to merge"), its worktree removed, the local branch deleted, the remote delete REFUSED by ruleset 25315908 as banked — owed: Bradley deletes feat/rehearsal in the GitHub UI):
      Findings: F-560, F-561, F-562 (normal, OPEN) — the round's output; they gate the first real long branch, not a
        release. F-560: the day-one draft PR is refused on a branch with no commit, and no text names a first commit.
