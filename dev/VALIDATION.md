@@ -3802,3 +3802,9 @@ worktree in a worktrees folder beside PROJECTS_ROOT (removed).
    contributor doc). Owed: Bradley deletes feat/rehearsal in the GitHub UI. F-559 is NOT free again yet:
    origin/feat/rehearsal still holds it, so `dev-utils log` on dev minted F-560..F-562 (a measured confirmation that
    numbering reads remote-tracking refs). F-559 stays a gap on dev, a never-landed rehearsal number. Next free F-563.
+
+Step 8 close 2026-10-17 (tester): Bradley deleted feat/rehearsal ("branch is gone and ruleset is active again").
+Ruleset 25315908's history shows the path: disabled at 12:57:15 -07:00 (version 53640136), active again at 12:57:43
+(version 53640166), no bypass actor at any version, so the delete needed the ruleset off for about 28 s. Recorded on
+F-562. `git fetch --prune` dropped origin/feat/rehearsal. F-559 is now held by no ref and stays a gap on dev (F-560..F-562
+were minted while the branch still existed). Next free F-563. Teardown complete.
