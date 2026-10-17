@@ -162,6 +162,20 @@ Blind spots (hb-20261016-02): 2026-10-16 (tester) — F-546's killed writer was 
 Blind spots (hb-20261015-10): 2026-10-16 (tester) — F-546's lock never met a second writer live: the production KB is current (both R2 plans: 0 programs behind, 0 undocumented, 0 templates), so neither refresh re-documented and the manifest stayed byte-equal — the lock is measured by test/manifest-ops.mjs alone; the natural live arm is any later refresh whose plan finds programs behind. F-541, F-542 and F-545 are judged by the suite alone (no tenant can produce their states, VALIDATION § R13 R3). F-536's three shells: Git Bash and Windows PowerShell 5.1 ran the line through the session's own shell tools, cmd from a .bat file run by `cmd /d /c` — none was a human paste into a terminal window. The guard ask's rendering is Bradley's report; prompts are invisible to the session.
 
 
+<!-- tester 2026-10-17 (VERDICT @ hb-20261017-03 — F-560, F-561, F-562 FIXED -> VERIFIED, a re-verification round on dev (checkout on dev at 36f551a + this round's commits); re-stamps the feat/rehearsal-2 pointer below: draft PR #66 CLOSED unmerged ("verdict-round rehearsal — never to merge"), its worktree removed, the local branch deleted, the remote delete REFUSED by ruleset 25315908 as CONTRIBUTING names — owed: Bradley deletes feat/rehearsal-2 in the GitHub UI):
+     Pass bar, stated before measuring: each finding's Repro plus the property its Fix note claims, measured by doing.
+     F-560: CONTRIBUTING "Submitting changes" day-one order followed as written (first commit 26b3a99 = the CHANGELOG
+       ## Unreleased draft, push, gh pr create --draft --base dev) -> draft PR #66 on the first try, no refusal.
+     F-561: this round's pointer below, worktree spelled per AGENTS.md's F-161/F-223 bullet, pushed through the
+       pre-push check-instance-data gate on the first try (693ab87).
+     F-562: CONTRIBUTING + CLAUDE.md name feat/<topic> and the ruleset's refusals; git push origin --delete
+       feat/rehearsal-2 REFUSED "GH013 ... Cannot delete this branch", the refusal the text names. The force-push
+       refusal is read, not exercised.
+     Walk: Walk (hb-20261017-03) recorded (tester). Under test + canary on dev unchanged (docs/lb1-rehearsal-findings
+       · hb-20261017-03) until dev's next handoff.
+     Carried: F-556, F-557, F-558 OPEN polish. Numbers: none claimed. Next free number: F-563. Released: nothing;
+       plugin 0.56.2 untouched. -->
+
 <!-- tester 2026-10-17 (long-lived branch OPENED — feat/rehearsal-2, draft PR #66 to dev, worktree <PROJECTS_ROOT>\..\worktrees\rehearsal-2 (spelled per AGENTS.md § Review-gate rules, the F-161/F-223 bullet); the verdict round for hb-20261017-03 (F-560, F-561, F-562) — a throwaway branch, never to merge, closed at the end of the round; this is the branch's one pointer, re-stamped at its end; no number claimed; next free F-563): -->
 
 <!-- builder 2026-10-17 (LB-1 rehearsal findings MERGED — PR #65 MERGED to dev by Bradley at 780ea00, a merge commit (2 parents; the handoff ledger keeps 0276bec `handoff hb-20261017-03 (docs/lb1-rehearsal-findings)`); branch deleted local + remote; checkout on dev; re-stamps the handed-off comment below):
