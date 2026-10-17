@@ -659,8 +659,15 @@ function load({ mustExist = true, lock = true } = {}) {
 const MANIFEST_LOCK_STALE_MS = 10 * 60 * 1000;
 const lockWaitSeconds = Number(opt("--lock-wait-seconds") ?? 30);
 if (!Number.isFinite(lockWaitSeconds) || lockWaitSeconds < 0) fail("--lock-wait-seconds must be a number of seconds (0 waits not at all)");
-/** @type {?{ release: () => void }} */
+/** @type {?{ release: () => ?{ path: string, why: string } }} */
 let manifestLock = null;
+/**
+ * A release that could not remove the lock is said on stderr (F-557), never swallowed: the next writer takes it over
+ * on its own once this process is gone. @param {?{ path: string, why: string }} left
+ */
+const sayLockLeft = (left) => {
+  if (left) process.stderr.write(`the manifest lock could not be removed (${left.why}) and was left at ${left.path}: the next writer takes it over on its own once this process is gone — nothing to do\n`);
+};
 function takeManifestLock() {
   if (manifestLock) return;
   const lock = acquireFileLock(`${manifestPath}.lock`, { owner: { verb }, staleMs: MANIFEST_LOCK_STALE_MS, waitMs: lockWaitSeconds * 1000 });
@@ -672,7 +679,7 @@ function takeManifestLock() {
     );
   }
   manifestLock = lock;
-  const release = () => { if (manifestLock) manifestLock.release(); manifestLock = null; };
+  const release = () => { if (manifestLock) sayLockLeft(manifestLock.release()); manifestLock = null; };
   process.on("exit", release);
   // An interrupt skips the exit event: the lock is released on the way out, with the signal's exit code.
   process.on("SIGINT", () => { release(); process.exit(130); });
@@ -685,7 +692,7 @@ function save(m) {
   // window used to abort a batch's mark loop mid-run): doc-lib's single copy,
   // shared with the orphan list below and every other integrity-owning writer
   writeFileAtomicSync(manifestPath, JSON.stringify(m, null, 2) + "\n");
-  if (manifestLock) { manifestLock.release(); manifestLock = null; }
+  if (manifestLock) { sayLockLeft(manifestLock.release()); manifestLock = null; }
 }
 
 // get / findItems live in doc-lib (getPath / findItemsArray — F-108): the
