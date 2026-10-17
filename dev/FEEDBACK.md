@@ -161,6 +161,26 @@ Blind spots (hb-20261015-10): 2026-10-16 (tester) — F-546's lock never met a s
 
 <!-- builder 2026-10-17 (F-556, F-557, F-558 WRITTEN as `## F-` sections at the bottom, OPEN polish, from the R14 tester's report-only notes (1)-(3) on the Walk (hb-20261016-02) line in dev/FEEDBACK-archive.md's Walks block — the 2026-10-16 claim below had no sections; the precondition the long-branch prep comment names for VALIDATION § LB-1 is met; no other number claimed; next free F-559): -->
 
+<!-- builder 2026-10-17 (long-branch prep CLOSED — PR #63 MERGED to dev by Bradley at e28bb29, a merge commit (2 parents; the handoff ledger keeps 1c719d9 `handoff hb-20261017-01 (docs/long-lived-branch-prep)`); branch deleted local + remote; checkout back on dev):
+     Now on dev: the long-lived-branch rules in CONTRIBUTING "Submitting changes" (draft PR from day one, catch-up never
+       rebase, merge commit after `dev-utils catch-up --landing`), the bump-at-landing wording there and in CLAUDE.md,
+       check 7's `## Unreleased` convention (comment + two test-check-doc-drift cases), the reconciled AGENTS.md pointer
+       bullet (one pointer per long branch; numbers claimed by sections only), this header's matching hints, and
+       dev/VALIDATION.md § LB-1.
+     Dispatch evidence (F-340), the push-event runs on dev at e28bb29, QUOTED after completion:
+         docs-drift 39061391589: drift (full) success
+         validate-plugin 39061391601: changes success / manifests success / validate (ubuntu-latest) success
+     Verdict: none yet — this round's verdict round is the LB-1 rehearsal (VALIDATION § LB-1), run by a tester session
+       on a throwaway feat/rehearsal branch by the landed docs as written; its precondition is MET: F-556, F-557,
+       F-558 are sections on dev since a4a1362 (dev-utils status reads 3 OPEN polish; a throwaway log probe minted
+       F-559). Until that round records its Walk (hb-20261017-01) line, `catch-up --landing` on any long branch
+       refuses — the rehearsal is where that refusal is met and closed.
+     Under test + canary: still docs/long-lived-branch-prep · hb-20261017-01 on dev, by design (skill § Long-lived
+       branches item 9: the landed round's token stays until dev's next handoff; the canary matches).
+     Carried: F-556..F-558 OPEN polish, to ride the next substantive round. Proposed, awaiting Bradley: the feat/**
+       ruleset (deletion + non_fast_forward); if created before LB-1 runs, its step 8 meets the deletion block.
+     Numbers: none claimed. Next free number: F-559 (what `dev-utils log` mints). Released: nothing; dev stages nothing. -->
+
 <!-- builder 2026-10-17 (long-branch prep HANDED OFF — UNMERGED, riding docs/long-lived-branch-prep (PR #63 to dev, open); token hb-20261017-01 on that branch's bus and canary):
      Payload (docs, a checker comment, two test cases; no plugin bytes, no bump): CONTRIBUTING "Submitting changes" —
        work taking more than one round may live on a long-lived branch off dev with a draft PR to dev from day one,
