@@ -395,7 +395,13 @@ npm run build   # only when build/ scripts or the catalog changed (needs the pin
   the F-161 hazard reproduced one transition later.) A **long-lived branch** (more than
   one round; the /dev-loop skill's "Long-lived branches") owes **one pointer, not one
   per transition**: a bus comment on dev when it opens — branch, draft PR number,
-  worktree — re-stamped at landing. Between those, the draft PR is the visibility
+  worktree — re-stamped at landing. The worktree is spelled relative to the projects
+  root, `<PROJECTS_ROOT>\..\worktrees\<name>` (the skill puts a long branch's worktree in a
+  folder beside PROJECTS_ROOT, outside the repos it globs), or by its folder name alone
+  — never as its real machine path: the pre-push check-instance-data gate ("Data
+  hygiene"; every ref) refuses a local user path in bus prose, so a pointer carrying the
+  real path does not push (F-561, measured 2026-10-17). Between those, the draft PR is
+  the visibility
   (`gh pr list --base dev` names it every round) and the branch's own bus carries its
   transitions; the F-223 hazard cannot reproduce there, because a long branch flips only
   its own findings and `dev` holds no section for a pointer to lag behind. **A finding
