@@ -139,7 +139,11 @@ in this repo must not get wrong:
   `dev-canary` provenance skill); `node build/dev-only.mjs` prints it, from dev's bus on
   a tree the strip already ran on. Never merge `main` back into `dev`. **Review and the
   version bump (with its CHANGELOG entry) happen on `dev` before that branch is cut** —
-  never on the release branch. Do not improvise a release from this file: the bullets
+  never on the release branch. A long-lived branch (work spanning more than one round,
+  with a draft PR to `dev` from day one) never bumps while it lives; it bumps, with its
+  CHANGELOG entry, at landing — right after `dev-utils catch-up --landing` and before its
+  merge commit — so by the time a release branch is cut the bump is on `dev` as the rule
+  says. Do not improvise a release from this file: the bullets
   here are invariants, not a runbook, and the rest of the ceremony lives in the
   maintainer's release procedure. If you are contributing a change, open a PR to `dev`
   and stop there.

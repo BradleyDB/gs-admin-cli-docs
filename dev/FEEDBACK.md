@@ -40,9 +40,10 @@ dev/FEEDBACK-archive.md after each release (last move: 2026-10-16, after release
 F-414..F-447 with their round blocks; the 0.36.3 move took F-410..F-413; the 0.36.2 move took F-390, F-391,
 F-396..F-409; the 0.36.1 move took F-387..F-389 and F-392..F-395;
 the 0.35.4 move took F-360..F-386, the 0.35.0 move F-357..F-359, the 0.34.3 move F-224..F-356
-and the older comment history; the sections a verdict cites may therefore live in the archive). The NEXT FREE NUMBER is the max
-across BOTH files' '^## F-' section headers plus the numbers claimed in header
-comments — a bus with zero live sections does not restart at F-001.
+and the older comment history; the sections a verdict cites may therefore live in the archive). The NEXT FREE NUMBER is what
+`dev-utils log` mints: the max across BOTH files' '^## F-' section headers on every ref
+and in every worktree, after a fetch (header-comment claims are not read, 2026-10-17) — a
+bus with zero live sections does not restart at F-001.
 Seed note (2026-09-09): this bus was seeded EMPTY from the private predecessor repo; its
 archive, which ended at F-447, is not carried, so dev/FEEDBACK-archive.md began fresh at the 0.42.0 move (F-448..F-460)
 and the NEXT FREE NUMBER is F-448 — numbering continues rather than restarting, so new
@@ -59,14 +60,17 @@ full run inside one token lifetime (help wanted). Closed since (hint updated 202
 corroborate-live caveat (re-homed from F-465, which closed on the bus as WONTFIX with a
 Re-homed: line — the bus has no status for a move), by #31 (7a75662, plugin 0.43.1), its
 live walk banked in dev/VALIDATION.md.
-Round-assessment hint (F-161, extended by F-223): ANY status transition — a fix, a
-verdict, a WONTFIX, a flip back to OPEN — may ride an UNMERGED PR. Assess a round with
-`gh pr list` as well as the dev log. The role landing a transition on an unmerged
-branch says so in a bus comment ON DEV (branch + PR number), not only in the entry's
-note on that branch, and RE-STAMPS that comment whenever the branch's statuses change.
-The same comment claims any finding NUMBER the branch consumes, at logging time — and
-a session picking a next number takes the max across both '^## F-' section headers and
-header-comment claims, after a fresh pull. Rule of record: AGENTS.md § Review-gate rules.
+Round-assessment hint (F-161, extended by F-223; reconciled for long-lived branches
+2026-10-17): ANY status transition — a fix, a verdict, a WONTFIX, a flip back to OPEN —
+may ride an UNMERGED PR. Assess a round with `gh pr list` as well as the dev log. On a
+short branch the role landing a transition says so in a bus comment ON DEV (branch + PR
+number), not only in the entry's note on that branch, and RE-STAMPS that comment whenever
+the branch's statuses change. A long-lived branch owes ONE pointer (branch, draft PR,
+worktree) when it opens, re-stamped at landing; the draft PR and the branch's own bus
+carry the rounds between. A finding NUMBER is claimed by its committed '^## F-' section,
+never by a comment: `dev-utils log` numbers above every ref's bus and archive and every
+worktree, and reads no header comment — a session picking a next number fetches first
+and runs `dev-utils log`. Rule of record: AGENTS.md § Review-gate rules.
 CI-dispatch hint (CI-cost round 2026-08-27; the repo has been PUBLIC since 2026-09-09, so
 Actions minutes are free — the discipline stands because the 3-OS matrix is slow and its
 signal is per handoff, not per edit): the local verbatim battery is the mid-wave evidence, NOT CI.
@@ -149,8 +153,8 @@ what the gate counts (F-444). The gate refuses both. Sections from F-360 on; the
 rule also reads the archive.
 
 
-Under test: dev · hb-20261016-04 · 2026-10-16
-Blind spots (hb-20261016-04): a post-release re-stamp after 0.56.2 (main at 25b9997, tag pushed, release published), not a round: nothing is under test; the bus holds no live section; dev stages nothing
+Under test: docs/long-lived-branch-prep · hb-20261017-01 · 2026-10-17
+Blind spots (hb-20261017-01): no long-lived branch exists yet, so the rules written this round were not exercised end to end: no draft PR, catch-up --landing, Unreleased-heading landing commit or one-pointer comment ran on a real branch; dev-utils log's section-only numbering was measured once, in a throwaway worktree on this machine (F-556 minted under the comment claiming it), never against a second machine's unfetched branch; the feat/** ruleset is proposed, not created; the full battery's verdict is quoted in the handoff note after it finishes, not here
 Blind spots (hb-20261016-02): 2026-10-16 (tester) — F-546's killed writer was never caught live inside a mark (two kills, a 2 ms poll, both after the release): the dead-pid lock was laid by hand in a killed mark's shape, so the kill-to-lock path itself is the suite's; the writers' SIGINT/SIGTERM release does not exist on Windows and was not exercised; the held-handle and kill arms ran on this Windows host alone; the four-process contention driver was not re-run. F-541 and F-542 are judged by the stand-in suite alone, F-542's base-directory variant by construction; no live refresh restarted, so the skill's restarted relay is read, not walked. F-552's display-change half is suite-only. F-553/F-554/F-555 by reading; of F-555's Judge only the dashboard and page suites were run. R4 and the walk ran through the session's own shell tools, not a human paste into a terminal; cmd was not run. setup's changed sentence is unwalkable at CLI 1.0.12. The guard ask's rendering is Bradley's report; prompts are invisible to the session.
 Blind spots (hb-20261015-10): 2026-10-16 (tester) — F-546's lock never met a second writer live: the production KB is current (both R2 plans: 0 programs behind, 0 undocumented, 0 templates), so neither refresh re-documented and the manifest stayed byte-equal — the lock is measured by test/manifest-ops.mjs alone; the natural live arm is any later refresh whose plan finds programs behind. F-541, F-542 and F-545 are judged by the suite alone (no tenant can produce their states, VALIDATION § R13 R3). F-536's three shells: Git Bash and Windows PowerShell 5.1 ran the line through the session's own shell tools, cmd from a .bat file run by `cmd /d /c` — none was a human paste into a terminal window. The guard ask's rendering is Bradley's report; prompts are invisible to the session.
 

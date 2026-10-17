@@ -155,7 +155,12 @@ subtly wrong. The rebuild-and-drift check above is two separate lines deliberate
 ## Submitting changes
 
 This repo runs a two-branch dev-loop: day-to-day work lands on `dev`, and `main` is the
-released surface that marketplace users clone.
+released surface that marketplace users clone. Work that takes more than one round may
+live on a **long-lived branch off `dev` with a draft PR to `dev` opened the day it
+starts**; the branch takes `dev` through `dev-utils catch-up` (never a rebase) and lands
+with a merge commit, never a squash, right after `dev-utils catch-up --landing` passes.
+The procedure of record for such a branch is the /dev-loop skill's "Long-lived branches"
+section; what it changes for a contributor is the version bump, below.
 
 - **Branch off `dev`, PR to `dev`.** Never push or PR `main` directly — releases reach
   `main` only via a short-lived `release/vX.Y.Z` branch cut from `dev`, on which
@@ -194,7 +199,13 @@ released surface that marketplace users clone.
   `plugins/gs-superadmin/CHANGELOG.md`; docs-only changes need neither. The marketplace
   doesn't pin versions. Bump to the next number after the `dev` you branched from and
   head the CHANGELOG entry with it; do not rebase just to chase the number — the
-  maintainer renumbers both at merge if `dev` has moved.
+  maintainer renumbers both at merge if `dev` has moved. **A long-lived branch never
+  bumps while it lives** (`dev` releases past it, so a number picked early goes stale and
+  conflicts at landing): it drafts its entry under an `## Unreleased` heading at the top
+  of the CHANGELOG — the doc-drift check reads only `## <x.y.z>` headings, so the draft
+  PR stays green — and bumps at landing, right after `dev-utils catch-up --landing`, in
+  one commit that sets the version and renames the heading to it. The entry and the bump
+  land together, there.
 - **Every release gets a GitHub Release** on its tag, its notes the CHANGELOG entries since
   the previous released tag behind the intro in `.github/release-intro.md` — watching the
   repo's Releases is the notification channel, since the marketplace announces nothing.
