@@ -3750,7 +3750,10 @@ Steps:
    to `## <that version> — <date>`, one commit; push. EXPECTED: check 7 green locally
    and on the draft PR's run. Do NOT `gh pr ready`, do NOT merge.
 8. Tear down: close the draft PR with the comment "LB-1 rehearsal — never to merge";
-   `git worktree remove <path>`; delete feat/rehearsal local and remote. Then on dev
+   `git worktree remove <path>`; delete feat/rehearsal locally, then try the remote delete.
+   EXPECTED (ruleset 25315908 `feat/**`, created 2026-10-17 on Bradley's yes: deletion +
+   non_fast_forward, no bypass): `git push origin --delete feat/rehearsal` is REFUSED —
+   record the refusal text; Bradley deletes the branch in the GitHub UI. Then on dev
    `dev-utils log --help` is enough — do not log; instead note here that a deleted
    branch's numbers are no longer counted (README § Long-lived branches), so F-559 is
    free again: the NEXT real finding takes it.

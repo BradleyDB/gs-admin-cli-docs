@@ -161,6 +161,8 @@ Blind spots (hb-20261015-10): 2026-10-16 (tester) — F-546's lock never met a s
 
 <!-- builder 2026-10-17 (F-556, F-557, F-558 WRITTEN as `## F-` sections at the bottom, OPEN polish, from the R14 tester's report-only notes (1)-(3) on the Walk (hb-20261016-02) line in dev/FEEDBACK-archive.md's Walks block — the 2026-10-16 claim below had no sections; the precondition the long-branch prep comment names for VALIDATION § LB-1 is met; no other number claimed; next free F-559): -->
 
+<!-- builder 2026-10-17 (feat/** ruleset CREATED on Bradley's word ("yea go ahead and create it"): GitHub ruleset 25315908, active, target refs/heads/feat/**, rules deletion + non_fast_forward, no bypass actors; the dev and main rulesets unchanged. VALIDATION § LB-1 step 8 updated: the rehearsal's remote branch delete is now expected to be REFUSED and done by hand in the UI. No number claimed; next free F-559): -->
+
 <!-- builder 2026-10-17 (long-branch prep CLOSED — PR #63 MERGED to dev by Bradley at e28bb29, a merge commit (2 parents; the handoff ledger keeps 1c719d9 `handoff hb-20261017-01 (docs/long-lived-branch-prep)`); branch deleted local + remote; checkout back on dev):
      Now on dev: the long-lived-branch rules in CONTRIBUTING "Submitting changes" (draft PR from day one, catch-up never
        rebase, merge commit after `dev-utils catch-up --landing`), the bump-at-landing wording there and in CLAUDE.md,
