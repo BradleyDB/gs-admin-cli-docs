@@ -3763,3 +3763,42 @@ was closed by the Walk line; check 7 green at steps 3 and 7; step 2 minted above
 sections. CLEARED here with the date and the branch's token, copied into the pointer
 comment on dev. Findings, if any, are the round's output and gate the first real long
 branch, not a release.
+
+NOT CLEARED 2026-10-17 @ hb-20261017-02 (tester; the branch's token, minted by its own handoff; the verdict round for
+hb-20261017-01) — three findings, F-560, F-561, F-562 (normal, OPEN on dev), gate the first real long branch, not a
+release. Every other part of the pass bar held: the step-6 refusal appeared and the Walk line closed it, check 7 was
+green at steps 3 and 7, and step 2 minted above dev's sections. Branch feat/rehearsal, draft PR #64 (closed unmerged),
+worktree in a worktrees folder beside PROJECTS_ROOT (removed).
+1. `git worktree add` + `git push -u` ok (the feat/** ruleset allows creation). `gh pr create --draft --base dev`
+   REFUSED: "No commits between dev and feat/rehearsal" -> F-560 (no text names a first commit). Worked around by
+   making step 2's log commit first, then the PR. The pointer comment on dev was REFUSED at push by check-instance-data
+   ("local user path") for naming the worktree's real path as AGENTS.md says -> F-561. Respelled relative to
+   PROJECTS_ROOT and pushed at 48e9d5f.
+2. `dev-utils log ... --severity polish ... --commit` -> "logged F-559 (OPEN)", 8efd7a1. MET (placed above F-556, the
+   verb's known placement, not at the bottom).
+3. `## Unreleased` + one line; local `check-doc-drift` exit 0 ("plugin version 0.56.2 matches the changelog"); 2471816.
+   docs-drift 39062796191 drift (full) success; validate-plugin 39062796127 changes / manifests / validate success.
+   MET. (Runs on 8efd7a1: validate-plugin 39062670444 success, docs-drift 39062670446 cancelled by the next push.)
+4. `dev-utils catch-up` -> "merged origin/dev into feat/rehearsal (base b1cf98792448) / resolved by rule: dev/FEEDBACK.md,
+   .../dev-canary/SKILL.md / one merge commit: a7e046f8f1ca / not pushed". Under test, Blind spots and canary unchanged.
+   Status: `branch gate:  feat/rehearsal is not dev — its findings gate nothing until it lands; dev's release gate reads
+   dev's bus`; `landing:      BLOCKED — dev is handed off at hb-20261017-01 and nothing records that round's verdict ...`
+   (both lines also print before any catch-up). MET.
+5. `dev-utils handoff --blind-spots "rehearsal"` -> hb-20261017-02, one commit d0a0731 (bus + canary); `flip F-559
+   WONTFIX ... --commit` -> 2a74d4c. MET for the branch's own findings. Note on the EXPECTED wording: the branch's bus
+   still carries dev's F-556..F-558 OPEN (inherited, and item 6 says not to flip them there), so "no OPEN or FIXED
+   section" reads as "none of its own". `dev-utils status` on the branch does not separate own from inherited.
+6. `catch-up --landing` -> exit 2, "not landing while dev has a live round: dev is handed off at hb-20261017-01 ...".
+   MET. Closed on dev by `dev-utils walk ... --commit` (a8fb971, "walk hb-20261017-01"; dev push run docs-drift
+   39063718637 success); re-run -> merge 826ceca, "landing: clear — origin/dev has no round awaiting a verdict". MET.
+7. Landing commit c174756: plugin.json 0.56.2 -> 0.56.3 (next above the last release tag, 0.56.2; the text does not say patch or minor —
+   the content's semver decides), `## Unreleased` -> `## 0.56.3 — 2026-10-17`, one commit; local check 7 green
+   ("0.56.3 matches the changelog"); docs-drift 39063755943 success; validate-plugin 39063755960 success. MET. No
+   `gh pr ready`, no merge, dev's version untouched. (Runs on a7e046f, 2a74d4c and 826ceca were cancelled by the next
+   push: 39063620012 / 39063619917, 39063655040 / 39063654950, 39063733877 / 39063733886.)
+8. `gh pr close 64 --comment "LB-1 rehearsal — never to merge"` -> CLOSED, unmerged; `git worktree remove` ok;
+   `git branch -D` ok; `git push origin --delete feat/rehearsal` REFUSED as expected: "GH013: Repository rule
+   violations found for refs/heads/feat/rehearsal ... - Cannot delete this branch" -> F-562 (the ruleset is in no
+   contributor doc). Owed: Bradley deletes feat/rehearsal in the GitHub UI. F-559 is NOT free again yet:
+   origin/feat/rehearsal still holds it, so `dev-utils log` on dev minted F-560..F-562 (a measured confirmation that
+   numbering reads remote-tracking refs). F-559 stays a gap on dev, a never-landed rehearsal number. Next free F-563.
