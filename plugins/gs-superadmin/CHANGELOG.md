@@ -5,7 +5,7 @@ marketplace doesn't pin versions — users get main — so entries describe what
 user who updates, not internal refactors. Entries before 0.8.0 were reconstructed from git
 history when this file was introduced.
 
-## Unreleased
+## 0.56.3 — 2026-10-17
 
 LB-1 rehearsal: a throwaway entry drafted on a long-lived branch, never to land.
 
