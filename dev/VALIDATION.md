@@ -3813,3 +3813,41 @@ Ruleset 25315908's history shows the path: disabled at 12:57:15 -07:00 (version 
 (version 53640166), no bypass actor at any version, so the delete needed the ruleset off for about 28 s. Recorded on
 F-562. `git fetch --prune` dropped origin/feat/rehearsal. F-559 is now held by no ref and stays a gap on dev (F-560..F-562
 were minted while the branch still existed). Next free F-563. Teardown complete.
+
+## R15 polish round — the R14 tester's three notes, fixed (banked 2026-10-17, builder, fix/r14-polish-f556-f558; verdict at the token this branch's handoff mints)
+
+Owed by: the tester round on this branch's handoff token (a terminal in the workspace with --plugin-dir on the checkout
+under test, canary matched; the SANDBOX KB, reads only; a SCRATCH dashboard of one program with re-documentation on —
+never the kept dashboard). The suites are the judge of record for every arm (test/dashboard.mjs's R15 block;
+test/doc-lib-fixtures.mjs's readFileLock and F-557 checks); these are the live halves the suites cannot see.
+
+### R1 (F-556) — the re-documented entry's doc_path beside a setup-written neighbour
+
+Over the scratch dashboard, with one of its programs behind (mark one stale by hand: `node
+.gs-superadmin/plugin/scripts/manifest.mjs mark --manifest <kb>/_manifest.json --key <domain>/<id> --status stale`), run
+`refresh <scratch>` from the workspace; then mark it stale again and run the same refresh from ANOTHER directory (`cd ..`,
+with `--workspace <ws> --kb <ws>/<kb>` on the line). FIXED: both times the re-documented entry's doc_path in
+`<kb>/_manifest.json` reads `<kb>/<domain>/<id>.md` — its neighbours' spelling — and the doc is at that path from the
+workspace. BROKEN: an absolute path, or a doc written under the other directory → REOPEN F-556 with the entry quoted.
+
+### R2 (F-557; Windows) — the held handle at release, now said
+
+R14 R1's first arm again: in PowerShell, while `refresh <scratch>` runs, open `<scratch dir>/refresh.lock` with
+`[IO.File]::Open($path, "Open", "Read", "ReadWrite")` and hold it until the refresh ends. FIXED: the summary (exit 0)
+carries `lockLeft` naming the path and the cause, with the sentence that the next refresh takes it over on its own and
+nothing needs doing — and the skill relays it; close the handle and run `refresh <scratch>` again: `lockTakenOver` names
+the earlier run, never "already running". BROKEN: a summary with no word of a lock left on disk → REOPEN F-557.
+
+### R3 (F-558) — a verb that needs a snapshot during the FIRST refresh
+
+Import a new scratch dashboard (no snapshot yet) and start `refresh <scratch>`; while it pulls, in a second terminal run
+`rebuild <scratch>`, `report <scratch>`, `health <scratch> --program <id>` and `publish <scratch>`. FIXED: each says
+"already running: started by … — run <verb> again when it finishes" (publish on its `publish.why` with exit 0, the others
+with exit 1), none says "no snapshot"; once the refresh ends each runs. BROKEN: "no snapshot of … — run the refresh first"
+while the refresh runs → REOPEN F-558 naming the verb.
+
+### Walk — email-engagement (model-invocable)
+
+The one SKILL.md the round changed (the refresh summary's relay names `lockLeft`): invoke email-engagement's refresh mode
+on the scratch dashboard once ("pull the scratch dashboard again") and record whether the model ran the `refresh` line
+and relayed the summary as the step lists it; `lockLeft` is relayed only when R2 provoked it.

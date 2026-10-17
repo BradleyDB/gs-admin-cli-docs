@@ -22,7 +22,7 @@
 // Run:  node plugins/gs-superadmin/test/doc-lib-fixtures.mjs
 // Zero dependencies — Node built-ins only.
 // ─────────────────────────────────────────────────────────────────────────────
-import { writeFileSync, mkdirSync, readFileSync, symlinkSync, rmSync, existsSync, utimesSync } from "node:fs";
+import { writeFileSync, mkdirSync, readFileSync, symlinkSync, rmSync, existsSync, utimesSync, chmodSync } from "node:fs";
 import { spawn, spawnSync } from "node:child_process";
 import { join } from "node:path";
 import { pathToFileURL, fileURLToPath } from "node:url";
@@ -37,7 +37,7 @@ import {
   decode, htmlToText, templateTokens, compactProgramPayload, renderProgramDoc,
   renderTemplateDoc, STUB_MARKER, STUB_MARKER_RE, escapeRe, sleepMs, scanListEnvelope, decideEntryArray, entryDecisionReason,
   parseDocJson, docMeta, docH1, NO_NAME, assertReadOnlyCommand, isDescribeRead, readKbIdentity,
-  resolveRecordedDomains, recordedDomainsByPath, indexedElsewhere, RECORDED_LANES, laneTable, acquireFileLock, pidAlive,
+  resolveRecordedDomains, recordedDomainsByPath, indexedElsewhere, RECORDED_LANES, laneTable, acquireFileLock, pidAlive, readFileLock,
 } from "../scripts/doc-lib.mjs";
 // List-page envelope docs and the indexer payload live in the shared reader
 // payload corpus (test/fixtures/reader-payloads.mjs) — the tracer scans the same docs.
@@ -1326,6 +1326,45 @@ if (process.env.ZZ_NEVER_SET_TYPE_PROBE) readKbIdentity(42, []);
   check("acquireFileLock: a fresh record of a live process is held — not taken after the wait, the holder's record named",
     !l.taken && l.held?.by === "live" && Date.now() - t0 >= 250);
   rmSync(lockp, { force: true });
+  // ── readFileLock (F-558): the lock's state read, never taken, by the taker's own liveness rule ──
+  check("readFileLock: no file → held false", readFileLock(lockp, { staleMs: stale }).held === false);
+  writeFileSync(lockp, JSON.stringify({ pid: process.pid, at: new Date().toISOString(), by: "live" }));
+  const liveState = readFileLock(lockp, { staleMs: stale });
+  writeFileSync(lockp, JSON.stringify({ pid: gone, at: new Date().toISOString(), by: "dead" }));
+  const deadState = readFileLock(lockp, { staleMs: stale });
+  writeFileSync(lockp, JSON.stringify({ pid: process.pid, at: new Date(Date.now() - stale - 1000).toISOString(), by: "old" }));
+  const oldState = readFileLock(lockp, { staleMs: stale });
+  writeFileSync(lockp, "");
+  const youngUnreadable = readFileLock(lockp, { staleMs: stale });
+  check("readFileLock: a fresh record of a live process is held and not dead; a fresh record whose process is gone is held and DEAD (pid first, as the taker judges); a record older than staleMs is dead; an empty young file is held, its record null, not dead — and nothing was taken (every file is as written)",
+    liveState.held === true && liveState.dead === false && liveState.record?.by === "live" && deadState.held === true && deadState.dead === true && deadState.record?.by === "dead" && oldState.held === true && oldState.dead === true &&
+      youngUnreadable.held === true && youngUnreadable.record === null && youngUnreadable.dead === false && readFileSync(lockp, "utf8") === "" && !pidAlive(gone),
+    [liveState, deadState, oldState, youngUnreadable]);
+  rmSync(lockp, { force: true });
+  // ── F-557: a release that cannot remove the lock SAYS so — {path, why} — and leaves this taker's record (a dead ──
+  // holder's the moment the process exits, taken over at once); null once the file is off. What forbids the unlink:
+  // on Windows a deny of DELETE on the file and of DELETE_CHILD on its folder (a delete goes through either right);
+  // on POSIX the folder's write bit — which root ignores, so the arm is skipped there with its reason, never faked.
+  {
+    const held = acquireFileLock(lockp, { owner: { by: "me" }, staleMs: stale, waitMs: 0 });
+    const root = process.platform !== "win32" && typeof process.getuid === "function" && process.getuid() === 0;
+    const forbid = (on) => {
+      if (process.platform === "win32") { for (const [target, right] of [[dir, "DC"], [lockp, "DE"]]) spawnSync("icacls", on ? [target, "/deny", `*S-1-1-0:(${right})`] : [target, "/remove:d", "*S-1-1-0"], { encoding: "utf8" }); }
+      else chmodSync(dir, on ? 0o555 : 0o755);
+    };
+    forbid(true);
+    const left = root ? null : held.release();
+    const recordKept = existsSync(lockp) && readJsonFile(lockp).by === "me" && readJsonFile(lockp).pid === process.pid;
+    forbid(false);
+    const again = held.release();
+    if (root) console.log("SKIP  F-557 acquireFileLock: root ignores a folder's write bit, so the unlink cannot be made to fail here");
+    else {
+      check("F-557 acquireFileLock: a release that cannot remove the lock returns the lock left ({path, why: the error's code}) and keeps this taker's record in it — a dead holder's once the process exits, never silently nothing",
+        held.taken && left?.path === lockp && typeof left?.why === "string" && left.why.length > 0 && recordKept, [left, recordKept]);
+      check("F-557 acquireFileLock: once the unlink can go through, release returns null and the lock is off", again === null && !existsSync(lockp), again);
+    }
+    rmSync(lockp, { force: true });
+  }
   const docLibUrl = pathToFileURL(join(dirname(fileURLToPath(import.meta.url)), "..", "scripts", "doc-lib.mjs")).href;
   writeFiles(dir, {
     "worker.mjs": [
