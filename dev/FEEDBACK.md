@@ -66,7 +66,8 @@ may ride an UNMERGED PR. Assess a round with `gh pr list` as well as the dev log
 short branch the role landing a transition says so in a bus comment ON DEV (branch + PR
 number), not only in the entry's note on that branch, and RE-STAMPS that comment whenever
 the branch's statuses change. A long-lived branch owes ONE pointer (branch, draft PR,
-worktree) when it opens, re-stamped at landing; the draft PR and the branch's own bus
+worktree — spelled relative to PROJECTS_ROOT or by folder name, never its real path, which
+check-instance-data refuses at push) when it opens, re-stamped at landing; the draft PR and the branch's own bus
 carry the rounds between. A finding NUMBER is claimed by its committed '^## F-' section,
 never by a comment: `dev-utils log` numbers above every ref's bus and archive and every
 worktree, and reads no header comment — a session picking a next number fetches first
