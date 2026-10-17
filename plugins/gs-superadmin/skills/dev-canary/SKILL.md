@@ -1,6 +1,6 @@
 ---
 name: dev-canary
-description: DEV CANARY — under test docs/long-lived-branch-prep · hb-20261017-01 · 2026-10-17. Visible only when this plugin is loaded from a dev working tree; removed before merge to main. If invoked, report this token and stop.
+description: DEV CANARY — under test feat/rehearsal · hb-20261017-02 · 2026-10-17. Visible only when this plugin is loaded from a dev working tree; removed before merge to main. If invoked, report this token and stop.
 ---
 
 Load-provenance marker for the /dev-loop workflow. The token above is
