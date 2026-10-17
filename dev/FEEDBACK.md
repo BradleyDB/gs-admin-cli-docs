@@ -3280,10 +3280,11 @@ Blind spots: no tenant pull was made with the new families (the two reads were c
      Carried forward (not in this release): F-448 verdict by the other role; the skipped-path arm
        (Blind spots above). -->
 
-## F-559 — OPEN
+## F-559 — WONTFIX
 Reported: 2026-10-17 (tester)
 Severity: polish — rehearsal, never to land
 What: rehearsal: a finding of the throwaway branch
+Ruling: 2026-10-17 (builder) — rehearsal finding, never to land
 
 ## F-556 — OPEN
 Reported: 2026-10-16 (tester, R14 re-verification round @ hb-20261016-02, report-only note (1) on its Walk line, now in dev/FEEDBACK-archive.md's Walks block; logged by the builder on Bradley's word "log them as polish" after the 0.56.2 close-out; section written 2026-10-17)
