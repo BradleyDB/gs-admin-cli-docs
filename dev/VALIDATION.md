@@ -3696,3 +3696,67 @@ relayed as written) is reached only on a workspace whose CLI is not 1.0.12 — c
 spot.
 
 Section status (tester @ hb-20261016-02, 2026-10-16; recorded by the builder at the post-merge re-stamp): CLEARED — run on the SANDBOX KB as the kickoff ruled (this section's "production KB" followed the R13 precedent and was not a requirement): R1 the held handle and a dead-pid lock taken over at once (the kill-to-lock path itself laid by hand, the suite's), R2 the rebuild refused during a refresh, R3 the About tab's waiting line in the no-store window and gone after the full pull, R4 the @<file> publish line in PowerShell 5.1; F-541 and F-542 by the stand-in suite; the email-engagement walk done. F-530, F-536, F-541, F-542, F-545, F-546, F-552, F-553, F-554, F-555 VERIFIED. Spent for the release carrying 0.56.2.
+
+## LB-1 — long-branch rehearsal: the landed docs followed end to end on a throwaway branch (banked 2026-10-17, builder, docs/long-lived-branch-prep @ hb-20261017-01; verdict at the rehearsal round, after the PR merges and before the first real long-lived branch opens)
+
+Why: the round at hb-20261017-01 wrote the long-lived-branch rules into CONTRIBUTING
+("Submitting changes"), CLAUDE.md ("Branching, releases, and the feedback bus") and
+AGENTS.md (§ Review-gate rules, the F-161/F-223 bullet), and locked check 7's
+`## Unreleased` convention with two test cases — but no long branch exists, so none of
+it ran end to end (the round's Blind spots line). A rule found wrong by the first REAL
+long branch interrupts weeks of work mid-program, which is what the branch exists to
+avoid. So the rules are rehearsed once on a throwaway branch that lands nothing.
+Decided 2026-10-17 (Bradley): "I want this locked in as best we can before we need to
+use it."
+
+Owed by: a tester session, after PR #<n> (docs/long-lived-branch-prep) merges to dev.
+Tenant: none. Writes: a throwaway branch, worktree and draft PR, all removed at the end;
+on dev only the rehearsal's pointer comment and its Walk line.
+Precondition: F-556, F-557 and F-558 exist as `## F-` sections on dev. The 2026-10-16
+header comment claimed the numbers without writing sections, and `dev-utils log` reads
+sections only (measured: it minted F-556 under that comment), so step 2 would collide
+until they are written from the R14 tester's report-only notes.
+Role: the tester follows the three landed docs and the /dev-loop skill § Long-lived
+branches AS WRITTEN. Every point where the text is not enough to act, or where a verb
+refuses something the text said to do, is a finding (normal) against the doc that lacked
+it, fixed on a short branch before the first real long branch opens. Record the F-number
+minted, each verb's output, and each CI run id with its conclusion.
+
+Steps:
+1. `git worktree add <a path outside PROJECTS_ROOT/*> -b feat/rehearsal dev`; push;
+   `gh pr create --draft --base dev`; the ONE pointer comment on dev (branch, draft PR
+   number, worktree path) pushed to dev — AGENTS.md's long-branch pointer, as written.
+2. In the worktree: `dev-utils log "rehearsal: a finding of the throwaway branch"
+   --severity polish --why "rehearsal, never to land" --commit`. EXPECTED: F-559 (above
+   dev's F-556..F-558 sections). Record the number.
+3. Commit a CHANGELOG draft: an `## Unreleased` heading above the newest entry with one
+   body line; push; `node build/check-doc-drift.mjs` in the worktree, then the draft PR's
+   docs-drift run. EXPECTED: check 7 green both places (plugin.json still 0.56.2).
+4. `dev-utils catch-up` in the worktree (dev holds step 1's pointer commit, so there is
+   something to merge); push. EXPECTED: one merge commit; the branch's Under test, Blind
+   spots lines and canary unchanged; `dev-utils status` shows `branch gate:` and
+   `landing:` lines — record both.
+5. `dev-utils handoff --blind-spots "rehearsal"` in the worktree (the branch's own
+   token); then `dev-utils flip F-559 WONTFIX --note "rehearsal finding, never to land"
+   --commit`. EXPECTED: the branch's bus carries its own Under test line and no OPEN or
+   FIXED section.
+6. `dev-utils catch-up --landing`. EXPECTED: REFUSED, naming hb-20261017-01 — dev's
+   handed-off token with no verdict. This is the mid-program interruption the rehearsal
+   exists to meet once. Close it the way the skill names: on dev (the main checkout),
+   `dev-utils walk "LB-1 rehearsal steps 1-5: <what each verb did>" --commit`, push dev;
+   then `catch-up --landing` again in the worktree. EXPECTED: passes.
+7. The landing commit, by CONTRIBUTING's bump paragraph: plugin.json to the next version
+   above the last release tag (0.56.2 at banking), the `## Unreleased` heading renamed
+   to `## <that version> — <date>`, one commit; push. EXPECTED: check 7 green locally
+   and on the draft PR's run. Do NOT `gh pr ready`, do NOT merge.
+8. Tear down: close the draft PR with the comment "LB-1 rehearsal — never to merge";
+   `git worktree remove <path>`; delete feat/rehearsal local and remote. Then on dev
+   `dev-utils log --help` is enough — do not log; instead note here that a deleted
+   branch's numbers are no longer counted (README § Long-lived branches), so F-559 is
+   free again: the NEXT real finding takes it.
+
+Pass bar: steps 1-7 done from the docs as written; the refusal at step 6 appeared and
+was closed by the Walk line; check 7 green at steps 3 and 7; step 2 minted above dev's
+sections. CLEARED here with the date and the branch's token, copied into the pointer
+comment on dev. Findings, if any, are the round's output and gate the first real long
+branch, not a release.

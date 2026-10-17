@@ -441,6 +441,28 @@ try {
     } finally { snap.restore(); }
   }
 
+  // check 7, the long-branch convention: a draft entry under `## Unreleased` above the
+  // newest entry is not a version heading and stays green; a version-numbered draft (a
+  // branch that picked its number early) goes red on its draft PR, by design.
+  {
+    const rel = "plugins/gs-superadmin/CHANGELOG.md";
+    const snap = snapshotFiles([at(rel)]);
+    try {
+      const orig = readFileSync(at(rel), "utf8");
+      const head = orig.match(/^## (\d+\.\d+\.\d+)/m)[1];
+      const draft = (heading) => orig.replace(/^## \d+\.\d+\.\d+/m, (m) => [heading, "", "Draft entry of a long-lived branch.", "", m].join("\n"));
+      writeFileSync(at(rel), draft("## Unreleased"));
+      let res = run();
+      check("check 7: an `## Unreleased` draft heading above the newest entry stays green (long-branch convention)",
+        res.status === 0 && !/must land together/.test(res.stderr), res.stderr);
+      const early = head.replace(/\d+$/, (n) => String(Number(n) + 1));
+      writeFileSync(at(rel), draft(`## ${early} — draft`));
+      res = run();
+      check("check 7: a version-numbered draft heading above the newest entry goes red, naming it",
+        res.status === 1 && /must land together/.test(res.stderr) && res.stderr.includes(early), res.stderr);
+    } finally { snap.restore(); }
+  }
+
   // ── check 8: raw invisible codepoints; genuine binaries skip and are named ─
   {
     withScratchFiles({ "notes-zzz.md": "before " + String.fromCharCode(0xfeff) + " after\n" }, () => {
