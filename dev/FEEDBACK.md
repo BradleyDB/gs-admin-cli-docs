@@ -155,6 +155,48 @@ Blind spots (hb-20261016-02): 2026-10-16 (tester) — F-546's killed writer was 
 Blind spots (hb-20261015-10): 2026-10-16 (tester) — F-546's lock never met a second writer live: the production KB is current (both R2 plans: 0 programs behind, 0 undocumented, 0 templates), so neither refresh re-documented and the manifest stayed byte-equal — the lock is measured by test/manifest-ops.mjs alone; the natural live arm is any later refresh whose plan finds programs behind. F-541, F-542 and F-545 are judged by the suite alone (no tenant can produce their states, VALIDATION § R13 R3). F-536's three shells: Git Bash and Windows PowerShell 5.1 ran the line through the session's own shell tools, cmd from a .bat file run by `cmd /d /c` — none was a human paste into a terminal window. The guard ask's rendering is Bradley's report; prompts are invisible to the session.
 
 
+<!-- builder 2026-10-17 (long-branch prep HANDED OFF — UNMERGED, riding docs/long-lived-branch-prep (PR #63 to dev, open); token hb-20261017-01 on that branch's bus and canary):
+     Payload (docs, a checker comment, two test cases; no plugin bytes, no bump): CONTRIBUTING "Submitting changes" —
+       work taking more than one round may live on a long-lived branch off dev with a draft PR to dev from day one,
+       catch-up never rebase, lands with a merge commit right after `dev-utils catch-up --landing`; its bump paragraph
+       and CLAUDE.md's "bump happens on dev" bullet — a long branch never bumps while it lives, bumps at landing, entry
+       and bump together (the release-cut rule unchanged); check-doc-drift check 7 needs NO allowance — a branch drafts
+       under `## Unreleased`, which the version-heading regex ignores, and the landing commit renames it (comment at
+       check 7; two test-check-doc-drift cases, mutation-proved: the regex widened to the first `## ` heading fails the
+       "stays green" case, 1 FAILED / 209 passed, restored 210); AGENTS.md's F-161/F-223 bullet reconciled — a short
+       branch still re-stamps per transition, a long branch owes ONE pointer (branch, draft PR, worktree) at open,
+       re-stamped at landing, since it flips only its own findings and dev holds no section to lag behind; the
+       claim-by-comment half RETIRED from what the verb does: `dev-utils log` 0.7.1 reads `## F-` section headers on
+       every ref and worktree and no header comment — measured in a throwaway worktree of dev, it minted F-556 under
+       this header's 2026-10-16 comment claiming F-556..F-558. The header's Round-assessment hint and NEXT FREE NUMBER
+       sentence say the same (on the branch; they land with the merge).
+     Spec: dev-utils dev/IDEAS.md "Long-lived branches: the remainder outside dev-utils"; /dev-loop 1.7.0
+       § Long-lived branches items 2, 8, 9; dev-utils README § Long-lived branches; every verb claim read from
+       `dev-utils <verb> --help` at 0.7.1.
+     Ordering decision: no finding fixed or handed off; nothing re-arranges what is verified.
+     Battery (AGENTS.md fence verbatim minus `npm run build`, the drift job's five generators instead), on the branch:
+       57 steps, 56 PASS, 1 FAIL — `npm run typecheck` on a git-ignored, untracked local handoffs/ file (TS6133), the
+       known local-only red; test-check-strict-list and every other step PASS; git diff --exit-code clean.
+     CI on PR #63, QUOTED per job after completion:
+         docs-drift 39060337789: drift (full) success (head 35dab3b)
+         validate-plugin 39060337788: changes success / manifests success / validate (ubuntu-latest) success (head 35dab3b)
+         GitGuardian Security Checks: pass; mergeable MERGEABLE, state CLEAN
+     Verdict round (Bradley, 2026-10-17: "I want this locked in as best we can before we need to use it"): NOT a
+       reading round — the long-branch REHEARSAL banked as dev/VALIDATION.md § LB-1 on the branch: after #63 merges and
+       before the first real long branch opens, a tester session runs a throwaway feat/rehearsal branch by the landed
+       docs AS WRITTEN (draft PR, dev-utils log, an `## Unreleased` draft under CI, catch-up, the expected --landing
+       refusal on hb-20261017-01 closed by the tester's Walk line, the landing commit, teardown); every improvisation
+       is a normal finding against the doc that lacked it, fixed before the real branch opens.
+       PRECONDITION: F-556, F-557, F-558 written as `## F-` sections on dev from the R14 tester's report-only notes —
+       the 2026-10-16 comment above claims the numbers with no sections, dev-utils status reads 0 findings, and
+       `dev-utils log` mints F-556 until they exist. Not done this round (the notes are not on the bus or in VALIDATION).
+     Open PRs to dev at kickoff: none; at close-out: #63 (this). Polish batch at kickoff: F-556..F-558 as claimed,
+       CARRIED — no sections to ride this handoff. Issues open: #11, #12 (unchanged).
+     Proposed, awaiting Bradley's yes, not created: a `feat/**` ruleset (deletion + non_fast_forward only, no bypass);
+       dev and main rulesets, the release ceremony and the install path unchanged.
+     Numbers: none claimed by this round (the branch's bus has no new section). Next free number: what `dev-utils log`
+       mints after a fetch — F-556 today, F-559 once the precondition above is met. Released: nothing; dev stages nothing. -->
+
 <!-- builder 2026-10-16 (after the 0.56.2 close-out: the R14 tester's three report-only notes LOGGED as polish on Bradley's word ("log them as polish") — F-556 (the absolute doc_path from the dashboard's re-documentation), F-557 (a lock left at release goes unsaid), F-558 (the no-snapshot refusal before the lock's on a first refresh); OPEN, to ride the next substantive round's handoff; the R13 round's four carried notes stay unlogged; numbers F-556, F-557, F-558 claimed; next free F-559): -->
 
 <!-- builder 2026-10-16 ([v]0.56.2 RELEASED — post-release housekeeping; next free F-556):
