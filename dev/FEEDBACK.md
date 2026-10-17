@@ -160,6 +160,19 @@ Blind spots (hb-20261016-02): 2026-10-16 (tester) — F-546's killed writer was 
 Blind spots (hb-20261015-10): 2026-10-16 (tester) — F-546's lock never met a second writer live: the production KB is current (both R2 plans: 0 programs behind, 0 undocumented, 0 templates), so neither refresh re-documented and the manifest stayed byte-equal — the lock is measured by test/manifest-ops.mjs alone; the natural live arm is any later refresh whose plan finds programs behind. F-541, F-542 and F-545 are judged by the suite alone (no tenant can produce their states, VALIDATION § R13 R3). F-536's three shells: Git Bash and Windows PowerShell 5.1 ran the line through the session's own shell tools, cmd from a .bat file run by `cmd /d /c` — none was a human paste into a terminal window. The guard ask's rendering is Bradley's report; prompts are invisible to the session.
 
 
+<!-- tester 2026-10-17 (LB-1 rehearsal VERDICT — NOT CLEARED @ hb-20261017-02 (the branch's token), the verdict round for hb-20261017-01; re-stamps the pointer below: feat/rehearsal's draft PR #64 CLOSED unmerged ("LB-1 rehearsal — never to merge"), its worktree removed, the local branch deleted, the remote delete REFUSED by ruleset 25315908 as banked — owed: Bradley deletes feat/rehearsal in the GitHub UI):
+     Findings: F-560, F-561, F-562 (normal, OPEN) — the round's output; they gate the first real long branch, not a
+       release. F-560: the day-one draft PR is refused on a branch with no commit, and no text names a first commit.
+       F-561: the pointer cannot name the worktree's real path, as AGENTS.md says, because check-instance-data refuses it.
+       F-562: the feat/** ruleset (naming, and the delete done in the UI) is in no contributor doc.
+     Held: step 2 minted F-559 above dev's sections; check 7 green at step 3 (docs-drift 39062796191, validate-plugin
+       39062796127) and step 7 (docs-drift 39063755943, validate-plugin 39063755960, the 0.56.3 landing commit on the
+       branch only); catch-up merged by rule (a7e046f, 826ceca); `catch-up --landing` REFUSED naming hb-20261017-01,
+       closed by the Walk (hb-20261017-01) line (a8fb971), then "landing: clear". Per-verb copy-out: VALIDATION § LB-1.
+     Walk: Walk (hb-20261017-01) recorded (tester). Under test + canary on dev unchanged (hb-20261017-01).
+     Numbers: F-560, F-561, F-562 claimed by their sections; F-559 stays a gap (held by origin/feat/rehearsal until the
+       UI delete; never landed). Next free number: F-563. Released: nothing; dev's version file untouched (0.56.2). -->
+
 <!-- tester 2026-10-17 (long-lived branch OPENED — feat/rehearsal, draft PR #64 to dev, worktree <PROJECTS_ROOT>\..\worktrees\rehearsal (a worktrees folder beside PROJECTS_ROOT, outside PROJECTS_ROOT/*; the real path is refused by check-instance-data); the LB-1 rehearsal of dev/VALIDATION.md, verdict round for hb-20261017-01 — a throwaway branch, never to merge, closed and deleted at the end of the round; this is the branch's one pointer (AGENTS.md § Review-gate rules), re-stamped at its end; the branch's bus carries its own findings: F-559 (polish, rehearsal) minted there; next free F-560): -->
 
 <!-- builder 2026-10-17 (F-556, F-557, F-558 WRITTEN as `## F-` sections at the bottom, OPEN polish, from the R14 tester's report-only notes (1)-(3) on the Walk (hb-20261016-02) line in dev/FEEDBACK-archive.md's Walks block — the 2026-10-16 claim below had no sections; the precondition the long-branch prep comment names for VALIDATION § LB-1 is met; no other number claimed; next free F-559): -->
@@ -3301,3 +3314,24 @@ Severity: polish — the refusal is true and nothing runs; only its reason is th
 What: `rebuild <slug>` run while the dashboard's FIRST refresh is still pulling says "no snapshot of "<slug>" yet — run `<refresh line>` first", not "already running … run rebuild again when it finishes" (F-552's refusal, VERIFIED): verbRebuild checks for a snapshot before it takes the lock (dashboard.mjs ~1963-1967), so the printed remedy tells the admin to start the refresh that is already running, which would itself be refused "already running". The same order (the snapshot read before the lock) is in the other verbs that need a snapshot: report, export --with-snapshot, health, publish and a change's rebuild (~1445, ~1773, ~2167, ~2214, ~2251).
 Repro: import a new scratch dashboard (no snapshot), start `node .gs-superadmin/plugin/scripts/dashboard.mjs refresh <scratch> --kb <kb>`, and while it pulls run `node .gs-superadmin/plugin/scripts/dashboard.mjs rebuild <scratch> --kb <kb>` in a second terminal.
 Expected: a verb that would wait on a live refresh says "already running" first, whether or not a snapshot exists yet — the lock (or a read of its state) is consulted before the no-snapshot refusal, for rebuild and for every sibling verb above; the class is the check order, so the fix is judged over the verbs, not rebuild alone.
+
+## F-560 — OPEN
+Reported: 2026-10-17 (tester)
+Severity: normal — a doc defect that stops the first real long branch at its first step
+What: long-lived branch: the day-one draft PR cannot be opened as written — a fresh branch has no commit, so gh pr create --draft --base dev is refused
+Repro: git worktree add <path> -b feat/x dev; git push -u origin feat/x; gh pr create --draft --base dev  ->  'GraphQL: No commits between dev and feat/x (createPullRequest)' (LB-1 rehearsal, 2026-10-17, feat/rehearsal before its first commit). CONTRIBUTING 'Submitting changes' ('a draft PR to dev opened the day it starts'), the /dev-loop skill § Long-lived branches item 2 ('push, then gh pr create --draft --base dev') and VALIDATION § LB-1 step 1 all name the PR right after the push; none names a first commit.
+Expected: the texts name the branch's first commit before the PR — e.g. the CHANGELOG '## Unreleased' draft or the branch's first bus commit — so 'push, then gh pr create --draft' runs as written; the skill's copy reported upstream
+
+## F-561 — OPEN
+Reported: 2026-10-17 (tester)
+Severity: normal — a doc defect that blocks the pointer's push on the first real long branch
+What: long-lived branch: the one pointer comment on dev cannot name the worktree as AGENTS.md says — its real path is refused by the pre-push check-instance-data gate
+Repro: AGENTS.md § Review-gate rules (the F-161/F-223 bullet): the long branch's pointer on dev names 'branch, draft PR number, worktree'; the skill § Long-lived branches item 1 puts the worktree outside PROJECTS_ROOT/*, i.e. at a machine path outside the repo. LB-1 rehearsal 2026-10-17: a pointer naming the absolute worktree path was refused on push to dev — 'local user path ... real machine paths identify a contributor/tenant — use /path/to/... or <name> placeholders', 'pre-push: check-instance-data failed'. No text says how to spell the worktree; respelled as '<PROJECTS_ROOT>\..\worktrees\<name>' it passed.
+Expected: AGENTS.md's pointer bullet says how the worktree is named in a bus comment (a path relative to PROJECTS_ROOT, or the folder name alone), so the pointer pushes as written
+
+## F-562 — OPEN
+Reported: 2026-10-17 (tester)
+Severity: normal — a doc gap: the protection the ruleset exists for depends on a name no landed text states, and the landing's cleanup meets a refusal no text names
+What: long-lived branch: the feat/** ruleset (25315908: deletion + non_fast_forward) is in no contributor doc — neither the branch name that brings a long branch under it nor that its delete is refused and done in the GitHub UI
+Repro: LB-1 rehearsal 2026-10-17: git grep for 'feat/' or 'ruleset' in CONTRIBUTING.md, CLAUDE.md, AGENTS.md, README.md finds nothing; the skill § Long-lived branches item 1 shows '-b <branch>' with no naming rule. At teardown 'git push origin --delete feat/rehearsal' was refused: 'GH013: Repository rule violations found for refs/heads/feat/rehearsal ... Cannot delete this branch'. Only VALIDATION § LB-1 step 8 (dev-only) records that refusal.
+Expected: CONTRIBUTING 'Submitting changes' (and CLAUDE.md's bullet, paraphrase-plus-pointer) names the long-lived branch prefix feat/ and says the ruleset refuses force-push and delete, so the branch is deleted by the maintainer in the GitHub UI after landing (and gh pr merge --delete-branch is not used)
