@@ -3363,7 +3363,7 @@ Fix: 2026-10-17 (builder) — on docs/lb1-rehearsal-findings (PR to dev; docs on
 Judge: the first real long branch's day one, run from CONTRIBUTING as written (or LB-1 step 1 re-run on a throwaway branch): gh pr create --draft succeeds on the first try with no workaround
 Verified: 2026-10-17 (tester, docs/lb1-rehearsal-findings @ hb-20261017-03) — re-verification, bar = the Repro plus the Fix claim (the day-one order in CONTRIBUTING runs as written): followed CONTRIBUTING 'Submitting changes' on a throwaway feat/rehearsal-2 — worktree beside PROJECTS_ROOT off dev, first commit 26b3a99 = the CHANGELOG '## Unreleased' heading + one body line (check-doc-drift exit 0), push, then gh pr create --draft --base dev: draft PR #66 opened on the first try, no 'No commits' refusal, no workaround (gh's non-interactive form needs --title and --body-file, which the text's template bullet covers) @ hb-20261017-03
 
-## F-561 — FIXED
+## F-561 — VERIFIED
 Reported: 2026-10-17 (tester)
 Severity: normal — a doc defect that blocks the pointer's push on the first real long branch
 What: long-lived branch: the one pointer comment on dev cannot name the worktree as AGENTS.md says — its real path is refused by the pre-push check-instance-data gate
@@ -3371,6 +3371,7 @@ Repro: AGENTS.md § Review-gate rules (the F-161/F-223 bullet): the long branch'
 Expected: AGENTS.md's pointer bullet says how the worktree is named in a bus comment (a path relative to PROJECTS_ROOT, or the folder name alone), so the pointer pushes as written
 Fix: 2026-10-17 (builder) — on docs/lb1-rehearsal-findings (PR to dev) - Class: a long-branch rule stated without the step that makes it runnable - AGENTS.md said the pointer names the worktree but not how, and the one natural spelling (its real path) is refused by the pre-push check-instance-data gate on every ref. AGENTS.md's F-161/F-223 bullet now says the worktree is spelled relative to the projects root (the worktrees folder beside PROJECTS_ROOT, as the rehearsal's own pointer spells it) or by its folder name alone, never its real machine path, and names the gate that refuses it and why; the bus header's round-assessment hint carries the paraphrase; VALIDATION LB-1 step 1 spells it that way. Sibling case run: the rehearsal's pointer on this bus already carries the relative spelling and pushed through the gate; a POSIX home path would be refused by the same rule (the gate's token-boundary arm), so the rule is stated for every spelling, not the Windows one. Pick-up: read AGENTS.md.
 Judge: the first real long branch's pointer comment, written from AGENTS.md alone, pushes to dev through the pre-push gate on the first try
+Verified: 2026-10-17 (tester, docs/lb1-rehearsal-findings @ hb-20261017-03) — re-verification, bar = the Repro plus the Fix claim (a pointer written from AGENTS.md's F-161/F-223 bullet pushes first try): wrote feat/rehearsal-2's one pointer comment on dev with the worktree spelled <PROJECTS_ROOT>\..\worktrees\rehearsal-2 as the bullet says; git push of dev passed the pre-push hook (the tracked copy, cmp-equal to dev/hooks/pre-push) and its check-instance-data arm on the first try, 693ab87 @ hb-20261017-03
 
 ## F-562 — FIXED
 Reported: 2026-10-17 (tester)
