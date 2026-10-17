@@ -161,6 +161,23 @@ Blind spots (hb-20261016-02): 2026-10-16 (tester) — F-546's killed writer was 
 Blind spots (hb-20261015-10): 2026-10-16 (tester) — F-546's lock never met a second writer live: the production KB is current (both R2 plans: 0 programs behind, 0 undocumented, 0 templates), so neither refresh re-documented and the manifest stayed byte-equal — the lock is measured by test/manifest-ops.mjs alone; the natural live arm is any later refresh whose plan finds programs behind. F-541, F-542 and F-545 are judged by the suite alone (no tenant can produce their states, VALIDATION § R13 R3). F-536's three shells: Git Bash and Windows PowerShell 5.1 ran the line through the session's own shell tools, cmd from a .bat file run by `cmd /d /c` — none was a human paste into a terminal window. The guard ask's rendering is Bradley's report; prompts are invisible to the session.
 
 
+<!-- builder 2026-10-17 (LB-1 rehearsal findings MERGED — PR #65 MERGED to dev by Bradley at 780ea00, a merge commit (2 parents; the handoff ledger keeps 0276bec `handoff hb-20261017-03 (docs/lb1-rehearsal-findings)`); branch deleted local + remote; checkout on dev; re-stamps the handed-off comment below):
+     Now on dev: F-560, F-561, F-562 FIXED, awaiting the other role's verdict @ hb-20261017-03 (the token unchanged by
+       the merge; this header's Under test line and canary name docs/lb1-rehearsal-findings · hb-20261017-03 until
+       dev's next handoff). The texts: CONTRIBUTING "Submitting changes" (a long branch's day-one order — first
+       commit = the CHANGELOG ## Unreleased draft, then push, then the draft PR; the feat/<topic> prefix and ruleset
+       25315908, merge with gh pr merge --merge alone, the maintainer deletes the landed branch from the GitHub UI),
+       CLAUDE.md's paraphrase + pointer, AGENTS.md's F-161/F-223 bullet (the pointer's worktree spelled relative to
+       PROJECTS_ROOT or by folder name), VALIDATION LB-1 steps 1 and 3, this header's round-assessment hint.
+     Dispatch evidence (F-340), the push-event runs on dev at 780ea00, QUOTED after completion:
+         docs-drift 39067027478: drift (full) success
+         validate-plugin 39067027469: changes success / manifests success / validate (ubuntu-latest) success
+     Verdict: none yet — the judge for each Fix note is the first real long branch's day one, pointer push and
+       cleanup run from the texts as written, or an LB-1 step 1 re-run on a throwaway branch (a tester session).
+     Carried: F-556, F-557, F-558 OPEN polish, to ride the next substantive plugin round. Open PRs to dev at
+       close-out: none.
+     Numbers: none claimed. Next free number: F-563. Released: nothing; plugin 0.56.2 untouched. -->
+
 <!-- builder 2026-10-17 (LB-1 rehearsal findings HANDED OFF — UNMERGED, riding docs/lb1-rehearsal-findings (PR #65 to dev, open); token hb-20261017-03 on that branch's bus and canary (re-stamped 2026-10-17: the first mint re-issued hb-20261017-02, because feat/rehearsal's deletion dropped its handoff commit from the ledger and the mint reads no free text — but the rehearsal's verdict below and VALIDATION LB-1 hold "@ hb-20261017-02", and this bus keys Blind spots and Walk lines by token, so -02 was abandoned on the branch and the round re-handed off as -03; -02 names the rehearsal only):
      On that branch F-560, F-561, F-562 are OPEN -> FIXED (builder, docs only): CONTRIBUTING "Submitting changes" gives
        a long branch's day-one order (branch in its own worktree, FIRST COMMIT = the CHANGELOG ## Unreleased draft,
