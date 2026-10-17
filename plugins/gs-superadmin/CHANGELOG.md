@@ -5,6 +5,10 @@ marketplace doesn't pin versions — users get main — so entries describe what
 user who updates, not internal refactors. Entries before 0.8.0 were reconstructed from git
 history when this file was introduced.
 
+## Unreleased
+
+Verdict-round rehearsal of a long-lived branch — never to merge.
+
 ## 0.56.2 — 2026-10-16
 
 The release gate's fix round (F-530, F-536, F-541, F-542, F-545, F-546 reopened; F-552,
