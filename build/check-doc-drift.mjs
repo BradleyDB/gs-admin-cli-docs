@@ -318,6 +318,12 @@ for (const gone of ["VALIDATION.md", "docs/archive"]) {
 }
 
 // --- 7. plugin.json version and the CHANGELOG's newest entry move together --------------
+// A long-lived branch never bumps while it lives: it drafts its entry under an
+// `## Unreleased` heading and bumps at landing, renaming the heading in the same commit
+// (CONTRIBUTING "Submitting changes"). The regex reads only version-numbered headings,
+// so that draft is green by construction and a number picked early goes red on its
+// draft PR, by design. Both halves are locked by test-check-doc-drift's check 7 cases —
+// do not widen the regex to the first `## ` heading.
 const pluginVersion = JSON.parse(read("plugins/gs-superadmin/.claude-plugin/plugin.json")).version;
 const changelogHead = read("plugins/gs-superadmin/CHANGELOG.md").match(/^## (\d+\.\d+\.\d+)/m)?.[1];
 if (!changelogHead) fail("plugins/gs-superadmin/CHANGELOG.md: no '## <version>' entry heading found");

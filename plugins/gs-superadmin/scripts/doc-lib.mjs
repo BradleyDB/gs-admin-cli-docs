@@ -2815,46 +2815,76 @@ export function removeFileSync(path) {
 // holder makes the taker wait up to `waitMs`, polling, then gives up and
 // reports the holder. `record` and `release` act ONLY while the file still
 // carries this taker's record — a lock taken over in the meantime belongs to
-// its new holder. Callers: manifest.mjs's load-change-save cycle (the KB-wide
+// its new holder. A release that cannot remove the file SAYS so (F-557): it
+// returns the lock left, never nothing — the caller's summary carries it. A
+// lock's state is READ without taking it by readFileLock (F-558), by the one
+// liveness rule the taker judges by (lockHolderDead), so a verb that would
+// wait on a live holder can say so before any other refusal.
+// Callers: manifest.mjs's load-change-save cycle (the KB-wide
 // manifest, F-546: the ONE manifest writer, so every writer has the property
 // by construction) and the dashboard's refresh, rebuild and change (F-545,
-// F-552).
+// F-552), and its readers of the lock's state (status; the verbs that need a
+// snapshot, F-558).
 /** Whether a process of this machine is alive: ESRCH says gone; EPERM says alive and not ours to signal. */
 export const pidAlive = (pid) => {
   try { process.kill(pid, 0); return true; } catch (e) { return /** @type {{code?: string}} */ (e)?.code !== "ESRCH"; }
 };
 /**
+ * The record a lock file holds, or null when it cannot be read as one (empty, half-written, held by a scanner, gone).
+ * @param {string} path @returns {?Record<string, unknown>}
+ */
+export const readLockRecord = (path) => {
+  try {
+    const held = withWindowsFsRetry(() => readJsonFile(path));
+    return held && typeof held === "object" && !Array.isArray(held) ? /** @type {Record<string, unknown>} */ (held) : null;
+  } catch {
+    return null;
+  }
+};
+/**
+ * Whether a lock's holder is dead: by its pid when the record names one of this machine's, else by age (the record's,
+ * or the file's when there is no record). The ONE liveness rule: the taker and every reader of a lock's state judge by it.
+ * @param {string} path @param {?Record<string, unknown>} held @param {{ staleMs: number, nowMs?: number }} opts
+ */
+export const lockHolderDead = (path, held, { staleMs, nowMs = Date.now() }) => {
+  if (held && typeof held.pid === "number" && Number.isInteger(held.pid) && held.pid > 0 && !pidAlive(held.pid)) return true;
+  let at;
+  if (held) at = Date.parse(String(held.at ?? ""));
+  else { try { at = statSync(path).mtimeMs; } catch { return false; } }
+  const age = (held ? nowMs : Date.now()) - at;
+  return Number.isFinite(age) && age >= staleMs;
+};
+/**
+ * A lock's state, read and never taken (F-558): `held` false when no file is there; else its record (null while it
+ * cannot be read) and whether its holder is dead by the rule above — a dead holder's lock stops nothing (the next
+ * taker takes it over), a live one's does.
+ * @param {string} path @param {{ staleMs: number, nowMs?: number }} opts
+ * @returns {{ held: false } | { held: true, path: string, record: ?Record<string, unknown>, dead: boolean }}
+ */
+export function readFileLock(path, { staleMs, nowMs = Date.now() }) {
+  if (!existsSync(path)) return { held: false };
+  const record = readLockRecord(path);
+  if (!record && !existsSync(path)) return { held: false }; // released between the two reads
+  return { held: true, path, record, dead: lockHolderDead(path, record, { staleMs, nowMs }) };
+}
+/**
  * @param {string} path  the lock file
  * @param {{ owner?: Record<string, unknown>, staleMs: number, waitMs?: number, nowMs?: number }} opts
  *   owner: fields recorded beside pid and at (who, which run); staleMs: a holder older than this is dead;
  *   waitMs: how long to wait for a fresh holder (0: not at all); nowMs: the clock (the dashboard passes --now)
- * @returns {{ taken: boolean, path: string, held: ?Record<string, unknown>, takenOver: ?Record<string, unknown>, record: (extra: Record<string, unknown>) => void, release: () => void }}
+ * @returns {{ taken: boolean, path: string, held: ?Record<string, unknown>, takenOver: ?Record<string, unknown>, record: (extra: Record<string, unknown>) => void, release: () => ?{ path: string, why: string } }}
  *   taken false: `held` is the fresh holder's record (`unreadable: true` when its file could not be read) and
- *   record/release do nothing; taken true: `takenOver` is the dead holder's record when one was taken over
+ *   record/release do nothing; taken true: `takenOver` is the dead holder's record when one was taken over.
+ *   release: null once this taker's record is off the disk (or was never its to remove); else the lock LEFT, with
+ *   `why` (the error's code) — said, never swallowed (F-557): it is a dead holder's the moment this process exits
  */
 export function acquireFileLock(path, { owner = {}, staleMs, waitMs = 0, nowMs = Date.now() }) {
   /** @type {Record<string, unknown>} */
   const mine = { ...owner, pid: process.pid, at: new Date(nowMs).toISOString() };
   const body = () => JSON.stringify(mine, null, 2) + "\n";
-  /** The record as the file holds it, or null when the file cannot be read as one (empty, half-written, held by a scanner, gone). */
-  const readHeld = () => {
-    try {
-      const held = withWindowsFsRetry(() => readJsonFile(path));
-      return held && typeof held === "object" && !Array.isArray(held) ? /** @type {Record<string, unknown>} */ (held) : null;
-    } catch {
-      return null;
-    }
-  };
+  const readHeld = () => readLockRecord(path);
   const isMine = (r) => !!r && r.pid === mine.pid && r.at === mine.at;
-  /** Whether the lock's holder is dead: by its pid when the record names one of this machine's, else by age (the record's, or the file's when there is no record). */
-  const dead = (held) => {
-    if (held && typeof held.pid === "number" && Number.isInteger(held.pid) && held.pid > 0 && !pidAlive(held.pid)) return true;
-    let at;
-    if (held) at = Date.parse(String(held.at ?? ""));
-    else { try { at = statSync(path).mtimeMs; } catch { return false; } }
-    const age = (held ? nowMs : Date.now()) - at;
-    return Number.isFinite(age) && age >= staleMs;
-  };
+  const dead = (held) => lockHolderDead(path, held, { staleMs, nowMs });
   /** Claim a dead holder's file by renaming it away: one taker wins the rename, the rest see it gone. */
   const claim = () => {
     const claimed = `${path}.dead-${process.pid}-${Date.now().toString(36)}`;
@@ -2881,7 +2911,7 @@ export function acquireFileLock(path, { owner = {}, staleMs, waitMs = 0, nowMs =
     } else if (!held && !existsSync(path)) {
       continue; // released between the create and the read: try the create again at once
     }
-    if (Date.now() >= deadline) return { taken: false, path, held: held ?? { unreadable: true }, takenOver: null, record() {}, release() {} };
+    if (Date.now() >= deadline) return { taken: false, path, held: held ?? { unreadable: true }, takenOver: null, record() {}, release() { return null; } };
     sleepMs(Math.min(200, Math.max(1, deadline - Date.now())));
   }
   return {
@@ -2895,8 +2925,13 @@ export function acquireFileLock(path, { owner = {}, staleMs, waitMs = 0, nowMs =
       writeFileAtomicSync(path, body());
     },
     release() {
-      if (!isMine(readHeld())) return;
-      try { removeFileSync(path); } catch { /* a scanner holds it past the retries: this process's exit makes it a dead holder's, taken over at once */ }
+      if (!isMine(readHeld())) return null;
+      try { removeFileSync(path); return null; } catch (e) {
+        // A scanner, or a handle that forbids delete, holds it past the retries: this process's exit makes it a dead
+        // holder's, taken over at once — SAID to the caller (F-557), never swallowed; the record stays this taker's.
+        const err = /** @type {{code?: string, message?: string}} */ (e);
+        return { path, why: err?.code ?? err?.message ?? String(e) };
+      }
     },
   };
 }
