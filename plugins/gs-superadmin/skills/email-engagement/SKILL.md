@@ -628,7 +628,9 @@ nothing else with `gs-admin` meanwhile. By exit code:
 - `0` — relay the summary: `pull.mode` and `pull.why`, `pull.programs`, `redocumented`
   (how many programs and templates the knowledge base gained, and what is still behind),
   `delta` (the change since the last pull, or null on a first one), the pages' paths and
-  sizes, `lockTakenOver` when a stale lock was taken over, `abandoned` when a pull
+  sizes, `lockTakenOver` when a stale lock was taken over, `lockLeft` when the pull's lock
+  could not be removed at its end (relay its `text` as written: the next pull takes it over
+  on its own, and nothing needs doing), `abandoned` when a pull
   stopped earlier was left behind because a setting changed since (the pull was planned
   afresh), and `restarted` when a resumed pull started again in a fresh run directory
   because the derived health lookback moved since the run was planned (its `from` and

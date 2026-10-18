@@ -15,7 +15,13 @@
 // a stale and a never-documented program and of the templates the KB lacks;
 // the draft take-over refusal; export with the snapshot, then import on a
 // second workspace; the fast path equal to answering every question with its
-// default (F-512).
+// default (F-512); the R15 polish arms — re-documentation's doc_path spelled
+// workspace-relative like its neighbours, judged against the skill's hand-run
+// describe-batch line (F-556); a lock the release could not remove said on the
+// summary and on a refusal, measured on Windows through the fake CLI's
+// deny-delete hook and as the clean path elsewhere (F-557); the six verbs that
+// need a snapshot reading the lock before refusing for want of one, under a
+// live and a dead holder, held to the script's own census of sites (F-558).
 //
 // The tables are held to their sources: every setting the spec writer
 // describes has exactly one cost, the page's LACKS rows agree with it, and
@@ -26,7 +32,7 @@
 // Zero dependencies — Node built-ins only.
 // ─────────────────────────────────────────────────────────────────────────────
 import { readFileSync, writeFileSync, existsSync, readdirSync, mkdirSync, rmSync } from "node:fs";
-import { join, dirname, resolve } from "node:path";
+import { join, dirname, resolve, isAbsolute } from "node:path";
 import { fileURLToPath } from "node:url";
 import { isDeepStrictEqual } from "node:util";
 import { makeTempDir, removeTempDir, writeFiles, runNode } from "../../../test/rig.mjs";
@@ -1450,6 +1456,112 @@ try {
         back.json.restarted?.from === stateRaised.pullRun && back.json.restarted.run !== stateRaised.pullRun && back.json.restarted.run.startsWith(stateRaised.run) && back.json.restarted.lookbackDays.from > back.json.restarted.lookbackDays.to && back.json.pull.lookbackDays === back.json.restarted.lookbackDays.to &&
         backLine != null && new RegExp(`starts its pull again \\(run ${back.json.restarted.run}, not ${stateRaised.pullRun}\\): the derived health lookback moved from ${stateRaised.lookbackDays} to ${back.json.restarted.lookbackDays.to} days`).test(backLine) && !/calls already made are reused/.test(back.stderr) && !existsSync(join(dash(), STATE_FILE)),
       [stateRaised, back.json?.restarted ?? back.json?.error ?? back.stderr?.slice(-400), backLine]);
+  }
+  // ══ R15 polish round (2026-10-17): F-556 the doc_path spelling, F-557 a lock the release could not remove, F-558 the lock read before the no-snapshot refusal ══
+  {
+    rmSync(join(STATE, "faults.json"), { force: true });
+    // F-556: a doc_path the dashboard's re-documentation records is WORKSPACE-RELATIVE, spelled as the neighbours
+    // written by setup's stubs (the fixture's `<slug>/<domain>/<id>.md`) and by a hand-run describe-batch with the
+    // skill's own --out-dir — never the absolute folder the dashboard knows. The judge is the hand-run writer: the
+    // skill's line, run from the workspace over the same asset, records a byte-identical doc_path. This suite itself
+    // runs from the repo, not the workspace, so the relative folder is proven to resolve from the workspace alone.
+    const inv556 = manifest().inventory;
+    const redocumented = Object.entries(inv556).filter(([, e]) => e.status === "documented" && typeof e.last_verified === "string" && e.last_verified > TODAY);
+    const neighbour = inv556["journey/p-onboard"];
+    const absolute = redocumented.filter(([, e]) => isAbsolute(String(e.doc_path ?? "")));
+    const spelled = redocumented.filter(([, e]) => e.doc_path === `acme-prod/${e.domain}/${e.id}.md` && existsSync(resolve(WS, e.doc_path)));
+    check("F-556 every entry the dashboard's re-documentation marked (programs and templates) records doc_path workspace-relative with forward slashes — acme-prod/<domain>/<id>.md, the fixture neighbours' spelling — and the file is there from the workspace; none is absolute (this suite runs from the repo, so the folder was resolved from the workspace, not the caller's directory)",
+      redocumented.length >= 3 && absolute.length === 0 && spelled.length === redocumented.length && neighbour?.doc_path === "acme-prod/journey/p-onboard.md" && process.cwd() !== WS,
+      [absolute.map(([k, e]) => [k, e.doc_path]), redocumented.filter(([k]) => !spelled.some(([s]) => s === k)).map(([k, e]) => [k, e.doc_path])]);
+    // The judge: the skill's hand-run line (email-engagement, the re-documentation step), from the workspace, over p-undoc.
+    const byDashboard = inv556["journey/p-undoc"]?.doc_path;
+    mkdirSync(join(ROOT, "r15"), { recursive: true });
+    const keys556 = join(ROOT, "r15", "keys.json");
+    writeFileSync(keys556, JSON.stringify(["journey/p-undoc"]));
+    const marked = runNode(join(HERE, "..", "scripts", "manifest.mjs"), ["mark", "--manifest", join(KB, "_manifest.json"), "--key", "journey/p-undoc", "--status", "stale"], { encoding: "utf8" });
+    const byHand = runNode(join(HERE, "..", "scripts", "describe-batch.mjs"), ["--manifest", "acme-prod/_manifest.json", "--domain", "journey", "--command", "gs-admin --json jo p describe --id {id}", "--doc-mode", "program", "--out-dir", "acme-prod/journey", "--keys-file", keys556, "--limit", "1", "--bin", FAKE], { cwd: WS, encoding: "utf8", env: { ...process.env, FAKE_STATE: STATE, FAKE_TENANT: JSON.stringify(TENANT) } });
+    const afterHand = manifest().inventory["journey/p-undoc"];
+    check("F-556 JUDGE (the hand-run writer): the skill's describe-batch line run from the workspace with --out-dir acme-prod/journey over the same program records a doc_path byte-identical to the one the dashboard's re-documentation recorded",
+      marked.status === 0 && byHand.status === 0 && typeof byDashboard === "string" && afterHand?.status === "documented" && afterHand.doc_path === byDashboard, [marked.stderr?.slice(-200), byHand.stderr?.slice(-300), byDashboard, afterHand?.doc_path]);
+    // F-557: a refresh whose release could not remove its lock SAYS so — `lockLeft` on the summary (and appended to a
+    // refusal), with the one sentence the skill relays — never nothing; the next refresh takes the lock over because
+    // the process is gone. The arm: the fake CLI's deny-delete hook makes the lock undeletable mid-refresh on Windows
+    // (a deny of DELETE on the file and DELETE_CHILD on its folder — what a handle that forbids delete does, VALIDATION
+    // R14 R1); on POSIX no per-file rule forbids an unlink while the folder stays writable, so there the same run
+    // proves the clean path: the lock removed and nothing said.
+    const lockPath = join(dash(), LOCK_FILE);
+    const win = process.platform === "win32";
+    const allowDelete = () => { if (win) for (const t of [dash(), lockPath]) spawnSync("icacls", [t, "/remove:d", "*S-1-1-0"], { encoding: "utf8" }); };
+    const hook = { match: "rp run", kind: "deny-delete", path: lockPath };
+    const leftRun = run("refresh", [SLUG], { env: { FAKE_FAULTS: JSON.stringify([hook]) } });
+    const leftRecord = existsSync(lockPath) ? readJson(lockPath) : null;
+    allowDelete();
+    const cured = run("refresh", [SLUG]);
+    check(win
+      ? "F-557 (Windows) a refresh whose lock could not be removed at the end still exits 0 and SAYS so: lockLeft names the path and the cause (EPERM) and carries the sentence the skill relays (taken over on its own by the next refresh, nothing to do); the lock stays on disk holding this run's record; and the next refresh, the handle gone, takes it over at once (lockTakenOver names it) and leaves none"
+      : "F-557 (POSIX: a lock file cannot be made undeletable in a writable folder, so the arm proves the clean path) a refresh exits 0 with NO lockLeft, the lock removed, and the next refresh takes nothing over",
+      win
+        ? leftRun.code === 0 && leftRun.json?.lockLeft?.path === lockPath && leftRun.json.lockLeft.why === "EPERM" && /^the refresh lock could not be removed at the end \(EPERM\) and was left at .*: the next refresh, rebuild or change takes it over on its own, because this process is gone — nothing to do$/.test(leftRun.json.lockLeft.text) && leftRecord?.by === "ana" && cured.code === 0 && cured.json?.lockTakenOver?.by === "ana" && !existsSync(lockPath)
+        : leftRun.code === 0 && !("lockLeft" in (leftRun.json ?? {})) && leftRecord === null && cured.code === 0 && cured.json?.lockTakenOver === null && !existsSync(lockPath),
+      [leftRun.json?.lockLeft ?? leftRun.json?.error ?? leftRun.stderr?.slice(-300), leftRecord, cured.json?.lockTakenOver ?? cured.json?.error ?? cured.stderr?.slice(-300)]);
+    // The refusal path: a refresh stopped by the token with the lock undeletable carries lockLeft and ends its error with the same sentence; the resume takes the lock over and finishes.
+    rmSync(join(STATE, "faults.json"), { force: true });
+    const leftStop = run("refresh", [SLUG, "--full"], { env: { FAKE_FAULTS: JSON.stringify([hook, { match: "rp run", kind: "auth", skip: 30, times: 9999 }]) } });
+    const leftStopRecord = existsSync(lockPath) ? readJson(lockPath) : null;
+    allowDelete();
+    rmSync(join(STATE, "faults.json"), { force: true });
+    const curedResume = run("refresh", [SLUG, "--full"]);
+    check(win
+      ? "F-557 (Windows) a refresh REFUSED (the token stop, exit 3) whose lock could not be removed carries lockLeft and ends its error with the same sentence; the resume takes the lock over (lockTakenOver names it) and finishes"
+      : "F-557 (POSIX, the clean path) a refused refresh leaves no lock and says nothing of one; the resume finishes",
+      leftStop.code === EXIT["token-expired"] && curedResume.code === 0 && curedResume.json?.resumed === true && !existsSync(lockPath) && (win
+        ? leftStop.json?.lockLeft?.path === lockPath && /; the refresh lock could not be removed at the end \(EPERM\) and was left at .* — nothing to do$/.test(leftStop.json.error ?? "") && leftStopRecord?.by === "ana" && curedResume.json.lockTakenOver?.by === "ana"
+        : !("lockLeft" in (leftStop.json ?? {})) && !/refresh lock could not be removed/.test(leftStop.json?.error ?? "") && leftStopRecord === null && curedResume.json.lockTakenOver === null),
+      [leftStop.json?.error ?? leftStop.stderr?.slice(-300), leftStop.json?.lockLeft, curedResume.json?.lockTakenOver ?? curedResume.json?.error ?? curedResume.stderr?.slice(-300)]);
+    // F-558: a verb that needs a snapshot and finds none reads the lock FIRST. On a dashboard with no snapshot yet
+    // (imported, its first refresh "running" — a live lock of this process), every such verb says "already running …
+    // run <verb> again when it finishes", never "no snapshot — run the refresh" about the refresh that is running;
+    // a DEAD holder's lock stops nothing, and status says it is stale. The class is the check order over the verbs,
+    // so the suite's list is held to the script's own census of no-snapshot sites, closed both ways.
+    const first = "acme-first";
+    const exported558 = run("export", [SLUG, "--out", join(ROOT, "r15", "acme-first.json")]);
+    const imported558 = run("import", ["--file", join(ROOT, "r15", "acme-first.json"), "--slug", first]);
+    const firstLock = join(dash(first), LOCK_FILE);
+    const liveRecord = JSON.stringify({ by: "ben", at: new Date().toISOString(), pid: process.pid, run: "dash-acme-first-live" });
+    writeFileSync(firstLock, liveRecord);
+    const verbs558 = { rebuild: [first], report: [first], export: [first, "--out", join(ROOT, "r15", "first-x.json"), "--with-snapshot"], health: [first, "--program", "p-onboard"], publish: [first], change: [first, "pages.0.title=First during a refresh"] };
+    const during558 = Object.fromEntries(Object.entries(verbs558).map(([v, a]) => [v, run(v, a)]));
+    const running = (v, text) => new RegExp(`a refresh of "acme-first" is already running: started by ben at .* — run ${v} again when it finishes`).test(text);
+    const refused = ["rebuild", "report", "export", "health"].every((v) => during558[v].code === 1 && running(v, during558[v].json?.error ?? "") && !/no snapshot/.test(during558[v].json?.error ?? ""));
+    const publishSaid = during558.publish.code === 0 && during558.publish.json?.publish?.published === false && running("publish", during558.publish.json.publish.why) && !/no snapshot/.test(during558.publish.json.publish.why);
+    const changeSaid = during558.change.code === 1 && /^the change of "acme-first" is saved; its rebuild did not run: /.test(during558.change.json?.error ?? "") && running("change", during558.change.json?.error ?? "") && !/no snapshot/.test(during558.change.json?.error ?? "") && readJson(specFile(first)).pages[0].title === "First during a refresh";
+    check("F-558 on a dashboard with no snapshot yet whose first refresh holds the lock: rebuild, report, export --with-snapshot and health are refused 'already running … run <verb> again when it finishes' (exit 1), publish reports the same as its why (exit 0, published false), and a display change is saved but its rebuild refused the same way — none says 'no snapshot'; the holder's lock is untouched",
+      exported558.code === 0 && imported558.code === 0 && snapshots(first).length === 0 && refused && publishSaid && changeSaid && readFileSync(firstLock, "utf8") === liveRecord,
+      Object.fromEntries(Object.entries(during558).map(([v, r]) => [v, r.json?.error ?? r.json?.publish?.why ?? r.stderr?.slice(-200)])));
+    // A dead holder's lock (its process gone) stops nothing: the readers say "no snapshot" with the refresh as the remedy and leave the dead lock in place; status says it is stale; rebuild and a change take it over.
+    const gonePid = spawnSync(process.execPath, ["-e", "process.exit(0)"]).pid;
+    const deadRecord = JSON.stringify({ by: "dead", at: new Date().toISOString(), pid: gonePid, run: "dash-acme-first-dead" });
+    writeFileSync(firstLock, deadRecord);
+    const status558 = run("status", [first]);
+    const readers = Object.fromEntries(["report", "export", "health", "publish"].map((v) => [v, run(v, verbs558[v])]));
+    const noSnap = /^no snapshot of "acme-first" (yet|to export beside the spec) — run `[^`]*refresh acme-first --kb acme-prod` first/;
+    const readersSaid = ["report", "export", "health"].every((v) => readers[v].code === 1 && noSnap.test(readers[v].json?.error ?? "") && String(readers[v].json?.remedy?.line ?? "").endsWith("refresh acme-first --kb acme-prod")) && readers.publish.code === 0 && readers.publish.json?.publish?.published === false && noSnap.test(readers.publish.json.publish.why);
+    const deadUntouched = readFileSync(firstLock, "utf8") === deadRecord;
+    const rebuildDead = run("rebuild", [first]);
+    const rebuildTookOver = !existsSync(firstLock);
+    writeFileSync(firstLock, deadRecord);
+    const changeDead = run("change", [first, "pages.0.title=First after the dead lock"]);
+    check("F-558 a DEAD holder's lock (its process gone) stops nothing: status says held and stale; report, export --with-snapshot and health say 'no snapshot of acme-first yet — run <the refresh line> first' with remedy.line, publish the same as its why, and the dead lock is left as it was (they read, never take); rebuild takes it over (stderr says whose) and then says no snapshot, leaving no lock; a display change takes it over, is saved, and says its rebuild did not run for want of a snapshot (exit 0, done.done false)",
+      status558.code === 0 && status558.json?.lock?.held === true && status558.json.lock.stale === true && status558.json.lock.by === "dead" && readersSaid && deadUntouched &&
+        rebuildDead.code === 1 && noSnap.test(rebuildDead.json?.error ?? "") && /took over a stale refresh lock of "acme-first" held by dead/.test(rebuildDead.stderr) && rebuildTookOver &&
+        changeDead.code === 0 && changeDead.json?.saved === true && changeDead.json.done?.kind === "rebuild" && changeDead.json.done.done === false && noSnap.test(changeDead.json.done.why) && !existsSync(firstLock) && readJson(specFile(first)).pages[0].title === "First after the dead lock",
+      [status558.json?.lock, Object.fromEntries(Object.entries(readers).map(([v, r]) => [v, r.json?.error ?? r.json?.publish?.why])), rebuildDead.json?.error ?? rebuildDead.stderr?.slice(-300), changeDead.json?.done ?? changeDead.json?.error]);
+    // JUDGE (the class, closed both ways): the script's own census of no-snapshot sites — every call of the three helpers outside their definitions — is exactly the six verbs this block drove, and the phrase "no snapshot of" is spelled on two lines of the script alone (the helper and the export's own words).
+    const srcLines = readFileSync(SCRIPT, "utf8").split("\n");
+    const sites = srcLines.filter((l) => /\b(refuseNoSnapshot|noSnapshotWhy|noSnapshotLine)\(ctx, slug/.test(l) && !/^\s*(function|const) (refuseNoSnapshot|noSnapshotWhy|noSnapshotLine)\b/.test(l) && !/alreadyRunningText\(/.test(l) && !/^\s*\/\//.test(l));
+    const literal = srcLines.filter((l) => /no snapshot of "/.test(l) && !/^\s*(\/\/|\*)/.test(l));
+    check("F-558 JUDGE: the script's census of no-snapshot sites (calls of the three helpers outside their definitions) is exactly six — publishNow, the change's rebuild, rebuild, report, export, health — the six verbs this block drove under a live lock, and 'no snapshot of' is spelled on two lines of the script alone (the helper and the export's own words), so no verb refuses for a missing snapshot without reading the lock first",
+      sites.length === 6 && literal.length === 2, [sites.map((l) => l.trim().slice(0, 100)), literal.map((l) => l.trim().slice(0, 100))]);
   }
   check("refusals: an unknown verb, a missing slug, a refresh of a draft, an unknown question (purpose, dropped, among them), and a workspace with no KB each exit 1 with one line",
     run("frobnicate", []).code === 1 && run("status", []).code === 1 && run("refresh", ["quick"]).code === 1 && /is a draft, not a saved dashboard/.test(run("refresh", ["quick"]).json?.error ?? "") && run("answer", [SLUG, "nope", "x"]).code === 1 && /no question is called "purpose"/.test(run("answer", ["quick", "purpose", "x"]).json?.error ?? "") && run("list", [], { flags: ["--workspace", join(ROOT, "nowhere"), "--bin", FAKE] }).code === 1);

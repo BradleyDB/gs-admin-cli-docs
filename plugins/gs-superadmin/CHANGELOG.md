@@ -5,6 +5,29 @@ marketplace doesn't pin versions — users get main — so entries describe what
 user who updates, not internal refactors. Entries before 0.8.0 were reconstructed from git
 history when this file was introduced.
 
+## 0.56.3 — 2026-10-17
+
+The polish round after 0.56.2 (F-556, F-557, F-558): the three notes the 0.56.2 verdict
+round reported on the dashboard's refresh, fixed before the next cut.
+
+- **One spelling of where a doc lives (F-556).** A program or template the dashboard's
+  re-documentation marks now records its `doc_path` the way setup's stubs and a hand-run
+  describe-batch record it — relative to the workspace, `<slug>/<domain>/<id>.md` — never
+  the absolute folder the dashboard knows, so one manifest no longer mixes the two. An entry
+  an earlier version recorded absolute still resolves and is respelled the next time that
+  asset is re-documented.
+- **A lock the refresh could not remove is said (F-557).** When the refresh's lock cannot
+  be removed at its end (a handle that forbids delete still open on it), the summary says so
+  in one line (`lockLeft`, which the skill relays): where it was left, that the next refresh
+  takes it over on its own because this process is gone, and that nothing needs doing. A
+  refusal on the way out says the same. The takeover itself is unchanged, and the manifest
+  writer says the same of its own lock on stderr.
+- **"Already running" comes before "no snapshot yet" (F-558).** `rebuild`, `report`,
+  `export --with-snapshot`, `health`, `publish` and a display change's rebuild, run while a
+  dashboard's FIRST refresh is still pulling, now say the refresh is already running and to
+  run the verb again when it finishes — never to start the refresh that is running. A lock
+  whose holder is gone stops nothing, and `status` now reports such a lock as stale.
+
 ## 0.56.2 — 2026-10-16
 
 The release gate's fix round (F-530, F-536, F-541, F-542, F-545, F-546 reopened; F-552,
