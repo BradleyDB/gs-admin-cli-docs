@@ -36,7 +36,7 @@ never measured; a session that auto-approves asks records the hook's decision ob
 says the rendered prompt is unmeasured.
 Entry hint: read this header for the Under test line, then grep '^## F-' for the live
 findings and read at those offsets. Released sections are moved to
-dev/FEEDBACK-archive.md after each release (last move: 2026-10-16, after release 0.56.2 — F-530..F-555, 14 sections, with 4 header Walk lines, leaving no live section and no DEFERRED one; the 0.54.0 move took F-469..F-547, 72 sections, with 25 header Walk lines; the 0.43.4 move (a hotfix cut from main) took F-487; the 0.43.3 move took F-461 and F-466, leaving no live section; the 0.43.0 move took F-462, F-463, F-464, F-465, F-467 and F-468; the 0.42.0 move took F-448..F-460 with their round blocks and the four header Walk lines; the 0.37.0 move took
+dev/FEEDBACK-archive.md after each release (last move: 2026-10-17, after release 0.56.3 — F-556..F-562, 6 sections (F-556, F-557, F-558, F-560, F-561, F-562), with 2 header Walk lines, leaving F-568 FIXED and five DEFERRED (past 0.56.3) live; the 0.56.2 move (2026-10-16) took F-530..F-555, 14 sections, with 4 header Walk lines, leaving no live section and no DEFERRED one; the 0.54.0 move took F-469..F-547, 72 sections, with 25 header Walk lines; the 0.43.4 move (a hotfix cut from main) took F-487; the 0.43.3 move took F-461 and F-466, leaving no live section; the 0.43.0 move took F-462, F-463, F-464, F-465, F-467 and F-468; the 0.42.0 move took F-448..F-460 with their round blocks and the four header Walk lines; the 0.37.0 move took
 F-414..F-447 with their round blocks; the 0.36.3 move took F-410..F-413; the 0.36.2 move took F-390, F-391,
 F-396..F-409; the 0.36.1 move took F-387..F-389 and F-392..F-395;
 the 0.35.4 move took F-360..F-386, the 0.35.0 move F-357..F-359, the 0.34.3 move F-224..F-356
@@ -158,6 +158,49 @@ Blind spots (hb-20261017-05): post-release re-stamp after 0.56.3 (tag v0.56.3 on
 Walk (hb-20261017-04): 2026-10-17 (tester) — the R15 re-verification round (fix/r14-polish-f556-f558 at 481f02c, clean and level; a session in the workspace with --plugin-dir on the checkout, canary matched; the SANDBOX KB, reads only; ONE one-program scratch imported from the kept spec's shape — a names: selector, customer lists off, Health on, re-documentation on, test accounts emptied — removed after with its three run directories). F-556, F-557, F-558 VERIFIED, each against the pass bar its verdict states; no finding logged. The changed SKILL.md (email-engagement, model-invocable) was invoked by the session itself with "pull the scratch dashboard again": step 1's whoami (valid) and the slug from the manifest whose baseUrl matched; step P's `refresh <scratch> --kb <kb>` run as written, in the background, nothing else touching the CLI meanwhile. Its first run exited 1 with NO JSON summary (a raw EPERM stack from the lock record's rename: the R2 handle had been opened before the run wrote its name into the record — the probe's timing, not the arm; in the round's report), so step P's exit-1 branch had no `error` to relay; re-run with the handle opened after the record: exit 0, the final report written in step P's shape (Pull selective, Knowledge base 1 programs and 0 templates documented, Change since the first pull over 12 closed months, the two pages, Leaders "kept in the workspace only"), with `lockTakenOver` (the crashed run's dead lock) and `lockLeft`'s text relayed as written. Guard-wiring: `gs-admin jo p pause --help` drew the ask "Hook PreToolUse:Bash requires confirmation for this command: Mutating Gainsight command: gs-admin journey programs pause. This workspace is read-only by default. Workspace manifests claim multiple tenants (<prod slug> (<prod host>); <sandbox slug> (<sandbox host>)) — confirm `gs-admin whoami` targets the intended one before approving. ⚠ At least one of these tenants is PRODUCTION (recorded at setup) — verify the target before approving. [plugin:gs-superadmin]" (rendered, read and declined by Bradley). Tenant reads: whoami and four refreshes of the scratch (one died at its start); one program re-documented twice in the sandbox KB.
 Blind spots (hb-20261016-02): 2026-10-16 (tester) — F-546's killed writer was never caught live inside a mark (two kills, a 2 ms poll, both after the release): the dead-pid lock was laid by hand in a killed mark's shape, so the kill-to-lock path itself is the suite's; the writers' SIGINT/SIGTERM release does not exist on Windows and was not exercised; the held-handle and kill arms ran on this Windows host alone; the four-process contention driver was not re-run. F-541 and F-542 are judged by the stand-in suite alone, F-542's base-directory variant by construction; no live refresh restarted, so the skill's restarted relay is read, not walked. F-552's display-change half is suite-only. F-553/F-554/F-555 by reading; of F-555's Judge only the dashboard and page suites were run. R4 and the walk ran through the session's own shell tools, not a human paste into a terminal; cmd was not run. setup's changed sentence is unwalkable at CLI 1.0.12. The guard ask's rendering is Bradley's report; prompts are invisible to the session.
 Blind spots (hb-20261015-10): 2026-10-16 (tester) — F-546's lock never met a second writer live: the production KB is current (both R2 plans: 0 programs behind, 0 undocumented, 0 templates), so neither refresh re-documented and the manifest stayed byte-equal — the lock is measured by test/manifest-ops.mjs alone; the natural live arm is any later refresh whose plan finds programs behind. F-541, F-542 and F-545 are judged by the suite alone (no tenant can produce their states, VALIDATION § R13 R3). F-536's three shells: Git Bash and Windows PowerShell 5.1 ran the line through the session's own shell tools, cmd from a .bat file run by `cmd /d /c` — none was a human paste into a terminal window. The guard ask's rendering is Bradley's report; prompts are invisible to the session.
+
+<!-- builder 2026-10-17 (0.56.3 RELEASED — post-release housekeeping):
+     Payload: the R15 polish round — re-documentation's doc_path spelled like its neighbours (F-556), a lock the
+       refresh could not remove said as lockLeft and relayed (F-557), "already running" before "no snapshot yet" over
+       the six verbs and status's dead-holder stale (F-558). Staged versions folded in: none (0.56.3 alone).
+     Gate 1 (bus): terminal — F-556, F-557, F-558 (tester @ hb-20261017-04, sandbox, VALIDATION R15 CLEARED) and
+       F-560, F-561, F-562 (docs, PR #65) all VERIFIED; step 0: nothing deferred past an older version; F-563 (polish,
+       the tester's reported-not-logged note) auto-deferred past 0.56.3, its one free pass; open PRs to dev: none at
+       the cut (PR #69, F-568 test-only, opened and merged mid-ceremony for the recut).
+     Gate 2 (review): /code-review high over origin/main...dev (eight inline angles) — 7 findings, none
+       decision-changing: logged polish F-564..F-567 and DEFERRED past 0.56.3 with reopen triggers (the fix's two
+       edges; the lock-left sentence on the crash path and at the manifest's exit; export writing --out before its
+       refusal; the skill relaying lockLeft on refresh alone); /security-review over the same range — run, no finding
+       above the bar; highest severity none.
+     Cut: release/v0.56.3 first from dev @ 5b7f9d2 (strip ba620e6) — ONE matrix leg red, validate (windows-latest)
+       39086264816: the doc-lib F-557 arm assumed an icacls deny forbids an unlink and GitHub's elevated runner deleted
+       through it; fixed test-only on dev (F-568, PR #69, both arms probe first) and RECUT from dev @ 8cf8440, ONE
+       commit beyond (the strip, 0ea5bd9), force-pushed so PR #68 stayed open; stripped tree: both strict validates
+       PASS; battery verbatim from both YAMLs in temp worktrees 54/54 on the dev tip (7299a5d) and 54/54 on the first
+       stripped tree (ba620e6), the recut's scoped re-run 16/16 (the gates reading what changed: the two test files,
+       the bus). Trap met again: the drift job's depth-1 fetch in a stripped worktree made the shared repo shallow
+       (merge-tree "unrelated histories"); unshallowed; the runner now substitutes that step's --depth=1 away.
+     CI on the release PR #68 (the recut, 0ea5bd9), QUOTED per job after completion:
+         validate-plugin 39088233164: changes success / manifests success / validate (ubuntu-latest) success /
+           validate (windows-latest) success (the F-557 SKIP line printed: an elevated process deletes through the
+           deny) / validate (macos-latest) success
+         docs-drift 39088233106: drift (full) success
+         pr-target-guard 39088233109: guard success (re-run 39089707028 success)
+     Merged by Bradley's word, by the builder (main @ 302ac63); tag v0.56.3 pushed (dev-utils release-finish; its
+       local branch delete stalled on the worktree, finished by hand); release branch deleted local+remote;
+       worktrees removed; checkout back on dev.
+     Housekeeping: F-556..F-562 (6 sections) moved VERBATIM to the archive with 2 header Walk lines (hb-20261017-01,
+       hb-20261017-03) (live 12 -> 6, archive 108 -> 114, sum 120; 76 lines removed equal the 76 added; block sha256
+       ef512bed59673f2fcfae8e87fc02e6b3870c8d162a9f30e385460c7379482187); entry hint updated; Under test + canary ->
+       dev · hb-20261017-05. Next free number F-569. Released: 0.56.3; dev stages nothing.
+     Now live from main: nothing beyond the plugin (no workflow or Dependabot change in this release).
+     GitHub Release: https://github.com/BradleyDB/gs-admin-cli-docs/releases/tag/v0.56.3 (notes = the 0.56.3
+       CHANGELOG entry after the fixed intro).
+     Consumer refresh: claude plugin marketplace update gs-admin-cli-docs; claude plugin update
+       gs-superadmin@gs-admin-cli-docs.
+     Carried forward (not in this release): F-568 FIXED, its VERIFIED flip owed to the next tester round (judge: the
+       recut matrix, green); F-563..F-567 DEFERRED past 0.56.3 (back at the next ceremony); the R15 tester's note that
+       VALIDATION R15 R1's banked precondition (a status mark) does not put a program behind — a doc moved aside does. -->
 
 <!-- builder 2026-10-17 (RE-STAMPED after the verdict: F-556, F-557, F-558 OPEN -> FIXED -> VERIFIED on fix/r14-polish-f556-f558,
      PR #67 to dev, verdict @ hb-20261017-04 by the tester (branch tip 7619c0f: the three Verified notes, the Walk line
