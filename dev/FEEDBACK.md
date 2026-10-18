@@ -172,7 +172,7 @@ Blind spots (hb-20261015-10): 2026-10-16 (tester) — F-546's lock never met a s
        edges; the lock-left sentence on the crash path and at the manifest's exit; export writing --out before its
        refusal; the skill relaying lockLeft on refresh alone); /security-review over the same range — run, no finding
        above the bar; highest severity none.
-     Cut: release/[v]0.56.3 first from dev @ 5b7f9d2 (strip ba620e6) — ONE matrix leg red, validate (windows-latest)
+     Cut: release/v0.56.3 first from dev @ 5b7f9d2 (strip ba620e6) — ONE matrix leg red, validate (windows-latest)
        39086264816: the doc-lib F-557 arm assumed an icacls deny forbids an unlink and GitHub's elevated runner deleted
        through it; fixed test-only on dev (F-568, PR #69, both arms probe first) and RECUT from dev @ 8cf8440, ONE
        commit beyond (the strip, 0ea5bd9), force-pushed so PR #68 stayed open; stripped tree: both strict validates
@@ -186,7 +186,7 @@ Blind spots (hb-20261015-10): 2026-10-16 (tester) — F-546's lock never met a s
            deny) / validate (macos-latest) success
          docs-drift 39088233106: drift (full) success
          pr-target-guard 39088233109: guard success (re-run 39089707028 success)
-     Merged by Bradley's word, by the builder (main @ 302ac63); tag [v]0.56.3 pushed (dev-utils release-finish; its
+     Merged by Bradley's word, by the builder (main @ 302ac63); tag v0.56.3 pushed (dev-utils release-finish; its
        local branch delete stalled on the worktree, finished by hand); release branch deleted local+remote;
        worktrees removed; checkout back on dev.
      Housekeeping: F-556..F-562 (6 sections) moved VERBATIM to the archive with 2 header Walk lines (hb-20261017-01,
@@ -194,7 +194,7 @@ Blind spots (hb-20261015-10): 2026-10-16 (tester) — F-546's lock never met a s
        ef512bed59673f2fcfae8e87fc02e6b3870c8d162a9f30e385460c7379482187); entry hint updated; Under test + canary ->
        dev · hb-20261017-05. Next free number F-569. Released: 0.56.3; dev stages nothing.
      Now live from main: nothing beyond the plugin (no workflow or Dependabot change in this release).
-     GitHub Release: https://github.com/BradleyDB/gs-admin-cli-docs/releases/tag/[v]0.56.3 (notes = the 0.56.3
+     GitHub Release: https://github.com/BradleyDB/gs-admin-cli-docs/releases/tag/v0.56.3 (notes = the 0.56.3
        CHANGELOG entry after the fixed intro).
      Consumer refresh: claude plugin marketplace update gs-admin-cli-docs; claude plugin update
        gs-superadmin@gs-admin-cli-docs.
