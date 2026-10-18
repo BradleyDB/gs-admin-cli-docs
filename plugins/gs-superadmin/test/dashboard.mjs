@@ -1490,8 +1490,18 @@ try {
     // R14 R1); on POSIX no per-file rule forbids an unlink while the folder stays writable, so there the same run
     // proves the clean path: the lock removed and nothing said.
     const lockPath = join(dash(), LOCK_FILE);
-    const win = process.platform === "win32";
-    const allowDelete = () => { if (win) for (const t of [dash(), lockPath]) spawnSync("icacls", [t, "/remove:d", "*S-1-1-0"], { encoding: "utf8" }); };
+    // Whether the deny-delete pair FORBIDS here, probed on a sibling file first: a process that overrides ACLs (an
+    // elevated Windows runner with backup privileges — GitHub's windows-latest at the 0.56.3 cut, F-568) deletes
+    // through it, and that run proves the clean path like POSIX does; `win` below means "the deny forbids".
+    const probe = join(dash(), "x.probe");
+    writeFileSync(probe, "");
+    if (process.platform === "win32") for (const [t, right] of [[dash(), "DC"], [probe, "DE"]]) spawnSync("icacls", [t, "/deny", `*S-1-1-0:(${right})`], { encoding: "utf8" });
+    let win = process.platform === "win32";
+    try { rmSync(probe); win = false; } catch { /* the deny took */ }
+    if (process.platform === "win32") for (const t of [dash(), probe]) spawnSync("icacls", [t, "/remove:d", "*S-1-1-0"], { encoding: "utf8" });
+    rmSync(probe, { force: true });
+    if (process.platform === "win32" && !win) console.log("NOTE  F-557: this process deletes through an icacls deny (elevated), so the dashboard arm asserts the clean path here, as on POSIX");
+    const allowDelete = () => { if (process.platform === "win32") for (const t of [dash(), lockPath]) spawnSync("icacls", [t, "/remove:d", "*S-1-1-0"], { encoding: "utf8" }); };
     const hook = { match: "rp run", kind: "deny-delete", path: lockPath };
     const leftRun = run("refresh", [SLUG], { env: { FAKE_FAULTS: JSON.stringify([hook]) } });
     const leftRecord = existsSync(lockPath) ? readJson(lockPath) : null;
@@ -1499,7 +1509,7 @@ try {
     const cured = run("refresh", [SLUG]);
     check(win
       ? "F-557 (Windows) a refresh whose lock could not be removed at the end still exits 0 and SAYS so: lockLeft names the path and the cause (EPERM) and carries the sentence the skill relays (taken over on its own by the next refresh, nothing to do); the lock stays on disk holding this run's record; and the next refresh, the handle gone, takes it over at once (lockTakenOver names it) and leaves none"
-      : "F-557 (POSIX: a lock file cannot be made undeletable in a writable folder, so the arm proves the clean path) a refresh exits 0 with NO lockLeft, the lock removed, and the next refresh takes nothing over",
+      : "F-557 (the clean path: POSIX, where a lock file cannot be made undeletable in a writable folder, or a Windows process that deletes through the deny) a refresh exits 0 with NO lockLeft, the lock removed, and the next refresh takes nothing over",
       win
         ? leftRun.code === 0 && leftRun.json?.lockLeft?.path === lockPath && leftRun.json.lockLeft.why === "EPERM" && /^the refresh lock could not be removed at the end \(EPERM\) and was left at .*: the next refresh, rebuild or change takes it over on its own, because this process is gone — nothing to do$/.test(leftRun.json.lockLeft.text) && leftRecord?.by === "ana" && cured.code === 0 && cured.json?.lockTakenOver?.by === "ana" && !existsSync(lockPath)
         : leftRun.code === 0 && !("lockLeft" in (leftRun.json ?? {})) && leftRecord === null && cured.code === 0 && cured.json?.lockTakenOver === null && !existsSync(lockPath),
@@ -1513,7 +1523,7 @@ try {
     const curedResume = run("refresh", [SLUG, "--full"]);
     check(win
       ? "F-557 (Windows) a refresh REFUSED (the token stop, exit 3) whose lock could not be removed carries lockLeft and ends its error with the same sentence; the resume takes the lock over (lockTakenOver names it) and finishes"
-      : "F-557 (POSIX, the clean path) a refused refresh leaves no lock and says nothing of one; the resume finishes",
+      : "F-557 (the clean path, as above) a refused refresh leaves no lock and says nothing of one; the resume finishes",
       leftStop.code === EXIT["token-expired"] && curedResume.code === 0 && curedResume.json?.resumed === true && !existsSync(lockPath) && (win
         ? leftStop.json?.lockLeft?.path === lockPath && /; the refresh lock could not be removed at the end \(EPERM\) and was left at .* — nothing to do$/.test(leftStop.json.error ?? "") && leftStopRecord?.by === "ana" && curedResume.json.lockTakenOver?.by === "ana"
         : !("lockLeft" in (leftStop.json ?? {})) && !/refresh lock could not be removed/.test(leftStop.json?.error ?? "") && leftStopRecord === null && curedResume.json.lockTakenOver === null),
