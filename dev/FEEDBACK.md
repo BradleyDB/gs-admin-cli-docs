@@ -161,16 +161,21 @@ Walk (hb-20261017-03): 2026-10-17 (tester) — re-verification of F-560..F-562 o
 Blind spots (hb-20261016-02): 2026-10-16 (tester) — F-546's killed writer was never caught live inside a mark (two kills, a 2 ms poll, both after the release): the dead-pid lock was laid by hand in a killed mark's shape, so the kill-to-lock path itself is the suite's; the writers' SIGINT/SIGTERM release does not exist on Windows and was not exercised; the held-handle and kill arms ran on this Windows host alone; the four-process contention driver was not re-run. F-541 and F-542 are judged by the stand-in suite alone, F-542's base-directory variant by construction; no live refresh restarted, so the skill's restarted relay is read, not walked. F-552's display-change half is suite-only. F-553/F-554/F-555 by reading; of F-555's Judge only the dashboard and page suites were run. R4 and the walk ran through the session's own shell tools, not a human paste into a terminal; cmd was not run. setup's changed sentence is unwalkable at CLI 1.0.12. The guard ask's rendering is Bradley's report; prompts are invisible to the session.
 Blind spots (hb-20261015-10): 2026-10-16 (tester) — F-546's lock never met a second writer live: the production KB is current (both R2 plans: 0 programs behind, 0 undocumented, 0 templates), so neither refresh re-documented and the manifest stayed byte-equal — the lock is measured by test/manifest-ops.mjs alone; the natural live arm is any later refresh whose plan finds programs behind. F-541, F-542 and F-545 are judged by the suite alone (no tenant can produce their states, VALIDATION § R13 R3). F-536's three shells: Git Bash and Windows PowerShell 5.1 ran the line through the session's own shell tools, cmd from a .bat file run by `cmd /d /c` — none was a human paste into a terminal window. The guard ask's rendering is Bradley's report; prompts are invisible to the session.
 
-<!-- builder 2026-10-17 (F-556, F-557, F-558 OPEN -> FIXED on fix/r14-polish-f556-f558, PR #67 to dev, handed off @ hb-20261017-04;
-     plugin 0.56.3 staged on the branch with its CHANGELOG entry. Work order: oldest-first (no finding removed a manual
-     step; nothing pending re-arranges what is verified). The three Fix notes name the class, the Judge line and seven
-     KILLED mutants (pred:KILL, predictions before the run); the local battery (AGENTS.md fence verbatim) is green but
-     the known typecheck red on the git-ignored handoffs/ file and the engagement-report red the round fixed and re-ran.
-     Polish-only batch, CI untouched: no per-round dispatch (the merge dispatch is the evidence). Live arms a tester owes
-     on a SCRATCH dashboard are banked in VALIDATION section R15 (R1 the doc_path spelling from two directories, R2 the
-     held-handle arm on Windows read for lockLeft, R3 the four verbs during a fresh import's first refresh) plus the
-     email-engagement walk. Open PRs to dev at kickoff: none. Next free number F-563. This comment is re-stamped when the
-     branch's statuses change. -->
+<!-- builder 2026-10-17 (RE-STAMPED after the verdict: F-556, F-557, F-558 OPEN -> FIXED -> VERIFIED on fix/r14-polish-f556-f558,
+     PR #67 to dev, verdict @ hb-20261017-04 by the tester (branch tip 7619c0f: the three Verified notes, the Walk line
+     with the guard-wiring ask, VALIDATION section R15 CLEARED); plugin 0.56.3 staged on the branch with its CHANGELOG
+     entry; the merge is the maintainer's. Work order: oldest-first (no finding removed a manual step; nothing pending
+     re-arranges what is verified). The three Fix notes name the class, the Judge line and seven KILLED mutants
+     (pred:KILL, predictions before the run); the local battery (AGENTS.md fence verbatim) green but the known typecheck
+     red on the git-ignored handoffs/ file and the engagement-report red the round fixed and re-ran. Polish-only batch,
+     CI untouched: no per-round dispatch; the PR suite ran on each push, QUOTED after completion on the tip 7619c0f:
+         docs-drift 39081742393: drift (full) success
+         validate-plugin 39081742401: changes success / manifests success / validate (ubuntu-latest) success
+     Logged from the round's report (the tester's reported-not-logged note; the 2026-10-16 ruling that report-only notes
+     are logged as polish): F-563 (polish) — a handle on refresh.lock as the run writes its record crashes the refresh
+     with a raw stack, proposed DEFERRED under the two-rounds valve at the next ceremony. The tester's substituted R1
+     precondition (a doc moved aside, not a status mark) stands in VALIDATION section R15 as written. Open PRs to dev:
+     #67 (this round, green, awaiting the maintainer's merge). Next free number F-564. -->
 
 
 <!-- tester 2026-10-17 (VERDICT @ hb-20261017-03 — F-560, F-561, F-562 FIXED -> VERIFIED, a re-verification round on dev (checkout on dev at 36f551a + this round's commits); re-stamps the feat/rehearsal-2 pointer below: draft PR #66 CLOSED unmerged ("verdict-round rehearsal — never to merge"), its worktree removed, the local branch deleted, the remote delete REFUSED by ruleset 25315908 as CONTRIBUTING names — owed: Bradley deletes feat/rehearsal-2 in the GitHub UI):
