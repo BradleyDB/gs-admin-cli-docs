@@ -3391,6 +3391,38 @@ Blind spots: no tenant pull was made with the new families (the two reads were c
      Carried forward (not in this release): F-448 verdict by the other role; the skipped-path arm
        (Blind spots above). -->
 
+## F-567 — DEFERRED (past 0.56.3)
+Reported: 2026-10-17 (builder)
+Severity: polish — prose alone; the summary carries the fact and a rebuild rarely meets a held handle
+What: the email-engagement skill relays lockLeft in the refresh step's exit-0 bullet alone, while a rebuild's summary and a change's done (doConsequence spreads underLock's result) can carry it too, so the lock-left sentence reaches the admin on a pull and not on a rebuild or a change (skills/email-engagement/SKILL.md ~631; the change step relays changed and done.text only); 2026-10-17 (builder, release-gate review for 0.56.3 — /code-review high, 8 inline angles over origin/main...dev; verifier not run, so each is read, not reproduced)
+Repro: a display change whose rebuild could not remove the lock: the script returns done.lockLeft; the skill's change step says what changed and its consequence and never the lock-left sentence.
+Expected: the change step (and any rebuild relay) names lockLeft the way the refresh step does — one sentence, relayed as written. Proposed DEFERRED past 0.56.3 (prose only; walked with the next skill change), reopen: the next change to the email-engagement skill's change or refresh steps.
+Defer: 2026-10-17 (builder) - past 0.56.3. Why not now: release-gate review finding; a SKILL.md change needs a walk, so it rides the next skill round. Reopen: the next change to skills/email-engagement/SKILL.md's change or refresh steps.
+
+## F-566 — DEFERRED (past 0.56.3)
+Reported: 2026-10-17 (builder)
+Severity: polish — a refused export leaves a spec-only file a reader may take for complete; nothing is lost and the next export overwrites it
+What: verbExport writes the spec export (ctx.store.exportSpec to --out) BEFORE the --with-snapshot check, so an export refused for want of a snapshot — or, since F-558, as 'already running' — has already written --out (dashboard.mjs ~2273; pre-existing order, re-exposed by the F-558 edit of that line); 2026-10-17 (builder, release-gate review for 0.56.3 — /code-review high, 8 inline angles over origin/main...dev; verifier not run, so each is read, not reproduced)
+Repro: node .gs-superadmin/plugin/scripts/dashboard.mjs export <slug> --out handover.json --with-snapshot --kb <kb> on a dashboard with no snapshot: exit 1 with the refusal, yet handover.json exists with the spec alone and no .snapshot.json beside it.
+Expected: the snapshot check (and the lock read) comes before the spec is written, so a refused export writes nothing — nothing-written-on-refusal, as import already does (F-540). Proposed DEFERRED past 0.56.3, reopen: the next change to verbExport.
+Defer: 2026-10-17 (builder) - past 0.56.3. Why not now: release-gate review finding, read not reproduced; pre-existing order. Reopen: the next change to dashboard.mjs's verbExport.
+
+## F-565 — DEFERRED (past 0.56.3)
+Reported: 2026-10-17 (builder)
+Severity: polish — a crash path and an exit-time write; the lock is a dead holder's the moment the process exits and the next taker takes it over
+What: F-557's 'never silent' holds for refusals, not for crashes: releasedWith returns a plain Error unchanged, so a refresh that dies with a non-refusal error while the lock cannot be removed prints the stack and says nothing of the lock left (dashboard.mjs ~957); and manifest.mjs's sayLockLeft writes its line from the process 'exit' handler, where a piped stderr on Windows is asynchronous and the write can be dropped (~669). Test hygiene beside it: test/dashboard.mjs's F-557 arm removes its icacls denies only on the happy path, so a throw between the hooked refresh and allowDelete leaves the temp folder undeletable; 2026-10-17 (builder, release-gate review for 0.56.3 — /code-review high, 8 inline angles over origin/main...dev; verifier not run, so each is read, not reproduced)
+Repro: Windows: hold refresh.lock with a handle that forbids delete and make the body throw a TypeError (a corrupt snapshot file suffices): the stack prints, the lock stays, no lock-left line. Manifest: a mark under a parent that pipes stderr, the lock held at exit: no line arrives.
+Expected: releasedWith names the lock left on the crash path too (a stderr line beside the stack), and the manifest writer says it before exit (at save, which already does, and on the signal paths synchronously); the test arm removes its denies in a finally. Proposed DEFERRED past 0.56.3 under the two-rounds valve on the lock primitive, reopen: the next change to releasedWith, acquireFileLock or the manifest lock.
+Defer: 2026-10-17 (builder) - past 0.56.3. Why not now: release-gate review finding, read not reproduced; the valve applies (the lock primitive has had its rounds). Reopen: the next change to dashboard.mjs's releasedWith, doc-lib's acquireFileLock or manifest.mjs's lock handling.
+
+## F-564 — DEFERRED (past 0.56.3)
+Reported: 2026-10-17 (builder)
+Severity: polish — a test-only flag and a two-drive layout no skill sets up; shipped behaviour for every documented layout is right
+What: F-556's folder fix has two edges: redocument forwards a relative --bin raw while runScript now runs describe-batch from the workspace, so a relative --bin given from another directory resolves against the workspace in the child (dashboard.mjs redocument ~1075; the flag is test-only); and kbFolder records an absolute doc_path again, silently, when the workspace and the knowledge base sit on different Windows drives (path.relative returns an absolute path there, ~1055); 2026-10-17 (builder, release-gate review for 0.56.3 — /code-review high, 8 inline angles over origin/main...dev; verifier not run, so each is read, not reproduced)
+Repro: cd elsewhere; node .gs-superadmin/plugin/scripts/dashboard.mjs refresh <slug> --workspace <ws> --kb <kb> --bin ./fake-gs-admin.mjs — the dashboard's own calls find ./fake-gs-admin.mjs from the caller's directory, the re-documentation batch looks under <ws> and the refresh refuses 'describe-batch refused'. Cross-drive: --workspace D:\ws --kb E:\kb, one program behind: the re-documented entry's doc_path is E:/kb/journey/<id>.md.
+Expected: redocument passes resolve(ctx.binOpt) (or the resolved cliArgv), and kbFolder says so (a warning in the summary, or the absolute spelling named as the fallback) when relative() cannot make the folder workspace-relative. Polish: a test knob and a layout no skill sets up; proposed DEFERRED past 0.56.3, reopen: the next change to kbFolder or runScript.
+Defer: 2026-10-17 (builder) - past 0.56.3. Why not now: release-gate review finding, read not reproduced; neither edge is reachable from the skills' own lines. Reopen: the next change to dashboard.mjs's kbFolder or runScript.
+
 ## F-556 — VERIFIED
 Reported: 2026-10-16 (tester, R14 re-verification round @ hb-20261016-02, report-only note (1) on its Walk line, now in dev/FEEDBACK-archive.md's Walks block; logged by the builder on Bradley's word "log them as polish" after the 0.56.2 close-out; section written 2026-10-17)
 Severity: polish — the doc is written and found; only the recorded path's spelling differs from its neighbours (Bradley's ruling, 2026-10-16)
