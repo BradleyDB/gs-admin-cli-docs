@@ -3851,3 +3851,29 @@ while the refresh runs → REOPEN F-558 naming the verb.
 The one SKILL.md the round changed (the refresh summary's relay names `lockLeft`): invoke email-engagement's refresh mode
 on the scratch dashboard once ("pull the scratch dashboard again") and record whether the model ran the `refresh` line
 and relayed the summary as the step lists it; `lockLeft` is relayed only when R2 provoked it.
+
+Section status (tester @ hb-20261017-04, 2026-10-17): CLEARED — fix/r14-polish-f556-f558 at 481f02c, clean and level, a
+session in the workspace with --plugin-dir on the checkout, canary matched; the SANDBOX KB, reads only; ONE one-program
+scratch (customer lists off, Health on, re-documentation on, test accounts emptied), imported with no snapshot and
+removed after. Pass bar: each finding's Repro plus the property its Fix note claims.
+- R1 (F-556) HELD, with a SUBSTITUTED precondition: `manifest.mjs mark --status stale` does not put a program behind
+  (engagement.mjs kbGap reads the doc files and last_verified, never the status; the refresh after the mark planned
+  behind 0 and re-documented nothing), so the program's doc was moved aside before each run (undocumented — the same
+  upsert, mark, describe-batch line). From the workspace: documented 1, doc_path `<kb>/journey/<id>.md` (a new
+  last_verified and fingerprint), the spelling of a setup-written neighbour of the same domain, the doc at that path.
+  From the workspace's parent with `--workspace <ws> --kb <ws>/<kb>`: documented 1, the same KB-relative doc_path, the
+  doc rewritten in the workspace, nothing under the parent. This text's precondition should name a doc moved aside (or
+  a last_verified older than the program's modifiedAt), not the status mark.
+- R2 (F-557) HELD: the handle opened by PowerShell 5.1 just after the run wrote its name into the record and held until
+  the refresh process exited: exit 0, `lockLeft` {path, why EBUSY, text} with the sentence, the finished run's record
+  on disk after; the skill relayed it (the walk). The next refresh: exit 0, `lockTakenOver` {by, at = the left
+  record's start}, never "already running"; no lock after. A handle opened BEFORE the run writes its record blocks
+  the record's rename and the refresh dies with a raw EPERM stack, no summary (measured once; the record is written
+  since R13 — outside F-557's claim, which is the release; reported to the maintainer, not logged).
+- R3 (F-558) HELD: during the first refresh, a second process ran the four verbs 0.2–0.6 s after the lock appeared, no
+  snapshot on disk: rebuild, report, health --program exit 1 and publish exit 0 on `publish.why`, each "already
+  running: started by … — run <verb> again when it finishes", none "no snapshot"; after the refresh all four exit 0.
+- Walk: email-engagement invoked by the session ("pull the scratch dashboard again"); step P's line run as written; the
+  exit-0 run's final report in step P's shape with `lockTakenOver` and `lockLeft`'s text relayed as written (the
+  pre-record-handle run above exited 1 with no `error` to relay). Recorded as Walk (hb-20261017-04).
+F-556, F-557, F-558 VERIFIED. Blind spots: the tester comment of 2026-10-17 @ hb-20261017-04 on the bus.
