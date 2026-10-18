@@ -1348,16 +1348,25 @@ if (process.env.ZZ_NEVER_SET_TYPE_PROBE) readKbIdentity(42, []);
   {
     const held = acquireFileLock(lockp, { owner: { by: "me" }, staleMs: stale, waitMs: 0 });
     const root = process.platform !== "win32" && typeof process.getuid === "function" && process.getuid() === 0;
+    // A sibling probe file under the same denies says whether the forbid TAKES here: a process that overrides ACLs (an
+    // elevated Windows runner holding backup privileges — GitHub's windows-latest at the 0.56.3 cut, F-568) deletes
+    // through the deny, and the arm is then skipped with its reason, never asserted against an unlink that went through.
+    const probe = join(dir, "x.probe");
+    writeFileSync(probe, "");
     const forbid = (on) => {
-      if (process.platform === "win32") { for (const [target, right] of [[dir, "DC"], [lockp, "DE"]]) spawnSync("icacls", on ? [target, "/deny", `*S-1-1-0:(${right})`] : [target, "/remove:d", "*S-1-1-0"], { encoding: "utf8" }); }
+      if (process.platform === "win32") { for (const [target, right] of [[dir, "DC"], [lockp, "DE"], [probe, "DE"]]) spawnSync("icacls", on ? [target, "/deny", `*S-1-1-0:(${right})`] : [target, "/remove:d", "*S-1-1-0"], { encoding: "utf8" }); }
       else chmodSync(dir, on ? 0o555 : 0o755);
     };
     forbid(true);
-    const left = root ? null : held.release();
+    let forbids = true;
+    try { rmSync(probe); forbids = false; } catch { /* the deny took: the probe stays */ }
+    const skip = root ? "root ignores a folder's write bit" : !forbids ? "this process deletes through the deny (an elevated process overriding the ACL)" : null;
+    const left = skip ? null : held.release();
     const recordKept = existsSync(lockp) && readJsonFile(lockp).by === "me" && readJsonFile(lockp).pid === process.pid;
     forbid(false);
+    rmSync(probe, { force: true });
     const again = held.release();
-    if (root) console.log("SKIP  F-557 acquireFileLock: root ignores a folder's write bit, so the unlink cannot be made to fail here");
+    if (skip) console.log(`SKIP  F-557 acquireFileLock: ${skip}, so the unlink cannot be made to fail here — the arm is measured where it can be (a non-elevated Windows session; a non-root POSIX user)`);
     else {
       check("F-557 acquireFileLock: a release that cannot remove the lock returns the lock left ({path, why: the error's code}) and keeps this taker's record in it — a dead holder's once the process exits, never silently nothing",
         held.taken && left?.path === lockp && typeof left?.why === "string" && left.why.length > 0 && recordKept, [left, recordKept]);
