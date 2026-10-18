@@ -7,14 +7,22 @@
 //
 // Environment:
 //   FAKE_TENANT  JSON — the buildTenant() variant
-//   FAKE_FAULTS  JSON — applyFaults() rules
+//   FAKE_FAULTS  JSON — applyFaults() rules; a rule of kind "deny-delete" is a
+//                HOOK, not a fault (F-557's arm): when the call matches, the
+//                named file is made undeletable by its owner on Windows (an
+//                icacls deny of DELETE on the file and of DELETE_CHILD on its
+//                folder, to Everyone — what a handle that forbids delete does
+//                to a lock mid-refresh; the test removes both) and the call then
+//                answers as usual; on POSIX, where no per-file rule forbids an
+//                unlink while the folder stays writable, it does nothing
 //   FAKE_STATE   a directory: fault counters persist in faults.json, every
 //                invocation appends its argv to argv.jsonl, and a lock file
 //                marks a call in flight (a second call that finds it records
 //                an overlap — the suite asserts there is none); saved reports
 //                (rp create / update, NAT-2) persist in reports.json
 import { readFileSync, writeFileSync, appendFileSync, existsSync, rmSync } from "node:fs";
-import { join } from "node:path";
+import { join, dirname } from "node:path";
+import { spawnSync } from "node:child_process";
 import { buildTenant, answer, applyFaults } from "./acme-tenant.mjs";
 
 const argv = process.argv.slice(2);
@@ -26,7 +34,15 @@ if (state) {
 }
 
 let res = null;
-const rules = process.env.FAKE_FAULTS ? JSON.parse(process.env.FAKE_FAULTS) : [];
+const allRules = process.env.FAKE_FAULTS ? JSON.parse(process.env.FAKE_FAULTS) : [];
+// The deny-delete hooks fire here, once per matching call, and never reach applyFaults (they answer nothing).
+for (const r of allRules.filter((x) => x.kind === "deny-delete")) {
+  if (![].concat(r.match).every((m) => argv.join(" ").includes(m))) continue;
+  // Both halves, since Windows allows a delete through EITHER the file's DELETE right or its folder's DELETE_CHILD:
+  // the folder's deny is on the folder alone (not inherited), so its other files stay deletable and replaceable.
+  if (process.platform === "win32" && existsSync(r.path)) for (const [target, right] of [[dirname(r.path), "DC"], [r.path, "DE"]]) spawnSync("icacls", [target, "/deny", `*S-1-1-0:(${right})`], { encoding: "utf8" });
+}
+const rules = allRules.filter((x) => x.kind !== "deny-delete");
 if (rules.length && state) {
   const file = join(state, "faults.json");
   const counts = existsSync(file) ? JSON.parse(readFileSync(file, "utf8")) : {};

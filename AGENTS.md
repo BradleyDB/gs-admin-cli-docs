@@ -387,16 +387,33 @@ npm run build   # only when build/ scripts or the catalog changed (needs the pin
   role that lands a fix on an unmerged PR says so **in a bus comment on dev** — branch
   and PR number — not only inside the entry's Fix note on that branch. (F-161: a fix
   recorded only on its own unmerged branch was re-implemented from scratch, with a
-  reworked PR, by the next session.) The pointer covers **every status transition, not
-  just FIXED** — it is re-stamped whenever the branch's statuses change: a verdict
-  (VERIFIED, or back to OPEN), a WONTFIX — so the dev view never lags a transition
-  behind the branch. (F-223: three verdicts riding PR #76 read OPEN from dev under a
-  pointer still saying FIXED — the F-161 hazard reproduced one transition later.) The
-  same pointer **claims the finding number(s) its branch consumes, at logging time,
-  not at merge**; and a session picking a next number takes the max across both
-  `^## F-` section headers and the numbers claimed in header comments, after a fresh
-  pull. (The F-215 collision: two concurrent branches each took the same announced
-  next number, and the losing entry had to be re-logged as F-223.)
+  reworked PR, by the next session.) On a short branch, whose findings are sections of
+  `dev`'s bus, the pointer covers **every status transition, not just FIXED** — it is
+  re-stamped whenever the branch's statuses change: a verdict (VERIFIED, or back to
+  OPEN), a WONTFIX — so the dev view never lags a transition behind the branch. (F-223:
+  three verdicts riding PR #76 read OPEN from dev under a pointer still saying FIXED —
+  the F-161 hazard reproduced one transition later.) A **long-lived branch** (more than
+  one round; the /dev-loop skill's "Long-lived branches") owes **one pointer, not one
+  per transition**: a bus comment on dev when it opens — branch, draft PR number,
+  worktree — re-stamped at landing. The worktree is spelled relative to the projects
+  root, `<PROJECTS_ROOT>\..\worktrees\<name>` (the skill puts a long branch's worktree in a
+  folder beside PROJECTS_ROOT, outside the repos it globs), or by its folder name alone
+  — never as its real machine path: the pre-push check-instance-data gate ("Data
+  hygiene"; every ref) refuses a local user path in bus prose, so a pointer carrying the
+  real path does not push (F-561, measured 2026-10-17). Between those, the draft PR is
+  the visibility
+  (`gh pr list --base dev` names it every round) and the branch's own bus carries its
+  transitions; the F-223 hazard cannot reproduce there, because a long branch flips only
+  its own findings and `dev` holds no section for a pointer to lag behind. **A finding
+  number is claimed by its committed `## F-` section, never by a comment**: `dev-utils
+  log` numbers above every section header on every local and remote-tracking ref and in
+  every worktree's working copy, and a header-comment claim is invisible to it (measured
+  2026-10-17 on dev-utils 0.7.1: under a header comment claiming F-556..F-558 with no
+  sections, it minted F-556). So a session picking a number fetches first and runs
+  `dev-utils log`, or takes the max over `git grep '^## F-'` across refs and worktrees;
+  a branch on another machine counts only once fetched. (The F-215 collision: two
+  concurrent branches each took the same announced next number, and the losing entry had
+  to be re-logged as F-223 — a comment-claimed number is that collision waiting to recur.)
 - **Every open PR to `dev` is named at a session's kickoff and close-out, bot PRs
   included** (`gh pr list --base dev`), each with its check state, and a red one is
   DISPOSITIONED — merged, closed with a reason, or carried forward explicitly in the

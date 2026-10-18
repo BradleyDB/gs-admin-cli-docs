@@ -121,7 +121,7 @@ import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "nod
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { makeCliHelpers, findWorkspaceDir, findWorkspaceCatalog, makeCommandResolver, resolveCliArgv, readJsonFile, writeFileAtomicSync, acquireFileLock, isMainModule, readKbIdentity, cmpKey, RECORDED_LANES } from "./doc-lib.mjs";
+import { makeCliHelpers, findWorkspaceDir, findWorkspaceCatalog, makeCommandResolver, resolveCliArgv, readJsonFile, writeFileAtomicSync, acquireFileLock, readFileLock, docDirNorm, isMainModule, readKbIdentity, cmpKey, RECORDED_LANES } from "./doc-lib.mjs";
 import { printable } from "./journal-lib.mjs";
 import {
   specStore, SpecRefusal, holderName, openSpec, validateSpec, SPEC_DESCRIPTIONS, PRESETS, TABS, DEFAULT_ACCOUNT_LISTS, defaultSpec,
@@ -912,28 +912,54 @@ function pruneSnapshots(ctx, slug) {
 // check-then-write window; a holder whose process is gone, or whose lock is older than two hours, is taken over; the
 // release leaves a lock another taker took over), and the run's name is recorded on it once known (`record`). A
 // rebuild and a change's rebuild take the same lock (F-552): the pages are never written from an older snapshot over
-// the ones a refresh just built, and a refresh never prunes the snapshot a rebuild is reading.
+// the ones a refresh just built, and a refresh never prunes the snapshot a rebuild is reading. A verb that needs a
+// snapshot and finds none READS the lock first (F-558): during the dashboard's first refresh it says "already running",
+// never "run the refresh" about the one that is running. A release that could not remove the lock is SAID (F-557):
+// on the summary as `lockLeft`, on a refusal appended — the lock is a dead holder's the moment this process exits, and
+// the next taker takes it over; nothing needs doing.
+const lockPathOf = (ctx, slug) => join(dirOf(ctx, slug), LOCK_FILE);
+/** The "already running" refusal, from a live holder's record — the one text, for the taker and for the readers of the lock's state (F-558). */
+function alreadyRunningText(ctx, slug, held, action, path) {
+  const age = ctx.nowMs - Date.parse(String(held.at ?? ""));
+  const holder = held.unreadable ? "its lock is being written" : `started by ${held.by ?? "unknown"} at ${held.at} (${plural(Math.round(age / 60000), "minute")} ago${held.pid != null ? `, pid ${held.pid}` : ""})`;
+  const then = action === "refresh" ? "wait for it" : `run ${action} again when it finishes`;
+  return `a refresh of "${slug}" is already running: ${holder} — ${then}; a refresh whose process is gone, or whose lock ${path} is older than two hours, is taken over on its own`;
+}
 function takeLock(ctx, slug, { run = null, action = "refresh" } = {}) {
-  const path = join(dirOf(ctx, slug), LOCK_FILE);
+  const path = lockPathOf(ctx, slug);
   const lock = acquireFileLock(path, { owner: { by: ctx.by, run }, staleMs: LOCK_STALE_MS, waitMs: 0, nowMs: ctx.nowMs });
-  if (!lock.taken) {
-    const held = lock.held ?? {};
-    const age = ctx.nowMs - Date.parse(String(held.at ?? ""));
-    const holder = held.unreadable ? "its lock is being written" : `started by ${held.by ?? "unknown"} at ${held.at} (${plural(Math.round(age / 60000), "minute")} ago${held.pid != null ? `, pid ${held.pid}` : ""})`;
-    const then = action === "refresh" ? "wait for it" : `run ${action} again when it finishes`;
-    refuse(`a refresh of "${slug}" is already running: ${holder} — ${then}; a refresh whose process is gone, or whose lock ${path} is older than two hours, is taken over on its own`);
-  }
+  if (!lock.taken) refuse(alreadyRunningText(ctx, slug, lock.held ?? {}, action, path));
   // Said at the takeover, so a run refused later (the budget) still leaves a record of whose lock it took.
   if (lock.takenOver) ctx.log(`took over a stale refresh lock of "${slug}" held by ${lock.takenOver.by ?? "unknown"} since ${lock.takenOver.at}`);
   return { path, release: lock.release, record: (name) => lock.record({ run: name }), takenOver: lock.takenOver };
 }
+/** The lock as status reports it: held, whose, and `stale` when its holder is dead by the primitive's one rule (its process gone, or its record older than two hours). */
 const lockState = (ctx, slug) => {
-  const path = join(dirOf(ctx, slug), LOCK_FILE);
-  if (!existsSync(path)) return { held: false };
-  const held = readJsonOr(path, {});
-  const age = ctx.nowMs - Date.parse(held.at ?? 0);
-  return { held: true, by: held.by ?? null, at: held.at ?? null, stale: !Number.isFinite(age) || age >= LOCK_STALE_MS, run: held.run ?? null };
+  const s = readFileLock(lockPathOf(ctx, slug), { staleMs: LOCK_STALE_MS, nowMs: ctx.nowMs });
+  if (!s.held) return { held: false };
+  const r = s.record ?? {};
+  return { held: true, by: r.by ?? null, at: r.at ?? null, stale: s.dead, run: r.run ?? null };
 };
+/** The LIVE holder of the dashboard's lock, or null (no lock, or a dead holder's the next taker takes over): read, never taken (F-558). */
+function liveLock(ctx, slug) {
+  const s = readFileLock(lockPathOf(ctx, slug), { staleMs: LOCK_STALE_MS, nowMs: ctx.nowMs });
+  return s.held && !s.dead ? { path: s.path, record: s.record ?? { unreadable: true } } : null;
+}
+/** What a lock the release could not remove is said as (F-557): the path, the cause, and the one sentence the skill relays. */
+const lockLeftOf = (left) => ({ path: left.path, why: left.why, text: `the refresh lock could not be removed at the end (${left.why}) and was left at ${left.path}: the next refresh, rebuild or change takes it over on its own, because this process is gone — nothing to do` });
+/**
+ * The release at the end of a verb under the lock (F-557): `out` as it is once the lock is off; with `lockLeft` when
+ * the release could not remove it; a refusal in flight carries the same on its message and details. Never silent.
+ * @template T @param {{ release: () => ?{ path: string, why: string } }} lock @param {T} out @returns {T}
+ */
+function releasedWith(lock, out) {
+  const left = lock.release();
+  if (!left) return out;
+  const said = lockLeftOf(left);
+  if (out instanceof DashboardRefusal) { out.message += `; ${said.text}`; out.details = { ...(out.details ?? {}), lockLeft: said }; return out; }
+  if (out instanceof Error || out === null || typeof out !== "object") return out;
+  return /** @type {T} */ ({ ...out, lockLeft: said });
+}
 // ── The tenant and the token, before any call ────────────────────────────────
 /**
  * The refresh line a stopped or refused refresh prints as its remedy (F-523): the entry command's own line with
@@ -942,6 +968,19 @@ const lockState = (ctx, slug) => {
  */
 export const refreshRemedy = (ctx, slug, { full = false, healthOnly = false } = {}) => `${COPY_LINES.refresh(slug, basename(ctx.kbDir))}${full ? " --full" : ""}${healthOnly ? " --health-only" : ""}`;
 const remedyOf = (line, login) => ({ remedy: { login, line } });
+/** The no-snapshot line — the ONE spelling — for a verb that holds the lock or has read it (F-558): the refresh to run. */
+const noSnapshotLine = (ctx, slug, { what = `no snapshot of "${slug}" yet`, orElse = "" } = {}) => `${what} — run \`${refreshRemedy(ctx, slug)}\` first${orElse}`;
+/**
+ * A verb that needs a snapshot and finds none reads the lock FIRST (F-558): during the dashboard's first refresh it is
+ * told "already running … run <verb> again when it finishes", never to start the refresh that is running (which would
+ * itself be refused as running). A dead holder's lock stops nothing. The verbs that TAKE the lock (rebuild, a change's
+ * rebuild) look for the snapshot inside it and need no read: the lock's own refusal comes first.
+ */
+function noSnapshotWhy(ctx, slug, action, opts = {}) {
+  const live = liveLock(ctx, slug);
+  return live ? { why: alreadyRunningText(ctx, slug, live.record, action, live.path), remedy: {} } : { why: noSnapshotLine(ctx, slug, opts), remedy: remedyOf(refreshRemedy(ctx, slug), false) };
+}
+function refuseNoSnapshot(ctx, slug, action, opts = {}) { const r = noSnapshotWhy(ctx, slug, action, opts); refuse(r.why, "failed", r.remedy); }
 /** Any other verb's line, as a remedy prints it: the entry command, the words, `--kb` (F-523). */
 const entryLine = (ctx, ...words) => `${ENTRY_COMMAND} ${words.join(" ")}${kbFlag(basename(ctx.kbDir))}`;
 function preflight(ctx, spec, { owner = "this dashboard", again = null } = {}) {
@@ -1002,8 +1041,21 @@ function journeyDomain(ctx) {
   }
   return RECORDED_LANES.journey.folder;
 }
+/**
+ * The knowledge-base folder as describe-batch is handed it (F-556): WORKSPACE-RELATIVE with forward slashes — the
+ * spelling the skills' hand-run lines pass (`<slug>/<domain>`) and T-2 records (doc_path is workspace-relative) — so a
+ * doc_path the dashboard's re-documentation records reads like its neighbours' (setup's stubs, a hand-run batch).
+ * describe-batch records the folder as passed (doc-lib's docPathFor) and is run FROM the workspace (runScript), so the
+ * relative folder resolves there whatever directory the admin ran this command from. The class: any writer that reaches
+ * describe-batch or a mark with a folder it did not get from the user spells it this way; the dashboard is the one such
+ * writer. An entry an earlier version recorded absolute stays as recorded — it resolves, since readers resolve doc_path
+ * against the workspace and an absolute path is unaffected — and is respelled the next time that asset is re-documented,
+ * by any writer (describe-batch records the spelling afresh on every documented mark).
+ */
+const kbFolder = (ctx, domain) => docDirNorm(relative(ctx.wsDir, join(ctx.kbDir, domain)));
+/** A plugin script as a process, run FROM the workspace: a workspace-relative path it is handed resolves there (F-556). */
 function runScript(ctx, script, args) {
-  const r = spawnSync(process.execPath, [script, ...args], { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
+  const r = spawnSync(process.execPath, [script, ...args], { encoding: "utf8", maxBuffer: 64 * 1024 * 1024, cwd: ctx.wsDir });
   let json = null;
   try { json = JSON.parse(r.stdout); } catch { /* a refusal prints no JSON */ }
   return { ok: r.status === 0, status: r.status, json, stderr: String(r.stderr ?? "").trim() };
@@ -1041,7 +1093,7 @@ function redocument(ctx, { spec, estimate, runDir }) {
     }
     const marked = runScript(ctx, MANIFEST_SCRIPT, ["mark", "--manifest", manifestPath, "--keys-file", kb.keysFile, "--status", "stale"]);
     if (!marked.ok) refuse(`manifest mark refused: ${marked.stderr.slice(-400)}`);
-    const r = batch(["--manifest", manifestPath, "--domain", domain, "--command", "gs-admin --json jo p describe --id {id}", "--doc-mode", "program", "--out-dir", join(ctx.kbDir, domain), "--keys-file", kb.keysFile], budget);
+    const r = batch(["--manifest", manifestPath, "--domain", domain, "--command", "gs-admin --json jo p describe --id {id}", "--doc-mode", "program", "--out-dir", kbFolder(ctx, domain), "--keys-file", kb.keysFile], budget);
     out.programs.documented = r.documented;
     out.programs.failed = r.failed;
     out.programs.remaining = Math.max(0, out.programs.behind - out.programs.unlisted - r.documented);
@@ -1062,7 +1114,7 @@ function redocument(ctx, { spec, estimate, runDir }) {
       const marked = runScript(ctx, MANIFEST_SCRIPT, ["mark", "--manifest", manifestPath, "--keys-file", t.staleKeysFile, "--status", "stale"]);
       if (!marked.ok) refuse(`manifest mark (templates) refused: ${marked.stderr.slice(-400)}`);
     }
-    const r = batch(["--manifest", manifestPath, "--domain", t.domain, "--command", "gs-admin --json jo email template --id {id}", "--doc-mode", "template", "--out-dir", join(ctx.kbDir, t.domain), "--keys-file", t.keysFile], budget);
+    const r = batch(["--manifest", manifestPath, "--domain", t.domain, "--command", "gs-admin --json jo email template --id {id}", "--doc-mode", "template", "--out-dir", kbFolder(ctx, t.domain), "--keys-file", t.keysFile], budget);
     out.templates.documented = r.documented;
     out.templates.failed = r.failed;
     out.templates.remaining = Math.max(0, t.planned - r.documented);
@@ -1442,7 +1494,7 @@ function verbNativeVerify(ctx, slug, opt) {
 /** Publish the pages as they stand, with no pull and no rebuild (the manual publish, R8; a publish setting's change). */
 function publishNow(ctx, slug, spec) {
   const latest = latestSnapshotPath(ctx, slug);
-  if (!latest) return { publish: { target: spec.publish.target, published: false, why: `no snapshot of "${slug}" yet: run \`${refreshRemedy(ctx, slug)}\` first` } };
+  if (!latest) return { publish: { target: spec.publish.target, published: false, why: noSnapshotWhy(ctx, slug, "publish").why } };
   const { snapshot } = applyGroups(openSnapshotFile(latest), spec.groups);
   return { publish: publishLeaders(ctx, { spec, snapshot }) };
 }
@@ -1769,8 +1821,12 @@ function verbAction(ctx, slug, q, value, ictx) {
 function doConsequence(ctx, slug, spec, consequence) {
   if (consequence === "pull") return { kind: "refresh", ...verbRefresh(ctx, slug, { full: false, healthOnly: false }) };
   if (consequence === "reselect") return { kind: "reselect", ...underLock(ctx, slug, "change", () => reselectFromStore(ctx, slug, spec)) };
-  const files = snapshotFiles(ctx, slug);
-  return files.length ? { kind: "rebuild", ...underLock(ctx, slug, "change", () => rebuildFrom(ctx, { spec, snapshotPath: files.at(-1), previousPath: files.at(-2) ?? null, outDir: dirOf(ctx, slug) })) } : { kind: "rebuild", done: false, why: `no snapshot yet: run \`${refreshRemedy(ctx, slug)}\`` };
+  // The snapshot is looked for INSIDE the lock (F-558): during the dashboard's first refresh the lock's own refusal
+  // comes first ("already running"), never "no snapshot yet: run the refresh" about the refresh that is running.
+  return { kind: "rebuild", ...underLock(ctx, slug, "change", () => {
+    const files = snapshotFiles(ctx, slug);
+    return files.length ? rebuildFrom(ctx, { spec, snapshotPath: files.at(-1), previousPath: files.at(-2) ?? null, outDir: dirOf(ctx, slug) }) : { done: false, why: noSnapshotLine(ctx, slug) };
+  }) };
 }
 /** The last plan this dashboard made (null until one exists): the minutes of a full refresh and the longest schedule period come from it. */
 function lastPlan(ctx, slug) {
@@ -1828,7 +1884,10 @@ function verbRefresh(ctx, slug, { full, healthOnly, planRun = null }) {
   // any tenant call; a refusal there releases the lock on the way out.
   const lock = takeLock(ctx, slug);
   const takenOver = lock.takenOver ? { lockTakenOver: { by: lock.takenOver.by ?? null, at: lock.takenOver.at ?? null } } : {};
+  // The release at the end says what it could not remove (F-557): on the summary as lockLeft, on a refusal appended.
+  let out;
   try {
+  out = (() => {
   const who = preflight(ctx, spec, { again: refreshRemedy(ctx, slug, { full, healthOnly }) });
   let state = readJsonOr(join(dir, STATE_FILE), null);
   const previousPath = latestSnapshotPath(ctx, slug);
@@ -1956,21 +2015,26 @@ function verbRefresh(ctx, slug, { full, healthOnly, planRun = null }) {
       caveats: snapshot.caveats.map((c) => c.id),
       publish: published,
     };
-  } finally {
-    lock.release();
-  }
+  })();
+  } catch (e) { throw releasedWith(lock, e); }
+  return releasedWith(lock, out);
 }
 function verbRebuild(ctx, slug) {
   const spec = savedSpec(ctx, slug);
-  const files = snapshotFiles(ctx, slug);
-  if (!files.length) refuse(`no snapshot of "${slug}" yet — run \`${refreshRemedy(ctx, slug)}\` first`, "failed", remedyOf(refreshRemedy(ctx, slug), false));
-  const r = underLock(ctx, slug, "rebuild", () => rebuildFrom(ctx, { spec, snapshotPath: files.at(-1), previousPath: files.at(-2) ?? null, outDir: dirOf(ctx, slug) }));
-  return { ok: true, mode: "rebuild", slug, pulledAt: r.pulledAt, ungrouped: r.ungrouped, delta: r.delta, pages: r.pages.map((p) => ({ page: p.page, path: p.path, megabytes: p.megabytes, warning: p.warning })), publish: r.publish };
+  // The snapshot is looked for INSIDE the lock (F-558): see doConsequence.
+  const r = underLock(ctx, slug, "rebuild", () => {
+    const files = snapshotFiles(ctx, slug);
+    if (!files.length) refuse(noSnapshotLine(ctx, slug), "failed", remedyOf(refreshRemedy(ctx, slug), false));
+    return rebuildFrom(ctx, { spec, snapshotPath: files.at(-1), previousPath: files.at(-2) ?? null, outDir: dirOf(ctx, slug) });
+  });
+  return { ok: true, mode: "rebuild", slug, pulledAt: r.pulledAt, ungrouped: r.ungrouped, delta: r.delta, pages: r.pages.map((p) => ({ page: p.page, path: p.path, megabytes: p.megabytes, warning: p.warning })), publish: r.publish, ...(r.lockLeft ? { lockLeft: r.lockLeft } : {}) };
 }
-/** A rebuild of the pages under the dashboard's lock (F-552): refused while a refresh runs, never raced with it. */
+/** A rebuild of the pages under the dashboard's lock (F-552): refused while a refresh runs, never raced with it; a lock the release could not remove is said on the result (F-557). */
 function underLock(ctx, slug, action, work) {
   const lock = takeLock(ctx, slug, { action });
-  try { return work(); } finally { lock.release(); }
+  let out;
+  try { out = work(); } catch (e) { throw releasedWith(lock, e); }
+  return releasedWith(lock, out);
 }
 /**
  * Whether a change of the customer lists can rank them now (F-548, which replaced F-529's narrow path): from the account
@@ -2164,7 +2228,7 @@ export function pullSecondsAfter(plan, before, after) {
 function verbReport(ctx, slug, opt, argv) {
   savedSpec(ctx, slug); // a saved dashboard, or the refusal naming the draft
   const latest = latestSnapshotPath(ctx, slug);
-  if (!latest) refuse(`no snapshot of "${slug}" yet — run \`${refreshRemedy(ctx, slug)}\` first`, "failed", remedyOf(refreshRemedy(ctx, slug), false));
+  if (!latest) refuseNoSnapshot(ctx, slug, "report");
   const snapshot = openSnapshotFile(latest);
   const ageDays = Math.floor((ctx.nowMs - Date.parse(snapshot.meta.pulledAt)) / 86400000);
   const reportDir = join(dirOf(ctx, slug), REPORTS_DIR);
@@ -2211,7 +2275,7 @@ function verbExport(ctx, slug, opt, argv) {
   let accountStore = null;
   const latest = latestSnapshotPath(ctx, slug);
   if (argv.includes("--with-snapshot")) {
-    if (!latest) refuse(`no snapshot of "${slug}" to export beside the spec — run \`${refreshRemedy(ctx, slug)}\` first, or export without --with-snapshot`, "failed", remedyOf(refreshRemedy(ctx, slug), false));
+    if (!latest) refuseNoSnapshot(ctx, slug, "export", { what: `no snapshot of "${slug}" to export beside the spec`, orElse: ", or export without --with-snapshot" });
     snapshot = r.out.replace(/\.json$/i, "") + ".snapshot.json";
     // The account store goes with its snapshot (F-548), beside it under the one rule engagement.mjs owns, so the
     // import ranks the customer lists on its first refresh with no full pull.
@@ -2248,7 +2312,7 @@ function verbHealth(ctx, slug, opt) {
   if (!programId) refuse("health needs --program <id>");
   savedSpec(ctx, slug);
   const latest = latestSnapshotPath(ctx, slug);
-  if (!latest) refuse(`no snapshot of "${slug}" yet — run \`${refreshRemedy(ctx, slug)}\` first`, "failed", remedyOf(refreshRemedy(ctx, slug), false));
+  if (!latest) refuseNoSnapshot(ctx, slug, "health");
   const s = openSnapshotFile(latest);
   const program = s.dimensions.programs.find((p) => p.id === programId);
   if (!program) refuse(`no program ${programId} in the latest snapshot of "${slug}"`);
