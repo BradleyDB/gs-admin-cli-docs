@@ -47,8 +47,11 @@ lines, never fenced blocks (F-328).
 - [ ] Spent dev/VALIDATION.md checks for what merged are flipped (CLEARED / retired /
       standing-arm) — no stale banked checks for shipped items.
 - [ ] Local battery green on the dev tip, run VERBATIM from both workflow YAMLs
-      (validate-plugin.yml + docs-drift.yml step lists). This is the mid-wave
-      evidence; CI on the release PR is the release-grade run.
+      (validate-plugin.yml + docs-drift.yml step lists) by the committed runner
+      (F-569) — one command, in a temporary worktree of the committed tip, never the
+      working tree; quote its last line:
+          node build/run-battery.mjs
+      This is the mid-wave evidence; CI on the release PR is the release-grade run.
 - [ ] Both strict validates pass: `claude plugin validate plugins/gs-superadmin` and
       the repo build reproduces committed output (rebuild diff clean).
 
@@ -57,7 +60,11 @@ lines, never fenced blocks (F-328).
 - [ ] `/code-review` at the agreed effort over `origin/main...dev` (LOW when every
       shipped hunk was already reviewed at merge time, MEDIUM otherwise). Findings
       are fixed ON DEV and go through the loop (handoff + tester verdict) like any
-      other change. Record: effort · findings · disposition.
+      other change. Record: effort · findings · disposition. A finding here that
+      REOPENS a section the tester had VERIFIED is two findings, not one: the code
+      finding, and a PROCESS finding on the bus naming the round whose review the fix
+      rode past (every fix round reviews its shipping diff before its handoff —
+      AGENTS.md § Review-gate rules, "Review before the handoff"; F-573).
 - [ ] `/security-review` when the payload touches the guard, hooks, scripts that
       spawn, or anything reading tenant data. Record the highest severity found.
 - [ ] Tie-break, stated BEFORE any gate fix is designed: when "clean release" and "the
@@ -86,7 +93,11 @@ lines, never fenced blocks (F-328).
       to the same branch, so the PR stays open — dev-utils release refuses to recut over
       an existing branch.)
 - [ ] On the STRIPPED tree: both strict validates + the full battery verbatim from both
-      YAMLs. The stripped tree is a different tree — a tree-shape assumption in a
+      YAMLs — the committed runner's stripped arm, run from the release checkout
+      (the strip step then runs in the runner's worktree, and its depth-1 bus fetch is
+      substituted to a full fetch so the shared object store stays whole, F-569):
+          node build/run-battery.mjs --tree stripped
+      The stripped tree is a different tree — a tree-shape assumption in a
       check or test surfaces here first (F-356: test fakes flushing on exit went red on
       macOS only; fixed test-only on dev, recut).
 - [ ] Push; `gh pr create --base main --head release/vX.Y.Z`. Do NOT merge — hand the

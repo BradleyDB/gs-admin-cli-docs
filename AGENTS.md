@@ -265,8 +265,12 @@ node build/test-extract-catalog.mjs   # the dual-lane catalog emitter: fixture-p
 node build/test-defect-classes.mjs    # the defect-class DETECTORS in memory (milliseconds): detectRow/callClose over every mechanical row, exact hits per decision point (F-364, F-365)
 node build/test-check-doc-drift.mjs   # the doc-drift gate itself: green baseline on the real tree, then per-check mutants must go red (incl. check 19's CONSUMER pins: the F-365 site, allowances, unreadable files, the scope floor)
 node build/test-check-imports.mjs     # the import-graph gate itself: lexer + declaration tables (the W0 mutation battery, committed)
-npm run typecheck                     # the JSDoc-contract type gate (tsc --noEmit, checkJs): T-1..T-10 checked wherever a consumer is annotated — needs `npm ci` once (the tenet-5 carve-out's two checker-only devDependencies); then build/check-strict-list.mjs runs the strictNullChecks ratchet (tsconfig.strict.json) once and proves its two invariants — the strict program's files EQUAL the list, and no floor file has left it
+npm run typecheck                     # the JSDoc-contract type gate (tsc --noEmit, checkJs): T-1..T-10 checked wherever a consumer is annotated — needs `npm ci` once PER CLONE OR WORKTREE (the tenet-5 carve-out's two checker-only devDependencies live in that tree's own node_modules; a fresh worktree has none, F-574); then build/check-strict-list.mjs runs the strictNullChecks ratchet (tsconfig.strict.json) once and proves its two invariants — the strict program's files EQUAL the list, and no floor file has left it
 node build/test-check-strict-list.mjs # the strict-list gate itself: a listed file pulling in an unlisted import, and a floor file dropped from the list, both go red (needs `npm ci`, like the gate)
+node build/test-run-battery.mjs       # the battery runner itself (F-569): steps run in a temporary worktree and the working tree is byte-unchanged after a run, the depth-limited fetch is substituted away, the first red stops the run, CI-only steps skip by name, the if: arms follow the tree, a missing command reads INCOMPLETE — and on the real tree every runner on disk is invoked by a CI step (the F-402 class, closed both ways with check-doc-drift check 5)
+node build/test-mutate.mjs            # the mutation runner itself (F-569): the prediction file validated whole before any run, a red control refused, exactly-once edits, byte-for-byte restore, KILLED/SURVIVED with MISMATCH against the prediction
+node build/run-battery.mjs            # THE LIST ABOVE AS ONE COMMAND (F-569): every run: step of validate-plugin.yml and docs-drift.yml, read from the YAML, run in a TEMPORARY WORKTREE of the committed HEAD (never the working tree — the strip step deleted dev/ from a checkout once; a full fetch, never depth 1 — the shared object store went shallow twice), per-step times to a log, the first red stops it, CI-only steps skipped by an allow-list in the script, and a one-line summary the handoff note QUOTES. --list prints the plan; --tree stripped is the release-tree rehearsal; --steps <match,...> narrows it. The steps above stay as this command's documentation.
+node build/mutate.mjs <suite> <mutants.json>  # the mutation-sweep copy-out as one command (F-569): the prediction file (source + per-mutant pred:KILL|SURVIVE) is validated WHOLE before anything runs, the suite must be green unmutated, each mutant is applied exactly once and restored byte for byte, and the rows print in the bus's 4-space-indented convention with MISMATCH where a verdict differs from its prediction
 node build/build-plugin-gs-superadmin.mjs   # rebuild the plugin bundle… (two lines, not `&&`: PS 5.1 can't parse `&&`)
 git diff --exit-code plugins/gs-superadmin  # …then: the rebuild produced no drift
 claude plugin validate ./plugins/gs-superadmin --strict
@@ -384,18 +388,29 @@ npm run build   # only when build/ scripts or the catalog changed (needs the pin
   existed to remove.)
 - A round is **assessed from open PRs as well as the dev log** (`git log` plus
   `gh pr list`) — a fix riding an unmerged branch is invisible from dev alone. And the
-  role that lands a fix on an unmerged PR says so **in a bus comment on dev** — branch
-  and PR number — not only inside the entry's Fix note on that branch. (F-161: a fix
+  role that lands a fix on an unmerged PR says so **on dev's bus header `Pointer:` line**
+  — `Pointer: <date> · <branch> · PR #N · <token> · next free F-NNN`, among the typed
+  header keys (after `Dev-only:`), REWRITTEN IN PLACE like the `Under test:` line and
+  never inserted — not only inside the entry's Fix note on that branch. (F-161: a fix
   recorded only on its own unmerged branch was re-implemented from scratch, with a
-  reworked PR, by the next session.) On a short branch, whose findings are sections of
+  reworked PR, by the next session.) Why a header line and not a comment (F-572): the
+  pointer comment used to be inserted at the top of dev's comment history, the SAME
+  anchor the branch's round block lands on, so every push of either side made the PR
+  CONFLICTING and no CI ran until dev was merged back (five PRs, eight sessions);
+  measured 2026-10-18 in a scratch repo, the comment scheme conflicts both ways, a
+  Pointer line directly under `Under test:` conflicts too (git treats adjacent edits as
+  one hunk), and a Pointer line among the typed keys merges cleanly both ways. After
+  re-stamping it the builder merges dev into the branch, so the branch carries the
+  pointer and the PR is never behind. `Pointer: none` when nothing rides a branch. On a
+  short branch, whose findings are sections of
   `dev`'s bus, the pointer covers **every status transition, not just FIXED** — it is
   re-stamped whenever the branch's statuses change: a verdict (VERIFIED, or back to
   OPEN), a WONTFIX — so the dev view never lags a transition behind the branch. (F-223:
   three verdicts riding PR #76 read OPEN from dev under a pointer still saying FIXED —
   the F-161 hazard reproduced one transition later.) A **long-lived branch** (more than
   one round; the /dev-loop skill's "Long-lived branches") owes **one pointer, not one
-  per transition**: a bus comment on dev when it opens — branch, draft PR number,
-  worktree — re-stamped at landing. The worktree is spelled relative to the projects
+  per transition**: the same `Pointer:` header line on dev when it opens — branch, draft
+  PR number, worktree folder — re-stamped at landing. The worktree is spelled relative to the projects
   root, `<PROJECTS_ROOT>\..\worktrees\<name>` (the skill puts a long branch's worktree in a
   folder beside PROJECTS_ROOT, outside the repos it globs), or by its folder name alone
   — never as its real machine path: the pre-push check-instance-data gate ("Data
@@ -414,6 +429,20 @@ npm run build   # only when build/ scripts or the catalog changed (needs the pin
   a branch on another machine counts only once fetched. (The F-215 collision: two
   concurrent branches each took the same announced next number, and the losing entry had
   to be re-logged as F-223 — a comment-claimed number is that collision waiting to recur.)
+- **Review before the handoff, then the battery, over the diff that ships** (F-573;
+  the owner's ruling 2026-10-18, applied in the /dev-loop skill's session template):
+  every fix round runs `/code-review` (medium, batched verifiers — never one verifier
+  per finding) over its shipping diff and then the committed battery
+  (`node build/run-battery.mjs`, in a temporary worktree) as the LAST TWO steps before
+  the handoff token is minted; the handoff quotes the review's count and disposition
+  and the battery's one-line summary, and the round's `Checks (<token>):` line carries
+  `review pass (n fixed)` and `battery pass (…)` (the bus header's `Checks:` key arms
+  `dev-utils handoff --check`). The review's finder reads the diff through the Read tool
+  or a file on disk, never a truncated inline output — a finder that read a persisted
+  diff it never opened reported zero findings. A fix that rode a PR unreviewed is what
+  the release gate then reopens after the tester VERIFIED it (three rounds, about 1,400
+  lines on one PR): such a reopen is logged as a PROCESS finding naming the round as
+  well as the code finding (dev/RELEASE-CHECKLIST.md § 2).
 - **Every open PR to `dev` is named at a session's kickoff and close-out, bot PRs
   included** (`gh pr list --base dev`), each with its check state, and a red one is
   DISPOSITIONED — merged, closed with a reason, or carried forward explicitly in the
@@ -530,8 +559,21 @@ npm run build   # only when build/ scripts or the catalog changed (needs the pin
     in one of them (F-306, F-310, F-311, F-320, F-349, F-354/F-355). Recipe:
     `node build/sweep-twins.mjs` (identical line-runs across production modules, ~1 s;
     an instrument, not a gate) plus `git grep '<symbol>('` for every consumer of a shared
-    symbol the fix touched — the fix reaches all of them or the note says why not. Cost:
-    seconds.
+    symbol the fix touched — the fix reaches all of them or the note says why not. **The
+    `Sibling sweep:` line lists what was SEARCHED, with counts — never a conclusion alone**
+    (F-571: "no other callers" with no search behind it missed the sibling in F-484 three
+    times, F-491 and F-530 twice each, and F-529 once, each a reopen): the literal words
+    and numbers a user sees (`git grep -n "<the wording>"` over plugins/, the READMEs,
+    the skills and the tests — the About tab, a report intro, an edit question, a README
+    row), every caller of each changed symbol (`git grep '<symbol>('`), and the tests
+    that pin the old wording. A change to a shared step names its callers in the Fix
+    note, and the `Judge:` covers one call per caller. A fixture for a classifier or
+    matcher is built from CAPTURED product text (a stored payload, the product's own
+    message, scrubbed of tenant data only), never from the pattern it tests — a fixture
+    written in the pattern's own wording cannot fail. From F-571 on,
+    `build/check-stale-facts.mjs` refuses a FIXED or VERIFIED consumer-parity section
+    whose sweep line names no `git grep` (or is not `batched — …`, the polish valve).
+    Cost: minutes.
   - `Class: unpinned-arm` — a decision point of new code that no committed arm kills
     (F-314, F-315, F-324, F-326, F-327, F-332, F-335..F-337). Recipe: enumerate the
     changed function's decision points from the CODE at token granularity (every

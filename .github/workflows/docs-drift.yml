@@ -184,6 +184,21 @@ jobs:
       # it a synthetic fixture package via GS_ADMIN_PKG).
       - name: Catalog emitter fixtures
         run: node build/test-extract-catalog.mjs
+      # The committed battery runner (F-569): every `run:` step of this file and
+      # validate-plugin.yml, read from the YAML and run in a temporary worktree.
+      # Its suite pins the worktree (the working tree is byte-unchanged after a
+      # run), the depth-limited-fetch substitution, fail-fast, the CI-only
+      # table, the `if:` arms — and, on the real tree, that every test runner
+      # on disk is invoked by some step here (the F-402 class, closed both ways
+      # with check-doc-drift check 5's fence coverage).
+      - name: Battery runner fixtures
+        run: node build/test-run-battery.mjs
+      # The committed mutation-sweep runner (F-569): the copy-out ceremony with
+      # the predictions validated whole before anything runs, a red control
+      # refused, every mutant restored byte for byte, MISMATCH where a verdict
+      # differs from its prediction.
+      - name: Mutation runner fixtures
+        run: node build/test-mutate.mjs
       # Dev-branch-only content (the dev-only strip set, read by
       # build/dev-only.mjs from the bus header — dev's, fetched above, on a tree
       # the strip already ran on) must never reach main — this mechanizes the
