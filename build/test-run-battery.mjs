@@ -11,7 +11,7 @@
 //
 // The scratch repository's two workflow files use the YAML subset the real
 // ones use; the extractor's reading of the REAL files is the closure arm.
-import { readFileSync, writeFileSync, existsSync, readdirSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync, readdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { execFileSync } from "node:child_process";
 import { ROOT } from "./lib.mjs";
@@ -80,6 +80,8 @@ jobs:
           node -e "console.log('cwd=' + process.cwd())"
       - name: Install Claude Code
         run: exit 9
+      - name: Renamed installer
+        run: npm install -g some-package-f569
 
   manifests:
     needs: changes
@@ -144,12 +146,14 @@ try {
   const full = readPlan(scratch, { tree: "full" });
   const byName = (list, name) => list.find((p) => p.step.name === name);
   ok("A1 every run: step is extracted in file order", full.map((p) => p.step.name).join("|") ===
-    ["Decide whether any plugin-affecting path changed", "Echo a depth-limited fetch", "Write into the tree", "Install Claude Code", "Tool that is absent",
+    ["Decide whether any plugin-affecting path changed", "Echo a depth-limited fetch", "Write into the tree", "Install Claude Code", "Renamed installer", "Tool that is absent",
       "Strip dev-only content (release-tree rehearsal arm)", "Keep going", "Full-arm only", "No dev-only content on main", "Failing step", "After the failure"].join("|"),
     full.map((p) => p.step.name).join("|"));
   ok("A2 the CI-only steps are skipped by exact name with the table's reason",
     byName(full, "Install Claude Code")?.decision === "ci-only" && byName(full, "Install Claude Code")?.why === CI_ONLY_STEPS["Install Claude Code"] &&
     byName(full, "Decide whether any plugin-affecting path changed")?.decision === "ci-only");
+  ok("A2b a global install is CI-only by its text, whatever the step is named (a renamed installer never runs locally)",
+    byName(full, "Renamed installer")?.decision === "ci-only" && /global npm install changes the machine/.test(byName(full, "Renamed installer")?.why ?? ""));
   ok("A3 full tree: the stripped-arm steps are off, the full-arm step is on", byName(full, "Strip dev-only content (release-tree rehearsal arm)")?.decision === "if-false" &&
     byName(full, "No dev-only content on main")?.decision === "if-false" && byName(full, "Full-arm only")?.decision === "run");
   const stripped = readPlan(scratch, { tree: "stripped" });
@@ -164,7 +168,7 @@ try {
     readPlan(scratch, { tree: "full", matches: ["KEEP", "echo a depth"] }).filter((p) => p.decision === "run").map((p) => p.step.name).join("|") === "Echo a depth-limited fetch|Keep going");
   const list = run(["--list"]);
   ok("A8 --list prints the table and the plan line", list.status === 0 && /^run\s+docs-drift\.yml\s+drift\s+Keep going$/m.test(list.stdout) &&
-    /^ci-only\s+validate-plugin\.yml\s+validate\s+Install Claude Code/m.test(list.stdout) && /^battery plan: 7 to run, 2 ci-only, 2 off this arm \(tree full\), 0 filtered$/m.test(list.stdout),
+    /^ci-only\s+validate-plugin\.yml\s+validate\s+Install Claude Code/m.test(list.stdout) && /^battery plan: 7 to run, 3 ci-only, 2 off this arm \(tree full\), 0 filtered$/m.test(list.stdout),
     list.stdout + list.stderr);
   ok("A9 evaluateIf reads the grammar the workflows use and refuses what it cannot",
     evaluateIf("matrix.tree == 'full'", { tree: "full" }) === true && evaluateIf("matrix.tree != 'full'", { tree: "full" }) === false &&
@@ -188,6 +192,7 @@ try {
     git(scratch, ["status", "--porcelain"]));
   ok("B4 the worktree was removed and the repository is not shallow", !existsSync(wtB) && git(scratch, ["rev-parse", "--is-shallow-repository"]) === "false" &&
     !git(scratch, ["worktree", "list"]).includes("f569-battery-wt-B"));
+  ok("B4b the step file beside the log is removed after the run (no leak under the temp dir)", !existsSync(join(scratch, "..", `f569-battery-B-${process.pid}.step.sh`)));
   ok("B5 the log stamps START and PASS/FAIL per step with times and records the substitution",
     /\[\d\d:\d\d:\d\d\] START 1\/7 Echo a depth-limited fetch/.test(logText) && /\[\d\d:\d\d:\d\d\] PASS 1\/7 Echo a depth-limited fetch \((\d+m\d\ds|\d+s)\)/.test(logText) &&
     /\[\d\d:\d\d:\d\d\] FAIL 6\/7 Failing step \(exit 7, (\d+m\d\ds|\d+s)\)/.test(logText) && /SUBSTITUTED in "Echo a depth-limited fetch"/.test(logText) &&
@@ -206,7 +211,7 @@ try {
   // ── C. the stripped arm: the destructive step runs in the worktree only ──
   const C = run(["--tree", "stripped", "--steps", "Strip,Keep going,No dev-only"]);
   ok("C1 the strip ran (and its survivor check passed) in the worktree; the summary says filtered", C.status === 0 &&
-    /^battery: PASS - 3\/3 steps run \(2 ci-only skipped\), tree stripped, ref \w+, (\d+m\d\ds|\d+s) \(filtered to 3 of 8 steps\)$/.test(lastLine(C.stdout)), C.stdout + C.stderr);
+    /^battery: PASS - 3\/3 steps run \(3 ci-only skipped\), tree stripped, ref \w+, (\d+m\d\ds|\d+s) \(filtered to 3 of 8 steps\)$/.test(lastLine(C.stdout)), C.stdout + C.stderr);
   ok("C2 dev/ is still in the working tree after the stripped arm", existsSync(join(scratch, "dev", "FEEDBACK.md")) && git(scratch, ["status", "--porcelain"]) === statusBefore);
 
   // ── D. a missing command is INCOMPLETE, never PASS ──────────────────────
@@ -222,6 +227,8 @@ try {
   const logE = readFileSync(lastLineLog(E.stdout), "utf8");
   ok("E2 the log shows the committed file, not the edit", logE.includes("committed content") && !logE.includes("uncommitted edit"));
   git(scratch, ["checkout", "--", "tracked.txt"]);
+  // The suite's own logs under the temp dir (arm B's, and the default-named ones of arms C, D and E).
+  for (const f of [logB, lastLineLog(E.stdout), lastLineLog(C.stdout), lastLineLog(D.stdout)]) rmSync(f, { force: true });
 
   // ── F. refusals: an unreadable if:, a missing workflow, bad arguments ────
   writeFileSync(join(scratch, ".github/workflows/docs-drift.yml"), DRIFT_YML.replace("if: matrix.tree == 'full'", "if: contains(github.ref, 'x')"));

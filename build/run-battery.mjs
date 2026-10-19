@@ -51,7 +51,7 @@
 // can be quoted on the bus as it is.
 //
 // Zero dependencies: Node built-ins only (AGENTS.md tenet 5).
-import { existsSync, mkdirSync, readFileSync, writeFileSync, appendFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync, appendFileSync, rmSync } from "node:fs";
 import { join, resolve, dirname, basename } from "node:path";
 import { tmpdir, homedir } from "node:os";
 import { spawnSync, execFileSync } from "node:child_process";
@@ -73,6 +73,18 @@ export const CI_ONLY_STEPS = {
   "Install Claude Code":
     "CI installs the CLI into a fresh runner; locally the `claude` on PATH is the one the validate step uses",
 };
+
+/**
+ * Steps that are CI-only by what they DO, whatever their name: a global
+ * install changes the machine the battery runs on, and a renamed step would
+ * otherwise drop out of CI_ONLY_STEPS and run it (the review of F-569 caught
+ * this: the name table's "a renamed step runs, which is loud" holds for the
+ * path gate, not for an install that silently succeeds).
+ * @type {Array<{find: RegExp, why: string}>}
+ */
+export const CI_ONLY_TEXT = [
+  { find: /\bnpm\s+(?:install|i|add)\s+(?:-g|--global)\b|\bnpm\s+(?:-g|--global)\s+(?:install|i|add)\b/, why: "a global npm install changes the machine, not the tree; CI installs into a fresh runner" },
+];
 
 /**
  * Text substitutions applied to a step's `run:` text before it runs — each
@@ -260,6 +272,8 @@ export function plan(steps, opts) {
     /** @type {PlannedStep} */
     const p = { step, decision: "run", run: step.run, substituted: [] };
     if (Object.hasOwn(CI_ONLY_STEPS, step.name)) return { ...p, decision: "ci-only", why: CI_ONLY_STEPS[step.name] };
+    const byText = CI_ONLY_TEXT.find((t) => t.find.test(step.run));
+    if (byText) return { ...p, decision: "ci-only", why: byText.why };
     if (step.cond !== undefined && !evaluateIf(step.cond, { tree: opts.tree })) return { ...p, decision: "if-false", why: `if: ${step.cond}` };
     if (matches.length && !matches.some((m) => step.name.toLowerCase().includes(m))) return { ...p, decision: "filtered", why: "--steps" };
     for (const s of SUBSTITUTIONS) {
@@ -366,6 +380,7 @@ export function runSteps(planned, env) {
       break;
     }
   }
+  rmSync(scriptFile, { force: true });
   return { total: toRun.length, passed, failed, missing };
 }
 
@@ -430,10 +445,11 @@ export function main(o) {
   if (dirtyBefore) console.log(`note: the working tree has uncommitted changes to tracked files; the battery runs the committed ${o.ref} (${sha}), not those edits`);
   const shallowBefore = git(repo, ["rev-parse", "--is-shallow-repository"]) === "true";
 
-  const stampId = new Date().toISOString().replace(/[-:]/g, "").replace(/\..*/, "").replace("T", "-");
+  // The stamp carries the pid: two runs started in one second must not share a log or a worktree.
+  const stampId = new Date().toISOString().replace(/[-:]/g, "").replace(/\..*/, "").replace("T", "-") + `-${process.pid}`;
   const logFile = resolve(o.log || join(tmpdir(), `gs-battery-${stampId}.log`));
   mkdirSync(dirname(logFile), { recursive: true });
-  const worktree = resolve(o.worktreeDir || join(tmpdir(), `gs-battery-${stampId}-${process.pid}`));
+  const worktree = resolve(o.worktreeDir || join(tmpdir(), `gs-battery-${stampId}`));
   const mask = (/** @type {string} */ s) => maskLocalPaths(s, [[worktree, "<worktree>"], [repo, "<repo>"], [homedir(), "<home>"]]);
   writeFileSync(logFile, `battery ${stampId} — tree ${o.tree}, ref ${o.ref} (${sha}), worktree <worktree>\n`);
 
