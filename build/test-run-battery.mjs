@@ -25,7 +25,8 @@ const ok = (name, cond, detail) => {
   if (cond) passed++;
   else { failures.push(name); console.error(`FAIL: ${name}`); if (detail) console.error("  " + String(detail).slice(0, 1200)); }
 };
-const git = (dir, args) => execFileSync("git", ["-c", "user.name=rig", "-c", "user.email=rig@example.invalid", "-c", "commit.gpgsign=false", ...args], { cwd: dir, encoding: "utf8" }).trim();
+// The scratch repo's committer is the fictional tenant's address (AGENTS.md "Data hygiene": the instance-data gate reads any other address as real).
+const git = (dir, args) => execFileSync("git", ["-c", "user.name=rig", "-c", "user.email=rig@acme.com", "-c", "commit.gpgsign=false", ...args], { cwd: dir, encoding: "utf8" }).trim();
 
 // The fixture workflows: one CI-only step by its real name, a step whose
 // `--depth=1` must be substituted away, a step that WRITES into the tree, a
