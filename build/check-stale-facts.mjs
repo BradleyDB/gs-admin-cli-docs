@@ -357,11 +357,33 @@ if (files.includes(BUS_FILE)) {
   // replaced (the second tune of one boundary is the wrong model). From
   // JUDGE_FROM on: the sections before it were closed under the older grammar.
   const JUDGE_FROM = 436;
-  /** @type {{num: number, status: string, line: number, classKey: string | null, hasSweep: boolean, hasJudge: boolean, hasRedesign: boolean, reopens: number, quoted: boolean} | null} */
+  // Rule 6 (F-571, 2026-10-18): a consumer-parity sweep line names what was
+  // SEARCHED, never a conclusion alone — "no other callers" with no search
+  // behind it missed the sibling in F-484 three times, F-491 and F-530 twice
+  // each, F-529 once, each a reopen. The structural tell is the recipe's own
+  // command on the line (`git grep`), or the polish valve (`batched — …`).
+  // From SWEEP_SEARCH_FROM on; the recipe is AGENTS.md's consumer-parity bullet.
+  const SWEEP_SEARCH_FROM = 571;
+  const SWEEP_SEARCH_CLASS = "consumer-parity";
+  const SWEEP_SEARCH_RE = /\bgit grep\b/;
+  const SWEEP_BATCHED_RE = /^Sibling sweep:\s*batched\b/;
+  // ANY sweep line of the section may name the search (a reopened section
+  // keeps its older, conclusion-only line above the new one — the review round
+  // of this rule caught a first-line-only read).
+  /** @type {{num: number, status: string, line: number, classKey: string | null, hasSweep: boolean, sweepNamesSearch: boolean, hasJudge: boolean, hasRedesign: boolean, reopens: number, quoted: boolean} | null} */
   let cur = null;
   const closeSection = () => {
     if (!cur || cur.num < DOCTRINE_FROM) return;
     sectionsChecked++;
+    if (cur.num >= SWEEP_SEARCH_FROM && cur.classKey === SWEEP_SEARCH_CLASS && /^(FIXED|VERIFIED)$/.test(cur.status) && cur.hasSweep && !cur.sweepNamesSearch) {
+      failures++;
+      console.error(
+        `${BUS_FILE}:${cur.line + 1}: F-${cur.num} is ${cur.status} with Class: ${SWEEP_SEARCH_CLASS} but its "Sibling sweep:" line names no ` +
+          `search — list what was SEARCHED, with counts: the wording a user sees and every caller of each changed symbol ` +
+          `(\`git grep -n "<the wording>"\`, \`git grep '<symbol>('\`) and the tests pinning the old wording, or "batched — <reason>" ` +
+          `on a polish finding; a conclusion with no search behind it is the F-571 shape (bus rule 6)`,
+      );
+    }
     if (cur.num >= JUDGE_FROM && cur.classKey && /^(FIXED|VERIFIED)$/.test(cur.status) && !cur.hasJudge) {
       failures++;
       console.error(
@@ -393,7 +415,7 @@ if (files.includes(BUS_FILE)) {
     const h = SECTION_RE.exec(line);
     if (h) {
       closeSection();
-      cur = { num: Number(h[1]), status: h[2], line: i, classKey: null, hasSweep: false, hasJudge: false, hasRedesign: false, reopens: 0, quoted: false };
+      cur = { num: Number(h[1]), status: h[2], line: i, classKey: null, hasSweep: false, sweepNamesSearch: false, hasJudge: false, hasRedesign: false, reopens: 0, quoted: false };
       return;
     }
     if (!cur || cur.num < DOCTRINE_FROM) return;
@@ -420,6 +442,7 @@ if (files.includes(BUS_FILE)) {
     }
     if (/^Sibling sweep:\s*\S/.test(line)) {
       cur.hasSweep = true;
+      if (SWEEP_SEARCH_RE.test(line) || SWEEP_BATCHED_RE.test(line)) cur.sweepNamesSearch = true;
       return;
     }
     if (/^Judge:\s*\S/.test(line)) { cur.hasJudge = true; return; }
@@ -441,7 +464,7 @@ if (files.includes(BUS_FILE)) {
     }
   });
   closeSection();
-  busConventions = `${blindSpots}; ${underTestLine}; ${sectionsChecked} section(s) from F-${DOCTRINE_FROM} checked for pred: rows, Class: keys and Sibling sweep lines (Judge: and Redesign: lines from F-${JUDGE_FROM})`;
+  busConventions = `${blindSpots}; ${underTestLine}; ${sectionsChecked} section(s) from F-${DOCTRINE_FROM} checked for pred: rows, Class: keys and Sibling sweep lines (Judge: and Redesign: lines from F-${JUDGE_FROM}; a ${SWEEP_SEARCH_CLASS} sweep names its search from F-${SWEEP_SEARCH_FROM})`;
 }
 // The archive is frozen text (never edited to satisfy a gate), so only the
 // KEY-REGISTRATION half runs over it, and only from DOCTRINE_FROM (the three
