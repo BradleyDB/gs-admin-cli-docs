@@ -373,6 +373,37 @@ function docLibStub(pinFactsVersion, pin = PIN) {
   ok("W10 sweep: a VERIFIED section naming a class without a sweep line fails", res.status === 1 && res.stderr.includes("Sibling sweep"));
 }
 
+// ── 15b. F-571 — a consumer-parity sweep line names its search ───────────────
+// Predictions: (a) F-571 FIXED, consumer-parity, sweep "no other callers" →
+// RED naming "names no search" (bus rule 6); (b) the same with `git grep` on
+// the line → GREEN; (c) the same with "batched — polish" → GREEN; (d) another
+// class with a conclusion-only sweep → GREEN (the rule is per class); (e) a
+// consumer-parity section BELOW F-571 with a conclusion-only sweep → GREEN
+// (sections before the rule were closed under the older grammar).
+const sweepSection = (num, cls, sweep) =>
+  `## F-${num} — FIXED\nReported: x\nSeverity: normal\nClass: ${cls}\nFix: done\nSibling sweep: ${sweep}\nJudge: the rig\n`;
+{
+  const res = runRig({ "dev/FEEDBACK.md": sweepSection(571, "consumer-parity", "no other callers of the changed step.") });
+  ok("F-571 sweep: a consumer-parity sweep line with no search named fails at the header, citing bus rule 6",
+    res.status === 1 && res.stderr.includes("dev/FEEDBACK.md:1:") && res.stderr.includes("names no search") && res.stderr.includes("bus rule 6"), res.stderr);
+}
+{
+  const res = runRig({ "dev/FEEDBACK.md": sweepSection(571, "consumer-parity", "git grep -n \"About tab\" over plugins/ — 3 hits, 2 callers of renderIntro( (git grep 'renderIntro('), 1 test pinning the old wording.") });
+  ok("F-571 sweep: a consumer-parity sweep line naming its git grep passes", res.status === 0, res.stderr);
+}
+{
+  const res = runRig({ "dev/FEEDBACK.md": sweepSection(571, "consumer-parity", "batched — polish, rides the next substantive round.") });
+  ok("F-571 sweep: the polish valve (batched — …) still passes", res.status === 0, res.stderr);
+}
+{
+  const res = runRig({ "dev/FEEDBACK.md": sweepSection(571, "reader-shape", "no other readers of that payload.") });
+  ok("F-571 sweep: another class with a conclusion-only sweep is not this rule's business", res.status === 0, res.stderr);
+}
+{
+  const res = runRig({ "dev/FEEDBACK.md": sweepSection(570, "consumer-parity", "no other callers of the changed step.") });
+  ok("F-571 sweep: a consumer-parity section before F-571 is read under the older grammar", res.status === 0, res.stderr);
+}
+
 // ── 16. Review round (W10): the tightened bus rules ──────────────────────────
 // Predictions: (a) TWO Under test lines → RED at the second; (b) a Blind spots
 // line for the right token but NOT directly under Under test → RED; (c) a

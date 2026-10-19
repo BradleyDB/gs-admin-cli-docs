@@ -65,7 +65,8 @@ try {
   // package.json rides along (DS-42): the checker's manifest half reads it.
   // The workflow YAMLs ride along too (W8.5 review): the manifest half reads
   // their node-version lines against the @types/node major.
-  copyTrackedTree(ROOT, rig, (f) => f.endsWith(".mjs") || f === ".gitattributes" || f === "package.json" || /^\.github\/workflows\/.*\.yml$/.test(f));
+  // tsconfig.json rides along too (F-570): the include-covers-every-tracked-.mjs lock reads it.
+  copyTrackedTree(ROOT, rig, (f) => f.endsWith(".mjs") || f === ".gitattributes" || f === "package.json" || f === "tsconfig.json" || /^\.github\/workflows\/.*\.yml$/.test(f));
   initScratchGitRepo(rig);
   const CHECKER = join(rig, "build", "check-imports.mjs");
   const run = () => runNode(CHECKER, [], { cwd: rig });
@@ -405,6 +406,24 @@ try {
         res.status === 1 && /docs-drift\.yml: node-version 22 but package\.json pins @types\/node major 20/.test(res.stderr) &&
           !/validate-plugin\.yml: node-version/.test(res.stderr), res.stderr);
     } finally { snap5.restore(); }
+    // The type gate's include covers every tracked .mjs (F-570), both ways a
+    // lane can vanish from it: a lane dropped from the include, and a pattern
+    // of a shape the lock does not read (the bare `**/*.mjs` the fix replaced).
+    const TSC = "tsconfig.json";
+    const snapT = snapshotFiles([at(TSC)]);
+    try {
+      mutate(TSC, (s) => s.replace(', "plugins/**/*.mjs"', ""));
+      const res = run();
+      check("tsconfig: a lane dropped from the include goes red naming the files the gate would not read (F-570)",
+        res.status === 1 && /tsconfig\.json: \d+ tracked \.mjs file\(s\) outside the include's lanes \(build\/, test\/\)/.test(res.stderr) && /plugins\/gs-superadmin\//.test(res.stderr), res.stderr);
+    } finally { snapT.restore(); }
+    const snapT2 = snapshotFiles([at(TSC)]);
+    try {
+      mutate(TSC, (s) => s.replace(/"include":\s*\[[^\]]*\]/, '"include": ["**/*.mjs"]'));
+      const res = run();
+      check("tsconfig: an include pattern of another shape is refused rather than read as a prefix (F-570)",
+        res.status === 1 && /include pattern "\*\*\/\*\.mjs" is not "<dir>\/\*\*\/\*\.mjs"/.test(res.stderr), res.stderr);
+    } finally { snapT2.restore(); }
     const snap6 = snapshotFiles([at(WF)]);
     try {
       mutate(WF, (s) => s.replace(/^\s*node-version: 20\n/m, ""));

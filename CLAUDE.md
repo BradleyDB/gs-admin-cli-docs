@@ -152,6 +152,14 @@ in this repo must not get wrong:
   here are invariants, not a runbook, and the rest of the ceremony lives in the
   maintainer's release procedure. If you are contributing a change, open a PR to `dev`
   and stop there.
+- **Working in a worktree — three facts sessions kept re-deriving (F-574):** a fresh
+  worktree needs `npm ci` once before `npm run typecheck` (the two checker-only
+  devDependencies live in that tree's own `node_modules`). The desktop app cuts its
+  worktrees from `main`, not `dev`: before the first edit, check the base —
+  `git merge-base --is-ancestor origin/dev HEAD` exits 0 when the tree contains dev's tip;
+  when it does not, make the branch off `origin/dev` as CONTRIBUTING says instead of
+  editing a main-based tree. And `dev` is both a branch and a folder here, so spell the
+  branch `refs/heads/dev` (or `dev --`) in git commands.
 - **Cross-session feedback bus:** `dev/FEEDBACK.md` — findings move OPEN → FIXED →
   VERIFIED | WONTFIX. Checks that need a live tenant are banked in `dev/VALIDATION.md`.
   Both live only on `dev` and never ship to users; treat everything written there as
