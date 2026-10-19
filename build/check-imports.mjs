@@ -504,6 +504,32 @@ const CI_WORKFLOWS_WITH_NODE = [".github/workflows/docs-drift.yml", ".github/wor
   }
 }
 
+// ── The type gate reads every tracked .mjs (F-570) ───────────────────────────
+// tsconfig.json's include names the lanes that hold tracked .mjs files (a bare
+// `**/*.mjs` read every untracked planning folder on a machine and went red on
+// files CI never sees). The claim "every tracked .mjs" is held to the tree
+// here: a tracked .mjs that no include pattern covers goes red, so a new lane
+// is admitted by naming it in tsconfig.json, never dropped from the gate by
+// accident. The include is read as prefixes — `<dir>/**/*.mjs` — the one shape
+// the file uses; another shape is refused rather than guessed at.
+const TSCONFIG = "tsconfig.json";
+{
+  const text = readFileSync(join(ROOT, TSCONFIG), "utf8");
+  const m = text.match(/"include"\s*:\s*\[([^\]]*)\]/);
+  const patterns = m ? [...m[1].matchAll(/"([^"]+)"/g)].map((x) => x[1]) : [];
+  if (!patterns.length) problems.push(`${TSCONFIG}: no "include" array found — the type gate's file set is declared there (F-570)`);
+  const prefixes = [];
+  for (const p of patterns) {
+    const pm = p.match(/^([A-Za-z0-9_.-]+(?:\/[A-Za-z0-9_.-]+)*)\/\*\*\/\*\.mjs$/);
+    if (!pm) problems.push(`${TSCONFIG}: include pattern "${p}" is not "<dir>/**/*.mjs" — the only shape this check reads; keep the include to lane prefixes (F-570)`);
+    else prefixes.push(pm[1] + "/");
+  }
+  const outside = tracked.filter((f) => !prefixes.some((p) => f.startsWith(p)));
+  if (outside.length) {
+    problems.push(`${TSCONFIG}: ${outside.length} tracked .mjs file(s) outside the include's lanes (${prefixes.join(", ")}) — the type gate would not read ${outside.slice(0, 5).join(", ")}${outside.length > 5 ? ", …" : ""}; name the lane in the include (F-570)`);
+  }
+}
+
 if (problems.length) {
   console.error(`✗ check-imports: ${problems.length} problem(s)\n`);
   for (const p of problems) console.error(`  - ${p}`);
@@ -513,5 +539,5 @@ console.log(
   `✓ check-imports: ${tracked.length} tracked .mjs files classified across ${Object.keys(LAYERS).length} lanes; ` +
     `${Object.values(laneEdgeCounts).reduce((a, b) => a + b, 0)} local edges all declared ` +
     `(floors met — ${Object.keys(EDGE_FLOORS).map((l) => `${l} ${laneEdgeCounts[l]} (${shapeLine(l)})`).join(", ")}; ` +
-    `${sanctionedDynamicSeen} sanctioned dynamic); package.json declares exactly the ${ALLOWED_DEV_DEPENDENCIES.length} ratified checker-only devDependencies and no runtime dependency field; @types/node major equals node-version in ${CI_WORKFLOWS_WITH_NODE.length} workflows`
+    `${sanctionedDynamicSeen} sanctioned dynamic); package.json declares exactly the ${ALLOWED_DEV_DEPENDENCIES.length} ratified checker-only devDependencies and no runtime dependency field; @types/node major equals node-version in ${CI_WORKFLOWS_WITH_NODE.length} workflows; ${TSCONFIG}'s include covers every tracked .mjs`
 );
