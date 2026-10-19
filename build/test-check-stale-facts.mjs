@@ -385,23 +385,32 @@ const sweepSection = (num, cls, sweep) =>
 {
   const res = runRig({ "dev/FEEDBACK.md": sweepSection(571, "consumer-parity", "no other callers of the changed step.") });
   ok("F-571 sweep: a consumer-parity sweep line with no search named fails at the header, citing bus rule 6",
-    res.status === 1 && res.stderr.includes("dev/FEEDBACK.md:1:") && res.stderr.includes("names no search") && res.stderr.includes("bus rule 6"), res.stderr);
+    res.status === 1 && res.stderr.includes("dev/FEEDBACK.md:1:") && res.stderr.includes("names no search") && res.stderr.includes("bus rule 6"));
 }
 {
   const res = runRig({ "dev/FEEDBACK.md": sweepSection(571, "consumer-parity", "git grep -n \"About tab\" over plugins/ — 3 hits, 2 callers of renderIntro( (git grep 'renderIntro('), 1 test pinning the old wording.") });
-  ok("F-571 sweep: a consumer-parity sweep line naming its git grep passes", res.status === 0, res.stderr);
+  ok("F-571 sweep: a consumer-parity sweep line naming its git grep passes", res.status === 0);
 }
 {
   const res = runRig({ "dev/FEEDBACK.md": sweepSection(571, "consumer-parity", "batched — polish, rides the next substantive round.") });
-  ok("F-571 sweep: the polish valve (batched — …) still passes", res.status === 0, res.stderr);
+  ok("F-571 sweep: the polish valve (batched — …) still passes", res.status === 0);
 }
 {
   const res = runRig({ "dev/FEEDBACK.md": sweepSection(571, "reader-shape", "no other readers of that payload.") });
-  ok("F-571 sweep: another class with a conclusion-only sweep is not this rule's business", res.status === 0, res.stderr);
+  ok("F-571 sweep: another class with a conclusion-only sweep is not this rule's business", res.status === 0);
 }
 {
   const res = runRig({ "dev/FEEDBACK.md": sweepSection(570, "consumer-parity", "no other callers of the changed step.") });
-  ok("F-571 sweep: a consumer-parity section before F-571 is read under the older grammar", res.status === 0, res.stderr);
+  ok("F-571 sweep: a consumer-parity section before F-571 is read under the older grammar", res.status === 0);
+}
+{
+  // (f) a reopened section: the FIRST sweep line is the old conclusion-only
+  // one, a later Fix's sweep line names its search → GREEN (the review of
+  // this rule caught a first-line-only read, which would have reddened every
+  // reopen whose original note predates the rule's spirit).
+  const bus = sweepSection(571, "consumer-parity", "no other callers of the changed step.") + "Verdict: REOPENED @ hb-20261018-01\nFix: again\nSibling sweep: git grep -n \"the wording\" — 2 hits, both changed.\n";
+  const res = runRig({ "dev/FEEDBACK.md": bus });
+  ok("F-571 sweep: a reopened section whose later sweep line names its search passes", res.status === 0);
 }
 
 // ── 16. Review round (W10): the tightened bus rules ──────────────────────────

@@ -367,13 +367,15 @@ if (files.includes(BUS_FILE)) {
   const SWEEP_SEARCH_CLASS = "consumer-parity";
   const SWEEP_SEARCH_RE = /\bgit grep\b/;
   const SWEEP_BATCHED_RE = /^Sibling sweep:\s*batched\b/;
-  /** @type {{num: number, status: string, line: number, classKey: string | null, hasSweep: boolean, sweepLine: string, hasJudge: boolean, hasRedesign: boolean, reopens: number, quoted: boolean} | null} */
+  // ANY sweep line of the section may name the search (a reopened section
+  // keeps its older, conclusion-only line above the new one — the review round
+  // of this rule caught a first-line-only read).
+  /** @type {{num: number, status: string, line: number, classKey: string | null, hasSweep: boolean, sweepNamesSearch: boolean, hasJudge: boolean, hasRedesign: boolean, reopens: number, quoted: boolean} | null} */
   let cur = null;
   const closeSection = () => {
     if (!cur || cur.num < DOCTRINE_FROM) return;
     sectionsChecked++;
-    if (cur.num >= SWEEP_SEARCH_FROM && cur.classKey === SWEEP_SEARCH_CLASS && /^(FIXED|VERIFIED)$/.test(cur.status) && cur.hasSweep &&
-      !SWEEP_SEARCH_RE.test(cur.sweepLine) && !SWEEP_BATCHED_RE.test(cur.sweepLine)) {
+    if (cur.num >= SWEEP_SEARCH_FROM && cur.classKey === SWEEP_SEARCH_CLASS && /^(FIXED|VERIFIED)$/.test(cur.status) && cur.hasSweep && !cur.sweepNamesSearch) {
       failures++;
       console.error(
         `${BUS_FILE}:${cur.line + 1}: F-${cur.num} is ${cur.status} with Class: ${SWEEP_SEARCH_CLASS} but its "Sibling sweep:" line names no ` +
@@ -413,7 +415,7 @@ if (files.includes(BUS_FILE)) {
     const h = SECTION_RE.exec(line);
     if (h) {
       closeSection();
-      cur = { num: Number(h[1]), status: h[2], line: i, classKey: null, hasSweep: false, sweepLine: "", hasJudge: false, hasRedesign: false, reopens: 0, quoted: false };
+      cur = { num: Number(h[1]), status: h[2], line: i, classKey: null, hasSweep: false, sweepNamesSearch: false, hasJudge: false, hasRedesign: false, reopens: 0, quoted: false };
       return;
     }
     if (!cur || cur.num < DOCTRINE_FROM) return;
@@ -440,7 +442,7 @@ if (files.includes(BUS_FILE)) {
     }
     if (/^Sibling sweep:\s*\S/.test(line)) {
       cur.hasSweep = true;
-      if (!cur.sweepLine) cur.sweepLine = line; // the first sweep line is the section's
+      if (SWEEP_SEARCH_RE.test(line) || SWEEP_BATCHED_RE.test(line)) cur.sweepNamesSearch = true;
       return;
     }
     if (/^Judge:\s*\S/.test(line)) { cur.hasJudge = true; return; }
