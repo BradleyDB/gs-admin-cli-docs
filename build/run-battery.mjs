@@ -474,7 +474,14 @@ export function main(o) {
   // Guards the runner makes on ITSELF (the judge of "never the working tree").
   const guards = [];
   const dirtyAfter = git(repo, ["status", "--porcelain", "--untracked-files=no"]);
-  if (dirtyAfter !== dirtyBefore) guards.push("the working tree's tracked files changed during the run — the battery touched the checkout, which it must never do");
+  if (dirtyAfter !== dirtyBefore) {
+    // The guard cannot tell the runner's doing from an edit made in the checkout
+    // while the battery ran (measured the first time it fired: a bus note typed
+    // during a 22-minute run), so it names the paths and lets the reader decide.
+    const before = new Set(dirtyBefore.split("\n").filter(Boolean));
+    const changed = dirtyAfter.split("\n").filter((l) => l && !before.has(l)).map((l) => l.slice(3)).join(", ") || "(a tracked file returned to its committed state)";
+    guards.push(`the working tree's tracked status changed during the run (${changed}) — either the battery touched the checkout, which it must never do, or something edited the checkout while it ran; the steps ran in the worktree either way, so the summary stands and the cause is yours to name`);
+  }
   const shallowAfter = git(repo, ["rev-parse", "--is-shallow-repository"]) === "true";
   if (shallowAfter && !shallowBefore) guards.push("the repository became SHALLOW during the run (a depth-limited fetch reached the shared object store); repair: git fetch --unshallow origin");
 

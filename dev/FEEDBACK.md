@@ -168,6 +168,47 @@ Walk (hb-20261017-04): 2026-10-17 (tester) — the R15 re-verification round (fi
 Blind spots (hb-20261016-02): 2026-10-16 (tester) — F-546's killed writer was never caught live inside a mark (two kills, a 2 ms poll, both after the release): the dead-pid lock was laid by hand in a killed mark's shape, so the kill-to-lock path itself is the suite's; the writers' SIGINT/SIGTERM release does not exist on Windows and was not exercised; the held-handle and kill arms ran on this Windows host alone; the four-process contention driver was not re-run. F-541 and F-542 are judged by the stand-in suite alone, F-542's base-directory variant by construction; no live refresh restarted, so the skill's restarted relay is read, not walked. F-552's display-change half is suite-only. F-553/F-554/F-555 by reading; of F-555's Judge only the dashboard and page suites were run. R4 and the walk ran through the session's own shell tools, not a human paste into a terminal; cmd was not run. setup's changed sentence is unwalkable at CLI 1.0.12. The guard ask's rendering is Bradley's report; prompts are invisible to the session.
 Blind spots (hb-20261015-10): 2026-10-16 (tester) — F-546's lock never met a second writer live: the production KB is current (both R2 plans: 0 programs behind, 0 undocumented, 0 templates), so neither refresh re-documented and the manifest stayed byte-equal — the lock is measured by test/manifest-ops.mjs alone; the natural live arm is any later refresh whose plan finds programs behind. F-541, F-542 and F-545 are judged by the suite alone (no tenant can produce their states, VALIDATION § R13 R3). F-536's three shells: Git Bash and Windows PowerShell 5.1 ran the line through the session's own shell tools, cmd from a .bat file run by `cmd /d /c` — none was a human paste into a terminal window. The guard ask's rendering is Bradley's report; prompts are invisible to the session.
 
+<!-- builder 2026-10-18 (round <token> on fix/f569-battery-runner, PR #70 — the introspect fix round; dev-loop from dev ＠ 42257d1,
+     the unreleased builder text read from the superfriends dev checkout, not the installed skill):
+     Batch: F-569 (the committed battery and mutation runners), F-570 (the type gate reads the tracked lanes), F-571 (sweeps
+       name their search; stale-facts rule 6), F-572 (the Pointer header line), F-573 (review then battery before the token;
+       the Checks header), F-574 (the three worktree facts) — all FIXED; F-577 logged and FIXED in the same round (the
+       runner's closure arm found power-list-gaps.mjs never ran in CI). No plugin bytes: no bump, no CHANGELOG entry.
+     Kickoff: open PRs to dev none; OPEN polish at kickoff F-570, F-574, F-576 — the first two fixed here, F-576 carried.
+     Ordering decision (work order is not severity order): F-569 and F-570 first and together, because a later memory
+       session waits on the two scripts; F-571..F-574 ride the same round (docs, gates, bus mechanics — no manual step
+       among them is re-arranged by a pending change); F-575 and F-576 CARRIED to the next round on the owner's call:
+       both touch the email-engagement SKILL.md, F-575 needs a tenant measurement first (two refreshes of different
+       dashboards over one knowledge base) and a real refresh for its verdict, and one walk should cover both — so this
+       round needs no live tenant.
+     Review (the last two steps before the token, over the shipping diff): /code-review medium over PR #70's diff read
+       from a file, eight angles inline — 5 findings, all fixed in 1d0431f (the stale-facts self-test's extra ok()
+       argument, which CI's type gate had already reddened on the first push; rule 6 read only a section's first sweep
+       line; a global npm install skipped by step NAME would run locally if the step were renamed — now CI-only by its
+       text; the runner leaked its step file and the self-test its logs; two runs in one second shared a log name).
+     Battery (the new runner, in a temporary worktree of 1d0431f; d710ea7 on top is the merge of dev's two header lines,
+       and the handoff commit changes the runner's guard WORDING only — see the guard line below — and this bus):
+         battery: PASS - 55/55 steps run (2 ci-only skipped), tree full, ref 1d0431f, 22m11s
+       The runner's self-guard fired once on that run — "the working tree's tracked files changed during the run" — because
+       the builder typed the F-575 Carried note into the worktree's bus while the battery ran; the steps ran in the
+       runner's temporary worktree (the log's cwd lines are masked <worktree>), the repository is not shallow and the
+       worktree list is intact. The guard now names the changed paths and says the cause may be an edit made during the
+       run; the runner's self-test is green after the wording change (31 checks).
+     CI on PR #70, QUOTED per job after completion (head d710ea7): validate-plugin 39204972068: changes success /
+       validate (ubuntu-latest) success / manifests success; docs-drift 39204971919: drift (full) success. The first push
+       (9f69b6a) had drift (full) FAILED on the type gate — the review's first finding; the run on 1d0431f was cancelled by
+       the merge push (concurrency), the one on d710ea7 is the evidence. Final head: the handoff commit, owed a quote by the
+       tester (dev-utils check ci …) if its suite differs.
+     Pointer: dev's header line re-stamped to this round (branch, PR, token, next free F-578); dev merged into the branch
+       after each re-stamp, so the branch carries it and the PR never conflicts (F-572's live arm: the tester reads
+       gh pr view --json mergeable,mergeStateStatus).
+     Tester: a re-verification round, offline from the worktree; no SKILL.md changed, so walk n/a; VALIDATION arms owed:
+       none banked. F-568 (test-only, last round) still owes its VERIFIED flip — its judge was the recut release matrix.
+     If you cut now, these block: F-569, F-571, F-572, F-573 (FIXED, normal — verdict owed); F-575 (OPEN, normal, carried);
+       F-563..F-567 DEFERRED past 0.56.3 come back at the next ceremony; F-568 and F-570, F-574, F-577 FIXED (polish,
+       verdict owed); F-576 OPEN polish (carried; auto-deferred once at a cut).
+     Next free F-578. -->
+
 <!-- builder 2026-10-17 (0.56.3 RELEASED — post-release housekeeping):
      Payload: the R15 polish round — re-documentation's doc_path spelled like its neighbours (F-556), a lock the
        refresh could not remove said as lockLeft and relayed (F-557), "already running" before "no snapshot yet" over
@@ -3583,6 +3624,7 @@ Severity: normal — the admin waits on a pull with no sense of how long is left
 Source: introspect P-29
 What: an email-engagement refresh prints no progress or ETA: in one round the user asked how long was left five times and the tester rebuilt it from the run directory each time; pulls overran the priced minutes by 46-87%, because the price comes from the plan's estimate, not from the last pull of the same shape
 Expected: `dashboard.mjs refresh` prints a progress line every N calls (calls made / planned, elapsed, ETA from this run's pace) and the skill's step P quotes it; the priced minutes in a dashboard's spec are rewritten from each finished pull. Adapted 2026-10-18 (builder, at logging): the proposal also asked that concurrent refreshes be refused up front with the holder named; a second refresh of the SAME dashboard has been refused that way since F-558 ("already running"), so that clause is dropped; whether two refreshes of different dashboards over one knowledge base still end with a false "token expired" is unmeasured since then, and the fix round measures it before building anything for it. Guard: the progress reporting adds no more than 5% to a pull's runtime.
+Carried: 2026-10-18 (builder, on the owner's call relayed by the base session) — left OPEN past the hb-20261018 round so that round needs no live tenant; its pre-build measurement (two refreshes of different dashboards) and its verdict both need a real refresh, and every other finding of F-569..F-577 is offline. Not on that handoff's ready-for-retest list; next round, with F-576 (same SKILL.md, one walk).
 
 ## F-576 — OPEN
 Reported: 2026-10-18 (builder)
@@ -3590,6 +3632,7 @@ Severity: polish — skill prose; the script refuses the wrong form and nothing 
 Source: introspect P-29
 What: the email-engagement skill's change grammar says a list setting goes in as its items separated by commas (SKILL.md ~593), but `selector.ids` refuses that form; step R5 (Workbook) defers its rules to email-report step 6 instead of stating them
 Expected: one grammar table in SKILL.md with an example per field kind; R5 states its rules inline as a paraphrase plus a pointer (AGENTS.md § Writing skills, paraphrase-plus-pointer). Adapted 2026-10-18 (builder, at logging): the proposal also asked that `--owner` be defined where it is first used; it now is (SKILL.md ~418), so that clause is dropped.
+Carried: 2026-10-18 (builder) — OPEN polish, left past the hb-20261018 round to ride the next one with F-575 (the same email-engagement SKILL.md; one walk covers both); named as carried in that handoff.
 
 ## F-577 — OPEN
 Reported: 2026-10-18 (builder)
