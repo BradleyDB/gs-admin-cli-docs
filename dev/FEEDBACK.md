@@ -3477,3 +3477,62 @@ Repro: open a release PR (the 3-OS matrix) with the 0.56.3 tree: validate (windo
 Expected: the arms measure whether the deny TAKES before asserting on it: a sibling probe file under the same denies is unlinked first; when that succeeds (an elevated process overriding the ACL, or root on POSIX) the doc-lib arm is SKIPPED with its reason printed and the dashboard arm asserts the clean path, as it does on POSIX — the arms never assert against an unlink that went through. Test-only; fixed on dev and the release recut (the F-356 precedent).
 Fix: 2026-10-17 (builder) — on fix/f568-windows-runner-deny-probe (PR to dev; test-only, no plugin bytes, no bump) - Class, in one sentence: a test arm asserting on an environment it never measured (that an ACL deny forbids an unlink) - the F-356 shape, a tree-shape assumption surfacing on the matrix. Both F-557 arms now PROBE first: a sibling file under the same denies is unlinked; when the unlink goes through, doc-lib-fixtures prints SKIP with the reason (an elevated process overriding the ACL; root on POSIX, as before) and dashboard.mjs asserts the clean path (no lockLeft, no lock) exactly as on POSIX, its two check titles saying so; where the deny forbids (a non-elevated Windows session, measured here: the probe stays, elevated false) the arms run as before, 306 and 170 checks. Sibling case: the fake CLI deny-delete hook needs no change (it applies the pair; whether it takes is what the probe measures). No mutant: a test-plumbing change whose failing environment (an elevated Windows runner) is not reachable from this machine - the recut release PR matrix is the judge. Pick-up: none (tests only).
 Judge: the recut release PR 3-OS matrix: validate (windows-latest) green with the doc-lib step printing the SKIP line and the dashboard step passing the clean-path titles; locally, the probe reporting forbids true and the arms running
+
+## F-569 — OPEN
+Reported: 2026-10-18 (builder)
+Severity: normal — a contributor rebuilding the documented battery by hand can damage the working tree (a staged removal of the dev-only set, a shallow clone)
+Source: introspect P-09
+What: no committed runner exists for the verbatim CI battery or for the mutation sweep: every build session of one multi-session program (19 sessions) rebuilt both from the workflow YAML in its scratchpad, and two of those rebuilds damaged the tree (the docs-drift strip step's `git rm` of the dev-only set ran on the working tree; a depth-1 fetch left the clone shallow); AGENTS.md § Testing's verification-commands fence lists steps, not one command
+Repro: `ls build/ | grep -i -E 'battery|mutate'` prints nothing; neither AGENTS.md § Testing's verification-commands fence nor dev/RELEASE-CHECKLIST.md names a single entry point
+Expected: `node build/run-battery.mjs [--steps <names>] [--worktree]` runs every `run:` step of validate-plugin.yml and docs-drift.yml in a temporary worktree (never the working tree) with a full fetch (never depth 1), skips CI-only steps by an allow-list carried in the script, stamps per-step times to a log, exits non-zero on the first red, and prints a one-line pass/fail summary (steps run and passed, the first red by name, elapsed) that the handoff note quotes, so the token is minted on evidence; `node build/mutate.mjs <suite> <mutants.json>` does the copy-out ceremony with fail-fast per mutant and a predictions-first check. Public repo: both scripts use repo-relative paths only, with no machine or tenant names in them or in their log. AGENTS.md § Testing's fence and dev/RELEASE-CHECKLIST.md name the two commands; the fence keeps its step list as the script's documentation. Proposed judge (for the Fix note): the runner's own test runs the extractor over the two YAMLs and asserts the step list equals the fence; a mutant that drops the temp-worktree step is caught by a test asserting the working tree is unchanged after a run. Guard: a PR that passes the runner's quoted summary and then fails CI is a runner defect.
+
+## F-570 — OPEN
+Reported: 2026-10-18 (builder)
+Severity: polish — a local gate reads a git-ignored folder and goes red; CI and the shipped bytes are unaffected
+Source: introspect P-10
+What: tsconfig.json's `"include": ["**/*.mjs"]` also reads the git-ignored planning folder handoffs/ (its own comment says "every tracked .mjs"), so `npm run typecheck` is red on every machine that holds a local `handoffs/*/tools/*.mjs`; thirteen sessions waved off the same red by hand
+Repro: put any .mjs that tsc rejects (an unused local suffices) under handoffs/<topic>/tools/, then `npm run typecheck`: it fails on that file
+Expected: `"exclude": ["handoffs/**", "node_modules/**"]` beside the include (or an include of `build/`, `test/`, `plugins/`), with a line in AGENTS.md tenet 5 saying the gate reads tracked code only; the maintainer's private known-red note then drops that entry. Guard: the checked file set outside handoffs/ is unchanged (`npx tsc --listFilesOnly` before and after).
+
+## F-571 — OPEN
+Reported: 2026-10-18 (builder)
+Severity: normal — each missed sibling shipped wording or a caller the fix did not cover, and came back as a reopen
+Source: introspect P-20
+Class: consumer-parity
+What: `Sibling sweep:` lines name a conclusion ("no other callers") without the search; the program's reopened sections (F-484 x3, F-491 x2, F-530 x2, F-529) were each missed by a sweep that did not grep the words the user sees (About tab, report intro, edit question, README row) or the callers of a changed shared step, and one classifier fixture was written in the pattern's own wording, so it could not fail
+Expected: AGENTS.md § Review-gate rules, consumer-parity recipe, requires the FIXED note's `Sibling sweep:` to list what was searched, with counts: the literal words and numbers (`git grep -n "<the wording>"` over plugins/, README, skills and tests), every caller of each changed symbol (`git grep '<symbol>('`), and the tests that pin the old wording. A fixture for a classifier or matcher is built from captured product text (a stored payload or the product's own message, scrubbed of tenant data only), never from the pattern it tests. A change to a shared step names its callers in the Fix note, and the Judge covers one call per caller.
+
+## F-572 — OPEN
+Reported: 2026-10-18 (builder)
+Severity: normal — five PRs went CONFLICTING over the bus pointer and ran no CI until dev was merged back
+Source: introspect P-21
+What: the builder's pointer comment for an unmerged PR (header Round-assessment hint) is inserted at the top of dev's comment history, the same anchor where the branch's round block lands; every push of either side makes the PR CONFLICTING, and CI does not run until dev is merged back (five PRs, eight sessions)
+Expected: the pointer is a single header line, `Pointer: <date> · <branch> · PR #N · <token> · next free F-NNN`, directly under `Under test:` and rewritten in place like the Under test line, never inserted, so the two sides never touch the same lines; `dev-utils handoff --push` writes it when the branch is not dev. Until the tool does, the header hint says the builder merges dev into the branch right after re-stamping the pointer. Guard: a tester still finds the handoff on the first read.
+
+## F-573 — OPEN
+Reported: 2026-10-18 (builder)
+Severity: normal — fixes the tester had VERIFIED were reopened at the release gate, so unreviewed defects reached a verdict
+Source: introspect P-31
+What: fix rounds rode a PR unreviewed (three rounds, ~1,400 lines on one PR); the release gate then reopened fixes the tester had just VERIFIED; and a review whose finder read a persisted diff it never opened reported zero findings
+Expected: AGENTS.md § Review-gate rules gains: a fix round whose diff exceeds 200 lines, or that redesigns a reopened section, runs /code-review before its handoff, and the round's `Checks` line carries `review pass (n fixed)`; a review's finder reads the diff through the Read tool or a file, never a truncated inline output. dev/RELEASE-CHECKLIST.md's gate review names any reopened VERIFIED section as a process finding (which round skipped the review) as well as a code finding. Guard: review cost per round stays within the batched-verifier budget (no return to one verifier per finding).
+
+## F-574 — OPEN
+Reported: 2026-10-18 (builder)
+Severity: polish — contributor setup facts; nothing shipped is wrong
+Source: introspect P-28
+What: thirteen sessions re-derived three facts about working in a worktree of this repo: a fresh worktree needs `npm ci` before `npm run typecheck` and the strict-list gate; the desktop app cuts its worktree from `main`, not `dev`, so the first command is `git fetch` then `git reset --hard origin/dev` (two lines in PowerShell); `dev` is both a branch and a folder, so git commands need `dev --` or `refs/heads/dev`
+Expected: CLAUDE.md's branching/testing section states the three facts in three lines; AGENTS.md § Testing's verification-commands fence notes that `npm run typecheck` needs `npm ci` once per worktree. Guard: CLAUDE.md grows by no more than ten lines.
+
+## F-575 — OPEN
+Reported: 2026-10-18 (builder)
+Severity: normal — the admin waits on a pull with no sense of how long is left, and the quoted minutes undershoot
+Source: introspect P-29
+What: an email-engagement refresh prints no progress or ETA: in one round the user asked how long was left five times and the tester rebuilt it from the run directory each time; pulls overran the priced minutes by 46-87%, because the price comes from the plan's estimate, not from the last pull of the same shape
+Expected: `dashboard.mjs refresh` prints a progress line every N calls (calls made / planned, elapsed, ETA from this run's pace) and the skill's step P quotes it; the priced minutes in a dashboard's spec are rewritten from each finished pull. Adapted 2026-10-18 (builder, at logging): the proposal also asked that concurrent refreshes be refused up front with the holder named; a second refresh of the SAME dashboard has been refused that way since F-558 ("already running"), so that clause is dropped; whether two refreshes of different dashboards over one knowledge base still end with a false "token expired" is unmeasured since then, and the fix round measures it before building anything for it. Guard: the progress reporting adds no more than 5% to a pull's runtime.
+
+## F-576 — OPEN
+Reported: 2026-10-18 (builder)
+Severity: polish — skill prose; the script refuses the wrong form and nothing is written wrong
+Source: introspect P-29
+What: the email-engagement skill's change grammar says a list setting goes in as its items separated by commas (SKILL.md ~593), but `selector.ids` refuses that form; step R5 (Workbook) defers its rules to email-report step 6 instead of stating them
+Expected: one grammar table in SKILL.md with an example per field kind; R5 states its rules inline as a paraphrase plus a pointer (AGENTS.md § Writing skills, paraphrase-plus-pointer). Adapted 2026-10-18 (builder, at logging): the proposal also asked that `--owner` be defined where it is first used; it now is (SKILL.md ~418), so that clause is dropped.
