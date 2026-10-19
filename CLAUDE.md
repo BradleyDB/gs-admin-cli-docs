@@ -164,7 +164,10 @@ in this repo must not get wrong:
 - **To exercise the working tree in a live Claude Code session:** start it with
   `claude --plugin-dir <path-to-this-repo>/plugins/gs-superadmin`, then `/reload-plugins`
   after each edit. A session testing the plugin this way reports findings to the bus
-  rather than editing the branch under itself.
+  rather than editing the branch under itself. Machine-local paths (the consumer workspace,
+  the tester launch) live in `CLAUDE.local.md`, untracked; if it is missing, create it with
+  the workspace path, the two launch lines and the note that the desktop app loads the
+  installed copy.
 - **`version` lives only in `plugin.json`** — never add one to `marketplace.json`. Bump it
   on any user-visible plugin change (plus a CHANGELOG entry); documentation-only changes
   need neither.
