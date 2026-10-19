@@ -169,6 +169,36 @@ Walk (hb-20261017-04): 2026-10-17 (tester) — the R15 re-verification round (fi
 Blind spots (hb-20261016-02): 2026-10-16 (tester) — F-546's killed writer was never caught live inside a mark (two kills, a 2 ms poll, both after the release): the dead-pid lock was laid by hand in a killed mark's shape, so the kill-to-lock path itself is the suite's; the writers' SIGINT/SIGTERM release does not exist on Windows and was not exercised; the held-handle and kill arms ran on this Windows host alone; the four-process contention driver was not re-run. F-541 and F-542 are judged by the stand-in suite alone, F-542's base-directory variant by construction; no live refresh restarted, so the skill's restarted relay is read, not walked. F-552's display-change half is suite-only. F-553/F-554/F-555 by reading; of F-555's Judge only the dashboard and page suites were run. R4 and the walk ran through the session's own shell tools, not a human paste into a terminal; cmd was not run. setup's changed sentence is unwalkable at CLI 1.0.12. The guard ask's rendering is Bradley's report; prompts are invisible to the session.
 Blind spots (hb-20261015-10): 2026-10-16 (tester) — F-546's lock never met a second writer live: the production KB is current (both R2 plans: 0 programs behind, 0 undocumented, 0 templates), so neither refresh re-documented and the manifest stayed byte-equal — the lock is measured by test/manifest-ops.mjs alone; the natural live arm is any later refresh whose plan finds programs behind. F-541, F-542 and F-545 are judged by the suite alone (no tenant can produce their states, VALIDATION § R13 R3). F-536's three shells: Git Bash and Windows PowerShell 5.1 ran the line through the session's own shell tools, cmd from a .bat file run by `cmd /d /c` — none was a human paste into a terminal window. The guard ask's rendering is Bradley's report; prompts are invisible to the session.
 
+<!-- tester 2026-10-19 (VERDICT @ hb-20261018-01 — F-569, F-570, F-571, F-572, F-573, F-574, F-577 FIXED -> VERIFIED, a
+     re-verification round on fix/f569-battery-runner (worktree at f4cb1d9, clean and level with origin; a session in the
+     consumer workspace with --plugin-dir on the worktree, canary matched the Under test line); PR #70 to dev, its merge the
+     maintainer's. F-568 VERIFIED on dev, the section's home, in the same round):
+     Pass bar, stated before measuring: each finding's Repro plus the property its Fix note claims, every arm offline from
+     the worktree; each Verified note states its own bar and readings.
+     F-569: --list 55 / 2 ci-only / 2 off arm; the two-step --steps run PASS 2/2, exit 0, tracked status and is-shallow
+       unchanged before and after, the log masked; PR #70's suite green on the same head; a two-mutant prediction file of
+       mine over build/test-mutate.mjs: the right prediction matched, the deliberately wrong one read MISMATCH, exit 1.
+     F-570: the Repro's file planted under a git-ignored handoffs/; the old bare include reds on it (control), the shipped
+       include does not read it; typecheck and check-imports green (113 tracked .mjs). Plant removed.
+     F-571: 78/78, the six 15b cases read. F-572: MERGEABLE / CLEAN on f4cb1d9, and clean WITHOUT the merge-back too
+       (merge-tree of dev's re-stamp against the pre-merge tip). F-573: the line came in the handoff commit alone.
+     F-574: nothing re-derived. F-577: the step runs in PR CI; G1 green, and G1 kills the step's removal (my mutant).
+     F-568 (on dev): the recut matrix's windows-latest log prints the SKIP and the clean-path PASS titles; local
+       non-elevated run 306/306 with no SKIP.
+     Walk: n/a (no SKILL.md changed; Checks walk n/a). Checks ci: pass on f4cb1d9, the PR head when read; this round's
+       verdict commits are local, unpushed, and bus-only.
+     Blind spots (tester): the full 55-step battery was not re-run here (a two-step subset and a one-step exit read), and
+       --tree stripped was not run; this host is Windows only, so POSIX is PR CI's ubuntu leg alone; F-573's "written by
+       the verb" is read from the commit's shape, not watched; F-574 is judged by a session whose cwd is the consumer
+       workspace, not the worktree, from a kickoff that itself named npm ci; F-571's rule has met only its own fixtures,
+       no real consumer-parity section yet; F-568's elevated path is read from CI's log, not reproduced (no elevated
+       session here); no guard-wiring line this round (no tenant arm, offline round).
+     Noticed (report only, not logged): rule 6's tell is the literal words git grep on the sweep line, so a line saying a
+       grep was not needed passes; F-569's Fix note says the plan reads 52 steps, the tree now plans 55 (F-577's step and
+       the two self-test steps); the handoff set Checks ci to d710ea7, a commit before the handoff, while its own Blind
+       spots line called CI on the handoff commit owed (now f4cb1d9).
+     Carried: F-575, F-576 OPEN (next round, one walk). Numbers: none claimed. Next free number: F-578. Released: nothing. -->
+
 <!-- builder 2026-10-18 (round hb-20261018-01 on fix/f569-battery-runner, PR #70 — the introspect fix round; dev-loop from dev ＠ 42257d1,
      the unreleased builder text read from the superfriends dev checkout, not the installed skill):
      Batch: F-569 (the committed battery and mutation runners), F-570 (the type gate reads the tracked lanes), F-571 (sweeps
