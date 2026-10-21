@@ -3683,12 +3683,13 @@ Fix: 2026-10-18 (builder) — on fix/f569-battery-runner (PR to dev; same round 
 Judge: build/test-run-battery.mjs G1 on the real tree (the arm that found it; the drift job runs it, so the next unlisted suite goes red the day it lands), plus the PR suite's validate job running the step.
 Verified: 2026-10-19 (tester, fix/f569-battery-runner @ hb-20261018-01) — Pass bar: validate-plugin.yml runs power-list-gaps.mjs, and build/test-run-battery.mjs G1 passes on the real tree. The step is at validate-plugin.yml:193-194; PR #70's validate (ubuntu-latest) job 117911821743 on f4cb1d9 ran it as step 19, success. `node build/test-run-battery.mjs`: 31 passed, 0 failed, exit 0. G1 is what holds it (my mutant through build/mutate.mjs, predicted first): U1, the step's command replaced by an echo, KILLED pred:KILL, `FAIL: G1 every test runner on disk is invoked by a CI step`; the workflow restored, tree clean.
 
-## F-578 — OPEN
+## F-578 — WONTFIX
 Reported: 2026-10-19 (builder, from the hb-20261018-01 tester's Noticed line, logged under the 2026-10-16 ruling that report-only notes are logged as polish)
 Severity: polish — a gate's tell, not shipped behaviour; the recipe in AGENTS.md is the obligation and the tell is its structural shadow
 What: check-stale-facts rule 6 (F-571) admits a consumer-parity sweep line by the literal words `git grep` (or `batched`), so a sweep line that says "a grep was not needed" or quotes the command without having run it passes the gate — the tell reads the wording, never the search
 Repro: a FIXED consumer-parity section at or above F-571 whose Sibling sweep line reads `git grep was not needed: the symbol has one caller` passes `node build/check-stale-facts.mjs`
 Expected: proposed WONTFIX — a wording tell cannot read whether a search ran, and a stronger tell (counts, hit lists) is the same class one layer down (the F-436 lesson: a list the fixer writes is not a judge); the obligation stays the recipe, and the verdict round reads the sweep line for its search. Reopen trigger instead of a tune: a consumer-parity sweep line that passed rule 6 and missed a sibling the tester then found — that is the measurement a redesign would need.
+Ruling: 2026-10-21 (builder) — proposed by its own Expected and ruled by the builder at the round's kickoff (2026-10-21): a wording tell cannot read whether a search ran, and a stronger tell (counts, hit lists) is the same class one layer down — a list the fixer writes is not a judge (F-436). The obligation stays the recipe (AGENTS.md § Review-gate rules, consumer parity) and the verdict round reads the sweep line for its search. The reopen trigger stands as the measurement a redesign would need: a consumer-parity sweep line that passed rule 6 and missed a sibling the tester then found.
 
 ## F-579 — OPEN
 Reported: 2026-10-19 (builder)
