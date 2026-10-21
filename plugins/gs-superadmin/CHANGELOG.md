@@ -7,9 +7,9 @@ history when this file was introduced.
 
 ## 0.57.0 — 2026-10-21
 
-The round for the checkpoint retro's P-21 and the email-engagement findings carried from
-0.56.3 (F-575, F-576, F-567): a pull says how long is left, and prices itself from its last
-pull.
+The email-engagement findings carried from 0.56.3 (F-575, F-576, F-567) and two found on
+the round's own live pull (F-580, F-581): a pull says how long is left, prices itself from
+its last pull, and no longer stops on a token the CLI misreports.
 
 - **The pull says its progress, and `status` relays it (F-575).** A dashboard refresh (and
   the ad-hoc report's pull) now says on stderr, at the first fact call and every tenth made
@@ -25,9 +25,20 @@ pull.
   instead of the fitted constants alone; a family the last pull did not make keeps its
   earlier figure, then the constant. A first pull is priced as before.
 - **The change grammar, one table (F-576).** The email-engagement skill's change step lists
-  the value form per setting kind with an example each: the comma form is the four list
-  questions'; the programs selector's lists and every object-valued setting go through
-  `@<file>`. Step R5 states the workbook rules inline.
+  the value form per setting kind with an example each, and `change` now reads the comma
+  form for every list of texts the spec has — the programs selector's `names` and `ids`,
+  the pinned accounts and a page's status default included, which it used to refuse; an
+  object-valued setting still goes through `@<file>`. Step R5 states the workbook rules
+  inline.
+- **The "left" figure falls to what is left (F-580).** The pull's remainder — the progress
+  line's tail, a stop's "about N more logins", a resume's opening line — no longer carries
+  the per-program sample reads to the end once they have landed, and prices each sample at
+  its own family's rate.
+- **A token the CLI misreports no longer stops the pull (F-581).** When a call comes back
+  with the CLI's "run gs-admin login" wording while the login is live (seen when two
+  dashboards' refreshes ran at once), the refresh reads the token once and, live, makes the
+  call again, saying so on stderr; an expired token still stops the pull as before, resumable
+  after the login.
 - **A lock left behind is said on every verb (F-567).** The skill relays a summary's
   `lockLeft` as written after a change or a rebuild, as it already did after a pull.
 

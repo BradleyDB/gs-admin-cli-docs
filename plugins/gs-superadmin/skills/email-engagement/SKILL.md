@@ -312,9 +312,9 @@ continues the plan's working directory and makes none of its calls again.
 
 Start it in the background when the estimate is over 8 minutes (a foreground command is
 cut off at 10), and wait for it to finish. Do nothing else with `gs-admin` meanwhile. Its
-`progress:` lines on stderr (step P gives their shape) answer "how long is left"; an ad-hoc
-pull keeps no pace file, so they quote the plan's price until this run's own pace is
-measured.
+`progress:` lines on stderr (step P gives their shape; here they are prefixed
+`engagement.mjs:` with no `pull` word) answer "how long is left"; an ad-hoc pull keeps no
+pace file, so they quote the plan's price until this run's own pace is measured.
 
 Read the summary JSON, never the snapshot file. By exit code:
 
@@ -353,12 +353,10 @@ explain it.
 ### R5 — Workbook (only with `--xlsx`)
 
 Convert the CSVs in the csv-dir into ONE workbook at
-`<slug>/reports-adhoc/engagement-<YYYY-MM-DD>.xlsx` with the xlsx skill: one sheet per
-CSV, named the file minus `.csv`. The CSVs start with a UTF-8 BOM (deliberate: Excel needs
-it), so read them BOM-aware (`utf-8-sig` in Python) or strip the leading BOM before
-parsing, and the first column header never enters the workbook BOM-prefixed. If the xlsx
-skill is unavailable in this session, deliver the CSVs and say so; never hand-roll a
-workbook writer. (A paraphrase of `/gs-superadmin:email-report` step 6, the rules' home.)
+`<slug>/reports-adhoc/engagement-<YYYY-MM-DD>.xlsx` with the xlsx skill, under the rules
+of `/gs-superadmin:email-report` step 6 (their home): one sheet per CSV named the file
+minus `.csv`, the CSVs' leading BOM read BOM-aware, and no hand-rolled writer when the
+skill is unavailable — deliver the CSVs and say so.
 
 ### R6 — Final report
 
@@ -605,15 +603,15 @@ setting's kind, one form per kind:
 
 | Kind | Settings | Form | Example |
 |---|---|---|---|
-| list (the four list questions) | `internalDomains`, `testAccounts`, `unsubscribeLinks`, `expectedReasons`, each under `sources.0.params.` | the items separated by commas; `none` empties it | `"sources.0.params.internalDomains=acme.com,acme.co.uk"` |
+| a list of texts | the four list questions (`internalDomains`, `testAccounts`, `unsubscribeLinks`, `expectedReasons`, under `sources.0.params.`), the programs selector's `selector.names` and `selector.ids`, `pinnedAccounts`, a page's `statusDefault` | the items separated by commas; `none` empties it | `"sources.0.params.internalDomains=acme.com,acme.co.uk"`, `"sources.0.params.selector.ids=p1,p2"` |
 | yes/no | `accounts.pull` | `yes` or `no` | `accounts.pull=yes` |
-| text, number | a page's `title`, `purpose`, `health.silentDays` | the text itself; the number | `"pages.1.title=Leadership page"`, `health.silentDays=7` |
-| the programs selector, and every object-valued setting | `sources.0.params.selector.ids`, `.names`, `.sentSince`; the window, the groups, `accounts.lists`, `publish` | JSON from a file: `<path>=@<file>` — the selector's two lists are not read as comma items (`selector.ids=p1,p2` reaches the writer as one text and is refused) | `"sources.0.params.selector.ids=@ids.json"`, the file holding `["p1","p2"]` |
+| text, number | a page's `title`, the dashboard's `purpose`, `selector.sentSince`, `health.silentDays` | the text itself; the number | `"pages.1.title=Leadership page"`, `sources.0.params.selector.sentSince=90d`, `health.silentDays=7` |
+| an object-valued setting | the window, the groups, `accounts.lists`, `publish` | JSON from a file: `<path>=@<file>` | `publish=@publish.json` |
 
 Put the whole pair in double quotes when the value holds a space, a comma or `<`: that
 one spelling runs as written in Git Bash, PowerShell 5.1 and cmd, where a JSON string's
-own quotes survive none of them — which is why an object, and a selector list, go through
-a file. A page's copy line carries a placeholder in the value
+own quotes survive none of them — which is why an object goes through a file. A page's
+copy line carries a placeholder in the value
 (`"…internalDomains=<domains>"`): put the value in its place and keep the quotes. Relay
 `changed` (each setting with its cost) and `consequenceText` as the script wrote it
 ("rebuild only", or the next pull with its minutes). Ask the user to confirm; on yes

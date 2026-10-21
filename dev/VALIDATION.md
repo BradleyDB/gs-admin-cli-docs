@@ -3905,12 +3905,14 @@ null while the run holds the lock, or a `left` that grows while calls land → R
 ### R2 (F-575) — the second pull is priced from the first
 
 Tenant: sandbox. Login: needed. Minutes: about R1's measured minutes. Start when: R1's pull finished and
-`<scratch dir>/pace.json` exists. Read pace.json (per family: calls, seconds, run — R1's run). Run
-`change <scratch> accounts.pull=yes --dry-run` (decline the save) and then `refresh <scratch>` again, and read both
-runs' `plan.json` (`.gs-superadmin/tmp/engagement/<run>/plan.json`, `estimate.full.seconds`). FIXED: the second plan's
-figure differs from the first's in the direction pace.json's families point (a tenant slower than the constants prices
-higher, a faster one lower), the dry-run's minutes agree with it, and after the second pull pace.json's families name the
-second run. BROKEN: the second plan's figure equal to the first's with pace.json present → REOPEN F-575 quoting both.
+`<scratch dir>/pace.json` exists. Read pace.json (per family: calls, seconds, run — R1's run). Run `refresh <scratch>`
+again, then `change <scratch> accounts.pull=yes --dry-run` (decline the save), and read both runs' `plan.json`
+(`.gs-superadmin/tmp/engagement/<run>/plan.json`, `estimate.full.seconds`). FIXED: the second plan's figure differs from
+the first's in the direction pace.json's families point (a tenant slower than the constants prices higher, a faster one
+lower); the dry-run, which quotes the LAST plan's price, agrees with the second plan (run before the second refresh it
+would quote the first plan, priced before the pace existed — by design, not a defect); and after the second pull
+pace.json's families name the second run. BROKEN: the second plan's figure equal to the first's with pace.json present →
+REOPEN F-575 quoting both.
 
 ### R3 (F-575, the pre-build measurement carried from logging) — two refreshes of DIFFERENT dashboards over one knowledge base
 
@@ -3935,7 +3937,7 @@ walked: say whether the builder's handoff named the commit the battery ran over.
 Builder's own run (2026-10-21, before the handoff, on the owner's call that a pacing mechanism sees a real pull before
 a tester does): the sandbox; two scratches A and B in the kept dashboard's shape (every program with a send in 365 days,
 customer lists off, Health on, re-documentation on, test accounts emptied), removed after with their run directories (the
-re-documentation left 155 template docs in the sandbox knowledge base, as R15's did; real docs, kept).
+re-documentation wrote template docs into the sandbox knowledge base, a cap's worth per pull, as R15's did; real docs, kept).
 - R1 on A's first pull: 11m50s wall clock, the facts from minute five (the plan's reads and 50 templates re-documented
   first). The line read 12 → 8 → 10 → 8 → 7 → 4 → 4 → 4 min left at 1/10/20/…/70 of about 77–95 calls against a real
   6.4 → 5.0 → 3.9 → 3.3 → 2.5 → 1.8 → 1.1 → 0.5: within a factor of two to 50 calls, then stuck at the sample reads'
