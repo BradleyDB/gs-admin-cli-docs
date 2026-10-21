@@ -442,7 +442,13 @@ npm run build   # only when build/ scripts or the catalog changed (needs the pin
   diff it never opened reported zero findings. A fix that rode a PR unreviewed is what
   the release gate then reopens after the tester VERIFIED it (three rounds, about 1,400
   lines on one PR): such a reopen is logged as a PROCESS finding naming the round as
-  well as the code finding (dev/RELEASE-CHECKLIST.md § 2).
+  well as the code finding (dev/RELEASE-CHECKLIST.md § 2). While the battery runs (about
+  22 minutes), do not edit tracked files in the checkout it guards — work in another
+  worktree, or wait: the runner's self-guard reports a tracked path that changed during
+  the run and cannot tell a bus note typed meanwhile from the runner touching the checkout
+  (F-579). A code change made after the battery either re-runs the self-tests it touches
+  and is named on the round's Blind spots line as unbatteried, or waits for the next
+  round; the battery summary the handoff quotes names the commit it ran over.
 - **Every open PR to `dev` is named at a session's kickoff and close-out, bot PRs
   included** (`gh pr list --base dev`), each with its check state, and a red one is
   DISPOSITIONED — merged, closed with a reason, or carried forward explicitly in the
