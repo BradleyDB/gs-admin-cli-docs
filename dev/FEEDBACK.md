@@ -16,7 +16,7 @@ Version: plugins/gs-superadmin/.claude-plugin/plugin.json
 Canary: plugins/gs-superadmin/skills/dev-canary/SKILL.md description
 Dev-only: dev plugins/gs-superadmin/skills/dev-canary
 Checks: battery review ci walk
-Pointer: 2026-10-21 · fix/r16-f575-f579 · PR #71 · hb-20261021-01 · next free F-582
+Pointer: 2026-10-21 · fix/r16-f575-f579 · PR #71 · hb-20261021-02 · next free F-582
 Hooks: dev/hooks/pre-push is the tracked source of this clone's .git/hooks/pre-push (install: cp dev/hooks/pre-push .git/hooks/pre-push — LF, executable); it blocks main, runs the three doc gates on dev, and runs check-instance-data on EVERY ref (F-423). A worktree shares the hooks and the checker reads the main checkout's private-pattern config from there.
 Release checklist: dev/RELEASE-CHECKLIST.md (repo-specific gates + the fill-in close-out note; the /dev-loop skill Step 4 remains the procedure of record)
 Walk hint (DS-44, 2026-09-07; procedure fixed by F-415, 2026-09-08): no CI suite executes
