@@ -44,7 +44,7 @@ import { HOW_TO_REFRESH_RULED } from "./fixtures/engagement/ruled-text.mjs";
 import { LACKS, HOW_TO_REFRESH_TEXT, COPY_LINES } from "../scripts/dashboard-runtime.mjs";
 import { openSnapshot, listPhrase } from "../scripts/engagement-query.mjs";
 import { nativePlan, TEST_PREFIX } from "../scripts/dashboard-native.mjs";
-import { makeGate, resolveParams, CALL_SECONDS, readPaceFiles, writePaceFile } from "../scripts/engagement.mjs";
+import { makeGate, resolveParams, CALL_SECONDS, readPaceFiles, writePaceFile, KB_PACE_FILE } from "../scripts/engagement.mjs";
 import { kbFiles, OWN_SITE_UNSUBSCRIBE, TEMPLATES_DOMAIN, buildTenant, FIXTURE_BOUNCE_CATEGORIES } from "./fixtures/engagement/acme-tenant.mjs";
 import { splitRedirect } from "./fixtures/engagement/shell-words.mjs";
 
@@ -413,8 +413,8 @@ try {
   check("F-575 progress: the refresh says on stderr, at the first fact call and every tenth made call after, how many calls are made of about how many, the time elapsed and about how long is left — each remaining family at the pace THIS run measured for it, the plan's price for a family not yet seen (the line counts them; the first line names several, and against the stand-in's fast calls the last record's left is seconds, never the constants' minutes); never one of the per-call lines; the same figures in the run's progress.json",
     /^dashboard\.mjs: pull progress: 1 of about \d+ calls made this run · \d+ s elapsed · about \d+ (s|min) left \(\d+ (s|min) at this run's pace; the plan's \d+ (s|min) for \d+ famil(y|ies) not yet seen\)$/.test(progressLines[0] ?? "") && progressLines.length >= 2 && /^dashboard\.mjs: pull progress: 10 of about \d+ calls made this run · \d+ s elapsed · about \d+ (s|min) left/.test(progressLines[1] ?? "") && / left at this run's pace$/.test(progressLines.at(-1) ?? "") && progressLines.every((l) => /^dashboard\.mjs: pull progress: \d+ of about \d+ calls made this run · /.test(l)) &&
       Number.isInteger(progressFile().leftSeconds) && progressFile().leftSeconds < 30 && progressFile().unseenFamilies === 0 && progressFile().planSeconds === 0 && progressFile().made === Number(progressLines.at(-1)?.match(/progress: (\d+) of/)?.[1]) && progressFile().planned >= progressFile().made, [progressLines.slice(0, 2), progressLines.at(-1), progressFile()]);
-  const kbPace = join(KB, "dashboards", PACE_FILE);
-  check("F-575 pace: a finished pull writes the seconds per call it measured, per family, beside the spec (pace.json, each family naming the run it was measured on) AND to the knowledge base's own dashboards/pace.json (the same families), and the summary names both files",
+  const kbPace = join(KB, KB_PACE_FILE);
+  check("F-575 pace: a finished pull writes the seconds per call it measured, per family, beside the spec (pace.json, each family naming the run it was measured on) AND to the knowledge base's own engagement-pace.json at its root (the same families; the dashboards folder is the writer's to name), and the summary names both files",
     existsSync(join(dash(), PACE_FILE)) && Object.keys(readJson(join(dash(), PACE_FILE)).families).length >= 3 && Object.values(readJson(join(dash(), PACE_FILE)).families).every((x) => x.calls > 0 && x.seconds > 0 && x.run === refresh.json.run) && refresh.json.pace?.file === join(dash(), PACE_FILE) && refresh.json.pace.families >= 3 &&
       existsSync(kbPace) && refresh.json.pace.kbFile === kbPace && isDeepStrictEqual(Object.keys(readJson(kbPace).families).sort(), Object.keys(readJson(join(dash(), PACE_FILE)).families).sort()),
     [refresh.json?.pace, existsSync(join(dash(), PACE_FILE)) ? readJson(join(dash(), PACE_FILE)) : null]);

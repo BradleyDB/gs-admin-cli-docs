@@ -657,7 +657,7 @@ earlier line. `progress` is null until the first fact call: the plan's reads and
 re-documentation of what the knowledge base lacks run first (minutes, when it lacks a lot)
 — say that the pull is being planned and re-documenting, and ask again in a minute. The
 "left" figure is an estimate; its `planSeconds` is the part still priced from the plan. The minutes a pull is priced at come from this dashboard's last finished
-pull on the knowledge base (`<kb>/dashboards/pace.json`, which every pull over it writes)
+pull on the knowledge base (`<kb>/engagement-pace.json`, which every pull over it writes)
 under the dashboard's own `pace.json` beside its spec; only the first pull ever made on
 the knowledge base is priced from the plan's own figures.
 

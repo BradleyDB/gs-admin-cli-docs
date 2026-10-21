@@ -22,7 +22,7 @@ its last pull, and no longer stops on a token the CLI misreports.
   directory.
 - **A pull is priced from the pulls already measured (F-575).** Every pull, finished or
   stopped, writes the seconds per call it measured, per call family, to the knowledge base's
-  own `dashboards/pace.json` and to `pace.json` beside the dashboard's spec; every later plan
+  own `engagement-pace.json` and to `pace.json` beside the dashboard's spec; every later plan
   on that knowledge base (a new dashboard's first, a change's, a refresh's, the ad-hoc
   report's) prices from them instead of the fitted constants alone — the knowledge base's
   figures under the dashboard's own — and a family no pull has made yet keeps the constant.
