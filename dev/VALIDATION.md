@@ -3931,3 +3931,30 @@ Then ask for two changes with `--dry-run`, declining each save: a list question 
 record the lines the model issued — the table routes the selector through `@<file>`. The lock-left relay (F-567) is
 walked only if R15 R2's handle arm is repeated; otherwise record it as read. The AGENTS.md rule (F-579) is read, not
 walked: say whether the builder's handoff named the commit the battery ran over.
+
+Builder's own run (2026-10-21, before the handoff, on the owner's call that a pacing mechanism sees a real pull before
+a tester does): the sandbox; two scratches A and B in the kept dashboard's shape (every program with a send in 365 days,
+customer lists off, Health on, re-documentation on, test accounts emptied), removed after with their run directories (the
+re-documentation left 155 template docs in the sandbox knowledge base, as R15's did; real docs, kept).
+- R1 on A's first pull: 11m50s wall clock, the facts from minute five (the plan's reads and 50 templates re-documented
+  first). The line read 12 → 8 → 10 → 8 → 7 → 4 → 4 → 4 min left at 1/10/20/…/70 of about 77–95 calls against a real
+  6.4 → 5.0 → 3.9 → 3.3 → 2.5 → 1.8 → 1.1 → 0.5: within a factor of two to 50 calls, then stuck at the sample reads'
+  full price — `planned` stayed 25 above `made` to the end → F-580 logged and fixed in the round (the samples leave the
+  remainder as they land; then the samples priced by their own families, mixed by the plan's counts). `status.progress`
+  was null through the five minutes before the facts, then the record every tenth call with `made` rising. pace.json:
+  22 families; uniques-month measured 23 s against the 13 s constant, the health families 2–6 s against 10–16; the first
+  plan's 768 s became a 420 s pull (the constants wrong in both directions — the per-family measurement is the point).
+- R2: A's second plan priced the full pull at 640 s against the first plan's 768, pace.json's direction; its resume
+  (alone, after R3) opened at "7 min left" for 3.3 real minutes — 25 bounce samples priced at the reasons rate's 12 s
+  while the measured bounce sample is 4 s, the second half of F-580, fixed after this run and NOT re-measured live (the
+  login ran out). After the resume, pace.json named the resume for 16 families and the first pull for 6.
+- B's first pull, with F-580's first half in: 12 → 7 → 9 → 7 → 6 → 3 → 2 → 0.75 min against 6.1 → 4.7 → 3.6 → 3.0 →
+  2.5 → 1.9 → 1.2 → 0.5 — the end converges (45 s said, 30 s real); the middle reads up to 2.5× high on a plan priced
+  at the constants, the pace ratio catching up as the fast health families land.
+- R3: A's second pull and B's first started six seconds apart over the one knowledge base. A STOPPED with exit 3, "the
+  CLI reported the token expired" (the CLI's own login wording on one call), five minutes after whoami read 35 minutes
+  left and with the token reading 28 minutes left right after; B finished; A's resume alone finished → F-581 logged
+  (normal) and fixed in the round: the token is read once before the stop, live → the call is made once more. Not
+  re-measured live after the fix.
+The tester's R1–R3 stand as banked: they re-run on the fixed tree as the other role, and R2's second half and F-581's
+fix have no live measurement yet.
