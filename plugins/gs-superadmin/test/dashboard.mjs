@@ -1604,6 +1604,15 @@ try {
   check("refusals: an unknown verb, a missing slug, a refresh of a draft, an unknown question (purpose, dropped, among them), and a workspace with no KB each exit 1 with one line",
     run("frobnicate", []).code === 1 && run("status", []).code === 1 && run("refresh", ["quick"]).code === 1 && /is a draft, not a saved dashboard/.test(run("refresh", ["quick"]).json?.error ?? "") && run("answer", [SLUG, "nope", "x"]).code === 1 && /no question is called "purpose"/.test(run("answer", ["quick", "purpose", "x"]).json?.error ?? "") && run("list", [], { flags: ["--workspace", join(ROOT, "nowhere"), "--bin", FAKE] }).code === 1);
   check("the summaries carry counts and verdicts, never rows: no account name and no message text reaches stdout from a refresh", !JSON.stringify(resumed.json).includes("Acme Customer") && JSON.stringify(resumed.json).length < 12000);
+  // F-581: an auth death the CLI reports while the token is live (a second gs-admin process on the machine) is read once
+  // more before the run stops. The stand-in kills ONE rp run with the CLI's login wording while its whoami stays valid.
+  rmSync(join(STATE, "faults.json"), { force: true });
+  const callsBefore581 = argvLines().length;
+  const liveToken = run("refresh", [SLUG], { env: { FAKE_FAULTS: JSON.stringify([{ match: "rp run", kind: "auth", skip: 3, times: 1 }]) } });
+  const after581 = argvLines().slice(callsBefore581);
+  check("F-581: a call the CLI answers with 'run gs-admin login' while whoami still reads the token valid is made once more after one whoami read, and the refresh completes (exit 0, the line said on stderr, a second whoami in the argv log); only a second death, or a whoami that reads expired, stops the run",
+    liveToken.code === 0 && liveToken.json?.status === "ok" && /the CLI reported the token expired, but it reads live: trying once more/.test(liveToken.stderr) && after581.filter((a) => a === "whoami").length >= 2 && !/stopped: the token expired/.test(liveToken.stderr),
+    [liveToken.code, liveToken.json?.status ?? liveToken.json?.error, liveToken.json?.pull?.calls, liveToken.stderr?.split("\n").filter((l) => /token/.test(l)).slice(0, 3)]);
   check("F-534 reopen's class: no output of any verb this suite ran (stdout or stderr) prints a structured value as \"[object …]\"", objectWords.length === 0, objectWords.slice(0, 5));
 } finally {
   removeTempDir(ROOT);
