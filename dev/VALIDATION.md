@@ -3896,14 +3896,19 @@ imported and `gs-admin whoami` shows at least 15 minutes left. Start `refresh <s
 runs, in a second terminal run `node .gs-superadmin/plugin/scripts/dashboard.mjs status <scratch> --kb <kb>` twice, a
 minute apart. FIXED: stderr carries `dashboard.mjs: pull progress: 1 of about N calls made this run · … elapsed · about
 … left (the plan's price; this run's pace is measured from here)` at the first fact call and one line every tenth made
-call after (never one per call); `status` returns `progress` with `made`, `planned`, `leftSeconds`, `at`, the second
-read's `made` higher than the first's; the first line names how many families are still priced from the plan and the
-suffix becomes `at this run's pace` once every remaining family has been seen. Record the last progress line's `left`
-against the wall clock the run still took: on a FIRST pull (no pace.json) within a factor of two passes — the redesign
-at the first reopen prices each remaining family at this run's measured pace, so the constants' tail (2.7x on the
-sandbox, hb-20261021-01) is the case to re-measure. BROKEN: no progress line, a line on every call, `status.progress`
-null after the first fact call while the run holds the lock (null through the plan's reads is the designed state, step
-P), or a `left` that grows while calls land → REOPEN F-575 with the lines quoted.
+call after or after a minute of silence (never one per call); `status` returns `progress` with `made`, `planned`,
+`leftSeconds`, `planSeconds`, `unseenFamilies`, `at`, the second read's `made` higher than the first's; a line whose
+families are not all seen shows the split (`<measured> at this run's pace; the plan's <guess> for N families not yet
+seen`), and reads `at this run's pace` once every remaining family has been seen (a unit that will never be made this
+run — a failed or refused health part — keeps its family unseen, by design). Record the last progress line's `left`
+against the wall clock the run still took, in two cases: (a) the FIRST pull ever made on this knowledge base (no
+`<kb>/dashboards/pace.json` — remove it and the scratch's pace.json first to make the case): the measured part within a
+factor of two, the plan's part reported as the constants' guess it is; (b) the SECOND scratch's first pull, with the
+knowledge base's pace from (a) in place: the whole `left` within a factor of two (this is the redesign's claim — the
+constants' tail, 2.7x on the sandbox at hb-20261021-01, is gone once the knowledge base has been measured once).
+BROKEN: no progress line, a line on every call, `status.progress` null after the first fact call while the run holds
+the lock (null through the plan's reads is the designed state, step P), or case (b)'s last line outside the factor →
+REOPEN F-575 with the lines quoted.
 
 ### R2 (F-575) — the second pull is priced from the first
 
@@ -3973,7 +3978,7 @@ Minutes about twice R1's, Start when the knowledge base lacks template docs the 
 round touching engagement.mjs's auth path or the pull lock per knowledge base. FIXED: both finish, or the later one is
 refused on the manifest lock; a call that dies on the login wording is re-read (`whoami-recheck … ok: the token reads
 live`) and made once more. (3) BANKED — the refusal sample (health-reasons-sample) is unreachable on the sandbox (0
-entry refusals in 30 days): price-and-count it on a tenant with recent refusals at the next round that pulls there;
+entry refusals in the window): price-and-count it on a tenant with recent refusals at the next round that pulls there;
 FIXED: a `health-reasons-sample` family in pace.json and the sample's seconds in the remainder until it lands.
 (4) EXPLAINED, not a defect: the customer-lists add-on's price moved from 3 calls / 21 s on A's first (full) plan to
 14 calls / 94.7 s on A's second (selective) plan because turning the lists on over a snapshot that holds no account
@@ -3982,8 +3987,10 @@ get"; the change's consequence text says "pulls everything again") — the first
 account units were the difference. The dry-run quotes it correctly.
 
 R1 and R2 are owed again at hb-20261021-02 for F-575's redesign (the per-family live price): one FIRST pull of a fresh
-scratch (no pace.json) with the last line's `left` against the wall clock, the pass bar above; and the statusDefault
-dry-run for F-576 (`"pages.0.statusDefault=PROCESSING,PAUSED" --dry-run` reads as a list and prices a rebuild).
+scratch with the knowledge base's pace file removed (case a) and then the second scratch's first pull over the pace
+file the first wrote (case b), each last line against the wall clock, the pass bar above; R2 as banked; and the
+statusDefault dry-run for F-576 (`"pages.0.statusDefault=PROCESSING,PAUSED" --dry-run` reads as a list: `changed`
+names `pages[].statusDefault[]`, `consequence` is `in-page` and `consequenceText` reads "rebuild only (no pull)").
 
 Tester round @ hb-20261021-01 (2026-10-21; checkpoint, written as the arms run) — fix/r16-f575-f579 at 5760118, clean and
 level with origin, a session in the workspace with --plugin-dir on the checkout, canary matched; the SANDBOX KB, reads
@@ -3991,8 +3998,8 @@ only. Round type: ACCEPTANCE for F-575, F-580, F-581 (probes past the fixer's li
 on, a second dashboard, a program with refusals so refusal samples are planned); RE-VERIFICATION for F-567, F-576, F-579.
 Scratches: built on the fast path (`new <s> --fast-path`, the closing step answered, saved without a pull) — an export
 of the kept dashboard is refused on the sandbox (exported from another tenant), as it should be — then narrowed with
-`change`: A = r16t-a, one program (017032e1…, sent May–Aug, 30 refusals all time), customer lists off; B = r16t-b, one
-program (0851b6ea…, 744 sent May–Aug, 116 refusals), customer lists on. Both `sentSince` 365d (the sandbox has sent
+`change`: A = r16t-a, one program (<program A>, sent in the window, with refusals on record), customer lists off; B = r16t-b, one
+program (<program B>, more sends and refusals), customer lists on. Both `sentSince` 365d (the sandbox has sent
 nothing since August), Health on, re-documentation on (cap 50), no test accounts. Removed after with their run directories.
 Pass bars, stated before measuring:
 - F-575 R1: the progress line on stderr at the first fact call, then at each tenth made call or after a minute with no
@@ -4008,7 +4015,7 @@ Pass bars, stated before measuring:
 - F-567, F-576, F-579: the walk below, against the Fix notes' claims as the review left them (F-576: the comma form for
   every list of texts, `selector.ids` included; the table no longer routes the selector through `@<file>`).
 Results (checkpoint):
-- Setup: A's `change … selector.ids=017032e1-… selector.sentSince=365d` (no --dry-run) saved AND ran A's first pull
+- Setup: A's `change … selector.ids=<program A's id> selector.sentSince=365d` (no --dry-run) saved AND ran A's first pull
   (the consequence, as the cost table says) — so A1 is a `change`-driven pull with stderr not captured; R1's stderr half
   is A2. The comma form for `selector.ids` was accepted (F-576's widened grammar, live).
 - A1 (first pull, plan priced from the constants): run 19:38:14 → status.json 19:43:18 (5m04s), plan full 324 s, 40 calls
@@ -4042,7 +4049,7 @@ Results (checkpoint):
   — nothing to do"}, the record left on disk; the session relayed it in one sentence per the change step and the ground
   rule. With no handle (the lost race) `done` carried no lockLeft.
 - F-576 walk: `change r16t-a "sources.0.params.internalDomains=acme.com,example.org" --dry-run` and
-  `"sources.0.params.selector.ids=017032e1-…,0851b6ea-…" --dry-run`, the lines the table gives: both ok, read as lists
+  `"sources.0.params.selector.ids=<id A>,<id B>" --dry-run`, the lines the table gives: both ok, read as lists
   (changed `…internalDomains[]` / `…selector.ids[]`, items [0] and [1]), cost pull, not saved. Siblings: pinnedAccounts
   comma form ok (a list); `selector.ids=none` ok (emptied). `"pages.0.statusDefault=PROCESSING,PAUSED" --dry-run`:
   REFUSED — `not saved — pages[0].statusDefault must be a list of statuses, or null for every status`. The table's
@@ -4056,7 +4063,7 @@ Results (checkpoint):
   real 7 s — 1.9×, inside the bar). Neither A nor B planned a refusal sample (`health-reasons-sample`); both planned
   the bounce sample only.
 - R3 HELD (the bar), F-581's mechanism NOT exercised: `refresh r16t-a` at 19:55:06 and `refresh r16t-b` at 19:55:12 over
-  the one KB (whoami 2244 s left before, 2054 s after): A exit 0 at 19:58:03 (28 made; `lockTakenOver` {by bradl, at
+  the one KB (whoami 2244 s left before, 2054 s after): A exit 0 at 19:58:03 (28 made; `lockTakenOver` {by <user>, at
   19:51:08.789Z} — the F-567 probe's left lock, taken over as its text said), B exit 0 at 19:58:15 (30 made); neither
   stopped, no manifest-lock refusal, no false token-expired. No call died on the CLI's login wording, so the fix's
   whoami re-read and retry never ran live: both pulls were small and re-documented nothing (redoc calls 0), unlike the
@@ -4090,6 +4097,8 @@ Results (checkpoint):
   is PRODUCTION …"); declined; no journal row.
 - Cleanup done: both scratch dashboards and their eight run directories; the KB gained no docs this round
   (re-documentation 0 calls on every pull); no publish target was set.
+Redacted by the builder 2026-10-21 (AGENTS.md § Data hygiene; the review's reading): the two program ids and the OS user
+name in the lines above; the measurements stand.
 Section status (tester @ hb-20261021-01, 2026-10-21): CLOSED with two reopens — F-567, F-579, F-580, F-581 VERIFIED;
 F-575 REOPENED and re-declared polish (Bradley's ruling); F-576 REOPENED (statusDefault). Banked for a later round
 (the bus's Noticed line): F-581's re-read path live; a refusal sample on a tenant with recent refusals.

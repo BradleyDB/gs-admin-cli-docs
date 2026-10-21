@@ -20,11 +20,14 @@ its last pull, and no longer stops on a token the CLI misreports.
   `dashboard.mjs status <dash>` relays them while a refresh runs or waits to resume, so the
   skill answers "how long is left" from one command instead of rebuilding it from the run
   directory.
-- **A pull is priced from the last one (F-575).** Every finished pull writes the seconds per
-  call it measured, per call family, to `pace.json` beside the dashboard's spec, and every
-  later plan of that dashboard (the interview's, a change's, a refresh's) prices from it
-  instead of the fitted constants alone; a family the last pull did not make keeps its
-  earlier figure, then the constant. A first pull is priced as before.
+- **A pull is priced from the pulls already measured (F-575).** Every pull, finished or
+  stopped, writes the seconds per call it measured, per call family, to the knowledge base's
+  own `dashboards/pace.json` and to `pace.json` beside the dashboard's spec; every later plan
+  on that knowledge base (a new dashboard's first, a change's, a refresh's, the ad-hoc
+  report's) prices from them instead of the fitted constants alone — the knowledge base's
+  figures under the dashboard's own — and a family no pull has made yet keeps the constant.
+  Only the first pull ever made on a knowledge base is priced as before, and its progress
+  line says which part of "left" is still the plan's guess.
 - **The change grammar, one table (F-576).** The email-engagement skill's change step lists
   the value form per setting kind with an example each, and `change` now reads the comma
   form for every list of texts the spec has — the programs selector's `names` and `ids`,

@@ -44,7 +44,7 @@ import { HOW_TO_REFRESH_RULED } from "./fixtures/engagement/ruled-text.mjs";
 import { LACKS, HOW_TO_REFRESH_TEXT, COPY_LINES } from "../scripts/dashboard-runtime.mjs";
 import { openSnapshot, listPhrase } from "../scripts/engagement-query.mjs";
 import { nativePlan, TEST_PREFIX } from "../scripts/dashboard-native.mjs";
-import { makeGate, resolveParams, CALL_SECONDS } from "../scripts/engagement.mjs";
+import { makeGate, resolveParams, CALL_SECONDS, readPaceFiles, writePaceFile } from "../scripts/engagement.mjs";
 import { kbFiles, OWN_SITE_UNSUBSCRIBE, TEMPLATES_DOMAIN, buildTenant, FIXTURE_BOUNCE_CATEGORIES } from "./fixtures/engagement/acme-tenant.mjs";
 import { splitRedirect } from "./fixtures/engagement/shell-words.mjs";
 
@@ -411,11 +411,26 @@ try {
   const progressLines = refresh.stderr.split("\n").filter((l) => l.includes("pull progress: "));
   const progressFile = () => readJson(join(runsRoot, refresh.json.run, "progress.json"));
   check("F-575 progress: the refresh says on stderr, at the first fact call and every tenth made call after, how many calls are made of about how many, the time elapsed and about how long is left — each remaining family at the pace THIS run measured for it, the plan's price for a family not yet seen (the line counts them; the first line names several, and against the stand-in's fast calls the last record's left is seconds, never the constants' minutes); never one of the per-call lines; the same figures in the run's progress.json",
-    /^dashboard\.mjs: pull progress: 1 of about \d+ calls made this run · \d+ s elapsed · about \d+ (s|min) left \(this run's pace where measured; the plan's price for \d+ families not yet seen\)$/.test(progressLines[0] ?? "") && progressLines.length >= 2 && /^dashboard\.mjs: pull progress: 10 of about \d+ calls made this run · \d+ s elapsed · about \d+ (s|min) left/.test(progressLines[1] ?? "") && progressLines.every((l) => /^dashboard\.mjs: pull progress: \d+ of about \d+ calls made this run · /.test(l)) &&
-      typeof progressFile().leftSeconds === "number" && progressFile().leftSeconds < 30 && progressFile().made === Number(progressLines.at(-1)?.match(/progress: (\d+) of/)?.[1]) && progressFile().planned >= progressFile().made, [progressLines.slice(0, 2), progressFile()]);
-  check("F-575 pace: a finished pull writes the seconds per call it measured, per family, beside the spec (pace.json, each family naming the run it was measured on), and the summary names the file",
-    existsSync(join(dash(), PACE_FILE)) && Object.keys(readJson(join(dash(), PACE_FILE)).families).length >= 3 && Object.values(readJson(join(dash(), PACE_FILE)).families).every((x) => x.calls > 0 && x.seconds > 0 && x.run === refresh.json.run) && refresh.json.pace?.file === join(dash(), PACE_FILE) && refresh.json.pace.families >= 3,
+    /^dashboard\.mjs: pull progress: 1 of about \d+ calls made this run · \d+ s elapsed · about \d+ (s|min) left \(\d+ (s|min) at this run's pace; the plan's \d+ (s|min) for \d+ famil(y|ies) not yet seen\)$/.test(progressLines[0] ?? "") && progressLines.length >= 2 && /^dashboard\.mjs: pull progress: 10 of about \d+ calls made this run · \d+ s elapsed · about \d+ (s|min) left/.test(progressLines[1] ?? "") && / left at this run's pace$/.test(progressLines.at(-1) ?? "") && progressLines.every((l) => /^dashboard\.mjs: pull progress: \d+ of about \d+ calls made this run · /.test(l)) &&
+      Number.isInteger(progressFile().leftSeconds) && progressFile().leftSeconds < 30 && progressFile().unseenFamilies === 0 && progressFile().planSeconds === 0 && progressFile().made === Number(progressLines.at(-1)?.match(/progress: (\d+) of/)?.[1]) && progressFile().planned >= progressFile().made, [progressLines.slice(0, 2), progressLines.at(-1), progressFile()]);
+  const kbPace = join(KB, "dashboards", PACE_FILE);
+  check("F-575 pace: a finished pull writes the seconds per call it measured, per family, beside the spec (pace.json, each family naming the run it was measured on) AND to the knowledge base's own dashboards/pace.json (the same families), and the summary names both files",
+    existsSync(join(dash(), PACE_FILE)) && Object.keys(readJson(join(dash(), PACE_FILE)).families).length >= 3 && Object.values(readJson(join(dash(), PACE_FILE)).families).every((x) => x.calls > 0 && x.seconds > 0 && x.run === refresh.json.run) && refresh.json.pace?.file === join(dash(), PACE_FILE) && refresh.json.pace.families >= 3 &&
+      existsSync(kbPace) && refresh.json.pace.kbFile === kbPace && isDeepStrictEqual(Object.keys(readJson(kbPace).families).sort(), Object.keys(readJson(join(dash(), PACE_FILE)).families).sort()),
     [refresh.json?.pace, existsSync(join(dash(), PACE_FILE)) ? readJson(join(dash(), PACE_FILE)) : null]);
+  // The overlay the plan reads: the knowledge base's file under the dashboard's own (the later wins), the constants under
+  // both; a file that cannot be read is said and stands for nothing; a write merges family by family.
+  const overlayDir = join(ROOT, "pace-overlay");
+  mkdirSync(overlayDir, { recursive: true });
+  writePaceFile(join(overlayDir, "kb.json"), "run-kb", { a: { calls: 2, seconds: 1 }, b: { calls: 1, seconds: 2 } });
+  writePaceFile(join(overlayDir, "dash.json"), "run-dash", { b: { calls: 3, seconds: 5 }, zero: { calls: 1, seconds: 0 } });
+  writePaceFile(join(overlayDir, "dash.json"), "run-dash-2", { c: { calls: 1, seconds: 7 } });
+  writeFileSync(join(overlayDir, "broken.json"), "{not json");
+  const said = [];
+  check("F-575 pace overlay (the engine's one home): readPaceFiles lays the dashboard's file over the knowledge base's (b reads the dashboard's 5, a the knowledge base's 1), a later write merges by family (c joins b, run named per family), a 0-second family is never kept, and an unreadable file is said once and stands for nothing",
+    isDeepStrictEqual(readPaceFiles([join(overlayDir, "kb.json"), join(overlayDir, "dash.json")]), { a: 1, b: 5, c: 7 }) && readJson(join(overlayDir, "dash.json")).families.b.run === "run-dash" && readJson(join(overlayDir, "dash.json")).families.c.run === "run-dash-2" && !("zero" in readJson(join(overlayDir, "dash.json")).families) &&
+      isDeepStrictEqual(readPaceFiles([join(overlayDir, "broken.json"), join(overlayDir, "kb.json")], (l) => said.push(l)), { a: 1, b: 2 }) && said.length === 1 && /cannot be read/.test(said[0]) && readPaceFiles([join(overlayDir, "missing.json")]) === null,
+    [readPaceFiles([join(overlayDir, "kb.json"), join(overlayDir, "dash.json")]), said]);
   check("the lookback says what it came from, a tie included (the first sitting's note): derivedFrom is the longest schedule period when it reached the threshold, else null with the threshold standing",
     (refresh.json?.pull?.lookbackDerivedFrom == null && refresh.json?.pull?.lookbackDays === 30) || (refresh.json?.pull?.lookbackDerivedFrom >= 30 && refresh.json.pull.lookbackDays === Math.min(366, refresh.json.pull.lookbackDerivedFrom)), refresh.json?.pull);
   check("re-documentation inside the refresh (PUB-1): the never-documented program and the one modified since its doc are described (one jo p describe each, through describe-batch) and marked documented with a fresh capture date; the templates the KB lacked are fetched the same way; the pull then read the moved knowledge base, so it is behind on nothing listed",
