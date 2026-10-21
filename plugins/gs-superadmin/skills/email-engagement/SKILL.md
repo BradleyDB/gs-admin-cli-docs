@@ -651,7 +651,10 @@ figures in the run's `progress.json`. When the user asks how long is left, run
 `node .gs-superadmin/plugin/scripts/dashboard.mjs status <dash> --kb <slug>` and quote its
 `progress` as it stands (`made` of about `planned` calls, `leftSeconds` said in minutes,
 `at`); never price it from the plan or the run directory yourself, and never from an
-earlier line. The minutes a pull is priced at come from this dashboard's last finished
+earlier line. `progress` is null until the first fact call: the plan's reads and the
+re-documentation of what the knowledge base lacks run first (minutes, when it lacks a lot)
+— say that the pull is being planned and re-documenting, and ask again in a minute. The
+"left" figure is an estimate from the plan's remainder and tends to read high near the end. The minutes a pull is priced at come from this dashboard's last finished
 pull (its `pace.json`, written beside the spec at the end of every pull): a first pull
 here is priced from the plan's own figures.
 
