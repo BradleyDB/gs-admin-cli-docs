@@ -3897,10 +3897,13 @@ runs, in a second terminal run `node .gs-superadmin/plugin/scripts/dashboard.mjs
 minute apart. FIXED: stderr carries `dashboard.mjs: pull progress: 1 of about N calls made this run · … elapsed · about
 … left (the plan's price; this run's pace is measured from here)` at the first fact call and one line every tenth made
 call after (never one per call); `status` returns `progress` with `made`, `planned`, `leftSeconds`, `at`, the second
-read's `made` higher than the first's; once about 30 s of planned work is made the line ends `at this run's pace`.
-Record the last progress line's `left` against the wall clock the run still took (within a factor of two passes on a
-one-program dashboard: the pace rests on few calls). BROKEN: no progress line, a line on every call, `status.progress`
-null while the run holds the lock, or a `left` that grows while calls land → REOPEN F-575 with the lines quoted.
+read's `made` higher than the first's; the first line names how many families are still priced from the plan and the
+suffix becomes `at this run's pace` once every remaining family has been seen. Record the last progress line's `left`
+against the wall clock the run still took: on a FIRST pull (no pace.json) within a factor of two passes — the redesign
+at the first reopen prices each remaining family at this run's measured pace, so the constants' tail (2.7x on the
+sandbox, hb-20261021-01) is the case to re-measure. BROKEN: no progress line, a line on every call, `status.progress`
+null after the first fact call while the run holds the lock (null through the plan's reads is the designed state, step
+P), or a `left` that grows while calls land → REOPEN F-575 with the lines quoted.
 
 ### R2 (F-575) — the second pull is priced from the first
 
@@ -3960,6 +3963,27 @@ re-documentation wrote template docs into the sandbox knowledge base, a cap's wo
   re-measured live after the fix.
 The tester's R1–R3 stand as banked: they re-run on the fixed tree as the other role, and R2's second half and F-581's
 fix have no live measurement yet.
+
+Tester round hb-20261021-01 (2026-10-21): F-567, F-579, F-580, F-581 VERIFIED on six live sandbox pulls; F-575 and
+F-576 REOPENED (the bus sections). The round's Noticed items, dispositioned by the builder for hb-20261021-02:
+(1) R1's BROKEN list reworded above (null through the plan's reads is designed). (2) BANKED — R3 again with both pulls
+re-documenting (two scratches over a knowledge base that is behind on templates, so each refresh writes the manifest;
+re-documentation 0 on the first run left F-581's re-read and retry unexercised live): Tenant sandbox, Login needed,
+Minutes about twice R1's, Start when the knowledge base lacks template docs the scratches reference. Owed at the next
+round touching engagement.mjs's auth path or the pull lock per knowledge base. FIXED: both finish, or the later one is
+refused on the manifest lock; a call that dies on the login wording is re-read (`whoami-recheck … ok: the token reads
+live`) and made once more. (3) BANKED — the refusal sample (health-reasons-sample) is unreachable on the sandbox (0
+entry refusals in 30 days): price-and-count it on a tenant with recent refusals at the next round that pulls there;
+FIXED: a `health-reasons-sample` family in pace.json and the sample's seconds in the remainder until it lands.
+(4) EXPLAINED, not a defect: the customer-lists add-on's price moved from 3 calls / 21 s on A's first (full) plan to
+14 calls / 94.7 s on A's second (selective) plan because turning the lists on over a snapshot that holds no account
+store is planned as the FULL refresh it would cause (engagement.mjs's accountsOn, "planned under the refresh it would
+get"; the change's consequence text says "pulls everything again") — the first plan was already full, so only the
+account units were the difference. The dry-run quotes it correctly.
+
+R1 and R2 are owed again at hb-20261021-02 for F-575's redesign (the per-family live price): one FIRST pull of a fresh
+scratch (no pace.json) with the last line's `left` against the wall clock, the pass bar above; and the statusDefault
+dry-run for F-576 (`"pages.0.statusDefault=PROCESSING,PAUSED" --dry-run` reads as a list and prices a rebuild).
 
 Tester round @ hb-20261021-01 (2026-10-21; checkpoint, written as the arms run) — fix/r16-f575-f579 at 5760118, clean and
 level with origin, a session in the workspace with --plugin-dir on the checkout, canary matched; the SANDBOX KB, reads

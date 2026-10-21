@@ -292,10 +292,18 @@ export const COSTS = Object.freeze(Object.fromEntries(SPEC_DESCRIPTIONS.flatMap(
 // A publish setting is a rebuild (PUB-3): every rebuild publishes, and the rebuild keeps the About tab's Publishing line true.
 const COST_RANK = { identity: 0, "in-page": 1, rebuild: 2, reselect: 3, pull: 4 };
 /** A real path of a spec (`sources[0].params.internalDomains[1]`) → the SPEC_DESCRIPTIONS path that covers it. */
+// A real path in either grammar — the leaves' (`pages[0].title`) or the writer's dotted one (`pages.0.title`, what
+// `change` takes and a page's copy line names, F-503) — in the covers' spelling.
+const coverSpelling = (realPath) => String(realPath).replace(/\[\d+\]/g, "[]").replace(/\.\d+(?=\.|$)/g, "[]").replace(/^groups\.overrides\..*$/, "groups.overrides{}");
+/**
+ * Whether the writer covers the path as a LIST (`<path>[]` among the covers), whatever else it covers (F-576, reopened:
+ * a page's statusDefault is covered both bare and as a list, and coveredPath's exact match hid the list form from
+ * changeValue). List-ness is the writer's declaration, read directly; coveredPath answers a different question — which
+ * description prices the path.
+ */
+export const coversList = (realPath) => SPEC_DESCRIPTIONS.flatMap((d) => d.covers).includes(`${coverSpelling(realPath)}[]`);
 export function coveredPath(realPath) {
-  // A real path in either grammar: the leaves' (`pages[0].title`) or the writer's dotted one (`pages.0.title`, what
-  // `change` takes and a page's copy line names, F-503).
-  const norm = String(realPath).replace(/\[\d+\]/g, "[]").replace(/\.\d+(?=\.|$)/g, "[]").replace(/^groups\.overrides\..*$/, "groups.overrides{}");
+  const norm = coverSpelling(realPath);
   const covers = SPEC_DESCRIPTIONS.flatMap((d) => d.covers);
   if (covers.includes(norm)) return norm;
   // An emptied or filled list or map is the whole container's path: the description covers its items.
@@ -2175,9 +2183,9 @@ export function changeValue(path, raw) {
   }
   try { return JSON.parse(raw); } catch { /* a bare value, by the setting's kind */ }
   const covered = coveredPath(path);
-  // A list of texts is read as one wherever the writer covers it as a list (`…[]`), the programs selector's two lists,
-  // the pinned accounts and a page's status default included (F-576 review); the questions decide the rest (yes/no).
-  const kind = covered?.endsWith("[]") ? "list" : QUESTIONS.find((q) => q.path && coveredPath(q.path) === covered)?.kind ?? null;
+  // A list is read as one wherever the writer covers the path as a list — coversList, the declaration itself, never the
+  // priced description's spelling (F-576, reopened on a page's statusDefault); the questions decide the rest (yes/no).
+  const kind = coversList(path) ? "list" : QUESTIONS.find((q) => q.path && coveredPath(q.path) === covered)?.kind ?? null;
   const s = raw.trim();
   if (kind === "list") { const inner = /^\[.*\]$/.test(s) ? s.slice(1, -1) : s; return noneValue(inner) ? [] : listValue(inner); }
   if (kind === "boolean") return boolValue(s);

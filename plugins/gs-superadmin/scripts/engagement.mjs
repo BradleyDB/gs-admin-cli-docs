@@ -2401,14 +2401,15 @@ function readFetchLog(runDir) {
 const TEXT_FAMILIES = new Set(["whoami"]);
 // How a first failure that gets one more try reads in a progress line.
 const PROGRESS_KIND = { timeout: "timed out", outage: "no answer", "not-found": "not found" };
-// The progress said while the facts are pulled (F-575): after the first made call and every PROGRESS_EVERY after, and
-// the plan's remainder is scaled by this run's pace once PACE_AFTER_SECONDS of planned work have been made.
+// The progress said while the facts are pulled (F-575): after the first made call and every PROGRESS_EVERY after (or a
+// minute of silence). What is left is priced family by family at the pace THIS run measured for the family, the plan's
+// price for a family not yet seen — never one run-wide ratio over the plan (the first reopen: families off the constants
+// in opposite directions, a tail 2.7x high).
 const PROGRESS_EVERY = 10;
 const PROGRESS_EVERY_MS = 60000; // or when a minute has passed since the last line: a slow family is not four minutes of silence
-const PACE_AFTER_SECONDS = 30;
 /** The run's latest progress, as a file beside its calls, for a reader with no stderr (the dashboard's `status`). */
 export const PROGRESS_FILE = "progress.json";
-/** @typedef {{made: number, planned: number, elapsedSeconds: number, leftSeconds: number, paceRatio: ?number, at: string}} EngagementProgress */
+/** @typedef {{made: number, planned: number, elapsedSeconds: number, leftSeconds: number, unseenFamilies: number, at: string}} EngagementProgress */
 /** A span in the admin's units: seconds under a minute and a half, minutes above. */
 const spanText = (s) => (s < 90 ? `${Math.round(s)} s` : `${Math.round(s / 60)} min`);
 /**
@@ -2417,7 +2418,7 @@ const spanText = (s) => (s < 90 ? `${Math.round(s)} s` : `${Math.round(s / 60)} 
  * not count.
  * @param {EngagementProgress} p
  */
-export const progressLine = (p) => `progress: ${p.made} of about ${p.planned} calls made this run · ${spanText(p.elapsedSeconds)} elapsed · about ${spanText(p.leftSeconds)} left${p.paceRatio == null ? " (the plan's price; this run's pace is measured from here)" : " at this run's pace"}`;
+export const progressLine = (p) => `progress: ${p.made} of about ${p.planned} calls made this run · ${spanText(p.elapsedSeconds)} elapsed · about ${spanText(p.leftSeconds)} left${p.unseenFamilies ? ` (this run's pace where measured; the plan's price for ${p.unseenFamilies} ${p.unseenFamilies === 1 ? "family" : "families"} not yet seen)` : " at this run's pace"}`;
 const isRpRun = (d) => d.family in FAMILIES;
 
 /**
@@ -2476,8 +2477,6 @@ export function fetchEngagement(ctx) {
     if (live && p.expiresInSeconds != null) deadline = now() + p.expiresInSeconds * 1000;
     return live;
   };
-  // A family the plan priced as a unit; the account-name batches (chosen after the facts, never in the units) are not.
-  const isPlannedFamily = (family) => family !== "account-names";
   // How many programs a unit names, for a failure entry: the reader of a stop is told what failed and for whom.
   const unitScope = (d) => (d.programs ? { programs: d.programs.length } : d.programId ? { programs: 1 } : d.scope ? { programs: d.scope.length } : {});
   // `prior` is the record a resume found for this call: a record that did not succeed counts the runs it failed in
@@ -2506,11 +2505,9 @@ export function fetchEngagement(ctx) {
       // Non-empty stderr is not a failure: the CLI warns there and exits 0.
       if (r.ok) {
         // The pace is the price of a call that ANSWERED (F-575 review): a timed-out or dead attempt would price the
-        // family at the timeout, or at a second; and work the plan did not price (the name batches) stays out of the
-        // progress line's pace, where it would read as the planned work slowing.
+        // family at the timeout, or at a second.
         (paceOf[d.family] ??= { calls: 0, ms: 0 }).calls++;
         paceOf[d.family].ms += r.ms;
-        if (progress && !isPlannedFamily(d.family)) progress.unplannedMs += r.ms;
         const file = `calls/${id}.${TEXT_FAMILIES.has(d.family) ? "txt" : "json"}`;
         if (TEXT_FAMILIES.has(d.family)) {
           say("ok");
@@ -2632,26 +2629,30 @@ export function fetchEngagement(ctx) {
   // calls less this run's counts (which count the cuts the plan did not foresee).
   /** @type {(() => {calls: number, seconds: number, units: number}) | null} */
   let remainingNow = null;
-  // Progress, said and kept (F-575): from the first fact call, after every PROGRESS_EVERY made calls, what is made of
-  // about how much, the time elapsed and about how long is left — the plan's remainder scaled by THIS run's pace once
-  // PACE_AFTER_SECONDS of the plan's seconds have been made, the plan's own price before that. The same figures go to
-  // `<runDir>/progress.json` for a reader with no stderr (the dashboard's `status` relays it while a refresh runs).
-  /** The pull's clock, set when the facts start: null before (no line, no file). @type {?{at: number, made: number, leftSeconds: number, nextTickAt: number, lastTickAt: number, unplannedMs: number}} */
+  /** The same remainder priced LIVE for the progress line (each family at this run's measured pace), with how many families still read the plan's price. @type {(() => {calls: number, seconds: number, units: number, unseen: number}) | null} */
+  let liveRemaining = null;
+  // Progress, said and kept (F-575): from the first fact call, after every PROGRESS_EVERY made calls or a minute of
+  // silence, what is made of about how much, the time elapsed and about how long is left — the remainder priced live,
+  // family by family at this run's measured pace, the plan's price for a family not yet seen. The stop's remainder and
+  // the plan's keep the plan's table (F-518's invariant: a stop and a re-plan over the same records agree); the next
+  // plan is measured-priced through the dashboard's pace file. The same figures go to `<runDir>/progress.json` for a
+  // reader with no stderr (the dashboard's `status` relays it while a refresh runs).
+  /** The pull's clock, set when the facts start: null before (no line, no file). @type {?{at: number, made: number, nextTickAt: number, lastTickAt: number}} */
   let progress = null;
   const progressTick = () => {
-    if (!progress || !remainingNow) return;
+    if (!progress || !liveRemaining) return;
     const made = counts.made - progress.made;
     // A line at the first made call, then at each tenth or after a minute of silence, whichever comes first; a
     // threshold, not a modulus, so a retried call (two made at once) never skips a line and a stop never repeats one.
     if (made < 1 || (made < progress.nextTickAt && now() - progress.lastTickAt < PROGRESS_EVERY_MS)) return;
     progress.nextTickAt = (Math.floor(made / PROGRESS_EVERY) + 1) * PROGRESS_EVERY;
     progress.lastTickAt = now();
-    const left = remainingNow();
+    // The remainder priced live (each family at this run's measured pace, the plan's for one not yet seen): no ratio
+    // is applied here; the line says how many families still read the plan's price.
+    const left = liveRemaining();
     const elapsed = (now() - progress.at) / 1000;
-    const plannedDone = Math.max(0, progress.leftSeconds - left.seconds);
-    const ratio = plannedDone >= PACE_AFTER_SECONDS ? Math.max(0, elapsed - progress.unplannedMs / 1000) / plannedDone : null;
     /** @type {EngagementProgress} */
-    const p = { made, planned: made + left.calls, elapsedSeconds: Math.round(elapsed), leftSeconds: Math.round(left.seconds * (ratio ?? 1)), paceRatio: ratio == null ? null : Math.round(ratio * 100) / 100, at: new Date(now()).toISOString() };
+    const p = { made, planned: made + left.calls, elapsedSeconds: Math.round(elapsed), leftSeconds: left.seconds, unseenFamilies: left.unseen ?? 0, at: new Date(now()).toISOString() };
     writeFileAtomicSync(join(runDir, PROGRESS_FILE), JSON.stringify(p, null, 2));
     onProgress(p, progressLine(p));
   };
@@ -2835,13 +2836,23 @@ export function fetchEngagement(ctx) {
     if (!kids) return { made: 1, open: false };
     return kids.map(progressOf).reduce((a, b) => ({ made: a.made + b.made, open: a.open || b.open }), { made: 1, open: false });
   };
-  const remainingParts = () => units.map((u) => {
+  // `price` is the seconds of a unit list: the plan's table by default; the live table once the run has measured.
+  const remainingParts = (price = seconds) => units.map((u) => {
     const p = progressOf(u);
-    const whole = { calls: calls([u]), seconds: seconds([u]) };
+    const whole = { calls: calls([u]), seconds: price([u]) };
     const left = p.open ? Math.min(whole.calls, Math.max(1, whole.calls - p.made)) : 0;
-    return { open: p.open, calls: left, seconds: whole.calls ? (whole.seconds * left) / whole.calls : 0 };
+    return { open: p.open, family: u.family, calls: left, seconds: whole.calls ? (whole.seconds * left) / whole.calls : 0 };
   });
   const remainderOf = (parts, extraCalls, extraSeconds) => ({ calls: parts.reduce((n, r) => n + r.calls, 0) + extraCalls, seconds: Math.round(parts.reduce((n, r) => n + r.seconds, 0)) + extraSeconds, units: parts.filter((r) => r.open).length });
+  // The table as this run has measured it (F-575, redesigned at its first reopen): a family the run has answered at
+  // least one call of is priced at its own measured seconds per call; the rest keep the plan's table. The progress
+  // line's remainder reads it; a stop's and a re-plan's keep the plan's table (F-518) — the next plan is measured
+  // through the dashboard's pace file.
+  const liveTable = () => {
+    const t = { ...table };
+    for (const [f, x] of Object.entries(paceOf)) if (x.calls) t[f] = x.ms / x.calls / 1000;
+    return t;
+  };
   // The one remainder: the plan prices it now, and a stop prices it again over the records as they stand then. The
   // samples are counted whole (picked after the counts), so it is an upper bound.
   // The per-program samples (F-484), priced from the count-first reads: how many selected programs have
@@ -2882,7 +2893,7 @@ export function fetchEngagement(ctx) {
   // count less its records on disk — this run's or reused, any status: a failed sample is not read again this run —
   // never below zero, so a sample re-picked after the counts moved cannot drive it negative.
   const sampleParts = [samples.participantFailures, samples.bounceReasons];
-  const sampleSecondsOf = (parts) => parts.reduce((n, s) => n + s.calls * table[s.family], 0);
+  const sampleSecondsOf = (parts, t = table) => parts.reduce((n, s) => n + s.calls * t[s.family], 0);
   const samplesOwed = () => {
     const made = {};
     for (const r of records.values()) if (FAMILIES[r.family]?.sample) made[r.family] = (made[r.family] ?? 0) + 1;
@@ -2936,8 +2947,20 @@ export function fetchEngagement(ctx) {
   // 4 min left" while 30 s remained: 25 samples at the constant). A sample record on disk is a read made, this run's or
   // a reused one; the count is capped at the plan's own, so a sample re-picked after the counts moved never drives it
   // below zero.
-  const priceRemaining = () => { const owed = params.health.pull ? samplesOwed() : []; return remainderOf(remainingParts(), owed.reduce((n, s) => n + s.calls, 0), sampleSecondsOf(owed)); };
+  // One remainder, priced with the table it is handed: the plan's (the plan, a stop) or the live one (the progress line).
+  const remainderWith = (t) => {
+    const parts = remainingParts((list) => estimateSeconds(list, base, params.pageSize, t));
+    const owed = params.health.pull ? samplesOwed() : [];
+    return { parts, owed, remainder: remainderOf(parts, owed.reduce((n, s) => n + s.calls, 0), sampleSecondsOf(owed, t)) };
+  };
+  const priceRemaining = () => remainderWith(table).remainder;
   remainingNow = priceRemaining;
+  liveRemaining = () => {
+    const { parts, owed, remainder } = remainderWith(liveTable());
+    // The families still priced from the plan: open units and owed samples whose family this run has not answered yet.
+    const unseen = new Set([...parts.filter((p) => p.open).map((p) => p.family), ...owed.filter((s) => s.calls > 0).map((s) => s.family)].filter((f) => !paceOf[f]?.calls)).size;
+    return { ...remainder, unseen };
+  };
   const estimate = {
     mode: refresh.mode, why: refresh.why,
     thisRun: {
@@ -3008,7 +3031,7 @@ export function fetchEngagement(ctx) {
   // and kept with the run: a resume continues under the same stamp, and a plan alone stamps nothing.
   stampRun(params, runDir, now);
   // The pull's own clock starts here (F-575): what the progress line counts and paces is the facts, never the plan's reads.
-  progress = { at: now(), made: counts.made, leftSeconds: remainingNow ? remainingNow().seconds : 0, nextTickAt: 1, lastTickAt: now(), unplannedMs: 0 };
+  progress = { at: now(), made: counts.made, nextTickAt: 1, lastTickAt: now() };
   const accountRecs = [];
   for (const d of units) {
     if (isHealth(d)) continue; // Phase E

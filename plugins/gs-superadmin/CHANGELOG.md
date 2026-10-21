@@ -13,9 +13,10 @@ its last pull, and no longer stops on a token the CLI misreports.
 
 - **The pull says its progress, and `status` relays it (F-575).** A dashboard refresh (and
   the ad-hoc report's pull) now says on stderr, at the first fact call and every tenth made
-  call after, how many calls are made of about how many, the time elapsed and about how
-  long is left — the plan's price at first, this run's own pace once enough of the plan has
-  run — and keeps the same figures in the run's `progress.json`;
+  call after (or a minute of silence), how many calls are made of about how many, the time
+  elapsed and about how long is left — each remaining call family at the pace this run has
+  measured for it, the plan's price for a family not yet seen — and keeps the same figures
+  in the run's `progress.json`;
   `dashboard.mjs status <dash>` relays them while a refresh runs or waits to resume, so the
   skill answers "how long is left" from one command instead of rebuilding it from the run
   directory.
