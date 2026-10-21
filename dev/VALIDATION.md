@@ -3877,3 +3877,57 @@ removed after. Pass bar: each finding's Repro plus the property its Fix note cla
   exit-0 run's final report in step P's shape with `lockTakenOver` and `lockLeft`'s text relayed as written (the
   pre-record-handle run above exited 1 with no `error` to relay). Recorded as Walk (hb-20261017-04).
 F-556, F-557, F-558 VERIFIED. Blind spots: the tester comment of 2026-10-17 @ hb-20261017-04 on the bus.
+
+## R16 — the email-engagement group and the retro's P-21 (banked 2026-10-21, builder, fix/r16-f575-f579; verdict at the token this branch's handoff mints)
+
+Owed by: the tester round on this branch's handoff token (a terminal in the workspace with --plugin-dir on the checkout
+under test, canary matched; the SANDBOX KB, reads only; ONE or two SCRATCH dashboards of one program each with Health on
+— never the kept dashboard; removed after with their run directories). The suites are the judge of record for F-575's
+mechanism (test/dashboard.mjs's four F-575 checks: the progress line's shape and cadence and the run's progress.json,
+`status` relaying it, the two-plans pricing judge, the pace file written by a finished pull; test/engagement.mjs's
+summary bound); these are the live halves the suites cannot see — a real tenant's pace, and the model reading the new
+prose. F-579 (AGENTS.md) and F-576/F-567 (prose) have no tenant arm: the walk below reads them.
+
+### R1 (F-575) — the progress line and `status` on a real pull
+
+Tenant: sandbox. Login: needed (a pull). Minutes: about 5 for a one-program scratch with Health on (R15's scratch pulls,
+2026-10-17, were a few minutes each; record this one's wall clock, it prices R2). Start when: a scratch dashboard is
+imported and `gs-admin whoami` shows at least 15 minutes left. Start `refresh <scratch>` in the background; while it
+runs, in a second terminal run `node .gs-superadmin/plugin/scripts/dashboard.mjs status <scratch> --kb <kb>` twice, a
+minute apart. FIXED: stderr carries `dashboard.mjs: pull progress: 1 of about N calls made this run · … elapsed · about
+… left (the plan's price; this run's pace is measured from here)` at the first fact call and one line every tenth made
+call after (never one per call); `status` returns `progress` with `made`, `planned`, `leftSeconds`, `at`, the second
+read's `made` higher than the first's; once about 30 s of planned work is made the line ends `at this run's pace`.
+Record the last progress line's `left` against the wall clock the run still took (within a factor of two passes on a
+one-program dashboard: the pace rests on few calls). BROKEN: no progress line, a line on every call, `status.progress`
+null while the run holds the lock, or a `left` that grows while calls land → REOPEN F-575 with the lines quoted.
+
+### R2 (F-575) — the second pull is priced from the first
+
+Tenant: sandbox. Login: needed. Minutes: about R1's measured minutes. Start when: R1's pull finished and
+`<scratch dir>/pace.json` exists. Read pace.json (per family: calls, seconds, run — R1's run). Run
+`change <scratch> accounts.pull=yes --dry-run` (decline the save) and then `refresh <scratch>` again, and read both
+runs' `plan.json` (`.gs-superadmin/tmp/engagement/<run>/plan.json`, `estimate.full.seconds`). FIXED: the second plan's
+figure differs from the first's in the direction pace.json's families point (a tenant slower than the constants prices
+higher, a faster one lower), the dry-run's minutes agree with it, and after the second pull pace.json's families name the
+second run. BROKEN: the second plan's figure equal to the first's with pace.json present → REOPEN F-575 quoting both.
+
+### R3 (F-575, the pre-build measurement carried from logging) — two refreshes of DIFFERENT dashboards over one knowledge base
+
+Tenant: sandbox. Login: needed. Minutes: about twice R1's. Start when: two scratch dashboards exist (re-documentation on
+in both) and the login has 20 minutes left. Start `refresh <scratch-a>` and, a few seconds later, `refresh <scratch-b>`
+in a second terminal; record both exit codes, `status` and `error`. EXPECTED (unmeasured since F-558): both exit 0, or
+the later one is refused on the manifest's writer lock (its `error` says another writer is re-documenting and the lock
+clears on its own) — never a false `token-expired` (exit 3, `status` token-expired, while `gs-admin whoami` still shows
+minutes left). A false token-expired → log a NEW finding (normal) quoting both runs' status.json: it is the clause
+F-575's logging dropped pending this measurement. No new finding when both finish or one is refused as described.
+
+### Walk — email-engagement (model-invocable), the changed passages
+
+Invoke email-engagement's refresh mode on the scratch ("pull the scratch dashboard again") and, while it runs, ask "how
+long is left": record whether the model ran `status` and quoted its `progress` (step P) or priced it some other way.
+Then ask for two changes with `--dry-run`, declining each save: a list question in the comma form
+(`"sources.0.params.internalDomains=acme.com,example.org"`) and the programs selector (`selector.ids` for two ids):
+record the lines the model issued — the table routes the selector through `@<file>`. The lock-left relay (F-567) is
+walked only if R15 R2's handle arm is repeated; otherwise record it as read. The AGENTS.md rule (F-579) is read, not
+walked: say whether the builder's handoff named the commit the battery ran over.
