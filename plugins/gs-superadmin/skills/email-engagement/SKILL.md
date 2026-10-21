@@ -603,7 +603,7 @@ setting's kind, one form per kind:
 
 | Kind | Settings | Form | Example |
 |---|---|---|---|
-| a list of texts | the four list questions (`internalDomains`, `testAccounts`, `unsubscribeLinks`, `expectedReasons`, under `sources.0.params.`), the programs selector's `selector.names` and `selector.ids`, `pinnedAccounts`, a page's `statusDefault` | the items separated by commas; `none` empties it | `"sources.0.params.internalDomains=acme.com,acme.co.uk"`, `"sources.0.params.selector.ids=p1,p2"` |
+| a list of texts | the four list questions (`internalDomains`, `testAccounts`, `unsubscribeLinks`, `expectedReasons`, under `sources.0.params.`), the programs selector's `selector.names` and `selector.ids`, `pinnedAccounts`, a page's `statusDefault` | the items separated by commas; `none` empties it (a page's `statusDefault` is emptied with `null`: every status) | `"sources.0.params.internalDomains=acme.com,acme.co.uk"`, `"sources.0.params.selector.ids=p1,p2"` |
 | yes/no | `accounts.pull` | `yes` or `no` | `accounts.pull=yes` |
 | text, number | a page's `title`, the dashboard's `purpose`, `selector.sentSince`, `health.silentDays` | the text itself; the number | `"pages.1.title=Leadership page"`, `sources.0.params.selector.sentSince=90d`, `health.silentDays=7` |
 | an object-valued setting | the window, the groups, `accounts.lists`, `publish` | JSON from a file: `<path>=@<file>` | `publish=@publish.json` |
@@ -645,17 +645,21 @@ While it runs, the script says its progress on stderr — `pull progress: <made>
 <planned> calls made this run · <elapsed> elapsed · about <left> left`, at the first fact
 call and every tenth made call after, or after a minute with no line; the "left" figure
 prices each remaining call family at the pace this run has measured for it and the plan's
-price for a family not yet seen (the line says how many) — and keeps the same figures in
-the run's `progress.json`. When the user asks how long is left, run
+price for a family not yet seen, and the line shows the split (`<measured> at this run's
+pace; the plan's <guess> for N families not yet seen`) — and keeps the same figures in the
+run's `progress.json`. On the first pull ever made on a knowledge base the plan's part is
+the fitted constants and can read high; every later plan on that knowledge base, a new
+dashboard's first included, prices from the pulls already measured there. When the user asks how long is left, run
 `node .gs-superadmin/plugin/scripts/dashboard.mjs status <dash> --kb <slug>` and quote its
 `progress` as it stands (`made` of about `planned` calls, `leftSeconds` said in minutes,
 `at`); never price it from the plan or the run directory yourself, and never from an
 earlier line. `progress` is null until the first fact call: the plan's reads and the
 re-documentation of what the knowledge base lacks run first (minutes, when it lacks a lot)
 — say that the pull is being planned and re-documenting, and ask again in a minute. The
-"left" figure is an estimate: a family not yet seen is priced from the plan. The minutes a pull is priced at come from this dashboard's last finished
-pull (its `pace.json`, written beside the spec at the end of every pull): a first pull
-here is priced from the plan's own figures.
+"left" figure is an estimate; its `planSeconds` is the part still priced from the plan. The minutes a pull is priced at come from this dashboard's last finished
+pull on the knowledge base (`<kb>/dashboards/pace.json`, which every pull over it writes)
+under the dashboard's own `pace.json` beside its spec; only the first pull ever made on
+the knowledge base is priced from the plan's own figures.
 
 By exit code:
 

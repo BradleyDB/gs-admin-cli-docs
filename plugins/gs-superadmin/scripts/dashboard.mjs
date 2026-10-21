@@ -131,8 +131,9 @@ import {
   resolveParams, prepareRun, runParamsMoved, fetchEngagement, reduceEngagement, loadRun, cliTransport, makeGate, parseWhoami, addMonths, monthsBetween, pickSchedule, describedProgram, EngagementRefusal, ROW_READERS, rpRunArgv, buildQuery,
   resolveAccountParams, reduceAccountTimeline, loadAccountRun, accountResolutionText, timelineSummary,
   reduceWithStore, rankFromStore, readAccountStore, accountStorePath, accountStoreFits, isAccountStoreFile, writeSnapshotAndStore, copySnapshotWithStore, readAccountStoreHead,
-  PROGRESS_FILE,
+  PROGRESS_FILE, PACE_FILE, kbPacePath, readPaceFiles, writePaceFile,
 } from "./engagement.mjs";
+export { PACE_FILE };
 import { applyGroups, programTraitsOf, suggestionTable } from "./dashboard-groups.mjs";
 import { buildPage, buildTimelinePage, inlinedSources, pageFileName, buildDatasets, datasetsDirName, artifactContentOf } from "./dashboard-page.mjs";
 import { COPY_LINES, ENTRY_COMMAND, HOW_TO_REFRESH_TEXT, kbFlag } from "./dashboard-runtime.mjs";
@@ -160,8 +161,6 @@ export const REPORTS_DIR = "reports";
 export const ACCOUNTS_DIR = "accounts";
 export const LOCK_FILE = "refresh.lock";
 export const STATE_FILE = "refresh-state.json";
-/** The seconds per call this dashboard's last finished pull measured, per family (F-575): the price of its next plan. */
-export const PACE_FILE = "pace.json";
 export const INTERVIEW_FILE = "interview-state.json";
 export const SUGGESTION_FILE = "group-suggestion-input.json";
 // Not frozen: keep a year of monthly pulls; a lock older than two hours is stale (PUB-1 defaults).
@@ -843,38 +842,18 @@ const runsRootOf = (ctx) => join(ctx.wsDir, ".gs-superadmin", "tmp", "engagement
 const writeJson = (path, value) => writeFileAtomicSync(path, JSON.stringify(value, null, 2) + "\n");
 const readJsonOr = (path, fallback = null) => (existsSync(path) ? readJsonFile(path) : fallback);
 // ── The pace (F-575) ─────────────────────────────────────────────────────────
-// The minutes a pull is priced at come from this dashboard's last finished pull, never from the plan's fitted constants
-// alone: per call family, the seconds per call that pull measured, kept beside the spec (not in it: the spec is the
-// admin's settings, and the `.previous` copy would carry a price). Every plan of the dashboard (the interview's, a
-// change's, a refresh's) hands it to the engine, which overlays it on the constants (callSecondsTable). A family the
-// last pull did not make keeps the figure of the pull before it, then the constant; a first pull is priced from the
-// constants, as before.
+// The minutes a pull is priced at come from measured pulls, never from the plan's fitted constants alone: the knowledge
+// base's pace file (every pull over it writes it — the engine's one home, kbPacePath) under this dashboard's own
+// (beside the spec, not in it: the spec is the admin's settings, and the `.previous` copy would carry a price). Every
+// plan of the dashboard (the interview's, a change's, a refresh's) hands the overlay to the engine, which lays it on the
+// constants (callSecondsTable). A finished OR stopped pull writes both files.
 const pacePath = (ctx, slug) => join(dirOf(ctx, slug), PACE_FILE);
-/** The kept pace, or null — a file that cannot be read is said once and stands for nothing (the constants price until the next pull rewrites it). */
-function keptPace(ctx, slug) {
-  try { return readJsonOr(pacePath(ctx, slug), null); } catch (e) {
-    ctx.log(`the pace file ${pacePath(ctx, slug)} cannot be read (${e instanceof Error ? e.message : String(e)}): the plan prices from the constants until the next pull rewrites it`);
-    return null;
-  }
-}
-/** @returns {?Object<string, number>} the seconds per call by family, for the engine; null until a pull finished here */
-function readPace(ctx, slug) {
-  const kept = keptPace(ctx, slug);
-  return kept?.families ? Object.fromEntries(Object.entries(kept.families).map(([f, x]) => [f, x.seconds])) : null;
-}
-/**
- * The pace a finished pull measured, merged over what is kept: per family, the last pull that made a call of it wins.
- * @param {string} run the pull's run directory name @param {?Object<string, {calls: number, seconds: number}>} measured the summary's `pace`
- * @returns {?{measuredAt: string, families: Object<string, {calls: number, seconds: number, run: string}>}} what is kept now; null when nothing was measured
- */
+/** @returns {?Object<string, number>} the seconds per call by family, for the engine; null until a pull was measured on this knowledge base */
+const readPace = (ctx, slug) => readPaceFiles([kbPacePath(ctx.kbDir), pacePath(ctx, slug)], ctx.log);
+/** Both files, from the summary's `measuredPace`; what the dashboard's holds now, or null when nothing was measured. */
 function writePace(ctx, slug, run, measured) {
-  const entries = Object.entries(measured ?? {}).filter(([, x]) => x.calls > 0 && x.seconds > 0);
-  if (!entries.length) return null;
-  const families = { ...(keptPace(ctx, slug)?.families ?? {}) };
-  for (const [f, x] of entries) families[f] = { calls: x.calls, seconds: x.seconds, run };
-  const kept = { measuredAt: new Date(ctx.nowMs).toISOString(), families };
-  writeJson(pacePath(ctx, slug), kept);
-  return kept;
+  writePaceFile(kbPacePath(ctx.kbDir), run, measured, ctx.nowMs);
+  return writePaceFile(pacePath(ctx, slug), run, measured, ctx.nowMs);
 }
 /** The saved spec's JSON, or the one refusal for a dashboard that is a draft or does not exist (the one home, F-555). */
 const savedRawOrRefuse = (ctx, slug) => {
@@ -2068,7 +2047,7 @@ function verbRefresh(ctx, slug, { full, healthOnly, planRun = null }) {
     return {
       ok: true, mode: "refresh", slug, status: "ok", run: basename(pulledRun.runDir), resumed: !!resuming && !restarted, ...(restarted ? { restarted } : {}), full, healthOnly, budget, ...(abandoned ? { abandoned } : {}),
       pull: { mode: snapshot.meta.refresh.mode, why: snapshot.meta.refresh.why, pulledAt: snapshot.meta.pulledAt, programs: snapshot.dimensions.programs.length, calls: pulledRun.summary.calls, reconciled: snapshot.reconciliation.ok, health: engine.healthAvailability(snapshot).pulled, accounts: engine.accountAvailability(snapshot).pulled, lookbackDays: planned.lookbackDays, lookbackDerivedFrom: planned.lookbackDerivedFrom ?? null },
-      redocumented, snapshot: snapshotPath, accountStore, pruned, pace: paced ? { file: pacePath(ctx, slug), families: Object.keys(paced.families).length } : null, ungrouped: resolution.line, kbBehind: snapshot.honesty?.kb ?? null,
+      redocumented, snapshot: snapshotPath, accountStore, pruned, pace: paced ? { file: pacePath(ctx, slug), kbFile: kbPacePath(ctx.kbDir), families: Object.keys(paced.families).length } : null, ungrouped: resolution.line, kbBehind: snapshot.honesty?.kb ?? null,
       delta: delta ? { previousPulledAt: delta.previousPulledAt, closedMonths: delta.closedMonths.length, programs: delta.programs, metrics: Object.fromEntries(Object.entries(delta.metrics).map(([k, v]) => [k, v.change])) } : null,
       pages: pages.map((p) => ({ page: p.page, path: p.path, megabytes: p.megabytes, warning: p.warning })),
       lockTakenOver: lock.takenOver ? { by: lock.takenOver.by, at: lock.takenOver.at } : null,

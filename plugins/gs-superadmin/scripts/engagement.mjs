@@ -565,7 +565,7 @@
 import { readFileSync, appendFileSync, existsSync, mkdirSync, statSync, copyFileSync, openSync, readSync, closeSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   makeCliHelpers, findWorkspaceDir, findWorkspaceCatalog, makeCommandResolver, assertReadOnlyCommand,
@@ -2409,7 +2409,50 @@ const PROGRESS_EVERY = 10;
 const PROGRESS_EVERY_MS = 60000; // or when a minute has passed since the last line: a slow family is not four minutes of silence
 /** The run's latest progress, as a file beside its calls, for a reader with no stderr (the dashboard's `status`). */
 export const PROGRESS_FILE = "progress.json";
-/** @typedef {{made: number, planned: number, elapsedSeconds: number, leftSeconds: number, unseenFamilies: number, at: string}} EngagementProgress */
+// ── The pace files (F-575, redesigned at its first reopen) ───────────────────
+// Per call family, the seconds per call the last pull that made it measured, and the run it came from. Kept twice: once
+// per KNOWLEDGE BASE (`<kb>/dashboards/pace.json` — every pull over it writes it, any dashboard's and the ad-hoc
+// report's, so a tenant measured once prices every later plan on it, a new dashboard's first plan included) and once
+// beside a dashboard's spec, which refines the knowledge base's with the dashboard's own shape. A plan reads the two
+// overlaid on the fitted constants (callSecondsTable); only the first pull ever made on a tenant prices a family it has
+// not seen from the constants, and its progress line says so.
+export const PACE_FILE = "pace.json";
+/** @param {string} kbDir */
+export const kbPacePath = (kbDir) => join(kbDir, "dashboards", PACE_FILE);
+/**
+ * The pace the files hold, overlaid in order (the later wins): per family the seconds per call. A file that cannot be
+ * read is said once through `log` and stands for nothing until the next pull rewrites it.
+ * @param {string[]} paths @param {(line: string) => void} [log] @returns {?Object<string, number>}
+ */
+export function readPaceFiles(paths, log = () => {}) {
+  /** @type {?Object<string, number>} */
+  let out = null;
+  for (const path of paths) {
+    if (!existsSync(path)) continue;
+    let kept;
+    try { kept = readJsonFile(path); } catch (e) { log(`the pace file ${path} cannot be read (${e instanceof Error ? e.message : String(e)}): it stands for nothing until the next pull rewrites it`); continue; }
+    for (const [f, x] of Object.entries(kept?.families ?? {})) if (typeof x?.seconds === "number" && x.seconds > 0) (out ??= {})[f] = x.seconds;
+  }
+  return out;
+}
+/**
+ * The pace a pull measured, merged into a file: per family, the last pull that made a call of it wins; the rest are kept.
+ * @param {string} path @param {string} run the pull's run directory name @param {?Object<string, {calls: number, seconds: number}>} measured the summary's `measuredPace`
+ * @returns {?{measuredAt: string, families: Object<string, {calls: number, seconds: number, run: string}>}} what the file holds now; null when nothing was measured
+ */
+export function writePaceFile(path, run, measured, nowMs = Date.now()) {
+  const entries = Object.entries(measured ?? {}).filter(([, x]) => x.calls > 0 && x.seconds > 0);
+  if (!entries.length) return null;
+  let kept = null;
+  try { kept = existsSync(path) ? readJsonFile(path) : null; } catch { kept = null; }
+  const families = { ...(kept?.families ?? {}) };
+  for (const [f, x] of entries) families[f] = { calls: x.calls, seconds: x.seconds, run };
+  const out = { measuredAt: new Date(nowMs).toISOString(), families };
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileAtomicSync(path, JSON.stringify(out, null, 2) + "\n");
+  return out;
+}
+/** @typedef {{made: number, planned: number, elapsedSeconds: number, leftSeconds: number, planSeconds: number, unseenFamilies: number, at: string}} EngagementProgress — `planSeconds` is the part of `leftSeconds` still priced from the plan (families this run has not seen). */
 /** A span in the admin's units: seconds under a minute and a half, minutes above. */
 const spanText = (s) => (s < 90 ? `${Math.round(s)} s` : `${Math.round(s / 60)} min`);
 /**
@@ -2418,7 +2461,7 @@ const spanText = (s) => (s < 90 ? `${Math.round(s)} s` : `${Math.round(s / 60)} 
  * not count.
  * @param {EngagementProgress} p
  */
-export const progressLine = (p) => `progress: ${p.made} of about ${p.planned} calls made this run · ${spanText(p.elapsedSeconds)} elapsed · about ${spanText(p.leftSeconds)} left${p.unseenFamilies ? ` (this run's pace where measured; the plan's price for ${p.unseenFamilies} ${p.unseenFamilies === 1 ? "family" : "families"} not yet seen)` : " at this run's pace"}`;
+export const progressLine = (p) => `progress: ${p.made} of about ${p.planned} calls made this run · ${spanText(p.elapsedSeconds)} elapsed · about ${spanText(p.leftSeconds)} left${p.unseenFamilies ? ` (${spanText(p.leftSeconds - p.planSeconds)} at this run's pace; the plan's ${spanText(p.planSeconds)} for ${p.unseenFamilies} ${p.unseenFamilies === 1 ? "family" : "families"} not yet seen)` : " at this run's pace"}`;
 const isRpRun = (d) => d.family in FAMILIES;
 
 /**
@@ -2629,7 +2672,7 @@ export function fetchEngagement(ctx) {
   // calls less this run's counts (which count the cuts the plan did not foresee).
   /** @type {(() => {calls: number, seconds: number, units: number}) | null} */
   let remainingNow = null;
-  /** The same remainder priced LIVE for the progress line (each family at this run's measured pace), with how many families still read the plan's price. @type {(() => {calls: number, seconds: number, units: number, unseen: number}) | null} */
+  /** The same remainder priced LIVE for the progress line (each family at this run's measured pace), with the part still priced from the plan and how many families it covers. @type {(() => {calls: number, seconds: number, units: number, planSeconds: number, unseen: number}) | null} */
   let liveRemaining = null;
   // Progress, said and kept (F-575): from the first fact call, after every PROGRESS_EVERY made calls or a minute of
   // silence, what is made of about how much, the time elapsed and about how long is left — the remainder priced live,
@@ -2652,7 +2695,7 @@ export function fetchEngagement(ctx) {
     const left = liveRemaining();
     const elapsed = (now() - progress.at) / 1000;
     /** @type {EngagementProgress} */
-    const p = { made, planned: made + left.calls, elapsedSeconds: Math.round(elapsed), leftSeconds: left.seconds, unseenFamilies: left.unseen ?? 0, at: new Date(now()).toISOString() };
+    const p = { made, planned: made + left.calls, elapsedSeconds: Math.round(elapsed), leftSeconds: Math.round(left.seconds), planSeconds: Math.round(left.planSeconds), unseenFamilies: left.unseen, at: new Date(now()).toISOString() };
     writeFileAtomicSync(join(runDir, PROGRESS_FILE), JSON.stringify(p, null, 2));
     onProgress(p, progressLine(p));
   };
@@ -2956,10 +2999,14 @@ export function fetchEngagement(ctx) {
   const priceRemaining = () => remainderWith(table).remainder;
   remainingNow = priceRemaining;
   liveRemaining = () => {
-    const { parts, owed, remainder } = remainderWith(liveTable());
-    // The families still priced from the plan: open units and owed samples whose family this run has not answered yet.
-    const unseen = new Set([...parts.filter((p) => p.open).map((p) => p.family), ...owed.filter((s) => s.calls > 0).map((s) => s.family)].filter((f) => !paceOf[f]?.calls)).size;
-    return { ...remainder, unseen };
+    const t = liveTable();
+    const { parts, owed, remainder } = remainderWith(t);
+    // The families still priced from the plan: open units and owed samples whose family this run has not answered yet,
+    // and the seconds they stand for — the part of "left" the line calls the plan's.
+    const unseenOf = (f) => !paceOf[f]?.calls;
+    const unseen = new Set([...parts.filter((p) => p.open).map((p) => p.family), ...owed.filter((s) => s.calls > 0).map((s) => s.family)].filter(unseenOf)).size;
+    const planSeconds = parts.filter((p) => p.open && unseenOf(p.family)).reduce((n, p) => n + p.seconds, 0) + sampleSecondsOf(owed.filter((s) => unseenOf(s.family)), t);
+    return { ...remainder, planSeconds, unseen };
   };
   const estimate = {
     mode: refresh.mode, why: refresh.why,
@@ -3030,7 +3077,8 @@ export function fetchEngagement(ctx) {
   // Phase C: the facts. The pull time is stamped HERE, when the first fact call is about to be made (F-482),
   // and kept with the run: a resume continues under the same stamp, and a plan alone stamps nothing.
   stampRun(params, runDir, now);
-  // The pull's own clock starts here (F-575): what the progress line counts and paces is the facts, never the plan's reads.
+  // The pull's own clock starts here (F-575): what the progress line counts is the facts (its pace is every call this
+  // invocation answered, the plan's reads included where they ran here).
   progress = { at: now(), made: counts.made, nextTickAt: 1, lastTickAt: now() };
   const accountRecs = [];
   for (const d of units) {
@@ -5189,6 +5237,8 @@ async function main() {
       params, runDir, kbDir, previous, previousStore, phase: mode === "plan" ? "plan" : "all",
       transport: cliTransport({ cliArgv: resolveCliArgv({ binOpt: opt("--bin"), fail }) }),
       gate: makeGate({ catalog, hooksDir: join(here, "..", "hooks") }),
+      // The knowledge base's measured pace prices this plan, and what this run measures goes back to it (F-575).
+      pace: kbDir ? readPaceFiles([kbPacePath(kbDir)], (line) => console.error(`engagement.mjs: ${line}`)) : null,
       onCall: (line) => console.error(`engagement.mjs: ${line}`),
       onProgress: (p, line) => console.error(`engagement.mjs: ${line}`),
     });
@@ -5196,6 +5246,7 @@ async function main() {
     if (e instanceof EngagementRefusal) fail(e.message);
     throw e;
   }
+  if (kbDir && summary.measuredPace) writePaceFile(kbPacePath(kbDir), basename(runDir), summary.measuredPace);
   const out = { ok: summary.status === "ok", mode, runDir, ...summary, whoami: summary.whoami ? { tokenState: summary.whoami.tokenState, expiresInSeconds: summary.whoami.expiresInSeconds, host: summary.whoami.host } : undefined };
   if (summary.status !== "ok" || mode !== "run") await finish(out, EXIT[summary.status] ?? EXIT.failed);
 
