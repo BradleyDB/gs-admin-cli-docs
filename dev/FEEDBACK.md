@@ -3542,13 +3542,14 @@ Repro: node .gs-superadmin/plugin/scripts/dashboard.mjs export <slug> --out hand
 Expected: the snapshot check (and the lock read) comes before the spec is written, so a refused export writes nothing — nothing-written-on-refusal, as import already does (F-540). Proposed DEFERRED past 0.56.3, reopen: the next change to verbExport.
 Defer: 2026-10-17 (builder) - past 0.56.3. Why not now: release-gate review finding, read not reproduced; pre-existing order. Reopen: the next change to dashboard.mjs's verbExport.
 
-## F-567 — DEFERRED (past 0.56.3)
+## F-567 — OPEN
 Reported: 2026-10-17 (builder)
 Severity: polish — prose alone; the summary carries the fact and a rebuild rarely meets a held handle
 What: the email-engagement skill relays lockLeft in the refresh step's exit-0 bullet alone, while a rebuild's summary and a change's done (doConsequence spreads underLock's result) can carry it too, so the lock-left sentence reaches the admin on a pull and not on a rebuild or a change (skills/email-engagement/SKILL.md ~631; the change step relays changed and done.text only); 2026-10-17 (builder, release-gate review for 0.56.3 — /code-review high, 8 inline angles over origin/main...dev; verifier not run, so each is read, not reproduced)
 Repro: a display change whose rebuild could not remove the lock: the script returns done.lockLeft; the skill's change step says what changed and its consequence and never the lock-left sentence.
 Expected: the change step (and any rebuild relay) names lockLeft the way the refresh step does — one sentence, relayed as written. Proposed DEFERRED past 0.56.3 (prose only; walked with the next skill change), reopen: the next change to the email-engagement skill's change or refresh steps.
 Defer: 2026-10-17 (builder) - past 0.56.3. Why not now: release-gate review finding; a SKILL.md change needs a walk, so it rides the next skill round. Reopen: the next change to skills/email-engagement/SKILL.md's change or refresh steps.
+Reopened: 2026-10-21 (tester) — reopened 2026-10-21 (builder): its reopen trigger fired — this round changes skills/email-engagement/SKILL.md's change and refresh steps (F-575, F-576), so the lock-left relay rides the same walk.
 
 ## F-568 — VERIFIED
 Reported: 2026-10-17 (builder)
