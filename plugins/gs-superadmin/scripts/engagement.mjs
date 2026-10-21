@@ -2276,7 +2276,7 @@ const previousSampledPrograms = (previous, part) => new Set(previous?.meta?.heal
 // estimate, printed as one; the token check before each call is what decides.
 // health-bounce-cat: measured at V2 (F-504) — about 2.5 s a call over a 55-category file (330 calls), against the
 // 7 s default that priced the run twice too high and turned token.fits false long before the pull would fail.
-const CALL_SECONDS = { whoami: 1, programs: 2, schema: 2, describe: 3, template: 3, "template-months": 4, "uniques-month": 13, "uniques-window": 23, "account-names": 4, "health-states": 16, "health-reasons-total": 9, "health-entry-window": 6, "health-reasons-sample": 12, "health-bounce-sample": 8, "health-bounce-cat": 3, "health-admissions": 16, "health-step-total": 10, "health-step-cat": 10, "health-step-state": 10 };
+export const CALL_SECONDS = { whoami: 1, programs: 2, schema: 2, describe: 3, template: 3, "template-months": 4, "uniques-month": 13, "uniques-window": 23, "account-names": 4, "health-states": 16, "health-reasons-total": 9, "health-entry-window": 6, "health-reasons-sample": 12, "health-bounce-sample": 8, "health-bounce-cat": 3, "health-admissions": 16, "health-step-total": 10, "health-step-cat": 10, "health-step-state": 10 };
 // Rows per program-month a bounce-count unit is expected to hold (templates × bounce types), never more than the bounces.
 const BOUNCE_ROWS_PER_MONTH = 6;
 const monthsOf = (u) => (u.window ? monthsBetween(u.window.start.slice(0, 7), addDays(u.window.end, -1).slice(0, 7)) : []);
@@ -2362,7 +2362,18 @@ export function expectedCalls(u, base, pageSize) {
 }
 const priced = (units, base, pageSize) => units.map((u) => ({ family: u.family, calls: expectedCalls(u, base, pageSize) }));
 export const estimateCalls = (units, base, pageSize) => priced(units, base, pageSize).reduce((s, u) => s + u.calls, 0);
-export const estimateSeconds = (units, base, pageSize) => priced(units, base, pageSize).reduce((s, u) => s + u.calls * (CALL_SECONDS[u.family] ?? 7), 0);
+/**
+ * The seconds one call of each family is priced at (F-575): the fitted constants, overlaid with a measured pace where
+ * the caller has one — per family, the seconds per call the dashboard's last finished pull measured (dashboard.mjs
+ * keeps it beside the spec and hands it to every plan of that dashboard). A family the pace does not name, or names
+ * with no positive figure, keeps its constant; the ad-hoc report, with no home for a measurement, prices from the
+ * constants alone.
+ * @param {?Object<string, number>} pace
+ * @returns {Object<string, number>}
+ */
+export const callSecondsTable = (pace) => ({ ...CALL_SECONDS, ...Object.fromEntries(Object.entries(pace ?? {}).filter(([, s]) => typeof s === "number" && Number.isFinite(s) && s > 0)) });
+/** @param {Object<string, number>} [table] the seconds per call by family, callSecondsTable's; the constants alone when absent */
+export const estimateSeconds = (units, base, pageSize, table = CALL_SECONDS) => priced(units, base, pageSize).reduce((s, u) => s + u.calls * (table[u.family] ?? 7), 0);
 const familyCounts = (units, base, pageSize) => {
   const out = {};
   for (const u of priced(units, base, pageSize)) out[u.family] = (out[u.family] ?? 0) + u.calls;
@@ -2390,6 +2401,22 @@ function readFetchLog(runDir) {
 const TEXT_FAMILIES = new Set(["whoami"]);
 // How a first failure that gets one more try reads in a progress line.
 const PROGRESS_KIND = { timeout: "timed out", outage: "no answer", "not-found": "not found" };
+// The progress said while the facts are pulled (F-575): after the first made call and every PROGRESS_EVERY after, and
+// the plan's remainder is scaled by this run's pace once PACE_AFTER_SECONDS of planned work have been made.
+const PROGRESS_EVERY = 10;
+const PACE_AFTER_SECONDS = 30;
+/** The run's latest progress, as a file beside its calls, for a reader with no stderr (the dashboard's `status`). */
+export const PROGRESS_FILE = "progress.json";
+/** @typedef {{made: number, planned: number, elapsedSeconds: number, leftSeconds: number, pace: ?number, at: string}} EngagementProgress */
+/** A span in the admin's units: seconds under a minute and a half, minutes above. */
+const spanText = (s) => (s < 90 ? `${Math.round(s)} s` : `${Math.round(s / 60)} min`);
+/**
+ * The progress line as the skills quote it (F-575): one wording, whoever prints it (the dashboard prefixes it `pull`,
+ * the engine's own CLI its name). `planned` is about: a page that comes back full is split into calls the plan did
+ * not count.
+ * @param {EngagementProgress} p
+ */
+export const progressLine = (p) => `progress: ${p.made} of about ${p.planned} calls made this run · ${spanText(p.elapsedSeconds)} elapsed · about ${spanText(p.leftSeconds)} left${p.pace == null ? " (the plan's price; this run's pace is measured from here)" : " at this run's pace"}`;
 const isRpRun = (d) => d.family in FAMILIES;
 
 /**
@@ -2397,15 +2424,25 @@ const isRpRun = (d) => d.family in FAMILIES;
  * `<runDir>/calls/`, and a call whose file is already there is not made again.
  * Stops cleanly (status "token-expired") when the next call would outlast the
  * token or the CLI says the token died; the run directory stays resumable.
- * @param {{params: *, runDir: string, transport: EngagementTransport, gate: (argv: string[]) => ?string, kbDir?: ?string, previous?: ?T10Snapshot, previousStore?: ?AccountStore, phase?: "plan"|"all", now?: () => number, onCall?: (line: string) => void}} ctx
+ * `pace` is the seconds per call by family the caller measured on an earlier pull (F-575), overlaid on the fitted
+ * constants for every price this run quotes; `onProgress` receives the progress record and its line (never through
+ * `onCall`, whose lines are one per call made).
+ * @param {{params: *, runDir: string, transport: EngagementTransport, gate: (argv: string[]) => ?string, kbDir?: ?string, previous?: ?T10Snapshot, previousStore?: ?AccountStore, phase?: "plan"|"all", now?: () => number, onCall?: (line: string) => void, onProgress?: (p: EngagementProgress, line: string) => void, pace?: ?Object<string, number>}} ctx
  * @returns {*} the fetch summary (also written to `<runDir>/status.json`)
  */
 export function fetchEngagement(ctx) {
-  const { params, runDir, transport, gate, kbDir = null, previous: given = null, previousStore = null, phase = "all", now = Date.now, onCall = () => {} } = ctx;
+  const { params, runDir, transport, gate, kbDir = null, previous: given = null, previousStore = null, phase = "all", now = Date.now, onCall = () => {}, onProgress = () => {}, pace = null } = ctx;
   mkdirSync(join(runDir, "calls"), { recursive: true });
   const { records } = readFetchLog(runDir);
   const logPath = join(runDir, "fetch-log.jsonl");
   const counts = { made: 0, reused: 0, split: 0, retried: 0 };
+  /**
+   * This run's own pace per family, over the calls it made (F-575): the summary carries it as the calls and the
+   * seconds per call, and a dashboard keeps it as the price of its next plan.
+   * @type {Object<string, {calls: number, ms: number}>}
+   */
+  const paceOf = {};
+  const measuredPace = () => Object.fromEntries(Object.entries(paceOf).map(([f, x]) => [f, { calls: x.calls, seconds: Math.round(x.ms / x.calls / 10) / 100 }]));
   const failed = [];
   /** @type {?{reason: string, detail: string}} */
   let stop = null;
@@ -2441,6 +2478,8 @@ export function fetchEngagement(ctx) {
       }
       const r = transport.run({ id, argv, timeoutMs: params.timeoutMs });
       counts.made++;
+      (paceOf[d.family] ??= { calls: 0, ms: 0 }).calls++;
+      paceOf[d.family].ms += r.ms;
       // The progress line says what was RECORDED for the call, once that is
       // decided: a not-found that is retried and then settled as a deleted
       // program never failed, and a line reading "failed" beside a summary
@@ -2522,7 +2561,10 @@ export function fetchEngagement(ctx) {
     if (reusable(d, prior)) {
       counts.reused++;
       rec = prior;
-    } else rec = execute(d, id, argv, prior);
+    } else {
+      rec = execute(d, id, argv, prior);
+      progressTick();
+    }
     if (!rec) return [];
     if (rec.status === "ok" && !rec.truncated) return [rec];
     const kids = cutsOf(d, rec);
@@ -2556,9 +2598,31 @@ export function fetchEngagement(ctx) {
   // calls less this run's counts (which count the cuts the plan did not foresee).
   /** @type {(() => {calls: number, seconds: number, units: number}) | null} */
   let remainingNow = null;
+  // Progress, said and kept (F-575): from the first fact call, after every PROGRESS_EVERY made calls, what is made of
+  // about how much, the time elapsed and about how long is left — the plan's remainder scaled by THIS run's pace once
+  // PACE_AFTER_SECONDS of the plan's seconds have been made, the plan's own price before that. The same figures go to
+  // `<runDir>/progress.json` for a reader with no stderr (the dashboard's `status` relays it while a refresh runs).
+  /** @type {?number} */
+  let progressStart = null;
+  let madeAtStart = 0;
+  /** @type {?{calls: number, seconds: number, units: number}} */
+  let leftAtStart = null;
+  const progressTick = () => {
+    if (progressStart == null || !remainingNow) return;
+    const made = counts.made - madeAtStart;
+    if (made !== 1 && made % PROGRESS_EVERY !== 0) return;
+    const left = remainingNow();
+    const elapsed = (now() - progressStart) / 1000;
+    const plannedDone = Math.max(0, (leftAtStart?.seconds ?? 0) - left.seconds);
+    const ratio = plannedDone >= PACE_AFTER_SECONDS ? elapsed / plannedDone : null;
+    /** @type {EngagementProgress} */
+    const p = { made, planned: made + left.calls, elapsedSeconds: Math.round(elapsed), leftSeconds: Math.round(left.seconds * (ratio ?? 1)), pace: ratio == null ? null : Math.round(ratio * 100) / 100, at: new Date(now()).toISOString() };
+    writeFileAtomicSync(join(runDir, PROGRESS_FILE), JSON.stringify(p, null, 2));
+    onProgress(p, progressLine(p));
+  };
   const conclude = (extra) => {
     const status = stop ? stop.reason : failed.length ? "partial" : "ok";
-    const summary = { status, ...(stop ? { stopped: stop.detail } : {}), calls: counts, failed, health: { unread: healthUnread }, pulledAt: params.pulledAt, ...(stop && remainingNow ? { remaining: remainingNow() } : {}), ...extra };
+    const summary = { status, ...(stop ? { stopped: stop.detail } : {}), calls: counts, pace: measuredPace(), failed, health: { unread: healthUnread }, pulledAt: params.pulledAt, ...(stop && remainingNow ? { remaining: remainingNow() } : {}), ...extra };
     writeFileAtomicSync(join(runDir, "status.json"), JSON.stringify({ status, phase, failed, health: { unread: healthUnread }, calls: counts }, null, 2));
     return summary;
   };
@@ -2718,8 +2782,10 @@ export function fetchEngagement(ctx) {
     health: health ?? { dayWindow: healthDayWindow(params), objects: Object.fromEntries(Object.keys(HEALTH_OBJECTS).map((part) => [part, true])) },
   });
   // Calls and seconds include the splits a program-month too large for a page will force.
+  // Every price this run quotes reads ONE table (F-575): the constants, overlaid with the caller's measured pace.
+  const table = callSecondsTable(pace);
   const calls = (list) => estimateCalls(list, base, params.pageSize);
-  const seconds = (list) => estimateSeconds(list, base, params.pageSize);
+  const seconds = (list) => estimateSeconds(list, base, params.pageSize, table);
   // What this run still has to make (F-518, redesigned at its reopen): each planned unit's own price, less the calls
   // already made in its split tree. A piece of a cut unit is never priced afresh: the estimator prices a unit by its
   // programs and months, so a day, flag or address piece of a mass-send month would be priced like the whole month,
@@ -2776,7 +2842,7 @@ export function fetchEngagement(ctx) {
   };
   const samples = { cap: params.health.samplePrograms, participantFailures: samplePlan("participantFailures"), bounceReasons: samplePlan("bounceReasons") };
   const sampleReads = params.health.pull ? samples.participantFailures.planned + samples.bounceReasons.planned : 0;
-  const sampleSeconds = (n) => n * CALL_SECONDS["health-reasons-sample"];
+  const sampleSeconds = (n) => n * table["health-reasons-sample"];
   const schedules = kbSteps?.schedules ?? {};
   const scheduleOf = (id) => pickSchedule(schedules[id], params.today);
   const ownReads = sampleReads;
@@ -2796,7 +2862,7 @@ export function fetchEngagement(ctx) {
   const refreshable = [...gap.undocumented.filter((id) => listed.has(id)), ...gap.behind.map((b) => b.programId)];
   const kbPlan = {
     source: gap.source, undocumented: gap.undocumented.length, behind: gap.behind.length, unlisted: gap.undocumented.filter((id) => !listed.has(id)).length,
-    programs: refreshable, refreshSeconds: refreshable.length * CALL_SECONDS.describe,
+    programs: refreshable, refreshSeconds: refreshable.length * table.describe,
     keysFile: refreshable.length ? join(runDir, KB_GAP_KEYS_FILE) : null, listFile: refreshable.length ? join(runDir, KB_GAP_LIST_FILE) : null,
   };
   // The template gap (TPL-1): the templates the selected programs reference — their sends over the window, and
@@ -2812,7 +2878,7 @@ export function fetchEngagement(ctx) {
   const templatesPlan = {
     source: kbSteps ? "kb" : "none", referenced: planReferenced.length, designOnly: planReferenced.length - tplRef.referenced.length, inKb: kbSteps ? planReferenced.length - tplGap.missing.length : 0,
     missing: tplGap.missing.length, behind: tplGap.behind.length, unread: tplGap.unread.length,
-    planned: tplKeys.length, seconds: tplKeys.length * CALL_SECONDS.template, secondsEach: CALL_SECONDS.template,
+    planned: tplKeys.length, seconds: tplKeys.length * table.template, secondsEach: table.template,
     domain: kbSteps?.templatesDomain?.folder ?? null, idField: kbSteps?.templatesDomain?.idField ?? null,
     listFile: tplGap.missing.length ? join(runDir, TEMPLATE_GAP_LIST_FILE) : null,
     staleKeysFile: tplGap.behind.length + tplGap.unread.length ? join(runDir, TEMPLATE_GAP_STALE_FILE) : null,
@@ -2846,7 +2912,7 @@ export function fetchEngagement(ctx) {
         const units = healthOn.filter((u) => u.family === "health-bounce-cat");
         const domains = params.internalDomains.length;
         const classes = 1 + domains + (params.testAccounts?.length ? 1 + domains : 0);
-        return { bounce: { categories: (params.health.categories?.bounceReasons ?? []).length, classes, calls: calls(units), seconds: seconds(units), secondsEach: CALL_SECONDS["health-bounce-cat"] } };
+        return { bounce: { categories: (params.health.categories?.bounceReasons ?? []).length, classes, calls: calls(units), seconds: seconds(units), secondsEach: table["health-bounce-cat"] } };
       })(),
     },
     // The row budget and what exceeds it (a health part over it is not read; the click detail refused above).
@@ -2889,6 +2955,10 @@ export function fetchEngagement(ctx) {
   // Phase C: the facts. The pull time is stamped HERE, when the first fact call is about to be made (F-482),
   // and kept with the run: a resume continues under the same stamp, and a plan alone stamps nothing.
   stampRun(params, runDir, now);
+  // The pull's own clock starts here (F-575): what the progress line counts and paces is the facts, never the plan's reads.
+  progressStart = now();
+  madeAtStart = counts.made;
+  leftAtStart = remainingNow ? remainingNow() : null;
   const accountRecs = [];
   for (const d of units) {
     if (isHealth(d)) continue; // Phase E
@@ -4972,6 +5042,7 @@ async function main() {
         transport: cliTransport({ cliArgv: resolveCliArgv({ binOpt: opt("--bin"), fail }) }),
         gate: makeGate({ catalog, hooksDir: join(here, "..", "hooks") }),
         onCall: (line) => console.error(`engagement.mjs: ${line}`),
+      onProgress: (p, line) => console.error(`engagement.mjs: ${line}`),
       });
     } catch (e) {
       if (e instanceof EngagementRefusal) fail(e.message);
@@ -5046,6 +5117,7 @@ async function main() {
       transport: cliTransport({ cliArgv: resolveCliArgv({ binOpt: opt("--bin"), fail }) }),
       gate: makeGate({ catalog, hooksDir: join(here, "..", "hooks") }),
       onCall: (line) => console.error(`engagement.mjs: ${line}`),
+      onProgress: (p, line) => console.error(`engagement.mjs: ${line}`),
     });
   } catch (e) {
     if (e instanceof EngagementRefusal) fail(e.message);

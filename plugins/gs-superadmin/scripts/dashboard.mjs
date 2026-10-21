@@ -131,6 +131,7 @@ import {
   resolveParams, prepareRun, runParamsMoved, fetchEngagement, reduceEngagement, loadRun, cliTransport, makeGate, parseWhoami, addMonths, monthsBetween, pickSchedule, describedProgram, EngagementRefusal, ROW_READERS, rpRunArgv, buildQuery,
   resolveAccountParams, reduceAccountTimeline, loadAccountRun, accountResolutionText, timelineSummary,
   reduceWithStore, rankFromStore, readAccountStore, accountStorePath, accountStoreFits, isAccountStoreFile, writeSnapshotAndStore, copySnapshotWithStore, readAccountStoreHead,
+  PROGRESS_FILE,
 } from "./engagement.mjs";
 import { applyGroups, programTraitsOf, suggestionTable } from "./dashboard-groups.mjs";
 import { buildPage, buildTimelinePage, inlinedSources, pageFileName, buildDatasets, datasetsDirName, artifactContentOf } from "./dashboard-page.mjs";
@@ -159,6 +160,8 @@ export const REPORTS_DIR = "reports";
 export const ACCOUNTS_DIR = "accounts";
 export const LOCK_FILE = "refresh.lock";
 export const STATE_FILE = "refresh-state.json";
+/** The seconds per call this dashboard's last finished pull measured, per family (F-575): the price of its next plan. */
+export const PACE_FILE = "pace.json";
 export const INTERVIEW_FILE = "interview-state.json";
 export const SUGGESTION_FILE = "group-suggestion-input.json";
 // Not frozen: keep a year of monthly pulls; a lock older than two hours is stale (PUB-1 defaults).
@@ -829,6 +832,33 @@ function openContext(argv, opt) {
 const dirOf = (ctx, slug) => ctx.store.paths(slug).dir;
 const writeJson = (path, value) => writeFileAtomicSync(path, JSON.stringify(value, null, 2) + "\n");
 const readJsonOr = (path, fallback = null) => (existsSync(path) ? readJsonFile(path) : fallback);
+// ── The pace (F-575) ─────────────────────────────────────────────────────────
+// The minutes a pull is priced at come from this dashboard's last finished pull, never from the plan's fitted constants
+// alone: per call family, the seconds per call that pull measured, kept beside the spec (not in it: the spec is the
+// admin's settings, and the `.previous` copy would carry a price). Every plan of the dashboard (the interview's, a
+// change's, a refresh's) hands it to the engine, which overlays it on the constants (callSecondsTable). A family the
+// last pull did not make keeps the figure of the pull before it, then the constant; a first pull is priced from the
+// constants, as before.
+const pacePath = (ctx, slug) => join(dirOf(ctx, slug), PACE_FILE);
+/** @returns {?Object<string, number>} the seconds per call by family, for the engine; null until a pull finished here */
+function readPace(ctx, slug) {
+  const kept = readJsonOr(pacePath(ctx, slug), null);
+  return kept?.families ? Object.fromEntries(Object.entries(kept.families).map(([f, x]) => [f, x.seconds])) : null;
+}
+/**
+ * The pace a finished pull measured, merged over what is kept: per family, the last pull that made a call of it wins.
+ * @param {string} run the pull's run directory name @param {?Object<string, {calls: number, seconds: number}>} measured the summary's `pace`
+ * @returns {?{measuredAt: string, families: Object<string, {calls: number, seconds: number, run: string}>}} what is kept now; null when nothing was measured
+ */
+function writePace(ctx, slug, run, measured) {
+  const entries = Object.entries(measured ?? {}).filter(([, x]) => x.calls > 0 && x.seconds > 0);
+  if (!entries.length) return null;
+  const families = { ...(readJsonOr(pacePath(ctx, slug), null)?.families ?? {}) };
+  for (const [f, x] of entries) families[f] = { calls: x.calls, seconds: x.seconds, run };
+  const kept = { measuredAt: new Date(ctx.nowMs).toISOString(), families };
+  writeJson(pacePath(ctx, slug), kept);
+  return kept;
+}
 /** The saved spec's JSON, or the one refusal for a dashboard that is a draft or does not exist (the one home, F-555). */
 const savedRawOrRefuse = (ctx, slug) => {
   const raw = ctx.store.readSaved(slug);
@@ -1010,7 +1040,8 @@ function runAdapter(ctx, { spec, runId, phase, previousPath, forceFull = false, 
   if (previousStore === undefined) previousStore = previousPath ? readAccountStore(accountStorePath(previousPath)) : null;
   // A resumed run keeps the day it was planned on unless --today was given (F-483), as the adapter's own CLI does.
   const { runDir, params, resumed } = prepareRun({ wsDir: ctx.wsDir, runId, params: paramsOn(ctx.today), previousPath, cliVersion: ctx.catalog.meta?.cliVersion ?? null, todayGiven: ctx.todayGiven, reparams: paramsOn });
-  const summary = fetchEngagement({ params, runDir, kbDir: ctx.kbDir, previous, previousStore, phase, transport: ctx.live(), gate: ctx.gate, onCall: (line) => ctx.log(`${phase === "plan" ? "plan" : "pull"} ${line}`) });
+  // The dashboard's measured pace prices every plan (F-575); the pull's progress is said as the engine words it.
+  const summary = fetchEngagement({ params, runDir, kbDir: ctx.kbDir, previous, previousStore, phase, transport: ctx.live(), gate: ctx.gate, pace: readPace(ctx, spec.slug), onCall: (line) => ctx.log(`${phase === "plan" ? "plan" : "pull"} ${line}`), onProgress: (p, line) => ctx.log(`pull ${line}`) });
   return { runDir, params, resumed, summary, previous, previousStore, categoriesFile };
 }
 /** The plan twice when the derived lookback moves (ENG-2 item 3): the second plan is the one the pull resumes. */
@@ -1875,6 +1906,8 @@ function verbStatus(ctx, slug) {
     lastPull: snapshot ? { pulledAt: snapshot.meta.pulledAt, ageDays, mode: snapshot.meta.refresh.mode, programs: snapshot.dimensions.programs.length, file: latest } : null,
     snapshots: snapshotFiles(ctx, slug).length, pages: spec.pages.map((p) => ({ page: p.id, file: join(dirOf(ctx, slug), pageFileName(p.id)), present: existsSync(join(dirOf(ctx, slug), pageFileName(p.id))) })),
     lock: lockState(ctx, slug), resumable: state ? { run: state.run, startedAt: state.startedAt, by: state.by } : null, draft: !!ctx.store.readDraft(slug),
+    // The running (or stopped) pull's latest progress record (F-575): what the skill answers "how long is left" from.
+    progress: state ? readJsonOr(join(ctx.wsDir, ".gs-superadmin", "tmp", "engagement", state.pullRun ?? state.run, PROGRESS_FILE), null) : null,
   };
 }
 function verbRefresh(ctx, slug, { full, healthOnly, planRun = null }) {
@@ -1988,6 +2021,8 @@ function verbRefresh(ctx, slug, { full, healthOnly, planRun = null }) {
       const left = pulledRun.summary.remaining ?? estimate.thisRun.remaining ?? null;
       stopped(pulledRun, left == null ? null : left.calls === 0 ? 0 : loginsFor(left.seconds));
     }
+    // The pace this pull measured becomes the price of this dashboard's next plan (F-575): kept beside the spec.
+    const paced = writePace(ctx, slug, basename(pulledRun.runDir), pulledRun.summary.pace);
     const reduced = reduceWithStore(loadRun(pulledRun.runDir, { previous: pulledRun.previous, previousStore: pulledRun.previousStore, cliVersion: ctx.catalog.meta?.cliVersion ?? null, pluginVersion: ctx.pluginVersion }));
     const pulled = reduced.snapshot;
     const previous = pulledRun.previous;
@@ -2008,7 +2043,7 @@ function verbRefresh(ctx, slug, { full, healthOnly, planRun = null }) {
     return {
       ok: true, mode: "refresh", slug, status: "ok", run: basename(pulledRun.runDir), resumed: !!resuming && !restarted, ...(restarted ? { restarted } : {}), full, healthOnly, budget, ...(abandoned ? { abandoned } : {}),
       pull: { mode: snapshot.meta.refresh.mode, why: snapshot.meta.refresh.why, pulledAt: snapshot.meta.pulledAt, programs: snapshot.dimensions.programs.length, calls: pulledRun.summary.calls, reconciled: snapshot.reconciliation.ok, health: engine.healthAvailability(snapshot).pulled, accounts: engine.accountAvailability(snapshot).pulled, lookbackDays: planned.lookbackDays, lookbackDerivedFrom: planned.lookbackDerivedFrom ?? null },
-      redocumented, snapshot: snapshotPath, accountStore, pruned, ungrouped: resolution.line, kbBehind: snapshot.honesty?.kb ?? null,
+      redocumented, snapshot: snapshotPath, accountStore, pruned, pace: paced ? { file: pacePath(ctx, slug), families: Object.keys(paced.families).length } : null, ungrouped: resolution.line, kbBehind: snapshot.honesty?.kb ?? null,
       delta: delta ? { previousPulledAt: delta.previousPulledAt, closedMonths: delta.closedMonths.length, programs: delta.programs, metrics: Object.fromEntries(Object.entries(delta.metrics).map(([k, v]) => [k, v.change])) } : null,
       pages: pages.map((p) => ({ page: p.page, path: p.path, megabytes: p.megabytes, warning: p.warning })),
       lockTakenOver: lock.takenOver ? { by: lock.takenOver.by, at: lock.takenOver.at } : null,
