@@ -4102,3 +4102,68 @@ name in the lines above; the measurements stand.
 Section status (tester @ hb-20261021-01, 2026-10-21): CLOSED with two reopens — F-567, F-579, F-580, F-581 VERIFIED;
 F-575 REOPENED and re-declared polish (Bradley's ruling); F-576 REOPENED (statusDefault). Banked for a later round
 (the bus's Noticed line): F-581's re-read path live; a refusal sample on a tenant with recent refusals.
+
+Tester round @ hb-20261021-02 (2026-10-21; checkpoint, written as the arms run) — fix/r16-f575-f579 at 01b236c, clean and
+level with origin, a session in the workspace with --plugin-dir on the checkout, canary matched; the SANDBOX KB, reads
+only; login fresh (whoami 3578 s at the start). Round type: RE-VERIFICATION of F-575 and F-576 (F-567, F-579, F-580,
+F-581 VERIFIED, not re-run). Scratches: r16u-a and r16u-b, each `new … --fast-path` with every default (every program
+with a send in the default window: about 40 calls, 5 minutes on this tenant, the same size as hb-20261021-01's
+one-program scratches), closing step answered save-only (no pull). Pass bars, stated before measuring: R1 case (a) and
+(b) and R2 as banked above; F-576 the statusDefault dry-run as banked above; the walk of step P's wording.
+- Case (a) precondition: neither `<kb>/engagement-pace.json` nor r16u-a's pace.json existed (nothing to remove); the two
+  drafts' plan reads wrote neither.
+- R1 case (a), r16u-a's first pull (step P's line in the background, stderr timestamped): 16:29:37.5 → exit 0 at
+  16:34:41.3 (5m04s), 37 made. Lines at 1, 10, 20, 30 only (never per call; at made 9 the silence was 59.9 s, under the
+  minute): `1 of about 37 … 37 s elapsed · about 4 min left (0 s at this run's pace; the plan's 4 min for 18 families not
+  yet seen)`; `10 of about 37 … about 4 min left (60 s at this run's pace; the plan's 3 min for 15 families not yet
+  seen)`; `20 of about 37 … about 3 min left (0 s at this run's pace; the plan's 3 min for 12 families not yet seen)`;
+  last, 16:34:16.799, `30 of about 37 calls made this run · 3 min elapsed · about 70 s left (0 s at this run's pace; the
+  plan's 70 s for 2 families not yet seen)`. Real remainder 24.5 s, every call of it in the two unseen families
+  (health-step-cat ×6, health-step-state ×1, 3.0–3.9 s each): the measured part 0 s against 0 s real — HELD; the plan's
+  part 70 s against 24.5 s (2.9×) is the constants' guess (about 10 s a call against about 3.5 s measured), reported as
+  such per the bar. `status` (a disk-only poller every 15 s): progress null from 16:29:38 through 16:31:24 (the plan's
+  reads), then made 1 → 10 → 20 → 30 of planned 37, each with leftSeconds, planSeconds, unseenFamilies (18 → 15 → 12 →
+  2) and at. After it: `<kb>/engagement-pace.json` and r16u-a/pace.json written (16:34, families named by run
+  dash-r16u-a-20261021T232937). The step P walk's question did not land inside this pull (it finished before it was
+  asked): carried to case (b).
+- R1 case (b), r16u-b's first pull (no pace.json of its own; the knowledge base's from case (a) in place): 16:35:23.1 →
+  exit 0 at 16:39:43.5 (4m20s), 38 made. Lines at 1, 10, 20, 30: `1 of about 37 … 17 s elapsed · about 3 min left (0 s
+  at this run's pace; the plan's 3 min for 18 families not yet seen)` (169.6 s real, 1.15×); `10 … 82 s elapsed ·
+  about 2 min left (55 s at this run's pace; the plan's 88 s for 15 families not yet seen)` (105.4 s real, 1.36×);
+  `20 … about 78 s left (0 s at this run's pace; the plan's 78 s for 12 families not yet seen)` (56.4 s real, 1.38×);
+  last, 16:39:17.589, `30 of about 37 calls made this run · 3 min elapsed · about 24 s left (0 s at this run's pace; the
+  plan's 24 s for 2 families not yet seen)` against 25.9 s real — 0.93×, HELD (the same two health step families that
+  read 70 s in case (a) and 83 s at hb-20261021-01, now priced from the knowledge base's measured pace). `status`
+  progress null through the plan's reads, then made rising as in (a).
+- Shape caveat (both cases): the fast-path defaults selected 0 PROGRAMS on the sandbox (`pull.programs` 0; the snapshot's
+  dimensions.programs, templates and accounts empty — the sandbox has sent nothing in the default window), so each pull
+  made the tenant-wide families alone (37 calls) — not the banked "one program each". The families the
+  hb-20261021-01 miss rested on (health-step-cat, health-step-state) were made in both; per-program families and the
+  samples were not.
+- Walk, step P (Bradley typed "how long is left" during case (b), 16:37:38): the session ran `status r16u-b` and quoted
+  `progress` as it stood — "1 of about 37 calls made, about 3 minutes left (195 s), as of 16:36:53; all of it still
+  priced from the earlier pulls on this knowledge base (`planSeconds` 195), because 18 families have not been seen in
+  this run yet; an estimate" — no pricing of its own, no earlier line. Then step P's exit-0 report relayed in its shape.
+- R2 HELD: r16u-a's second refresh 16:40:40.2 → exit 0 at 16:43:34.8 (selective, "months before 2026-09 are carried",
+  27 made, 20 reused); lines at 1, 10, 20, the last `20 of about 26 … about 22 s left (18 s at this run's pace; the
+  plan's 4 s for 1 family not yet seen)` against 21.8 s real (1.0×). plan.json `estimate.full.seconds`: first run
+  (dash-r16u-a-20261021T232937) 300 (the constants), second (…T234040) 254.12 — lower, pace.json's direction (case (a)'s
+  facts took 233 s against the plan's 300). `change r16u-a accounts.pull=yes --dry-run` after the second refresh:
+  `pullSeconds` 337 = the second plan's 254.12 + its accounts.addsSeconds 82.46; the first plan would give 300 + 7 = 307,
+  so this time the agreement discriminates. Not saved. After the second pull r16u-a/pace.json and
+  `<kb>/engagement-pace.json` name the second run for all 20 families (it made every family the first did).
+- F-576: the banked line `"pages.0.statusDefault=PROCESSING,PAUSED" --dry-run` → exit 1, `not saved — pages[0].statusDefault[1]
+  must be one of PROCESSING, PAUSE, NEW, STOP`: read as a LIST now (the refusal is per item, index [1]; at hb-20261021-01
+  it was `must be a list of statuses, or null for every status`), refused because PAUSED is not one of the writer's
+  statuses (PAUSE is). With a valid second status, `"pages.0.statusDefault=PROCESSING,PAUSE" --dry-run` → ok, `changed`
+  names `pages[].statusDefault` and `pages[].statusDefault[]` (examples `pages[0].statusDefault[0]`, `[1]`), `consequence`
+  `in-page`, `consequenceText` "rebuild only (no pull)", saved false — HELD.
+- Guard wiring (one line, the bus header's ask): `gs-admin re r run-now --id zz-r16-guard-probe` drew an ask that
+  Bradley declined; its wording was not captured (his report: it looked like the earlier rounds' asks); no journal row
+  (`zz-r16-guard-probe` 0 times in the sandbox JOURNAL.md).
+- Cleanup done: r16u-a and r16u-b, their five run directories (two plan-only, three pulls) and `<kb>/engagement-pace.json`
+  (it named only the scratches' runs); the sandbox dashboards folder is empty as it was; no publish target was set; the
+  KB gained no docs (re-documentation 0 on every pull).
+Section status (tester @ hb-20261021-02, 2026-10-21): CLOSED — F-575 and F-576 VERIFIED. Owed (Noticed, the bus's
+Noticed (hb-20261021-02) line): the banked statusDefault value names a status the writer lacks (PAUSED); the fast path
+saves a 0-program dashboard with no word of it.
