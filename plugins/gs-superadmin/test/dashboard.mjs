@@ -457,6 +457,9 @@ try {
       pulled.json.done.delta?.previousPulledAt === snapshot1.meta.pulledAt && pageText("admin").includes("Change since the last refresh (pulled") && pageText("exec").includes("Since last pull:"), [priced.json?.pullSeconds, lastPlanBefore.estimate?.full, pulled.json?.consequenceText, pulled.json?.done?.pull]);
   const identity = run("change", [SLUG, 'tenantHost="acme--sbx.gainsightcloud.com"']);
   check("change refuses an identity setting (the tenant, the slug)", identity.code === 1 && /cannot be changed/.test(identity.json?.error ?? ""), identity.json);
+  check("F-576: the comma form is read for every list of texts the writer covers as a list, the programs selector's two lists and the pinned accounts included (the kind comes from the writer's covers, the questions decide only the rest); a scalar under the selector stays text",
+    isDeepStrictEqual(changeValue("sources.0.params.selector.ids", "p1,p2"), ["p1", "p2"]) && isDeepStrictEqual(changeValue("sources.0.params.selector.names", "Onboarding,Renewal"), ["Onboarding", "Renewal"]) && isDeepStrictEqual(changeValue("sources.0.params.pinnedAccounts", "a,b"), ["a", "b"]) && isDeepStrictEqual(changeValue("sources.0.params.selector.names", "none"), []) && changeValue("sources.0.params.selector.sentSince", "90d") === "90d" && isDeepStrictEqual(changeValue("sources.0.params.internalDomains", "acme.com,acme.co.uk"), ["acme.com", "acme.co.uk"]),
+    [changeValue("sources.0.params.selector.ids", "p1,p2"), changeValue("sources.0.params.pinnedAccounts", "a,b")]);
 
   // ══ --health-only, and the lock ═══════════════════════════════════════════
   const callsBeforeHealth = argvLines().length;

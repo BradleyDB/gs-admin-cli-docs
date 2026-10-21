@@ -2399,17 +2399,16 @@ function readFetchLog(runDir) {
 }
 
 const TEXT_FAMILIES = new Set(["whoami"]);
-/** The per-program sample reads the plan prices as an extra beside its units (picked after the counts), by family. */
-const SAMPLE_FAMILIES = new Set(["health-reasons-sample", "health-bounce-sample"]);
 // How a first failure that gets one more try reads in a progress line.
 const PROGRESS_KIND = { timeout: "timed out", outage: "no answer", "not-found": "not found" };
 // The progress said while the facts are pulled (F-575): after the first made call and every PROGRESS_EVERY after, and
 // the plan's remainder is scaled by this run's pace once PACE_AFTER_SECONDS of planned work have been made.
 const PROGRESS_EVERY = 10;
+const PROGRESS_EVERY_MS = 60000; // or when a minute has passed since the last line: a slow family is not four minutes of silence
 const PACE_AFTER_SECONDS = 30;
 /** The run's latest progress, as a file beside its calls, for a reader with no stderr (the dashboard's `status`). */
 export const PROGRESS_FILE = "progress.json";
-/** @typedef {{made: number, planned: number, elapsedSeconds: number, leftSeconds: number, pace: ?number, at: string}} EngagementProgress */
+/** @typedef {{made: number, planned: number, elapsedSeconds: number, leftSeconds: number, paceRatio: ?number, at: string}} EngagementProgress */
 /** A span in the admin's units: seconds under a minute and a half, minutes above. */
 const spanText = (s) => (s < 90 ? `${Math.round(s)} s` : `${Math.round(s / 60)} min`);
 /**
@@ -2418,7 +2417,7 @@ const spanText = (s) => (s < 90 ? `${Math.round(s)} s` : `${Math.round(s / 60)} 
  * not count.
  * @param {EngagementProgress} p
  */
-export const progressLine = (p) => `progress: ${p.made} of about ${p.planned} calls made this run · ${spanText(p.elapsedSeconds)} elapsed · about ${spanText(p.leftSeconds)} left${p.pace == null ? " (the plan's price; this run's pace is measured from here)" : " at this run's pace"}`;
+export const progressLine = (p) => `progress: ${p.made} of about ${p.planned} calls made this run · ${spanText(p.elapsedSeconds)} elapsed · about ${spanText(p.leftSeconds)} left${p.paceRatio == null ? " (the plan's price; this run's pace is measured from here)" : " at this run's pace"}`;
 const isRpRun = (d) => d.family in FAMILIES;
 
 /**
@@ -2468,10 +2467,17 @@ export function fetchEngagement(ctx) {
     const argv = ["whoami"];
     if (gate(argv)) return false;
     const w = transport.run({ id: "whoami-recheck", argv, timeoutMs: 60000 });
-    if (!w.ok) return false;
-    const p = parseWhoami(w.stdout);
-    return p.tokenState === "valid" && (p.expiresInSeconds ?? 0) > params.tokenMarginSeconds;
+    // A gs-admin process like any other: counted and said (one onCall line per call made), and a live reading resets
+    // the deadline the next calls are judged against, as the plan's own whoami does.
+    counts.made++;
+    const p = w.ok ? parseWhoami(w.stdout) : null;
+    const live = !!p && p.tokenState === "valid" && (p.expiresInSeconds ?? 0) > params.tokenMarginSeconds;
+    onCall(`whoami-recheck ${!w.ok ? "failed" : live ? `ok: the token reads live, ${p.expiresInSeconds} s left` : `ok: the token reads ${p?.tokenState ?? "unreadable"}`} (${w.ms} ms)`);
+    if (live && p.expiresInSeconds != null) deadline = now() + p.expiresInSeconds * 1000;
+    return live;
   };
+  // A family the plan priced as a unit; the account-name batches (chosen after the facts, never in the units) are not.
+  const isPlannedFamily = (family) => family !== "account-names";
   // How many programs a unit names, for a failure entry: the reader of a stop is told what failed and for whom.
   const unitScope = (d) => (d.programs ? { programs: d.programs.length } : d.programId ? { programs: 1 } : d.scope ? { programs: d.scope.length } : {});
   // `prior` is the record a resume found for this call: a record that did not succeed counts the runs it failed in
@@ -2484,6 +2490,7 @@ export function fetchEngagement(ctx) {
       if (problems.length) throw new EngagementRefusal(`refusing to run the ${d.family} query: ${problems.join("; ")}`);
     }
     const runs = (prior && prior.status !== "ok" ? prior.runs ?? 1 : 0) + 1;
+    let rechecked = false;
     for (let attempt = 1; ; attempt++) {
       if (deadline != null && now() + params.tokenMarginSeconds * 1000 > deadline) {
         stop = { reason: "token-expired", detail: "the token would expire before the next call returns" };
@@ -2491,8 +2498,6 @@ export function fetchEngagement(ctx) {
       }
       const r = transport.run({ id, argv, timeoutMs: params.timeoutMs });
       counts.made++;
-      (paceOf[d.family] ??= { calls: 0, ms: 0 }).calls++;
-      paceOf[d.family].ms += r.ms;
       // The progress line says what was RECORDED for the call, once that is
       // decided: a not-found that is retried and then settled as a deleted
       // program never failed, and a line reading "failed" beside a summary
@@ -2500,6 +2505,12 @@ export function fetchEngagement(ctx) {
       const say = (what) => onCall(`${id} ${what} (${r.ms} ms)`);
       // Non-empty stderr is not a failure: the CLI warns there and exits 0.
       if (r.ok) {
+        // The pace is the price of a call that ANSWERED (F-575 review): a timed-out or dead attempt would price the
+        // family at the timeout, or at a second; and work the plan did not price (the name batches) stays out of the
+        // progress line's pace, where it would read as the planned work slowing.
+        (paceOf[d.family] ??= { calls: 0, ms: 0 }).calls++;
+        paceOf[d.family].ms += r.ms;
+        if (progress && !isPlannedFamily(d.family)) progress.unplannedMs += r.ms;
         const file = `calls/${id}.${TEXT_FAMILIES.has(d.family) ? "txt" : "json"}`;
         if (TEXT_FAMILIES.has(d.family)) {
           say("ok");
@@ -2528,10 +2539,13 @@ export function fetchEngagement(ctx) {
       }
       const kind = classifyFailure(r);
       if (kind === "auth-expired") {
-        // Live by its own reading → the call is made once more; dead, or dead again → the stop as before (F-581).
-        if (attempt === 1 && tokenReadsLive()) {
+        // Live by its own reading → the call is made once more; dead, or dead again → the stop as before (F-581). The
+        // re-read is not an attempt of this call: a timeout on the call made again still gets its own one more try.
+        if (!rechecked && tokenReadsLive()) {
+          rechecked = true;
           say("the CLI reported the token expired, but it reads live: trying once more");
           counts.retried++;
+          attempt--;
           continue;
         }
         say("stopped: the token expired");
@@ -2581,8 +2595,9 @@ export function fetchEngagement(ctx) {
       counts.reused++;
       rec = prior;
     } else {
+      const madeBefore = counts.made;
       rec = execute(d, id, argv, prior);
-      progressTick();
+      if (counts.made > madeBefore) progressTick();
     }
     if (!rec) return [];
     if (rec.status === "ok" && !rec.truncated) return [rec];
@@ -2621,27 +2636,28 @@ export function fetchEngagement(ctx) {
   // about how much, the time elapsed and about how long is left — the plan's remainder scaled by THIS run's pace once
   // PACE_AFTER_SECONDS of the plan's seconds have been made, the plan's own price before that. The same figures go to
   // `<runDir>/progress.json` for a reader with no stderr (the dashboard's `status` relays it while a refresh runs).
-  /** @type {?number} */
-  let progressStart = null;
-  let madeAtStart = 0;
-  /** @type {?{calls: number, seconds: number, units: number}} */
-  let leftAtStart = null;
+  /** The pull's clock, set when the facts start: null before (no line, no file). @type {?{at: number, made: number, leftSeconds: number, nextTickAt: number, lastTickAt: number, unplannedMs: number}} */
+  let progress = null;
   const progressTick = () => {
-    if (progressStart == null || !remainingNow) return;
-    const made = counts.made - madeAtStart;
-    if (made !== 1 && made % PROGRESS_EVERY !== 0) return;
+    if (!progress || !remainingNow) return;
+    const made = counts.made - progress.made;
+    // A line at the first made call, then at each tenth or after a minute of silence, whichever comes first; a
+    // threshold, not a modulus, so a retried call (two made at once) never skips a line and a stop never repeats one.
+    if (made < 1 || (made < progress.nextTickAt && now() - progress.lastTickAt < PROGRESS_EVERY_MS)) return;
+    progress.nextTickAt = (Math.floor(made / PROGRESS_EVERY) + 1) * PROGRESS_EVERY;
+    progress.lastTickAt = now();
     const left = remainingNow();
-    const elapsed = (now() - progressStart) / 1000;
-    const plannedDone = Math.max(0, (leftAtStart?.seconds ?? 0) - left.seconds);
-    const ratio = plannedDone >= PACE_AFTER_SECONDS ? elapsed / plannedDone : null;
+    const elapsed = (now() - progress.at) / 1000;
+    const plannedDone = Math.max(0, progress.leftSeconds - left.seconds);
+    const ratio = plannedDone >= PACE_AFTER_SECONDS ? Math.max(0, elapsed - progress.unplannedMs / 1000) / plannedDone : null;
     /** @type {EngagementProgress} */
-    const p = { made, planned: made + left.calls, elapsedSeconds: Math.round(elapsed), leftSeconds: Math.round(left.seconds * (ratio ?? 1)), pace: ratio == null ? null : Math.round(ratio * 100) / 100, at: new Date(now()).toISOString() };
+    const p = { made, planned: made + left.calls, elapsedSeconds: Math.round(elapsed), leftSeconds: Math.round(left.seconds * (ratio ?? 1)), paceRatio: ratio == null ? null : Math.round(ratio * 100) / 100, at: new Date(now()).toISOString() };
     writeFileAtomicSync(join(runDir, PROGRESS_FILE), JSON.stringify(p, null, 2));
     onProgress(p, progressLine(p));
   };
   const conclude = (extra) => {
     const status = stop ? stop.reason : failed.length ? "partial" : "ok";
-    const summary = { status, ...(stop ? { stopped: stop.detail } : {}), calls: counts, pace: measuredPace(), failed, health: { unread: healthUnread }, pulledAt: params.pulledAt, ...(stop && remainingNow ? { remaining: remainingNow() } : {}), ...extra };
+    const summary = { status, ...(stop ? { stopped: stop.detail } : {}), calls: counts, measuredPace: measuredPace(), failed, health: { unread: healthUnread }, pulledAt: params.pulledAt, ...(stop && remainingNow ? { remaining: remainingNow() } : {}), ...extra };
     writeFileAtomicSync(join(runDir, "status.json"), JSON.stringify({ status, phase, failed, health: { unread: healthUnread }, calls: counts }, null, 2));
     return summary;
   };
@@ -2861,15 +2877,22 @@ export function fetchEngagement(ctx) {
   };
   const samples = { cap: params.health.samplePrograms, participantFailures: samplePlan("participantFailures"), bounceReasons: samplePlan("bounceReasons") };
   const sampleReads = params.health.pull ? samples.participantFailures.planned + samples.bounceReasons.planned : 0;
-  // A sample read is priced by its own family, the two mixed by the plan's counts (F-580's second half, measured on the
-  // live arm: 25 bounce samples at 4 s were priced at the reasons rate's 12 s, a third of a resume's "left").
-  const sampleTotal = samples.participantFailures.planned + samples.bounceReasons.planned;
-  const sampleMix = sampleTotal ? (samples.participantFailures.planned * table["health-reasons-sample"] + samples.bounceReasons.planned * table["health-bounce-sample"]) / sampleTotal : 0;
-  const sampleSeconds = (n) => n * sampleMix;
+  // A sample read is priced by its own family (F-580's second half, measured on the live arm: 25 bounce samples at 4 s
+  // were priced at the reasons rate's 12 s, a third of a resume's "left"). What is still owed is each family's planned
+  // count less its records on disk — this run's or reused, any status: a failed sample is not read again this run —
+  // never below zero, so a sample re-picked after the counts moved cannot drive it negative.
+  const sampleParts = [samples.participantFailures, samples.bounceReasons];
+  const sampleSecondsOf = (parts) => parts.reduce((n, s) => n + s.calls * table[s.family], 0);
+  const samplesOwed = () => {
+    const made = {};
+    for (const r of records.values()) if (FAMILIES[r.family]?.sample) made[r.family] = (made[r.family] ?? 0) + 1;
+    return sampleParts.map((s) => ({ family: s.family, calls: Math.max(0, s.planned - (made[s.family] ?? 0)) }));
+  };
+  const plannedSampleSeconds = sampleSecondsOf(sampleParts.map((s) => ({ family: s.family, calls: s.planned })));
   const schedules = kbSteps?.schedules ?? {};
   const scheduleOf = (id) => pickSchedule(schedules[id], params.today);
   const ownReads = sampleReads;
-  const describeSeconds = sampleSeconds;
+  const ownSampleSeconds = params.health.pull ? plannedSampleSeconds : 0;
   // The lookback the health facts read by day, against the longest schedule period among the programs (ENG-2, S3b):
   // a program whose period is longer than the window cannot be judged by its cadence, and the runner derives the flag from this.
   const periods = selectedIds.map((id) => scheduleOf(id)).filter((s) => s?.classification === "recurring").map((s) => cronLastDue(s.cronExpression, params.today).periodDays).filter((p) => p != null);
@@ -2913,25 +2936,24 @@ export function fetchEngagement(ctx) {
   // 4 min left" while 30 s remained: 25 samples at the constant). A sample record on disk is a read made, this run's or
   // a reused one; the count is capped at the plan's own, so a sample re-picked after the counts moved never drives it
   // below zero.
-  const samplesMade = () => { let n = 0; for (const r of records.values()) if (SAMPLE_FAMILIES.has(r.family) && r.status === "ok") n++; return Math.min(ownReads, n); };
-  const priceRemaining = () => { const left = ownReads - samplesMade(); return remainderOf(remainingParts(), left, describeSeconds(left)); };
+  const priceRemaining = () => { const owed = params.health.pull ? samplesOwed() : []; return remainderOf(remainingParts(), owed.reduce((n, s) => n + s.calls, 0), sampleSecondsOf(owed)); };
   remainingNow = priceRemaining;
   const estimate = {
     mode: refresh.mode, why: refresh.why,
     thisRun: {
-      calls: calls(units) + ownReads, seconds: seconds(units) + describeSeconds(ownReads), units: units.length, byFamily: { ...familyCounts(units, base, params.pageSize), ...(ownReads ? sampleFamilies : {}) },
+      calls: calls(units) + ownReads, seconds: seconds(units) + ownSampleSeconds, units: units.length, byFamily: { ...familyCounts(units, base, params.pageSize), ...(ownReads ? sampleFamilies : {}) },
       // The part not yet made (F-518): a resumed run's price is this, never the whole plan's. The samples are counted
       // whole (they are picked after the counts), so a resume's remainder is an upper bound.
       remaining: priceRemaining(),
     },
-    full: { calls: calls(fullUnits) + ownReads, seconds: seconds(fullUnits) + describeSeconds(ownReads) },
+    full: { calls: calls(fullUnits) + ownReads, seconds: seconds(fullUnits) + ownSampleSeconds },
     stepDetail: { on: params.stepDetail, addsCalls: calls(withStep) - calls(without), addsSeconds: seconds(withStep) - seconds(without) },
     // What the account grain costs, printed whether it is on or off (its name lookups are not counted: how many depends on the selection).
     accounts: { on: params.accounts.pull, addsCalls: calls(accountsOn) - calls(accountsOff), addsSeconds: seconds(accountsOn) - seconds(accountsOff) },
     // What the health facts cost, printed whether they are on or off; the per-program samples against their cap,
     // the lookback against the schedules, and the failed-participant rows the count-first read found.
     health: {
-      on: params.health.pull, addsCalls: calls(healthOn) - calls(healthOff) + plannedSamples, addsSeconds: seconds(healthOn) - seconds(healthOff) + sampleSeconds(plannedSamples),
+      on: params.health.pull, addsCalls: calls(healthOn) - calls(healthOff) + plannedSamples, addsSeconds: seconds(healthOn) - seconds(healthOff) + plannedSampleSeconds,
       samples, lookback, failedParticipantRows: failedRows,
       categories: { bounceReasons: (params.health.categories?.bounceReasons ?? []).length, participantFailures: (params.health.categories?.participantFailures ?? []).length },
       // What the bounce categories cost, said plainly (F-504): one COUNTED call per category per recipient class
@@ -2948,12 +2970,12 @@ export function fetchEngagement(ctx) {
     // The row budget and what exceeds it (a health part over it is not read; the click detail refused above).
     rowBudget: { rows: rowBudget, pages: params.maxPages ?? MAX_PAGES, overBudget },
     token: {
-      expiresInSeconds: whoami.expiresInSeconds, fits: seconds(units) + describeSeconds(ownReads) + params.tokenMarginSeconds <= whoami.expiresInSeconds,
+      expiresInSeconds: whoami.expiresInSeconds, fits: seconds(units) + ownSampleSeconds + params.tokenMarginSeconds <= whoami.expiresInSeconds,
       // What the login has left once the pull is made, and whether the pull PLUS the re-documentation and the template
       // gap-fill the plan proposes still fit it (F-507): the skill's asks read these before a budget is chosen, so a
       // gap-fill is never started on a login the pull alone was judged to fit.
-      afterPullSeconds: Math.max(0, whoami.expiresInSeconds - seconds(units) - describeSeconds(ownReads) - params.tokenMarginSeconds),
-      withProposals: { seconds: seconds(units) + describeSeconds(ownReads) + kbPlan.refreshSeconds + templatesPlan.seconds, fits: seconds(units) + describeSeconds(ownReads) + kbPlan.refreshSeconds + templatesPlan.seconds + params.tokenMarginSeconds <= whoami.expiresInSeconds },
+      afterPullSeconds: Math.max(0, whoami.expiresInSeconds - seconds(units) - ownSampleSeconds - params.tokenMarginSeconds),
+      withProposals: { seconds: seconds(units) + ownSampleSeconds + kbPlan.refreshSeconds + templatesPlan.seconds, fits: seconds(units) + ownSampleSeconds + kbPlan.refreshSeconds + templatesPlan.seconds + params.tokenMarginSeconds <= whoami.expiresInSeconds },
     },
     // Where the KB is behind the tenant for the selected programs (F-491, redesigned 2026-10-08), priced as the
     // narrow refresh that closes it (one describe per program), with its inputs written beside this plan: the
@@ -2986,9 +3008,7 @@ export function fetchEngagement(ctx) {
   // and kept with the run: a resume continues under the same stamp, and a plan alone stamps nothing.
   stampRun(params, runDir, now);
   // The pull's own clock starts here (F-575): what the progress line counts and paces is the facts, never the plan's reads.
-  progressStart = now();
-  madeAtStart = counts.made;
-  leftAtStart = remainingNow ? remainingNow() : null;
+  progress = { at: now(), made: counts.made, leftSeconds: remainingNow ? remainingNow().seconds : 0, nextTickAt: 1, lastTickAt: now(), unplannedMs: 0 };
   const accountRecs = [];
   for (const d of units) {
     if (isHealth(d)) continue; // Phase E

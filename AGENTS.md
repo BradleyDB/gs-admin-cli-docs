@@ -446,9 +446,11 @@ npm run build   # only when build/ scripts or the catalog changed (needs the pin
   22 minutes), do not edit tracked files in the checkout it guards — work in another
   worktree, or wait: the runner's self-guard reports a tracked path that changed during
   the run and cannot tell a bus note typed meanwhile from the runner touching the checkout
-  (F-579). A code change made after the battery either re-runs the self-tests it touches
-  and is named on the round's Blind spots line as unbatteried, or waits for the next
-  round; the battery summary the handoff quotes names the commit it ran over.
+  (F-579). The one exception to "the last two steps": a code change made after the
+  battery, which re-runs the self-tests it touches AND its review, and is named on the
+  round's Blind spots line as unbatteried — never silently; a change to what only the
+  battery exercises (the runner, a CI step) waits for the next round instead. Either way
+  the battery summary the handoff quotes names the commit it ran over.
 - **Every open PR to `dev` is named at a session's kickoff and close-out, bot PRs
   included** (`gh pr list --base dev`), each with its check state, and a red one is
   DISPOSITIONED — merged, closed with a reason, or carried forward explicitly in the
