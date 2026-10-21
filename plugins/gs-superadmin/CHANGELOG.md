@@ -5,6 +5,32 @@ marketplace doesn't pin versions — users get main — so entries describe what
 user who updates, not internal refactors. Entries before 0.8.0 were reconstructed from git
 history when this file was introduced.
 
+## 0.57.0 — 2026-10-21
+
+The round for the checkpoint retro's P-21 and the email-engagement findings carried from
+0.56.3 (F-575, F-576, F-567): a pull says how long is left, and prices itself from its last
+pull.
+
+- **The pull says its progress, and `status` relays it (F-575).** A dashboard refresh (and
+  the ad-hoc report's pull) now says on stderr, at the first fact call and every tenth made
+  call after, how many calls are made of about how many, the time elapsed and about how
+  long is left — the plan's price at first, this run's own pace once enough of the plan has
+  run — and keeps the same figures in the run's `progress.json`;
+  `dashboard.mjs status <dash>` relays them while a refresh runs or waits to resume, so the
+  skill answers "how long is left" from one command instead of rebuilding it from the run
+  directory.
+- **A pull is priced from the last one (F-575).** Every finished pull writes the seconds per
+  call it measured, per call family, to `pace.json` beside the dashboard's spec, and every
+  later plan of that dashboard (the interview's, a change's, a refresh's) prices from it
+  instead of the fitted constants alone; a family the last pull did not make keeps its
+  earlier figure, then the constant. A first pull is priced as before.
+- **The change grammar, one table (F-576).** The email-engagement skill's change step lists
+  the value form per setting kind with an example each: the comma form is the four list
+  questions'; the programs selector's lists and every object-valued setting go through
+  `@<file>`. Step R5 states the workbook rules inline.
+- **A lock left behind is said on every verb (F-567).** The skill relays a summary's
+  `lockLeft` as written after a change or a rebuild, as it already did after a pull.
+
 ## 0.56.3 — 2026-10-17
 
 The polish round after 0.56.2 (F-556, F-557, F-558): the three notes the 0.56.2 verdict
