@@ -2399,6 +2399,8 @@ function readFetchLog(runDir) {
 }
 
 const TEXT_FAMILIES = new Set(["whoami"]);
+/** The per-program sample reads the plan prices as an extra beside its units (picked after the counts), by family. */
+const SAMPLE_FAMILIES = new Set(["health-reasons-sample", "health-bounce-sample"]);
 // How a first failure that gets one more try reads in a progress line.
 const PROGRESS_KIND = { timeout: "timed out", outage: "no answer", "not-found": "not found" };
 // The progress said while the facts are pulled (F-575): after the first made call and every PROGRESS_EVERY after, and
@@ -2884,7 +2886,14 @@ export function fetchEngagement(ctx) {
     staleKeysFile: tplGap.behind.length + tplGap.unread.length ? join(runDir, TEMPLATE_GAP_STALE_FILE) : null,
     keysFile: tplKeys.length ? join(runDir, TEMPLATE_GAP_KEYS_FILE) : null,
   };
-  const priceRemaining = () => remainderOf(remainingParts(), ownReads, describeSeconds(ownReads));
+  // The sample reads leave the remainder as they land (F-580, found by F-575's live arm): the plan counts them whole as
+  // an extra beside the units, and until now every remainder read after the plan — the progress line's tail, a stop's
+  // "more logins", a resume's opening line — carried every sample read to the end, made or not (on the sandbox, "about
+  // 4 min left" while 30 s remained: 25 samples at the constant). A sample record on disk is a read made, this run's or
+  // a reused one; the count is capped at the plan's own, so a sample re-picked after the counts moved never drives it
+  // below zero.
+  const samplesMade = () => { let n = 0; for (const r of records.values()) if (SAMPLE_FAMILIES.has(r.family) && r.status === "ok") n++; return Math.min(ownReads, n); };
+  const priceRemaining = () => { const left = ownReads - samplesMade(); return remainderOf(remainingParts(), left, describeSeconds(left)); };
   remainingNow = priceRemaining;
   const estimate = {
     mode: refresh.mode, why: refresh.why,
