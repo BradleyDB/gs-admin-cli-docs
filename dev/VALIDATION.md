@@ -3960,3 +3960,112 @@ re-documentation wrote template docs into the sandbox knowledge base, a cap's wo
   re-measured live after the fix.
 The tester's R1–R3 stand as banked: they re-run on the fixed tree as the other role, and R2's second half and F-581's
 fix have no live measurement yet.
+
+Tester round @ hb-20261021-01 (2026-10-21; checkpoint, written as the arms run) — fix/r16-f575-f579 at 5760118, clean and
+level with origin, a session in the workspace with --plugin-dir on the checkout, canary matched; the SANDBOX KB, reads
+only. Round type: ACCEPTANCE for F-575, F-580, F-581 (probes past the fixer's list: a resume, a pull with customer lists
+on, a second dashboard, a program with refusals so refusal samples are planned); RE-VERIFICATION for F-567, F-576, F-579.
+Scratches: built on the fast path (`new <s> --fast-path`, the closing step answered, saved without a pull) — an export
+of the kept dashboard is refused on the sandbox (exported from another tenant), as it should be — then narrowed with
+`change`: A = r16t-a, one program (017032e1…, sent May–Aug, 30 refusals all time), customer lists off; B = r16t-b, one
+program (0851b6ea…, 744 sent May–Aug, 116 refusals), customer lists on. Both `sentSince` 365d (the sandbox has sent
+nothing since August), Health on, re-documentation on (cap 50), no test accounts. Removed after with their run directories.
+Pass bars, stated before measuring:
+- F-575 R1: the progress line on stderr at the first fact call, then at each tenth made call or after a minute with no
+  line (the review batch's threshold), never one per call; `status.progress` carries made, planned, leftSeconds, at,
+  with `made` higher on a later read; the line ends `at this run's pace` once about 30 s of planned work is made; the last
+  line's `left` within a factor of two of the wall clock the run still took. R2 as banked above (the dry-run after the
+  second refresh). Resume probe: a resumed run's first line reads `1 of about <what is left>`, not the full plan.
+- F-580: the tail falls with the calls — `planned` minus `made` reaches the last few calls by the end (never held at the
+  sample count), and the last line's `left` within a factor of two of the real remainder.
+- F-581 R3: two refreshes of different dashboards started seconds apart both exit 0, or the later is refused on the
+  manifest's writer lock; never exit 3 token-expired while whoami reads minutes left. A whoami re-read, if any, is said
+  on its own line.
+- F-567, F-576, F-579: the walk below, against the Fix notes' claims as the review left them (F-576: the comma form for
+  every list of texts, `selector.ids` included; the table no longer routes the selector through `@<file>`).
+Results (checkpoint):
+- Setup: A's `change … selector.ids=017032e1-… selector.sentSince=365d` (no --dry-run) saved AND ran A's first pull
+  (the consequence, as the cost table says) — so A1 is a `change`-driven pull with stderr not captured; R1's stderr half
+  is A2. The comma form for `selector.ids` was accepted (F-576's widened grammar, live).
+- A1 (first pull, plan priced from the constants): run 19:38:14 → status.json 19:43:18 (5m04s), plan full 324 s, 40 calls
+  made. `status` (read 30 s apart by a poller, disk only): made 1 → 10 → 20 → 30 of about 39, `paceRatio` null at 1, 1.2
+  at 10, 0.94 at 30; null before the first fact call (19:40:02, after the plan's reads). Last record 19:42:47 (made 30):
+  leftSeconds 83 against 31 s real — 2.7×, OUTSIDE the factor-two bar; `planned` 39 against 40 made at the end, so the
+  count fell with the calls (not F-580's flat carry) and the miss is the per-call price of the families not yet measured.
+- A2 (second pull, the walk's step P line, stderr captured): 19:44:16 → 19:47:16 (3m00s), 28 made. Lines at 1, 10, 20
+  (never per call): `1 of about 27 … 19 s elapsed · about 61 s left at this run's pace` (real ~90 s), `10 of about 27 …
+  55 s · about 43 s left` (real ~54 s), `20 of about 27 … 84 s · about 15 s left` (real ~25 s, 7 calls left = planned
+  minus made). Every A2 line within the factor-two bar. `status` made 1 → 10 with the lock held; null through the
+  planning minute.
+- R2 HELD: first plan 324 s, second plan 249.57 s (faster than the constants, priced lower — pace.json's direction);
+  after A2 pace.json names A2 for 21 families and A1 for one (health-bounce-sample, which A2 did not make: the last pull
+  that made a family wins). `change r16t-a accounts.pull=yes --dry-run` after the second refresh: `pullSeconds` 344 =
+  the second plan's 249.57 + its accounts.addsSeconds 94.70 (the first plan would give 324 + 21 = 345 — the two are one
+  second apart here, so the agreement is exact but weakly discriminating). Not saved.
+- Walk, step P "how long is left" (Bradley typed it during A2, 19:44:56): the session ran `status` and, `progress` null,
+  said the pull is being planned and re-documenting and to ask again in a minute — step P's null branch as written.
+  Asked again after the pull ended (19:48): `status` read lock released, progress null, lastPull 12:45:27 — said the pull
+  had finished and relayed step P's exit-0 report (Leaders line: not published, no folder for "leaders"; not set on a
+  scratch).
+- F-579 read: the handoff's Checks line names `battery pass (55/55 over 34117d5 …)` and its Blind spots says the handoff
+  commit is bus and canary only; `git diff --stat 34117d5 5760118` = dev/FEEDBACK.md and skills/dev-canary/SKILL.md
+  alone (4 commits: bus, pointer, merge of dev, handoff). The AGENTS.md sentence is in the F-573 bullet as the Fix says.
+- F-567 WALKED live (R15 R2's handle arm, on a change): a PowerShell 5.1 read handle opened on r16t-a's refresh.lock
+  after the writer's record landed (first try lost the race: the rebuild holds the lock under 0.3 s; the retry loop
+  caught it at 19:51:08.872, record at .789), during `change r16t-a "pages.1.title=Leadership R16b"` (rebuild, no
+  pull): exit 0, `done.lockLeft` {why EBUSY, text "the refresh lock could not be removed at the end (EBUSY) and was left
+  at …\r16t-a\refresh.lock: the next refresh, rebuild or change takes it over on its own, because this process is gone
+  — nothing to do"}, the record left on disk; the session relayed it in one sentence per the change step and the ground
+  rule. With no handle (the lost race) `done` carried no lockLeft.
+- F-576 walk: `change r16t-a "sources.0.params.internalDomains=acme.com,example.org" --dry-run` and
+  `"sources.0.params.selector.ids=017032e1-…,0851b6ea-…" --dry-run`, the lines the table gives: both ok, read as lists
+  (changed `…internalDomains[]` / `…selector.ids[]`, items [0] and [1]), cost pull, not saved. Siblings: pinnedAccounts
+  comma form ok (a list); `selector.ids=none` ok (emptied). `"pages.0.statusDefault=PROCESSING,PAUSED" --dry-run`:
+  REFUSED — `not saved — pages[0].statusDefault must be a list of statuses, or null for every status`. The table's
+  list row and the review note both name "a page's statusDefault". Cause (read): the writer covers BOTH
+  `pages[].statusDefault` and `pages[].statusDefault[]`; coveredPath returns the exact match first, without `[]`, so
+  changeValue reads the comma form as one text. A sweep of every path covered as both X and X[] finds this one alone;
+  test/dashboard.mjs's F-576 check enumerates the selector's lists, pinnedAccounts and internalDomains, not this one.
+- B1 (B's first pull, inside its `change`, customer lists on, names on the Leadership page): 19:49:47 → 19:54:41
+  (4m54s), plan full 338 s. Lines 1 (`about 5 min left (the plan's price; this run's pace is measured from here)` — no
+  pace.json yet), 10, 20, 30, 40 (`40 of about 42 · 4 min elapsed · about 13 s left at this run's pace`, at 19:54:33;
+  real 7 s — 1.9×, inside the bar). Neither A nor B planned a refusal sample (`health-reasons-sample`); both planned
+  the bounce sample only.
+- R3 HELD (the bar), F-581's mechanism NOT exercised: `refresh r16t-a` at 19:55:06 and `refresh r16t-b` at 19:55:12 over
+  the one KB (whoami 2244 s left before, 2054 s after): A exit 0 at 19:58:03 (28 made; `lockTakenOver` {by bradl, at
+  19:51:08.789Z} — the F-567 probe's left lock, taken over as its text said), B exit 0 at 19:58:15 (30 made); neither
+  stopped, no manifest-lock refusal, no false token-expired. No call died on the CLI's login wording, so the fix's
+  whoami re-read and retry never ran live: both pulls were small and re-documented nothing (redoc calls 0), unlike the
+  builder's 12-minute pulls with 50 templates re-documented. The re-read path is the suite's alone (F-581 + F-513 arms).
+- Refusal sample (the kickoff's "a refused sample"): UNREACHABLE on the sandbox today — the refusal sample reads entry
+  refusals over the last 30 days (B's snapshot: participantFailures window 2026-09-22 → 2026-10-22, counts {}), and
+  `rp run ao_failed_participants` grouped by program with ModifiedAt GTE 2026-09-22 returns 0 programs. Only bounce
+  samples were exercised.
+- R3's last lines: A `20 of about 27 · about 24 s left` at 19:57:39.467, end 19:58:03.479 (24.0 s); B `20 of about 29 ·
+  about 25 s left` at 19:57:44.844, end 19:58:15.214 (30.4 s).
+- Resume probe (B, `refresh r16t-b --full`, killed with taskkill /T /F at made 20 of about 41, 20:02:30; the same line
+  run again): between the two, `status` relayed the stopped run's progress (made 20, planned 41) with the lock stale and
+  `resumable` naming the run. The resume: `took over a stale refresh lock … since 19:59:05.453Z`; first line `1 of about
+  21 calls made this run · 2 s elapsed · about 62 s left (the plan's price; …)` — the remainder (41 − 20), not the
+  plan (F-575's sibling case); lines at 10 (`about 39 s`, ~42 s real) and 20 (`about 8 s left at this run's pace` at
+  20:03:37.450; status.json 20:03:44.675, 7.2 s); the bounce sample sat in that remainder; summary `resumed: true`,
+  reused 41, made 23, exit 0. F-580's unmeasured second half (a resume's opening line): 62 s said for ~70 s real,
+  against the builder's pre-fix "7 min left" for 3.3 real minutes (one sample here, 25 there).
+- Last line against the wall clock, all six pulls: A1 2.7× (first pull, constants), B1 1.9× (first pull), A2 0.6×,
+  R3-A 1.0×, R3-B 0.8×, resume 1.1×. A1's tail: 9 planned calls left for 10 real (the count right), priced 83 s for
+  31 s — the families left were the health step families, constant 10 s each against ~3.5 s measured, under a
+  run-wide pace ratio of 0.94 (the slow uniques-month, 35.8 s against 13, had held the ratio up).
+- Ruling (Bradley, 2026-10-21, after the tester's answer to "is this an actual user state?"): A1's 2.7× REOPENS F-575
+  (its own pricing mechanism short of the stated bar: a first pull's tail priced from per-family constants under one
+  run-wide ratio) and F-575 is RE-DECLARED polish (an estimate reading high, disclosed in step P — "tends to read high
+  near the end" — wrong for no data; reachable on every dashboard's first pull).
+- CI on the handoff head 5760118: validate-plugin run 39661765849 (changes, manifests, validate (ubuntu-latest))
+  success; docs-drift run 39661765734 (drift (full)) success; mergeStateStatus CLEAN.
+- Guard wiring (one line, the bus header's ask): `gs-admin re r run-now --id zz-r16-guard-probe` drew the guard's ask
+  (Bradley's report: "Mutating Gainsight command: gs-admin rules-engine rules run-now. … ⚠ At least one of these tenants
+  is PRODUCTION …"); declined; no journal row.
+- Cleanup done: both scratch dashboards and their eight run directories; the KB gained no docs this round
+  (re-documentation 0 calls on every pull); no publish target was set.
+Section status (tester @ hb-20261021-01, 2026-10-21): CLOSED with two reopens — F-567, F-579, F-580, F-581 VERIFIED;
+F-575 REOPENED and re-declared polish (Bradley's ruling); F-576 REOPENED (statusDefault). Banked for a later round
+(the bus's Noticed line): F-581's re-read path live; a refusal sample on a tenant with recent refusals.
