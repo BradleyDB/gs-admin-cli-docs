@@ -3902,7 +3902,7 @@ families are not all seen shows the split (`<measured> at this run's pace; the p
 seen`), and reads `at this run's pace` once every remaining family has been seen (a unit that will never be made this
 run — a failed or refused health part — keeps its family unseen, by design). Record the last progress line's `left`
 against the wall clock the run still took, in two cases: (a) the FIRST pull ever made on this knowledge base (no
-`<kb>/dashboards/pace.json` — remove it and the scratch's pace.json first to make the case): the measured part within a
+`<kb>/engagement-pace.json` — remove it and the scratch's pace.json first to make the case): the measured part within a
 factor of two, the plan's part reported as the constants' guess it is; (b) the SECOND scratch's first pull, with the
 knowledge base's pace from (a) in place: the whole `left` within a factor of two (this is the redesign's claim — the
 constants' tail, 2.7x on the sandbox at hb-20261021-01, is gone once the knowledge base has been measured once).

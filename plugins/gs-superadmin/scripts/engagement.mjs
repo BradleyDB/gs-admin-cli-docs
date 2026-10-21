@@ -2411,14 +2411,17 @@ const PROGRESS_EVERY_MS = 60000; // or when a minute has passed since the last l
 export const PROGRESS_FILE = "progress.json";
 // ── The pace files (F-575, redesigned at its first reopen) ───────────────────
 // Per call family, the seconds per call the last pull that made it measured, and the run it came from. Kept twice: once
-// per KNOWLEDGE BASE (`<kb>/dashboards/pace.json` — every pull over it writes it, any dashboard's and the ad-hoc
+// per KNOWLEDGE BASE (`<kb>/engagement-pace.json`, at the root beside the manifest, as the dashboard's failure
+// categories are: the dashboards folder is the spec writer's to name — every pull over it writes it, any dashboard's and the ad-hoc
 // report's, so a tenant measured once prices every later plan on it, a new dashboard's first plan included) and once
 // beside a dashboard's spec, which refines the knowledge base's with the dashboard's own shape. A plan reads the two
 // overlaid on the fitted constants (callSecondsTable); only the first pull ever made on a tenant prices a family it has
 // not seen from the constants, and its progress line says so.
 export const PACE_FILE = "pace.json";
+/** The knowledge base's own pace file, at its root (beside `_manifest.json` and the dashboard's failure categories). */
+export const KB_PACE_FILE = "engagement-pace.json";
 /** @param {string} kbDir */
-export const kbPacePath = (kbDir) => join(kbDir, "dashboards", PACE_FILE);
+export const kbPacePath = (kbDir) => join(kbDir, KB_PACE_FILE);
 /**
  * The pace the files hold, overlaid in order (the later wins): per family the seconds per call. A file that cannot be
  * read is said once through `log` and stands for nothing until the next pull rewrites it.
