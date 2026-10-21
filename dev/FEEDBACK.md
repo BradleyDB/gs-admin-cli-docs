@@ -3705,3 +3705,11 @@ Source: F-575's live arm, R16 R1 (builder, 2026-10-21): reachable only since som
 What: the plan's remainder (priceRemaining, F-518's) counts the per-program sample reads as a fixed extra that never falls as the samples land, so every remainder read after the plan — the F-575 progress line's tail, a stop's 'about N more logins', a resume's opening line — carries every sample read to the end, made or not
 Repro: a dashboard with Health on and sample reads planned (samplePrograms above 0, with refusals or uncategorised bounces in the window): watch the F-575 progress line to the end of a pull. Measured 2026-10-21 on a sandbox scratch (R16 R1): 'about 4 min left' at 70 of about 95 calls while 30 s remained; planned stayed 25 (the sample count) above made through the whole pull, and the last line's left was 25 samples at the constant times the run's pace
 Expected: the remainder subtracts the sample reads recorded (this run's or reused), capped at the plan's own count; the progress line's tail then falls to the calls actually left, and a stop's logins figure and a resume's opening line price the same remainder
+
+## F-581 — OPEN
+Reported: 2026-10-21 (builder)
+Severity: normal — a user running two dashboards sees a false stop and is told to log in; the resume works and nothing pulled is lost
+Source: F-575's live arm, R16 R3 (builder, 2026-10-21)
+What: a refresh stops with exit 3, 'the CLI reported the token expired', while the token is live, when a second gs-admin process (another dashboard's refresh over the same knowledge base) runs on the machine: the CLI prints its login wording for one call and the engine took an auth death as final without reading the token
+Repro: two scratch dashboards over one knowledge base; start refresh <a> and, six seconds later, refresh <b>. Measured 2026-10-21 (R16 R3, builder): <a> stopped after 19 calls this run with status token-expired, five minutes after gs-admin whoami read 35 minutes left, and whoami read 28 minutes left right after; <b> finished; <a>'s resume, alone, finished
+Expected: an auth death is read once before the run stops: whoami live (beyond the token margin) -> the call is made once more; expired, none, or dead again -> the stop as before (F-513's behaviour, resumable). The clause F-575's logging dropped pending this measurement
