@@ -2461,6 +2461,17 @@ export function fetchEngagement(ctx) {
     flags.set(object, schemaFlags(payload));
   };
 
+  // The token read once more, outside the run's records, when a call dies as an auth death (F-581): a second gs-admin
+  // process on the same machine (another dashboard's pull over the same knowledge base) makes the CLI say "run gs-admin
+  // login" with a live token — measured 2026-10-21, one of two concurrent refreshes stopped with 35 minutes left.
+  const tokenReadsLive = () => {
+    const argv = ["whoami"];
+    if (gate(argv)) return false;
+    const w = transport.run({ id: "whoami-recheck", argv, timeoutMs: 60000 });
+    if (!w.ok) return false;
+    const p = parseWhoami(w.stdout);
+    return p.tokenState === "valid" && (p.expiresInSeconds ?? 0) > params.tokenMarginSeconds;
+  };
   // How many programs a unit names, for a failure entry: the reader of a stop is told what failed and for whom.
   const unitScope = (d) => (d.programs ? { programs: d.programs.length } : d.programId ? { programs: 1 } : d.scope ? { programs: d.scope.length } : {});
   // `prior` is the record a resume found for this call: a record that did not succeed counts the runs it failed in
@@ -2517,6 +2528,12 @@ export function fetchEngagement(ctx) {
       }
       const kind = classifyFailure(r);
       if (kind === "auth-expired") {
+        // Live by its own reading → the call is made once more; dead, or dead again → the stop as before (F-581).
+        if (attempt === 1 && tokenReadsLive()) {
+          say("the CLI reported the token expired, but it reads live: trying once more");
+          counts.retried++;
+          continue;
+        }
         say("stopped: the token expired");
         stop = { reason: "token-expired", detail: "the CLI reported the token expired" };
         return null;
@@ -2838,13 +2855,17 @@ export function fetchEngagement(ctx) {
   const samplePlan = (part) => {
     const family = part === "participantFailures" ? "health-reasons-sample" : "health-bounce-sample";
     // With health off the refusals per month were not read, so how many programs would be sampled is unknown (null), not 0.
-    if (part === "participantFailures" && !params.health.pull) return { withFailures: null, planned: 0, carried: 0, beyondCap: 0, secondsEach: CALL_SECONDS[family], secondsBeyondCap: 0, family, note: "counted once health is on" };
+    if (part === "participantFailures" && !params.health.pull) return { withFailures: null, planned: 0, carried: 0, beyondCap: 0, secondsEach: table[family], secondsBeyondCap: 0, family, note: "counted once health is on" };
     const t = sampleTargets({ counts: sampleCounts[part], previousCounts: carryFrom ? previousSampleCounts(carryFrom, part, sampleWindowOf(sampleWindows[part])) : null, previousSampled: previousSampledPrograms(carryFrom, part), cap: params.health.samplePrograms });
-    return { withFailures: [...sampleCounts[part].values()].filter((n) => n > 0).length, planned: t.sample.length, carried: t.carried.length, beyondCap: t.notSampled.length, secondsEach: CALL_SECONDS[family], secondsBeyondCap: t.notSampled.length * CALL_SECONDS[family], family };
+    return { withFailures: [...sampleCounts[part].values()].filter((n) => n > 0).length, planned: t.sample.length, carried: t.carried.length, beyondCap: t.notSampled.length, secondsEach: table[family], secondsBeyondCap: t.notSampled.length * table[family], family };
   };
   const samples = { cap: params.health.samplePrograms, participantFailures: samplePlan("participantFailures"), bounceReasons: samplePlan("bounceReasons") };
   const sampleReads = params.health.pull ? samples.participantFailures.planned + samples.bounceReasons.planned : 0;
-  const sampleSeconds = (n) => n * table["health-reasons-sample"];
+  // A sample read is priced by its own family, the two mixed by the plan's counts (F-580's second half, measured on the
+  // live arm: 25 bounce samples at 4 s were priced at the reasons rate's 12 s, a third of a resume's "left").
+  const sampleTotal = samples.participantFailures.planned + samples.bounceReasons.planned;
+  const sampleMix = sampleTotal ? (samples.participantFailures.planned * table["health-reasons-sample"] + samples.bounceReasons.planned * table["health-bounce-sample"]) / sampleTotal : 0;
+  const sampleSeconds = (n) => n * sampleMix;
   const schedules = kbSteps?.schedules ?? {};
   const scheduleOf = (id) => pickSchedule(schedules[id], params.today);
   const ownReads = sampleReads;
