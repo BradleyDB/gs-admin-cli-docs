@@ -3514,7 +3514,7 @@ Blind spots: no tenant pull was made with the new families (the two reads were c
      Carried forward (not in this release): F-448 verdict by the other role; the skipped-path arm
        (Blind spots above). -->
 
-## F-563 — OPEN
+## F-563 — DEFERRED (past 0.57.0)
 Reported: 2026-10-17 (builder)
 Severity: polish — reachable only with a handle on the lock in the first second of a run (a scanner or sync client); the next refresh takes the dead record over on its own; a raw stack where a refusal belongs, nothing lost
 What: a refresh dies with a raw EPERM stack and no JSON summary when a handle that forbids rename sits on refresh.lock at the instant the run writes its name into the record (doc-lib acquireFileLock record() -> writeFileAtomicSync, a rename over the lock, past the Windows retry); measured once by the R15 tester (VALIDATION section R15 R2, reported, not logged) and logged by the builder under the 2026-10-16 ruling that report-only notes are logged as polish
@@ -3522,6 +3522,7 @@ Repro: Windows: import a scratch dashboard, start `node .gs-superadmin/plugin/sc
 Expected: the refresh refuses in one JSON line, never a stack: the record could not be written because a handle holds the lock (the lock is this run's own; it is released, or left and said as F-557 says), with the remedy to run the line again. Class: F-545/F-546's record-is-evidence (every way of failing to READ the record was resolved toward takeover or crash; a way of failing to WRITE it was not). The lock primitive has had its two rounds (R13, R14) and this R15 polish pass, so under the two-rounds valve the proposal is DEFERRED past the next version with the reopen trigger: the next change to acquireFileLock — unless the maintainer wants the one-line catch now.
 Defer: 2026-10-17 (auto, release ceremony) - past 0.56.3. Why not now: OPEN polish at release. Reopen: next release ceremony.
 Reopened: 2026-10-21 (release ceremony) — deferred past 0.56.3; re-decided for 0.57.0 — fix, WONTFIX, or defer again with a real trigger
+Defer: 2026-10-21 (Bradley, 0.57.0 release ceremony) - past 0.57.0. Why not now: rare (a rename-forbidding handle held past the 1.1 s Windows retry in a run's first second; seen only under a deliberate probe), harmless (nothing written before the first call; the next refresh takes the dead lock over; a re-run cleared it in the R15 walk); a fix touches the lock primitive past its two rounds and would pull F-565 into a pre-cut round. 0.57.0 does not change acquireFileLock. Reopen: the next change to doc-lib's acquireFileLock (record() and its rename over the lock), which also reopens F-565.
 
 ## F-564 — DEFERRED (past 0.57.0)
 Reported: 2026-10-17 (builder)
