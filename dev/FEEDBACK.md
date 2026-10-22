@@ -38,7 +38,7 @@ never measured; a session that auto-approves asks records the hook's decision ob
 says the rendered prompt is unmeasured.
 Entry hint: read this header for the Under test line, then grep '^## F-' for the live
 findings and read at those offsets. Released sections are moved to
-dev/FEEDBACK-archive.md after each release (last move: 2026-10-17, after release 0.56.3 — F-556..F-562, 6 sections (F-556, F-557, F-558, F-560, F-561, F-562), with 2 header Walk lines, leaving F-568 FIXED and five DEFERRED (past 0.56.3) live; the 0.56.2 move (2026-10-16) took F-530..F-555, 14 sections, with 4 header Walk lines, leaving no live section and no DEFERRED one; the 0.54.0 move took F-469..F-547, 72 sections, with 25 header Walk lines; the 0.43.4 move (a hotfix cut from main) took F-487; the 0.43.3 move took F-461 and F-466, leaving no live section; the 0.43.0 move took F-462, F-463, F-464, F-465, F-467 and F-468; the 0.42.0 move took F-448..F-460 with their round blocks and the four header Walk lines; the 0.37.0 move took
+dev/FEEDBACK-archive.md after each release (last move: 2026-10-21, after release 0.57.0 — F-567..F-581, 13 sections (all of them but F-575 and F-576), with 2 header Walk lines, leaving seven DEFERRED (past 0.57.0) live: F-563..F-566, F-575, F-576, F-582; the 0.56.3 move (2026-10-17) took F-556..F-562, 6 sections (F-556, F-557, F-558, F-560, F-561, F-562), with 2 header Walk lines, leaving F-568 FIXED and five DEFERRED (past 0.56.3) live; the 0.56.2 move (2026-10-16) took F-530..F-555, 14 sections, with 4 header Walk lines, leaving no live section and no DEFERRED one; the 0.54.0 move took F-469..F-547, 72 sections, with 25 header Walk lines; the 0.43.4 move (a hotfix cut from main) took F-487; the 0.43.3 move took F-461 and F-466, leaving no live section; the 0.43.0 move took F-462, F-463, F-464, F-465, F-467 and F-468; the 0.42.0 move took F-448..F-460 with their round blocks and the four header Walk lines; the 0.37.0 move took
 F-414..F-447 with their round blocks; the 0.36.3 move took F-410..F-413; the 0.36.2 move took F-390, F-391,
 F-396..F-409; the 0.36.1 move took F-387..F-389 and F-392..F-395;
 the 0.35.4 move took F-360..F-386, the 0.35.0 move F-357..F-359, the 0.34.3 move F-224..F-356
@@ -171,6 +171,51 @@ Noticed (hb-20261021-02): 2026-10-21 (tester) — (1) VALIDATION § R16's banked
 Blind spots (hb-20261016-02): 2026-10-16 (tester) — F-546's killed writer was never caught live inside a mark (two kills, a 2 ms poll, both after the release): the dead-pid lock was laid by hand in a killed mark's shape, so the kill-to-lock path itself is the suite's; the writers' SIGINT/SIGTERM release does not exist on Windows and was not exercised; the held-handle and kill arms ran on this Windows host alone; the four-process contention driver was not re-run. F-541 and F-542 are judged by the stand-in suite alone, F-542's base-directory variant by construction; no live refresh restarted, so the skill's restarted relay is read, not walked. F-552's display-change half is suite-only. F-553/F-554/F-555 by reading; of F-555's Judge only the dashboard and page suites were run. R4 and the walk ran through the session's own shell tools, not a human paste into a terminal; cmd was not run. setup's changed sentence is unwalkable at CLI 1.0.12. The guard ask's rendering is Bradley's report; prompts are invisible to the session.
 Blind spots (hb-20261015-10): 2026-10-16 (tester) — F-546's lock never met a second writer live: the production KB is current (both R2 plans: 0 programs behind, 0 undocumented, 0 templates), so neither refresh re-documented and the manifest stayed byte-equal — the lock is measured by test/manifest-ops.mjs alone; the natural live arm is any later refresh whose plan finds programs behind. F-541, F-542 and F-545 are judged by the suite alone (no tenant can produce their states, VALIDATION § R13 R3). F-536's three shells: Git Bash and Windows PowerShell 5.1 ran the line through the session's own shell tools, cmd from a .bat file run by `cmd /d /c` — none was a human paste into a terminal window. The guard ask's rendering is Bradley's report; prompts are invisible to the session.
 Noticed (hb-20261021-01): 2026-10-21 (tester) — (1) VALIDATION § R16 R1's BROKEN list names "status.progress null while the run holds the lock", the designed state through the plan's reads (step P: null until the first fact call) → builder, reword the bar in the next round touching R16; (2) F-581's whoami re-read and retry never ran live (no call died on the login wording in R3; both pulls small, re-documentation 0) → builder, bank a re-run of R3 with both pulls re-documenting, at the next round touching engagement.mjs's auth path or the pull lock per knowledge base; (3) the refusal sample is unreachable on the sandbox (0 entry refusals in the last 30 days) → builder, bank it for a tenant with recent refusals; (4) the accounts add-on's price moved from 3 calls / 21 s (A's first plan) to 14 calls / 94.70 s (A's second), unexplained, and change --dry-run quotes it → builder, explain or log at the next round touching F-575's pricing. Full shape (what, where, owner, trigger, check): the tester's verdict comment on PR #71 @ hb-20261021-01.
+
+<!-- builder 2026-10-21 (0.57.0 RELEASED — post-release housekeeping):
+     Payload: the R16 round (PR #71) — the email-engagement pull says its progress and about how long is left,
+       and `status` relays it (F-575); every plan prices from the pulls already measured, the knowledge base's
+       engagement-pace.json under the dashboard's pace.json (F-575); the change grammar as one table, the comma
+       form read for every list of texts (F-576); the "left" figure falls to what is left (F-580); a token the
+       CLI misreports no longer stops the pull (F-581); a lock left behind said on every verb (F-567); with
+       PR #70's committed battery and mutation runners (F-569..F-574, F-577) and the AGENTS.md battery-time
+       rule (F-579), no plugin bytes. Staged versions folded in: none (0.57.0 alone).
+     Gate 1 (bus): step 0 (3067023) re-opened F-563..F-566 (deferred past 0.56.3); F-564, F-565, F-566
+       auto-deferred past 0.57.0, their one free pass; F-563, its pass spent, deferred past 0.57.0 on Bradley's
+       ruling (1b3e85d; reopen: the next change to acquireFileLock). Terminal: F-567..F-574, F-577, F-579,
+       F-580, F-581 VERIFIED, F-578 WONTFIX; open PRs to dev: none (PR #71 merged at 4b342f3 before the cut).
+     Gate 2 (review): /code-review medium origin/main...dev — requested medium, ran high (8 inline angles);
+       6 findings, read not reproduced, none decision-changing: F-575 (second reopen: progress.json and the pace
+       files written unguarded inside the pull, the knowledge base's pace file merged with no lock,
+       last-pull-wins per family, runsRootOf a second spelling) and F-576 (a one-item JSON-scalar value read as
+       a scalar) reopened by hand and DEFERRED past 0.57.0 under the two-rounds valve; F-582 logged polish
+       (process: the round's own reviews rode past them) and auto-deferred (396fa76, 32b9f6b).
+       /security-review over the payload — run, no finding above the bar; highest severity none.
+     Cut: release/v0.57.0 from dev @ 32b9f6b, ONE commit beyond (the strip, f5c1e5a), in a short-path worktree;
+       the first cut (strip 7379f8e on 1b3e85d) was recut after the bus-only gate commits, its stripped tree
+       hash unchanged; battery (node build/run-battery.mjs) 55/55 on the dev tip 1b3e85d (36m41s) and 54/54 on
+       the stripped tree 7379f8e (36m22s), both strict validates included.
+     CI on the release PR #72 (f5c1e5a), QUOTED per job after completion:
+         validate-plugin 39703579437: changes success / manifests success / validate (ubuntu-latest) success /
+           validate (windows-latest) success / validate (macos-latest) success
+         docs-drift 39703579450: drift (full) success
+         pr-target-guard 39703579510: guard success
+     Merged on Bradley's word, by the builder (main @ 4338b6c); tag v0.57.0 pushed by hand from the worktree;
+       release branch deleted by GitHub at the merge and locally; worktree removed; checkout on dev.
+     Housekeeping: F-567..F-581's 13 terminal sections moved VERBATIM to the archive with 2 header Walk lines
+       (hb-20261021-01, hb-20261017-04) (live 20 -> 7, archive 114 -> 127, sum 134; 174 lines removed equal the
+       174 added; block sha256 27897351615e0bbd81ceac70b12b12eba26d9c30e2c1b99cfe2eb8df7199767e; 5d49a53);
+       entry hint updated; Under test + canary -> dev · hb-20261021-03 (57634aa), closed by a builder walk line
+       (bb8984b). Next free number F-583. Released: 0.57.0; dev stages nothing.
+     Now live from main: the workflows' added fixture steps (PR #70) are on main; no Dependabot or
+       pull_request_target change.
+     GitHub Release: https://github.com/BradleyDB/gs-admin-cli-docs/releases/tag/v0.57.0 (notes = the 0.57.0
+       CHANGELOG entry after the fixed intro).
+     Consumer refresh: claude plugin marketplace update gs-admin-cli-docs; claude plugin update
+       gs-superadmin@gs-admin-cli-docs.
+     Carried forward (not in this release): F-563..F-566, F-575, F-576, F-582 DEFERRED (past 0.57.0), back at
+       the next ceremony — F-563..F-566 and F-582 with their free pass spent, so they block there until decided;
+       the tester's Noticed (hb-20261021-02) items, on the header line above. -->
 
 <!-- tester 2026-10-19 (VERDICT @ hb-20261018-01 — F-569, F-570, F-571, F-572, F-573, F-574, F-577 FIXED -> VERIFIED, a
      re-verification round on fix/f569-battery-runner (worktree at f4cb1d9, clean and level with origin; a session in the
