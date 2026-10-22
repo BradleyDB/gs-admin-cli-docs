@@ -5,6 +5,47 @@ marketplace doesn't pin versions — users get main — so entries describe what
 user who updates, not internal refactors. Entries before 0.8.0 were reconstructed from git
 history when this file was introduced.
 
+## 0.57.0 — 2026-10-21
+
+The email-engagement findings carried from 0.56.3 (F-575, F-576, F-567) and two found on
+the round's own live pull (F-580, F-581): a pull says how long is left, prices itself from
+its last pull, and no longer stops on a token the CLI misreports.
+
+- **The pull says its progress, and `status` relays it (F-575).** A dashboard refresh (and
+  the ad-hoc report's pull) now says on stderr, at the first fact call and every tenth made
+  call after (or a minute of silence), how many calls are made of about how many, the time
+  elapsed and about how long is left — each remaining call family at the pace this run has
+  measured for it, the plan's price for a family not yet seen — and keeps the same figures
+  in the run's `progress.json`;
+  `dashboard.mjs status <dash>` relays them while a refresh runs or waits to resume, so the
+  skill answers "how long is left" from one command instead of rebuilding it from the run
+  directory.
+- **A pull is priced from the pulls already measured (F-575).** Every pull, finished or
+  stopped, writes the seconds per call it measured, per call family, to the knowledge base's
+  own `engagement-pace.json` and to `pace.json` beside the dashboard's spec; every later plan
+  on that knowledge base (a new dashboard's first, a change's, a refresh's, the ad-hoc
+  report's) prices from them instead of the fitted constants alone — the knowledge base's
+  figures under the dashboard's own — and a family no pull has made yet keeps the constant.
+  Only the first pull ever made on a knowledge base is priced as before, and its progress
+  line says which part of "left" is still the plan's guess.
+- **The change grammar, one table (F-576).** The email-engagement skill's change step lists
+  the value form per setting kind with an example each, and `change` now reads the comma
+  form for every list of texts the spec has — the programs selector's `names` and `ids`,
+  the pinned accounts and a page's status default included, which it used to refuse; an
+  object-valued setting still goes through `@<file>`. Step R5 states the workbook rules
+  inline.
+- **The "left" figure falls to what is left (F-580).** The pull's remainder — the progress
+  line's tail, a stop's "about N more logins", a resume's opening line — no longer carries
+  the per-program sample reads to the end once they have landed, and prices each sample at
+  its own family's rate.
+- **A token the CLI misreports no longer stops the pull (F-581).** When a call comes back
+  with the CLI's "run gs-admin login" wording while the login is live (seen when two
+  dashboards' refreshes ran at once), the refresh reads the token once and, live, makes the
+  call again, saying so on stderr; an expired token still stops the pull as before, resumable
+  after the login.
+- **A lock left behind is said on every verb (F-567).** The skill relays a summary's
+  `lockLeft` as written after a change or a rebuild, as it already did after a pull.
+
 ## 0.56.3 — 2026-10-17
 
 The polish round after 0.56.2 (F-556, F-557, F-558): the three notes the 0.56.2 verdict

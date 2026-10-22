@@ -36,7 +36,7 @@ import { join, dirname, resolve, isAbsolute } from "node:path";
 import { fileURLToPath } from "node:url";
 import { isDeepStrictEqual } from "node:util";
 import { makeTempDir, removeTempDir, writeFiles, runNode } from "../../../test/rig.mjs";
-import { COSTS, COST_KINDS, ADAPTER_MAPPING, QUESTIONS, CLOSING_ASK, CLOSING_OPTIONS, askText, defaultAnswer, composeAnswer, defaultGroupRules, categoryCostText, changeCost, changeValue, coveredPath, computeDelta, adapterParams, pullSecondsAfter, loginsFor, LOGIN_SECONDS, EXIT, KEEP_SNAPSHOTS, LOCK_STALE_MS, LOCK_FILE, STATE_FILE, SNAPSHOTS_DIR, PREVIEW_DIR, SUGGESTION_FILE, ACCOUNTS_DIR, PUBLISH_TARGETS_FILE, PUBLISH_DIR, NATIVE_READ_PATHS, runOwner } from "../scripts/dashboard.mjs";
+import { COSTS, COST_KINDS, ADAPTER_MAPPING, QUESTIONS, CLOSING_ASK, CLOSING_OPTIONS, askText, defaultAnswer, composeAnswer, defaultGroupRules, categoryCostText, changeCost, changeValue, coveredPath, computeDelta, adapterParams, pullSecondsAfter, loginsFor, LOGIN_SECONDS, EXIT, KEEP_SNAPSHOTS, LOCK_STALE_MS, LOCK_FILE, STATE_FILE, PACE_FILE, SNAPSHOTS_DIR, PREVIEW_DIR, SUGGESTION_FILE, ACCOUNTS_DIR, PUBLISH_TARGETS_FILE, PUBLISH_DIR, NATIVE_READ_PATHS, runOwner } from "../scripts/dashboard.mjs";
 import { spawnSync } from "node:child_process";
 import { resolveGroups, programTraits } from "../scripts/dashboard-groups.mjs";
 import { SPEC_DESCRIPTIONS, defaultSpec, openSpec, DEFAULT_ACCOUNT_LISTS, presetPanels } from "../scripts/dashboard-spec.mjs";
@@ -44,7 +44,7 @@ import { HOW_TO_REFRESH_RULED } from "./fixtures/engagement/ruled-text.mjs";
 import { LACKS, HOW_TO_REFRESH_TEXT, COPY_LINES } from "../scripts/dashboard-runtime.mjs";
 import { openSnapshot, listPhrase } from "../scripts/engagement-query.mjs";
 import { nativePlan, TEST_PREFIX } from "../scripts/dashboard-native.mjs";
-import { makeGate, resolveParams } from "../scripts/engagement.mjs";
+import { makeGate, resolveParams, CALL_SECONDS, readPaceFiles, writePaceFile, KB_PACE_FILE } from "../scripts/engagement.mjs";
 import { kbFiles, OWN_SITE_UNSUBSCRIBE, TEMPLATES_DOMAIN, buildTenant, FIXTURE_BOUNCE_CATEGORIES } from "./fixtures/engagement/acme-tenant.mjs";
 import { splitRedirect } from "./fixtures/engagement/shell-words.mjs";
 
@@ -406,6 +406,31 @@ try {
   check("refresh: the pull through the adapter (health on since the admin page's Health tab is on; customer lists on), the groups applied, the snapshot written under the dashboard, both pages built, the summary with the pull's mode, counts, the lookback and the caveats; no delta on a first pull",
     refresh.code === 0 && refresh.json?.status === "ok" && refresh.json.pull.mode === "full" && refresh.json.pull.health === true && refresh.json.pull.accounts === true && refresh.json.pull.lookbackDays >= 30 && snap1.length === 1 && existsSync(join(dash(), "latest-admin.html")) && existsSync(join(dash(), "latest-exec.html")) &&
       refresh.json.delta === null && /ungrouped/.test(refresh.json.ungrouped) && refresh.json.pages.length === 2 && !existsSync(join(dash(), LOCK_FILE)) && !existsSync(join(dash(), STATE_FILE)), refresh.json ?? refresh.stderr?.slice(-600));
+  // F-575: the pull says its progress and keeps it, and a finished pull's measured pace prices the next plan.
+  const runsRoot = join(WS, ".gs-superadmin", "tmp", "engagement");
+  const progressLines = refresh.stderr.split("\n").filter((l) => l.includes("pull progress: "));
+  const progressFile = () => readJson(join(runsRoot, refresh.json.run, "progress.json"));
+  check("F-575 progress: the refresh says on stderr, at the first fact call and every tenth made call after, how many calls are made of about how many, the time elapsed and about how long is left — each remaining family at the pace THIS run measured for it, the plan's price for a family not yet seen (the line counts them; the first line names several, and against the stand-in's fast calls the last record's left is seconds, never the constants' minutes); never one of the per-call lines; the same figures in the run's progress.json",
+    /^dashboard\.mjs: pull progress: 1 of about \d+ calls made this run · \d+ s elapsed · about \d+ (s|min) left \(\d+ (s|min) at this run's pace; the plan's \d+ (s|min) for \d+ famil(y|ies) not yet seen\)$/.test(progressLines[0] ?? "") && progressLines.length >= 2 && /^dashboard\.mjs: pull progress: 10 of about \d+ calls made this run · \d+ s elapsed · about \d+ (s|min) left/.test(progressLines[1] ?? "") && / left at this run's pace$/.test(progressLines.at(-1) ?? "") && progressLines.every((l) => /^dashboard\.mjs: pull progress: \d+ of about \d+ calls made this run · /.test(l)) &&
+      Number.isInteger(progressFile().leftSeconds) && progressFile().leftSeconds < 30 && progressFile().unseenFamilies === 0 && progressFile().planSeconds === 0 && progressFile().made === Number(progressLines.at(-1)?.match(/progress: (\d+) of/)?.[1]) && progressFile().planned >= progressFile().made, [progressLines.slice(0, 2), progressLines.at(-1), progressFile()]);
+  const kbPace = join(KB, KB_PACE_FILE);
+  check("F-575 pace: a finished pull writes the seconds per call it measured, per family, beside the spec (pace.json, each family naming the run it was measured on) AND to the knowledge base's own engagement-pace.json at its root (the same families; the dashboards folder is the writer's to name), and the summary names both files",
+    existsSync(join(dash(), PACE_FILE)) && Object.keys(readJson(join(dash(), PACE_FILE)).families).length >= 3 && Object.values(readJson(join(dash(), PACE_FILE)).families).every((x) => x.calls > 0 && x.seconds > 0 && x.run === refresh.json.run) && refresh.json.pace?.file === join(dash(), PACE_FILE) && refresh.json.pace.families >= 3 &&
+      existsSync(kbPace) && refresh.json.pace.kbFile === kbPace && isDeepStrictEqual(Object.keys(readJson(kbPace).families).sort(), Object.keys(readJson(join(dash(), PACE_FILE)).families).sort()),
+    [refresh.json?.pace, existsSync(join(dash(), PACE_FILE)) ? readJson(join(dash(), PACE_FILE)) : null]);
+  // The overlay the plan reads: the knowledge base's file under the dashboard's own (the later wins), the constants under
+  // both; a file that cannot be read is said and stands for nothing; a write merges family by family.
+  const overlayDir = join(ROOT, "pace-overlay");
+  mkdirSync(overlayDir, { recursive: true });
+  writePaceFile(join(overlayDir, "kb.json"), "run-kb", { a: { calls: 2, seconds: 1 }, b: { calls: 1, seconds: 2 } });
+  writePaceFile(join(overlayDir, "dash.json"), "run-dash", { b: { calls: 3, seconds: 5 }, zero: { calls: 1, seconds: 0 } });
+  writePaceFile(join(overlayDir, "dash.json"), "run-dash-2", { c: { calls: 1, seconds: 7 } });
+  writeFileSync(join(overlayDir, "broken.json"), "{not json");
+  const said = [];
+  check("F-575 pace overlay (the engine's one home): readPaceFiles lays the dashboard's file over the knowledge base's (b reads the dashboard's 5, a the knowledge base's 1), a later write merges by family (c joins b, run named per family), a 0-second family is never kept, and an unreadable file is said once and stands for nothing",
+    isDeepStrictEqual(readPaceFiles([join(overlayDir, "kb.json"), join(overlayDir, "dash.json")]), { a: 1, b: 5, c: 7 }) && readJson(join(overlayDir, "dash.json")).families.b.run === "run-dash" && readJson(join(overlayDir, "dash.json")).families.c.run === "run-dash-2" && !("zero" in readJson(join(overlayDir, "dash.json")).families) &&
+      isDeepStrictEqual(readPaceFiles([join(overlayDir, "broken.json"), join(overlayDir, "kb.json")], (l) => said.push(l)), { a: 1, b: 2 }) && said.length === 1 && /cannot be read/.test(said[0]) && readPaceFiles([join(overlayDir, "missing.json")]) === null,
+    [readPaceFiles([join(overlayDir, "kb.json"), join(overlayDir, "dash.json")]), said]);
   check("the lookback says what it came from, a tie included (the first sitting's note): derivedFrom is the longest schedule period when it reached the threshold, else null with the threshold standing",
     (refresh.json?.pull?.lookbackDerivedFrom == null && refresh.json?.pull?.lookbackDays === 30) || (refresh.json?.pull?.lookbackDerivedFrom >= 30 && refresh.json.pull.lookbackDays === Math.min(366, refresh.json.pull.lookbackDerivedFrom)), refresh.json?.pull);
   check("re-documentation inside the refresh (PUB-1): the never-documented program and the one modified since its doc are described (one jo p describe each, through describe-batch) and marked documented with a fresh capture date; the templates the KB lacked are fetched the same way; the pull then read the moved knowledge base, so it is behind on nothing listed",
@@ -447,6 +472,14 @@ try {
       pulled.json.done.delta?.previousPulledAt === snapshot1.meta.pulledAt && pageText("admin").includes("Change since the last refresh (pulled") && pageText("exec").includes("Since last pull:"), [priced.json?.pullSeconds, lastPlanBefore.estimate?.full, pulled.json?.consequenceText, pulled.json?.done?.pull]);
   const identity = run("change", [SLUG, 'tenantHost="acme--sbx.gainsightcloud.com"']);
   check("change refuses an identity setting (the tenant, the slug)", identity.code === 1 && /cannot be changed/.test(identity.json?.error ?? ""), identity.json);
+  // F-576 (reopened on pages[].statusDefault, covered both bare and as a list): the judge is the writer's own covers,
+  // not a hand list — EVERY path the writer covers as a list reads the comma form as a list, whatever else covers it.
+  const listCovers = SPEC_DESCRIPTIONS.flatMap((d) => d.covers).filter((c) => c.endsWith("[]") && !c.includes("{}"));
+  const concretePath = (cover) => cover.slice(0, -2).replace(/\[\]/g, ".0");
+  const notLists = listCovers.filter((c) => !Array.isArray(changeValue(concretePath(c), "a,b")));
+  check("F-576: the comma form is read as a list for EVERY path the writer covers as a list (the covers walked, not a hand list: the programs selector's two lists, the pinned accounts, a page's statusDefault — covered bare as well — among them); `none` empties; a scalar under the selector stays text",
+    listCovers.length >= 10 && notLists.length === 0 && isDeepStrictEqual(changeValue("pages.0.statusDefault", "PROCESSING,PAUSED"), ["PROCESSING", "PAUSED"]) && isDeepStrictEqual(changeValue("sources.0.params.selector.ids", "p1,p2"), ["p1", "p2"]) && isDeepStrictEqual(changeValue("sources.0.params.selector.names", "none"), []) && changeValue("sources.0.params.selector.sentSince", "90d") === "90d" && changeValue("pages.0.title", "Admin view") === "Admin view",
+    [listCovers.length, notLists, changeValue("pages.0.statusDefault", "PROCESSING,PAUSED")]);
 
   // ══ --health-only, and the lock ═══════════════════════════════════════════
   const callsBeforeHealth = argvLines().length;
@@ -460,14 +493,32 @@ try {
   // F-513: the budget gate is gone. A login shorter than the pull is not refused: the pull runs as far as the token
   // allows (here the stand-in CLI kills the token after six calls), stops with exit 3 keeping its calls, and the stop
   // says how many more logins it needs; the stale lock it took over is recorded in that refusal (the first sitting's note).
+  // F-575 pricing: the plan prices from the dashboard's pace file. A fixture pace of every family at k times its constant
+  // prices the same full pull at k times the price: two plans of one stopped run, the file rewritten between them (the
+  // stand-in CLI's own measured pace, written by the pull above, is far under the constants, and this arm's login must
+  // be shorter than the pull). The fixture covers every family the full pull above planned, not only the ones with a
+  // fitted constant: a family with none is priced at the engine's flat 7 s until a pull measures it.
+  const pulledFamilies = Object.keys(readJson(join(runsRoot, pulled.json.done.run, "plan.json")).estimate.thisRun.byFamily);
+  const paceTable = (k) => ({ measuredAt: new Date().toISOString(), families: Object.fromEntries([...new Set([...Object.keys(CALL_SECONDS), ...pulledFamilies])].map((f) => [f, { calls: 1, seconds: (CALL_SECONDS[f] ?? 7) * k, run: "fixture" }])) });
+  writeFileSync(join(dash(), PACE_FILE), JSON.stringify(paceTable(2)));
   const shortLogin = run("refresh", [SLUG], { tenant: { ...TENANT, token: { state: "valid", seconds: 60 } }, env: { FAKE_FAULTS: JSON.stringify([{ match: "rp run", kind: "auth", skip: 30, times: 9999 }]) } });
   check("F-513 a pull longer than the login is NOT refused at the gate: it starts (stderr says it will take more logins), stops cleanly on the token with exit 3 after the calls it could make, names the login to run and that the next run continues it, says about how many more logins, and keeps its run resumable; the stale lock it took over is recorded in the refusal and released; no snapshot",
     shortLogin.code === EXIT["token-expired"] && shortLogin.json?.status === "token-expired" && /the refresh stopped after \d+ calls this run/.test(shortLogin.json.error) && /run gs-admin login, then run `node .gs-superadmin.plugin.scripts.dashboard.mjs refresh acme-health --kb acme-prod` again: it continues where it stopped/.test(shortLogin.json.error) && /about \d+ more logins? of an hour to finish/.test(shortLogin.json.error) &&
       /will run as far as the login allows \(about \d+ logins? of an hour in all\)/.test(shortLogin.stderr) && isDeepStrictEqual(shortLogin.json.lockTakenOver, { by: "ben", at: staleAt }) && /a stale lock held by ben since/.test(shortLogin.json.error) && /took over a stale refresh lock of "acme-health" held by ben since/.test(shortLogin.stderr) && !existsSync(join(dash(), LOCK_FILE)) && existsSync(join(dash(), STATE_FILE)) && snapshots().length === 3, shortLogin.json);
+  const stoppedState = readJson(join(dash(), STATE_FILE));
+  const planA = readJson(join(runsRoot, stoppedState.pullRun ?? stoppedState.run, "plan.json"));
+  const stoppedStatus = run("status", [SLUG]);
+  check("F-575 status relays the stopped (or running) run's latest progress record (the skill answers 'how long is left' from it, never from the plan or the run directory)",
+    stoppedStatus.code === 0 && typeof stoppedStatus.json.progress?.made === "number" && typeof stoppedStatus.json.progress.leftSeconds === "number" && stoppedStatus.json.progress.planned >= stoppedStatus.json.progress.made && typeof stoppedStatus.json.progress.at === "string", stoppedStatus.json?.progress);
+  writeFileSync(join(dash(), PACE_FILE), JSON.stringify(paceTable(4)));
   writeFileSync(join(dash(), LOCK_FILE), JSON.stringify({ by: "ben", at: staleAt, pid: 1 }));
   const stale = run("refresh", [SLUG]);
   check("after a login the same refresh RESUMES the stopped pull to a completed one (F-513: save → stop → resume), reusing the calls made, and a lock older than two hours is stale: the refresh takes it over and says whose it was",
     stale.code === 0 && stale.json.resumed === true && stale.json.pull.calls.reused > 0 && stale.json.lockTakenOver?.by === "ben" && !existsSync(join(dash(), LOCK_FILE)) && !existsSync(join(dash(), STATE_FILE)) && snapshots().length === 4, stale.json?.lockTakenOver ?? stale.json);
+  const planB = readJson(join(runsRoot, stale.json.run, "plan.json"));
+  check("F-575 pricing: every price the plan quotes reads the dashboard's measured pace — the resume's plan, with the pace file at four times each constant, prices the full pull and this run at exactly twice the stopped run's plan (the file at twice), and the finished pull then writes the pace it measured over the fixture, family by family",
+    planA.estimate.full.seconds > 0 && planB.estimate.full.seconds === 2 * planA.estimate.full.seconds && planB.estimate.thisRun.seconds === 2 * planA.estimate.thisRun.seconds &&
+      Object.values(readJson(join(dash(), PACE_FILE)).families).some((x) => x.run === stale.json.run) && Object.values(readJson(join(dash(), PACE_FILE)).families).some((x) => x.run === "fixture"), [planA.estimate?.full, planB.estimate?.full, planA.estimate?.thisRun?.seconds, planB.estimate?.thisRun?.seconds]);
   // F-518 a: the resume prices the REMAINDER, never the whole plan: its budget is below the plan's by the reused share,
   // it says it is continuing, and the stopped run before it (nothing reused yet) priced the whole run.
   check("F-518 a: a resumed run's budget is the remainder (neededSeconds below the plan's seconds by the share already made, continuing true, the logins for the remainder), its stderr says it is continuing and what remains of what; the fresh run before it priced the whole plan (needed equal to the plan's)",
@@ -1576,6 +1627,15 @@ try {
   check("refusals: an unknown verb, a missing slug, a refresh of a draft, an unknown question (purpose, dropped, among them), and a workspace with no KB each exit 1 with one line",
     run("frobnicate", []).code === 1 && run("status", []).code === 1 && run("refresh", ["quick"]).code === 1 && /is a draft, not a saved dashboard/.test(run("refresh", ["quick"]).json?.error ?? "") && run("answer", [SLUG, "nope", "x"]).code === 1 && /no question is called "purpose"/.test(run("answer", ["quick", "purpose", "x"]).json?.error ?? "") && run("list", [], { flags: ["--workspace", join(ROOT, "nowhere"), "--bin", FAKE] }).code === 1);
   check("the summaries carry counts and verdicts, never rows: no account name and no message text reaches stdout from a refresh", !JSON.stringify(resumed.json).includes("Acme Customer") && JSON.stringify(resumed.json).length < 12000);
+  // F-581: an auth death the CLI reports while the token is live (a second gs-admin process on the machine) is read once
+  // more before the run stops. The stand-in kills ONE rp run with the CLI's login wording while its whoami stays valid.
+  rmSync(join(STATE, "faults.json"), { force: true });
+  const callsBefore581 = argvLines().length;
+  const liveToken = run("refresh", [SLUG], { env: { FAKE_FAULTS: JSON.stringify([{ match: "rp run", kind: "auth", skip: 3, times: 1 }]) } });
+  const after581 = argvLines().slice(callsBefore581);
+  check("F-581: a call the CLI answers with 'run gs-admin login' while whoami still reads the token valid is made once more after one whoami read, and the refresh completes (exit 0, the line said on stderr, a second whoami in the argv log); only a second death, or a whoami that reads expired, stops the run",
+    liveToken.code === 0 && liveToken.json?.status === "ok" && /the CLI reported the token expired, but it reads live: trying once more/.test(liveToken.stderr) && after581.filter((a) => a === "whoami").length >= 2 && !/stopped: the token expired/.test(liveToken.stderr),
+    [liveToken.code, liveToken.json?.status ?? liveToken.json?.error, liveToken.json?.pull?.calls, liveToken.stderr?.split("\n").filter((l) => /token/.test(l)).slice(0, 3)]);
   check("F-534 reopen's class: no output of any verb this suite ran (stdout or stderr) prints a structured value as \"[object …]\"", objectWords.length === 0, objectWords.slice(0, 5));
 } finally {
   removeTempDir(ROOT);

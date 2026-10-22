@@ -1251,7 +1251,7 @@ try {
     check("resume skips calls already done: the second invocation of the same --run makes only what was left, exits 0, and writes the snapshot",
       resumed.code === 0 && resumed.json?.ok === true && resumed.json.calls.reused >= 15 && lines.length - before === resumed.json.calls.made && existsSync(out) && resumed.json.reconciled === true, resumed.json ?? resumed.stderr);
     check("gs-admin calls run one at a time: across both invocations no call started while another was in flight", lines.length >= 30 && lines.every((l) => l.overlap === false), [lines.length, lines.filter((l) => l.overlap).length]);
-    check("the summary a caller sees carries counts and verdicts, never rows: bulk JSON does not reach stdout", JSON.stringify(resumed.json).length < 7500 && resumed.json.rows.byTemplate > 0 && !("facts" in resumed.json) && !JSON.stringify(resumed.json).includes("Welcome to Acme"), JSON.stringify(resumed.json).length);
+    check("the summary a caller sees carries counts and verdicts, never rows: bulk JSON does not reach stdout (the bound grew by the per-family pace table, F-575: calls and seconds per call, counts again)", JSON.stringify(resumed.json).length < 8500 && resumed.json.rows.byTemplate > 0 && !("facts" in resumed.json) && !JSON.stringify(resumed.json).includes("Welcome to Acme"), JSON.stringify(resumed.json).length);
     const snap = JSON.parse(readFileSync(out, "utf8"));
     const golden = { ...snap, meta: { ...snap.meta, cliVersion: "fixture", pluginVersion: "fixture" } };
     check("the snapshot records the CLI and plugin versions it was pulled with", snap.meta.cliVersion === CATALOG.meta.cliVersion && snap.meta.pluginVersion === JSON.parse(readFileSync(join(PLUGIN, ".claude-plugin", "plugin.json"), "utf8")).version);
