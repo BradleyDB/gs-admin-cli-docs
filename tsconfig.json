@@ -1,10 +1,16 @@
 {
   // GP-B5 DS-42: the JSDoc-contract type gate — `tsc --noEmit` with checkJs over
-  // every tracked .mjs (the include derives the file set from the tree: build/,
-  // test/, plugins/ today). Rules of record — the checker-only devDependency
-  // carve-out, its bright lines, and the NON-STRICT decision — live in
-  // AGENTS.md tenet 5. Not checked here: build/wiki-assets/app.js, a browser
-  // (DOM) asset inlined into the wiki and covered by the wiki fixtures.
+  // every tracked .mjs: the three lanes that hold them — build/, test/,
+  // plugins/ — named in the include below (F-570: a bare `**/*.mjs` also read
+  // every untracked planning folder a machine holds — handoffs/, a local
+  // brainstorms/ — and went red on files CI never sees; thirteen sessions
+  // waved that red off by hand). The claim "every tracked .mjs" is held to the
+  // tree by build/check-imports.mjs: a tracked .mjs outside these lanes goes
+  // red there, so a new lane is admitted by naming it, never lost silently.
+  // Rules of record — the checker-only devDependency carve-out, its bright
+  // lines, and the NON-STRICT decision — live in AGENTS.md tenet 5. Not
+  // checked here: build/wiki-assets/app.js, a browser (DOM) asset inlined into
+  // the wiki and covered by the wiki fixtures.
   // Strictness is STATED below (strict: false), never the compiler's default; the strictNullChecks ratchet
   // is the SECOND config beside this one — tsconfig.strict.json, an explicit
   // files list that only grows (AGENTS.md tenet 5; GP-B5 W8/DS-46) — never a
@@ -35,5 +41,5 @@
     "types": ["node"],
     "skipLibCheck": true
   },
-  "include": ["**/*.mjs"]
+  "include": ["build/**/*.mjs", "test/**/*.mjs", "plugins/**/*.mjs"]
 }

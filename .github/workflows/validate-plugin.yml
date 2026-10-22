@@ -186,6 +186,12 @@ jobs:
         run: |
           node plugins/gs-superadmin/test/er-count.mjs
           node plugins/gs-superadmin/test/er-gaps.mjs
+      # The Power List rule work-list builder (F-487). Listed in AGENTS.md's
+      # battery since 0.48.0 and never run here until F-577: the battery
+      # runner's closure arm (build/test-run-battery.mjs) found it — the F-402
+      # class, a suite the fence names and CI never executes.
+      - name: Power List gap work-list fixtures (power-list-gaps.mjs)
+        run: node plugins/gs-superadmin/test/power-list-gaps.mjs
       # The shipped capture helper (GP-B5 DS-17): clean UTF-8-no-BOM writes,
       # UTF-16/BOM normalize, failure honesty, and the shared read-only gate
       # in its capture-shaped parameterization.

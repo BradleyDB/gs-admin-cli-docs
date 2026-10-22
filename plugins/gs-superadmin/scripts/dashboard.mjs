@@ -131,7 +131,9 @@ import {
   resolveParams, prepareRun, runParamsMoved, fetchEngagement, reduceEngagement, loadRun, cliTransport, makeGate, parseWhoami, addMonths, monthsBetween, pickSchedule, describedProgram, EngagementRefusal, ROW_READERS, rpRunArgv, buildQuery,
   resolveAccountParams, reduceAccountTimeline, loadAccountRun, accountResolutionText, timelineSummary,
   reduceWithStore, rankFromStore, readAccountStore, accountStorePath, accountStoreFits, isAccountStoreFile, writeSnapshotAndStore, copySnapshotWithStore, readAccountStoreHead,
+  PROGRESS_FILE, PACE_FILE, kbPacePath, readPaceFiles, writePaceFile,
 } from "./engagement.mjs";
+export { PACE_FILE };
 import { applyGroups, programTraitsOf, suggestionTable } from "./dashboard-groups.mjs";
 import { buildPage, buildTimelinePage, inlinedSources, pageFileName, buildDatasets, datasetsDirName, artifactContentOf } from "./dashboard-page.mjs";
 import { COPY_LINES, ENTRY_COMMAND, HOW_TO_REFRESH_TEXT, kbFlag } from "./dashboard-runtime.mjs";
@@ -289,10 +291,18 @@ export const COSTS = Object.freeze(Object.fromEntries(SPEC_DESCRIPTIONS.flatMap(
 // A publish setting is a rebuild (PUB-3): every rebuild publishes, and the rebuild keeps the About tab's Publishing line true.
 const COST_RANK = { identity: 0, "in-page": 1, rebuild: 2, reselect: 3, pull: 4 };
 /** A real path of a spec (`sources[0].params.internalDomains[1]`) → the SPEC_DESCRIPTIONS path that covers it. */
+// A real path in either grammar — the leaves' (`pages[0].title`) or the writer's dotted one (`pages.0.title`, what
+// `change` takes and a page's copy line names, F-503) — in the covers' spelling.
+const coverSpelling = (realPath) => String(realPath).replace(/\[\d+\]/g, "[]").replace(/\.\d+(?=\.|$)/g, "[]").replace(/^groups\.overrides\..*$/, "groups.overrides{}");
+/**
+ * Whether the writer covers the path as a LIST (`<path>[]` among the covers), whatever else it covers (F-576, reopened:
+ * a page's statusDefault is covered both bare and as a list, and coveredPath's exact match hid the list form from
+ * changeValue). List-ness is the writer's declaration, read directly; coveredPath answers a different question — which
+ * description prices the path.
+ */
+export const coversList = (realPath) => SPEC_DESCRIPTIONS.flatMap((d) => d.covers).includes(`${coverSpelling(realPath)}[]`);
 export function coveredPath(realPath) {
-  // A real path in either grammar: the leaves' (`pages[0].title`) or the writer's dotted one (`pages.0.title`, what
-  // `change` takes and a page's copy line names, F-503).
-  const norm = String(realPath).replace(/\[\d+\]/g, "[]").replace(/\.\d+(?=\.|$)/g, "[]").replace(/^groups\.overrides\..*$/, "groups.overrides{}");
+  const norm = coverSpelling(realPath);
   const covers = SPEC_DESCRIPTIONS.flatMap((d) => d.covers);
   if (covers.includes(norm)) return norm;
   // An emptied or filled list or map is the whole container's path: the description covers its items.
@@ -827,8 +837,24 @@ function openContext(argv, opt) {
   };
 }
 const dirOf = (ctx, slug) => ctx.store.paths(slug).dir;
+/** Where the engine keeps every run's directory (one spelling; the engine's own CLI resolves the same folder). */
+const runsRootOf = (ctx) => join(ctx.wsDir, ".gs-superadmin", "tmp", "engagement");
 const writeJson = (path, value) => writeFileAtomicSync(path, JSON.stringify(value, null, 2) + "\n");
 const readJsonOr = (path, fallback = null) => (existsSync(path) ? readJsonFile(path) : fallback);
+// ── The pace (F-575) ─────────────────────────────────────────────────────────
+// The minutes a pull is priced at come from measured pulls, never from the plan's fitted constants alone: the knowledge
+// base's pace file (every pull over it writes it — the engine's one home, kbPacePath) under this dashboard's own
+// (beside the spec, not in it: the spec is the admin's settings, and the `.previous` copy would carry a price). Every
+// plan of the dashboard (the interview's, a change's, a refresh's) hands the overlay to the engine, which lays it on the
+// constants (callSecondsTable). A finished OR stopped pull writes both files.
+const pacePath = (ctx, slug) => join(dirOf(ctx, slug), PACE_FILE);
+/** @returns {?Object<string, number>} the seconds per call by family, for the engine; null until a pull was measured on this knowledge base */
+const readPace = (ctx, slug) => readPaceFiles([kbPacePath(ctx.kbDir), pacePath(ctx, slug)], ctx.log);
+/** Both files, from the summary's `measuredPace`; what the dashboard's holds now, or null when nothing was measured. */
+function writePace(ctx, slug, run, measured) {
+  writePaceFile(kbPacePath(ctx.kbDir), run, measured, ctx.nowMs);
+  return writePaceFile(pacePath(ctx, slug), run, measured, ctx.nowMs);
+}
 /** The saved spec's JSON, or the one refusal for a dashboard that is a draft or does not exist (the one home, F-555). */
 const savedRawOrRefuse = (ctx, slug) => {
   const raw = ctx.store.readSaved(slug);
@@ -887,7 +913,7 @@ export function runOwner(name) {
 }
 /** This dashboard's run directories that hold a pull or its plan (a first refresh lives in the interview's plan directory): never a dry run's or an account timeline's. */
 function pullRunDirs(ctx, slug) {
-  const root = join(ctx.wsDir, ".gs-superadmin", "tmp", "engagement");
+  const root = runsRootOf(ctx);
   return existsSync(root) ? readdirSync(root, { withFileTypes: true }).filter((d) => d.isDirectory() && runOwner(d.name)?.slug === slug && ["plan", "pull"].includes(runOwner(d.name)?.kind ?? "")).map((d) => d.name) : [];
 }
 const latestSnapshotPath = (ctx, slug) => snapshotFiles(ctx, slug).at(-1) ?? null;
@@ -1010,7 +1036,8 @@ function runAdapter(ctx, { spec, runId, phase, previousPath, forceFull = false, 
   if (previousStore === undefined) previousStore = previousPath ? readAccountStore(accountStorePath(previousPath)) : null;
   // A resumed run keeps the day it was planned on unless --today was given (F-483), as the adapter's own CLI does.
   const { runDir, params, resumed } = prepareRun({ wsDir: ctx.wsDir, runId, params: paramsOn(ctx.today), previousPath, cliVersion: ctx.catalog.meta?.cliVersion ?? null, todayGiven: ctx.todayGiven, reparams: paramsOn });
-  const summary = fetchEngagement({ params, runDir, kbDir: ctx.kbDir, previous, previousStore, phase, transport: ctx.live(), gate: ctx.gate, onCall: (line) => ctx.log(`${phase === "plan" ? "plan" : "pull"} ${line}`) });
+  // The dashboard's measured pace prices every plan (F-575); the pull's progress is said as the engine words it.
+  const summary = fetchEngagement({ params, runDir, kbDir: ctx.kbDir, previous, previousStore, phase, transport: ctx.live(), gate: ctx.gate, pace: readPace(ctx, spec.slug), onCall: (line) => ctx.log(`${phase === "plan" ? "plan" : "pull"} ${line}`), onProgress: (p, line) => ctx.log(`pull ${line}`) });
   return { runDir, params, resumed, summary, previous, previousStore, categoriesFile };
 }
 /** The plan twice when the derived lookback moves (ENG-2 item 3): the second plan is the one the pull resumes. */
@@ -1551,7 +1578,7 @@ function interviewContext(ctx, slug, { draft }) {
   const spec = draft.spec;
   const state = interviewState(ctx, slug);
   const keys = planKeys(ctx, spec);
-  const planRun = state.plan?.run ? join(ctx.wsDir, ".gs-superadmin", "tmp", "engagement", state.plan.run) : null;
+  const planRun = state.plan?.run ? join(runsRootOf(ctx), state.plan.run) : null;
   const planThere = planRun && existsSync(join(planRun, "plan.json"));
   const exact = planThere && state.plan.hash === keys.exact;
   const plan = planThere && (exact || state.plan.loose === keys.loose) ? readJsonFile(join(planRun, "plan.json")) : null;
@@ -1830,7 +1857,7 @@ function doConsequence(ctx, slug, spec, consequence) {
 }
 /** The last plan this dashboard made (null until one exists): the minutes of a full refresh and the longest schedule period come from it. */
 function lastPlan(ctx, slug) {
-  const root = join(ctx.wsDir, ".gs-superadmin", "tmp", "engagement");
+  const root = runsRootOf(ctx);
   const state = readJsonOr(join(dirOf(ctx, slug), STATE_FILE), null);
   // The plan of the run the LATEST SNAPSHOT was pulled from (its directory is the one whose run.json carries that pull
   // time), else a stopped run's, else the most recent run directory by its clock; never a dry run's (its preview
@@ -1875,6 +1902,8 @@ function verbStatus(ctx, slug) {
     lastPull: snapshot ? { pulledAt: snapshot.meta.pulledAt, ageDays, mode: snapshot.meta.refresh.mode, programs: snapshot.dimensions.programs.length, file: latest } : null,
     snapshots: snapshotFiles(ctx, slug).length, pages: spec.pages.map((p) => ({ page: p.id, file: join(dirOf(ctx, slug), pageFileName(p.id)), present: existsSync(join(dirOf(ctx, slug), pageFileName(p.id))) })),
     lock: lockState(ctx, slug), resumable: state ? { run: state.run, startedAt: state.startedAt, by: state.by } : null, draft: !!ctx.store.readDraft(slug),
+    // The running (or stopped) pull's latest progress record (F-575): what the skill answers "how long is left" from.
+    progress: state ? readJsonOr(join(runsRootOf(ctx), state.pullRun ?? state.run, PROGRESS_FILE), null) : null,
   };
 }
 function verbRefresh(ctx, slug, { full, healthOnly, planRun = null }) {
@@ -1891,7 +1920,7 @@ function verbRefresh(ctx, slug, { full, healthOnly, planRun = null }) {
   const who = preflight(ctx, spec, { again: refreshRemedy(ctx, slug, { full, healthOnly }) });
   let state = readJsonOr(join(dir, STATE_FILE), null);
   const previousPath = latestSnapshotPath(ctx, slug);
-  const runsRoot = join(ctx.wsDir, ".gs-superadmin", "tmp", "engagement");
+  const runsRoot = runsRootOf(ctx);
   // A pending run whose PARAMETERS moved (a pull setting changed between the save and the pull: F-512, reopened
   // 2026-10-12) cannot be continued: it is abandoned here, by the adapter's own rule, and the pull is planned afresh.
   // Only a run started with the same settings is resumed.
@@ -1924,6 +1953,9 @@ function verbRefresh(ctx, slug, { full, healthOnly, planRun = null }) {
   lock.record(runId);
     const stateRecord = { run: runId, startedAt: resuming ? state.startedAt : new Date(ctx.nowMs).toISOString(), by: ctx.by, previousPath, full, healthOnly, lookbackDays: resuming ? state.lookbackDays ?? null : null, pullRun: resuming ? state.pullRun ?? null : null };
     writeJson(join(dir, STATE_FILE), stateRecord);
+    // A run that starts or resumes has no progress yet: the stopped attempt's record would otherwise be relayed by
+    // `status` through the plan and re-documentation minutes (F-575 review).
+    rmSync(join(runsRoot, stateRecord.pullRun ?? runId, PROGRESS_FILE), { force: true });
     // The plan, with the derived lookback. The pull is NOT held to the login (F-513, ruled 2026-10-12): it runs as far
     // as the token allows, the adapter stops it cleanly when the next call would outlast the token, and the next run
     // after a login continues it. What is said is how many logins a pull of this size takes.
@@ -1959,7 +1991,11 @@ function verbRefresh(ctx, slug, { full, healthOnly, planRun = null }) {
     if (planned.summary.status !== "ok") stopped(planned);
     const estimate = planned.summary.estimate;
     const redoc = kbSettings(spec).redocument;
-    const redocSeconds = redoc.enabled ? Math.min(redoc.cap, (estimate.kb?.programs?.length ?? 0)) * 3 + Math.min(Math.max(0, redoc.cap - (estimate.kb?.programs?.length ?? 0)), estimate.templates?.planned ?? 0) * 3 : 0;
+    // Priced from the plan's own figures (the describe and template rates the table gave it), never a constant here.
+    const behindPrograms = estimate.kb?.programs?.length ?? 0;
+    const describeEach = behindPrograms ? (estimate.kb?.refreshSeconds ?? 0) / behindPrograms : 3;
+    const templateEach = estimate.templates?.secondsEach ?? 3;
+    const redocSeconds = redoc.enabled ? Math.min(redoc.cap, behindPrograms) * describeEach + Math.min(Math.max(0, redoc.cap - behindPrograms), estimate.templates?.planned ?? 0) * templateEach : 0;
     // The price is THIS run's (F-518 a): a resumed run's remainder, the plan's units whose answers are not on disk
     // yet, never the whole plan; the share already made is what the resume reuses.
     const remaining = estimate.thisRun.remaining ?? estimate.thisRun;
@@ -1980,6 +2016,9 @@ function verbRefresh(ctx, slug, { full, healthOnly, planRun = null }) {
     }
     // The pull.
     const pulledRun = runAdapter(ctx, { spec, runId: basename(planned.runDir), phase: "all", previousPath, forceFull: full, healthOnly, lookbackDays: planned.lookbackDays, previousStore });
+    // The pace this pull measured becomes the price of this dashboard's next plan (F-575): kept beside the spec — a
+    // stopped pull's too, since its resume and the logins it still needs are priced from it.
+    const paced = writePace(ctx, slug, basename(pulledRun.runDir), pulledRun.summary.measuredPace);
     // What the stop says is still needed is the adapter's remainder over the records as they stand (F-518), priced the
     // way the resume's opening line is; never the plan's calls less this run's counts, which count unforeseen cuts.
     if (pulledRun.summary.status !== "ok") {
@@ -2008,7 +2047,7 @@ function verbRefresh(ctx, slug, { full, healthOnly, planRun = null }) {
     return {
       ok: true, mode: "refresh", slug, status: "ok", run: basename(pulledRun.runDir), resumed: !!resuming && !restarted, ...(restarted ? { restarted } : {}), full, healthOnly, budget, ...(abandoned ? { abandoned } : {}),
       pull: { mode: snapshot.meta.refresh.mode, why: snapshot.meta.refresh.why, pulledAt: snapshot.meta.pulledAt, programs: snapshot.dimensions.programs.length, calls: pulledRun.summary.calls, reconciled: snapshot.reconciliation.ok, health: engine.healthAvailability(snapshot).pulled, accounts: engine.accountAvailability(snapshot).pulled, lookbackDays: planned.lookbackDays, lookbackDerivedFrom: planned.lookbackDerivedFrom ?? null },
-      redocumented, snapshot: snapshotPath, accountStore, pruned, ungrouped: resolution.line, kbBehind: snapshot.honesty?.kb ?? null,
+      redocumented, snapshot: snapshotPath, accountStore, pruned, pace: paced ? { file: pacePath(ctx, slug), kbFile: kbPacePath(ctx.kbDir), families: Object.keys(paced.families).length } : null, ungrouped: resolution.line, kbBehind: snapshot.honesty?.kb ?? null,
       delta: delta ? { previousPulledAt: delta.previousPulledAt, closedMonths: delta.closedMonths.length, programs: delta.programs, metrics: Object.fromEntries(Object.entries(delta.metrics).map(([k, v]) => [k, v.change])) } : null,
       pages: pages.map((p) => ({ page: p.page, path: p.path, megabytes: p.megabytes, warning: p.warning })),
       lockTakenOver: lock.takenOver ? { by: lock.takenOver.by, at: lock.takenOver.at } : null,
@@ -2123,7 +2162,9 @@ export function changeValue(path, raw) {
   }
   try { return JSON.parse(raw); } catch { /* a bare value, by the setting's kind */ }
   const covered = coveredPath(path);
-  const kind = QUESTIONS.find((q) => q.path && coveredPath(q.path) === covered)?.kind ?? null;
+  // A list is read as one wherever the writer covers the path as a list — coversList, the declaration itself, never the
+  // priced description's spelling (F-576, reopened on a page's statusDefault); the questions decide the rest (yes/no).
+  const kind = coversList(path) ? "list" : QUESTIONS.find((q) => q.path && coveredPath(q.path) === covered)?.kind ?? null;
   const s = raw.trim();
   if (kind === "list") { const inner = /^\[.*\]$/.test(s) ? s.slice(1, -1) : s; return noneValue(inner) ? [] : listValue(inner); }
   if (kind === "boolean") return boolValue(s);

@@ -54,6 +54,10 @@ Each is a one-line reminder; the full rule lives where the pointer says.
   what an answer must look like, what a change costs, the pull, the pages — is the entry
   command's. Exactly two questions are judgment and are answered here in prose: the
   group proposal and the brand tokens.
+- **A lock left behind is said on every verb.** Any summary that carries `lockLeft` — a
+  pull's, a rebuild's, a change's `done`, a re-ranking's — is relayed with its `text` as
+  written, one sentence: the next pull takes the lock over on its own, and nothing needs
+  doing. Step P shows the pull's case; the rule is the same wherever the key appears.
 
 ## Arguments
 
@@ -307,7 +311,10 @@ node .gs-superadmin/plugin/scripts/engagement.mjs run --kb <slug> --run <run> <p
 continues the plan's working directory and makes none of its calls again.
 
 Start it in the background when the estimate is over 8 minutes (a foreground command is
-cut off at 10), and wait for it to finish. Do nothing else with `gs-admin` meanwhile.
+cut off at 10), and wait for it to finish. Do nothing else with `gs-admin` meanwhile. Its
+`progress:` lines on stderr (step P gives their shape; here they are prefixed
+`engagement.mjs:` with no `pull` word) answer "how long is left"; an ad-hoc pull keeps no
+pace file, so they quote the plan's price until this run's own pace is measured.
 
 Read the summary JSON, never the snapshot file. By exit code:
 
@@ -345,10 +352,11 @@ explain it.
 
 ### R5 — Workbook (only with `--xlsx`)
 
-Convert the CSVs in the csv-dir into one workbook at
-`<slug>/reports-adhoc/engagement-<YYYY-MM-DD>.xlsx`, one sheet per CSV, with the xlsx
-skill; if that skill is unavailable, deliver the CSVs and say so (rule canon:
-`/gs-superadmin:email-report` step 6, including the BOM-aware read).
+Convert the CSVs in the csv-dir into ONE workbook at
+`<slug>/reports-adhoc/engagement-<YYYY-MM-DD>.xlsx` with the xlsx skill, under the rules
+of `/gs-superadmin:email-report` step 6 (their home): one sheet per CSV named the file
+minus `.csv`, the CSVs' leading BOM read BOM-aware, and no hand-rolled writer when the
+skill is unavailable — deliver the CSVs and say so.
 
 ### R6 — Final report
 
@@ -539,7 +547,8 @@ node .gs-superadmin/plugin/scripts/dashboard.mjs answer <dash> <question id> <va
 - The `save-now` option (save and pull now; on an edit: save and pull, rebuild the pages,
   or rank the customer lists again, as its text says): `dry-run no`, `estimate yes`,
   `save yes`. The save does what the option says (a pull: step P's exit codes apply, a
-  stop on the login included; a rebuild or a re-ranking: no call); relay its summary.
+  stop on the login included; a rebuild or a re-ranking: no call); relay its summary,
+  `lockLeft` included when it is set (the ground rule).
 - The `dry-run` option (a dry run first; on an edit, a preview rebuilt from the last pull
   with the draft's settings, no call): `dry-run yes` renders preview pages in the theme (on a
   new dashboard it makes a cheap pull first, minutes, the login must be valid): relay
@@ -590,19 +599,26 @@ node .gs-superadmin/plugin/scripts/dashboard.mjs change <dash> <path>=<value> --
 ```
 
 `<value>` is JSON when it parses (`true`, `45`); otherwise a bare value read by the
-setting's kind: a list as its items separated by commas
-(`"sources.0.params.internalDomains=acme.com,acme.co.uk"`; `none` empties it), a yes/no
-setting as `yes` or `no`, a text setting as the text itself
-(`"pages.1.title=Leadership page"`). Put the whole pair in double quotes when the value
-holds a space, a comma or `<`: that one spelling runs as written in Git Bash, PowerShell
-5.1 and cmd, where a JSON string's own quotes survive none of them. An object-valued
-setting (the window, the groups) takes its JSON from a file: `<path>=@<file>`. A page's
-copy line carries a placeholder in the value (`"…internalDomains=<domains>"`): put the
-value in its place and keep the quotes. Relay `changed` (each setting with its cost) and `consequenceText` as the script wrote it
+setting's kind, one form per kind:
+
+| Kind | Settings | Form | Example |
+|---|---|---|---|
+| a list of texts | the four list questions (`internalDomains`, `testAccounts`, `unsubscribeLinks`, `expectedReasons`, under `sources.0.params.`), the programs selector's `selector.names` and `selector.ids`, `pinnedAccounts`, a page's `statusDefault` | the items separated by commas; `none` empties it (a page's `statusDefault` is emptied with `null`: every status) | `"sources.0.params.internalDomains=acme.com,acme.co.uk"`, `"sources.0.params.selector.ids=p1,p2"` |
+| yes/no | `accounts.pull` | `yes` or `no` | `accounts.pull=yes` |
+| text, number | a page's `title`, the dashboard's `purpose`, `selector.sentSince`, `health.silentDays` | the text itself; the number | `"pages.1.title=Leadership page"`, `sources.0.params.selector.sentSince=90d`, `health.silentDays=7` |
+| an object-valued setting | the window, the groups, `accounts.lists`, `publish` | JSON from a file: `<path>=@<file>` | `publish=@publish.json` |
+
+Put the whole pair in double quotes when the value holds a space, a comma or `<`: that
+one spelling runs as written in Git Bash, PowerShell 5.1 and cmd, where a JSON string's
+own quotes survive none of them — which is why an object goes through a file. A page's
+copy line carries a placeholder in the value
+(`"…internalDomains=<domains>"`): put the value in its place and keep the quotes. Relay
+`changed` (each setting with its cost) and `consequenceText` as the script wrote it
 ("rebuild only", or the next pull with its minutes). Ask the user to confirm; on yes
 re-issue without `--dry-run`: the script saves
 and DOES the consequence (a rebuild, a re-selection of the customer lists, or the pull);
-relay `done`. For a customer-list change, relay `done.text` as written: the lists are
+relay `done`, and `done.lockLeft`'s `text` as written when it is set (the ground rule: a
+lock left behind is said on every verb). For a customer-list change, relay `done.text` as written: the lists are
 ranked again now from the account store beside the last pull, with no pull. On a dashboard
 whose last pull has no account store of its own (one pulled before 0.55.0, or its store
 gone) they are ranked by the next pull of `/gs-superadmin:email-engagement refresh <dash>`, a
@@ -623,7 +639,29 @@ node .gs-superadmin/plugin/scripts/dashboard.mjs refresh <dash> --kb <slug>
 Append `--full` when the user asked for everything to be read again, `--health-only` when
 they asked for the health figures alone (the current month and the health families are
 read again; the rest is carried). Start it in the background and wait for it to finish; do
-nothing else with `gs-admin` meanwhile. By exit code:
+nothing else with `gs-admin` meanwhile.
+
+While it runs, the script says its progress on stderr — `pull progress: <made> of about
+<planned> calls made this run · <elapsed> elapsed · about <left> left`, at the first fact
+call and every tenth made call after, or after a minute with no line; the "left" figure
+prices each remaining call family at the pace this run has measured for it and the plan's
+price for a family not yet seen, and the line shows the split (`<measured> at this run's
+pace; the plan's <guess> for N families not yet seen`) — and keeps the same figures in the
+run's `progress.json`. On the first pull ever made on a knowledge base the plan's part is
+the fitted constants and can read high; every later plan on that knowledge base, a new
+dashboard's first included, prices from the pulls already measured there. When the user asks how long is left, run
+`node .gs-superadmin/plugin/scripts/dashboard.mjs status <dash> --kb <slug>` and quote its
+`progress` as it stands (`made` of about `planned` calls, `leftSeconds` said in minutes,
+`at`); never price it from the plan or the run directory yourself, and never from an
+earlier line. `progress` is null until the first fact call: the plan's reads and the
+re-documentation of what the knowledge base lacks run first (minutes, when it lacks a lot)
+— say that the pull is being planned and re-documenting, and ask again in a minute. The
+"left" figure is an estimate; its `planSeconds` is the part still priced from the plan. The minutes a pull is priced at come from this dashboard's last finished
+pull on the knowledge base (`<kb>/engagement-pace.json`, which every pull over it writes)
+under the dashboard's own `pace.json` beside its spec; only the first pull ever made on
+the knowledge base is priced from the plan's own figures.
+
+By exit code:
 
 - `0` — relay the summary: `pull.mode` and `pull.why`, `pull.programs`, `redocumented`
   (how many programs and templates the knowledge base gained, and what is still behind),

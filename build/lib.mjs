@@ -95,6 +95,39 @@ export function isMainModule(importMetaUrl) {
   }
 }
 
+// Mask absolute local paths in text that may be quoted on the public bus
+// (F-569: the battery and mutation runners' logs and copy-outs). Each pair is
+// [absolute path, token]; both slash spellings of the path are replaced,
+// longest path first so a nested path is not half-masked by its parent, and
+// case-insensitively on win32 (drive letters and user folders arrive in
+// either case). A literal scan, not a regex — a path is not a pattern, and
+// the build lane has no sanctioned copy of doc-lib's escapeRe (check-doc-drift
+// check 9). The ONE masker for the build lane — a second spelling per runner
+// is the consumer-parity class.
+/**
+ * @param {string} text
+ * @param {Array<[string, string]>} pairs [absolutePath, token]
+ */
+export function maskLocalPaths(text, pairs) {
+  const ci = process.platform === "win32";
+  let out = text;
+  const sorted = [...pairs].filter(([p]) => p).sort((a, b) => b[0].length - a[0].length);
+  for (const [p, token] of sorted) {
+    for (const spelling of new Set([p, p.replace(/\\/g, "/"), p.replace(/\//g, "\\")])) {
+      const hay = ci ? out.toLowerCase() : out;
+      const needle = ci ? spelling.toLowerCase() : spelling;
+      let next = "";
+      let from = 0;
+      for (let at = hay.indexOf(needle); at !== -1; at = hay.indexOf(needle, from)) {
+        next += out.slice(from, at) + token;
+        from = at + needle.length;
+      }
+      out = next + out.slice(from);
+    }
+  }
+  return out;
+}
+
 // ── The T-9 shared renderer core (GP-B5 DS-25 partial collapse) ─────────────
 // Bradley-approved shape (2026-09-01), measurement-driven: the corpus
 // differential in build/test-wiki-html.mjs found FULL on-corpus agreement
