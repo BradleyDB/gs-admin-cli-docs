@@ -3,7 +3,8 @@
 # (LF endings, no extension; a worktree shares the main checkout's hooks). Tracked here on
 # dev, never shipped (dev/ is stripped at release). Override the main guard: ALLOW_MAIN_PUSH=1.
 #
-#   main  — blocked outright (release = PR from a release/* branch).
+#   main  — blocked outright (release = PR from a release/* branch); with the override the
+#           push proceeds but main's tree still goes through the instance-data gate.
 #   dev   — the three fast zero-dep doc gates run before publishing.
 #   EVERY ref (the default arm, F-423) — the instance-data gate runs, because tester verdict
 #           rounds land on feature branches and bus prose is where tenant identifiers
@@ -11,14 +12,20 @@
 #           checker resolves its private-pattern config from the main checkout when run
 #           from a worktree and warns on its own line when no private pattern loaded.
 #
-# The gates run over the TREE BEING PUSHED, never over the checkout the hook happens to
-# run in (F-584): each pushed commit is checked out into a temporary worktree and the
-# gate scripts of THAT tree run there, so a push of a branch other than the checked-out
-# one, a push of several refs, or a push from a clean checkout of a branch another
-# worktree holds, is judged on what the push carries. The checker finds the main
-# checkout's private config through the common git dir (F-423) and inherits
-# PRIVATE_INSTANCE_PATTERNS from this shell. A pushed tree that predates the gate scripts
-# is gated with this checkout's checker over this checkout, and the hook says so.
+# The gates run over the TREES BEING PUSHED, never over the checkout the hook happens to
+# run in (F-584). Every commit the push adds to the remote (remote_sha..local_sha, or, for
+# a new ref, everything not already on a remote ref) is checked out into a temporary
+# worktree: the tip gets its arm's full gate set, every earlier commit the instance-data
+# gate alone, because a leak in an intermediate commit reaches the remote's history just
+# the same. The instance-data gate is THIS checkout's checker (build/check-instance-data.mjs
+# and build/lib.mjs copied over the temporary tree, where the script roots itself), so an
+# older or weakened checker in the pushed tree never judges its own push and a tree that
+# predates the gate is gated all the same; the doc-drift and stale-facts gates on dev are
+# the pushed tree's own, since they judge that tree's consistency. The checker finds the
+# main checkout's private config through the common git dir (F-423) and inherits
+# PRIVATE_INSTANCE_PATTERNS from this shell; when either exists, REQUIRE_PRIVATE_PATTERNS
+# is set so a temporary-worktree run that somehow loads no private pattern is refused,
+# not waved through with a warning.
 # Skip everything with: git push --no-verify (say so on the bus).
 #
 # git exports GIT_DIR (and sometimes GIT_INDEX_FILE / GIT_WORK_TREE) to hooks; a git
@@ -26,52 +33,78 @@
 unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_PREFIX
 
 ZERO=0000000000000000000000000000000000000000
+HOOK_ROOT=$(git rev-parse --show-toplevel) || exit 1
+MAIN_ROOT=$(cd "$(git rev-parse --git-common-dir)/.." && pwd) || MAIN_ROOT=$HOOK_ROOT
+if [ -f "$MAIN_ROOT/gs-admin-explorer.config.json" ] || [ -n "$PRIVATE_INSTANCE_PATTERNS" ]; then
+  export REQUIRE_PRIVATE_PATTERNS=1
+fi
+
+# One temporary worktree at a time; removed on every exit path, Ctrl-C included, so no
+# checkout of a possibly leaking tree lingers under the temp folder or in .git/worktrees.
+TMP_WT=
+cleanup() {
+  [ -n "$TMP_WT" ] || return 0
+  git worktree remove --force "$TMP_WT" >/dev/null 2>&1 || rm -rf "$TMP_WT"
+  git worktree prune >/dev/null 2>&1
+  TMP_WT=
+}
+trap 'cleanup; exit 130' INT TERM
+trap 'cleanup' EXIT
 
 # gate_tree <sha> <label> <arm>: check out <sha> into a temporary worktree and run the
-# gates there — <arm> "dev" runs the three doc gates, anything else the instance-data
-# gate alone. Returns non-zero when a gate fails; always removes the worktree.
+# gates there — <arm> "dev" runs the pushed tree's doc-drift and stale-facts gates and then
+# the instance-data gate, anything else the instance-data gate alone. Returns non-zero
+# when a gate fails. Reads nothing from stdin (the ref list is on it).
 gate_tree() {
   sha=$1; label=$2; arm=$3; rc=0
-  tmp=$(mktemp -d "${TMPDIR:-/tmp}/gacd-prepush-XXXXXX") || { echo "pre-push: could not create a temporary directory for the gate" >&2; return 1; }
-  if ! git worktree add -q --detach "$tmp" "$sha" >/dev/null 2>&1; then
-    echo "pre-push: could not check out $sha ($label) into a temporary worktree" >&2
-    rmdir "$tmp" 2>/dev/null
+  TMP_WT=$(mktemp -d "${TMPDIR:-/tmp}/gacd-prepush-XXXXXX") || { echo "pre-push: could not create a temporary directory for the gate" >&2; return 1; }
+  if ! err=$(git worktree add --detach "$TMP_WT" "$sha" 2>&1 >/dev/null); then
+    echo "pre-push: could not check out $sha ($label) into a temporary worktree: $err" >&2
+    cleanup
     return 1
   fi
-  if [ ! -f "$tmp/build/check-instance-data.mjs" ]; then
-    echo "pre-push: $label ($sha) carries no build/check-instance-data.mjs — gating it with this checkout's checker over THIS checkout, not the pushed tree" >&2
-    node build/check-instance-data.mjs >&2 || rc=1
-  else
-    if [ "$arm" = dev ]; then
-      node "$tmp/build/check-doc-drift.mjs" >&2 || { echo "pre-push: check-doc-drift failed on $label — fix or push --no-verify" >&2; rc=1; }
-      [ $rc -eq 0 ] && { node "$tmp/build/check-stale-facts.mjs" >&2 || { echo "pre-push: check-stale-facts failed on $label — fix or push --no-verify" >&2; rc=1; }; }
-    fi
-    [ $rc -eq 0 ] && { node "$tmp/build/check-instance-data.mjs" >&2 || { echo "pre-push: check-instance-data failed on $label ($sha) — redact, then push again (or --no-verify and say so on the bus)" >&2; rc=1; }; }
+  if [ "$arm" = dev ] && [ -f "$TMP_WT/build/check-doc-drift.mjs" ]; then
+    node "$TMP_WT/build/check-doc-drift.mjs" >&2 </dev/null || { echo "pre-push: check-doc-drift failed on $label ($sha) — fix or push --no-verify" >&2; rc=1; }
+    [ $rc -eq 0 ] && { node "$TMP_WT/build/check-stale-facts.mjs" >&2 </dev/null || { echo "pre-push: check-stale-facts failed on $label ($sha) — fix or push --no-verify" >&2; rc=1; }; }
   fi
-  git worktree remove --force "$tmp" >/dev/null 2>&1 || rm -rf "$tmp"
+  if [ $rc -eq 0 ]; then
+    mkdir -p "$TMP_WT/build"
+    cp "$HOOK_ROOT/build/check-instance-data.mjs" "$HOOK_ROOT/build/lib.mjs" "$TMP_WT/build/" || { echo "pre-push: could not stage this checkout's instance-data checker over the pushed tree" >&2; cleanup; return 1; }
+    node "$TMP_WT/build/check-instance-data.mjs" >&2 </dev/null || { echo "pre-push: check-instance-data failed on $label ($sha) — redact, then push again (or --no-verify and say so on the bus)" >&2; rc=1; }
+  fi
+  cleanup
   return $rc
 }
 
 while read local_ref local_sha remote_ref remote_sha; do
+  arm=other
   case "$remote_ref" in
     refs/heads/main)
-      # The override lifts THIS guard only — the instance-data gate below still runs for
-      # every other ref in the same push (release-gate review of 0.37.0, F-435).
-      [ "$ALLOW_MAIN_PUSH" = "1" ] && continue
-      echo "pre-push: direct push to main blocked (dev-loop). PR from dev instead, or ALLOW_MAIN_PUSH=1." >&2
-      exit 1;;
+      # The override lifts THIS guard only — the gates below still run for main's own
+      # tree and every other ref in the same push (release-gate review of 0.37.0, F-435).
+      if [ "$ALLOW_MAIN_PUSH" != "1" ]; then
+        echo "pre-push: direct push to main blocked (dev-loop). PR from dev instead, or ALLOW_MAIN_PUSH=1." >&2
+        exit 1
+      fi;;
+    refs/heads/dev) arm=dev;;
   esac
   # A deletion pushes no tree; nothing to gate.
   [ "$local_sha" = "$ZERO" ] && continue
-  case "$remote_ref" in
-    refs/heads/dev)
-      echo "pre-push: running fast checks on the pushed dev tree ($local_sha) before publishing..." >&2
-      gate_tree "$local_sha" "$remote_ref" dev || exit 1
-      ;;
-    *)
-      echo "pre-push: instance-data gate on the pushed tree of $remote_ref ($local_sha) (F-423: every ref; F-584: the pushed tree)..." >&2
-      gate_tree "$local_sha" "$remote_ref" other || exit 1
-      ;;
-  esac
+  # Every commit this push adds to the remote, oldest first; the tip is last.
+  if [ "$remote_sha" = "$ZERO" ]; then
+    commits=$(git rev-list --reverse "$local_sha" --not --remotes </dev/null)
+  else
+    commits=$(git rev-list --reverse "$remote_sha..$local_sha" </dev/null)
+  fi
+  [ -n "$commits" ] || commits=$local_sha
+  count=$(printf '%s\n' "$commits" | wc -l | tr -d ' ')
+  echo "pre-push: gating the $count pushed tree(s) of $remote_ref (F-423: every ref; F-584: the pushed trees, tip last)..." >&2
+  for c in $commits; do
+    if [ "$c" = "$local_sha" ]; then
+      gate_tree "$c" "$remote_ref (tip)" "$arm" </dev/null || exit 1
+    else
+      gate_tree "$c" "$remote_ref (pushed commit)" other </dev/null || exit 1
+    fi
+  done
 done
 exit 0

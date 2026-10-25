@@ -174,7 +174,7 @@ for (const { pattern, where } of [...fileEntries, ...envEntries]) {
     process.exit(1);
   }
   seenPatterns.add(pattern);
-  privateRes.push(new RegExp(pattern, "i"));
+  privateRes.push(re); // matchAll clones the regex per call, so the shared g flag carries no lastIndex
   if (where.startsWith("environment")) privateSources.env++;
   else privateSources.file++;
   CHECKS.push({
@@ -201,15 +201,34 @@ const privatePatternCount = privateRes.length;
 //   3. A generic hit on a line that also carries a private hit prints no text at all.
 // Over-masking is the accepted cost: a token learned from a match's context (`https`)
 // may blank a harmless word in a failure line; a private string in a public log may not.
+// Structural tokens a context-bound pattern is likely to carry; learning them would
+// blank harmless words in every printed path and fragment and make a finding hard to
+// locate. A private identifier shorter than four characters, or one no pattern ever
+// matches bare, is not learned: name it as its own pattern (documented limit).
+const LITERAL_STOPLIST = new Set(["http", "https", "www", "gainsightcloud", "gainsight", "cloud", "workspace", "users", "home"]);
 const privateLiterals = new Set();
 const learnLiterals = (matchText) => {
-  for (const t of matchText.match(/[A-Za-z0-9_-]{4,}/g) ?? []) privateLiterals.add(t.toLowerCase());
+  for (const t of matchText.match(/[A-Za-z0-9_-]{4,}/g) ?? []) {
+    const lower = t.toLowerCase();
+    if (!LITERAL_STOPLIST.has(lower)) privateLiterals.add(lower);
+  }
 };
+// Spans are found over the ORIGINAL string, never by index into a lower-cased copy:
+// lower-casing can change a string's length (U+0130 lower-cases to two code units),
+// which would shift every span after it. A learned literal is ASCII ([A-Za-z0-9_-]), so
+// comparing each same-length slice case-folded is exact: a slice whose folding grows
+// cannot equal the literal, and no regex (and no regex escaping, which this lane has no
+// sanctioned copy of) is needed. Memoised per string: a line with many findings, or a
+// path printed once per finding, is scanned once.
+const spanCache = new Map();
 const spansIn = (s) => {
+  if (spanCache.has(s)) return spanCache.get(s);
   const spans = [];
-  for (const r of privateRes) for (const m of s.matchAll(new RegExp(r.source, "gi"))) if (m[0]) spans.push([m.index, m.index + m[0].length]);
-  const lower = s.toLowerCase();
-  for (const lit of privateLiterals) for (let i = lower.indexOf(lit); i !== -1; i = lower.indexOf(lit, i + 1)) spans.push([i, i + lit.length]);
+  for (const r of privateRes) for (const m of s.matchAll(r)) if (m[0]) spans.push([m.index, m.index + m[0].length]);
+  for (const lit of privateLiterals) {
+    const L = lit.length;
+    for (let i = 0; i + L <= s.length; i++) if (s.slice(i, i + L).toLowerCase() === lit) spans.push([i, i + L]);
+  }
   spans.sort((a, b) => a[0] - b[0]);
   const merged = [];
   for (const sp of spans) {
@@ -217,12 +236,14 @@ const spansIn = (s) => {
     if (last && sp[0] <= last[1]) last[1] = Math.max(last[1], sp[1]);
     else merged.push([sp[0], sp[1]]);
   }
+  spanCache.set(s, merged);
   return merged;
 };
-// redact(s, start, end) returns s[start, end) with every span clipped into that range
-// replaced; the spans are computed over the WHOLE of s (rule 1), so a fragment is
-// judged by its line, not by itself.
-const redact = (s, start = 0, end = s.length) => {
+// redactSlice(s, start, end) returns s[start, end) with every span clipped into that
+// range replaced; the spans are computed over the WHOLE of s (rule 1), so a fragment is
+// judged by its line, not by itself. redact(s) is the whole-string form and is safe to
+// pass to .map (a three-argument form there would read the index as `start`).
+const redactSlice = (s, start, end) => {
   let out = "";
   let pos = start;
   for (const [a, b] of spansIn(s)) {
@@ -234,6 +255,7 @@ const redact = (s, start = 0, end = s.length) => {
   }
   return out + s.slice(pos, end);
 };
+const redact = (s) => redactSlice(s, 0, s.length);
 
 const files = execSync("git ls-files -z", { cwd: ROOT, encoding: "utf8" })
   .split("\0")
@@ -290,8 +312,17 @@ let failures = 0;
 const skippedBinary = [];
 // The scan COLLECTS its findings and prints them afterwards (rule 2 above): nothing is
 // printed until every private match in every path and line has been learned.
-/** @type {{ file: string, line?: string, lineNo?: number, what: string, hint: string, start?: number, end?: number, redactAll: boolean }[]} */
+/** @type {{ file: string, line?: string, lineNo?: number, what: string, hint: string, start?: number, end?: number, privateOnLine?: boolean }[]} */
 const findings = [];
+// A private pattern must match the string itself, not only a position: a lookaround-only
+// pattern passes the empty-string guard above (it needs its context) yet matches zero
+// characters, so it would count a finding while learning and masking nothing — the path
+// would print in clear. Refused where it happens, by position, pattern not echoed.
+const refuseZeroLength = (m, what, where) => {
+  if (m[0]) return;
+  console.error(`${what} matches zero characters at ${where}: a private pattern must match the private string itself, not only its position (a lookaround-only pattern) — fix the pattern`);
+  process.exit(1);
+};
 // The PATH of a tracked file is scanned by the private patterns too: a file under a
 // folder named after the tenant is a leak whatever the file holds, and the path is
 // what every line below prints. (The generic checks stay content-only: a path is
@@ -301,9 +332,10 @@ for (const file of files) {
   for (const { what, re, hint, redact: isPrivate } of CHECKS) {
     if (!isPrivate) continue;
     for (const m of file.matchAll(re)) {
+      refuseZeroLength(m, what, "a tracked file's path");
       failures++;
       learnLiterals(m[0]);
-      findings.push({ file, what: `${what} in the file path`, hint, redactAll: true });
+      findings.push({ file, what: `${what} in the file path`, hint });
     }
   }
 }
@@ -329,26 +361,29 @@ for (const file of files) {
       if (skipFiles?.includes(file)) continue;
       for (const m of line.matchAll(re)) {
         if (ok(m)) continue;
-        failures++;
         if (isPrivate) {
+          refuseZeroLength(m, what, `a tracked file, line ${i + 1}`);
           privateOnLine = true;
           learnLiterals(m[0]);
         }
-        lineFindings.push({ file, line, lineNo: i + 1, what, hint, start: m.index, end: m.index + m[0].length, redactAll: isPrivate });
+        failures++;
+        lineFindings.push({ file, line, lineNo: i + 1, what, hint, start: m.index, end: m.index + m[0].length });
       }
     }
     // Rule 3: with a private hit on the line, every hit on it prints no text.
-    for (const f of lineFindings) findings.push(privateOnLine ? { ...f, redactAll: true } : f);
+    for (const f of lineFindings) findings.push({ ...f, privateOnLine });
   });
 }
 for (const f of findings) {
-  const where = f.lineNo ? `${redact(f.file)}:${f.lineNo}` : redact(f.file);
-  // A private hit, or any hit on a line with one, is redacted whole; a generic hit on a
-  // clean line shows its text with every learned private string masked out of it (a
-  // tenant URL on the org's slug reads "[redacted].gainsightcloud.com", still enough
-  // to find and fix).
-  const shown = f.redactAll ? "[match redacted]" : `"${redact(f.line, f.start, f.end).trim()}"`;
-  console.error(f.lineNo ? `${where}: ${f.what}: ${shown} — ${f.hint}` : `${where}: ${f.what} — ${f.hint}`);
+  if (!f.lineNo) {
+    console.error(`${redact(f.file)}: ${f.what} — ${f.hint}`);
+    continue;
+  }
+  // A hit on a line with a private hit is redacted whole; a generic hit on a clean line
+  // shows its text with every learned private string masked out of it (a tenant URL on
+  // the org's slug reads "[redacted].gainsightcloud.com", still enough to find and fix).
+  const shown = f.privateOnLine ? "[match redacted]" : `"${redactSlice(f.line, f.start, f.end).trim()}"`;
+  console.error(`${redact(f.file)}:${f.lineNo}: ${f.what}: ${shown} — ${f.hint}`);
 }
 
 if (failures) {
@@ -372,7 +407,7 @@ if (unscanned.length) {
 }
 if (stagedDeletions.length) {
   console.error(
-    `WARNING: ${stagedDeletions.length} file(s) HEAD commits are absent from the index and were NOT scanned: ${nameSome(stagedDeletions.map((p) => redact(p)))} — ` +
+    `WARNING: ${stagedDeletions.length} file(s) HEAD commits are absent from the index and were NOT scanned: ${nameSome(stagedDeletions.map(redact))} — ` +
       `a partial checkout or staged deletions. Unless the deletions are intended (the release-strip rehearsal's are), ` +
       `this is a weaker run than the tree the push carries (F-424).`,
   );
@@ -380,7 +415,7 @@ if (stagedDeletions.length) {
 // Skipped-as-binary files are named, not silently dropped from "N tracked files
 // contain no …" — a coverage claim that quietly excludes files overstates the gate.
 const skippedNote = skippedBinary.length
-  ? ` ${skippedBinary.length} binary file(s) NOT scanned: ${skippedBinary.map((p) => redact(p)).join(", ")}.`
+  ? ` ${skippedBinary.length} binary file(s) NOT scanned: ${skippedBinary.map(redact).join(", ")}.`
   : "";
 if (privatePatternCount === 0) {
   const envState = (process.env.PRIVATE_INSTANCE_PATTERNS ?? "").trim()

@@ -56,6 +56,11 @@
 //      every printed line; a generic hit on a line with a private hit prints no text;
 //      and the no-pattern message tells a comments-only variable apart from an empty
 //      one.
+//  14. The review of that fix (2026-10-24): a generic hit on a CLEAN line still prints
+//      its text, with structural tokens (https, gainsightcloud) never learned as
+//      literals; literal spans are found over the original string, so a line whose
+//      lower-casing changes its length (U+0130) masks the right characters; a
+//      lookaround-only private pattern (zero-length matches) is refused, not run.
 //
 // Each case copies the real checker into a scratch git repo under the OS temp
 // dir (the checker roots itself at its own script location and scans that
@@ -512,6 +517,34 @@ const ENV_SLUG = "omega" + "corp" + "-ws";
   ok("a comments-only variable is named as such, not as empty", onlyComments.status === 1 && onlyComments.stderr.includes("holds no pattern line (blank or comment lines only)"));
   const unset = runRig({ "clean.md": "nothing sensitive\n" }, { env: { REQUIRE_PRIVATE_PATTERNS: "true" } });
   ok("an unset variable is named as empty or unset", unset.status === 1 && unset.stderr.includes("is empty or unset"));
+}
+
+// ── 14. The fix's review: clean-line generic hits keep their text, the stoplist, the
+// Unicode span bug, lookaround-only patterns ──────────────────────────────────────
+{
+  const HOST = ENV_SLUG + ".gainsight" + "cloud.com";
+  const absent = (res) => !(res.stdout + res.stderr).includes(ENV_SLUG);
+  // (a) A generic hit on a CLEAN line prints its text (the one thing a regression to
+  // "redact everything" would break), and the context tokens of a private pattern that
+  // fired elsewhere (https, gainsightcloud) are NOT learned as literals, so that text is
+  // intact; only the private string itself is masked wherever it recurs.
+  const clean = runRig(
+    { "a.md": `see https://${HOST}/x\n`, "b.md": `endpoint: https://${LEAKY_HOST}/v1 and ${ENV_SLUG}-prod\n` },
+    { env: { PRIVATE_INSTANCE_PATTERNS: `https://${ENV_SLUG}\\.gainsight` + `cloud\\.com` } },
+  );
+  ok("a generic hit on a clean line prints its text, structural tokens unmasked", clean.status === 1 && clean.stderr.includes(`b.md:1: tenant-qualified Gainsight URL: "${LEAKY_HOST}"`));
+  ok("the private string learned from a.md is masked where it recurs bare in b.md's path-like text, and absent from all output", absent(clean));
+  // (b) U+0130 lower-cases to two code units: a span found by index in a lower-cased
+  // copy would land three characters late on this line.
+  const dotted = runRig(
+    { "a.md": `--kb ${ENV_SLUG}\n`, "b.md": `İİİ see https://${HOST}/x\n` },
+    { env: { PRIVATE_INSTANCE_PATTERNS: `--kb\\s+${ENV_SLUG}` } },
+  );
+  ok("a literal span on a line whose lower-casing changes its length masks the right characters", dotted.status === 1 && absent(dotted) && dotted.stderr.includes(`"[redacted].gainsight` + `cloud.com"`));
+  // (c) A lookaround-only pattern matches zero characters: refused by position, pattern
+  // not echoed, nothing printed in clear.
+  const look = runRig({ [`kb/${ENV_SLUG}/notes.md`]: `the ${ENV_SLUG} folder\n` }, { env: { PRIVATE_INSTANCE_PATTERNS: `(?=${ENV_SLUG})` } });
+  ok("a lookaround-only private pattern is refused as matching zero characters", look.status === 1 && look.stderr.includes("matches zero characters at a tracked file's path") && absent(look));
 }
 
 if (failures.length) {
