@@ -244,6 +244,13 @@ jobs:
       # counted and named so the success message never overstates coverage.
       - name: Instance-data gate fixtures
         run: node build/test-check-instance-data.mjs
+      # The dev-branch pre-push hook is pinned by fixtures too (F-584): which
+      # commits a push gates is judged against a stand-in remote's own refs through
+      # real dry-run pushes with the hook installed, fail closed when the set cannot
+      # be established. On a stripped (release) tree the hook is absent and the
+      # suite reports nothing to test.
+      - name: Pre-push hook fixtures
+        run: node build/test-pre-push-hook.mjs
       # The stale-facts gate is pinned by fixtures too (F-275): the live bus's
       # code contexts (fenced/indented verbatim quotes) are exempt from the
       # citation checks, prose stays in scope, and the exemption is bus-only.
