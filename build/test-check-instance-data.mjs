@@ -48,6 +48,14 @@
 //      patterns from the F-423 warning into a refusal — while a run without that
 //      flag (a fork's or Dependabot's PR, which get no secrets) keeps warning and
 //      passing.
+//  13. Masking is by SPANS over the whole line or path, never by re-matching a
+//      pattern on a printed fragment (F-583, reopen 1): a lookbehind pattern, a
+//      pattern wider than the generic match, a context-bound pattern (`--kb <name>`)
+//      recurring bare in a URL on the same line or in the file's path or in another
+//      file, and a pattern that is a prefix of another all leave the string out of
+//      every printed line; a generic hit on a line with a private hit prints no text;
+//      and the no-pattern message tells a comments-only variable apart from an empty
+//      one.
 //
 // Each case copies the real checker into a scratch git repo under the OS temp
 // dir (the checker roots itself at its own script location and scans that
@@ -452,12 +460,58 @@ const ENV_SLUG = "omega" + "corp" + "-ws";
   // printed masked — on the failure line, on the coverage line and in the pass
   // line's binary list.
   const generic = runRig({ "notes.md": `see https://${ENV_SLUG}.gainsight` + `cloud.com/x\n` }, { env: { PRIVATE_INSTANCE_PATTERNS: ENV_SLUG } });
-  ok("a generic hit that carries a private string is masked, and both checks report", generic.status === 1 && !generic.stderr.includes(ENV_SLUG) && generic.stderr.includes("[redacted].gainsight" + "cloud.com") && generic.stderr.includes("tenant-qualified") && generic.stderr.includes("[match redacted]"));
+  // Since F-583's first reopen (case 13, rule 3) a generic hit on a line that carries a
+  // private hit prints no text at all; both checks still report.
+  ok("a generic hit on a line with a private hit prints no text, and both checks report", generic.status === 1 && !generic.stderr.includes(ENV_SLUG) && generic.stderr.includes("tenant-qualified Gainsight URL: [match redacted]") && generic.stderr.includes("private pattern (environment PRIVATE_INSTANCE_PATTERNS line 1): [match redacted]"));
   const path = runRig({ [`kb/${ENV_SLUG}-prod/notes.md`]: "nothing sensitive in the content\n" }, { env: { PRIVATE_INSTANCE_PATTERNS: ENV_SLUG } });
   ok("a tracked path that matches a private pattern is a finding", path.status === 1 && path.stderr.includes("in the file path"));
   ok("the offending path is printed masked", !path.stderr.includes(ENV_SLUG) && path.stderr.includes("kb/[redacted]-prod/notes.md"));
   const binPath = runRig({ [`kb/${ENV_SLUG}-prod/assets.bin`]: Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x00, 0x01]) }, { env: { PRIVATE_INSTANCE_PATTERNS: ENV_SLUG } });
   ok("a binary under a private-named folder fails on its path and is never named in clear", binPath.status === 1 && !binPath.stderr.includes(ENV_SLUG) && !binPath.stdout.includes(ENV_SLUG));
+}
+
+// ── 13. Spans, not fragments (F-583 reopen 1): the tester's leaking probes ─────
+// Every output of every run below is searched for the planted string; "absent" means
+// 0 hits in stdout and stderr together. HOST is the fictional-shaped tenant host built
+// from fragments so this file never carries one on a line.
+{
+  const HOST = ENV_SLUG + ".gainsight" + "cloud.com";
+  const url = `see https://${HOST}/x\n`;
+  const absent = (res) => !(res.stdout + res.stderr).includes(ENV_SLUG);
+  // P1: a lookbehind pattern — the fragment the URL check matched starts AFTER the
+  // lookbehind's context, so re-matching the fragment alone found nothing.
+  const p1 = runRig({ "notes.md": url }, { env: { PRIVATE_INSTANCE_PATTERNS: `(?<=https://)${ENV_SLUG}` } });
+  ok("P1 lookbehind pattern: the private hit fires and the string is absent from all output", p1.status === 1 && p1.stderr.includes("[match redacted]") && absent(p1));
+  ok("P1: the generic URL hit on that line prints no text", !p1.stderr.includes(".gainsight" + "cloud.com\""));
+  // P2: a pattern wider than the generic match (it includes the path after the host).
+  const p2 = runRig({ "notes.md": url }, { env: { PRIVATE_INSTANCE_PATTERNS: `${ENV_SLUG}\\.gainsight` + `cloud\\.com/x` } });
+  ok("P2 pattern wider than the fragment: the string is absent from all output", p2.status === 1 && absent(p2));
+  // P3: the incident's shape — a context-bound pattern, and the bare string recurring
+  // in a URL on the same line, which the pattern alone never matches.
+  const p3 = runRig({ "notes.md": `--kb ${ENV_SLUG} then https://${HOST}/x\n` }, { env: { PRIVATE_INSTANCE_PATTERNS: `--kb\\s+${ENV_SLUG}` } });
+  ok("P3 context-bound pattern, bare recurrence in a URL on the same line: absent from all output", p3.status === 1 && absent(p3));
+  // P3b: the same pattern, the bare string in the FILE'S PATH (no pattern matches the
+  // path; the literal learned from the content hit masks it).
+  const p3b = runRig({ [`kb/${ENV_SLUG}-prod/notes.md`]: `--kb ${ENV_SLUG}\n` }, { env: { PRIVATE_INSTANCE_PATTERNS: `--kb\\s+${ENV_SLUG}` } });
+  ok("P3b context-bound pattern, bare recurrence in the path: path printed masked, string absent", p3b.status === 1 && p3b.stderr.includes("kb/[redacted]-prod/notes.md:1:") && absent(p3b));
+  // P3c: the literal learned in one file masks a generic hit in ANOTHER file (the scan
+  // collects before it prints).
+  const p3c = runRig({ "a.md": `--kb ${ENV_SLUG}\n`, "b.md": url }, { env: { PRIVATE_INSTANCE_PATTERNS: `--kb\\s+${ENV_SLUG}` } });
+  ok("P3c a literal learned from one file masks a generic hit in another file", p3c.status === 1 && p3c.stderr.includes("b.md:1: tenant-qualified") && absent(p3c));
+  // P9: a pattern that is a prefix of another — the union of spans leaves no remainder.
+  const prefix = ENV_SLUG.slice(0, 7);
+  const rest = ENV_SLUG.slice(7);
+  const p9 = runRig({ "notes.md": `the ${ENV_SLUG} folder\n` }, { env: { PRIVATE_INSTANCE_PATTERNS: `${prefix}\n${ENV_SLUG}` } });
+  ok("P9 prefix pattern beside the full one: no remainder of the string is printed", p9.status === 1 && absent(p9) && !p9.stderr.includes(`[redacted]${rest}`));
+  // Rule 3 directly: a generic hit on a line with a private hit prints no text, while a
+  // generic hit on a CLEAN line in the same file still prints its (masked) text.
+  const r3 = runRig({ "notes.md": `${url}see https://acme.gainsight` + `cloud.com/y and ${ENV_SLUG}\n` }, { env: { PRIVATE_INSTANCE_PATTERNS: ENV_SLUG } });
+  ok("rule 3: line 1 (private hit) prints redacted; line 2's acme host is fictional and passes", r3.status === 1 && r3.stderr.includes("notes.md:1: tenant-qualified Gainsight URL: [match redacted]") && absent(r3));
+  // Noticed (2): comments-only variable is told apart from an empty one.
+  const onlyComments = runRig({ "clean.md": "nothing sensitive\n" }, { env: { REQUIRE_PRIVATE_PATTERNS: "true", PRIVATE_INSTANCE_PATTERNS: "# only a comment" } });
+  ok("a comments-only variable is named as such, not as empty", onlyComments.status === 1 && onlyComments.stderr.includes("holds no pattern line (blank or comment lines only)"));
+  const unset = runRig({ "clean.md": "nothing sensitive\n" }, { env: { REQUIRE_PRIVATE_PATTERNS: "true" } });
+  ok("an unset variable is named as empty or unset", unset.status === 1 && unset.stderr.includes("is empty or unset"));
 }
 
 if (failures.length) {

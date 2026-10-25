@@ -17,7 +17,7 @@ Canary: plugins/gs-superadmin/skills/dev-canary/SKILL.md description
 Dev-only: dev plugins/gs-superadmin/skills/dev-canary
 Checks: battery review ci walk
 Pointer: 2026-10-24 · fix/instance-data-private-patterns-in-ci · PR #73 · hb-20261024-01 · next free F-584
-Hooks: dev/hooks/pre-push is the tracked source of this clone's .git/hooks/pre-push (install: cp dev/hooks/pre-push .git/hooks/pre-push — LF, executable); it blocks main, runs the three doc gates on dev, and runs check-instance-data on EVERY ref (F-423). A worktree shares the hooks and the checker reads the main checkout's private-pattern config from there.
+Hooks: dev/hooks/pre-push is the tracked source of this clone's .git/hooks/pre-push (install: cp dev/hooks/pre-push .git/hooks/pre-push — LF, executable); it blocks main, runs the three doc gates on dev, and runs check-instance-data on EVERY ref (F-423) — each gate over the TREE BEING PUSHED, checked out into a temporary worktree, never over the checkout the hook runs in (F-584). A worktree shares the hooks and the checker reads the main checkout's private-pattern config from there; the hook inherits PRIVATE_INSTANCE_PATTERNS from the shell. After editing dev/hooks/pre-push, re-copy it into .git/hooks (cmp the two).
 Release checklist: dev/RELEASE-CHECKLIST.md (repo-specific gates + the fill-in close-out note; the /dev-loop skill Step 4 remains the procedure of record)
 Walk hint (DS-44, 2026-09-07; procedure fixed by F-415, 2026-09-08): no CI suite executes
 skill prose — a SKILL.md-only change passes every check green. So every SKILL.md a round
