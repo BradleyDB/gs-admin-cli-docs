@@ -3751,13 +3751,14 @@ What: build/check-instance-data.mjs's literal span finder (spansIn: a case-folde
 Repro: Read build/lib.mjs around maskLocalPaths (the comment calls it the one masker for the build lane) and build/check-instance-data.mjs spansIn: two literal maskers with different shapes (replace-in-place vs span-returning, case-insensitive on win32 only vs always).
 Expected: One span-returning literal finder in build/lib.mjs that maskLocalPaths and the instance-data gate both call; the gate's spansIn uses it for learned literals.
 
-## F-586 — OPEN
+## F-586 — FIXED
 Reported: 2026-10-25 (tester)
 Severity: polish — tooling; only a Git Bash caller who sets the variable to a path-like pattern runs weaker, and the config-file source is untouched by any shell
 Source: hb-20261024-02 tester verdict round, Noticed item 1
 What: Setting PRIVATE_INSTANCE_PATTERNS from Git Bash: the shell converts an environment value that looks like a path when it starts a native program (git.exe, node.exe), so a pattern carrying a URL scheme and regex-escaped dots arrives changed, loads, is counted in the pass line and never matches - a silently weaker gate run, the pre-push hook included (it inherits the shell's value)
 Repro: In Git Bash set PRIVATE_INSTANCE_PATTERNS to a pattern with a URL scheme and escaped dots and run node -e to print process.env.PRIVATE_INSTANCE_PATTERNS: each escaped dot prints as slash-dot; the same value reaches a pre-push hook through git.exe already converted
 Expected: the value reaches node unchanged, or the docs say how to keep it so: MSYS2_ENV_CONV_EXCL=PRIVATE_INSTANCE_PATTERNS set in that shell beside the variable, and the hook excluding the variable from conversion for its own node runs
+Fix: 2026-10-25 (builder) — on fix/instance-data-private-patterns-in-ci, commit 03cfb73 - dev/hooks/pre-push exports MSYS2_ENV_CONV_EXCL=PRIVATE_INSTANCE_PATTERNS (joined to any value already set) before its node runs, which covers a PowerShell or cmd caller: measured on this machine, the value reached node through sh intact with the export and with each escaped dot turned into slash-dot without it. The hop from a Git Bash prompt into git.exe happens before any hook runs, so AGENTS.md section Data hygiene gains a bullet telling a Git Bash user to set the same variable in that shell beside PRIVATE_INSTANCE_PATTERNS, or to keep the patterns in the config file, which no shell converts. Judge: hand measurement in Git Bash and through sh (both hops, with and without the exclusion); not in the fixture suite, whose planted string has no path-like characters and whose CI runner has no Git Bash. Pick-up: read the bullet; from Git Bash print process.env.PRIVATE_INSTANCE_PATTERNS through node with and without the exclusion.
 
 ## F-587 — OPEN
 Reported: 2026-10-25 (tester)
