@@ -221,7 +221,21 @@ jobs:
       # Nothing tenant-, instance-, or org-specific may be committed (the repo may
       # be open-sourced). Fixtures use fictional tenants; live findings stay out
       # of git. See "Data hygiene" in AGENTS.md.
+      #
+      # The org-specific patterns come from the repository secret
+      # PRIVATE_INSTANCE_PATTERNS (one regex per line), never from the tree. GitHub
+      # masks the secret's value in logs and withholds secrets from pull requests
+      # opened from forks, so a fork's run keeps the generic patterns and the gate's
+      # own WARNING, while any run that has the secret must load it:
+      # REQUIRE_PRIVATE_PATTERNS is true exactly when the secret is non-empty, and
+      # the gate then refuses a run that loaded zero private patterns instead of
+      # warning. (2026-10: with CI on the generic patterns only, a workspace folder
+      # name sat in bus prose for twelve days; the only private list was one
+      # machine's git-ignored config.)
       - name: No instance data committed
+        env:
+          PRIVATE_INSTANCE_PATTERNS: ${{ secrets.PRIVATE_INSTANCE_PATTERNS }}
+          REQUIRE_PRIVATE_PATTERNS: ${{ secrets.PRIVATE_INSTANCE_PATTERNS != '' }}
         run: node build/check-instance-data.mjs
       # The gate itself is pinned by fixtures (F-178): UTF-16 files are decoded
       # and scanned rather than skipped as binary, and skipped-binary files are

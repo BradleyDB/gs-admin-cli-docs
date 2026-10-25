@@ -735,9 +735,16 @@ go through GitHub private advisories (SECURITY.md), not an email address.
   repo** — never committed here, not even under `docs/`.
 - CI enforces the committed-file part on every PR: `build/check-instance-data.mjs`
   (docs-drift workflow). Its patterns are generic by design — the check itself must
-  never contain a sensitive string. Org-specific strings to detect go in the
+  never contain a sensitive string. Org-specific strings to detect (real tenant
+  slugs, the org name, the consumer workspace's KB folder names — `--kb <folder>`
+  lands in bus prose) live in two places that never enter the repo: locally in the
   git-ignored `gs-admin-explorer.config.json` (`privateInstancePatterns` — see the
-  `.example.json`), never in the repo.
+  `.example.json`), and in CI in the repository secret `PRIVATE_INSTANCE_PATTERNS`
+  (one regex per line), which the docs-drift step passes to the gate through the
+  environment. A run that has the secret must load it (`REQUIRE_PRIVATE_PATTERNS`);
+  a pull request from a fork gets no secrets and runs the generic patterns with a
+  warning. A private-pattern hit is reported by position with the matched text
+  redacted — the string must not appear in a CI log either.
 
 ## Reading order before touching…
 

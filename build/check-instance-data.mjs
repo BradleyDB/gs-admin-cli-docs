@@ -7,10 +7,12 @@
 // messages, same style as check-stale-facts.mjs.
 //
 // The patterns here are deliberately GENERIC so this check itself never contains a
-// sensitive string. Org-specific strings to detect (real tenant slugs, org names) go
-// in the git-ignored gs-admin-explorer.config.json under "privateInstancePatterns"
-// (see gs-admin-explorer.config.example.json) — they get enforced on local runs
-// without ever entering git history.
+// sensitive string. Org-specific strings to detect (real tenant slugs, org names,
+// the workspace folder names that `--kb <folder>` puts into bus prose) come from two
+// places that never enter git history: the git-ignored gs-admin-explorer.config.json
+// under "privateInstancePatterns" (see gs-admin-explorer.config.example.json) for
+// local runs, and the PRIVATE_INSTANCE_PATTERNS environment variable, which the
+// docs-drift workflow fills from a repository secret, for CI.
 //
 // Zero dependencies: Node built-ins only. Runs in .github/workflows/docs-drift.yml.
 
@@ -31,7 +33,9 @@ const FICTIONAL_SUBDOMAIN = /^(?:acme|devon|example)[a-z0-9-]*$|^your[-_]?[a-z-]
 // the one deliberate real address (that file is exempt from the email check only).
 const FICTIONAL_EMAIL_DOMAIN = /^(?:[a-z0-9-]+\.)*(?:acme\.com|example\.(?:com|org|net))$/i;
 
-// what → shown in the failure line; ok(match) → true means the match is legitimate.
+// what → shown in the failure line; ok(match) → true means the match is legitimate;
+// redact → the failure line never shows the matched text (private patterns).
+/** @type {{ what: string, re: RegExp, ok: (m: RegExpMatchArray) => boolean, hint: string, skipFiles?: string[], redact?: boolean }[]} */
 const CHECKS = [
   {
     what: "tenant-qualified Gainsight URL",
@@ -112,24 +116,58 @@ try {
   if (resolve(mainRoot) !== resolve(ROOT)) cfgCandidates.push(join(mainRoot, "gs-admin-explorer.config.json"));
 } catch { /* not a git checkout: ROOT only */ }
 const cfgPath = cfgCandidates.find((p) => existsSync(p));
+let filePatterns = [];
 if (cfgPath) {
-  let extras = [];
   try {
-    extras = readJsonFile(cfgPath).privateInstancePatterns ?? [];
+    filePatterns = readJsonFile(cfgPath).privateInstancePatterns ?? [];
   } catch (e) {
     console.error(`Could not parse gs-admin-explorer.config.json: ${e.message}`);
     process.exit(1);
   }
-  privatePatternCount = extras.length;
-  extras.forEach((p, i) =>
+}
+// The second source of private patterns is the environment: PRIVATE_INSTANCE_PATTERNS,
+// one case-insensitive regex per line (blank lines and `#` comments ignored). The
+// docs-drift workflow fills it from a repository secret, so CI enforces the
+// org-specific list without the list ever entering the tree; GitHub masks the
+// secret's value in logs and withholds it from pull requests opened from forks,
+// whose runs therefore keep the generic patterns (and the WARNING below). Until
+// 2026-10 CI ran with no private pattern at all, and one machine's git-ignored
+// config was the only place the list lived — a workspace folder name pasted into
+// bus prose passed every gate for twelve days. REQUIRE_PRIVATE_PATTERNS=1 (or
+// `true`) turns "zero private patterns loaded" from the F-423 warning into a
+// refusal; the workflow sets it only when the secret is present, so the owner's
+// pushes can never run weak unnoticed while a fork's PR still passes.
+const envPatterns = (process.env.PRIVATE_INSTANCE_PATTERNS ?? "")
+  .split(/\r?\n/)
+  .map((l) => l.trim())
+  .filter((l) => l && !l.startsWith("#"));
+const requirePrivate = /^(1|true)$/i.test((process.env.REQUIRE_PRIVATE_PATTERNS ?? "").trim());
+// A private-pattern hit never echoes the matched text (redact: true): the hit's
+// whole point is that the string must not appear anywhere, a CI log included.
+const addPrivate = (patterns, source) =>
+  patterns.forEach((p, i) => {
+    let re;
+    try {
+      re = new RegExp(p, "gi");
+    } catch (e) {
+      // V8's message quotes the pattern ("Invalid regular expression: /…/gi: Unterminated
+      // character class"); keep only the reason after the last ": " so the private
+      // string is not echoed by the very gate that exists to keep it out of logs.
+      const why = String(e.message).split(": ").pop();
+      console.error(`private pattern ${i + 1} (${source}) is not a valid regular expression: ${why}`);
+      process.exit(1);
+    }
     CHECKS.push({
-      what: `private pattern ${i + 1} (local gs-admin-explorer.config.json)`,
-      re: new RegExp(p, "gi"),
+      what: `private pattern ${i + 1} (${source})`,
+      re,
       ok: () => false,
       hint: "org-specific string — remove it before committing",
-    }),
-  );
-}
+      redact: true,
+    });
+  });
+addPrivate(filePatterns, "local gs-admin-explorer.config.json");
+addPrivate(envPatterns, "environment PRIVATE_INSTANCE_PATTERNS");
+privatePatternCount = filePatterns.length + envPatterns.length;
 
 const files = execSync("git ls-files -z", { cwd: ROOT, encoding: "utf8" })
   .split("\0")
@@ -200,12 +238,13 @@ for (const file of files) {
   }
   const lines = text.split("\n");
   lines.forEach((line, i) => {
-    for (const { what, re, ok, hint, skipFiles } of CHECKS) {
+    for (const { what, re, ok, hint, skipFiles, redact } of CHECKS) {
       if (skipFiles?.includes(file)) continue;
       for (const m of line.matchAll(re)) {
         if (!ok(m)) {
           failures++;
-          console.error(`${file}:${i + 1}: ${what}: "${m[0].trim()}" — ${hint}`);
+          const shown = redact ? "[match redacted]" : `"${m[0].trim()}"`;
+          console.error(`${file}:${i + 1}: ${what}: ${shown} — ${hint}`);
         }
       }
     }
@@ -244,14 +283,21 @@ const skippedNote = skippedBinary.length
   ? ` ${skippedBinary.length} binary file(s) NOT scanned: ${skippedBinary.join(", ")}.`
   : "";
 if (privatePatternCount === 0) {
-  console.error(
-    "WARNING: no private pattern loaded — gs-admin-explorer.config.json was not found beside build/ or in the main checkout, " +
-      "so this run checked the generic patterns ONLY (a bare org slug with no tenant URL beside it passes). " +
-      "If this machine keeps private patterns, this is a weaker run than the one you rely on (F-423)."
-  );
+  const weak =
+    "no private pattern loaded — gs-admin-explorer.config.json was not found beside build/ or in the main checkout " +
+    "and PRIVATE_INSTANCE_PATTERNS is empty, so this run checked the generic patterns ONLY " +
+    "(a bare org slug with no tenant URL beside it passes).";
+  if (requirePrivate) {
+    // The caller declared that private patterns exist for this run (the workflow
+    // sets REQUIRE_PRIVATE_PATTERNS only when its secret is present), so running
+    // without them is a broken gate, not a weaker one — refuse rather than pass.
+    console.error(`ERROR: ${weak} REQUIRE_PRIVATE_PATTERNS is set, so a run without them is refused.`);
+    process.exit(1);
+  }
+  console.error(`WARNING: ${weak} If this machine keeps private patterns, this is a weaker run than the one you rely on (F-423).`);
 }
 console.log(
   `Instance-data check passed: ${files.length - skippedBinary.length} of ${files.length} tracked files scanned, ` +
-    `${privatePatternCount} private pattern(s) loaded from gs-admin-explorer.config.json, ` +
-    `no tenant/instance/org-specific data.${skippedNote}`,
+    `${privatePatternCount} private pattern(s) loaded (${filePatterns.length} from gs-admin-explorer.config.json, ` +
+    `${envPatterns.length} from PRIVATE_INSTANCE_PATTERNS), no tenant/instance/org-specific data.${skippedNote}`,
 );

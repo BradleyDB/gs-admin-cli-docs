@@ -36,6 +36,17 @@
 //      uncaught ENOENT stack trace — while a file HEAD commits that the index
 //      lacks WARNS on its own line (an intended staged deletion, the
 //      release-strip rehearsal's, looks the same as a broken checkout).
+//  12. Private patterns reach CI through the environment (2026-10: a workspace
+//      folder name sat in bus prose for twelve days because the only private list
+//      was one machine's git-ignored config and CI ran with none): the
+//      PRIVATE_INSTANCE_PATTERNS variable loads one regex per line (blank lines
+//      and # comments ignored), its hits are counted beside the file's, a hit from
+//      EITHER source is reported with the matched text redacted (the string must
+//      not appear in a CI log either), an invalid regex is refused by position
+//      without being echoed, and REQUIRE_PRIVATE_PATTERNS turns a run with zero
+//      private patterns from the F-423 warning into a refusal — while a run
+//      without that flag (a fork's PR, which gets no secrets) keeps warning and
+//      passing.
 //
 // Each case copies the real checker into a scratch git repo under the OS temp
 // dir (the checker roots itself at its own script location and scans that
@@ -70,6 +81,9 @@ const utf16be = (s) => Buffer.concat([Buffer.from([0xfe, 0xff]), Buffer.from(s, 
 // git-ignored gs-admin-explorer.config.json exists in the real repo (F-204).
 // opts.appendToChecker: text appended to the scratch checker COPY before add —
 // the self-scan mutant rig (F-203); the repo's checker is never touched.
+// opts.env: environment variables for the checker run (case 12). The two the
+// checker reads are CLEARED from the inherited environment first, so a developer
+// shell or CI step that happens to carry them cannot change any other case.
 function runRig(files, opts = {}) {
   const rig = mkdtempSync(join(tmpdir(), "instance-data-test-"));
   try {
@@ -85,9 +99,13 @@ function runRig(files, opts = {}) {
     // autocrlf=true otherwise spams LF/CRLF warnings into every test run.
     execSync("git -c core.autocrlf=false add -A", { cwd: rig });
     for (const [rel, content] of Object.entries(opts.untracked ?? {})) writeFileSync(join(rig, rel), content);
+    const env = { ...process.env };
+    delete env.PRIVATE_INSTANCE_PATTERNS;
+    delete env.REQUIRE_PRIVATE_PATTERNS;
     return spawnSync(process.execPath, [join(rig, "build", "check-instance-data.mjs")], {
       cwd: rig,
       encoding: "utf8",
+      env: { ...env, ...(opts.env ?? {}) },
     });
   } finally {
     rmSync(rig, { recursive: true, force: true });
@@ -158,6 +176,9 @@ const bomConfig = String.fromCharCode(0xfeff) + JSON.stringify({ privateInstance
   ok("private pattern from BOM'd config fires", res.status === 1);
   ok("private-pattern failure names the file", res.stderr.includes("notes.md"));
   ok("private-pattern failure names the pattern source", res.stderr.includes("private pattern 1"));
+  // Case 12's redaction rule applies to the file's patterns too: the matched
+  // string is the thing that must not appear anywhere, a log included.
+  ok("private-pattern failure does not echo the matched string", !res.stderr.includes(PRIVATE_SLUG) && res.stderr.includes("[match redacted]"));
 }
 
 // ── 7. Pass line surfaces the private-pattern count (F-204) ──────────────────
@@ -356,6 +377,51 @@ const LEAKY_USER = "dev" + "user";
   } finally {
     rmSync(rig, { recursive: true, force: true });
   }
+}
+
+// ── 12. Private patterns from the environment (CI's secret), redacted hits,
+// REQUIRE_PRIVATE_PATTERNS ─────────────────────────────────────────────────────
+// The pattern is assembled from fragments like PRIVATE_SLUG and is fictional.
+const ENV_SLUG = "omega" + "corp" + "-ws";
+{
+  // (a) a pattern from the environment fires, is named by position and source,
+  // and the matched text is redacted.
+  const res = runRig({ "notes.md": `the ${ENV_SLUG} folder\n` }, { env: { PRIVATE_INSTANCE_PATTERNS: ENV_SLUG } });
+  ok("env pattern fires on a tracked file", res.status === 1 && res.stderr.includes("notes.md"));
+  ok("env pattern hit names its source", res.stderr.includes("private pattern 1 (environment PRIVATE_INSTANCE_PATTERNS)"));
+  ok("env pattern hit does not echo the matched string", !res.stderr.includes(ENV_SLUG) && res.stderr.includes("[match redacted]"));
+  // (b) one regex per line; blank lines and # comments are ignored; the pass line
+  // counts the environment's patterns apart from the file's.
+  const clean = runRig(
+    { "clean.md": "nothing sensitive\n" },
+    { env: { PRIVATE_INSTANCE_PATTERNS: `\n# the org name\n${ENV_SLUG}\n\n` } },
+  );
+  ok("env list with blanks and comments loads exactly one pattern", clean.status === 0 && clean.stdout.includes("1 private pattern(s) loaded (0 from gs-admin-explorer.config.json, 1 from PRIVATE_INSTANCE_PATTERNS)"));
+  ok("a run with an env pattern does not warn about a missing private list", !/^WARNING: no private pattern loaded/m.test(clean.stderr));
+  // (c) file and environment combine, and each source's hit is attributed to it.
+  const both = runRig(
+    { "notes.md": `${PRIVATE_SLUG} and ${ENV_SLUG}\n` },
+    { untracked: { "gs-admin-explorer.config.json": bomConfig }, env: { PRIVATE_INSTANCE_PATTERNS: ENV_SLUG } },
+  );
+  ok("file and env patterns both fire, each attributed to its source", both.status === 1 && both.stderr.includes("private pattern 1 (local gs-admin-explorer.config.json)") && both.stderr.includes("private pattern 1 (environment PRIVATE_INSTANCE_PATTERNS)"));
+  const bothClean = runRig(
+    { "clean.md": "nothing sensitive\n" },
+    { untracked: { "gs-admin-explorer.config.json": bomConfig }, env: { PRIVATE_INSTANCE_PATTERNS: ENV_SLUG } },
+  );
+  ok("pass line counts both sources", bothClean.status === 0 && bothClean.stdout.includes("2 private pattern(s) loaded (1 from gs-admin-explorer.config.json, 1 from PRIVATE_INSTANCE_PATTERNS)"));
+  // (d) REQUIRE_PRIVATE_PATTERNS: zero patterns is a refusal, not a warning; with
+  // a pattern present the flag changes nothing; "false" (what the workflow passes
+  // on a fork's PR, whose secret is empty) keeps the warning-and-pass behaviour.
+  const required = runRig({ "clean.md": "nothing sensitive\n" }, { env: { REQUIRE_PRIVATE_PATTERNS: "true" } });
+  ok("REQUIRE with zero private patterns refuses the run", required.status === 1 && /^ERROR: no private pattern loaded/m.test(required.stderr) && !required.stdout.includes("Instance-data check passed"));
+  const requiredOk = runRig({ "clean.md": "nothing sensitive\n" }, { env: { REQUIRE_PRIVATE_PATTERNS: "1", PRIVATE_INSTANCE_PATTERNS: ENV_SLUG } });
+  ok("REQUIRE with a pattern present passes", requiredOk.status === 0);
+  const fork = runRig({ "clean.md": "nothing sensitive\n" }, { env: { REQUIRE_PRIVATE_PATTERNS: "false" } });
+  ok("REQUIRE=false (a fork's run) warns and passes as before", fork.status === 0 && /^WARNING: no private pattern loaded/m.test(fork.stderr));
+  // (e) an invalid regex is refused by position and source, never echoed.
+  const bad = runRig({ "clean.md": "nothing sensitive\n" }, { env: { PRIVATE_INSTANCE_PATTERNS: "valid-one\n(unclosed[" } });
+  ok("an invalid env regex is refused and named by position", bad.status === 1 && bad.stderr.includes("private pattern 2 (environment PRIVATE_INSTANCE_PATTERNS) is not a valid regular expression"));
+  ok("the invalid regex itself is not echoed", !bad.stderr.includes("(unclosed["));
 }
 
 if (failures.length) {
