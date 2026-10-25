@@ -259,7 +259,7 @@ node build/test-comparison-html.mjs   # comparison-HTML generator parsing fixtur
 node build/test-emit-reader-shapes.mjs # the read-surface emitter: committed data/reader-shapes.json equals a fresh emission, byte-stable, catalog-joined, floors present; refuses an unknown command; the tracer's floor / enumeration / dropped-reader reds driven from outside
 node build/test-wiki-html.mjs         # wiki generator rendering fixtures + outbound-anchor resolution + byte-stability + the T-9 v4 grammar pins (the ONE block parser + inline core in build/lib.mjs, each pin mutation-proved in memory — run it after any edit to lib.mjs's grammar or either generator's renderer)
 node build/test-render-cheatsheet.mjs # the one cheatsheet emitter: repo/workspace lane parity + rendering fixtures
-node build/test-check-instance-data.mjs # the instance-data gate itself: UTF-16 files are decoded and scanned, skipped-binary accounting
+node build/test-check-instance-data.mjs # the instance-data gate itself: UTF-16 files are decoded and scanned, skipped-binary accounting, coverage asserted (F-424); private patterns from the environment (CI's secret), deduplicated across sources, hits and paths masked, REQUIRE_PRIVATE_PATTERNS refusal
 node build/test-check-stale-facts.mjs # the stale-facts gate itself: bus code-context exemption (F-275/F-328) — indented quotes exempt, line-leading fences refused, prose stays checked, bus-only; the W10 handoff conventions (Blind spots line, pred: rows, Class: keys, Sibling sweep)
 node build/test-extract-catalog.mjs   # the dual-lane catalog emitter: fixture-package derivations + T-1 conformance on the committed catalog
 node build/test-defect-classes.mjs    # the defect-class DETECTORS in memory (milliseconds): detectRow/callClose over every mechanical row, exact hits per decision point (F-364, F-365)
@@ -741,10 +741,13 @@ go through GitHub private advisories (SECURITY.md), not an email address.
   git-ignored `gs-admin-explorer.config.json` (`privateInstancePatterns` — see the
   `.example.json`), and in CI in the repository secret `PRIVATE_INSTANCE_PATTERNS`
   (one regex per line), which the docs-drift step passes to the gate through the
-  environment. A run that has the secret must load it (`REQUIRE_PRIVATE_PATTERNS`);
-  a pull request from a fork gets no secrets and runs the generic patterns with a
-  warning. A private-pattern hit is reported by position with the matched text
-  redacted — the string must not appear in a CI log either.
+  environment. This repository's own pushes and same-repo pull requests must load it
+  (`REQUIRE_PRIVATE_PATTERNS`, derived from the event so a missing secret turns red);
+  a pull request from a fork or from Dependabot gets no secrets and runs the generic
+  patterns with a warning. A private-pattern hit is reported by its source and line
+  with the matched text redacted, file paths are scanned too, and every private
+  string is masked out of everything the gate prints — the string must not appear in
+  a CI log either.
 
 ## Reading order before touching…
 
