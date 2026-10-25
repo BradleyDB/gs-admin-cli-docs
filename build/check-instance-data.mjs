@@ -7,10 +7,12 @@
 // messages, same style as check-stale-facts.mjs.
 //
 // The patterns here are deliberately GENERIC so this check itself never contains a
-// sensitive string. Org-specific strings to detect (real tenant slugs, org names) go
-// in the git-ignored gs-admin-explorer.config.json under "privateInstancePatterns"
-// (see gs-admin-explorer.config.example.json) — they get enforced on local runs
-// without ever entering git history.
+// sensitive string. Org-specific strings to detect (real tenant slugs, org names,
+// the workspace folder names that `--kb <folder>` puts into bus prose) come from two
+// places that never enter git history: the git-ignored gs-admin-explorer.config.json
+// under "privateInstancePatterns" (see gs-admin-explorer.config.example.json) for
+// local runs, and the PRIVATE_INSTANCE_PATTERNS environment variable, which the
+// docs-drift workflow fills from a repository secret, for CI.
 //
 // Zero dependencies: Node built-ins only. Runs in .github/workflows/docs-drift.yml.
 
@@ -31,7 +33,9 @@ const FICTIONAL_SUBDOMAIN = /^(?:acme|devon|example)[a-z0-9-]*$|^your[-_]?[a-z-]
 // the one deliberate real address (that file is exempt from the email check only).
 const FICTIONAL_EMAIL_DOMAIN = /^(?:[a-z0-9-]+\.)*(?:acme\.com|example\.(?:com|org|net))$/i;
 
-// what → shown in the failure line; ok(match) → true means the match is legitimate.
+// what → shown in the failure line; ok(match) → true means the match is legitimate;
+// redact → the failure line never shows the matched text (private patterns).
+/** @type {{ what: string, re: RegExp, ok: (m: RegExpMatchArray) => boolean, hint: string, skipFiles?: string[], redact?: boolean }[]} */
 const CHECKS = [
   {
     what: "tenant-qualified Gainsight URL",
@@ -95,7 +99,6 @@ const CHECKS = [
 // must not be invisible (F-204). The BOM-tolerant parse lives in build/lib.mjs
 // readJsonFile (F-118/F-204 — this reader's own strip copy retired at B5
 // W3/DS-16); a PRESENT-but-unparseable config still hard-fails loudly.
-let privatePatternCount = 0;
 // The config is git-ignored and lives in the MAIN checkout's root, so a
 // `git worktree` (which /dev-loop recommends for branch surgery and the
 // merge-readiness pass) has none beside its own build/ — and this checker
@@ -112,24 +115,147 @@ try {
   if (resolve(mainRoot) !== resolve(ROOT)) cfgCandidates.push(join(mainRoot, "gs-admin-explorer.config.json"));
 } catch { /* not a git checkout: ROOT only */ }
 const cfgPath = cfgCandidates.find((p) => existsSync(p));
+let filePatterns = [];
 if (cfgPath) {
-  let extras = [];
   try {
-    extras = readJsonFile(cfgPath).privateInstancePatterns ?? [];
+    filePatterns = readJsonFile(cfgPath).privateInstancePatterns ?? [];
   } catch (e) {
     console.error(`Could not parse gs-admin-explorer.config.json: ${e.message}`);
     process.exit(1);
   }
-  privatePatternCount = extras.length;
-  extras.forEach((p, i) =>
-    CHECKS.push({
-      what: `private pattern ${i + 1} (local gs-admin-explorer.config.json)`,
-      re: new RegExp(p, "gi"),
-      ok: () => false,
-      hint: "org-specific string — remove it before committing",
-    }),
-  );
+  if (!Array.isArray(filePatterns) || filePatterns.some((p) => typeof p !== "string")) {
+    console.error("gs-admin-explorer.config.json: privateInstancePatterns must be an array of regex strings");
+    process.exit(1);
+  }
 }
+// The second source of private patterns is the environment: PRIVATE_INSTANCE_PATTERNS,
+// one case-insensitive regex per line. The docs-drift workflow fills it from a
+// repository secret, so CI enforces the org-specific list without the list ever
+// entering the tree (the workflow's comment says who gets the secret and who does
+// not). Each entry keeps its 1-based LINE number in the variable, so a failure's
+// "environment … line 3" points at the line the operator can fix without reading the
+// secret back; a line whose first character is `#` is a comment (write `\#` for a
+// pattern that starts with one), blank lines are skipped, and every line is trimmed
+// (a secret pasted on Windows arrives with CRLF). REQUIRE_PRIVATE_PATTERNS=1 (or
+// `true`) turns "zero private patterns loaded" from the F-423 warning into a refusal:
+// the caller says private patterns exist for this run, so a run without them is a
+// broken gate, not a weaker one.
+const envEntries = (process.env.PRIVATE_INSTANCE_PATTERNS ?? "")
+  .split(/\r?\n/)
+  .map((l, i) => ({ pattern: l.trim(), where: `environment PRIVATE_INSTANCE_PATTERNS line ${i + 1}` }))
+  .filter(({ pattern }) => pattern && !pattern.startsWith("#"));
+const fileEntries = filePatterns.map((pattern, i) => ({ pattern, where: `local gs-admin-explorer.config.json entry ${i + 1}` }));
+const requirePrivate = /^(1|true)$/i.test((process.env.REQUIRE_PRIVATE_PATTERNS ?? "").trim());
+// One compiled check per DISTINCT pattern string, attributed to the first source that
+// named it: the local file and the secret usually hold the same list, and a duplicate
+// would scan every line twice and report every hit twice. A private hit never echoes
+// the matched text (redact: true), and `privateRes` — the same patterns without the g
+// flag, so no lastIndex is shared — masks the private strings out of EVERYTHING else
+// this gate prints: a generic check's matched text, file paths, coverage notes. The
+// string must not appear in a CI log any more than in the tree.
+const privateRes = [];
+const privateSources = { file: 0, env: 0 };
+const seenPatterns = new Set();
+for (const { pattern, where } of [...fileEntries, ...envEntries]) {
+  if (seenPatterns.has(pattern)) continue;
+  let re;
+  try {
+    re = new RegExp(pattern, "gi");
+  } catch (e) {
+    // V8's message quotes the pattern ("Invalid regular expression: /…/gi: Unterminated
+    // character class"); keep only the reason after the last ": " so the private
+    // string is not echoed by the very gate that exists to keep it out of logs.
+    const why = String(e.message).split(": ").pop();
+    console.error(`private pattern (${where}) is not a valid regular expression: ${why}`);
+    process.exit(1);
+  }
+  if (new RegExp(pattern, "i").test("")) {
+    console.error(`private pattern (${where}) matches the empty string (a trailing | or an optional-only body?), so it would flag every line of every file — fix the pattern`);
+    process.exit(1);
+  }
+  seenPatterns.add(pattern);
+  privateRes.push(re); // matchAll clones the regex per call, so the shared g flag carries no lastIndex
+  if (where.startsWith("environment")) privateSources.env++;
+  else privateSources.file++;
+  CHECKS.push({
+    what: `private pattern (${where})`,
+    re,
+    ok: () => false,
+    hint: "org-specific string — remove it before committing",
+    redact: true,
+  });
+}
+const privatePatternCount = privateRes.length;
+// Redaction works on SPANS matched in the WHOLE string, never by re-running a pattern
+// on a printed fragment (F-583, reopen 1: a lookbehind, a pattern wider than the
+// generic match, a context-bound pattern and a pattern that is a prefix of another
+// each left the string in clear when re-matched on the fragment alone). Three rules:
+//   1. redact(s) replaces the UNION of every private match range over s, plus every
+//      learned literal (below), so overlapping or nested matches leave no remainder.
+//   2. Every identifier-like token (4+ of [A-Za-z0-9_-]) inside a private match is
+//      learned as a literal to redact everywhere for the rest of the run: a pattern
+//      that identifies the string only in one context (`--kb <name>`) still masks it
+//      where it recurs bare — in a URL on the same line, in a file's path, in another
+//      file. Learning is finished before anything is printed (the scan collects, then
+//      prints), so a literal found in the last file masks the first file's lines.
+//   3. A generic hit on a line that also carries a private hit prints no text at all.
+// Over-masking is the accepted cost: a token learned from a match's context (`https`)
+// may blank a harmless word in a failure line; a private string in a public log may not.
+// Structural tokens a context-bound pattern is likely to carry; learning them would
+// blank harmless words in every printed path and fragment and make a finding hard to
+// locate. A private identifier shorter than four characters, or one no pattern ever
+// matches bare, is not learned: name it as its own pattern (documented limit).
+const LITERAL_STOPLIST = new Set(["http", "https", "www", "gainsightcloud", "gainsight", "cloud", "workspace", "users", "home"]);
+const privateLiterals = new Set();
+const learnLiterals = (matchText) => {
+  for (const t of matchText.match(/[A-Za-z0-9_-]{4,}/g) ?? []) {
+    const lower = t.toLowerCase();
+    if (!LITERAL_STOPLIST.has(lower)) privateLiterals.add(lower);
+  }
+};
+// Spans are found over the ORIGINAL string, never by index into a lower-cased copy:
+// lower-casing can change a string's length (U+0130 lower-cases to two code units),
+// which would shift every span after it. A learned literal is ASCII ([A-Za-z0-9_-]), so
+// comparing each same-length slice case-folded is exact: a slice whose folding grows
+// cannot equal the literal, and no regex (and no regex escaping, which this lane has no
+// sanctioned copy of) is needed. Memoised per string: a line with many findings, or a
+// path printed once per finding, is scanned once.
+const spanCache = new Map();
+const spansIn = (s) => {
+  if (spanCache.has(s)) return spanCache.get(s);
+  const spans = [];
+  for (const r of privateRes) for (const m of s.matchAll(r)) if (m[0]) spans.push([m.index, m.index + m[0].length]);
+  for (const lit of privateLiterals) {
+    const L = lit.length;
+    for (let i = 0; i + L <= s.length; i++) if (s.slice(i, i + L).toLowerCase() === lit) spans.push([i, i + L]);
+  }
+  spans.sort((a, b) => a[0] - b[0]);
+  const merged = [];
+  for (const sp of spans) {
+    const last = merged[merged.length - 1];
+    if (last && sp[0] <= last[1]) last[1] = Math.max(last[1], sp[1]);
+    else merged.push([sp[0], sp[1]]);
+  }
+  spanCache.set(s, merged);
+  return merged;
+};
+// redactSlice(s, start, end) returns s[start, end) with every span clipped into that
+// range replaced; the spans are computed over the WHOLE of s (rule 1), so a fragment is
+// judged by its line, not by itself. redact(s) is the whole-string form and is safe to
+// pass to .map (a three-argument form there would read the index as `start`).
+const redactSlice = (s, start, end) => {
+  let out = "";
+  let pos = start;
+  for (const [a, b] of spansIn(s)) {
+    if (b <= start || a >= end) continue;
+    const from = Math.max(a, start);
+    if (from > pos) out += s.slice(pos, from);
+    out += "[redacted]";
+    pos = Math.min(b, end);
+  }
+  return out + s.slice(pos, end);
+};
+const redact = (s) => redactSlice(s, 0, s.length);
 
 const files = execSync("git ls-files -z", { cwd: ROOT, encoding: "utf8" })
   .split("\0")
@@ -184,13 +310,42 @@ function decodeTracked(buf) {
 
 let failures = 0;
 const skippedBinary = [];
+// The scan COLLECTS its findings and prints them afterwards (rule 2 above): nothing is
+// printed until every private match in every path and line has been learned.
+/** @type {{ file: string, line?: string, lineNo?: number, what: string, hint: string, start?: number, end?: number, privateOnLine?: boolean }[]} */
+const findings = [];
+// A private pattern must match the string itself, not only a position: a lookaround-only
+// pattern passes the empty-string guard above (it needs its context) yet matches zero
+// characters, so it would count a finding while learning and masking nothing — the path
+// would print in clear. Refused where it happens, by position, pattern not echoed.
+const refuseZeroLength = (m, what, where) => {
+  if (m[0]) return;
+  console.error(`${what} matches zero characters at ${where}: a private pattern must match the private string itself, not only its position (a lookaround-only pattern) — fix the pattern`);
+  process.exit(1);
+};
+// The PATH of a tracked file is scanned by the private patterns too: a file under a
+// folder named after the tenant is a leak whatever the file holds, and the path is
+// what every line below prints. (The generic checks stay content-only: a path is
+// never a URL or an email, and the user-path check's roots do not occur in a
+// repo-relative path.)
+for (const file of files) {
+  for (const { what, re, hint, redact: isPrivate } of CHECKS) {
+    if (!isPrivate) continue;
+    for (const m of file.matchAll(re)) {
+      refuseZeroLength(m, what, "a tracked file's path");
+      failures++;
+      learnLiterals(m[0]);
+      findings.push({ file, what: `${what} in the file path`, hint });
+    }
+  }
+}
 for (const file of files) {
   let buf;
   try {
     buf = readFileSync(join(ROOT, file));
   } catch (e) {
     if (e.code !== "ENOENT") throw e;
-    unscanned.push(`${file} (tracked, absent from the working tree)`);
+    unscanned.push(file);
     continue;
   }
   const text = decodeTracked(buf);
@@ -200,16 +355,35 @@ for (const file of files) {
   }
   const lines = text.split("\n");
   lines.forEach((line, i) => {
-    for (const { what, re, ok, hint, skipFiles } of CHECKS) {
+    const lineFindings = [];
+    let privateOnLine = false;
+    for (const { what, re, ok, hint, skipFiles, redact: isPrivate } of CHECKS) {
       if (skipFiles?.includes(file)) continue;
       for (const m of line.matchAll(re)) {
-        if (!ok(m)) {
-          failures++;
-          console.error(`${file}:${i + 1}: ${what}: "${m[0].trim()}" — ${hint}`);
+        if (ok(m)) continue;
+        if (isPrivate) {
+          refuseZeroLength(m, what, `a tracked file, line ${i + 1}`);
+          privateOnLine = true;
+          learnLiterals(m[0]);
         }
+        failures++;
+        lineFindings.push({ file, line, lineNo: i + 1, what, hint, start: m.index, end: m.index + m[0].length });
       }
     }
+    // Rule 3: with a private hit on the line, every hit on it prints no text.
+    for (const f of lineFindings) findings.push({ ...f, privateOnLine });
   });
+}
+for (const f of findings) {
+  if (!f.lineNo) {
+    console.error(`${redact(f.file)}: ${f.what} — ${f.hint}`);
+    continue;
+  }
+  // A hit on a line with a private hit is redacted whole; a generic hit on a clean line
+  // shows its text with every learned private string masked out of it (a tenant URL on
+  // the org's slug reads "[redacted].gainsightcloud.com", still enough to find and fix).
+  const shown = f.privateOnLine ? "[match redacted]" : `"${redactSlice(f.line, f.start, f.end).trim()}"`;
+  console.error(`${redact(f.file)}:${f.lineNo}: ${f.what}: ${shown} — ${f.hint}`);
 }
 
 if (failures) {
@@ -225,7 +399,7 @@ if (failures) {
 if (unscanned.length) {
   console.error(
     `ERROR: coverage shortfall — ${unscanned.length} tracked file(s) were NOT scanned:\n` +
-      unscanned.map((u) => `  ${u}`).join("\n") +
+      unscanned.map((u) => `  ${redact(u)} (tracked, absent from the working tree)`).join("\n") +
       `\nA sparse or partial checkout, or a file removed without git rm. Run the gate from a complete checkout ` +
       `of the tree being pushed; a scan that read fewer files than the index lists cannot vouch for it (F-424).`,
   );
@@ -233,7 +407,7 @@ if (unscanned.length) {
 }
 if (stagedDeletions.length) {
   console.error(
-    `WARNING: ${stagedDeletions.length} file(s) HEAD commits are absent from the index and were NOT scanned: ${nameSome(stagedDeletions)} — ` +
+    `WARNING: ${stagedDeletions.length} file(s) HEAD commits are absent from the index and were NOT scanned: ${nameSome(stagedDeletions.map(redact))} — ` +
       `a partial checkout or staged deletions. Unless the deletions are intended (the release-strip rehearsal's are), ` +
       `this is a weaker run than the tree the push carries (F-424).`,
   );
@@ -241,17 +415,28 @@ if (stagedDeletions.length) {
 // Skipped-as-binary files are named, not silently dropped from "N tracked files
 // contain no …" — a coverage claim that quietly excludes files overstates the gate.
 const skippedNote = skippedBinary.length
-  ? ` ${skippedBinary.length} binary file(s) NOT scanned: ${skippedBinary.join(", ")}.`
+  ? ` ${skippedBinary.length} binary file(s) NOT scanned: ${skippedBinary.map(redact).join(", ")}.`
   : "";
 if (privatePatternCount === 0) {
-  console.error(
-    "WARNING: no private pattern loaded — gs-admin-explorer.config.json was not found beside build/ or in the main checkout, " +
-      "so this run checked the generic patterns ONLY (a bare org slug with no tenant URL beside it passes). " +
-      "If this machine keeps private patterns, this is a weaker run than the one you rely on (F-423)."
-  );
+  const envState = (process.env.PRIVATE_INSTANCE_PATTERNS ?? "").trim()
+    ? "PRIVATE_INSTANCE_PATTERNS holds no pattern line (blank or comment lines only)"
+    : "PRIVATE_INSTANCE_PATTERNS is empty or unset";
+  const weak =
+    "no private pattern loaded — gs-admin-explorer.config.json is absent beside build/ and in the main checkout, or lists none, " +
+    `and ${envState}, so this run checked the generic patterns ONLY ` +
+    "(a bare org slug with no tenant URL beside it passes).";
+  if (requirePrivate) {
+    // The caller declared that private patterns exist for this run (the workflow
+    // sets REQUIRE_PRIVATE_PATTERNS only when its secret is present), so running
+    // without them is a broken gate, not a weaker one — refuse rather than pass.
+    console.error(`ERROR: ${weak} REQUIRE_PRIVATE_PATTERNS is set, so a run without them is refused.`);
+    process.exit(1);
+  }
+  console.error(`WARNING: ${weak} If this machine keeps private patterns, this is a weaker run than the one you rely on (F-423).`);
 }
 console.log(
   `Instance-data check passed: ${files.length - skippedBinary.length} of ${files.length} tracked files scanned, ` +
-    `${privatePatternCount} private pattern(s) loaded from gs-admin-explorer.config.json, ` +
+    `${privatePatternCount} private pattern(s) loaded (${privateSources.file} from gs-admin-explorer.config.json, ` +
+    `${privateSources.env} from PRIVATE_INSTANCE_PATTERNS; a pattern both name counts once, under the file), ` +
     `no tenant/instance/org-specific data.${skippedNote}`,
 );

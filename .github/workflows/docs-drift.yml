@@ -221,13 +221,36 @@ jobs:
       # Nothing tenant-, instance-, or org-specific may be committed (the repo may
       # be open-sourced). Fixtures use fictional tenants; live findings stay out
       # of git. See "Data hygiene" in AGENTS.md.
+      #
+      # The org-specific patterns come from the repository secret
+      # PRIVATE_INSTANCE_PATTERNS (one regex per line), never from the tree; the
+      # gate's own header says why (2026-10: CI ran the generic patterns only, and
+      # the one private list lived in one machine's git-ignored config).
+      # REQUIRE_PRIVATE_PATTERNS says whether this run is one that MUST have the
+      # secret, and it is derived from the event, never from the secret itself — a
+      # flag read off the secret cannot notice the secret going missing. True on
+      # this repository's own pushes, dispatches and same-repo pull requests; false
+      # on a pull request from a fork (GitHub withholds secrets there), on a
+      # Dependabot pull request (it gets Dependabot secrets, not Actions secrets)
+      # and on anyone's fork running this workflow for itself. False keeps the
+      # generic run with the gate's WARNING; true makes zero loaded patterns red.
       - name: No instance data committed
+        env:
+          PRIVATE_INSTANCE_PATTERNS: ${{ secrets.PRIVATE_INSTANCE_PATTERNS }}
+          REQUIRE_PRIVATE_PATTERNS: ${{ github.repository == 'BradleyDB/gs-admin-cli-docs' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.user.login != 'dependabot[bot]')) }}
         run: node build/check-instance-data.mjs
       # The gate itself is pinned by fixtures (F-178): UTF-16 files are decoded
       # and scanned rather than skipped as binary, and skipped-binary files are
       # counted and named so the success message never overstates coverage.
       - name: Instance-data gate fixtures
         run: node build/test-check-instance-data.mjs
+      # The dev-branch pre-push hook is pinned by fixtures too (F-584): which
+      # commits a push gates is judged against a stand-in remote's own refs through
+      # real dry-run pushes with the hook installed, fail closed when the set cannot
+      # be established. On a stripped (release) tree the hook is absent and the
+      # suite reports nothing to test.
+      - name: Pre-push hook fixtures
+        run: node build/test-pre-push-hook.mjs
       # The stale-facts gate is pinned by fixtures too (F-275): the live bus's
       # code contexts (fenced/indented verbatim quotes) are exempt from the
       # citation checks, prose stays in scope, and the exemption is bus-only.
