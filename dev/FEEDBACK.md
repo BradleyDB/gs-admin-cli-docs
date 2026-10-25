@@ -16,7 +16,7 @@ Version: plugins/gs-superadmin/.claude-plugin/plugin.json
 Canary: plugins/gs-superadmin/skills/dev-canary/SKILL.md description
 Dev-only: dev plugins/gs-superadmin/skills/dev-canary
 Checks: battery review ci walk
-Pointer: none — close-out 2026-10-21 (builder): fix/r16-f575-f579 merged (PR #71) at 4b342f3be3ce; next free F-582; F-567, F-579, F-580, F-581 VERIFIED @ hb-20261021-01, F-575 and F-576 VERIFIED @ hb-20261021-02, F-578 WONTFIX; CI per job on the head 8576913: validate-plugin 39698388217 changes / validate (ubuntu-latest) / manifests success, docs-drift 39698388208 drift (full) success, GitGuardian pass; branch deleted
+Pointer: 2026-10-24 · fix/instance-data-private-patterns-in-ci · PR #73 · hb-20261024-01 · next free F-584
 Hooks: dev/hooks/pre-push is the tracked source of this clone's .git/hooks/pre-push (install: cp dev/hooks/pre-push .git/hooks/pre-push — LF, executable); it blocks main, runs the three doc gates on dev, and runs check-instance-data on EVERY ref (F-423). A worktree shares the hooks and the checker reads the main checkout's private-pattern config from there.
 Release checklist: dev/RELEASE-CHECKLIST.md (repo-specific gates + the fill-in close-out note; the /dev-loop skill Step 4 remains the procedure of record)
 Walk hint (DS-44, 2026-09-07; procedure fixed by F-415, 2026-09-08): no CI suite executes
