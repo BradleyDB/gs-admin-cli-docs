@@ -62,8 +62,11 @@ if (!existsSync(HOOK)) {
 
 // Fictional, never a real org string; the suite's private pattern and the string
 // planted in files. The real gate scans this file: the string is not a tenant URL,
-// a user path or an email, and no private pattern of this repo names it.
-const PLANT = "zz-plantedorg-x";
+// a user path or an email, and no private pattern of this repo names it. Assembled
+// from parts so the literal is in no tracked file (hb-20261025-01's Noticed item 1:
+// with the literal committed, a kickoff that named it as the pattern had every tree
+// from that commit on refused, and an arm's refusal did not tell the plant from this line).
+const PLANT = ["zz", "planted" + "org", "x"].join("-");
 
 let passed = 0;
 /** @type {string[]} */

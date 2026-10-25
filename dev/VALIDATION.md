@@ -3902,8 +3902,10 @@ families are not all seen shows the split (`<measured> at this run's pace; the p
 seen`), and reads `at this run's pace` once every remaining family has been seen (a unit that will never be made this
 run — a failed or refused health part — keeps its family unseen, by design). Record the last progress line's `left`
 against the wall clock the run still took, in two cases: (a) the FIRST pull ever made on this knowledge base (no
-`<kb>/engagement-pace.json` — remove it and the scratch's pace.json first to make the case): the measured part within a
-factor of two, the plan's part reported as the constants' guess it is; (b) the SECOND scratch's first pull, with the
+`<kb>/engagement-pace.json` — remove it and the scratch's pace.json first to make the case): the SPLIT's honesty — the
+measured part prices the seen families' remaining calls at this run's pace and reads 0 s when every remaining call is in a
+family not yet seen (the sandbox's tail is: reworded at hb-20261021-02's Noticed item 3), the plan's part is reported as the
+constants' guess it is and is held to no factor; the live pace is judged in (b); (b) the SECOND scratch's first pull, with the
 knowledge base's pace from (a) in place: the whole `left` within a factor of two (this is the redesign's claim — the
 constants' tail, 2.7x on the sandbox at hb-20261021-01, is gone once the knowledge base has been measured once).
 BROKEN: no progress line, a line on every call, `status.progress` null after the first fact call while the run holds
@@ -3989,7 +3991,7 @@ account units were the difference. The dry-run quotes it correctly.
 R1 and R2 are owed again at hb-20261021-02 for F-575's redesign (the per-family live price): one FIRST pull of a fresh
 scratch with the knowledge base's pace file removed (case a) and then the second scratch's first pull over the pace
 file the first wrote (case b), each last line against the wall clock, the pass bar above; R2 as banked; and the
-statusDefault dry-run for F-576 (`"pages.0.statusDefault=PROCESSING,PAUSED" --dry-run` reads as a list: `changed`
+statusDefault dry-run for F-576 (`"pages.0.statusDefault=PROCESSING,PAUSE" --dry-run` reads as a list — PAUSE, not PAUSED, which the writer refuses, hb-20261021-02's Noticed item 1: `changed`
 names `pages[].statusDefault[]`, `consequence` is `in-page` and `consequenceText` reads "rebuild only (no pull)").
 
 Tester round @ hb-20261021-01 (2026-10-21; checkpoint, written as the arms run) — fix/r16-f575-f579 at 5760118, clean and

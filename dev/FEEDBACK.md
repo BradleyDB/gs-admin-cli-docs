@@ -175,6 +175,35 @@ Noticed (hb-20261024-01): 2026-10-24 (tester) — (1) arm D's bar reads "a line 
 Noticed (hb-20261021-02): 2026-10-21 (tester) — (1) VALIDATION § R16's banked F-576 line and the kickoff carry `PROCESSING,PAUSED`, but PAUSED is not a status the writer accepts (`must be one of PROCESSING, PAUSE, NEW, STOP`), so the line as banked exits 1 even on the fixed tree → builder, correct the banked value at the next round touching R16; (2) the fast path saved a dashboard that selects 0 programs on the sandbox with no word of it (the closing ask priced "about 40 calls and about 5 minutes"; the pull summary's `pull.programs` 0 and the pages empty) → owner ruling: polish finding or WONTFIX, at the next round touching the fast path or the closing step; (3) R1 case (a)'s bar reads the last line's measured part, which is 0 whenever the tail is all unseen families (it was here: 0 s for 0 s), so case (a) checks the split's honesty, not the live pace → builder, reword the bar if case (a) is re-run. Full shape (what, where, owner, trigger, check): the tester's verdict comment on PR #71 @ hb-20261021-02.
 Noticed (hb-20261021-01): 2026-10-21 (tester) — (1) VALIDATION § R16 R1's BROKEN list names "status.progress null while the run holds the lock", the designed state through the plan's reads (step P: null until the first fact call) → builder, reword the bar in the next round touching R16; (2) F-581's whoami re-read and retry never ran live (no call died on the login wording in R3; both pulls small, re-documentation 0) → builder, bank a re-run of R3 with both pulls re-documenting, at the next round touching engagement.mjs's auth path or the pull lock per knowledge base; (3) the refusal sample is unreachable on the sandbox (0 entry refusals in the last 30 days) → builder, bank it for a tenant with recent refusals; (4) the accounts add-on's price moved from 3 calls / 21 s (A's first plan) to 14 calls / 94.70 s (A's second), unexplained, and change --dry-run quotes it → builder, explain or log at the next round touching F-575's pricing. Full shape (what, where, owner, trigger, check): the tester's verdict comment on PR #71 @ hb-20261021-01.
 
+<!-- builder 2026-10-25 (round <token> on fix/release-scope-root-fixes, PR #<n> — the NEXT RELEASE SCOPE round: Bradley's
+     2026-10-21 ruling, every open finding fixed at its root, plus F-585, F-588, F-589 and the hook's Noticed items; from dev @ 0aa62e1):
+     Kickoff: open PRs to dev: none. OPEN polish at kickoff: F-563, F-564, F-565, F-566, F-575 (re-declared polish), F-576, F-582,
+       F-585 — all in this round's batch; OPEN normal: F-588, F-589 — in the batch (the hook's items). Branch kind: a normal branch
+       with one PR per tester round, not a feat/<topic> long-lived branch — VALIDATION § LB-1's rehearsal verdict is owed before
+       the first real long branch opens (its three findings F-560..F-562 landed; the rehearsal itself was not re-run), and this
+       round is one round's work.
+     Noticed items at kickoff, each logged, ruled or closed with a reason (dev-loop Step 2):
+       hb-20261021-01 (1) R16 R1's BROKEN list — DONE at hb-20261021-02 (reworded in VALIDATION § R16 R1: null through the plan's
+         reads is the designed state); (2) F-581's re-read never ran live — BANKED again as VALIDATION § R17 R3 (this round
+         touches the pull lock per knowledge base, its trigger); (3) the refusal sample — BANKED as R17 R4 for a tenant with recent
+         refusals (the owner names the tenant); (4) the accounts add-on's price moving — EXPLAINED at hb-20261021-02 (VALIDATION
+         § R16: lists turned on over a snapshot with no store are planned as the full refresh they cause), not a defect.
+       hb-20261021-02 (1) the banked PROCESSING,PAUSED value — FIXED in this commit (VALIDATION § R16 reads PROCESSING,PAUSE; the
+         writer's statuses are PROCESSING, PAUSE, NEW, STOP); (2) the fast path saving a dashboard that selects 0 programs with
+         no word of it — LOGGED as F-590 (polish) and fixed in this round: the closing step's ask names the selection's program
+         count and says when it is empty; the owner's ruling (polish, or WONTFIX) is asked in the handoff and stands either way;
+         (3) R1 case (a)'s bar — REWORDED in this commit (VALIDATION § R16 R1: case (a) judges the split's honesty, case (b) the
+         live pace).
+       hb-20261025-01 (1) the suite's committed PLANT constant — FIXED in this commit (build/test-pre-push-hook.mjs assembles it
+         from parts, so the literal is in no tracked file and a kickoff may name it); (2) arm O's bar — RULED, not banked: arm O
+         is a kickoff arm, not a VALIDATION one; if re-run, from Git Bash with no exclusion the push is REFUSED on the two tracked
+         lines that quote the converted form (AGENTS.md § Data hygiene, the comment block of dev/hooks/pre-push) and the probe is
+         NOT hit — the documented limit holding, and the bar reads so; (3) the ref name printed in clear — F-588, this round;
+         (4) the never-pushed probe commits — owner: git gc --prune=now (with hb-20261024-02's set).
+       hb-20261024-01 (3) the kickoff's cited memory absent from the tester workspace — owner (the memory lives in the builder's
+         project memory folder, not the consumer workspace's); this round's kickoff cites no memory.
+     -->
+
 <!-- builder 2026-10-21 (NEXT RELEASE SCOPE — Bradley's ruling after the 0.57.0 release: every open finding is
      fixed for the next release, each at its root cause, none deferred again. All seven are OPEN, so the next
      builder round's kickoff takes them as its batch; read each section before designing):
@@ -3787,3 +3816,11 @@ Source: security review of PR #73 on 2026-10-25 (the finder's one candidate, fil
 What: The pre-push hook stages this checkout's checker into a fixed path INSIDE the worktree holding the pushed tree (.gacd-prepush-gate/, with mkdir -p and cp), so on a clone that checks symlinks out as symlinks (core.symlinks true, the default on macOS and Linux) a pushed commit that tracks that path as a symlink into a folder of its own, with its own lib.mjs beside the target, has cp write through the symlink and node resolve the real path: the pushed tree's module runs with the maintainer's environment and can exit 0 to pass the gate, and the hook's claim that a weakened checker in the pushed tree never judges its own push does not hold there
 Repro: On a core.symlinks=true clone with the hook installed: a branch whose one commit tracks .gacd-prepush-gate/check-instance-data.mjs as a symlink to ../sub/check-instance-data.mjs plus sub/check-instance-data.mjs and a sub/lib.mjs that prints a marker and exits 0; git push --dry-run origin that branch: the marker prints and the push passes. On this Windows machine (core.symlinks false) the symlink is a plain file, cp overwrites it and the push is refused - fails closed
 Expected: the staging path cannot be pre-planted by the pushed tree: mkdir without -p (anything already at the path refuses the gate) or the checker staged in a separate mktemp -d outside the worktree with the tree root passed explicitly, node run with --preserve-symlinks-main; pinned by a probe in build/test-pre-push-hook.mjs that plants the symlink and expects the refusal, measured on the ubuntu runner where symlinks are real
+
+## F-590 — OPEN
+Reported: 2026-10-25 (builder, from the tester's Noticed (hb-20261021-02) item 2)
+Severity: polish — the dashboard saved is valid and the pull made is correct; what is missing is a word, so an admin sees empty pages after a priced pull where the selection held nothing
+Source: hb-20261021-02 tester verdict round, Noticed item 2 (the owner's ruling — polish finding, or WONTFIX — asked at this round's handoff)
+What: `dashboard new <slug> --fast-path` on a tenant that sent nothing in the default window takes every default, prices the closing step ("about 40 calls and about 5 minutes") and saves a dashboard that selects 0 programs, with no word of it in the closing step's ask or the save summary; the pull then makes the tenant-wide families alone and builds empty pages (measured on the sandbox at hb-20261021-02: `pull.programs` 0, the snapshot's dimensions empty)
+Repro: on a tenant with no send in the default window: node .gs-superadmin/plugin/scripts/dashboard.mjs new zz-empty --fast-path --kb <kb>, then next: the closing ask prices the pull and says nothing of the selection
+Expected: the closing step's ask names how many programs the selection holds ("the selection holds N programs that sent in the window") and, with none, says so and points at the window and the programs question (go back) before the save; the save summary and the refresh summary already carry the count (`pull.programs`)
