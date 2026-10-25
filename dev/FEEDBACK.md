@@ -3747,3 +3747,18 @@ Source: code review of the F-583 reopen-1 fix, 2026-10-24 (cleanup finder, item 
 What: build/check-instance-data.mjs's literal span finder (spansIn: a case-folded slice comparison per learned literal) is a second hand-rolled case-insensitive literal masker beside build/lib.mjs maskLocalPaths, which lib.mjs describes as the ONE masker for the build lane - the consumer-parity class.
 Repro: Read build/lib.mjs around maskLocalPaths (the comment calls it the one masker for the build lane) and build/check-instance-data.mjs spansIn: two literal maskers with different shapes (replace-in-place vs span-returning, case-insensitive on win32 only vs always).
 Expected: One span-returning literal finder in build/lib.mjs that maskLocalPaths and the instance-data gate both call; the gate's spansIn uses it for learned literals.
+
+## F-586 — OPEN
+Reported: 2026-10-25 (tester)
+Severity: polish — tooling; only a Git Bash caller who sets the variable to a path-like pattern runs weaker, and the config-file source is untouched by any shell
+Source: hb-20261024-02 tester verdict round, Noticed item 1
+What: Setting PRIVATE_INSTANCE_PATTERNS from Git Bash: the shell converts an environment value that looks like a path when it starts a native program (git.exe, node.exe), so a pattern carrying a URL scheme and regex-escaped dots arrives changed, loads, is counted in the pass line and never matches - a silently weaker gate run, the pre-push hook included (it inherits the shell's value)
+Repro: In Git Bash set PRIVATE_INSTANCE_PATTERNS to a pattern with a URL scheme and escaped dots and run node -e to print process.env.PRIVATE_INSTANCE_PATTERNS: each escaped dot prints as slash-dot; the same value reaches a pre-push hook through git.exe already converted
+Expected: the value reaches node unchanged, or the docs say how to keep it so: MSYS2_ENV_CONV_EXCL=PRIVATE_INSTANCE_PATTERNS set in that shell beside the variable, and the hook excluding the variable from conversion for its own node runs
+
+## F-587 — OPEN
+Reported: 2026-10-25 (tester)
+Severity: polish — documentation of a verified mechanism; the gate's behaviour is unchanged
+Source: hb-20261024-02 tester verdict round, Noticed item 2
+What: The learned-literal limit of the private-pattern masking (a string a pattern matches only joined to a suffix token, or one shorter than four characters, is not masked where it recurs bare) is written only in check-instance-data.mjs's comment and F-583's Fix note, not in AGENTS.md section Data hygiene or the example config, so an owner filling the secret or the config has no instruction to list each org slug bare
+Expected: AGENTS.md section Data hygiene and gs-admin-explorer.config.example.json state the limit and the rule it implies: list each org slug bare as well as any folder-name pattern, in the config file and the secret alike
