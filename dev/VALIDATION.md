@@ -4408,3 +4408,10 @@ Clean-up: scratches zz-r17a, zz-r17b (sandbox) and zz-r17r (production) removed 
 directory; both knowledge bases' engagement-pace.json removed (neither existed before this round's scratch pulls,
 and the production one would otherwise price the kept dashboard's next pull from a one-program scratch); no
 engagement-pull.lock left in either; the moved template doc restored; the CLI back on the sandbox tenant.
+
+Section status (release prep, 2026-10-26, builder): CLEARED — R1 to R6 and the walk run by the tester @ hb-20261025-02
+(R1, R2 the real handles on Windows; R3 the two pulls over one knowledge base; R4 on production on the owner's word;
+R5 the fast path's empty selection, walked; R6 the re-price by hand), the hook's dry-run arms A to H and K, the guard
+wiring line, the suites and CI quoted above; F-563, F-564, F-565, F-566, F-575, F-576, F-582, F-585, F-588, F-589,
+F-590 VERIFIED. Spent for 0.58.0. Standing arms, not spent: R6's Re-aim (owed at the next round touching F-575's
+pricing); R3's re-documenting set-up on A's side, owed with F-592 (DEFERRED past 0.58.0).
