@@ -15,11 +15,49 @@
 // docs-drift workflow fills from a repository secret, for CI.
 //
 // Zero dependencies: Node built-ins only. Runs in .github/workflows/docs-drift.yml.
+//
+// Arguments (the pre-push hook's, F-588 and F-589; a bare run scans the tree this
+// script sits in and nothing else):
+//   --root <dir>                   the TREE to scan (its git ls-files, its files, its
+//                                  config), instead of the one this script sits in — so
+//                                  the hook stages this checker OUTSIDE the pushed tree
+//                                  (a folder nothing in that tree can pre-plant) and
+//                                  points it at the tree (F-589).
+//   --extra <label> <file>         a text to scan with EVERY check beside the tree, named
+//                                  by its label in each finding (a commit message, a tag
+//                                  message, a ref name): what a push publishes that is not
+//                                  a tree (F-588). Two arguments, never one glued with `=`:
+//                                  Git Bash converts a bare POSIX path argument for a native
+//                                  program and leaves a glued one alone (/tmp would then
+//                                  reach node as C:\tmp).
+//   --extra-private <label> <file> a text to scan with the PRIVATE patterns alone: an
+//                                  author or committer identity, which carries an email
+//                                  address by design.
+//   --no-tree                      scan the extras only (the hook's ref-name check, made
+//                                  before the name is printed anywhere).
 
 import { readFileSync, existsSync } from "node:fs";
 import { execSync } from "node:child_process";
 import { join, resolve } from "node:path";
-import { ROOT, readJsonFile } from "./lib.mjs";
+import { ROOT, readJsonFile, literalSpans } from "./lib.mjs";
+
+/** @type {{ root: string, extras: { label: string, path: string, privateOnly: boolean }[], noTree: boolean }} */
+const args = { root: ROOT, extras: [], noTree: false };
+{
+  const argv = process.argv.slice(2);
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    if (a === "--root") args.root = resolve(argv[++i] ?? "");
+    else if (a === "--extra" || a === "--extra-private") {
+      const label = argv[++i];
+      const file = argv[++i];
+      if (!label || !file) { console.error(`${a} takes <label> <file>`); process.exit(1); }
+      args.extras.push({ label, path: resolve(file), privateOnly: a === "--extra-private" });
+    } else if (a === "--no-tree") args.noTree = true;
+    else { console.error(`check-instance-data: unknown argument ${JSON.stringify(a)}`); process.exit(1); }
+  }
+}
+const TREE = args.root;
 
 // The gate scans its own source too (F-203): the detection regexes never match
 // their escaped spellings, and every example string in this file sticks to the
@@ -108,12 +146,12 @@ const CHECKS = [
 // ROOT first, then from the main checkout that the worktree's common git dir
 // belongs to; and say on its own stderr line when no private pattern loaded
 // at all, so a weaker run never reads like a full one.
-const cfgCandidates = [join(ROOT, "gs-admin-explorer.config.json")];
+const cfgCandidates = [join(TREE, "gs-admin-explorer.config.json")];
 try {
-  const common = execSync("git rev-parse --git-common-dir", { cwd: ROOT, encoding: "utf8" }).trim();
-  const mainRoot = join(resolve(ROOT, common), "..");
-  if (resolve(mainRoot) !== resolve(ROOT)) cfgCandidates.push(join(mainRoot, "gs-admin-explorer.config.json"));
-} catch { /* not a git checkout: ROOT only */ }
+  const common = execSync("git rev-parse --git-common-dir", { cwd: TREE, encoding: "utf8" }).trim();
+  const mainRoot = join(resolve(TREE, common), "..");
+  if (resolve(mainRoot) !== resolve(TREE)) cfgCandidates.push(join(mainRoot, "gs-admin-explorer.config.json"));
+} catch { /* not a git checkout: the tree only */ }
 const cfgPath = cfgCandidates.find((p) => existsSync(p));
 let filePatterns = [];
 if (cfgPath) {
@@ -213,22 +251,18 @@ const learnLiterals = (matchText) => {
     if (!LITERAL_STOPLIST.has(lower)) privateLiterals.add(lower);
   }
 };
-// Spans are found over the ORIGINAL string, never by index into a lower-cased copy:
-// lower-casing can change a string's length (U+0130 lower-cases to two code units),
-// which would shift every span after it. A learned literal is ASCII ([A-Za-z0-9_-]), so
-// comparing each same-length slice case-folded is exact: a slice whose folding grows
-// cannot equal the literal, and no regex (and no regex escaping, which this lane has no
-// sanctioned copy of) is needed. Memoised per string: a line with many findings, or a
-// path printed once per finding, is scanned once.
+// The learned literals' spans come from lib.mjs's literalSpans (F-585: the build lane's
+// ONE literal finder, shared with maskLocalPaths), case-insensitively over the ORIGINAL
+// string — never by index into a lower-cased copy, since lower-casing can change a
+// string's length (U+0130) and shift every span after it; the finder compares folded
+// same-length slices when the folding changed the length. Memoised per string: a line
+// with many findings, or a path printed once per finding, is scanned once.
 const spanCache = new Map();
 const spansIn = (s) => {
   if (spanCache.has(s)) return spanCache.get(s);
   const spans = [];
   for (const r of privateRes) for (const m of s.matchAll(r)) if (m[0]) spans.push([m.index, m.index + m[0].length]);
-  for (const lit of privateLiterals) {
-    const L = lit.length;
-    for (let i = 0; i + L <= s.length; i++) if (s.slice(i, i + L).toLowerCase() === lit) spans.push([i, i + L]);
-  }
+  for (const { start, end } of literalSpans(s, [...privateLiterals].map((lit) => [lit, ""]), { caseInsensitive: true })) spans.push([start, end]);
   spans.sort((a, b) => a[0] - b[0]);
   const merged = [];
   for (const sp of spans) {
@@ -257,9 +291,11 @@ const redactSlice = (s, start, end) => {
 };
 const redact = (s) => redactSlice(s, 0, s.length);
 
-const files = execSync("git ls-files -z", { cwd: ROOT, encoding: "utf8" })
-  .split("\0")
-  .filter(Boolean);
+const files = args.noTree
+  ? []
+  : execSync("git ls-files -z", { cwd: TREE, encoding: "utf8" })
+    .split("\0")
+    .filter(Boolean);
 
 // Coverage is ASSERTED, never only reported (F-424). The pass line used to say
 // "N of M tracked files scanned" with N and M taken from whatever the index
@@ -279,11 +315,13 @@ const files = execSync("git ls-files -z", { cwd: ROOT, encoding: "utf8" })
 // Unborn HEAD (a fresh rig with no commit) diffs against the empty tree and
 // lists no deletion, so the fixture repos need no special case.
 const unscanned = []; // the failing kind
-const stagedDeletions = execSync("git diff --cached --name-only --no-renames --diff-filter=D -z", { cwd: ROOT, encoding: "utf8" })
-  .split("\0")
-  .filter(Boolean);
+const stagedDeletions = args.noTree
+  ? []
+  : execSync("git diff --cached --name-only --no-renames --diff-filter=D -z", { cwd: TREE, encoding: "utf8" })
+    .split("\0")
+    .filter(Boolean);
 const nameSome = (list) => list.slice(0, 5).join(", ") + (list.length > 5 ? `, … and ${list.length - 5} more` : "");
-if (files.length === 0) {
+if (files.length === 0 && !args.noTree) {
   console.error(
     `ERROR: coverage shortfall — the index is empty (no tracked file at all)` +
       (stagedDeletions.length ? ` while HEAD commits ${stagedDeletions.length} file(s)` : "") +
@@ -339,10 +377,24 @@ for (const file of files) {
     }
   }
 }
+// The extras (F-588): texts a push publishes that are no tree — commit and tag messages
+// with every check, identities with the private patterns alone — read here and scanned by
+// the same line loop as a tracked file, named by their label. A text that cannot be read
+// is a refusal: the hook passes what git printed, and a gate that cannot read what it was
+// handed does not vouch for it.
+const extraTexts = args.extras.map((x) => {
+  let buf;
+  try { buf = readFileSync(x.path); } catch (e) {
+    console.error(`ERROR: the extra text "${redact(x.label)}" cannot be read (${e.code ?? e.message}) — nothing vouches for it; push refused`);
+    process.exit(1);
+  }
+  return { file: x.label, text: decodeTracked(buf) ?? "", privateOnly: x.privateOnly };
+});
+const treeTexts = [];
 for (const file of files) {
   let buf;
   try {
-    buf = readFileSync(join(ROOT, file));
+    buf = readFileSync(join(TREE, file));
   } catch (e) {
     if (e.code !== "ENOENT") throw e;
     unscanned.push(file);
@@ -353,12 +405,16 @@ for (const file of files) {
     skippedBinary.push(file);
     continue;
   }
+  treeTexts.push({ file, text, privateOnly: false });
+}
+for (const { file, text, privateOnly } of [...treeTexts, ...extraTexts]) {
   const lines = text.split("\n");
   lines.forEach((line, i) => {
     const lineFindings = [];
     let privateOnLine = false;
     for (const { what, re, ok, hint, skipFiles, redact: isPrivate } of CHECKS) {
       if (skipFiles?.includes(file)) continue;
+      if (privateOnly && !isPrivate) continue;
       for (const m of line.matchAll(re)) {
         if (ok(m)) continue;
         if (isPrivate) {
@@ -434,9 +490,10 @@ if (privatePatternCount === 0) {
   }
   console.error(`WARNING: ${weak} If this machine keeps private patterns, this is a weaker run than the one you rely on (F-423).`);
 }
+const extrasNote = extraTexts.length ? ` ${extraTexts.length} extra text(s) scanned beside the tree.` : "";
 console.log(
   `Instance-data check passed: ${files.length - skippedBinary.length} of ${files.length} tracked files scanned, ` +
     `${privatePatternCount} private pattern(s) loaded (${privateSources.file} from gs-admin-explorer.config.json, ` +
     `${privateSources.env} from PRIVATE_INSTANCE_PATTERNS; a pattern both name counts once, under the file), ` +
-    `no tenant/instance/org-specific data.${skippedNote}`,
+    `no tenant/instance/org-specific data.${skippedNote}${extrasNote}`,
 );

@@ -5,6 +5,61 @@ marketplace doesn't pin versions — users get main — so entries describe what
 user who updates, not internal refactors. Entries before 0.8.0 were reconstructed from git
 history when this file was introduced.
 
+## 0.58.0 — 2026-10-25
+
+The next-release scope — every finding left open after 0.57.0, fixed at its root (F-563 with
+F-565 and two of F-575's items, F-575, F-576, F-564, F-566) and one new polish finding
+(F-590): a pull's own bookkeeping never decides its outcome, one pull at a time over a
+knowledge base, a pace that is a weighted mean, a change or report priced at today's pace.
+
+- **The run's bookkeeping, classified (F-563; F-565 and F-575 (1), (2) fold in).** The
+  refresh lock's record, the pull's progress record and the two pace files were written
+  with the data's must-succeed write, so a handle held on one of them decided the pull's
+  outcome — a raw stack where a refusal belongs, a live pull stopped mid-way, a finished
+  pull's snapshot left unwritten. One home in doc-lib classifies a bookkeeping write's
+  failure by what the file is for: the lock record's is a one-line refusal with the remedy
+  (run the line again once the handle is gone), never a stack; a progress record or a pace
+  file that cannot be written is said once — on stderr and as `bookkeepingLeft` on the
+  summary — and the pull goes on to its snapshot and pages. A lock left is said on every
+  exit path, a crash's stderr beside the stack included, and written synchronously, so the
+  manifest writer's exit-time line cannot be dropped on a piped stderr.
+- **One pull at a time over a knowledge base (F-575 (3); F-581's race).** A dashboard's
+  refresh and the engine's own `run` take `<kb>/engagement-pull.lock` first, through the
+  same lock primitive as the dashboard's own lock, around the re-documentation, the pull
+  and the pace merge; a second pull over the knowledge base is refused up front with its
+  holder named (`another pull is running over the knowledge base at …`); a dead holder's
+  lock is taken over and said (`kbLockTakenOver`), one the release cannot remove is said
+  too (`kbLockLeft`).
+- **The pace merge is a weighted mean (F-575 (4)).** A family's pace is the calls-weighted
+  mean of what the file held and what the pull measured, the kept weight capped at 50
+  calls: one measured call moves a rate measured over fifty by about two percent, never
+  replaces it, and a tenant that changed speed is re-priced within a pull or two.
+- **A change or report quotes the last plan at today's pace (F-575).** The plan records
+  the full pull's calls by family and the table it priced them at; `change --dry-run` and
+  `report` re-price those at the pace files as they stand, so a plan made before another
+  dashboard's pull moved the knowledge base's pace quotes today's price.
+- **A list setting is read by the writer's declaration first (F-576).** `change` asks the
+  writer's own covers before anything is parsed: a one-item value that happens to be JSON
+  (a program named 2024 in `selector.names`) reaches a list setting as one item, never a
+  scalar; `null` stays the writer's own empty for a page's status default.
+- **A refused export writes nothing (F-566).** The dashboard and snapshot checks come
+  before the spec file is written, so `export --with-snapshot` refused for want of a
+  snapshot (or during the first refresh) leaves no `--out` file behind, as import does.
+- **The re-documentation child gets the CLI resolved (F-564).** A `--bin` given relative
+  to the directory the admin ran from reaches describe-batch, which runs from the
+  workspace, resolved; a knowledge base on another drive than the workspace is said on the
+  summary (`redocumented.folder`) where its entries then record an absolute doc_path.
+- **The closing step names its selection (F-590).** `next` returns `closing.selection`
+  (the programs selected of the ones listed, with one sentence) and an empty selection is
+  said in the ask itself before the save, so a fast-path dashboard over a window nothing
+  sent in is never saved in silence.
+- The engine's runs root has one spelling, the engine's (F-575 (6)).
+
+Repo-side, no plugin bytes: the dev-branch pre-push hook gates commit messages, author and
+committer identities, tag objects and ref names beside the trees (F-588) and stages its
+checker outside the pushed tree (F-589); one literal finder in the build lane (F-585); the
+review brief's angles in AGENTS.md (F-582).
+
 ## 0.57.0 — 2026-10-21
 
 The email-engagement findings carried from 0.56.3 (F-575, F-576, F-567) and two found on

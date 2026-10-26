@@ -4169,3 +4169,91 @@ one-program scratches), closing step answered save-only (no pull). Pass bars, st
 Section status (tester @ hb-20261021-02, 2026-10-21): CLOSED — F-575 and F-576 VERIFIED. Owed (Noticed, the bus's
 Noticed (hb-20261021-02) line): the banked statusDefault value names a status the writer lacks (PAUSED); the fast path
 saves a 0-program dashboard with no word of it.
+
+## R17 — the next-release-scope round: the run's bookkeeping, the knowledge base's pull lock, the fast path's empty selection (banked 2026-10-25, builder, fix/release-scope-root-fixes; verdict at the token this branch's handoff mints)
+
+Owed by: the tester round on this branch's handoff token (a terminal in the workspace with --plugin-dir on the checkout
+under test, canary matched; the SANDBOX KB, reads only; scratch dashboards of one program each, or the fast path's
+defaults — never the kept dashboard; removed after with their run directories). The suites are the judge of record for
+the mechanisms (test/dashboard.mjs: the F-563 arms (a) to (e) and their control, KB-1 and KB-2, F-564, F-566, F-576,
+F-590; test/doc-lib-fixtures.mjs: the primitive's record and bookkeeping arms); below are the live halves the suites
+cannot see — a real handle on Windows, two real pulls over one knowledge base, a tenant with refusals, and the model
+reading the new prose. Every refusal below is ONE JSON line on stdout with `error`; a stack on stderr is a reopen.
+
+### R1 (F-563 (a); Windows) — the held handle on refresh.lock in the run's first second
+
+Tenant: sandbox. Login: needed (a pull starts). Minutes: about 2 for the refused run, then one refresh of about 5.
+Start when: a scratch is saved (save-only) and `gs-admin whoami` shows 10 minutes left. The arm as § R15 R2 made it:
+start `refresh <scratch>` and within its first second (before the plan makes a call) open `<scratch dir>/refresh.lock`
+in PowerShell with [IO.File]::Open($path, "Open", "Read", "ReadWrite") and hold it through the retry (about two
+seconds). FIXED: exit 1 with one JSON line — `error` reads `the refresh lock of "<scratch>" could not be recorded
+(EPERM): a handle on <path> forbids the write — run the line again once it is gone; the refresh lock could not be removed
+at the end (EPERM) and was left at <path>: …`, `lockRecord` {path, why EPERM} and `lockLeft` on the summary; nothing on
+stderr but the dashboard's own lines; release the handle and run the line again: exit 0, `lockTakenOver` naming the
+dead holder. BROKEN: a stack, exit 1 with no `lockRecord`, or the second run refused → REOPEN F-563 quoting stderr.
+
+### R2 (F-575 (1), under F-563; Windows) — the held handle on a running pull's progress.json
+
+Tenant: sandbox. Login: needed. Minutes: about 6. Start when: a scratch's refresh is running and its first `pull
+progress:` line has printed. Open `.gs-superadmin/tmp/engagement/<run>/progress.json` in PowerShell the same way and
+hold it past the next tenth call (about a minute), then release it. FIXED: stderr carries ONE line `dashboard.mjs: pull
+bookkeeping: the progress record could not be written at <path> (EPERM) and the run went on without it: …`, the
+progress lines keep printing through it, the pull finishes exit 0 with `bookkeepingLeft` [{what "progress record",
+path, why, text}] on the summary and its snapshot and pages written; `status` read while the handle is held relays the
+last record written before it. BROKEN: a stack, exit 4, no snapshot, or the line repeated at every tick → REOPEN F-563.
+
+### R3 (F-575 (3), F-581's race; hb-20261021-01's Noticed item 2) — two refreshes of DIFFERENT dashboards over one knowledge base, both re-documenting
+
+Tenant: sandbox. Login: needed. Minutes: about twice § R16 R1's. Start when: two scratches A and B exist with
+re-documentation on, the knowledge base behind on templates they reference (so each refresh would re-document; move a
+template doc aside if it is not), and the login has 20 minutes left. Start `refresh <a>` and, a few seconds later,
+`refresh <b>` in a second terminal. FIXED (the redesign: one pull at a time over a knowledge base): B exits 1 at once,
+before any tenant call, `error` reading `another pull is running over the knowledge base at <kb>: the pull of the
+dashboard "<a>" (run <run>) started by <you> at <time> (0 minutes ago, pid <N>) — wait for it; a pull whose process is
+gone, or whose lock <kb>/engagement-pull.lock is older than two hours, is taken over on its own`; A finishes exit 0 and
+`<kb>/engagement-pull.lock` is gone after it; B run again once A is done exits 0 with its re-documentation made
+(`redocumented.templates.documented` above 0 where the knowledge base was behind) and never a `token-expired` while
+`gs-admin whoami` shows minutes left. F-581's re-read (`whoami-recheck … ok: the token reads live` on stderr) fires
+only when a call dies on the CLI's login wording: record it if seen; it is the suite's if not. BROKEN: both pulls run
+at once; B refused with another text; B's second run stopped on the manifest lock or a false token-expired → REOPEN
+F-575 quoting both runs' status.json.
+
+### R4 (hb-20261021-01's Noticed item 3) — the refusal sample on a tenant with recent refusals
+
+Tenant: the owner's choice — one with entry refusals in the last 30 days (the sandbox had none at hb-20261021-01);
+production only on the owner's word, on a scratch of ONE program with refusals on record, reads only. Login: needed.
+Minutes: about 5. Start when: the owner names the tenant and the program. FIXED: the plan's `health.samples` plans a
+`health-reasons-sample`, the pull makes it, pace.json and `<kb>/engagement-pace.json` gain that family after the pull,
+and the progress line's remainder prices it from the plan until it is made ("the plan's … for 1 family not yet seen" on
+the line before it lands). BROKEN: refusals on record and no sample planned → log a NEW finding (normal) quoting the
+plan's `health.samples`.
+
+### R5 (F-590) — the fast path over a selection that holds nothing
+
+Tenant: sandbox. Login: needed (the plan's reads). Minutes: about 3 (plan only; save-only or go back). `dashboard new
+zz-empty --fast-path --kb <kb>`, then `next`: the sandbox sent nothing in the default window at hb-20261021-02, so the
+selection is empty. FIXED: `closing.selection` reads {programs: 0, listed: <N>, text: "The selection holds NO
+program: nothing sent in the window as the settings stand (<N> programs listed on the tenant), so the pages would be
+empty — go back and widen the window or name the programs before saving."} and `closing.ask` carries that sentence
+before the manual-refresh statement; the model presents it with the ask and offers go-back (the walk below). With a
+program selected (a second scratch with `sentSince` 365d), `closing.selection.text` names the count and the ask is the
+ruled wording unchanged. Remove the scratches. BROKEN: no word of the empty selection → REOPEN F-590. The owner's
+ruling on F-590 (polish, or WONTFIX) stands either way; a WONTFIX leaves the sentence in place.
+
+### R6 (F-575, the owed item) — a change's price after another pull moved the knowledge base's pace
+
+Tenant: sandbox. Login: not needed (a dry run reads the pace files; no call). Minutes: 1. Start when: R3 is done (A
+pulled twice, B once, both over one knowledge base). `change <a> accounts.pull=yes --dry-run` (decline the save; not
+saved): FIXED: `pullSeconds` equals A's last plan's `estimate.full.byFamily` priced at the table that
+`<kb>/engagement-pace.json` under A's own pace.json gives (sum the families by hand from the two files, the dashboard's
+figure winning where both name a family; the plan's own `secondsPerCall` table reproduces its recorded `full.seconds`),
+plus `accounts.addsSeconds` scaled by the ratio of the two full figures — not the figure plan.json carries, once B's
+pull moved a family A had measured. BROKEN: the quote equals plan.json's figure while the knowledge base's pace file
+names B's run for a family A's plan priced → REOPEN F-575 quoting both.
+
+### Walk — email-engagement (model-invocable), the changed passages
+
+The closing step's selection sentence (R5: the model says `closing.selection.text` with the ask and offers go-back on
+an empty one); step P's relay of `bookkeepingLeft` (R2: one sentence, nothing to do) and of the knowledge-base
+refusal (R3: the model relays `error` and stops; it never retries on its own); R3's exit-1 line in the ad-hoc mode is
+read, not walked. Record the lines the model issued and what it said. Guard wiring: one line, as every round.

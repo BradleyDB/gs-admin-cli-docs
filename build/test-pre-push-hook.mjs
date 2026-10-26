@@ -32,9 +32,17 @@
 //   6. main stays blocked without ALLOW_MAIN_PUSH=1 and is gated with it.
 //   7. Leftovers: after every group of runs `git worktree list` shows the clone alone
 //      and no new gacd-prepush-* folder sits in the temp directory.
-//   8. The judge is THIS clone's checker, staged beside the pushed tree: a pushed commit
-//      whose own build/check-instance-data.mjs is a no-op and which carries a plant is
-//      refused all the same, and a plant in the pushed build/lib.mjs is found.
+//   8. The judge is THIS clone's checker, staged OUTSIDE the pushed tree (F-589): a pushed
+//      commit whose own build/check-instance-data.mjs is a no-op and which carries a plant
+//      is refused all the same, a plant in the pushed build/lib.mjs is found, and a tree
+//      that tracks a symlink at the old staging path, with its own checker behind it, is
+//      refused on its plant with the tree's module never run.
+//   9. Beside the trees (F-588): a plant in an intermediate commit's MESSAGE, in an author
+//      NAME, in an annotated TAG's message, or in a pushed ref's NAME is refused — the name
+//      before the hook prints it anywhere. The judge: for every commit the push would
+//      publish, the RAW object git stores (`git cat-file -p`) either carries PLANT or not;
+//      the hook refuses exactly on the oldest carrier. A non-fictional address in an
+//      identity passes (the private patterns alone run there), in a message it does not.
 // Every git run here is isolated from the developer's global and system config
 // (GIT_CONFIG_GLOBAL points at an empty file, GIT_CONFIG_NOSYSTEM) and runs in the C
 // locale, so a push.followTags or core.hooksPath setting, or a translated git message,
@@ -348,6 +356,66 @@ try {
   r = push(["origin", `${c3}:refs/heads/main`], { ALLOW_MAIN_PUSH: "1" });
   ok("6b with ALLOW_MAIN_PUSH=1 main's tree is gated like any ref", r.status === 0 && same(gated(r.stderr), [c3]), out(r));
   clean("6");
+
+  // ── 8. the staging path cannot be pre-planted by the pushed tree (F-589) ───
+  // A tree tracking a symlink at the hook's former staging path (.gacd-prepush-gate/),
+  // pointing at a checker of its own that prints a marker and exits 0, plus a plant: the
+  // checker is staged outside every worktree now, so the plant is found and the marker
+  // never prints. On a clone that checks symlinks out as symlinks (ubuntu) the link is
+  // real; on this host it is a text file — refused either way, and meaningful there.
+  gitOk(A, "switch", "-q", "-c", "t6", c3);
+  const linkBlob = git(A, ["hash-object", "-w", "--stdin"], { input: "../sub/check-instance-data.mjs" }).stdout.trim();
+  writeFiles(A, { "sub/check-instance-data.mjs": "console.log('MARKER-the-trees-own-checker-ran'); process.exit(0);\n", "sub/lib.mjs": "export const ROOT = '';\n", "notes.md": `--kb ${PLANT}\n` });
+  gitOk(A, "add", "-A");
+  gitOk(A, "update-index", "--add", "--cacheinfo", `120000,${linkBlob},.gacd-prepush-gate/check-instance-data.mjs`);
+  gitOk(A, "commit", "-q", "-m", "c11 a symlink at the old staging path");
+  const c11 = gitOk(A, "rev-parse", "HEAD");
+  r = push(["origin", "t6"]);
+  ok("8a a pushed tree tracking a symlink at the old staging path, its own checker behind it, is judged by this clone's checker from outside the tree and refused on its plant; the tree's module never runs", r.status !== 0 && r.stderr.includes(`check-instance-data failed on refs/heads/t6 (tip) (${c11})`) && !/MARKER-the-trees-own-checker-ran/.test(r.stderr + r.stdout) && absent(r), out(r));
+  clean("8a");
+
+  // ── 9. beside the trees (F-588): messages, identities, tag objects, ref names ─
+  // The judge: of the commits a push would publish (the remote's own refs, as above), the
+  // ones whose RAW object (`git cat-file -p`: headers, identities, message) carries PLANT.
+  /** @param {string} tip */
+  const carriers = (tip) => remoteLacksPlusTip(A, bare, tip).filter((s) => gitOk(A, "cat-file", "-p", s).includes(PLANT));
+  const LEAKY_MAIL = "ops@" + "leakycorp" + ".net";
+  gitOk(A, "switch", "-q", "-c", "t7", c3);
+  const c12 = commit(A, { "m.md": "clean\n" }, `c12 names the --kb ${PLANT} folder in its message`);
+  const c13 = commit(A, { "n.md": "clean too\n" }, "c13 clean tip");
+  r = push(["origin", "t7"]);
+  ok("9a a plant in an intermediate commit's MESSAGE under clean trees is refused on that commit, named as its message", r.status !== 0 && r.stderr.includes(`check-instance-data failed on refs/heads/t7 (pushed commit) (${c12})`) && /commit [0-9a-f]{12} message:1: private pattern/.test(r.stderr) && same(carriers(c13), [c12]) && absent(r), out(r));
+  clean("9a");
+  gitOk(A, "switch", "-q", "-c", "t8", c3);
+  writeFiles(A, { "o.md": "clean\n" });
+  gitOk(A, "add", "-A");
+  gitOk(A, "-c", `user.name=Pat ${PLANT}`, "commit", "-q", "-m", "c14 a planted author");
+  const c14 = gitOk(A, "rev-parse", "HEAD");
+  r = push(["origin", "t8"]);
+  ok("9b a plant in the author's name is refused on that commit, named as its identities", r.status !== 0 && r.stderr.includes(`(tip) (${c14})`) && /commit [0-9a-f]{12} identities:1: private pattern/.test(r.stderr) && same(carriers(c14), [c14]) && absent(r), out(r));
+  clean("9b");
+  gitOk(A, "switch", "-q", "-c", "t9", c3);
+  writeFiles(A, { "p.md": "clean\n" });
+  gitOk(A, "add", "-A");
+  gitOk(A, "-c", `user.email=${LEAKY_MAIL}`, "commit", "-q", "-m", "c15 a non-fictional committer address");
+  const c15 = gitOk(A, "rev-parse", "HEAD");
+  r = push(["origin", "t9"]);
+  ok("9c an identity's own non-fictional address passes (the private patterns alone judge identities)", r.status === 0 && same(gated(r.stderr), remoteLacksPlusTip(A, bare, c15)) && gated(r.stderr).includes(c15) && /2 extra text\(s\) scanned beside the tree/.test(r.stderr), out(r));
+  const c16 = commit(A, { "q.md": "clean\n" }, `c16 asks ${LEAKY_MAIL} about it`);
+  r = push(["origin", "t9"]);
+  ok("9d the same address in a commit MESSAGE is refused (every check runs on a message)", r.status !== 0 && r.stderr.includes(`(tip) (${c16})`) && r.stderr.includes(`message:1: email address: "${LEAKY_MAIL}"`), out(r));
+  clean("9d");
+  gitOk(A, "tag", "-a", "-m", `release notes mention --kb ${PLANT}`, "v-planted", c3);
+  r = push(["origin", "v-planted"]);
+  ok("9e an annotated tag whose message carries the plant is refused on the tag object, nothing gated", r.status !== 0 && r.stderr.includes("check-instance-data failed on the tag object of refs/tags/v-planted") && gated(r.stderr).length === 0 && gitOk(A, "cat-file", "-p", "v-planted").includes(PLANT) && absent(r), out(r));
+  gitOk(A, "-c", `user.name=Pat ${PLANT}`, "tag", "-a", "-m", "a clean message", "v-tagger", c3);
+  r = push(["origin", "v-tagger"]);
+  ok("9f a plant in the tagger's name is refused on the tag object", r.status !== 0 && r.stderr.includes("check-instance-data failed on the tag object of refs/tags/v-tagger") && absent(r), out(r));
+  clean("9f");
+  r = push(["origin", `${c3}:refs/heads/zz-${PLANT}-x`]);
+  const hookLines = r.stderr.split("\n").filter((l) => l.startsWith("pre-push:"));
+  ok("9g a ref NAME carrying the plant is refused before the hook prints the name anywhere: no gating line, the hook's lines free of it", r.status !== 0 && hookLines.some((l) => l.includes("the name of a pushed ref carries text")) && !hookLines.some((l) => l.includes("gating the")) && hookLines.every((l) => !l.includes(PLANT)) && !r.stdout.includes(PLANT), out(r));
+  clean("9g");
 
   // ── 7. nothing reached the remote ──────────────────────────────────────────
   const heads = gitOk(bare, "for-each-ref", "--format=%(refname)").split("\n").sort();

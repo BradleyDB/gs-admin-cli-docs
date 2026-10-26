@@ -38,6 +38,7 @@ import {
   renderTemplateDoc, STUB_MARKER, STUB_MARKER_RE, escapeRe, sleepMs, scanListEnvelope, decideEntryArray, entryDecisionReason,
   parseDocJson, docMeta, docH1, NO_NAME, assertReadOnlyCommand, isDescribeRead, readKbIdentity,
   resolveRecordedDomains, recordedDomainsByPath, indexedElsewhere, RECORDED_LANES, laneTable, acquireFileLock, pidAlive, readFileLock,
+  writeBookkeepingSync,
 } from "../scripts/doc-lib.mjs";
 // List-page envelope docs and the indexer payload live in the shared reader
 // payload corpus (test/fixtures/reader-payloads.mjs) — the tracer scans the same docs.
@@ -1361,20 +1362,47 @@ if (process.env.ZZ_NEVER_SET_TYPE_PROBE) readKbIdentity(42, []);
     let forbids = true;
     try { rmSync(probe); forbids = false; } catch { /* the deny took: the probe stays */ }
     const skip = root ? "root ignores a folder's write bit" : !forbids ? "this process deletes through the deny (an elevated process overriding the ACL)" : null;
+    // F-563: the lock RECORD under the same forbid — a rename over the lock needs DELETE on Windows, the folder's write
+    // bit on POSIX — is handed back as a BookkeepingLeft, never thrown, and the record on disk stays as it was.
+    const recorded = skip ? null : held.record({ run: "zz-run" });
+    const recordUnchanged = existsSync(lockp) && readJsonFile(lockp).run === undefined;
     const left = skip ? null : held.release();
     const recordKept = existsSync(lockp) && readJsonFile(lockp).by === "me" && readJsonFile(lockp).pid === process.pid;
     forbid(false);
     rmSync(probe, { force: true });
+    const recordedOk = held.record({ run: "zz-run-2" });
+    const recordedRun = existsSync(lockp) ? readJsonFile(lockp).run : null;
     const again = held.release();
     if (skip) console.log(`SKIP  F-557 acquireFileLock: ${skip}, so the unlink cannot be made to fail here — the arm is measured where it can be (a non-elevated Windows session; a non-root POSIX user)`);
     else {
       check("F-557 acquireFileLock: a release that cannot remove the lock returns the lock left ({path, why: the error's code}) and keeps this taker's record in it — a dead holder's once the process exits, never silently nothing",
         held.taken && left?.path === lockp && typeof left?.why === "string" && left.why.length > 0 && recordKept, [left, recordKept]);
       check("F-557 acquireFileLock: once the unlink can go through, release returns null and the lock is off", again === null && !existsSync(lockp), again);
+      check("F-563 acquireFileLock: a record() the primitive cannot write returns {what 'lock record', path, why, text} — never throws — and leaves the record as it was", recorded?.what === "lock record" && recorded.path === lockp && typeof recorded.why === "string" && recorded.why.length > 0 && /could not be written/.test(recorded.text) && recordUnchanged, recorded);
     }
+    check("F-563 acquireFileLock: once the write can go through, record() returns null and the record carries the run", recordedOk === null && recordedRun === "zz-run-2", [recordedOk, recordedRun]);
     rmSync(lockp, { force: true });
   }
   const docLibUrl = pathToFileURL(join(dirname(fileURLToPath(import.meta.url)), "..", "scripts", "doc-lib.mjs")).href;
+  // ── F-563: the bookkeeping writer, and the synchronous stderr line (F-565 (2)) ──
+  {
+    const folderAt = join(dir, "bk-folder.json");
+    mkdirSync(folderAt);
+    const left = writeBookkeepingSync(folderAt, "{}", "progress record");
+    const okPath = join(dir, "bk-ok.json");
+    const none = writeBookkeepingSync(okPath, "{\"a\":1}\n", "pace file");
+    check("F-563 writeBookkeepingSync: a file that cannot be written (a folder in its place) is handed back as {path, what, why, text} and nothing is thrown, no temp file left; a writable one is written atomically and null returned",
+      left?.what === "progress record" && left.path === folderAt && typeof left.why === "string" && left.why.length > 0 && /^the progress record could not be written at .* \(\w+\) and the run went on without it: /.test(left.text) && none === null && readFileSync(okPath, "utf8") === "{\"a\":1}\n" && !existsSync(`${folderAt}.tmp-${process.pid}`), [left, none]);
+    rmSync(folderAt, { recursive: true, force: true });
+    // sayLineSync: a line written from an 'exit' handler reaches a PIPED stderr whole — 200 KB of it — where
+    // process.stderr.write on Windows is asynchronous and can be cut (the control is measured and printed, not asserted:
+    // what it loses depends on the host).
+    writeFiles(dir, { "say.mjs": [`import { sayLineSync } from ${JSON.stringify(docLibUrl)};`, "const big = 'x'.repeat(200000);", "process.on('exit', () => { if (process.argv[2] === 'sync') sayLineSync(big); else process.stderr.write(big + '\\n'); });", "process.exit(0);"].join("\n") });
+    const sync = runNode(join(dir, "say.mjs"), ["sync"], { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
+    const async = runNode(join(dir, "say.mjs"), ["async"], { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
+    check("F-565 (2) sayLineSync: a 200 KB line written from the 'exit' handler reaches a piped stderr whole (a synchronous write to fd 2)", sync.status === 0 && sync.stderr.length === 200001, sync.stderr.length);
+    console.log(`INFO  F-565 (2): the same line through process.stderr.write from the 'exit' handler arrived as ${async.stderr.length} of 200001 characters on this host (${process.platform}); the synchronous write is the fix, the asynchronous one the measured hazard`);
+  }
   writeFiles(dir, {
     "worker.mjs": [
       `import { acquireFileLock } from ${JSON.stringify(docLibUrl)};`,

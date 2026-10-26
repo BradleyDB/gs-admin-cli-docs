@@ -326,7 +326,9 @@ Read the summary JSON, never the snapshot file. By exit code:
   same command once: the next run retries what failed and continues where it stopped. If
   it exits 4 again, stop and report the `failed` list; no report is written from a partial
   pull.
-- `1` — the script refused or failed. Show its message and stop.
+- `1` — the script refused or failed (another pull is running over the knowledge base —
+  a dashboard pulled again, or another ad-hoc pull, its holder named; the lock clears on
+  its own once that process finishes or is gone). Show its message and stop.
 
 ### R4 — Write the report
 
@@ -537,8 +539,12 @@ full pull's calls and minutes against the login's remaining minutes — a pull l
 one login is not refused, the ask says about how many logins it takes — and how pulling
 again is done by hand; on an edit, what the edit changes and what that costs) and
 `closing.options`. Ask ONE AskUserQuestion with `closing.ask` and those options verbatim;
-each option carries `answers`, the `answer` commands it stands for. On the user's choice,
-issue each pair in order:
+each option carries `answers`, the `answer` commands it stands for. `closing.selection`
+says what the settings select (`programs` of the `listed`, and `text`): say its `text`
+with the ask; when `programs` is 0 the ask itself says the selection holds no program and
+the pages would be empty — present it as written and expect the go-back option (widen the
+window, or name the programs) before any save. On the user's choice, issue each pair in
+order:
 
 ```
 node .gs-superadmin/plugin/scripts/dashboard.mjs answer <dash> <question id> <value> --kb <slug>
@@ -668,7 +674,11 @@ By exit code:
   `delta` (the change since the last pull, or null on a first one), the pages' paths and
   sizes, `lockTakenOver` when a stale lock was taken over, `lockLeft` when the pull's lock
   could not be removed at its end (relay its `text` as written: the next pull takes it over
-  on its own, and nothing needs doing), `abandoned` when a pull
+  on its own, and nothing needs doing), `kbLockTakenOver` and `kbLockLeft` the same for the
+  knowledge base's pull lock (one pull at a time over a knowledge base), `bookkeepingLeft`
+  when a file the run keeps about itself — its progress record, a pace file — could not be
+  written (relay each entry's `text` once: the pull is complete, its snapshot and pages
+  written, and nothing needs doing), `abandoned` when a pull
   stopped earlier was left behind because a setting changed since (the pull was planned
   afresh), and `restarted` when a resumed pull started again in a fresh run directory
   because the derived health lookback moved since the run was planned (its `from` and
@@ -686,11 +696,14 @@ By exit code:
   Run the summary's `remedy.line` once; if it exits 4 again, report `error` (a cause that
   recurs run after run is the server's, not a transient); the pages are untouched.
 - `5` — the CLI is on another tenant than the dashboard's: say both tenants and stop.
-- `1` — refused (another pull of it is running, its holder and time named; an earlier pull
+- `1` — refused (another pull of it is running, its holder and time named; another pull is
+  running over the knowledge base — any dashboard's, or an ad-hoc pull — its holder named,
+  and the lock clears on its own once that process finishes or is gone; an earlier pull
   stopped with other flags and waits, its `remedy.line` the one to run; the knowledge
-  base's manifest is locked by another writer — another dashboard's pull, or a describe, is
-  re-documenting it, and the lock clears on its own once that process finishes or is gone;
-  or the script's own reason): relay `error` and stop.
+  base's manifest is locked by another writer — a describe is re-documenting it, and that
+  lock clears the same way; the dashboard's lock record could not be written because a
+  handle holds the lock file — run the same line again once it is gone; or the script's
+  own reason): relay `error` and stop.
 
 On exit 0 the summary's `publish` says what became of the leaders' copy; relay it with the
 final report's Leaders line, and when its `target` is `claude-artifact` and `ready` is

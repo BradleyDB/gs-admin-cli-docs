@@ -463,7 +463,7 @@ import { fileURLToPath } from "node:url";
 // Doc filename for an asset id — the shared copy every doc writer imports
 // (sanitized ids get a short raw-id hash so distinct ids that clean to the
 // same base can never collide).
-import { docNameClaimer, docNameMatcher, docPathFor, docDirNorm, readJsonFile, writeFileAtomicSync, acquireFileLock, cmpKey, getPath as get, findItemsArray, extractIds, makeCliHelpers, STUB_MARKER, DESCRIBE_NONE, idPathHint, ZERO_RESOLVE_HEAD, findWorkspaceCatalog, makeCommandResolver, pinFactsFor } from "./doc-lib.mjs";
+import { docNameClaimer, docNameMatcher, docPathFor, docDirNorm, readJsonFile, writeFileAtomicSync, acquireFileLock, sayLineSync, cmpKey, getPath as get, findItemsArray, extractIds, makeCliHelpers, STUB_MARKER, DESCRIBE_NONE, idPathHint, ZERO_RESOLVE_HEAD, findWorkspaceCatalog, makeCommandResolver, pinFactsFor } from "./doc-lib.mjs";
 const here = dirname(fileURLToPath(import.meta.url));
 
 // The date-failure head refresh/SKILL.md's post-upgrade migration note quotes
@@ -663,10 +663,12 @@ if (!Number.isFinite(lockWaitSeconds) || lockWaitSeconds < 0) fail("--lock-wait-
 let manifestLock = null;
 /**
  * A release that could not remove the lock is said on stderr (F-557), never swallowed: the next writer takes it over
- * on its own once this process is gone. @param {?{ path: string, why: string }} left
+ * on its own once this process is gone. Written SYNCHRONOUSLY (doc-lib's sayLineSync, F-565 (2)): the 'exit' and
+ * signal handlers below are the last thing this process does, and a piped stderr on Windows is asynchronous through
+ * process.stderr, so a line written there at exit could be dropped. @param {?{ path: string, why: string }} left
  */
 const sayLockLeft = (left) => {
-  if (left) process.stderr.write(`the manifest lock could not be removed (${left.why}) and was left at ${left.path}: the next writer takes it over on its own once this process is gone — nothing to do\n`);
+  if (left) sayLineSync(`the manifest lock could not be removed (${left.why}) and was left at ${left.path}: the next writer takes it over on its own once this process is gone — nothing to do`);
 };
 function takeManifestLock() {
   if (manifestLock) return;
