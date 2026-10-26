@@ -4188,9 +4188,12 @@ start `refresh <scratch>` and within its first second (before the plan makes a c
 in PowerShell with [IO.File]::Open($path, "Open", "Read", "ReadWrite") and hold it until the refusal has printed (the
 retry is about a second; the release runs right after it). FIXED: exit 1 with one JSON line — `error` reads `the
 refresh lock of "<scratch>" could not be recorded (EPERM): a handle on <path> (a scanner, a sync client, an editor)
-forbids the write — run the line again once it is gone; the refresh lock could not be removed at the end (EPERM) and
-was left at <path>: …`, `lockRecord` {path, why EPERM} and `lockLeft` on the summary; nothing on stderr but the
-dashboard's own lines; release the handle and run the line again: exit 0, `lockTakenOver` naming the dead holder. A
+forbids the write — run the line again once it is gone; the refresh lock could not be removed at the end (<code>) and
+was left at <path>: …`, `lockRecord` {path, why EPERM} and `lockLeft` {path, why <code>} on the summary, where <code>
+is the OS's code for the unlink under the handle — EBUSY on Windows (measured at hb-20261025-02), EPERM elsewhere; the
+claim is the lock left and said, not the code (reworded 2026-10-26, builder, Noticed (hb-20261025-02) item 1);
+nothing on stderr but the dashboard's own lines; release the handle and run the line again: exit 0, `lockTakenOver`
+naming the dead holder. A
 handle let go between the retry and the release gives the record refusal with NO `lockLeft` and no takeover on the
 second run — that half is met then, and the arm is run once more holding longer for the `lockLeft` half. BROKEN: a
 stack, exit 1 with no `lockRecord`, or the second run refused → REOPEN F-563 quoting stderr.
@@ -4225,7 +4228,12 @@ F-575 quoting both runs' status.json.
 
 Tenant: the owner's choice — one with entry refusals in the last 30 days (the sandbox had none at hb-20261021-01);
 production only on the owner's word, on a scratch of ONE program with refusals on record, reads only. Login: needed.
-Minutes: about 5. Start when: the owner names the tenant and the program. FIXED: the plan's `health.samples` plans a
+Minutes: about 5. Start when: the owner names the tenant and a program that BOTH sent in the dashboard's window AND
+had an entry refused inside the dashboard's DERIVED health lookback — the longest schedule period, at least silentDays,
+capped at the window; read it from the plan's `health-entry-window` call (30 days on the production scratch at
+hb-20261025-02), never assume the 90-day window. A refused program that sent nothing, or a deleted one, plans no
+sample: two picks fell through that way at hb-20261025-02 (about 10 minutes; reworded 2026-10-26, builder, Noticed
+(hb-20261025-02) item 4). FIXED: the plan's `health.samples` plans a
 `health-reasons-sample`, the pull makes it, pace.json and `<kb>/engagement-pace.json` gain that family after the pull,
 and the progress line's remainder prices it from the plan until it is made ("the plan's … for 1 family not yet seen" on
 the line before it lands). BROKEN: refusals on record and no sample planned → log a NEW finding (normal) quoting the
@@ -4253,6 +4261,14 @@ figure winning where both name a family; the plan's own `secondsPerCall` table r
 plus `accounts.addsSeconds` scaled by the ratio of the two full figures — not the figure plan.json carries, once B's
 pull moved a family A had measured. BROKEN: the quote equals plan.json's figure while the knowledge base's pace file
 names B's run for a family A's plan priced → REOPEN F-575 quoting both.
+Re-aim (2026-10-26, builder, Noticed (hb-20261025-02) item 2; OWED at the next round touching F-575's pricing, not
+before): as run, A's own pace.json named every family A's plan priced, so the dashboard's figure won everywhere and B's
+moves to `<kb>/engagement-pace.json` never entered A's quote — what discriminated was A's own second pull moving its
+pace since the plan, which tests the re-price but not its knowledge-base half. The re-aimed arm: a third scratch C
+over the same knowledge base, planned once (save-only; its first plan, so no pace.json of its own and every family
+priced from `<kb>/engagement-pace.json`), then A's or B's pull moves a family C's plan priced, then `change <c>
+accounts.pull=yes --dry-run`: `pullSeconds` follows the knowledge base's file as it now stands, not C's plan.json;
+BROKEN as above, with C's plan.json and the knowledge base's file quoted.
 
 ### Walk — email-engagement (model-invocable), the changed passages
 

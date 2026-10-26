@@ -177,6 +177,26 @@ Noticed (hb-20261024-01): 2026-10-24 (tester) — (1) arm D's bar reads "a line 
 Noticed (hb-20261021-02): 2026-10-21 (tester) — (1) VALIDATION § R16's banked F-576 line and the kickoff carry `PROCESSING,PAUSED`, but PAUSED is not a status the writer accepts (`must be one of PROCESSING, PAUSE, NEW, STOP`), so the line as banked exits 1 even on the fixed tree → builder, correct the banked value at the next round touching R16; (2) the fast path saved a dashboard that selects 0 programs on the sandbox with no word of it (the closing ask priced "about 40 calls and about 5 minutes"; the pull summary's `pull.programs` 0 and the pages empty) → owner ruling: polish finding or WONTFIX, at the next round touching the fast path or the closing step; (3) R1 case (a)'s bar reads the last line's measured part, which is 0 whenever the tail is all unseen families (it was here: 0 s for 0 s), so case (a) checks the split's honesty, not the live pace → builder, reword the bar if case (a) is re-run. Full shape (what, where, owner, trigger, check): the tester's verdict comment on PR #71 @ hb-20261021-02.
 Noticed (hb-20261021-01): 2026-10-21 (tester) — (1) VALIDATION § R16 R1's BROKEN list names "status.progress null while the run holds the lock", the designed state through the plan's reads (step P: null until the first fact call) → builder, reword the bar in the next round touching R16; (2) F-581's whoami re-read and retry never ran live (no call died on the login wording in R3; both pulls small, re-documentation 0) → builder, bank a re-run of R3 with both pulls re-documenting, at the next round touching engagement.mjs's auth path or the pull lock per knowledge base; (3) the refusal sample is unreachable on the sandbox (0 entry refusals in the last 30 days) → builder, bank it for a tenant with recent refusals; (4) the accounts add-on's price moved from 3 calls / 21 s (A's first plan) to 14 calls / 94.70 s (A's second), unexplained, and change --dry-run quotes it → builder, explain or log at the next round touching F-575's pricing. Full shape (what, where, owner, trigger, check): the tester's verdict comment on PR #71 @ hb-20261021-01.
 
+<!-- builder 2026-10-26 (VERDICT @ hb-20261025-02 read; the tester's Noticed (hb-20261025-02) items dispositioned before the
+     release, since no fix round follows this one — dev-loop Step 2, Noticed items at kickoff, applied at the cut's doorstep):
+     (1) R17 R1's bar quoting the removal as EPERM — REWORDED in this commit (VALIDATION § R17 R1: the code is the OS's,
+       EBUSY on Windows, the claim the lock left and said); (2) R17 R6 blind to another dashboard's pull — RE-AIM BANKED in
+       this commit under § R17 R6 (a sibling scratch's FIRST plan priced from the knowledge base's file), owed at the next
+       round touching F-575's pricing; (3) R17 R3's set-up cannot make a refresh re-document — F-592 (OPEN polish, the owner's
+       ruling), carried: the ceremony auto-defers it once at the cut unless the owner pulls it into a fix round first; (4) R17
+       R4's Start when — REWORDED in this commit (the program sent in the window AND was refused inside the DERIVED health
+       lookback, read from the plan's health-entry-window call); (5) owner inputs surfaced mid-round — OWED to the dev-loop
+       skill's owner (an `Owner inputs:` line in the tester package), outside this repo; (6) the never-pushed probe objects —
+       OWNER, git gc --prune=now on the main clone with the earlier sets (hb-20261024-02, hb-20261025-01); (7) one transient
+       dev-utils flip write failure — dev-utils owner, nothing until it recurs.
+     Release doorstep: every live section but F-592 is VERIFIED or WONTFIX (F-591 re-homed); nothing DEFERRED past an older
+       version; plugin 0.58.0 and its CHANGELOG entry already on this branch; PR #74 is the one open PR to dev (BLOCKED only
+       while its CI on the verdict tip runs). Owed by the ceremony on dev after the merge, not by this round: the LOW
+       /code-review over origin/main...dev (every hunk was reviewed at its round), /security-review (the payload touches the
+       pre-push hook and scripts that spawn), the battery on the dev tip, then the cut. The two merges on the release path:
+       PR #74 into dev, then release/[v]0.58.0 into main.
+     If you cut now, these block: nothing; F-592 is OPEN polish (auto-deferred once at the cut). -->
+
 <!-- builder 2026-10-25 (round hb-20261025-02 on fix/release-scope-root-fixes, PR #74 — the NEXT RELEASE SCOPE round: Bradley's
      2026-10-21 ruling, every open finding fixed at its root, plus F-585, F-588, F-589 and the hook's Noticed items; from dev @ 0aa62e1):
      Kickoff: open PRs to dev: none. OPEN polish at kickoff: F-563, F-564, F-565, F-566, F-575 (re-declared polish), F-576, F-582,
