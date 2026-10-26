@@ -38,7 +38,7 @@ never measured; a session that auto-approves asks records the hook's decision ob
 says the rendered prompt is unmeasured.
 Entry hint: read this header for the Under test line, then grep '^## F-' for the live
 findings and read at those offsets. Released sections are moved to
-dev/FEEDBACK-archive.md after each release (last move: 2026-10-21, after release 0.57.0 — F-567..F-581, 13 sections (all of them but F-575 and F-576), with 2 header Walk lines, leaving seven DEFERRED (past 0.57.0) live: F-563..F-566, F-575, F-576, F-582; the 0.56.3 move (2026-10-17) took F-556..F-562, 6 sections (F-556, F-557, F-558, F-560, F-561, F-562), with 2 header Walk lines, leaving F-568 FIXED and five DEFERRED (past 0.56.3) live; the 0.56.2 move (2026-10-16) took F-530..F-555, 14 sections, with 4 header Walk lines, leaving no live section and no DEFERRED one; the 0.54.0 move took F-469..F-547, 72 sections, with 25 header Walk lines; the 0.43.4 move (a hotfix cut from main) took F-487; the 0.43.3 move took F-461 and F-466, leaving no live section; the 0.43.0 move took F-462, F-463, F-464, F-465, F-467 and F-468; the 0.42.0 move took F-448..F-460 with their round blocks and the four header Walk lines; the 0.37.0 move took
+dev/FEEDBACK-archive.md after each release (last move: 2026-10-26, after release 0.58.0 — F-563..F-591, 16 sections (all of them but F-592), with 2 header Walk lines, leaving one DEFERRED (past 0.58.0) live: F-592; the 0.57.0 move (2026-10-21) took F-567..F-581, 13 sections (all of them but F-575 and F-576), with 2 header Walk lines, leaving seven DEFERRED (past 0.57.0) live; the 0.56.3 move (2026-10-17) took F-556..F-562, 6 sections (F-556, F-557, F-558, F-560, F-561, F-562), with 2 header Walk lines, leaving F-568 FIXED and five DEFERRED (past 0.56.3) live; the 0.56.2 move (2026-10-16) took F-530..F-555, 14 sections, with 4 header Walk lines, leaving no live section and no DEFERRED one; the 0.54.0 move took F-469..F-547, 72 sections, with 25 header Walk lines; the 0.43.4 move (a hotfix cut from main) took F-487; the 0.43.3 move took F-461 and F-466, leaving no live section; the 0.43.0 move took F-462, F-463, F-464, F-465, F-467 and F-468; the 0.42.0 move took F-448..F-460 with their round blocks and the four header Walk lines; the 0.37.0 move took
 F-414..F-447 with their round blocks; the 0.36.3 move took F-410..F-413; the 0.36.2 move took F-390, F-391,
 F-396..F-409; the 0.36.1 move took F-387..F-389 and F-392..F-395;
 the 0.35.4 move took F-360..F-386, the 0.35.0 move F-357..F-359, the 0.34.3 move F-224..F-356
@@ -175,6 +175,60 @@ Noticed (hb-20261024-02): 2026-10-25 (tester) — (1) Git Bash rewrites a PRIVAT
 Noticed (hb-20261024-01): 2026-10-24 (tester) — (1) arm D's bar reads "a line ending 'in the file path'", but the path finding goes on with the hint every finding carries (" — org-specific string — remove it before committing"); the mechanics met the bar → builder, reword the bar if arm D is re-run in F-583's next round; (2) with PRIVATE_INSTANCE_PATTERNS holding only "# only a comment" the refusal says "PRIVATE_INSTANCE_PATTERNS is empty" (it held a line, all of it comment) → builder, polish wording in F-583's next fix round (same file), not a reopen; (3) the kickoff's cited memory "verdict-bar-vs-expected-when-live-arm-clears" is not in this workspace's memory folder → owner, write it or drop the citation from the next kickoff. Full shape (what, where, owner, trigger, check): the tester's verdict comment on PR #73 @ hb-20261024-01.
 Noticed (hb-20261021-02): 2026-10-21 (tester) — (1) VALIDATION § R16's banked F-576 line and the kickoff carry `PROCESSING,PAUSED`, but PAUSED is not a status the writer accepts (`must be one of PROCESSING, PAUSE, NEW, STOP`), so the line as banked exits 1 even on the fixed tree → builder, correct the banked value at the next round touching R16; (2) the fast path saved a dashboard that selects 0 programs on the sandbox with no word of it (the closing ask priced "about 40 calls and about 5 minutes"; the pull summary's `pull.programs` 0 and the pages empty) → owner ruling: polish finding or WONTFIX, at the next round touching the fast path or the closing step; (3) R1 case (a)'s bar reads the last line's measured part, which is 0 whenever the tail is all unseen families (it was here: 0 s for 0 s), so case (a) checks the split's honesty, not the live pace → builder, reword the bar if case (a) is re-run. Full shape (what, where, owner, trigger, check): the tester's verdict comment on PR #71 @ hb-20261021-02.
 Noticed (hb-20261021-01): 2026-10-21 (tester) — (1) VALIDATION § R16 R1's BROKEN list names "status.progress null while the run holds the lock", the designed state through the plan's reads (step P: null until the first fact call) → builder, reword the bar in the next round touching R16; (2) F-581's whoami re-read and retry never ran live (no call died on the login wording in R3; both pulls small, re-documentation 0) → builder, bank a re-run of R3 with both pulls re-documenting, at the next round touching engagement.mjs's auth path or the pull lock per knowledge base; (3) the refusal sample is unreachable on the sandbox (0 entry refusals in the last 30 days) → builder, bank it for a tenant with recent refusals; (4) the accounts add-on's price moved from 3 calls / 21 s (A's first plan) to 14 calls / 94.70 s (A's second), unexplained, and change --dry-run quotes it → builder, explain or log at the next round touching F-575's pricing. Full shape (what, where, owner, trigger, check): the tester's verdict comment on PR #71 @ hb-20261021-01.
+
+<!-- builder 2026-10-26 (0.58.0 RELEASED — post-release housekeeping):
+     Payload: the NEXT RELEASE SCOPE round (PR #74) — every finding left open after 0.57.0 fixed at its root: the
+       run's bookkeeping classified (F-563, with F-565 and F-575 items 1-2 folded in: a held handle on the lock record,
+       the progress record or a pace file never decides the pull's outcome; a lock left is said on every exit path);
+       one pull at a time over a knowledge base (F-575 item 3, F-581's race; <kb>/engagement-pull.lock, a dead holder
+       taken over and said); the pace merge a weighted mean capped at 50 calls (F-575 item 4); a change or report
+       re-priced at today's pace (F-575); a relative --bin and a cross-drive knowledge base re-document correctly
+       (F-564); a refused export writes nothing (F-566); change reads the writer's declared kind first (F-576); the
+       fast path's closing ask names the selection's count (F-590). No plugin bytes: the instance-data gate reads its
+       private patterns from a CI secret with redacted output (F-583, F-585); the dev-branch pre-push hook gates the
+       pushed trees, messages, identities, tag objects and ref names from a checker staged outside every tree
+       (F-584, F-588, F-589); AGENTS.md's review brief names its angles (F-582). Staged versions folded in: none
+       (0.58.0 alone).
+     Gate 1 (bus): step 0 (da1764d) found nothing DEFERRED past an older version; F-592 (polish, logged by the tester
+       @ hb-20261025-02) auto-deferred past 0.58.0, its one free pass. Terminal: F-563..F-566, F-575, F-576,
+       F-582..F-590 VERIFIED, F-591 WONTFIX (re-homed to the dev-utils ideas file); open PRs to dev: none (PR #74
+       merged at 734f019 before the cut).
+     Gate 2 (review): /code-review low origin/main...dev — no finding (every shipped hunk was reviewed at its round:
+       medium, three cold finders, 19 fixed in 7f14276). /security-review over origin/main...dev — run (the pre-push
+       hook's untrusted inputs and the checker's redaction were the angles); nothing at MEDIUM or above; highest
+       severity none.
+     Cut: release/[v]0.58.0 from dev @ 774a0f8, ONE commit beyond (the strip, 1d89672), in a short-path worktree;
+       git rev-list --count origin/dev..HEAD read 1, no declared dev-only path survived, merge-tree against main
+       conflict-free; stripped tree: both strict validates PASS inside the battery; battery (node build/run-battery.mjs)
+       56/56 on the dev tip 774a0f8 (32m01s) and 55/55 on the stripped tree 1d89672 (30m57s).
+     CI on the release PR #75 (1d89672), QUOTED per job after completion:
+         validate-plugin 40292762025: changes pass / manifests pass / validate (ubuntu-latest) pass /
+           validate (windows-latest) pass / validate (macos-latest) pass
+         docs-drift 40292762027: drift (full) pass
+         pr-target-guard 40292761948: guard pass
+         GitGuardian Security Checks: pass
+     Merged by Bradley (main @ e373e4b, 2026-10-26); tag [v]0.58.0 pushed by hand from the dev checkout (the pre-push
+       hook gated the tag's tree); release branch deleted by GitHub at the merge and locally; its worktree removed;
+       checkout on dev.
+     Housekeeping: F-563..F-591's 16 terminal sections moved VERBATIM to the archive with 2 header Walk lines
+       (hb-20261021-02, hb-20261021-03) (live 17 -> 1, archive 127 -> 143, sum 144; 271 lines removed equal the
+       271 added; block sha256 a820fb18e6c94c687c6bbbf1b07feb6f0c913993c18d220244e03a4490972b76; 8992289);
+       entry hint updated; Under test + canary -> dev · hb-20261026-01 (40de818), closed by a builder walk line
+       (679e5e8; no skill or script changed since the cut, no tester round owed). Next free number F-593.
+       Released: 0.58.0; dev stages nothing (plugin.json on dev reads 0.58.0, the released number).
+     Now live from main: nothing (no workflow or Dependabot change between main and dev).
+     GitHub Release: https://github.com/BradleyDB/gs-admin-cli-docs/releases/tag/v0.58.0 (notes = the 0.58.0
+       CHANGELOG entry behind .github/release-intro.md; Latest, not a draft, not a prerelease).
+     Consumer refresh: claude plugin marketplace update gs-admin-cli-docs; claude plugin update
+       gs-superadmin@gs-admin-cli-docs.
+     Carried forward (not in this release): F-592 DEFERRED (past 0.58.0), back at the next ceremony or sooner if the
+       owner pulls it into a fix round; VALIDATION § R17 R6's re-aim, banked for the next round touching F-575's
+       pricing; the Noticed (hb-20261025-02) items 5-7 with their owners (an Owner inputs: line in the dev-loop
+       tester package — the skill's owner; git gc --prune=now on the main clone — owner; the transient dev-utils flip
+       write failure — dev-utils owner, nothing until it recurs); the earlier Noticed lines' owner items (hb-20261021-01
+       and -02, hb-20261024-01 and -02, hb-20261025-01) as written there; issues #11 and #12 (help wanted); the
+       merged fix/release-scope-root-fixes still checked out in the app's worktree (local branch only; the remote
+       is gone); the feat/rehearsal-2 remote branch (PR #66 closed, left by the owner's choice). -->
 
 <!-- builder 2026-10-26 (VERDICT @ hb-20261025-02 read; the tester's Noticed (hb-20261025-02) items dispositioned before the
      release, since no fix round follows this one — dev-loop Step 2, Noticed items at kickoff, applied at the cut's doorstep):
