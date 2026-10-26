@@ -95,37 +95,80 @@ export function isMainModule(importMetaUrl) {
   }
 }
 
+// The ONE literal finder for the build lane (F-585): where literal strings occur
+// in a text, as merged [start, end) spans. maskLocalPaths below (the battery and
+// mutation runners' logs, F-569) and build/check-instance-data.mjs (the private
+// literals it learns from each private match, F-583) both call it — a second
+// hand-rolled case-insensitive literal scan per consumer is the consumer-parity
+// class. A literal scan, never a regex: a path or a learned token is not a
+// pattern, and the build lane has no sanctioned copy of doc-lib's escapeRe
+// (check-doc-drift check 9). Case-insensitive on request, over the ORIGINAL
+// string: when case-folding keeps the text's length, the folded text is searched
+// with indexOf and the index is the span's; when folding changes it (U+0130
+// lower-cases to two code units and would shift every span after it, F-583's
+// reopen 1), each same-length slice is compared folded instead — never an index
+// into a folded copy. Spans are merged where they OVERLAP (never where they only
+// touch: two repeats of one path side by side are two spans, each replaced); at
+// one start the LONGEST literal's token wins, so a nested shorter literal (a home
+// folder inside a repo path) never half-masks the longer one.
+/**
+ * @param {string} text
+ * @param {Array<[string, string]>} literals [literal, token] — the token is what a replacing caller puts in the span's place ("" when the caller only redacts)
+ * @param {{ caseInsensitive?: boolean }} [opts]
+ * @returns {Array<{ start: number, end: number, token: string }>} merged, in order
+ */
+export function literalSpans(text, literals, { caseInsensitive = false } = {}) {
+  const fold = caseInsensitive ? (/** @type {string} */ s) => s.toLowerCase() : (/** @type {string} */ s) => s;
+  const hay = fold(text);
+  const indexable = hay.length === text.length;
+  /** @type {Array<{ start: number, end: number, token: string }>} */
+  const spans = [];
+  for (const [lit, token] of literals) {
+    if (!lit) continue;
+    const needle = fold(lit);
+    const L = lit.length;
+    if (indexable) {
+      for (let at = hay.indexOf(needle); at !== -1; at = hay.indexOf(needle, at + 1)) spans.push({ start: at, end: at + needle.length, token });
+    } else {
+      for (let i = 0; i + L <= text.length; i++) if (fold(text.slice(i, i + L)) === needle) spans.push({ start: i, end: i + L, token });
+    }
+  }
+  spans.sort((a, b) => a.start - b.start || b.end - a.end);
+  /** @type {Array<{ start: number, end: number, token: string }>} */
+  const merged = [];
+  for (const sp of spans) {
+    const last = merged[merged.length - 1];
+    if (last && sp.start < last.end) last.end = Math.max(last.end, sp.end);
+    else merged.push({ ...sp });
+  }
+  return merged;
+}
+
 // Mask absolute local paths in text that may be quoted on the public bus
 // (F-569: the battery and mutation runners' logs and copy-outs). Each pair is
 // [absolute path, token]; both slash spellings of the path are replaced,
-// longest path first so a nested path is not half-masked by its parent, and
 // case-insensitively on win32 (drive letters and user folders arrive in
-// either case). A literal scan, not a regex — a path is not a pattern, and
-// the build lane has no sanctioned copy of doc-lib's escapeRe (check-doc-drift
-// check 9). The ONE masker for the build lane — a second spelling per runner
-// is the consumer-parity class.
+// either case), through literalSpans above (the longest literal at a start
+// wins, so a nested path is not half-masked by its parent). The ONE masker for
+// the build lane — a second spelling per runner is the consumer-parity class.
 /**
  * @param {string} text
  * @param {Array<[string, string]>} pairs [absolutePath, token]
  */
 export function maskLocalPaths(text, pairs) {
-  const ci = process.platform === "win32";
-  let out = text;
-  const sorted = [...pairs].filter(([p]) => p).sort((a, b) => b[0].length - a[0].length);
-  for (const [p, token] of sorted) {
-    for (const spelling of new Set([p, p.replace(/\\/g, "/"), p.replace(/\//g, "\\")])) {
-      const hay = ci ? out.toLowerCase() : out;
-      const needle = ci ? spelling.toLowerCase() : spelling;
-      let next = "";
-      let from = 0;
-      for (let at = hay.indexOf(needle); at !== -1; at = hay.indexOf(needle, from)) {
-        next += out.slice(from, at) + token;
-        from = at + needle.length;
-      }
-      out = next + out.slice(from);
-    }
+  /** @type {Array<[string, string]>} */
+  const literals = [];
+  for (const [p, token] of pairs) {
+    if (!p) continue;
+    for (const spelling of new Set([p, p.replace(/\\/g, "/"), p.replace(/\//g, "\\")])) literals.push([spelling, token]);
   }
-  return out;
+  let out = "";
+  let pos = 0;
+  for (const { start, end, token } of literalSpans(text, literals, { caseInsensitive: process.platform === "win32" })) {
+    out += text.slice(pos, start) + token;
+    pos = end;
+  }
+  return out + text.slice(pos);
 }
 
 // ── The T-9 shared renderer core (GP-B5 DS-25 partial collapse) ─────────────

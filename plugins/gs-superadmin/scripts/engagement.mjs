@@ -569,7 +569,7 @@ import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   makeCliHelpers, findWorkspaceDir, findWorkspaceCatalog, makeCommandResolver, assertReadOnlyCommand,
-  resolveCliArgv, isAuthDeath, readJsonFile, writeFileAtomicSync, removeFileSync, isMainModule, stripBom, cmpKey, termKey,
+  resolveCliArgv, isAuthDeath, readJsonFile, writeFileAtomicSync, writeBookkeepingSync, removeFileSync, acquireFileLock, sayLineSync, isMainModule, stripBom, cmpKey, termKey,
   readKbIdentity,
 } from "./doc-lib.mjs";
 import { printable } from "./journal-lib.mjs";
@@ -2372,6 +2372,35 @@ export const estimateCalls = (units, base, pageSize) => priced(units, base, page
  * @returns {Object<string, number>}
  */
 export const callSecondsTable = (pace) => ({ ...CALL_SECONDS, ...Object.fromEntries(Object.entries(pace ?? {}).filter(([, s]) => typeof s === "number" && Number.isFinite(s) && s > 0)) });
+/**
+ * A plan's estimate at TODAY's pace (F-575, the owed item: "the last plan's price a change or report quotes"). A change
+ * or a report quotes the plan the latest snapshot was pulled from, which priced each family at the pace known then;
+ * the knowledge base's pace may have moved since (another dashboard's pull over it). The full pull and this run are
+ * re-priced family by family from the plan's own call counts (`byFamily`) at the table over `pace` now, and the switch
+ * costs the plan keeps as totals alone (what customer lists, health and step detail add) scale by the full pull's
+ * ratio. A plan from before `byFamily` was recorded, or a quote with no pace file to price at, is returned as it
+ * stands (`repriced` false) — the plan's own figures, never the bare constants. Null with no plan. The switch costs'
+ * scaling by one ratio is an approximation the plan's totals allow; a switch whose families moved against the rest
+ * is priced afresh by the refresh it causes.
+ * @param {?*} estimate plan.json's `estimate` @param {?Object<string, number>} pace the pace files as read now (readPaceFiles)
+ * @returns {?*} the estimate with `full.seconds`, `thisRun.seconds` and the three `addsSeconds` re-priced, plus `repriced` and `ratio`
+ */
+export function repriceEstimate(estimate, pace) {
+  if (!estimate?.full) return null;
+  if (!pace || !estimate.full.byFamily) return { ...estimate, repriced: false, ratio: 1 };
+  const t = callSecondsTable(pace);
+  const price = (byFamily) => Math.round(Object.entries(byFamily ?? {}).reduce((s, [f, n]) => s + Number(n) * (t[f] ?? 7), 0) * 100) / 100;
+  const full = price(estimate.full.byFamily);
+  const ratio = estimate.full.seconds > 0 ? full / estimate.full.seconds : 1;
+  const scaled = (part) => (part && typeof part.addsSeconds === "number" ? { ...part, addsSeconds: Math.round(part.addsSeconds * ratio * 100) / 100 } : part);
+  return {
+    ...estimate,
+    full: { ...estimate.full, seconds: full },
+    thisRun: estimate.thisRun?.byFamily ? { ...estimate.thisRun, seconds: price(estimate.thisRun.byFamily) } : estimate.thisRun,
+    accounts: scaled(estimate.accounts), health: scaled(estimate.health), stepDetail: scaled(estimate.stepDetail),
+    repriced: true, ratio: Math.round(ratio * 1000) / 1000,
+  };
+}
 /** @param {Object<string, number>} [table] the seconds per call by family, callSecondsTable's; the constants alone when absent */
 export const estimateSeconds = (units, base, pageSize, table = CALL_SECONDS) => priced(units, base, pageSize).reduce((s, u) => s + u.calls * (table[u.family] ?? 7), 0);
 const familyCounts = (units, base, pageSize) => {
@@ -2422,6 +2451,48 @@ export const PACE_FILE = "pace.json";
 export const KB_PACE_FILE = "engagement-pace.json";
 /** @param {string} kbDir */
 export const kbPacePath = (kbDir) => join(kbDir, KB_PACE_FILE);
+/** Where every run directory lives under a workspace — the ONE spelling (F-575 (6)): prepareRun makes them here, the dashboard reads them here. @param {string} wsDir */
+export const engagementRunsRoot = (wsDir) => join(wsDir, ".gs-superadmin", "tmp", "engagement");
+// ── The pull lock per knowledge base (F-575 (3) and the item its Review line owed; F-581's race) ──
+// One pull at a time over a knowledge base. A pull re-documents the knowledge base's manifest (through manifest.mjs,
+// whose own lock makes a second writer wait 30 s and then fail), reads its steps, and merges what it measured into
+// `<kb>/engagement-pace.json` (a read-merge-write): two pulls over one knowledge base at once raced on all three
+// (F-581: a refresh stopped on the CLI's login wording while the other ran; the 0.57.0 review's item (3): a merge
+// could drop the other pull's families). Every pull over a knowledge base — a dashboard's refresh, around its
+// re-documentation, the pull and the pace write, and the engine's own `run` — takes this lock FIRST, through doc-lib's
+// one primitive (the same acquireFileLock as the dashboard's lock and the manifest's: an exclusive create, a dead
+// holder taken over, a live one named and refused up front — never waited on, a pull is minutes), and releases it once
+// the pace is merged. The engine's own plan mode takes it when it is free and merges its pace, and merges none when
+// another pull holds it (a plan is a read; its measured pace is a bonus, never worth a refusal); the dashboard holds
+// the lock through its own plan, inside its refresh. A lock the release cannot remove is said the way the
+// dashboard's own is (never swallowed, F-557): the caller carries it as `kbLockLeft`.
+export const KB_PULL_LOCK_FILE = "engagement-pull.lock";
+export const KB_PULL_LOCK_STALE_MS = 2 * 60 * 60 * 1000;
+/** @param {string} kbDir */
+export const kbPullLockPath = (kbDir) => join(kbDir, KB_PULL_LOCK_FILE);
+/**
+ * The "another pull is running" text — the one wording, for the taker and for a reader of the lock's state.
+ * @param {string} kbDir @param {Record<string, unknown>} held @param {string} path @param {number} nowMs
+ */
+export const kbPullRunningText = (kbDir, held, path, nowMs) => {
+  const age = Math.round((nowMs - Date.parse(String(held.at ?? ""))) / 60000);
+  const who = held.dashboard ? `the pull of the dashboard "${held.dashboard}"` : "a pull";
+  const holder = held.unreadable ? "its lock is being written" : `${who}${held.run ? ` (run ${held.run})` : ""} started by ${held.by ?? "unknown"} at ${held.at} (${Number.isFinite(age) ? `${age} minute${age === 1 ? "" : "s"} ago` : "at an unreadable time"}${held.pid != null ? `, pid ${held.pid}` : ""})`;
+  return `another pull is running over the knowledge base at ${kbDir}: ${holder} — wait for it; a pull whose process is gone, or whose lock ${path} is older than two hours, is taken over on its own`;
+};
+/**
+ * @param {string} kbDir @param {{ owner: Record<string, unknown>, nowMs?: number }} opts owner: who pulls (`by`, and `dashboard` or `run` as known)
+ * @returns {{ taken: boolean, path: string, held: ?Record<string, unknown>, text: ?string, takenOver: ?Record<string, unknown>, record: (extra: Record<string, unknown>) => ?import("./doc-lib.mjs").BookkeepingLeft, release: () => ?{ path: string, why: string } }}
+ *   taken false: `held` is the live holder's record and `text` the refusal to say; record and release do nothing.
+ */
+export function takeKbPullLock(kbDir, { owner, nowMs = Date.now() }) {
+  const path = kbPullLockPath(kbDir);
+  const lock = acquireFileLock(path, { owner, staleMs: KB_PULL_LOCK_STALE_MS, waitMs: 0, nowMs });
+  const held = lock.taken ? null : lock.held ?? { unreadable: true };
+  return { taken: lock.taken, path, held, text: held ? kbPullRunningText(kbDir, held, path, nowMs) : null, takenOver: lock.takenOver, record: lock.record, release: lock.release };
+}
+/** What a knowledge-base pull lock the release could not remove is said as: the same shape as the dashboard's lockLeft. @param {{ path: string, why: string }} left */
+export const kbLockLeftOf = (left) => ({ path: left.path, why: left.why, text: `the knowledge base's pull lock could not be removed at the end (${left.why}) and was left at ${left.path}: the next pull over it takes it over on its own, because this process is gone — nothing to do` });
 /**
  * The pace the files hold, overlaid in order (the later wins): per family the seconds per call. A file that cannot be
  * read is said once through `log` and stands for nothing until the next pull rewrites it.
@@ -2439,21 +2510,36 @@ export function readPaceFiles(paths, log = () => {}) {
   return out;
 }
 /**
- * The pace a pull measured, merged into a file: per family, the last pull that made a call of it wins; the rest are kept.
+ * How many calls a family's kept pace keeps counting for when the next pull's measurement is merged in (F-575 (4),
+ * redesigned at the second reopen): the merge is the calls-weighted mean of the pace kept and the pace this pull
+ * measured, the kept weight capped here — so one measured call moves a rate measured over fifty by about two percent
+ * (never replaces it), while a tenant that changed speed is re-priced within a pull or two (a forty-call pull weighs
+ * forty against at most fifty). A family's `calls` says how many calls stand behind its rate, up to the cap.
+ */
+export const PACE_MEMORY_CALLS = 50;
+/**
+ * The pace a pull measured, merged into a file: per family the calls-weighted mean of the pace kept and the pace
+ * measured (the kept weight capped at PACE_MEMORY_CALLS), `run` the last pull that moved it; families this pull did
+ * not make are kept as they were. The write is BOOKKEEPING (F-563): a file that cannot be written is handed back as
+ * `left`, never thrown — the pull it belongs to is complete whatever became of its pace.
  * @param {string} path @param {string} run the pull's run directory name @param {?Object<string, {calls: number, seconds: number}>} measured the summary's `measuredPace`
- * @returns {?{measuredAt: string, families: Object<string, {calls: number, seconds: number, run: string}>}} what the file holds now; null when nothing was measured
+ * @returns {{ written: ?{measuredAt: string, families: Object<string, {calls: number, seconds: number, run: string}>}, left: ?import("./doc-lib.mjs").BookkeepingLeft }} what the file holds now (null when nothing was measured), and the write's failure when it failed
  */
 export function writePaceFile(path, run, measured, nowMs = Date.now()) {
   const entries = Object.entries(measured ?? {}).filter(([, x]) => x.calls > 0 && x.seconds > 0);
-  if (!entries.length) return null;
+  if (!entries.length) return { written: null, left: null };
   let kept = null;
   try { kept = existsSync(path) ? readJsonFile(path) : null; } catch { kept = null; }
   const families = { ...(kept?.families ?? {}) };
-  for (const [f, x] of entries) families[f] = { calls: x.calls, seconds: x.seconds, run };
+  for (const [f, x] of entries) {
+    const k = families[f];
+    const w = k && typeof k.calls === "number" && k.calls > 0 && typeof k.seconds === "number" && k.seconds > 0 ? Math.min(k.calls, PACE_MEMORY_CALLS) : 0;
+    const seconds = w ? Math.round(((w * k.seconds + x.calls * x.seconds) / (w + x.calls)) * 100) / 100 : x.seconds;
+    families[f] = { calls: Math.min(w + x.calls, PACE_MEMORY_CALLS), seconds, run };
+  }
   const out = { measuredAt: new Date(nowMs).toISOString(), families };
-  mkdirSync(dirname(path), { recursive: true });
-  writeFileAtomicSync(path, JSON.stringify(out, null, 2) + "\n");
-  return out;
+  const left = writeBookkeepingSync(path, JSON.stringify(out, null, 2) + "\n", "pace file");
+  return { written: out, left };
 }
 /** @typedef {{made: number, planned: number, elapsedSeconds: number, leftSeconds: number, planSeconds: number, unseenFamilies: number, at: string}} EngagementProgress — `planSeconds` is the part of `leftSeconds` still priced from the plan (families this run has not seen). */
 /** A span in the admin's units: seconds under a minute and a half, minutes above. */
@@ -2474,12 +2560,22 @@ const isRpRun = (d) => d.family in FAMILIES;
  * token or the CLI says the token died; the run directory stays resumable.
  * `pace` is the seconds per call by family the caller measured on an earlier pull (F-575), overlaid on the fitted
  * constants for every price this run quotes; `onProgress` receives the progress record and its line (never through
- * `onCall`, whose lines are one per call made).
- * @param {{params: *, runDir: string, transport: EngagementTransport, gate: (argv: string[]) => ?string, kbDir?: ?string, previous?: ?T10Snapshot, previousStore?: ?AccountStore, phase?: "plan"|"all", now?: () => number, onCall?: (line: string) => void, onProgress?: (p: EngagementProgress, line: string) => void, pace?: ?Object<string, number>}} ctx
+ * `onCall`, whose lines are one per call made); `onNote` a line that is neither — a bookkeeping file the run could not
+ * write (F-563), said once.
+ * @param {{params: *, runDir: string, transport: EngagementTransport, gate: (argv: string[]) => ?string, kbDir?: ?string, previous?: ?T10Snapshot, previousStore?: ?AccountStore, phase?: "plan"|"all", now?: () => number, onCall?: (line: string) => void, onProgress?: (p: EngagementProgress, line: string) => void, onNote?: (line: string) => void, pace?: ?Object<string, number>}} ctx
  * @returns {*} the fetch summary (also written to `<runDir>/status.json`)
  */
 export function fetchEngagement(ctx) {
-  const { params, runDir, transport, gate, kbDir = null, previous: given = null, previousStore = null, phase = "all", now = Date.now, onCall = () => {}, onProgress = () => {}, pace = null } = ctx;
+  const { params, runDir, transport, gate, kbDir = null, previous: given = null, previousStore = null, phase = "all", now = Date.now, onCall = () => {}, onProgress = () => {}, onNote = () => {}, pace = null } = ctx;
+  // A bookkeeping file this run could not write (F-563), each said ONCE and carried on the summary as `bookkeepingLeft`;
+  // the run goes on — its outcome is its data writes'.
+  /** @type {import("./doc-lib.mjs").BookkeepingLeft[]} */
+  const bookkeepingLeft = [];
+  const noteLeft = (left) => {
+    if (!left || bookkeepingLeft.some((b) => b.path === left.path)) return;
+    bookkeepingLeft.push(left);
+    onNote(`bookkeeping: ${left.text}`);
+  };
   mkdirSync(join(runDir, "calls"), { recursive: true });
   const { records } = readFetchLog(runDir);
   const logPath = join(runDir, "fetch-log.jsonl");
@@ -2699,12 +2795,15 @@ export function fetchEngagement(ctx) {
     const elapsed = (now() - progress.at) / 1000;
     /** @type {EngagementProgress} */
     const p = { made, planned: made + left.calls, elapsedSeconds: Math.round(elapsed), leftSeconds: Math.round(left.seconds), planSeconds: Math.round(left.planSeconds), unseenFamilies: left.unseen, at: new Date(now()).toISOString() };
-    writeFileAtomicSync(join(runDir, PROGRESS_FILE), JSON.stringify(p, null, 2));
+    // Bookkeeping (F-563, the 0.57.0 review's item (1)): a progress record that cannot be written — a handle held on
+    // it past the Windows retry, inside the pull loop — is said once and never stops the pull; the line still prints.
+    noteLeft(writeBookkeepingSync(join(runDir, PROGRESS_FILE), JSON.stringify(p, null, 2), "progress record"));
     onProgress(p, progressLine(p));
   };
   const conclude = (extra) => {
     const status = stop ? stop.reason : failed.length ? "partial" : "ok";
-    const summary = { status, ...(stop ? { stopped: stop.detail } : {}), calls: counts, measuredPace: measuredPace(), failed, health: { unread: healthUnread }, pulledAt: params.pulledAt, ...(stop && remainingNow ? { remaining: remainingNow() } : {}), ...extra };
+    const summary = { status, ...(stop ? { stopped: stop.detail } : {}), calls: counts, measuredPace: measuredPace(), failed, health: { unread: healthUnread }, pulledAt: params.pulledAt, ...(stop && remainingNow ? { remaining: remainingNow() } : {}), ...(bookkeepingLeft.length ? { bookkeepingLeft: [...bookkeepingLeft] } : {}), ...extra };
+    // status.json is DATA (the reduce reads it and refuses a run without it), so it keeps the must-succeed write.
     writeFileAtomicSync(join(runDir, "status.json"), JSON.stringify({ status, phase, failed, health: { unread: healthUnread }, calls: counts }, null, 2));
     return summary;
   };
@@ -3019,7 +3118,12 @@ export function fetchEngagement(ctx) {
       // whole (they are picked after the counts), so a resume's remainder is an upper bound.
       remaining: priceRemaining(),
     },
-    full: { calls: calls(fullUnits) + ownReads, seconds: seconds(fullUnits) + ownSampleSeconds },
+    // The full pull's calls by family too, with the table the plan priced them at (`secondsPerCall`, the constants
+    // under the pace files as read now; the judge reads it back to reproduce this plan's own figure): a later quote of
+    // this plan — a change's price, a report's refresh offer, a re-selection's full-pull line — re-prices from the
+    // counts at the pace files as they stand when quoted (repriceEstimate), never from this figure alone (F-575).
+    full: { calls: calls(fullUnits) + ownReads, seconds: seconds(fullUnits) + ownSampleSeconds, byFamily: { ...familyCounts(fullUnits, base, params.pageSize), ...(ownReads ? sampleFamilies : {}) } },
+    secondsPerCall: table,
     stepDetail: { on: params.stepDetail, addsCalls: calls(withStep) - calls(without), addsSeconds: seconds(withStep) - seconds(without) },
     // What the account grain costs, printed whether it is on or off (its name lookups are not counted: how many depends on the selection).
     accounts: { on: params.accounts.pull, addsCalls: calls(accountsOn) - calls(accountsOff), addsSeconds: seconds(accountsOn) - seconds(accountsOff) },
@@ -5049,7 +5153,7 @@ export function parseAccountListFlag(value) {
  */
 export function prepareRun({ wsDir, runId, params, previousPath, cliVersion, todayGiven, reparams }) {
   if (!/^[A-Za-z0-9._-]+$/.test(runId)) throw new EngagementRefusal(`--run must be a plain name (letters, digits, . _ -), got "${printable(runId, 40)}"`);
-  const runDir = join(wsDir, ".gs-superadmin", "tmp", "engagement", runId);
+  const runDir = join(engagementRunsRoot(wsDir), runId);
   const runFile = join(runDir, "run.json");
   if (!existsSync(runFile)) {
     writeFileAtomicSync(runFile, JSON.stringify({ params, previousPath, cliVersion }, null, 2));
@@ -5234,23 +5338,44 @@ async function main() {
   const kbDir = opt("--kb") ? resolve(opt("--kb")) : null;
   if (kbDir && !existsSync(kbDir)) fail(`--kb ${opt("--kb")}: directory not found`);
 
+  // The transport first: a --bin that cannot be resolved fails here (fail exits), before any lock is taken.
+  const transport = cliTransport({ cliArgv: resolveCliArgv({ binOpt: opt("--bin"), fail }) });
+  // A pull over a knowledge base takes its pull lock (one pull at a time over it) and releases it once its pace is
+  // merged; a plan takes it when free and otherwise merges no pace (said, never a refusal: a plan is a read); a lock
+  // the release cannot remove is said, never swallowed — synchronously, since fail exits at once.
+  const kbLock = kbDir ? takeKbPullLock(kbDir, { owner: { by: process.env.USERNAME ?? process.env.USER ?? "unknown", run: basename(runDir) } }) : null;
+  if (kbLock && !kbLock.taken) {
+    if (mode !== "plan") fail(kbLock.text ?? "another pull is running over the knowledge base");
+    console.error(`engagement.mjs: ${kbLock.text ?? "another pull is running over the knowledge base"} — this plan reads the knowledge base and merges no pace into it`);
+  }
+  if (kbLock?.taken && kbLock.takenOver) console.error(`engagement.mjs: took over a stale pull lock of the knowledge base held by ${kbLock.takenOver.by ?? "unknown"} since ${kbLock.takenOver.at}`);
+  const releaseKb = () => (kbLock?.taken ? kbLock.release() : null);
   let summary;
   try {
     summary = fetchEngagement({
       params, runDir, kbDir, previous, previousStore, phase: mode === "plan" ? "plan" : "all",
-      transport: cliTransport({ cliArgv: resolveCliArgv({ binOpt: opt("--bin"), fail }) }),
+      transport,
       gate: makeGate({ catalog, hooksDir: join(here, "..", "hooks") }),
       // The knowledge base's measured pace prices this plan, and what this run measures goes back to it (F-575).
       pace: kbDir ? readPaceFiles([kbPacePath(kbDir)], (line) => console.error(`engagement.mjs: ${line}`)) : null,
       onCall: (line) => console.error(`engagement.mjs: ${line}`),
       onProgress: (p, line) => console.error(`engagement.mjs: ${line}`),
+      onNote: (line) => console.error(`engagement.mjs: ${line}`),
     });
   } catch (e) {
+    const left = releaseKb();
+    if (left) sayLineSync(`engagement.mjs: ${kbLockLeftOf(left).text}`);
     if (e instanceof EngagementRefusal) fail(e.message);
     throw e;
   }
-  if (kbDir && summary.measuredPace) writePaceFile(kbPacePath(kbDir), basename(runDir), summary.measuredPace);
-  const out = { ok: summary.status === "ok", mode, runDir, ...summary, whoami: summary.whoami ? { tokenState: summary.whoami.tokenState, expiresInSeconds: summary.whoami.expiresInSeconds, host: summary.whoami.host } : undefined };
+  const bookkeepingLeft = [...(summary.bookkeepingLeft ?? [])];
+  if (kbDir && summary.measuredPace && kbLock?.taken) {
+    const paced = writePaceFile(kbPacePath(kbDir), basename(runDir), summary.measuredPace);
+    if (paced.left) { bookkeepingLeft.push(paced.left); console.error(`engagement.mjs: bookkeeping: ${paced.left.text}`); }
+  }
+  const kbLeft = releaseKb();
+  if (kbLeft) sayLineSync(`engagement.mjs: ${kbLockLeftOf(kbLeft).text}`);
+  const out = { ok: summary.status === "ok", mode, runDir, ...summary, ...(bookkeepingLeft.length ? { bookkeepingLeft } : {}), ...(kbLeft ? { kbLockLeft: kbLockLeftOf(kbLeft) } : {}), whoami: summary.whoami ? { tokenState: summary.whoami.tokenState, expiresInSeconds: summary.whoami.expiresInSeconds, host: summary.whoami.host } : undefined };
   if (summary.status !== "ok" || mode !== "run") await finish(out, EXIT[summary.status] ?? EXIT.failed);
 
   const outPath = resolve(opt("--out"));

@@ -259,7 +259,8 @@ node build/test-comparison-html.mjs   # comparison-HTML generator parsing fixtur
 node build/test-emit-reader-shapes.mjs # the read-surface emitter: committed data/reader-shapes.json equals a fresh emission, byte-stable, catalog-joined, floors present; refuses an unknown command; the tracer's floor / enumeration / dropped-reader reds driven from outside
 node build/test-wiki-html.mjs         # wiki generator rendering fixtures + outbound-anchor resolution + byte-stability + the T-9 v4 grammar pins (the ONE block parser + inline core in build/lib.mjs, each pin mutation-proved in memory — run it after any edit to lib.mjs's grammar or either generator's renderer)
 node build/test-render-cheatsheet.mjs # the one cheatsheet emitter: repo/workspace lane parity + rendering fixtures
-node build/test-check-instance-data.mjs # the instance-data gate itself: UTF-16 files are decoded and scanned, skipped-binary accounting
+node build/test-check-instance-data.mjs # the instance-data gate itself: UTF-16 files are decoded and scanned, skipped-binary accounting, coverage asserted (F-424); private patterns from the environment (CI's secret), deduplicated across sources, REQUIRE_PRIVATE_PATTERNS refusal; masking by spans over the whole line or path with learned literals, no text on a line with a private hit, clean-line generic hits keep their text, lookaround-only patterns refused (F-583)
+node build/test-pre-push-hook.mjs     # the dev-branch pre-push hook (dev/hooks/pre-push, F-584): WHICH commits a push gates, judged against a stand-in remote's own refs through real `git push --dry-run` runs with the hook installed — a new ref, a fast-forward, a new name over a held commit (the tip gated in any case), tracking refs of any remote ignored (S3/S3b), fail closed on a remote tip this clone has not fetched (S4) and on an unreadable remote, the PUSH url read when it differs from the fetch url, an empty remote, a multi-ref push, a deletion, tags, a planted intermediate commit refused under a clean tip (in a doc file and in the pushed tree's own build/lib.mjs), a git replace ignored, main blocked without the override, no worktree or temp folder left behind; on a stripped (release) tree the hook is absent and the suite reports nothing to test
 node build/test-check-stale-facts.mjs # the stale-facts gate itself: bus code-context exemption (F-275/F-328) — indented quotes exempt, line-leading fences refused, prose stays checked, bus-only; the W10 handoff conventions (Blind spots line, pred: rows, Class: keys, Sibling sweep)
 node build/test-extract-catalog.mjs   # the dual-lane catalog emitter: fixture-package derivations + T-1 conformance on the committed catalog
 node build/test-defect-classes.mjs    # the defect-class DETECTORS in memory (milliseconds): detectRow/callClose over every mechanical row, exact hits per decision point (F-364, F-365)
@@ -450,7 +451,18 @@ npm run build   # only when build/ scripts or the catalog changed (needs the pin
   battery, which re-runs the self-tests it touches AND its review, and is named on the
   round's Blind spots line as unbatteried — never silently; a change to what only the
   battery exercises (the runner, a CI step) waits for the next round instead. Either way
-  the battery summary the handoff quotes names the commit it ran over.
+  the battery summary the handoff quotes names the commit it ran over. **The review brief
+  names its angles** (F-582: the R16 round's two reviews rode past five items the 0.57.0
+  gate then found inside a mechanism that writes state beside a pull, and two VERIFIED
+  sections were reopened at the gate). A round's brief to its finders lists, beyond
+  correctness and the mechanism's arithmetic, the four angles the gate used, for any
+  mechanism that writes a file beside a pull or merges a shared one: a best-effort write
+  that can throw on the hot path (a progress or pace record written with the data's
+  must-succeed write); a shared file's read-merge-write with no lock; a merge that ignores
+  sample size (last writer wins over a rate measured over hundreds); and a parse that runs
+  ahead of the declared kind (JSON before the writer's own list declaration). The brief is
+  prose and no check reads it — the handoff note quotes the angles it briefed, so a gate
+  finding on an unbriefed angle is a process finding naming the round, not a surprise.
 - **Every open PR to `dev` is named at a session's kickoff and close-out, bot PRs
   included** (`gh pr list --base dev`), each with its check state, and a red one is
   DISPOSITIONED — merged, closed with a reason, or carried forward explicitly in the
@@ -735,9 +747,34 @@ go through GitHub private advisories (SECURITY.md), not an email address.
   repo** — never committed here, not even under `docs/`.
 - CI enforces the committed-file part on every PR: `build/check-instance-data.mjs`
   (docs-drift workflow). Its patterns are generic by design — the check itself must
-  never contain a sensitive string. Org-specific strings to detect go in the
+  never contain a sensitive string. Org-specific strings to detect (real tenant
+  slugs, the org name, the consumer workspace's KB folder names — `--kb <folder>`
+  lands in bus prose) live in two places that never enter the repo: locally in the
   git-ignored `gs-admin-explorer.config.json` (`privateInstancePatterns` — see the
-  `.example.json`), never in the repo.
+  `.example.json`), and in CI in the repository secret `PRIVATE_INSTANCE_PATTERNS`
+  (one regex per line), which the docs-drift step passes to the gate through the
+  environment. This repository's own pushes and same-repo pull requests must load it
+  (`REQUIRE_PRIVATE_PATTERNS`, derived from the event so a missing secret turns red);
+  a pull request from a fork or from Dependabot gets no secrets and runs the generic
+  patterns with a warning. A private-pattern hit is reported by its source and line
+  with the matched text redacted, file paths are scanned too, and every private
+  string is masked out of everything the gate prints — the string must not appear in
+  a CI log either.
+- **What the private list must name.** Masking learns, from each private match, every
+  token of four or more characters inside it and masks those wherever they recur in the
+  run; so a string a pattern matches only joined to a suffix (a `kb/<slug>-prod`
+  folder pattern) is learned as that joined token, and the bare slug recurring on a
+  clean line prints in clear. An identifier shorter than four characters, or one no
+  pattern matches bare, must be its own pattern: list each org slug bare as well as
+  any folder-name pattern, in the config file and in the secret alike.
+- **Setting `PRIVATE_INSTANCE_PATTERNS` from Git Bash.** That shell converts an
+  environment value that looks like a path when it starts a native program (git.exe,
+  node.exe): `https://acme\.gainsightcloud\.com` arrives as
+  `https://acme/.gainsightcloud/.com`, a pattern that loads, is counted in the pass
+  line, and never matches. Set `MSYS2_ENV_CONV_EXCL=PRIVATE_INSTANCE_PATTERNS` in that
+  shell beside the variable (the pre-push hook sets it for its own node runs, which
+  covers a PowerShell or cmd caller), or keep the patterns in the config file, which no
+  shell converts.
 
 ## Reading order before touching…
 

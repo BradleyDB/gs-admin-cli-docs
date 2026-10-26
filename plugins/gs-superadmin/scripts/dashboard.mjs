@@ -121,7 +121,7 @@ import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "nod
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { makeCliHelpers, findWorkspaceDir, findWorkspaceCatalog, makeCommandResolver, resolveCliArgv, readJsonFile, writeFileAtomicSync, acquireFileLock, readFileLock, docDirNorm, isMainModule, readKbIdentity, cmpKey, RECORDED_LANES } from "./doc-lib.mjs";
+import { makeCliHelpers, findWorkspaceDir, findWorkspaceCatalog, makeCommandResolver, resolveCliArgv, readJsonFile, writeFileAtomicSync, acquireFileLock, readFileLock, sayLineSync, docDirNorm, isMainModule, readKbIdentity, cmpKey, RECORDED_LANES } from "./doc-lib.mjs";
 import { printable } from "./journal-lib.mjs";
 import {
   specStore, SpecRefusal, holderName, openSpec, validateSpec, SPEC_DESCRIPTIONS, PRESETS, TABS, DEFAULT_ACCOUNT_LISTS, defaultSpec,
@@ -131,7 +131,7 @@ import {
   resolveParams, prepareRun, runParamsMoved, fetchEngagement, reduceEngagement, loadRun, cliTransport, makeGate, parseWhoami, addMonths, monthsBetween, pickSchedule, describedProgram, EngagementRefusal, ROW_READERS, rpRunArgv, buildQuery,
   resolveAccountParams, reduceAccountTimeline, loadAccountRun, accountResolutionText, timelineSummary,
   reduceWithStore, rankFromStore, readAccountStore, accountStorePath, accountStoreFits, isAccountStoreFile, writeSnapshotAndStore, copySnapshotWithStore, readAccountStoreHead,
-  PROGRESS_FILE, PACE_FILE, kbPacePath, readPaceFiles, writePaceFile,
+  PROGRESS_FILE, PACE_FILE, kbPacePath, readPaceFiles, writePaceFile, engagementRunsRoot, takeKbPullLock, kbLockLeftOf, repriceEstimate,
 } from "./engagement.mjs";
 export { PACE_FILE };
 import { applyGroups, programTraitsOf, suggestionTable } from "./dashboard-groups.mjs";
@@ -432,7 +432,24 @@ export const CLOSING_ASK = (ctx) => {
   const head = edit
     ? `Ready to save this edit. ${edit.consequence == null ? "Nothing changed against the saved dashboard." : `Compared with the saved dashboard it changes ${plural(edit.changed.length, "setting")} (${edit.changed.map((c) => c.path).join(", ")}): ${edit.consequence === "pull" ? `the next refresh pulls everything again, about ${N(e, (x) => minutesOf(x.full.seconds), "M")} minutes; ${login("the refresh")}` : edit.consequence === "reselect" ? (edit.reselect ? reselectText(edit.reselect, edit.reselect.line) : "the customer lists are ranked again from the account store (a rebuild, no pull)") : "the pages are rebuilt from the data already pulled, no pull"}.`}`
     : `Ready to save. A full refresh with these settings is about ${N(e, (x) => x.full.calls, "N")} calls and ${mins(e, (x) => x.full.seconds, "M")} on this tenant; ${login("the first refresh")}.`;
-  return `${head} ${HOW_TO_REFRESH_TEXT(slug, ctx?.kb ?? null)}`;
+  // An EMPTY selection is said in the ask itself (F-590): the ruled wording stands as it is whenever the selection
+  // holds a program; with none, the pages would be empty and the pull priced all the same, so the ask says so
+  // before the save. The count rides beside the ask on every closing step (closingSelection) for the skill to relay.
+  const empty = closingSelection(ctx);
+  return `${head}${empty?.programs === 0 ? ` ${empty.text}` : ""} ${HOW_TO_REFRESH_TEXT(slug, ctx?.kb ?? null)}`;
+};
+/**
+ * What the closing step's plan selected (F-590): how many programs of the ones listed on the tenant, with the one
+ * sentence the skill relays; null before a plan exists.
+ * @returns {?{ programs: number, listed: number, text: string }}
+ */
+export const closingSelection = (ctx) => {
+  const p = ctx?.plan?.programs ?? null;
+  if (!p || typeof p.selected !== "number") return null;
+  const text = p.selected === 0
+    ? `The selection holds NO program: nothing sent in the window as the settings stand (${plural(p.listed ?? 0, "program")} listed on the tenant), so the pages would be empty — go back and widen the window or name the programs before saving.`
+    : `The selection holds ${plural(p.selected, "program")} of the ${p.listed ?? 0} listed on the tenant.`;
+  return { programs: p.selected, listed: p.listed ?? 0, text };
 };
 /** A dry run's minutes: the full pull less what customer lists, health and step detail add (the preview pulls none of them). */
 const dryRunSeconds = (e) => (e ? Math.max(60, e.full.seconds - (e.accounts?.on ? e.accounts.addsSeconds : 0) - (e.health?.on ? e.health.addsSeconds : 0) - (e.stepDetail?.on ? e.stepDetail.addsSeconds : 0)) : null);
@@ -837,8 +854,8 @@ function openContext(argv, opt) {
   };
 }
 const dirOf = (ctx, slug) => ctx.store.paths(slug).dir;
-/** Where the engine keeps every run's directory (one spelling; the engine's own CLI resolves the same folder). */
-const runsRootOf = (ctx) => join(ctx.wsDir, ".gs-superadmin", "tmp", "engagement");
+/** Where the engine keeps every run's directory: the engine's one spelling (engagementRunsRoot, which prepareRun makes them under; F-575 (6)). */
+const runsRootOf = (ctx) => engagementRunsRoot(ctx.wsDir);
 const writeJson = (path, value) => writeFileAtomicSync(path, JSON.stringify(value, null, 2) + "\n");
 const readJsonOr = (path, fallback = null) => (existsSync(path) ? readJsonFile(path) : fallback);
 // ── The pace (F-575) ─────────────────────────────────────────────────────────
@@ -850,10 +867,17 @@ const readJsonOr = (path, fallback = null) => (existsSync(path) ? readJsonFile(p
 const pacePath = (ctx, slug) => join(dirOf(ctx, slug), PACE_FILE);
 /** @returns {?Object<string, number>} the seconds per call by family, for the engine; null until a pull was measured on this knowledge base */
 const readPace = (ctx, slug) => readPaceFiles([kbPacePath(ctx.kbDir), pacePath(ctx, slug)], ctx.log);
-/** Both files, from the summary's `measuredPace`; what the dashboard's holds now, or null when nothing was measured. */
+/**
+ * Both files, from the summary's `measuredPace`: what the dashboard's holds now (null when nothing was measured) and
+ * the bookkeeping writes that failed (F-563: a pace file that cannot be written is said once and never fails the
+ * refresh whose calls all landed — the 0.57.0 review's item (2)).
+ */
 function writePace(ctx, slug, run, measured) {
-  writePaceFile(kbPacePath(ctx.kbDir), run, measured, ctx.nowMs);
-  return writePaceFile(pacePath(ctx, slug), run, measured, ctx.nowMs);
+  const kb = writePaceFile(kbPacePath(ctx.kbDir), run, measured, ctx.nowMs);
+  const own = writePaceFile(pacePath(ctx, slug), run, measured, ctx.nowMs);
+  // `written` is what the dashboard's file holds NOW: null when its write failed (the summary's `pace` then reads null
+  // and the failure stands beside it), never what it would have held.
+  return { written: own.left ? null : own.written, left: [kb.left, own.left].filter((x) => x != null) };
 }
 /** The saved spec's JSON, or the one refusal for a dashboard that is a draft or does not exist (the one home, F-555). */
 const savedRawOrRefuse = (ctx, slug) => {
@@ -957,7 +981,14 @@ function takeLock(ctx, slug, { run = null, action = "refresh" } = {}) {
   if (!lock.taken) refuse(alreadyRunningText(ctx, slug, lock.held ?? {}, action, path));
   // Said at the takeover, so a run refused later (the budget) still leaves a record of whose lock it took.
   if (lock.takenOver) ctx.log(`took over a stale refresh lock of "${slug}" held by ${lock.takenOver.by ?? "unknown"} since ${lock.takenOver.at}`);
-  return { path, release: lock.release, record: (name) => lock.record({ run: name }), takenOver: lock.takenOver };
+  // The run's name is recorded on the lock as bookkeeping (F-563): a record the primitive cannot write — a handle that
+  // forbids the rename over the lock, held past the Windows retry — is a one-line refusal with the remedy, never a
+  // stack; the lock is then released (or said left) by the verb's one release path, like any refusal's.
+  const record = (name) => {
+    const left = lock.record({ run: name });
+    if (left) refuse(`the refresh lock of "${slug}" could not be recorded (${left.why}): a handle on ${left.path} (a scanner, a sync client, an editor) forbids the write — run the line again once it is gone`, "failed", { lockRecord: { path: left.path, why: left.why } });
+  };
+  return { path, release: lock.release, record, takenOver: lock.takenOver };
 }
 /** The lock as status reports it: held, whose, and `stale` when its holder is dead by the primitive's one rule (its process gone, or its record older than two hours). */
 const lockState = (ctx, slug) => {
@@ -974,17 +1005,29 @@ function liveLock(ctx, slug) {
 /** What a lock the release could not remove is said as (F-557): the path, the cause, and the one sentence the skill relays. */
 const lockLeftOf = (left) => ({ path: left.path, why: left.why, text: `the refresh lock could not be removed at the end (${left.why}) and was left at ${left.path}: the next refresh, rebuild or change takes it over on its own, because this process is gone — nothing to do` });
 /**
+ * Something the verb's end has to SAY, attached to what the verb returns or throws (F-557, F-565 (1)): on a summary
+ * as `<key>`; on a refusal appended to its message and set in its details; on a CRASH (any other error) said on
+ * stderr at once, synchronously, beside the stack that follows — never silent on any exit path.
+ * @template T @param {T} out @param {string} key @param {?{ text: string }} said @returns {T}
+ */
+function attachSaid(out, key, said) {
+  if (!said) return out;
+  if (out instanceof DashboardRefusal) { out.message += `; ${said.text}`; out.details = { ...(out.details ?? {}), [key]: said }; return out; }
+  // Any other error: on its message too (an engine or spec refusal reaches the JSON line through its message), and
+  // on stderr at once for the crash that prints a stack and no JSON.
+  if (out instanceof Error) { out.message += `; ${said.text}`; sayLineSync(`dashboard.mjs: ${said.text}`); return out; }
+  if (out === null || typeof out !== "object") { sayLineSync(`dashboard.mjs: ${said.text}`); return out; }
+  return /** @type {T} */ ({ ...out, [key]: said });
+}
+/**
  * The release at the end of a verb under the lock (F-557): `out` as it is once the lock is off; with `lockLeft` when
- * the release could not remove it; a refusal in flight carries the same on its message and details. Never silent.
+ * the release could not remove it; a refusal in flight carries the same on its message and details; a crash gets it
+ * on stderr beside the stack (F-565 (1)). Never silent.
  * @template T @param {{ release: () => ?{ path: string, why: string } }} lock @param {T} out @returns {T}
  */
 function releasedWith(lock, out) {
   const left = lock.release();
-  if (!left) return out;
-  const said = lockLeftOf(left);
-  if (out instanceof DashboardRefusal) { out.message += `; ${said.text}`; out.details = { ...(out.details ?? {}), lockLeft: said }; return out; }
-  if (out instanceof Error || out === null || typeof out !== "object") return out;
-  return /** @type {T} */ ({ ...out, lockLeft: said });
+  return left ? attachSaid(out, "lockLeft", lockLeftOf(left)) : out;
 }
 // ── The tenant and the token, before any call ────────────────────────────────
 /**
@@ -1037,7 +1080,7 @@ function runAdapter(ctx, { spec, runId, phase, previousPath, forceFull = false, 
   // A resumed run keeps the day it was planned on unless --today was given (F-483), as the adapter's own CLI does.
   const { runDir, params, resumed } = prepareRun({ wsDir: ctx.wsDir, runId, params: paramsOn(ctx.today), previousPath, cliVersion: ctx.catalog.meta?.cliVersion ?? null, todayGiven: ctx.todayGiven, reparams: paramsOn });
   // The dashboard's measured pace prices every plan (F-575); the pull's progress is said as the engine words it.
-  const summary = fetchEngagement({ params, runDir, kbDir: ctx.kbDir, previous, previousStore, phase, transport: ctx.live(), gate: ctx.gate, pace: readPace(ctx, spec.slug), onCall: (line) => ctx.log(`${phase === "plan" ? "plan" : "pull"} ${line}`), onProgress: (p, line) => ctx.log(`pull ${line}`) });
+  const summary = fetchEngagement({ params, runDir, kbDir: ctx.kbDir, previous, previousStore, phase, transport: ctx.live(), gate: ctx.gate, pace: readPace(ctx, spec.slug), onCall: (line) => ctx.log(`${phase === "plan" ? "plan" : "pull"} ${line}`), onProgress: (p, line) => ctx.log(`pull ${line}`), onNote: (line) => ctx.log(`pull ${line}`) });
   return { runDir, params, resumed, summary, previous, previousStore, categoriesFile };
 }
 /** The plan twice when the derived lookback moves (ENG-2 item 3): the second plan is the one the pull resumes. */
@@ -1079,7 +1122,21 @@ function journeyDomain(ctx) {
  * against the workspace and an absolute path is unaffected — and is respelled the next time that asset is re-documented,
  * by any writer (describe-batch records the spelling afresh on every documented mark).
  */
-const kbFolder = (ctx, domain) => docDirNorm(relative(ctx.wsDir, join(ctx.kbDir, domain)));
+const kbFolder = (ctx, domain) => kbFolderOf(ctx.wsDir, ctx.kbDir, domain);
+/**
+ * The folder as passed, and whether it came out workspace-relative (F-564): path.relative returns an ABSOLUTE path
+ * when the workspace and the knowledge base sit on different Windows drives, so the entries re-documented then record
+ * an absolute doc_path (which resolves, since readers resolve doc_path against the workspace) — said on the summary,
+ * never silently. Exported for the judge: the cross-drive case needs two drives, which a fixture cannot make.
+ * @param {string} wsDir @param {string} kbDir @param {string} domain
+ * @returns {{ folder: string, workspaceRelative: boolean, note: ?string }}
+ */
+export function kbFolderOf(wsDir, kbDir, domain) {
+  const rel = relative(wsDir, join(kbDir, domain));
+  const folder = docDirNorm(rel);
+  const workspaceRelative = !isAbsolute(rel);
+  return { folder, workspaceRelative, note: workspaceRelative ? null : `the knowledge base is not under the workspace's drive (${folder}), so the entries re-documented in this refresh record an absolute doc_path where the rule is a workspace-relative one; they resolve all the same` };
+}
 /** A plugin script as a process, run FROM the workspace: a workspace-relative path it is handed resolves there (F-556). */
 function runScript(ctx, script, args) {
   const r = spawnSync(process.execPath, [script, ...args], { encoding: "utf8", maxBuffer: 64 * 1024 * 1024, cwd: ctx.wsDir });
@@ -1099,7 +1156,10 @@ function redocument(ctx, { spec, estimate, runDir }) {
   if (!settings.enabled) { out.programs.remaining = out.programs.behind; out.templates.remaining = out.templates.planned; return out; }
   let budget = settings.cap;
   const manifestPath = join(ctx.kbDir, "_manifest.json");
-  const bin = ctx.binOpt ? ["--bin", ctx.binOpt] : [];
+  // The CLI the child is handed is RESOLVED here (F-564): the child runs from the workspace (runScript), so a relative
+  // --bin given from another directory would resolve against the workspace there — the dashboard's own transport
+  // resolves it against the directory the admin ran from (resolveCliArgv), and the child gets that spelling.
+  const bin = ctx.binOpt ? ["--bin", resolve(ctx.binOpt)] : [];
   const batch = (args, left) => {
     const r = runScript(ctx, DESCRIBE_BATCH_SCRIPT, [...args, "--limit", String(left), ...bin]);
     if (!r.ok && !r.json) refuse(`describe-batch refused: ${r.stderr.slice(-400)}`);
@@ -1120,7 +1180,9 @@ function redocument(ctx, { spec, estimate, runDir }) {
     }
     const marked = runScript(ctx, MANIFEST_SCRIPT, ["mark", "--manifest", manifestPath, "--keys-file", kb.keysFile, "--status", "stale"]);
     if (!marked.ok) refuse(`manifest mark refused: ${marked.stderr.slice(-400)}`);
-    const r = batch(["--manifest", manifestPath, "--domain", domain, "--command", "gs-admin --json jo p describe --id {id}", "--doc-mode", "program", "--out-dir", kbFolder(ctx, domain), "--keys-file", kb.keysFile], budget);
+    const folder = kbFolder(ctx, domain);
+    out.folder = { passed: folder.folder, workspaceRelative: folder.workspaceRelative, ...(folder.note ? { note: folder.note } : {}) };
+    const r = batch(["--manifest", manifestPath, "--domain", domain, "--command", "gs-admin --json jo p describe --id {id}", "--doc-mode", "program", "--out-dir", folder.folder, "--keys-file", kb.keysFile], budget);
     out.programs.documented = r.documented;
     out.programs.failed = r.failed;
     out.programs.remaining = Math.max(0, out.programs.behind - out.programs.unlisted - r.documented);
@@ -1141,7 +1203,9 @@ function redocument(ctx, { spec, estimate, runDir }) {
       const marked = runScript(ctx, MANIFEST_SCRIPT, ["mark", "--manifest", manifestPath, "--keys-file", t.staleKeysFile, "--status", "stale"]);
       if (!marked.ok) refuse(`manifest mark (templates) refused: ${marked.stderr.slice(-400)}`);
     }
-    const r = batch(["--manifest", manifestPath, "--domain", t.domain, "--command", "gs-admin --json jo email template --id {id}", "--doc-mode", "template", "--out-dir", kbFolder(ctx, t.domain), "--keys-file", t.keysFile], budget);
+    const tplFolder = kbFolder(ctx, t.domain);
+    if (!out.folder) out.folder = { passed: tplFolder.folder, workspaceRelative: tplFolder.workspaceRelative, ...(tplFolder.note ? { note: tplFolder.note } : {}) };
+    const r = batch(["--manifest", manifestPath, "--domain", t.domain, "--command", "gs-admin --json jo email template --id {id}", "--doc-mode", "template", "--out-dir", tplFolder.folder, "--keys-file", t.keysFile], budget);
     out.templates.documented = r.documented;
     out.templates.failed = r.failed;
     out.templates.remaining = Math.max(0, t.planned - r.documented);
@@ -1741,7 +1805,7 @@ function verbNext(ctx, slug, { questionId = null } = {}) {
     return {
       ok: true, mode: "next", slug, ...(said ? { said } : {}), ...(defaulted.length ? { defaulted } : {}),
       question: { id: q.id, ask: askText(q, ictx), kind: q.kind, judgment: q.judgment, path: q.path, options: q.options(ictx), ...(q.input ? { input: q.input(ictx) } : {}) },
-      ...(q.kind === "action" ? { closing: { ask: CLOSING_ASK(ictx), options: CLOSING_OPTIONS(ictx) } } : {}),
+      ...(q.kind === "action" ? { closing: { ask: CLOSING_ASK(ictx), options: CLOSING_OPTIONS(ictx), selection: closingSelection(ictx) } } : {}),
       progress: { answered: done.length, skipped, remaining: QUESTIONS.filter((x) => !done.includes(x.id) && !skipped.includes(x.id)).length },
       ...(ictx.plan ? { estimate: { full: ictx.plan.estimate.full, thisRun: ictx.plan.estimate.thisRun, token: ictx.plan.estimate.token, programs: ictx.plan.programs } } : {}),
     };
@@ -1913,10 +1977,26 @@ function verbRefresh(ctx, slug, { full, healthOnly, planRun = null }) {
   // any tenant call; a refusal there releases the lock on the way out.
   const lock = takeLock(ctx, slug);
   const takenOver = lock.takenOver ? { lockTakenOver: { by: lock.takenOver.by ?? null, at: lock.takenOver.at ?? null } } : {};
+  // The knowledge base's pull lock next (F-575 (3), F-581's race): one pull at a time over a knowledge base, around
+  // the re-documentation, the pull and the pace merge; a live holder is named and refused before any tenant call. It
+  // is released once the pace is written, or on the way out of a refusal or a crash, and a lock the release cannot
+  // remove is said like the dashboard's own (kbLockLeft).
+  /** @type {?ReturnType<typeof takeKbPullLock>} */
+  let kbLock = null;
+  const releaseKb = () => {
+    if (!kbLock || !kbLock.taken) return null;
+    const left = kbLock.release();
+    kbLock = null;
+    return left ? kbLockLeftOf(left) : null;
+  };
   // The release at the end says what it could not remove (F-557): on the summary as lockLeft, on a refusal appended.
   let out;
   try {
   out = (() => {
+  kbLock = takeKbPullLock(ctx.kbDir, { owner: { by: ctx.by, dashboard: slug }, nowMs: ctx.nowMs });
+  if (!kbLock.taken) refuse(kbLock.text ?? "another pull is running over the knowledge base");
+  if (kbLock.takenOver) ctx.log(`took over a stale pull lock of the knowledge base held by ${kbLock.takenOver.by ?? "unknown"} since ${kbLock.takenOver.at}`);
+  const kbTakenOver = kbLock.takenOver ? { kbLockTakenOver: { by: kbLock.takenOver.by ?? null, at: kbLock.takenOver.at ?? null } } : {};
   const who = preflight(ctx, spec, { again: refreshRemedy(ctx, slug, { full, healthOnly }) });
   let state = readJsonOr(join(dir, STATE_FILE), null);
   const previousPath = latestSnapshotPath(ctx, slug);
@@ -1951,11 +2031,14 @@ function verbRefresh(ctx, slug, { full, healthOnly, planRun = null }) {
   // run's. A fresh name is one no directory holds.
   const runId = resuming ? state.run : continuesPlan ? planRun : freshName(runsRoot, `dash-${slug}-${snapshotStamp(new Date(ctx.nowMs).toISOString())}`);
   lock.record(runId);
+  if (kbLock?.taken) kbLock.record({ run: runId }); // the knowledge base's lock names the run too; a record it cannot keep changes nothing (the holder is this process)
     const stateRecord = { run: runId, startedAt: resuming ? state.startedAt : new Date(ctx.nowMs).toISOString(), by: ctx.by, previousPath, full, healthOnly, lookbackDays: resuming ? state.lookbackDays ?? null : null, pullRun: resuming ? state.pullRun ?? null : null };
     writeJson(join(dir, STATE_FILE), stateRecord);
     // A run that starts or resumes has no progress yet: the stopped attempt's record would otherwise be relayed by
-    // `status` through the plan and re-documentation minutes (F-575 review).
-    rmSync(join(runsRoot, stateRecord.pullRun ?? runId, PROGRESS_FILE), { force: true });
+    // `status` through the plan and re-documentation minutes (F-575 review). The record is bookkeeping (F-563): one
+    // that cannot be removed (a folder in its place, a handle on it) stops nothing here — the first tick's write then
+    // fails the same way and is said once.
+    try { rmSync(join(runsRoot, stateRecord.pullRun ?? runId, PROGRESS_FILE), { force: true }); } catch { /* said by the first tick */ }
     // The plan, with the derived lookback. The pull is NOT held to the login (F-513, ruled 2026-10-12): it runs as far
     // as the token allows, the adapter stops it cleanly when the next call would outlast the token, and the next run
     // after a login continues it. What is said is how many logins a pull of this size takes.
@@ -1976,8 +2059,15 @@ function verbRefresh(ctx, slug, { full, healthOnly, planRun = null }) {
       ? { from: state.pullRun ?? runId, run: pulledIn, lookbackDays: { from: state.lookbackDays, to: planned.lookbackDays } }
       : null;
     if (planned.summary.status === "ok" && (planned.lookbackDays !== stateRecord.lookbackDays || stateRecord.pullRun !== pulledIn)) writeJson(join(dir, STATE_FILE), { ...stateRecord, lookbackDays: planned.lookbackDays, pullRun: pulledIn });
+    // What the pace write and the knowledge-base lock's release leave to say, set once the pull is over and carried
+    // by the summary AND by a stop's refusal (the review's item: a stopped pull said neither).
+    /** @type {import("./doc-lib.mjs").BookkeepingLeft[]} */
+    let paceLeft = [];
+    /** @type {{ kbLockLeft?: { path: string, why: string, text: string } }} */
+    let kbSaid = {};
     const stopped = (r, logins = null) => {
       const code = r.summary.status === "token-expired" ? "token-expired" : r.summary.status === "partial" ? "partial" : "failed";
+      const leftToSay = [...(r.summary.bookkeepingLeft ?? []), ...paceLeft];
       const made = r.summary.calls ? ` after ${plural(r.summary.calls.made, "call")} this run${r.summary.calls.reused ? ` (${r.summary.calls.reused} reused from before)` : ""}` : "";
       // The logins still needed, when known: none left means the next run only finishes (the reduce and the pages).
       const more = code !== "token-expired" || logins == null ? "" : logins === 0 ? " — every call is made: the next run finishes it" : ` — about ${plural(logins, "more login")} of an hour to finish`;
@@ -1986,7 +2076,7 @@ function verbRefresh(ctx, slug, { full, healthOnly, planRun = null }) {
       const why = code === "partial" ? failedText(r.summary.failed) : r.summary.stopped ?? r.summary.status;
       const again = refreshRemedy(ctx, slug, { full, healthOnly });
       const next = code === "failed" ? "" : ` — ${code === "token-expired" ? "run gs-admin login, then " : ""}run \`${again}\` again: it ${code === "partial" ? "retries what failed and " : ""}continues where it stopped; the last good pages are untouched`;
-      refuse(`the ${healthOnly ? "health-only " : ""}refresh stopped${made}: ${why}${next}${more}${lock.takenOver ? `; a stale lock held by ${lock.takenOver.by ?? "unknown"} since ${lock.takenOver.at} was taken over` : ""}`, code, { ...takenOver, ...(abandoned ? { abandoned } : {}), ...(code === "failed" ? {} : remedyOf(again, code === "token-expired")) });
+      refuse(`the ${healthOnly ? "health-only " : ""}refresh stopped${made}: ${why}${next}${more}${lock.takenOver ? `; a stale lock held by ${lock.takenOver.by ?? "unknown"} since ${lock.takenOver.at} was taken over` : ""}${leftToSay.length ? `; ${leftToSay.map((b) => b.text).join("; ")}` : ""}${kbSaid.kbLockLeft ? `; ${kbSaid.kbLockLeft.text}` : ""}`, code, { ...takenOver, ...kbTakenOver, ...kbSaid, ...(abandoned ? { abandoned } : {}), ...(leftToSay.length ? { bookkeepingLeft: leftToSay } : {}), ...(code === "failed" ? {} : remedyOf(again, code === "token-expired")) });
     };
     if (planned.summary.status !== "ok") stopped(planned);
     const estimate = planned.summary.estimate;
@@ -2012,13 +2102,23 @@ function verbRefresh(ctx, slug, { full, healthOnly, planRun = null }) {
     const redocumented = redocument(ctx, { spec, estimate, runDir: planned.runDir });
     if (redocumented.aborted?.reason === "auth") {
       const again = refreshRemedy(ctx, slug, { full, healthOnly });
-      refuse(`the refresh stopped during re-documentation (${plural(redocumented.calls, "describe")} made): the login expired — run gs-admin login, then run \`${again}\` again: it continues where it stopped; the last good pages are untouched${lock.takenOver ? `; a stale lock held by ${lock.takenOver.by ?? "unknown"} since ${lock.takenOver.at} was taken over` : ""}`, "token-expired", { ...takenOver, ...(abandoned ? { abandoned } : {}), redocumented, ...remedyOf(again, true) });
+      refuse(`the refresh stopped during re-documentation (${plural(redocumented.calls, "describe")} made): the login expired — run gs-admin login, then run \`${again}\` again: it continues where it stopped; the last good pages are untouched${lock.takenOver ? `; a stale lock held by ${lock.takenOver.by ?? "unknown"} since ${lock.takenOver.at} was taken over` : ""}`, "token-expired", { ...takenOver, ...kbTakenOver, ...(abandoned ? { abandoned } : {}), redocumented, ...remedyOf(again, true) });
     }
     // The pull.
     const pulledRun = runAdapter(ctx, { spec, runId: basename(planned.runDir), phase: "all", previousPath, forceFull: full, healthOnly, lookbackDays: planned.lookbackDays, previousStore });
     // The pace this pull measured becomes the price of this dashboard's next plan (F-575): kept beside the spec — a
-    // stopped pull's too, since its resume and the logins it still needs are priced from it.
+    // stopped pull's too, since its resume and the logins it still needs are priced from it. Bookkeeping (F-563): a
+    // pace file that cannot be written is said once here and on the summary, and the refresh goes on to its snapshot
+    // and pages — a pull whose calls all landed is never failed by its bookkeeping.
     const paced = writePace(ctx, slug, basename(pulledRun.runDir), pulledRun.summary.measuredPace);
+    paceLeft = paced.left;
+    const bookkeepingLeft = [...(pulledRun.summary.bookkeepingLeft ?? []), ...paceLeft];
+    for (const left of paceLeft) ctx.log(`bookkeeping: ${left.text}`);
+    const bookkeeping = bookkeepingLeft.length ? { bookkeepingLeft } : {};
+    // The knowledge base's pull lock is released here, the pace merged; what it leaves behind rides on the summary,
+    // or on the stop's refusal below.
+    const kbLeft = releaseKb();
+    kbSaid = kbLeft ? { kbLockLeft: kbLeft } : {};
     // What the stop says is still needed is the adapter's remainder over the records as they stand (F-518), priced the
     // way the resume's opening line is; never the plan's calls less this run's counts, which count unforeseen cuts.
     if (pulledRun.summary.status !== "ok") {
@@ -2047,16 +2147,17 @@ function verbRefresh(ctx, slug, { full, healthOnly, planRun = null }) {
     return {
       ok: true, mode: "refresh", slug, status: "ok", run: basename(pulledRun.runDir), resumed: !!resuming && !restarted, ...(restarted ? { restarted } : {}), full, healthOnly, budget, ...(abandoned ? { abandoned } : {}),
       pull: { mode: snapshot.meta.refresh.mode, why: snapshot.meta.refresh.why, pulledAt: snapshot.meta.pulledAt, programs: snapshot.dimensions.programs.length, calls: pulledRun.summary.calls, reconciled: snapshot.reconciliation.ok, health: engine.healthAvailability(snapshot).pulled, accounts: engine.accountAvailability(snapshot).pulled, lookbackDays: planned.lookbackDays, lookbackDerivedFrom: planned.lookbackDerivedFrom ?? null },
-      redocumented, snapshot: snapshotPath, accountStore, pruned, pace: paced ? { file: pacePath(ctx, slug), kbFile: kbPacePath(ctx.kbDir), families: Object.keys(paced.families).length } : null, ungrouped: resolution.line, kbBehind: snapshot.honesty?.kb ?? null,
+      redocumented, snapshot: snapshotPath, accountStore, pruned, pace: paced.written ? { file: pacePath(ctx, slug), kbFile: kbPacePath(ctx.kbDir), families: Object.keys(paced.written.families).length } : null, ...bookkeeping, ungrouped: resolution.line, kbBehind: snapshot.honesty?.kb ?? null,
       delta: delta ? { previousPulledAt: delta.previousPulledAt, closedMonths: delta.closedMonths.length, programs: delta.programs, metrics: Object.fromEntries(Object.entries(delta.metrics).map(([k, v]) => [k, v.change])) } : null,
       pages: pages.map((p) => ({ page: p.page, path: p.path, megabytes: p.megabytes, warning: p.warning })),
       lockTakenOver: lock.takenOver ? { by: lock.takenOver.by, at: lock.takenOver.at } : null,
+      ...kbTakenOver, ...kbSaid,
       caveats: snapshot.caveats.map((c) => c.id),
       publish: published,
     };
   })();
-  } catch (e) { throw releasedWith(lock, e); }
-  return releasedWith(lock, out);
+  } catch (e) { throw releasedWith(lock, attachSaid(e, "kbLockLeft", releaseKb())); }
+  return releasedWith(lock, attachSaid(out, "kbLockLeft", releaseKb()));
 }
 function verbRebuild(ctx, slug) {
   const spec = savedSpec(ctx, slug);
@@ -2122,7 +2223,9 @@ function reselectFromStore(ctx, slug, spec) {
   if (!r.rank) {
     const line = refreshRemedy(ctx, slug);
     const plan = lastPlan(ctx, slug);
-    const fullMinutes = plan?.estimate?.full?.seconds != null ? minutesOf(plan.estimate.full.seconds) : null;
+    // The full pull's minutes at today's pace (F-575: the third quote of the last plan, beside change and report).
+    const est = plan?.estimate ? repriceEstimate(plan.estimate, readPace(ctx, slug)) : null;
+    const fullMinutes = est?.full?.seconds != null ? minutesOf(est.full.seconds) : null;
     return {
       done: false, ranked: false, rebuilt: !!rebuilt, why: r.why, fullRefreshMinutes: fullMinutes,
       text: `The change is saved. The customer lists were not ranked again: ${r.why}. They are ranked at the next refresh (a full pull this once, ${fullMinutes != null ? `about ${plural(fullMinutes, "minute")}` : "a full pull's time"}): \`${line}\`. ${rebuilt ? "The pages were rebuilt with the other changes." : "There are no pages to rebuild yet."}`,
@@ -2160,14 +2263,27 @@ export function changeValue(path, raw) {
     const file = resolve(raw.slice(1));
     try { return readJsonFile(file); } catch (e) { return refuse(`change ${path}: cannot read the value as JSON from ${file} (${e instanceof Error ? e.message : String(e)})`); }
   }
-  try { return JSON.parse(raw); } catch { /* a bare value, by the setting's kind */ }
-  const covered = coveredPath(path);
-  // A list is read as one wherever the writer covers the path as a list — coversList, the declaration itself, never the
-  // priced description's spelling (F-576, reopened on a page's statusDefault); the questions decide the rest (yes/no).
-  const kind = coversList(path) ? "list" : QUESTIONS.find((q) => q.path && coveredPath(q.path) === covered)?.kind ?? null;
   const s = raw.trim();
-  if (kind === "list") { const inner = /^\[.*\]$/.test(s) ? s.slice(1, -1) : s; return noneValue(inner) ? [] : listValue(inner); }
+  // The writer's declaration decides the kind BEFORE anything is parsed (F-576, the second reopen: JSON.parse ran
+  // first, so a one-item value that happened to be JSON — a program named 2024, `true` — reached a list setting as a
+  // scalar). A list is read as one wherever the writer covers the path as a list — coversList, the declaration
+  // itself, never the priced description's spelling (the first reopen, a page's statusDefault); the questions decide
+  // yes/no; the rest is JSON when it parses, else the bare text. `null` is the writer's own "none at all" (a page's
+  // statusDefault: null for every status) for any kind.
+  if (s === "null") return null;
+  const covered = coveredPath(path);
+  const kind = coversList(path) ? "list" : QUESTIONS.find((q) => q.path && coveredPath(q.path) === covered)?.kind ?? null;
+  if (kind === "list") {
+    // A JSON array (the object-valued lists, the customer lists) is handed over whole; a shell-stripped `[a,b]` and the
+    // bare comma form split on commas; `none` empties; a bare JSON scalar is ONE item, never a scalar; a quoted single
+    // text whose quotes survived the shell (a double-quoted pair in bash or cmd) is ONE item without its quotes.
+    if (s.startsWith("[")) { try { const v = JSON.parse(s); if (Array.isArray(v)) return v; } catch { /* the comma form below */ } }
+    if (/^"(?:[^"\\]|\\.)*"$/.test(s)) { try { return [JSON.parse(s)]; } catch { /* the text as it is */ } }
+    const inner = /^\[.*\]$/.test(s) ? s.slice(1, -1) : s;
+    return noneValue(inner) ? [] : listValue(inner);
+  }
   if (kind === "boolean") return boolValue(s);
+  try { return JSON.parse(raw); } catch { /* a bare value: the text, judged by the writer against the field */ }
   return raw;
 }
 function verbChange(ctx, slug, pairs, dryRun) {
@@ -2201,8 +2317,9 @@ function verbChange(ctx, slug, pairs, dryRun) {
   try { adapterParams(d.draft.spec, { today: ctx.today }); } catch (e) { if (!had) ctx.store.discardDraft(slug); throw e; }
   const plan = lastPlan(ctx, slug);
   const { changed, consequence } = changeCost(saved, d.draft.spec, { longestPeriodDays: plan?.estimate?.health?.lookback?.longestPeriodDays ?? null });
-  // The pull's minutes are priced for the spec AFTER the change (F-511 instance 24), from the last plan's parts.
-  const seconds = pullSecondsAfter(plan, saved, d.draft.spec);
+  // The pull's minutes are priced for the spec AFTER the change (F-511 instance 24), from the last plan's parts at
+  // today's pace (F-575: the plan's figures re-priced from its call counts at the pace files as they stand now).
+  const seconds = pullSecondsAfter(plan, saved, d.draft.spec, readPace(ctx, slug));
   const says = consequence == null ? "nothing changed" : consequence === "pull" ? `the next refresh pulls everything again, ${seconds != null ? `about ${plural(minutesOf(seconds), "minute")}${seconds > LOGIN_SECONDS ? ` (about ${plural(loginsFor(seconds), "login")} of an hour)` : ""}` : "a first pull's time (no plan yet)"}` : consequence === "reselect" ? reselectText(reselectReadiness(ctx, slug), refreshRemedy(ctx, slug)) : "rebuild only (no pull)";
   const summary = { ok: true, mode: "change", slug, by: started.by, draftHadEarlierChanges: had, changed, consequence, consequenceText: says, pullSeconds: consequence === "pull" ? seconds : null, costTable: COST_KINDS, dryRun, ...(savedProblems.length ? { savedProblems: savedProblems.map((p) => problemsText([p])) } : {}) };
   if (dryRun) {
@@ -2248,11 +2365,13 @@ function perSegmentLeftOut(newlyKept, lists) {
  * A full pull's seconds for the spec AFTER a change, from the last plan made on the spec BEFORE it: the plan prices each
  * switch (customer lists, Health, step detail) whether it is on or off, so a flipped switch adds or removes its part,
  * and a rolling window's months scale the rest (the window ask says a first pull scales with the months). Null with no
- * plan. A change the plan cannot price this way (the programs, a fixed window) keeps the plan's figure.
- * @param {?*} plan the last plan's summary (plan.json)
+ * plan. A change the plan cannot price this way (the programs, a fixed window) keeps the plan's figure. The plan's
+ * figures are first re-priced at `pace` (the pace files as read now, F-575's owed item): a plan made before another
+ * pull moved the knowledge base's pace quotes today's price, not the price known when it was made.
+ * @param {?*} plan the last plan's summary (plan.json) @param {?Object<string, number>} [pace] readPaceFiles' overlay; none keeps the plan's own figures
  */
-export function pullSecondsAfter(plan, before, after) {
-  const e = plan?.estimate;
+export function pullSecondsAfter(plan, before, after, pace = null) {
+  const e = plan?.estimate ? repriceEstimate(plan.estimate, pace) : null;
   if (!e?.full?.seconds) return null;
   let seconds = e.full.seconds;
   // The window's scale first, on the plan's own figure; then the flipped switches, each priced by the plan as it stands
@@ -2285,12 +2404,14 @@ function verbReport(ctx, slug, opt, argv) {
   // routine (selective) one, its own run's figure; after only a full pull no routine refresh has been priced yet, so the
   // figure is null and the full pull's minutes ride beside it for the skill's wording.
   const plan = lastPlan(ctx, slug);
+  // The last plan's figures at today's pace (F-575's owed item): the plan priced its families at the pace known then.
+  const est = plan?.estimate ? repriceEstimate(plan.estimate, readPace(ctx, slug)) : null;
   // A dashboard whose latest snapshot has no account store of its own (F-548's migration) gets a full pull this once:
   // the routine refresh offered is then priced as that full pull, and why rides beside it for the skill to say.
   const refreshFullOnce = storeGap(snapshot, latest);
-  const refreshSeconds = refreshFullOnce ? plan?.estimate?.full?.seconds ?? null : plan?.estimate?.mode === "selective" && plan.estimate.thisRun?.seconds != null ? plan.estimate.thisRun.seconds : null;
+  const refreshSeconds = refreshFullOnce ? est?.full?.seconds ?? null : est?.mode === "selective" && est.thisRun?.seconds != null ? est.thisRun.seconds : null;
   const refreshMinutes = refreshSeconds != null ? minutesOf(refreshSeconds) : null;
-  const fullRefreshMinutes = plan?.estimate?.full?.seconds != null ? minutesOf(plan.estimate.full.seconds) : null;
+  const fullRefreshMinutes = est?.full?.seconds != null ? minutesOf(est.full.seconds) : null;
   return { ...summary, mode: "report", slug, snapshotAgeDays: ageDays, refreshMinutes, refreshSeconds, fullRefreshMinutes, refreshFullOnce, held: heldBy(snapshot, summary.statusesShown) };
 }
 /**
@@ -2311,12 +2432,16 @@ function heldBy(snapshot, statusesShown) {
 }
 function verbExport(ctx, slug, opt, argv) {
   if (!opt("--out")) refuse("export needs --out <file>");
-  const r = ctx.store.exportSpec(slug, opt("--out"));
+  // Every refusal BEFORE the spec is written (F-566): a dashboard that is a draft or does not exist (savedSpec's
+  // refusal), then, with --with-snapshot, the snapshot check — which reads the lock first (F-558: "already running"
+  // during its first refresh) — so a refused export writes nothing, as import does (F-540).
+  savedSpec(ctx, slug);
   let snapshot = null;
   let accountStore = null;
   const latest = latestSnapshotPath(ctx, slug);
+  if (argv.includes("--with-snapshot") && !latest) refuseNoSnapshot(ctx, slug, "export", { what: `no snapshot of "${slug}" to export beside the spec`, orElse: ", or export without --with-snapshot" });
+  const r = ctx.store.exportSpec(slug, opt("--out"));
   if (argv.includes("--with-snapshot")) {
-    if (!latest) refuseNoSnapshot(ctx, slug, "export", { what: `no snapshot of "${slug}" to export beside the spec`, orElse: ", or export without --with-snapshot" });
     snapshot = r.out.replace(/\.json$/i, "") + ".snapshot.json";
     // The account store goes with its snapshot (F-548), beside it under the one rule engagement.mjs owns, so the
     // import ranks the customer lists on its first refresh with no full pull.

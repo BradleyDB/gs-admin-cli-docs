@@ -189,6 +189,7 @@ import {
   readdirSync,
   readFileSync,
   writeFileSync,
+  writeSync,
   mkdirSync,
   renameSync,
   unlinkSync,
@@ -2796,6 +2797,65 @@ export function writeFileAtomicSync(target, data) {
 export function removeFileSync(path) {
   withWindowsFsRetry(() => unlinkSync(path));
 }
+// ── Bookkeeping writes (F-563, the class entry for the run's bookkeeping) ────
+// A run keeps files ABOUT itself beside its data: the lock record, a progress
+// record, the pace files. Each used to be written with the data's must-succeed
+// write (writeFileAtomicSync: a rename over an existing file, past the Windows
+// retry), so a handle held on one of them decided the run's outcome — a raw
+// EPERM stack where a refusal belongs (the lock record, F-563), a live pull
+// stopped mid-way (the progress record, F-575 (1)), a finished pull's snapshot
+// left unwritten (the pace files, F-575 (2)) — with every data write landed.
+// ONE home classifies a bookkeeping write's failure by what the file is for, and
+// no site keeps a try/catch of its own around a WRITE (the one remove of a stale
+// progress record at a resume keeps one, and says why there):
+//   - progress, pace, any file a reader can live without: writeBookkeepingSync
+//     returns the failure as a record ({path, what, why, text}) and never throws;
+//     the caller says it ONCE (stderr, and the summary where one is written) and
+//     goes on — the run's outcome is decided by its data writes alone.
+//   - the lock RECORD: acquireFileLock's record() hands the same record back when
+//     the write fails; the caller refuses in one line with the remedy — run the
+//     line again — and its one release path removes the lock or says it left
+//     (F-557); never a stack.
+//   - a lock LEFT: said through sayLineSync, a synchronous write to fd 2, on every
+//     exit path — a refusal, a crash, a signal, the 'exit' event — because
+//     process.stderr.write on a piped stderr is asynchronous on Windows and a line
+//     written from an 'exit' handler can be dropped (F-565 (2)).
+// The line between bookkeeping and DATA is the reader's: a file the reduce or a
+// resume READS to build the snapshot (status.json, kb-steps.json, run.json,
+// plan.json, the gap lists, the call files, the snapshot, the pages, the state
+// file) is data and keeps the must-succeed write, since its loss would change what
+// the run produces in silence; a file whose absence changes nothing produced is
+// bookkeeping. The judge (test/dashboard.mjs, the F-563 arms): each bookkeeping
+// file made unwritable in turn (a directory at its path; the lock under a
+// delete-forbidding deny on Windows), the run finishing and saying it once; and a
+// data file made unwritable, the run failing loudly.
+/** @typedef {{ path: string, what: string, why: string, text: string }} BookkeepingLeft — a bookkeeping file the run could not write: the one sentence a summary carries and a skill relays */
+/**
+ * Write a bookkeeping file atomically, or say why not — never throw.
+ * @param {string} path @param {string|Buffer} data @param {string} what the file's name in the admin's words ("progress record", "pace file")
+ * @returns {?BookkeepingLeft} null when written
+ */
+export function writeBookkeepingSync(path, data, what) {
+  try {
+    writeFileAtomicSync(path, data);
+    return null;
+  } catch (e) {
+    const err = /** @type {{code?: string, message?: string}} */ (e);
+    const why = err?.code ?? err?.message ?? String(e);
+    return { path, what, why, text: `the ${what} could not be written at ${path} (${why}) and the run went on without it: a handle on the file (a scanner, a sync client, an editor), or a folder in its place, is the usual cause — nothing to do` };
+  }
+}
+/**
+ * One line on stderr, written synchronously (fd 2), so it lands before the process exits whatever stderr is:
+ * a pipe on Windows is asynchronous through process.stderr and an 'exit'-time line can be dropped (F-565 (2)).
+ * @param {string} text
+ */
+export function sayLineSync(text) {
+  const buf = Buffer.from(text.endsWith("\n") ? text : `${text}\n`);
+  let off = 0;
+  // A write to a non-blocking pipe can be partial: loop until every byte is out; what a throw leaves goes the slow way.
+  try { while (off < buf.length) off += writeSync(2, buf, off, buf.length - off); } catch { process.stderr.write(buf.subarray(off)); }
+}
 // ── The one advisory file lock (F-545, F-546; reopened at the 0.56.1 release gate) ──
 // Every lock a script takes on a file it shares with another process is this
 // primitive: an EXCLUSIVE create (`wx`) of a sibling lock file holding the
@@ -2872,9 +2932,12 @@ export function readFileLock(path, { staleMs, nowMs = Date.now() }) {
  * @param {{ owner?: Record<string, unknown>, staleMs: number, waitMs?: number, nowMs?: number }} opts
  *   owner: fields recorded beside pid and at (who, which run); staleMs: a holder older than this is dead;
  *   waitMs: how long to wait for a fresh holder (0: not at all); nowMs: the clock (the dashboard passes --now)
- * @returns {{ taken: boolean, path: string, held: ?Record<string, unknown>, takenOver: ?Record<string, unknown>, record: (extra: Record<string, unknown>) => void, release: () => ?{ path: string, why: string } }}
+ * @returns {{ taken: boolean, path: string, held: ?Record<string, unknown>, takenOver: ?Record<string, unknown>, record: (extra: Record<string, unknown>) => ?BookkeepingLeft, release: () => ?{ path: string, why: string } }}
  *   taken false: `held` is the fresh holder's record (`unreadable: true` when its file could not be read) and
  *   record/release do nothing; taken true: `takenOver` is the dead holder's record when one was taken over.
+ *   record: null once the record is written; else the write's failure (F-563: a handle that forbids the rename over
+ *   the lock, held past the retry) — the caller refuses with the remedy and releases through its one release path,
+ *   never throws a stack.
  *   release: null once this taker's record is off the disk (or was never its to remove); else the lock LEFT, with
  *   `why` (the error's code) — said, never swallowed (F-557): it is a dead holder's the moment this process exits
  */
@@ -2911,27 +2974,32 @@ export function acquireFileLock(path, { owner = {}, staleMs, waitMs = 0, nowMs =
     } else if (!held && !existsSync(path)) {
       continue; // released between the create and the read: try the create again at once
     }
-    if (Date.now() >= deadline) return { taken: false, path, held: held ?? { unreadable: true }, takenOver: null, record() {}, release() { return null; } };
+    if (Date.now() >= deadline) return { taken: false, path, held: held ?? { unreadable: true }, takenOver: null, record() { return null; }, release() { return null; } };
     sleepMs(Math.min(200, Math.max(1, deadline - Date.now())));
   }
+  const release = () => {
+    if (!isMine(readHeld())) return null;
+    try { removeFileSync(path); return null; } catch (e) {
+      // A scanner, or a handle that forbids delete, holds it past the retries: this process's exit makes it a dead
+      // holder's, taken over at once — SAID to the caller (F-557), never swallowed; the record stays this taker's.
+      const err = /** @type {{code?: string, message?: string}} */ (e);
+      return { path, why: err?.code ?? err?.message ?? String(e) };
+    }
+  };
   return {
     taken: true,
     path,
     held: null,
     takenOver,
     record(extra) {
-      if (!isMine(readHeld())) return; // taken over meanwhile: the file is its new holder's
+      if (!isMine(readHeld())) return null; // taken over meanwhile: the file is its new holder's
       Object.assign(mine, extra);
-      writeFileAtomicSync(path, body());
+      // The record could not be rewritten (F-563: a handle that forbids the rename, held past the retry). The lock is
+      // this taker's by its create, but a record it cannot keep is no evidence of the run it would name: the failure
+      // is handed back for the caller's one-line refusal — the remedy is to run the line again, once the handle is
+      // gone — and the caller's one release path then removes the lock, or says it left (F-557).
+      return writeBookkeepingSync(path, body(), "lock record");
     },
-    release() {
-      if (!isMine(readHeld())) return null;
-      try { removeFileSync(path); return null; } catch (e) {
-        // A scanner, or a handle that forbids delete, holds it past the retries: this process's exit makes it a dead
-        // holder's, taken over at once — SAID to the caller (F-557), never swallowed; the record stays this taker's.
-        const err = /** @type {{code?: string, message?: string}} */ (e);
-        return { path, why: err?.code ?? err?.message ?? String(e) };
-      }
-    },
+    release,
   };
 }
