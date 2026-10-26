@@ -234,9 +234,10 @@ Noticed (hb-20261021-01): 2026-10-21 (tester) — (1) VALIDATION § R16 R1's BRO
        validate (ubuntu-latest) success (the pre-push suite's symlink arm real there); docs-drift 40253623714: drift (full)
        success; GitGuardian pass. The handoff commit after it is bus and canary only: its suite is owed a quote by the tester.
      Tester: VALIDATION § R17 R1-R6 and the walk (the sandbox; R4 on a tenant the owner names); the hook's dry-run arms from a
-       clean checkout after re-installing the hook; F-590's ruling asked (polish, or WONTFIX).
+       clean checkout after re-installing the hook. F-590 needs no ruling (its Ruling line); F-591 was re-homed to the dev-utils
+       ideas file on Bradley's word after the handoff — nothing OPEN rides this round.
      If you cut now, these block: F-563, F-564, F-565, F-566, F-575, F-576, F-582, F-585, F-588, F-589, F-590 (FIXED, verdict
-       owed), F-591 (OPEN polish, the owner's ruling); nothing DEFERRED past an older version.
+       owed); nothing OPEN, nothing DEFERRED past an older version.
      -->
 
 <!-- builder 2026-10-21 (NEXT RELEASE SCOPE — Bradley's ruling after the 0.57.0 release: every open finding is
@@ -3904,8 +3905,10 @@ Repro: on a tenant with no send in the default window: node .gs-superadmin/plugi
 Expected: the closing step's ask names how many programs the selection holds ("the selection holds N programs that sent in the window") and, with none, says so and points at the window and the programs question (go back) before the save; the save summary and the refresh summary already carry the count (`pull.programs`)
 Fix: 2026-10-25 (builder) — on fix/release-scope-root-fixes (PR #74 to dev; plugin 0.58.0; dashboard.mjs, the email-engagement skill's closing step, test/dashboard.mjs) - Class, in one sentence: a priced ask that never says what it priced over. closingSelection(ctx) reads the plan's programs {listed, selected} into {programs, listed, text}; `next` returns it as closing.selection beside the ask on every closing step; CLOSING_ASK carries the sentence IN the ask only when the selection is empty ("The selection holds NO program: nothing sent in the window as the settings stand (N programs listed on the tenant), so the pages would be empty — go back and widen the window or name the programs before saving."), so the ruled wording of 2026-10-12 stands unchanged whenever a program is selected; the skill's closing step says the text with the ask and expects go-back on an empty one. Adapted from the Expected: the count is beside the ask (closing.selection), not inside it, except when it is zero — the owner's ruled wording is kept byte for byte for the common case; the owner's ruling (polish, or WONTFIX) is asked at this handoff and stands either way. Sibling case the tester did not list: an edit's closing step over a pull consequence has a plan too and carries the same selection. Pick-up: /reload-plugins for the closing step's wording.
 Judge: test/dashboard.mjs — the unit arms (3 of 7 beside an unchanged ask; 0 of 7 with the sentence in the ask; null before a plan) and the live `next` of the interview carrying closing.selection with the ruled ask intact; live: VALIDATION § R17 R5 (the sandbox's empty default window at hb-20261021-02) and the walk; the round's dashboard sweep (the sentence dropped from the ask, predicted KILL), quoted under F-575 once it has run.
+Ruling: 2026-10-25 (builder, on Bradley's word after the handoff) — no owner decision is owed on this section: the kickoff's "polish finding, or WONTFIX" was written before anything was built; the fix landed and is verified like the rest. The tester does not ask it at R5.
 
-## F-591 — OPEN
+## F-591 — WONTFIX
+Re-homed: 2026-10-25 (builder, on Bradley's word the same day: "the idea shouldn't be logged as a finding. It's an idea") — moved verbatim, with its four levers and the kickoff ETA obligation, to the dev-utils repo's dev/IDEAS.md ("A fix round's ceremony outweighs its fixes", the home of the dev-loop skill's own ideas, as the proportionality valve was); this section closes as the F-465 precedent did (the bus has no status for a move), and nothing here gates a release.
 Reported: 2026-10-25 (builder, at Bradley's ask during this round: "log an idea to see how we can make this more efficient")
 Severity: polish — process only; nothing shipped is wrong; the cost is builder time per round
 Source: this round's own clock (the next-release-scope round, PR #74)
