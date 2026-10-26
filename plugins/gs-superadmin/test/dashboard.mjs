@@ -31,12 +31,12 @@
 // Run:  node plugins/gs-superadmin/test/dashboard.mjs
 // Zero dependencies — Node built-ins only.
 // ─────────────────────────────────────────────────────────────────────────────
-import { readFileSync, writeFileSync, existsSync, readdirSync, mkdirSync, rmSync } from "node:fs";
-import { join, dirname, resolve, isAbsolute } from "node:path";
+import { readFileSync, writeFileSync, existsSync, readdirSync, mkdirSync, rmSync, renameSync } from "node:fs";
+import { join, dirname, resolve, isAbsolute, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { isDeepStrictEqual } from "node:util";
 import { makeTempDir, removeTempDir, writeFiles, runNode } from "../../../test/rig.mjs";
-import { COSTS, COST_KINDS, ADAPTER_MAPPING, QUESTIONS, CLOSING_ASK, CLOSING_OPTIONS, askText, defaultAnswer, composeAnswer, defaultGroupRules, categoryCostText, changeCost, changeValue, coveredPath, computeDelta, adapterParams, pullSecondsAfter, loginsFor, LOGIN_SECONDS, EXIT, KEEP_SNAPSHOTS, LOCK_STALE_MS, LOCK_FILE, STATE_FILE, PACE_FILE, SNAPSHOTS_DIR, PREVIEW_DIR, SUGGESTION_FILE, ACCOUNTS_DIR, PUBLISH_TARGETS_FILE, PUBLISH_DIR, NATIVE_READ_PATHS, runOwner } from "../scripts/dashboard.mjs";
+import { COSTS, COST_KINDS, ADAPTER_MAPPING, QUESTIONS, CLOSING_ASK, CLOSING_OPTIONS, askText, defaultAnswer, composeAnswer, defaultGroupRules, categoryCostText, changeCost, changeValue, coveredPath, computeDelta, adapterParams, pullSecondsAfter, loginsFor, LOGIN_SECONDS, EXIT, KEEP_SNAPSHOTS, LOCK_STALE_MS, LOCK_FILE, STATE_FILE, PACE_FILE, SNAPSHOTS_DIR, PREVIEW_DIR, SUGGESTION_FILE, ACCOUNTS_DIR, PUBLISH_TARGETS_FILE, PUBLISH_DIR, NATIVE_READ_PATHS, runOwner, closingSelection, kbFolderOf } from "../scripts/dashboard.mjs";
 import { spawnSync } from "node:child_process";
 import { resolveGroups, programTraits } from "../scripts/dashboard-groups.mjs";
 import { SPEC_DESCRIPTIONS, defaultSpec, openSpec, DEFAULT_ACCOUNT_LISTS, presetPanels } from "../scripts/dashboard-spec.mjs";
@@ -44,7 +44,7 @@ import { HOW_TO_REFRESH_RULED } from "./fixtures/engagement/ruled-text.mjs";
 import { LACKS, HOW_TO_REFRESH_TEXT, COPY_LINES } from "../scripts/dashboard-runtime.mjs";
 import { openSnapshot, listPhrase } from "../scripts/engagement-query.mjs";
 import { nativePlan, TEST_PREFIX } from "../scripts/dashboard-native.mjs";
-import { makeGate, resolveParams, CALL_SECONDS, readPaceFiles, writePaceFile, KB_PACE_FILE } from "../scripts/engagement.mjs";
+import { makeGate, resolveParams, CALL_SECONDS, readPaceFiles, writePaceFile, KB_PACE_FILE, KB_PULL_LOCK_FILE, PACE_MEMORY_CALLS, repriceEstimate } from "../scripts/engagement.mjs";
 import { kbFiles, OWN_SITE_UNSUBSCRIBE, TEMPLATES_DOMAIN, buildTenant, FIXTURE_BOUNCE_CATEGORIES } from "./fixtures/engagement/acme-tenant.mjs";
 import { splitRedirect } from "./fixtures/engagement/shell-words.mjs";
 
@@ -58,6 +58,8 @@ const SLUG = "acme-health";
 
 let failures = 0;
 let total = 0;
+/** Lifted before the rig is removed, however the suite ends: the icacls denies the lock arms lay (F-565's ride-along). */
+let lateCleanup = () => {};
 function check(label, cond, detail) {
   total++;
   console.log(`${cond ? "PASS" : "FAIL"}  ${label}`);
@@ -192,6 +194,14 @@ try {
     check("F-518 b: an edit whose consequence is a pull prices it with the login clause of the new dashboard's closing step (the minutes, then the logins of an hour when the login does not cover it; 'enough for it' when it does)",
       /it changes 1 setting \(accounts\.pull\): the next refresh pulls everything again, about 72 minutes; your login has about 5 minutes left, so the refresh will take about 2 logins of an hour: it runs as far as each login allows, stops, and continues when you log in and run it again\./.test(editPullAsk) &&
         /about 19 minutes; your login has about 50 minutes left, enough for it\./.test(CLOSING_ASK({ ...PLAN_CTX, edit: { changed: [{ path: "accounts.pull" }], consequence: "pull" } })), editPullAsk);
+    // F-590: the closing step says what its plan selected; an EMPTY selection enters the ask itself, the ruled wording
+    // otherwise untouched (the count rides beside it as closing.selection for the skill to relay).
+    const selSome = closingSelection({ ...PLAN_CTX, plan: { ...PLAN, programs: { listed: 7, selected: 3, deleted: 0, unselected: 4 } } });
+    const selEmpty = closingSelection({ ...PLAN_CTX, plan: { ...PLAN, programs: { listed: 7, selected: 0, deleted: 0, unselected: 7 } } });
+    check("F-590 closingSelection names the selection's count (3 programs of the 7 listed) beside the ruled ask, which is unchanged by it; an EMPTY selection says so in the ask itself (NO program, the pages would be empty, go back) before the save; null before a plan exists",
+      selSome?.programs === 3 && selSome.text === "The selection holds 3 programs of the 7 listed on the tenant." && !CLOSING_ASK({ ...PLAN_CTX, plan: { ...PLAN, programs: { listed: 7, selected: 3 } } }).includes("selection holds") &&
+        selEmpty?.programs === 0 && selEmpty.text === "The selection holds NO program: nothing sent in the window as the settings stand (7 programs listed on the tenant), so the pages would be empty — go back and widen the window or name the programs before saving." && CLOSING_ASK({ ...PLAN_CTX, plan: { ...PLAN, programs: { listed: 7, selected: 0 } } }).includes(` ${selEmpty.text} `) && closingSelection({ ...PLAN_CTX, plan: null }) === null,
+      [selSome, selEmpty]);
     const optionTexts = Object.fromEntries(Object.keys(RULED_OPTIONS).filter((id) => id !== "closing").map((id) => [id, q(id).options(PLAN_CTX).map((o) => o.text)]));
     check("the options are the ruled ones, in order, with the default named first and the figures where the ruling put them",
       Object.entries(RULED_OPTIONS).filter(([id]) => id !== "closing").every(([id, texts]) => isDeepStrictEqual(optionTexts[id], texts)) && q("failure-settings").options(PLAN_CTX)[0].text === "Keep both defaults: 5 due days, 25 programs (the default)" && q("tabs").options(PLAN_CTX)[0].text === "Keep the defaults: admins Health and Templates, leaders neither (the default)",
@@ -220,6 +230,14 @@ try {
     check("F-511 instance 24: pullSecondsAfter prices a change from the last plan's parts — customer lists on adds their seconds, Health off removes its, step detail on adds its, a wider rolling window scales, and the plan made with the lists ON prices turning them off by removing them; null with no plan",
       pullSecondsAfter(PLAN, b0, listsOn) === 1132 + 1800 && pullSecondsAfter(PLAN, b0, healthOff) === 1132 - 600 && pullSecondsAfter(PLAN, b0, stepOn) === 1132 + 300 && pullSecondsAfter(PLAN, b0, wider) === Math.round((1132 / 13) * 26) && pullSecondsAfter(PLAN, b0, b0) === 1132 &&
         pullSecondsAfter({ estimate: { ...PLAN.estimate, full: { calls: 400, seconds: 3000 }, accounts: { on: true, addsCalls: 264, addsSeconds: 1800 } } }, listsOn, b0) === 3000 - 1800 && pullSecondsAfter(null, b0, listsOn) === null);
+    // F-575 (the owed item): a plan's parts re-priced from its calls by family at the pace now; the switch costs scale by
+    // the full pull's ratio; a plan without the counts is returned as it stands; pullSecondsAfter quotes the re-priced parts.
+    const est = { mode: "full", full: { calls: 10, seconds: 20, byFamily: { programs: 10 } }, thisRun: { calls: 10, seconds: 20, byFamily: { programs: 10 } }, secondsPerCall: { programs: 2 }, accounts: { on: false, addsCalls: 2, addsSeconds: 4 }, health: { on: true, addsCalls: 1, addsSeconds: 6 }, stepDetail: { on: false, addsCalls: 0, addsSeconds: 0 } };
+    const re = repriceEstimate(est, { programs: 4 });
+    check("F-575 repriceEstimate: the full pull and this run re-priced family by family at the pace now (10 programs calls at 4 s: 40 for 20), the switch costs scaled by the same ratio (accounts 8, health 12), repriced true with the ratio 2; at the plan's own table the figure is reproduced; a plan without byFamily is returned unchanged (repriced false); null with none; pullSecondsAfter with a pace quotes the re-priced parts (40 + 8) and without one the plan's (20 + 4)",
+      re.full.seconds === 40 && re.thisRun.seconds === 40 && re.accounts.addsSeconds === 8 && re.health.addsSeconds === 12 && re.repriced === true && re.ratio === 2 && repriceEstimate(est, { programs: 2 }).full.seconds === 20 && repriceEstimate({ ...est, full: { calls: 10, seconds: 20 } }, { programs: 4 }).repriced === false && repriceEstimate(null, {}) === null &&
+        pullSecondsAfter({ estimate: est }, b0, listsOn, { programs: 4 }) === 48 && pullSecondsAfter({ estimate: est }, b0, listsOn) === 24,
+      [re, pullSecondsAfter({ estimate: est }, b0, listsOn, { programs: 4 }), pullSecondsAfter({ estimate: est }, b0, listsOn)]);
     check("F-513 logins: a pull's seconds read as whole logins of an hour, at least one",
       loginsFor(0) === 1 && loginsFor(3600) === 1 && loginsFor(3601) === 2 && loginsFor(4327) === 2 && LOGIN_SECONDS === 3600);
     check("composeAnswer is the follow-up rule as code: each <key> replaced by its answer, a list as a JSON list (none as the empty list), a boolean as true or false, text as written; a missing answer is refused",
@@ -380,6 +398,7 @@ try {
   check("the closing step (ruling 19): once every setting is answered, next returns the first action row WITH the closing block: the ruled ask priced on the exact settings (a new plan, since the pull-affecting answers moved), the login's remaining minutes read now, and the four options with the action answers each stands for",
     closing.code === 0 && closing.json?.question?.id === "dry-run" && closing.json.closing && /^Ready to save\. A full refresh with these settings is about \d+ calls and about \d+ minutes on this tenant; your login has about \d+ minutes left, enough for it\. /.test(closing.json.closing.ask) && closing.json.closing.ask.endsWith(` ${HOW_TO_REFRESH_RULED("acme-health", "acme-prod")}`) &&
       closing.json.question.ask === closing.json.closing.ask && isDeepStrictEqual(closing.json.closing.options.map((o) => o.id), ["save-now", "dry-run", "save-only", "go-back"]) && closing.json.closing.options.every((o) => Array.isArray(o.answers)) && argvLines().length > callsBeforeClosing && closing.json.progress.remaining === 3, closing.json);
+  check("F-590 the closing step carries what its plan selected (closing.selection: the programs of the ones listed, with the one sentence), and with programs selected the ask stays the ruled wording", closing.json?.closing?.selection?.programs > 0 && closing.json.closing.selection.programs <= closing.json.closing.selection.listed && closing.json.closing.selection.text === `The selection holds ${closing.json.closing.selection.programs} programs of the ${closing.json.closing.selection.listed} listed on the tenant.` && !closing.json.closing.ask.includes("selection holds"), closing.json?.closing?.selection);
   const callsBeforeDry = argvLines().length;
   const dry = run("answer", [SLUG, "dry-run", "yes"]);
   const previewPage = existsSync(join(dash(), PREVIEW_DIR, "latest-admin.html")) ? readFileSync(join(dash(), PREVIEW_DIR, "latest-admin.html"), "utf8") : "";
@@ -431,6 +450,16 @@ try {
     isDeepStrictEqual(readPaceFiles([join(overlayDir, "kb.json"), join(overlayDir, "dash.json")]), { a: 1, b: 5, c: 7 }) && readJson(join(overlayDir, "dash.json")).families.b.run === "run-dash" && readJson(join(overlayDir, "dash.json")).families.c.run === "run-dash-2" && !("zero" in readJson(join(overlayDir, "dash.json")).families) &&
       isDeepStrictEqual(readPaceFiles([join(overlayDir, "broken.json"), join(overlayDir, "kb.json")], (l) => said.push(l)), { a: 1, b: 2 }) && said.length === 1 && /cannot be read/.test(said[0]) && readPaceFiles([join(overlayDir, "missing.json")]) === null,
     [readPaceFiles([join(overlayDir, "kb.json"), join(overlayDir, "dash.json")]), said]);
+  // F-575 (4), the second reopen's redesign: a merge is the calls-weighted mean of the pace kept and the pace measured,
+  // the kept weight capped at PACE_MEMORY_CALLS — never last writer wins. The arithmetic here is by hand.
+  writePaceFile(join(overlayDir, "merge.json"), "run-1", { a: { calls: 2, seconds: 1 }, b: { calls: 100, seconds: 10 } });
+  const merged = writePaceFile(join(overlayDir, "merge.json"), "run-2", { a: { calls: 2, seconds: 3 }, b: { calls: 50, seconds: 20 }, c: { calls: 1, seconds: 5 } });
+  const m = readJson(join(overlayDir, "merge.json")).families;
+  check("F-575 (4) the pace merge is the calls-weighted mean (a: 2 calls at 1 s then 2 at 3 s read 2 s over 4 calls), the kept weight capped at PACE_MEMORY_CALLS (b: 100 calls at 10 s weigh 50 against 50 at 20 s: 15 s, 50 calls kept), a family first seen taken as measured (c: 5 s, 1 call), every family naming the pull that moved it; the write hands back what the file holds and no failure",
+    PACE_MEMORY_CALLS === 50 && m.a.seconds === 2 && m.a.calls === 4 && m.a.run === "run-2" && m.b.seconds === 15 && m.b.calls === 50 && m.b.run === "run-2" && m.c.seconds === 5 && m.c.calls === 1 && merged.written?.families.b.seconds === 15 && merged.left === null, m);
+  mkdirSync(join(overlayDir, "dir.json"));
+  const unwritable = writePaceFile(join(overlayDir, "dir.json"), "run-3", { a: { calls: 1, seconds: 1 } });
+  check("F-563 a pace file that cannot be written (a folder in its place) is handed back as `left` (what 'pace file', the path, the cause, the one sentence), never thrown, with what it would have held beside it", unwritable.written?.families.a.seconds === 1 && unwritable.left?.what === "pace file" && unwritable.left.path === join(overlayDir, "dir.json") && typeof unwritable.left.why === "string" && unwritable.left.why.length > 0 && /^the pace file could not be written at .* and the run went on without it: /.test(unwritable.left.text), unwritable.left);
   check("the lookback says what it came from, a tie included (the first sitting's note): derivedFrom is the longest schedule period when it reached the threshold, else null with the threshold standing",
     (refresh.json?.pull?.lookbackDerivedFrom == null && refresh.json?.pull?.lookbackDays === 30) || (refresh.json?.pull?.lookbackDerivedFrom >= 30 && refresh.json.pull.lookbackDays === Math.min(366, refresh.json.pull.lookbackDerivedFrom)), refresh.json?.pull);
   check("re-documentation inside the refresh (PUB-1): the never-documented program and the one modified since its doc are described (one jo p describe each, through describe-batch) and marked documented with a fresh capture date; the templates the KB lacked are fetched the same way; the pull then read the moved knowledge base, so it is behind on nothing listed",
@@ -464,12 +493,22 @@ try {
   // the preview's or an older plan's.
   const lastPlanBefore = JSON.parse(readFileSync(join(WS, ".gs-superadmin", "tmp", "engagement", refresh.json.run, "plan.json"), "utf8"));
   const priced = run("change", [SLUG, "sources.0.params.stepDetail=true", "--dry-run"]);
+  // The quoted price is the last plan's parts at TODAY's pace (F-575, the owed item): the plan priced its families at
+  // the pace known when it was made (the constants, before any pull); the pull it planned then wrote both pace files.
+  // Priced here independently of the engine, from the files AS THE DRY RUN SAW THEM (before the pull below rewrites
+  // them): the plan's own calls by family (full.byFamily) at the constants with the two pace files laid over them (the
+  // dashboard's over the knowledge base's, a positive seconds figure only), and what step detail adds scaled by the
+  // same ratio — never the plan's figure as written.
+  const paceNow = (() => { const t = { ...CALL_SECONDS }; for (const f of [kbPace, join(dash(), PACE_FILE)]) for (const [fam, x] of Object.entries(readJson(f).families)) if (x.seconds > 0) t[fam] = x.seconds; return t; })();
   const pulled = run("change", [SLUG, "sources.0.params.stepDetail=true"]);
   const snap2 = snapshots();
-  check("change (a pull setting): the consequence is a new pull priced for the spec AFTER the change (F-511 instance 24: the last plan's seconds plus what step detail adds, not the old plan's figure), and the refresh runs: a second snapshot, the step-detail switch changing forces a full one, the delta against the first pull wired to the pages",
-    priced.code === 0 && priced.json.pullSeconds === lastPlanBefore.estimate.full.seconds + lastPlanBefore.estimate.stepDetail.addsSeconds && priced.json.consequenceText === `the next refresh pulls everything again, about ${Math.max(1, Math.round(priced.json.pullSeconds / 60))} minutes` &&
+  const fullNow = Math.round(Object.entries(lastPlanBefore.estimate.full.byFamily).reduce((s, [f, n]) => s + n * (paceNow[f] ?? 7), 0) * 100) / 100;
+  const fullAtPlan = Math.round(Object.entries(lastPlanBefore.estimate.full.byFamily).reduce((s, [f, n]) => s + n * (lastPlanBefore.estimate.secondsPerCall[f] ?? 7), 0) * 100) / 100;
+  const stepNow = Math.round(lastPlanBefore.estimate.stepDetail.addsSeconds * (fullNow / lastPlanBefore.estimate.full.seconds) * 100) / 100;
+  check("change (a pull setting): the consequence is a new pull priced for the spec AFTER the change (F-511 instance 24: the last plan's seconds plus what step detail adds, not the old plan's figure) at TODAY's pace (F-575: the plan's calls by family at the pace files as they stand — a straight sum here, with the plan's recorded table reproducing its own figure exactly), and the refresh runs: a second snapshot, the step-detail switch changing forces a full one, the delta against the first pull wired to the pages",
+    priced.code === 0 && Math.abs(fullAtPlan - lastPlanBefore.estimate.full.seconds) < 0.01 && fullNow !== lastPlanBefore.estimate.full.seconds && priced.json.pullSeconds === Math.round(fullNow + stepNow) && priced.json.consequenceText === `the next refresh pulls everything again, about ${Math.max(1, Math.round(priced.json.pullSeconds / 60)) === 1 ? "1 minute" : `${Math.max(1, Math.round(priced.json.pullSeconds / 60))} minutes`}` &&
       pulled.code === 0 && pulled.json.consequence === "pull" && /about \d+ minute/.test(pulled.json.consequenceText) && pulled.json.done.kind === "refresh" && pulled.json.done.status === "ok" && snap2.length === 2 && pulled.json.done.pull.mode === "full" && /step-detail switch changed/.test(pulled.json.done.pull.why) &&
-      pulled.json.done.delta?.previousPulledAt === snapshot1.meta.pulledAt && pageText("admin").includes("Change since the last refresh (pulled") && pageText("exec").includes("Since last pull:"), [priced.json?.pullSeconds, lastPlanBefore.estimate?.full, pulled.json?.consequenceText, pulled.json?.done?.pull]);
+      pulled.json.done.delta?.previousPulledAt === snapshot1.meta.pulledAt && pageText("admin").includes("Change since the last refresh (pulled") && pageText("exec").includes("Since last pull:"), [priced.json?.pullSeconds, { fullNow, fullAtPlan, stepNow, expected: Math.round(fullNow + stepNow), planFull: lastPlanBefore.estimate?.full?.seconds, planStep: lastPlanBefore.estimate?.stepDetail }, pulled.json?.consequenceText, pulled.json?.done?.pull]);
   const identity = run("change", [SLUG, 'tenantHost="acme--sbx.gainsightcloud.com"']);
   check("change refuses an identity setting (the tenant, the slug)", identity.code === 1 && /cannot be changed/.test(identity.json?.error ?? ""), identity.json);
   // F-576 (reopened on pages[].statusDefault, covered both bare and as a list): the judge is the writer's own covers,
@@ -480,6 +519,11 @@ try {
   check("F-576: the comma form is read as a list for EVERY path the writer covers as a list (the covers walked, not a hand list: the programs selector's two lists, the pinned accounts, a page's statusDefault — covered bare as well — among them); `none` empties; a scalar under the selector stays text",
     listCovers.length >= 10 && notLists.length === 0 && isDeepStrictEqual(changeValue("pages.0.statusDefault", "PROCESSING,PAUSED"), ["PROCESSING", "PAUSED"]) && isDeepStrictEqual(changeValue("sources.0.params.selector.ids", "p1,p2"), ["p1", "p2"]) && isDeepStrictEqual(changeValue("sources.0.params.selector.names", "none"), []) && changeValue("sources.0.params.selector.sentSince", "90d") === "90d" && changeValue("pages.0.title", "Admin view") === "Admin view",
     [listCovers.length, notLists, changeValue("pages.0.statusDefault", "PROCESSING,PAUSED")]);
+  // F-576 (the second reopen): the writer's declaration is read BEFORE anything is parsed, so a one-item value that
+  // happens to be JSON reaches a list setting as one item, never a scalar; `null` stays the writer's own empty.
+  check("F-576 (second reopen) a one-item value that is valid JSON reaches a list setting as ONE item (a program named 2024 in selector.names, `true` in selector.ids, 7 in a page's statusDefault — refused later by the writer as a status, but a list), `null` is the writer's own empty for a page's statusDefault, a JSON array is handed over whole, a boolean kind still reads as one, and a text kind keeps JSON's reading of a quoted string",
+    isDeepStrictEqual(changeValue("sources.0.params.selector.names", "2024"), ["2024"]) && isDeepStrictEqual(changeValue("sources.0.params.selector.ids", "true"), ["true"]) && isDeepStrictEqual(changeValue("pages.0.statusDefault", "7"), ["7"]) && changeValue("pages.0.statusDefault", "null") === null && isDeepStrictEqual(changeValue("accounts.lists", '[{"kind":"most-bounced","n":2,"floor":0}]'), [{ kind: "most-bounced", n: 2, floor: 0 }]) && changeValue("accounts.pull", "true") === true && changeValue("pages.0.title", '"Admin view"') === "Admin view" && isDeepStrictEqual(changeValue("sources.0.params.selector.names", '"Onboarding"'), ["Onboarding"]),
+    [changeValue("sources.0.params.selector.names", "2024"), changeValue("sources.0.params.selector.ids", "true"), changeValue("pages.0.statusDefault", "7"), changeValue("accounts.lists", '[{"kind":"most-bounced","n":2,"floor":0}]'), changeValue("accounts.pull", "true"), changeValue("pages.0.title", '"Admin view"')]);
 
   // ══ --health-only, and the lock ═══════════════════════════════════════════
   const callsBeforeHealth = argvLines().length;
@@ -1151,8 +1195,13 @@ try {
     const rep = run("report", [SLUG, "--csv-dir", join(ROOT, "r12", "report-csv")]);
     const repSnap = readSnap();
     const shown = rep.json?.held?.programs?.filter((x) => x.shown) ?? [];
-    check("F-534 the dashboard report after a routine refresh: refreshMinutes is that refresh's own price (its plan's thisRun, below the full pull's seconds; fullRefreshMinutes the full pull's), held names the pull's window and selection and every program it holds with its statuses, `shown` agreeing with the report's own count of programs shown, and --csv-dir writes the CSVs",
-      rep.code === 0 && plan534?.estimate?.mode === "selective" && plan534.estimate.thisRun.seconds < plan534.estimate.full.seconds && rep.json.refreshSeconds === plan534.estimate.thisRun.seconds && rep.json.refreshMinutes === mins(plan534.estimate.thisRun.seconds) && rep.json.fullRefreshMinutes === mins(plan534.estimate.full.seconds) && rep.json.held.programs.length === repSnap.dimensions.programs.length && rep.json.held.window.from === repSnap.meta.window.from && rep.json.held.window.to === repSnap.meta.window.to && typeof rep.json.held.selection === "string" &&
+    // The report quotes the plan's parts at TODAY's pace (F-575, the owed item): the refresh above wrote both pace
+    // files after its plan, so the figure is the plan's calls by family at the files as they stand — summed here
+    // independently of the engine, as the change check above does.
+    const pace534 = (() => { const t = { ...CALL_SECONDS }; for (const f of [join(KB, KB_PACE_FILE), join(dash(), PACE_FILE)]) if (existsSync(f)) for (const [fam, x] of Object.entries(readJson(f).families)) if (x.seconds > 0) t[fam] = x.seconds; return t; })();
+    const priceNow = (byFamily) => Math.round(Object.entries(byFamily ?? {}).reduce((s, [f, n]) => s + n * (pace534[f] ?? 7), 0) * 100) / 100;
+    check("F-534 the dashboard report after a routine refresh: refreshMinutes is that refresh's own price (its plan's thisRun, below the full pull's seconds; fullRefreshMinutes the full pull's) at today's pace (F-575: the plan's calls by family at the pace files, a straight sum here), held names the pull's window and selection and every program it holds with its statuses, `shown` agreeing with the report's own count of programs shown, and --csv-dir writes the CSVs",
+      rep.code === 0 && plan534?.estimate?.mode === "selective" && plan534.estimate.thisRun.seconds < plan534.estimate.full.seconds && rep.json.refreshSeconds === priceNow(plan534.estimate.thisRun.byFamily) && rep.json.refreshMinutes === mins(priceNow(plan534.estimate.thisRun.byFamily)) && rep.json.fullRefreshMinutes === mins(priceNow(plan534.estimate.full.byFamily)) && rep.json.held.programs.length === repSnap.dimensions.programs.length && rep.json.held.window.from === repSnap.meta.window.from && rep.json.held.window.to === repSnap.meta.window.to && typeof rep.json.held.selection === "string" &&
         shown.length === rep.json.counts.programsShown && rep.json.held.programs.some((x) => !x.shown) && rep.json.csvFiles.length > 0 && existsSync(join(ROOT, "r12", "report-csv")) && run("list", []).json?.dashboards?.find((d) => d.slug === SLUG)?.holds?.programs === repSnap.dimensions.programs.length,
       [rep.json?.refreshMinutes, rep.json?.fullRefreshMinutes, plan534?.estimate?.mode, plan534?.estimate?.thisRun?.seconds, plan534?.estimate?.full?.seconds, rep.json?.counts, shown.length, rep.json?.error]);
     // F-534 reopen (R12-A-V): a dashboard selected by "sent since" holds the adapter's RESOLVED selector ({spec, date},
@@ -1579,6 +1628,117 @@ try {
         ? leftStop.json?.lockLeft?.path === lockPath && /; the refresh lock could not be removed at the end \(EPERM\) and was left at .* — nothing to do$/.test(leftStop.json.error ?? "") && leftStopRecord?.by === "ana" && curedResume.json.lockTakenOver?.by === "ana"
         : !("lockLeft" in (leftStop.json ?? {})) && !/refresh lock could not be removed/.test(leftStop.json?.error ?? "") && leftStopRecord === null && curedResume.json.lockTakenOver === null),
       [leftStop.json?.error ?? leftStop.stderr?.slice(-300), leftStop.json?.lockLeft, curedResume.json?.lockTakenOver ?? curedResume.json?.error ?? curedResume.stderr?.slice(-300)]);
+    // ══ F-563 — the run's bookkeeping, classified (the class entry; F-565 and F-575 (1), (2) fold in) ══
+    // The judge, independent of the fixer's list: each bookkeeping file made unwritable in turn — the lock RECORD
+    // under the deny (a rename over the lock needs DELETE on Windows), the progress record and the pace files as
+    // FOLDERS at their paths (a rename over a folder fails on every platform) — and the run's exit and its one line or
+    // summary read; against a control in which a DATA file (the run's status.json) is a folder and the run fails loudly.
+    lateCleanup = allowDelete; // the denies come off in the suite's finally, before the rig is removed (F-565's test-hygiene ride-along)
+    // (a) the lock record: the deny lands on the preflight's whoami call, before the run's name is recorded.
+    rmSync(join(STATE, "faults.json"), { force: true });
+    const recordRun = run("refresh", [SLUG], { env: { FAKE_FAULTS: JSON.stringify([{ match: "whoami", kind: "deny-delete", path: lockPath }]) } });
+    const recordLeft = existsSync(lockPath) ? readJson(lockPath) : null;
+    allowDelete();
+    rmSync(join(STATE, "faults.json"), { force: true });
+    const recordCured = run("refresh", [SLUG]);
+    check(win
+      ? "F-563 (a, Windows) a refresh whose lock RECORD cannot be written (a handle that forbids the rename, held past the retry) is REFUSED in one JSON line — exit 1, `error` naming the lock record and the remedy (run the line again), lockRecord {path, why EPERM}, the lock said left (its release fails under the same deny) — never a stack; the next refresh takes the dead lock over and finishes"
+      : "F-563 (a, the clean path) the lock record is written and the refresh finishes; nothing said of the record",
+      win
+        ? recordRun.code === 1 && /could not be recorded \(EPERM\): a handle on .* forbids the write — run the line again once it is gone/.test(recordRun.json?.error ?? "") && recordRun.json?.lockRecord?.why === "EPERM" && recordRun.json?.lockLeft?.why === "EPERM" && !/^\s+at /m.test(recordRun.stderr) && recordLeft?.by === "ana" && recordLeft.run == null && recordCured.code === 0 && recordCured.json?.lockTakenOver?.by === "ana" && !existsSync(lockPath)
+        : recordRun.code === 0 && !("lockRecord" in (recordRun.json ?? {})) && recordCured.code === 0 && !existsSync(lockPath),
+      [recordRun.json?.error ?? recordRun.stderr?.slice(-400), recordRun.json?.lockRecord, recordLeft, recordCured.json?.lockTakenOver ?? recordCured.json?.error]);
+    // (b) F-565 (1): a CRASH (a plain error, no refusal: a folder where the page goes) while the lock cannot be removed
+    // says the lock left on stderr, synchronously, beside the stack.
+    const adminPage = join(dash(), "latest-admin.html");
+    rmSync(adminPage, { force: true });
+    mkdirSync(adminPage);
+    const crashRun = run("refresh", [SLUG], { env: { FAKE_FAULTS: JSON.stringify([hook]) } });
+    const crashLeft = existsSync(lockPath) ? readJson(lockPath) : null;
+    allowDelete();
+    rmSync(join(STATE, "faults.json"), { force: true });
+    rmSync(adminPage, { recursive: true, force: true });
+    const crashCured = run("refresh", [SLUG]);
+    check(win
+      ? "F-565 (1, Windows) a refresh that CRASHES (a folder where its page goes: a plain error, no refusal) while the lock cannot be removed says the lock left on stderr beside the stack — 'dashboard.mjs: the refresh lock could not be removed at the end (EPERM)' — exits 1, the record stays; the next refresh takes it over and rebuilds the page"
+      : "F-565 (1, the clean path) the same crash removes the lock and says nothing of one; the next refresh rebuilds the page",
+      crashRun.code !== 0 && crashRun.json === null && /^\s+at /m.test(crashRun.stderr) && (win
+        ? /^dashboard\.mjs: the refresh lock could not be removed at the end \(EPERM\) and was left at /m.test(crashRun.stderr) && crashLeft?.by === "ana" && crashCured.code === 0 && crashCured.json?.lockTakenOver?.by === "ana"
+        : !/refresh lock could not be removed/.test(crashRun.stderr) && crashLeft === null && crashCured.code === 0 && crashCured.json?.lockTakenOver === null) && existsSync(adminPage) && !existsSync(lockPath),
+      [crashRun.stderr?.slice(-500), crashLeft, crashCured.json?.lockTakenOver ?? crashCured.json?.error ?? crashCured.stderr?.slice(-300)]);
+    // (c) F-575 (1): the progress record as a folder on a RESUME — each tick's write fails, said ONCE, the pull finishes.
+    rmSync(join(STATE, "faults.json"), { force: true });
+    const stopped563 = run("refresh", [SLUG, "--full"], { env: { FAKE_FAULTS: JSON.stringify([{ match: "rp run", kind: "auth", skip: 30, times: 9999 }]) } });
+    const state563 = readJson(join(dash(), STATE_FILE));
+    const progressPath563 = join(runsRoot, state563.pullRun ?? state563.run, "progress.json");
+    rmSync(progressPath563, { force: true });
+    mkdirSync(progressPath563);
+    rmSync(join(STATE, "faults.json"), { force: true });
+    const resumed563 = run("refresh", [SLUG, "--full"]);
+    const saidOnce = resumed563.stderr.split("\n").filter((l) => l.includes("bookkeeping: the progress record could not be written"));
+    check("F-575 (1) a progress record that cannot be written (a folder at its path) is said ONCE on stderr and once on the summary (bookkeepingLeft: what 'progress record', the path, the cause), the progress lines still print, and the resumed pull finishes (exit 0, the snapshot written) — never a stack, never a stop",
+      stopped563.code === EXIT["token-expired"] && resumed563.code === 0 && resumed563.json?.resumed === true && saidOnce.length === 1 && /^dashboard\.mjs: pull bookkeeping: the progress record could not be written at .* and the run went on without it/.test(saidOnce[0]) && resumed563.json.bookkeepingLeft?.length === 1 && resumed563.json.bookkeepingLeft[0].what === "progress record" && resumed563.json.bookkeepingLeft[0].path === progressPath563 && resumed563.stderr.split("\n").filter((l) => l.includes("pull progress: ")).length >= 2 && existsSync(resumed563.json.snapshot),
+      [resumed563.json?.bookkeepingLeft ?? resumed563.json?.error ?? resumed563.stderr?.slice(-400), saidOnce]);
+    rmSync(progressPath563, { recursive: true, force: true });
+    // (d) F-575 (2): the pace files as folders — the refresh finishes, its snapshot and pages written, both said once.
+    rmSync(join(dash(), PACE_FILE), { force: true, recursive: true });
+    mkdirSync(join(dash(), PACE_FILE));
+    rmSync(kbPace, { force: true, recursive: true });
+    mkdirSync(kbPace);
+    const paceRun = run("refresh", [SLUG]);
+    const paceSaid = paceRun.stderr.split("\n").filter((l) => l.includes("bookkeeping: the pace file could not be written"));
+    rmSync(join(dash(), PACE_FILE), { recursive: true, force: true });
+    rmSync(kbPace, { recursive: true, force: true });
+    const paceCured = run("refresh", [SLUG]);
+    check("F-575 (2) a refresh whose two pace files cannot be written (folders in their places) still finishes — exit 0, its snapshot and pages written — with `pace` null and both said once each (bookkeepingLeft: two 'pace file' entries, two stderr lines); the next refresh writes both again",
+      paceRun.code === 0 && paceRun.json?.pace === null && paceRun.json.bookkeepingLeft?.length === 2 && paceRun.json.bookkeepingLeft.every((b) => b.what === "pace file") && paceSaid.length === 2 && existsSync(paceRun.json.snapshot) && paceRun.json.pages.length === 2 && paceCured.code === 0 && paceCured.json?.pace?.families >= 3 && existsSync(join(dash(), PACE_FILE)) && readJson(kbPace).families != null,
+      [paceRun.json?.bookkeepingLeft ?? paceRun.json?.error ?? paceRun.stderr?.slice(-400), paceSaid.length]);
+    // (e) the control: a DATA file (the run's status.json, which the reduce reads) as a folder — the run fails loudly.
+    rmSync(join(STATE, "faults.json"), { force: true });
+    const stoppedCtl = run("refresh", [SLUG, "--full"], { env: { FAKE_FAULTS: JSON.stringify([{ match: "rp run", kind: "auth", skip: 30, times: 9999 }]) } });
+    const stateCtl = readJson(join(dash(), STATE_FILE));
+    const statusPath = join(runsRoot, stateCtl.pullRun ?? stateCtl.run, "status.json");
+    rmSync(statusPath, { force: true });
+    mkdirSync(statusPath);
+    rmSync(join(STATE, "faults.json"), { force: true });
+    const snapsCtl = snapshots().length;
+    const ctl = run("refresh", [SLUG, "--full"]);
+    rmSync(statusPath, { recursive: true, force: true });
+    const afterCtl = run("refresh", [SLUG, "--full"]);
+    check("F-563 (the control) a DATA file the run keeps (status.json, which the reduce reads) made unwritable the same way FAILS the run loudly — a non-zero exit, no new snapshot — the line between bookkeeping and data holding; with the folder gone the same refresh resumes and finishes",
+      stoppedCtl.code === EXIT["token-expired"] && ctl.code !== 0 && snapshots().length === snapsCtl && afterCtl.code === 0, [ctl.code, ctl.json?.error ?? ctl.stderr?.slice(-300), afterCtl.json?.error ?? afterCtl.stderr?.slice(-200)]);
+
+    // ══ The pull lock per knowledge base (F-575 (3); F-581's race) ══
+    const kbLockPath = join(KB, KB_PULL_LOCK_FILE);
+    const callsBeforeKb = argvLines().length;
+    writeFileSync(kbLockPath, JSON.stringify({ by: "ben", dashboard: "other-dash", run: "dash-other-dash-20260915T120000", at: new Date().toISOString(), pid: process.pid }));
+    const kbHeld = run("refresh", [SLUG]);
+    check("KB-1 a refresh while another dashboard's pull holds the knowledge base's pull lock (a live holder) is refused before any call, naming the holder — 'another pull is running over the knowledge base at …: the pull of the dashboard \"other-dash\" (run …) started by ben at … — wait for it' — the holder's lock untouched and this dashboard's own lock released",
+      kbHeld.code === 1 && /^another pull is running over the knowledge base at .*: the pull of the dashboard "other-dash" \(run dash-other-dash-20260915T120000\) started by ben at .* \(\d+ minutes? ago, pid \d+\) — wait for it; a pull whose process is gone, or whose lock .* is older than two hours, is taken over on its own$/.test(kbHeld.json?.error ?? "") && argvLines().length === callsBeforeKb && readJson(kbLockPath).by === "ben" && !existsSync(lockPath), kbHeld.json?.error ?? kbHeld.stderr?.slice(-300));
+    writeFileSync(kbLockPath, JSON.stringify({ by: "ben", dashboard: "other-dash", at: new Date(Date.now() - 3 * 3600 * 1000).toISOString(), pid: 1 }));
+    const kbStale = run("refresh", [SLUG]);
+    check("KB-2 a knowledge-base pull lock older than two hours (or a dead holder's) is taken over and said (kbLockTakenOver names it, a stderr line too); the refresh finishes and leaves no knowledge-base lock and no dashboard lock behind",
+      kbStale.code === 0 && kbStale.json?.kbLockTakenOver?.by === "ben" && /took over a stale pull lock of the knowledge base held by ben since/.test(kbStale.stderr) && !existsSync(kbLockPath) && !existsSync(lockPath), kbStale.json?.kbLockTakenOver ?? kbStale.json?.error ?? kbStale.stderr?.slice(-300));
+
+    // ══ F-564: a relative --bin given from another directory reaches the re-documentation child resolved ══
+    // A program is put behind the way the tenant does it — its doc moved aside (a status mark does not put one behind:
+    // the R15 tester's note) — so the plan finds the knowledge base behind on a listed program and the batch runs.
+    // The tell: handed the relative spelling raw, describe-batch (cwd the workspace) cannot find the CLI and the refresh
+    // refuses "describe-batch refused: --bin not found"; resolved, the batch re-documents it and the refresh finishes.
+    const relBin = relative(process.cwd(), FAKE);
+    const onboardDoc = join(WS, "acme-prod", "journey", "p-onboard.md");
+    renameSync(onboardDoc, `${onboardDoc}.aside`);
+    const relRun = isAbsolute(relBin) ? null : run("refresh", [SLUG], { flags: ["--workspace", WS, "--kb", KB, "--bin", relBin, "--today", TODAY, "--by", "ana"] });
+    if (!existsSync(onboardDoc)) renameSync(`${onboardDoc}.aside`, onboardDoc); else rmSync(`${onboardDoc}.aside`, { force: true });
+    if (relRun) check("F-564 a --bin relative to the directory the admin runs from (this suite's cwd, not the workspace) reaches describe-batch, which runs FROM the workspace, resolved: the program whose doc was moved aside is re-documented through the child (documented at least 1, no '--bin not found' refusal) and the refresh finishes; the folder passed is said workspace-relative on the summary",
+      process.cwd() !== WS && relRun.code === 0 && !/describe-batch refused/.test(relRun.json?.error ?? "") && relRun.json?.redocumented?.programs?.documented >= 1 && existsSync(onboardDoc) && relRun.json.redocumented.folder?.workspaceRelative === true && relRun.json.redocumented.folder.passed === "acme-prod/journey" && !("note" in relRun.json.redocumented.folder), [relBin, relRun.json?.redocumented ?? relRun.json?.error ?? relRun.stderr?.slice(-300)]);
+    else console.log("SKIP  F-564 relative --bin: the fixture CLI sits on another drive than this suite's cwd, so no relative spelling of it exists here");
+    if (process.platform === "win32") {
+      const cross = kbFolderOf("D:\\ws", "E:\\kb\\acme-prod", "journey");
+      const sameDrive = kbFolderOf("D:\\ws", "D:\\ws\\acme-prod", "journey");
+      check("F-564 (Windows) kbFolderOf across drives says the folder could not be made workspace-relative (an absolute doc_path follows, resolving all the same); on one drive it is relative and says nothing", cross.workspaceRelative === false && isAbsolute(cross.folder) && /not under the workspace's drive/.test(cross.note ?? "") && sameDrive.workspaceRelative === true && sameDrive.folder === "acme-prod/journey" && sameDrive.note === null, [cross, sameDrive]);
+    } else console.log("SKIP  F-564 kbFolderOf across drives: path.relative returns an absolute path only across Windows drives — measured on the Windows leg");
+
     // F-558: a verb that needs a snapshot and finds none reads the lock FIRST. On a dashboard with no snapshot yet
     // (imported, its first refresh "running" — a live lock of this process), every such verb says "already running …
     // run <verb> again when it finishes", never "no snapshot — run the refresh" about the refresh that is running;
@@ -1599,6 +1759,12 @@ try {
     check("F-558 on a dashboard with no snapshot yet whose first refresh holds the lock: rebuild, report, export --with-snapshot and health are refused 'already running … run <verb> again when it finishes' (exit 1), publish reports the same as its why (exit 0, published false), and a display change is saved but its rebuild refused the same way — none says 'no snapshot'; the holder's lock is untouched",
       exported558.code === 0 && imported558.code === 0 && snapshots(first).length === 0 && refused && publishSaid && changeSaid && readFileSync(firstLock, "utf8") === liveRecord,
       Object.fromEntries(Object.entries(during558).map(([v, r]) => [v, r.json?.error ?? r.json?.publish?.why ?? r.stderr?.slice(-200)])));
+    // F-566: a refused export writes NOTHING — the --out file is absent after the refusal: refused as already running
+    // (above), refused for want of a snapshot (below, the dead holder), refused as an unknown dashboard (the store's
+    // own refusal, pinned by its wording: savedSpec's "no dashboard" line, before any write).
+    const outDuring = join(ROOT, "r15", "first-x.json");
+    const exportNone = run("export", ["zz-no-such", "--out", join(ROOT, "r15", "none-x.json")]);
+    check("F-566 an export refused --with-snapshot while the first refresh runs has written nothing (no --out file, no .snapshot.json beside it), and an export of a dashboard that does not exist is refused before writing too", during558.export.code === 1 && !existsSync(outDuring) && !existsSync(outDuring.replace(/\.json$/, ".snapshot.json")) && exportNone.code === 1 && /no dashboard "zz-no-such"/.test(exportNone.json?.error ?? "") && !existsSync(join(ROOT, "r15", "none-x.json")), [existsSync(outDuring), exportNone.json?.error]);
     // A dead holder's lock (its process gone) stops nothing: the readers say "no snapshot" with the refresh as the remedy and leave the dead lock in place; status says it is stale; rebuild and a change take it over.
     const gonePid = spawnSync(process.execPath, ["-e", "process.exit(0)"]).pid;
     const deadRecord = JSON.stringify({ by: "dead", at: new Date().toISOString(), pid: gonePid, run: "dash-acme-first-dead" });
@@ -1608,6 +1774,7 @@ try {
     const noSnap = /^no snapshot of "acme-first" (yet|to export beside the spec) — run `[^`]*refresh acme-first --kb acme-prod` first/;
     const readersSaid = ["report", "export", "health"].every((v) => readers[v].code === 1 && noSnap.test(readers[v].json?.error ?? "") && String(readers[v].json?.remedy?.line ?? "").endsWith("refresh acme-first --kb acme-prod")) && readers.publish.code === 0 && readers.publish.json?.publish?.published === false && noSnap.test(readers.publish.json.publish.why);
     const deadUntouched = readFileSync(firstLock, "utf8") === deadRecord;
+    check("F-566 an export refused for want of a snapshot (the holder dead, 'no snapshot … run the refresh first') has written nothing", readers.export.code === 1 && !existsSync(join(ROOT, "r15", "first-x.json")), [readers.export.json?.error, existsSync(join(ROOT, "r15", "first-x.json"))]);
     const rebuildDead = run("rebuild", [first]);
     const rebuildTookOver = !existsSync(firstLock);
     writeFileSync(firstLock, deadRecord);
@@ -1638,6 +1805,7 @@ try {
     [liveToken.code, liveToken.json?.status ?? liveToken.json?.error, liveToken.json?.pull?.calls, liveToken.stderr?.split("\n").filter((l) => /token/.test(l)).slice(0, 3)]);
   check("F-534 reopen's class: no output of any verb this suite ran (stdout or stderr) prints a structured value as \"[object …]\"", objectWords.length === 0, objectWords.slice(0, 5));
 } finally {
+  lateCleanup();
   removeTempDir(ROOT);
 }
 

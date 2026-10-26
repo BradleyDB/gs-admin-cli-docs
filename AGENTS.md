@@ -451,7 +451,18 @@ npm run build   # only when build/ scripts or the catalog changed (needs the pin
   battery, which re-runs the self-tests it touches AND its review, and is named on the
   round's Blind spots line as unbatteried — never silently; a change to what only the
   battery exercises (the runner, a CI step) waits for the next round instead. Either way
-  the battery summary the handoff quotes names the commit it ran over.
+  the battery summary the handoff quotes names the commit it ran over. **The review brief
+  names its angles** (F-582: the R16 round's two reviews rode past five items the 0.57.0
+  gate then found inside a mechanism that writes state beside a pull, and two VERIFIED
+  sections were reopened at the gate). A round's brief to its finders lists, beyond
+  correctness and the mechanism's arithmetic, the four angles the gate used, for any
+  mechanism that writes a file beside a pull or merges a shared one: a best-effort write
+  that can throw on the hot path (a progress or pace record written with the data's
+  must-succeed write); a shared file's read-merge-write with no lock; a merge that ignores
+  sample size (last writer wins over a rate measured over hundreds); and a parse that runs
+  ahead of the declared kind (JSON before the writer's own list declaration). The brief is
+  prose and no check reads it — the handoff note quotes the angles it briefed, so a gate
+  finding on an unbriefed angle is a process finding naming the round, not a surprise.
 - **Every open PR to `dev` is named at a session's kickoff and close-out, bot PRs
   included** (`gh pr list --base dev`), each with its check state, and a red one is
   DISPOSITIONED — merged, closed with a reason, or carried forward explicitly in the

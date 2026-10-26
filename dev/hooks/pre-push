@@ -13,7 +13,7 @@
 #           checker resolves its private-pattern config from the main checkout when run
 #           from a worktree and warns on its own line when no private pattern loaded.
 #
-# WHAT IS GATED (F-584; the claim is written at the strength the code delivers):
+# WHAT IS GATED (F-584, F-588; the claim is written at the strength the code delivers):
 #   The gates run over the TREES BEING PUSHED, never over the checkout the hook runs in.
 #   Which commits a push publishes is read from the RECEIVING remote itself, never from
 #   this clone's belief about it: `git ls-remote --heads --tags <push url>` (the URL git
@@ -27,13 +27,27 @@
 #   (refs/remotes/*) play no part: a stale one, or another remote's, cannot shrink the set.
 #   Replacement refs (git replace) are ignored, so the tree gated is the object pushed (a
 #   deprecated .git/info/grafts file is not ignored by git's switch and still shapes the
-#   history walked). FAIL CLOSED: when the set cannot be established the push is refused and the
+#   history walked).
+#   BESIDE EACH TREE (F-588), what the push publishes that is no tree: every gated commit's
+#   MESSAGE (every check) and its author and committer names and addresses (the private
+#   patterns alone: an address is an email by design); every annotated tag object a pushed
+#   ref carries — a tag of a tag is peeled object by object — its body (every check,
+#   a signature block included) and its header (the private patterns: the name stored in
+#   the object and the tagger); and every pushed ref's NAME, gated FIRST, before this hook
+#   prints it anywhere — a private hit refuses the push with the name unprinted. The
+#   checker masks every PRIVATE string out of what it prints; a GENERIC hit (a tenant URL,
+#   an email) prints its matched text as the checker does on any file, on the pusher's own
+#   terminal. A refusal on the name or a tag says so, or that the checker could not run
+#   (no private pattern under REQUIRE, an invalid pattern): the checker's own lines above
+#   it say which.
+#   FAIL CLOSED: when the set cannot be established the push is refused and the
 #   message says how to recover. The remote's refs cannot be read (offline, auth): check the
 #   connection and push again. The remote holds a branch or tag tip this clone has not
 #   fetched (another clone pushed, or the PR page's "Update branch" merged, and this one
 #   then pushes --force): `git fetch --tags <remote>`, then push again. A pushed ref does
 #   not point at a commit (a tag of a blob): there is no tree to check out. The checker
-#   cannot be staged or a worktree cannot be created: refused, never skipped.
+#   cannot be staged, a worktree cannot be created, or a commit's message, identities or
+#   tag object cannot be read: refused, never skipped.
 #   STATED LIMITS: (1) only branch and tag tips count as held, so a commit the remote has
 #   under another ref kind alone (GitHub's refs/pull/*) is gated again — more gating, never
 #   less. (2) A remote with no refs yet gates the whole history; a clone whose fetch refspec
@@ -47,13 +61,20 @@
 #   the remote no longer references, so this push would republish it ungated. (5) The judge is
 #   the instance-data checker of the checkout the push runs from, AS ITS WORKING TREE
 #   STANDS — an old branch checked out, or an uncommitted edit to build/, judges the push
-#   with that checker: pull dev before pushing from an old branch. (6) Only trees are gated:
-#   commit messages, author and committer names and addresses, tag messages and ref names
-#   reach the remote ungated, and this hook prints ref names as they are (F-588).
+#   with that checker: pull dev before pushing from an old branch — a checker from before
+#   these gates is refused outright (it knows none of the arguments), never run. (6) Not
+#   gated: a commit's signature headers (gpgsig, mergetag), the pushing identity GitHub
+#   records on its side, and the lines GIT prints after this hook (the push url; on a
+#   refused push git names the ref itself — the hook has refused by then, nothing was
+#   published). (7) The private list is read from the MAIN checkout's config and the
+#   environment, never from the pushed tree (a tracked config there is scanned, not read).
 #
 # The instance-data gate is THIS checkout's checker (build/check-instance-data.mjs and
-# build/lib.mjs, staged in a folder of their own beside the pushed tree's build/, where the
-# script roots itself at the tree), so an older or weakened checker in the pushed tree never
+# build/lib.mjs), staged ONCE per push in a temporary folder of its own OUTSIDE every
+# worktree and pointed at each pushed tree with --root (F-589: a staging folder inside the
+# pushed tree could be pre-planted by that tree — on a clone that checks symlinks out as
+# symlinks, a tracked symlink at the staging path would have cp write through it and node
+# run the tree's own module), so an older or weakened checker in the pushed tree never
 # judges its own push, a tree that predates the gate is gated all the same, and the pushed
 # tree's own copies of those two files are scanned like any other tracked file; the
 # doc-drift and stale-facts gates on dev are the pushed tree's own, since they judge that
@@ -88,11 +109,13 @@ fi
 NL='
 '
 
-# One temporary worktree at a time; removed on every exit path, Ctrl-C included, so no
-# checkout of a possibly leaking tree lingers under the temp folder or in .git/worktrees.
+# One temporary worktree at a time, and one staging folder for the whole push; both removed
+# on every exit path, Ctrl-C included, so no checkout of a possibly leaking tree lingers
+# under the temp folder or in .git/worktrees, and no copy of the checker either.
 # An interrupted `worktree add` leaves the entry locked ("initializing"), which a single
 # --force will not remove and prune skips: unlock first, force twice, then prune.
 TMP_WT=
+GATE_DIR=
 cleanup() {
   [ -n "$TMP_WT" ] || return 0
   git worktree unlock "$TMP_WT" >/dev/null 2>&1
@@ -100,8 +123,26 @@ cleanup() {
   git worktree prune >/dev/null 2>&1
   TMP_WT=
 }
-trap 'cleanup; exit 130' INT TERM HUP QUIT
-trap 'cleanup' EXIT
+teardown() {
+  cleanup
+  [ -z "$GATE_DIR" ] || rm -rf "$GATE_DIR"
+  GATE_DIR=
+}
+trap 'teardown; exit 130' INT TERM HUP QUIT
+trap 'teardown' EXIT
+
+# The checker, staged once, outside every worktree (F-589).
+GATE_DIR=$(mktemp -d "${TMPDIR:-/tmp}/gacd-prepush-gate-XXXXXX") || { echo "pre-push: could not create a temporary folder for the instance-data gate — push refused" >&2; exit 1; }
+cp "$HOOK_ROOT/build/check-instance-data.mjs" "$HOOK_ROOT/build/lib.mjs" "$GATE_DIR/" || { echo "pre-push: could not stage this checkout's instance-data checker — push refused" >&2; exit 1; }
+CHECKER=$GATE_DIR/check-instance-data.mjs
+# A checker from before these gates (an old branch checked out: stated limit 5) knows none of the arguments below
+# and would scan the wrong place under a misleading refusal — refused here by name, before anything is gated.
+grep -q -- '--extra-private' "$CHECKER" || { echo "pre-push: the instance-data checker in this checkout ($HOOK_ROOT/build/check-instance-data.mjs) predates the hook's gates (no --extra-private) — pull dev into this branch, or push from a checkout on dev; push refused" >&2; exit 1; }
+# The ref-name and tag-object runs: the checker over the extras alone, rooted at this checkout for its config.
+# A refusal names both readings (a hit, or the checker unable to run); the checker's own lines say which.
+gate_texts() {
+  node "$CHECKER" --root "$HOOK_ROOT" --no-tree "$@" >/dev/null </dev/null
+}
 
 # load_remote_have: HAVE becomes the commits the receiving remote holds as branch or tag
 # tips (annotated tags peeled), read from the remote itself, once per push. Returns
@@ -140,8 +181,9 @@ load_remote_have() {
 
 # gate_tree <sha> <label> <arm>: check out <sha> into a temporary worktree and run the
 # gates there — <arm> "dev" runs the pushed tree's doc-drift and stale-facts gates and then
-# the instance-data gate, anything else the instance-data gate alone. Returns non-zero
-# when a gate fails. Reads nothing from stdin (the ref list is on it).
+# the instance-data gate, anything else the instance-data gate alone — over the tree and,
+# beside it, the commit's message and identities (F-588). Returns non-zero when a gate
+# fails. Reads nothing from stdin (the ref list is on it).
 gate_tree() {
   sha=$1; label=$2; arm=$3; rc=0
   echo "pre-push:   $sha $label" >&2
@@ -156,11 +198,17 @@ gate_tree() {
     [ $rc -eq 0 ] && { node "$TMP_WT/build/check-stale-facts.mjs" >&2 </dev/null || { echo "pre-push: check-stale-facts failed on $label ($sha) — fix or push --no-verify" >&2; rc=1; }; }
   fi
   if [ $rc -eq 0 ]; then
-    # Staged in a folder of its own, not over the pushed tree's build/: the checker roots
-    # itself one level up (at the tree) and scans the tree's own build/ files like any other.
-    gate_dir=$TMP_WT/.gacd-prepush-gate
-    mkdir -p "$gate_dir" && cp "$HOOK_ROOT/build/check-instance-data.mjs" "$HOOK_ROOT/build/lib.mjs" "$gate_dir/" || { echo "pre-push: could not stage this checkout's instance-data checker beside the pushed tree" >&2; cleanup; return 1; }
-    node "$gate_dir/check-instance-data.mjs" >&2 </dev/null || { echo "pre-push: check-instance-data failed on $label ($sha) — redact, then push again (or --no-verify and say so on the bus)" >&2; rc=1; }
+    short=$(printf '%.12s' "$sha")
+    message=$GATE_DIR/message-$sha.txt
+    identities=$GATE_DIR/identities-$sha.txt
+    if ! git log -1 --format=%B "$sha" >"$message" 2>/dev/null </dev/null || ! git log -1 --format='%an <%ae>%n%cn <%ce>' "$sha" >"$identities" 2>/dev/null </dev/null; then
+      echo "pre-push: could not read the message and identities of $sha ($label) — nothing vouches for them, push refused" >&2
+      cleanup
+      return 1
+    fi
+    # The checker roots itself at the pushed tree (--root) from its own folder outside it, and scans the tree's
+    # own build/ files like any other tracked file.
+    node "$CHECKER" --root "$TMP_WT" --extra "commit $short message" "$message" --extra-private "commit $short identities" "$identities" >&2 </dev/null || { echo "pre-push: check-instance-data failed on $label ($sha) — redact, then push again (or --no-verify and say so on the bus)" >&2; rc=1; }
   fi
   cleanup
   return $rc
@@ -178,12 +226,40 @@ while read local_ref local_sha remote_ref remote_sha; do
       fi;;
     refs/heads/dev) arm=dev;;
   esac
-  # A deletion pushes no tree; nothing to gate.
+  # A deletion pushes no tree and publishes no name; nothing to gate.
   [ "$local_sha" = "$ZERO" ] && continue
+  # The ref's NAME first (F-588), before any line of this hook prints it: a name carrying a string the patterns
+  # match is refused with the name unprinted. The checker's pass line is not shown (nothing was scanned but the
+  # name); its findings are, masked. The file is removed first and its write checked, so a failed write can never
+  # leave the previous ref's name to be judged in this one's place.
+  rm -f "$GATE_DIR/ref-name.txt"
+  printf '%s\n%s\n' "$remote_ref" "$local_ref" >"$GATE_DIR/ref-name.txt" || { echo "pre-push: could not write the ref name for the gate — push refused" >&2; exit 1; }
+  gate_texts --extra "ref name" "$GATE_DIR/ref-name.txt" || {
+    echo "pre-push: the name of a pushed ref carries text the instance-data patterns match (a private hit is not printed; the checker's lines above say which check), or the checker could not run (no private pattern under REQUIRE_PRIVATE_PATTERNS, an invalid pattern) — rename the branch or tag, or fix the patterns, then push again (or --no-verify and say so on the bus)" >&2
+    exit 1
+  }
   tip=$(git rev-parse --verify -q "$local_sha^{commit}" </dev/null) || {
     echo "pre-push: $remote_ref ($local_sha) does not point at a commit, so there is no tree to gate — push refused (a tag of a blob or tree: --no-verify and say so on the bus)" >&2
     exit 1
   }
+  # Every annotated tag OBJECT the ref carries (F-588), peeled one by one — a tag of a tag publishes the inner object
+  # too: its body (the message and any signature, every check) and its header (the name stored in the object, the
+  # tagger: the private patterns alone) — read from git's raw object, so a tag pushed by sha is covered as well.
+  obj=$local_sha
+  while [ "$(git cat-file -t "$obj" 2>/dev/null </dev/null)" = tag ]; do
+    tagshort=$(printf '%.12s' "$obj")
+    tagraw=$GATE_DIR/tag-$obj.txt
+    rm -f "$tagraw" "$tagraw.header" "$tagraw.body"
+    git cat-file tag "$obj" >"$tagraw" 2>/dev/null </dev/null || { echo "pre-push: could not read the tag object $tagshort of $remote_ref — push refused" >&2; exit 1; }
+    sed -n '1,/^$/p' "$tagraw" >"$tagraw.header" || { echo "pre-push: could not split the tag object $tagshort of $remote_ref — push refused" >&2; exit 1; }
+    sed '1,/^$/d' "$tagraw" >"$tagraw.body" || { echo "pre-push: could not split the tag object $tagshort of $remote_ref — push refused" >&2; exit 1; }
+    gate_texts --extra "tag $tagshort body" "$tagraw.body" --extra-private "tag $tagshort header" "$tagraw.header" || {
+      echo "pre-push: check-instance-data failed on the tag object $tagshort of $remote_ref: its message, its name or its tagger carries text the patterns match (the checker's lines above say which), or the checker could not run — re-tag (git tag -f -a) and push again (or --no-verify and say so on the bus)" >&2
+      exit 1
+    }
+    obj=$(sed -n 's/^object //p' "$tagraw" | head -n 1)
+    [ -n "$obj" ] || { echo "pre-push: the tag object $tagshort of $remote_ref names no object — push refused" >&2; exit 1; }
+  done
   load_remote_have || exit 1
   # Every commit reachable from the tip that the remote holds under no branch or tag,
   # oldest first; then the tip itself, last, whether or not the remote already holds it.
@@ -201,7 +277,7 @@ while read local_ref local_sha remote_ref remote_sha; do
     commits="${new:+$new$NL}$tip"
   fi
   count=$(printf '%s\n' "$commits" | wc -l | tr -d ' ')
-  echo "pre-push: gating the $count pushed tree(s) of $remote_ref (F-423: every ref; F-584: the commits $REMOTE lacks, read from $REMOTE itself, tip last)..." >&2
+  echo "pre-push: gating the $count pushed tree(s) of $remote_ref (F-423: every ref; F-584: the commits $REMOTE lacks, read from $REMOTE itself, tip last; F-588: each commit's message and identities beside its tree)..." >&2
   for c in $commits; do
     if [ "$c" = "$tip" ]; then
       gate_tree "$c" "$remote_ref (tip)" "$arm" </dev/null || exit 1

@@ -3902,8 +3902,10 @@ families are not all seen shows the split (`<measured> at this run's pace; the p
 seen`), and reads `at this run's pace` once every remaining family has been seen (a unit that will never be made this
 run — a failed or refused health part — keeps its family unseen, by design). Record the last progress line's `left`
 against the wall clock the run still took, in two cases: (a) the FIRST pull ever made on this knowledge base (no
-`<kb>/engagement-pace.json` — remove it and the scratch's pace.json first to make the case): the measured part within a
-factor of two, the plan's part reported as the constants' guess it is; (b) the SECOND scratch's first pull, with the
+`<kb>/engagement-pace.json` — remove it and the scratch's pace.json first to make the case): the SPLIT's honesty — the
+measured part prices the seen families' remaining calls at this run's pace and reads 0 s when every remaining call is in a
+family not yet seen (the sandbox's tail is: reworded at hb-20261021-02's Noticed item 3), the plan's part is reported as the
+constants' guess it is and is held to no factor; the live pace is judged in (b); (b) the SECOND scratch's first pull, with the
 knowledge base's pace from (a) in place: the whole `left` within a factor of two (this is the redesign's claim — the
 constants' tail, 2.7x on the sandbox at hb-20261021-01, is gone once the knowledge base has been measured once).
 BROKEN: no progress line, a line on every call, `status.progress` null after the first fact call while the run holds
@@ -3989,7 +3991,7 @@ account units were the difference. The dry-run quotes it correctly.
 R1 and R2 are owed again at hb-20261021-02 for F-575's redesign (the per-family live price): one FIRST pull of a fresh
 scratch with the knowledge base's pace file removed (case a) and then the second scratch's first pull over the pace
 file the first wrote (case b), each last line against the wall clock, the pass bar above; R2 as banked; and the
-statusDefault dry-run for F-576 (`"pages.0.statusDefault=PROCESSING,PAUSED" --dry-run` reads as a list: `changed`
+statusDefault dry-run for F-576 (`"pages.0.statusDefault=PROCESSING,PAUSE" --dry-run` reads as a list — PAUSE, not PAUSED, which the writer refuses, hb-20261021-02's Noticed item 1: `changed`
 names `pages[].statusDefault[]`, `consequence` is `in-page` and `consequenceText` reads "rebuild only (no pull)").
 
 Tester round @ hb-20261021-01 (2026-10-21; checkpoint, written as the arms run) — fix/r16-f575-f579 at 5760118, clean and
@@ -4167,3 +4169,242 @@ one-program scratches), closing step answered save-only (no pull). Pass bars, st
 Section status (tester @ hb-20261021-02, 2026-10-21): CLOSED — F-575 and F-576 VERIFIED. Owed (Noticed, the bus's
 Noticed (hb-20261021-02) line): the banked statusDefault value names a status the writer lacks (PAUSED); the fast path
 saves a 0-program dashboard with no word of it.
+
+## R17 — the next-release-scope round: the run's bookkeeping, the knowledge base's pull lock, the fast path's empty selection (banked 2026-10-25, builder, fix/release-scope-root-fixes; verdict at the token this branch's handoff mints)
+
+Owed by: the tester round on this branch's handoff token (a terminal in the workspace with --plugin-dir on the checkout
+under test, canary matched; the SANDBOX KB, reads only; scratch dashboards of one program each, or the fast path's
+defaults — never the kept dashboard; removed after with their run directories). The suites are the judge of record for
+the mechanisms (test/dashboard.mjs: the F-563 arms (a) to (e) and their control, KB-1 and KB-2, F-564, F-566, F-576,
+F-590; test/doc-lib-fixtures.mjs: the primitive's record and bookkeeping arms); below are the live halves the suites
+cannot see — a real handle on Windows, two real pulls over one knowledge base, a tenant with refusals, and the model
+reading the new prose. Every refusal below is ONE JSON line on stdout with `error`; a stack on stderr is a reopen.
+
+### R1 (F-563 (a); Windows) — the held handle on refresh.lock in the run's first second
+
+Tenant: sandbox. Login: needed (a pull starts). Minutes: about 2 for the refused run, then one refresh of about 5.
+Start when: a scratch is saved (save-only) and `gs-admin whoami` shows 10 minutes left. The arm as § R15 R2 made it:
+start `refresh <scratch>` and within its first second (before the plan makes a call) open `<scratch dir>/refresh.lock`
+in PowerShell with [IO.File]::Open($path, "Open", "Read", "ReadWrite") and hold it until the refusal has printed (the
+retry is about a second; the release runs right after it). FIXED: exit 1 with one JSON line — `error` reads `the
+refresh lock of "<scratch>" could not be recorded (EPERM): a handle on <path> (a scanner, a sync client, an editor)
+forbids the write — run the line again once it is gone; the refresh lock could not be removed at the end (<code>) and
+was left at <path>: …`, `lockRecord` {path, why EPERM} and `lockLeft` {path, why <code>} on the summary, where <code>
+is the OS's code for the unlink under the handle — EBUSY on Windows (measured at hb-20261025-02), EPERM elsewhere; the
+claim is the lock left and said, not the code (reworded 2026-10-26, builder, Noticed (hb-20261025-02) item 1);
+nothing on stderr but the dashboard's own lines; release the handle and run the line again: exit 0, `lockTakenOver`
+naming the dead holder. A
+handle let go between the retry and the release gives the record refusal with NO `lockLeft` and no takeover on the
+second run — that half is met then, and the arm is run once more holding longer for the `lockLeft` half. BROKEN: a
+stack, exit 1 with no `lockRecord`, or the second run refused → REOPEN F-563 quoting stderr.
+
+### R2 (F-575 (1), under F-563; Windows) — the held handle on a running pull's progress.json
+
+Tenant: sandbox. Login: needed. Minutes: about 6. Start when: a scratch's refresh is running and its first `pull
+progress:` line has printed. Open `.gs-superadmin/tmp/engagement/<run>/progress.json` in PowerShell the same way and
+hold it past the next tenth call (about a minute), then release it. FIXED: stderr carries ONE line `dashboard.mjs: pull
+bookkeeping: the progress record could not be written at <path> (EPERM) and the run went on without it: …`, the
+progress lines keep printing through it, the pull finishes exit 0 with `bookkeepingLeft` [{what "progress record",
+path, why, text}] on the summary and its snapshot and pages written; `status` read while the handle is held relays the
+last record written before it. BROKEN: a stack, exit 4, no snapshot, or the line repeated at every tick → REOPEN F-563.
+
+### R3 (F-575 (3), F-581's race; hb-20261021-01's Noticed item 2) — two refreshes of DIFFERENT dashboards over one knowledge base, both re-documenting
+
+Tenant: sandbox. Login: needed. Minutes: about twice § R16 R1's. Start when: two scratches A and B exist with
+re-documentation on, the knowledge base behind on templates they reference (so each refresh would re-document; move a
+template doc aside if it is not), and the login has 20 minutes left. Start `refresh <a>` and, a few seconds later,
+`refresh <b>` in a second terminal. FIXED (the redesign: one pull at a time over a knowledge base): B exits 1 at once,
+before any tenant call, `error` reading `another pull is running over the knowledge base at <kb>: the pull of the
+dashboard "<a>" (run <run>) started by <you> at <time> (0 minutes ago, pid <N>) — wait for it; a pull whose process is
+gone, or whose lock <kb>/engagement-pull.lock is older than two hours, is taken over on its own`; A finishes exit 0 and
+`<kb>/engagement-pull.lock` is gone after it; B run again once A is done exits 0 with its re-documentation made
+(`redocumented.templates.documented` above 0 where the knowledge base was behind) and never a `token-expired` while
+`gs-admin whoami` shows minutes left. F-581's re-read (`whoami-recheck … ok: the token reads live` on stderr) fires
+only when a call dies on the CLI's login wording: record it if seen; it is the suite's if not. BROKEN: both pulls run
+at once; B refused with another text; B's second run stopped on the manifest lock or a false token-expired → REOPEN
+F-575 quoting both runs' status.json.
+
+### R4 (hb-20261021-01's Noticed item 3) — the refusal sample on a tenant with recent refusals
+
+Tenant: the owner's choice — one with entry refusals in the last 30 days (the sandbox had none at hb-20261021-01);
+production only on the owner's word, on a scratch of ONE program with refusals on record, reads only. Login: needed.
+Minutes: about 5. Start when: the owner names the tenant and a program that BOTH sent in the dashboard's window AND
+had an entry refused inside the dashboard's DERIVED health lookback — the longest schedule period, at least silentDays,
+capped at the window; read it from the plan's `health-entry-window` call (30 days on the production scratch at
+hb-20261025-02), never assume the 90-day window. A refused program that sent nothing, or a deleted one, plans no
+sample: two picks fell through that way at hb-20261025-02 (about 10 minutes; reworded 2026-10-26, builder, Noticed
+(hb-20261025-02) item 4). FIXED: the plan's `health.samples` plans a
+`health-reasons-sample`, the pull makes it, pace.json and `<kb>/engagement-pace.json` gain that family after the pull,
+and the progress line's remainder prices it from the plan until it is made ("the plan's … for 1 family not yet seen" on
+the line before it lands). BROKEN: refusals on record and no sample planned → log a NEW finding (normal) quoting the
+plan's `health.samples`.
+
+### R5 (F-590) — the fast path over a selection that holds nothing
+
+Tenant: sandbox. Login: needed (the plan's reads). Minutes: about 3 (plan only; save-only or go back). `dashboard new
+zz-empty --fast-path --kb <kb>`, then `next`: the sandbox sent nothing in the default window at hb-20261021-02, so the
+selection is empty. FIXED: `closing.selection` reads {programs: 0, listed: <N>, text: "The selection holds NO
+program: nothing sent in the window as the settings stand (<N> programs listed on the tenant), so the pages would be
+empty — go back and widen the window or name the programs before saving."} and `closing.ask` carries that sentence
+before the manual-refresh statement; the model presents it with the ask and offers go-back (the walk below). With a
+program selected (a second scratch with `sentSince` 365d), `closing.selection.text` names the count and the ask is the
+ruled wording unchanged. Remove the scratches. BROKEN: no word of the empty selection → REOPEN F-590. The owner's
+ruling on F-590 (polish, or WONTFIX) stands either way; a WONTFIX leaves the sentence in place.
+
+### R6 (F-575, the owed item) — a change's price after another pull moved the knowledge base's pace
+
+Tenant: sandbox. Login: not needed (a dry run reads the pace files; no call). Minutes: 1. Start when: R3 is done (A
+pulled twice, B once, both over one knowledge base). `change <a> accounts.pull=yes --dry-run` (decline the save; not
+saved): FIXED: `pullSeconds` equals A's last plan's `estimate.full.byFamily` priced at the table that
+`<kb>/engagement-pace.json` under A's own pace.json gives (sum the families by hand from the two files, the dashboard's
+figure winning where both name a family; the plan's own `secondsPerCall` table reproduces its recorded `full.seconds`),
+plus `accounts.addsSeconds` scaled by the ratio of the two full figures — not the figure plan.json carries, once B's
+pull moved a family A had measured. BROKEN: the quote equals plan.json's figure while the knowledge base's pace file
+names B's run for a family A's plan priced → REOPEN F-575 quoting both.
+Re-aim (2026-10-26, builder, Noticed (hb-20261025-02) item 2; OWED at the next round touching F-575's pricing, not
+before): as run, A's own pace.json named every family A's plan priced, so the dashboard's figure won everywhere and B's
+moves to `<kb>/engagement-pace.json` never entered A's quote — what discriminated was A's own second pull moving its
+pace since the plan, which tests the re-price but not its knowledge-base half. The re-aimed arm: a third scratch C
+over the same knowledge base, planned once (save-only; its first plan, so no pace.json of its own and every family
+priced from `<kb>/engagement-pace.json`), then A's or B's pull moves a family C's plan priced, then `change <c>
+accounts.pull=yes --dry-run`: `pullSeconds` follows the knowledge base's file as it now stands, not C's plan.json;
+BROKEN as above, with C's plan.json and the knowledge base's file quoted.
+
+### Walk — email-engagement (model-invocable), the changed passages
+
+The closing step's selection sentence (R5: the model says `closing.selection.text` with the ask and offers go-back on
+an empty one); step P's relay of `bookkeepingLeft` (R2: one sentence, nothing to do) and of the knowledge-base
+refusal (R3: the model relays `error` and stops; it never retries on its own); R3's exit-1 line in the ad-hoc mode is
+read, not walked. Record the lines the model issued and what it said. Guard wiring: one line, as every round.
+
+### Tester round @ hb-20261025-02 (2026-10-25, tester; checkpoint, written as the arms land)
+
+Provenance: worktree hopeful-sutherland-bfea87 on fix/release-scope-root-fixes, clean, c596dd9; the dev-canary skill
+and the bus's Under test line both read hb-20261025-02. Round type: ACCEPTANCE for F-563, F-575, F-588, F-589;
+RE-VERIFICATION for F-564, F-565, F-566, F-576, F-582, F-585, F-590.
+
+The hook's arms (F-588, F-589), from the clean worktree, dry runs only. The installed .git/hooks/pre-push was already
+byte-equal to dev/hooks/pre-push (cmp, no copy needed). PRIVATE_INSTANCE_PATTERNS = a fictional string absent from the
+tree (git grep -i: no hit), MSYS2_ENV_CONV_EXCL=PRIVATE_INSTANCE_PATTERNS beside it, Git Bash. Probe objects built with
+plumbing (commit-tree, mktag, a temporary index) so the worktree was never checked out elsewhere. Pass bar, stated
+before measuring: each planted push refused by the hook naming the check that matched, the plant on no output line;
+F with no gating line; G refused on the probe through the main checkout's config; H refused by name; K clean. Held:
+    A (plant in an intermediate commit's message, clean trees, clean tip): exit 1 — `commit eb70a5f2ee36 message:1:
+      private pattern (environment PRIVATE_INSTANCE_PATTERNS line 1): [match redacted]`, refused on that commit
+    B (plant in the author name): exit 1 — `commit 1fdf77c12558 identities:1: private pattern … [match redacted]`
+    C (annotated tag, planted message): exit 1 — `tag 901f30364016 body:1: …`, before any tree gating
+    D (tag of a tag, plant in the inner only; inner ref deleted): exit 1 — `tag ede5e5742c31 body:1: …` (the inner object)
+    E (lightweight ref to a tag object whose stored name carries the plant): exit 1 — `tag d8baeb361e59 header:3: …`
+    F (branch named with the plant): exit 1 — `ref name:1:` and `ref name:2:` findings, then the ref-name refusal; no
+      `gating` line; the name on none of the hook's lines (nor git's: 0 lines carry the plant)
+    G (a tree force-adding a decoy gs-admin-explorer.config.json whose one pattern matches nothing, beside a probe file
+      carrying a string the main checkout's config matches; the variable unset): exit 1 — `zz-r17-g-probe.md:1: private
+      pattern (local gs-admin-explorer.config.json entry 1): [match redacted]` — the main checkout's list judged, the
+      decoy not read
+    H (a push from a detached worktree at 0aa62e1, whose checker has no --extra-private): exit 1 — `pre-push: the
+      instance-data checker in this checkout (<scratch>/wt-old/build/check-instance-data.mjs) predates the hook's gates
+      (no --extra-private) — pull dev into this branch, or push from a checkout on dev; push refused`
+    K: no gacd-prepush-* folder under TMPDIR or /tmp; `git worktree list` back to its three entries; probe refs deleted.
+  Every output: 0 lines carrying the plant (grep -i -c), G 0 lines carrying the config's string.
+
+R5 (F-590), sandbox, CLI 1.0.12, walked through the skill (the session invoked email-engagement; D2 then D3's closing
+step). Pass bar as banked. `new zz-empty --fast-path`, then `next` (2m08s, the plan's reads): `closing.selection`
+{programs 0, listed 1086, text "The selection holds NO program: nothing sent in the window as the settings stand (1086
+programs listed on the tenant), so the pages would be empty — go back and widen the window or name the programs before
+saving."}; `closing.ask` carries that sentence between the login-minutes sentence and "Refreshes are manual". The model
+presented the ask as written (one AskUserQuestion, the sentence not repeated); Bradley first asked what selection was
+meant (answered in chat: the programs question's default, every program that sent in the last 90 days), then chose "Go
+back and change a setting"; the programs question asked in chat as its six numbered options; Bradley chose 3 (the last
+year). `next` again: `closing.selection` {programs 145, listed 1086, text "The selection holds 145 programs of the 1086
+listed on the tenant."}, `closing.ask` the ruled wording with no selection sentence ("Ready to save. A full refresh with
+these settings is about 68 calls and about 9 minutes on this tenant; your login has about 47 minutes left, enough for
+it. Refreshes are manual: …"); the model said the selection text once before the ask. Not saved; the draft and its two
+plan directories removed. MET.
+
+R4: not runnable on the sandbox — `rp run` COUNT over ao_failed_participants: 1,146,347 all-time, 0 with ModifiedAt
+since 2026-07-27 (90 days) and 0 since 2026-09-25 (30 days) (the filter applied: the filtered count differs from the
+unfiltered). (Corrected later in the round: the sample reads the health day window — the health-entry-window
+call's — and the dashboard's health lookback is DERIVED (the longest schedule period, at least silentDays, capped at
+the window), 30 days on the production scratch below, so the bar's "last 30 days" is the measure there; the tester's
+mid-round reading "90 days, not 30" was wrong.) Bradley: finish the sandbox arms first, then rule on R4's tenant;
+ruled after them: run R4 on production.
+
+R1 (F-563 (a)), scratch zz-r17a (one program, save-only). The handle opened by a PowerShell watcher
+([IO.File]::Open($path, "Open", "Read", "ReadWrite")) 270 ms after the watcher started polling, held 8 s. The refresh:
+exit 1, stdout one JSON summary — `error` "the refresh lock of "zz-r17a" could not be recorded (EPERM): a handle on
+<kb>\dashboards\zz-r17a\refresh.lock (a scanner, a sync client, an editor) forbids the write — run the line again once
+it is gone; the refresh lock could not be removed at the end (EBUSY) and was left at <same path>: the next refresh,
+rebuild or change takes it over on its own, because this process is gone — nothing to do", `lockRecord` {path, why
+EPERM}, `lockLeft` {path, why EBUSY, text}; stderr EMPTY (no stack); the lock file left (87 bytes). The bar quotes the
+removal as "(EPERM)"; Windows returned EBUSY for the unlink under the handle — the OS's code, the claim met (Noticed).
+  The handle released, the line run again (23:18:04-23:23:06, the R2 run below): exit 0, stderr `took over a stale
+  refresh lock of "zz-r17a" held by bradl since 2026-10-26T06:17:24.023Z` (the first run's record), `lockTakenOver`
+  {by bradl, at 06:17:24.023Z} on the summary. MET.
+
+R2 (F-575 (1) under F-563), that same pull of zz-r17a (a full pull, 1 program, the first pull ever on this knowledge
+base: no engagement-pace.json before it). A second watcher opened the run's progress.json the same way the moment it
+appeared (23:19:47.97, right after the first record) and held it 90 s (to 23:21:17.99). stderr: the first progress
+line, then ONE `dashboard.mjs: pull bookkeeping: the progress record could not be written at <kb-ws>\.gs-superadmin\tmp\
+engagement\dash-zz-r17a-20261026T061804\progress.json (EPERM) and the run went on without it: a handle on the file (a
+scanner, a sync client, an editor), or a folder in its place, is the usual cause — nothing to do`, then the progress
+lines at 10, 20 and 30 of about 39 (the tenth line fell inside the hold: its write failed too, not said again); exit
+0, `bookkeepingLeft` [{path, what "progress record", why EPERM, text}], both pages and the snapshot written, pace.json
+and <kb>/engagement-pace.json written. `status` 30 s into the hold: progress {made 1, planned 39, leftSeconds 289, at
+06:19:47.908Z} — the last record written before the handle. The skill's step P relay (walked): the entry's text said
+once, the pull complete, nothing to do. MET.
+
+R3 (F-575 (3)), scratches zz-r17a and zz-r17b (one program each, both over the sandbox KB). Set-up: B's plan found 1
+template unread; A's KB was current, so A's one template doc was moved aside (as the bar says). `refresh zz-r17a`
+at 23:23:37, `refresh zz-r17b` at 23:23:43: B exit 1 at 23:23:43 (0 s), no call line on stderr, `error` "another pull
+is running over the knowledge base at <kb>: the pull of the dashboard "zz-r17a" (run dash-zz-r17a-20261026T062337)
+started by bradl at 2026-10-26T06:23:37.200Z (0 minutes ago, pid 11824) — wait for it; a pull whose process is gone,
+or whose lock <kb>\engagement-pull.lock is older than two hours, is taken over on its own"; <kb>/engagement-pull.lock
+present (139 bytes) while A ran. A exit 0 at 23:26:30 (selective, 27 calls), the lock gone after it. whoami: valid
+(1638 s). B again: exit 0 at 23:30:53 (full, first pull), `redocumented.templates` {planned 1, documented 1}, no
+token-expired, no manifest-lock stop; no whoami-recheck line (no call died on the login wording: the suite's). The
+model's relay of B's refusal (walked): `error` said, stopped, no retry of its own. MET.
+  Off the bar (Noticed): A's re-documentation did NOT run — `redocumented.templates` {planned 1, documented 0,
+  remaining 1}, calls 0, `capped: true` with the cap of 50 unspent. Cause, read: the template's manifest entry still
+  says status documented (the doc FILE was moved, not the entry); the plan counts it missing (template-gap-keys.json
+  names it), but the gap-fill marks stale only staleKeysFile (behind, unread), so describe-batch selects nothing, and
+  `capped` is computed from remaining > 0 alone (dashboard.mjs redocument, line 1214). The doc restored after.
+
+R6 (F-575, the owed item), after R3 (A pulled twice, B once). `change zz-r17a accounts.pull=yes --kb sandbox
+--dry-run`: exit 0, `pullSeconds` 300, consequenceText "the next refresh pulls everything again, about 5 minutes",
+saved false. By hand from A's last plan (dash-zz-r17a-20261026T062337/plan.json: full 41 calls, 250.46 s, its own
+secondsPerCall reproducing 250.46; health-entry-month absent from that table, the engine's 7 s) priced at A's pace.json
+under <kb>/engagement-pace.json: 222.04 s, plus accounts.addsSeconds 88.14 x 222.04/250.46 = 78.14 → 300.18. The
+plan's figure as written would quote 338.6. The knowledge base's file names B's run for 20 of the plan's families.
+MET. Caveat (Noticed): A's own pace.json names every family A's plan priced, so the dashboard's figure won everywhere
+and B's moves to the knowledge base's file did not enter A's quote; the re-price measured here is A's own second pull
+moving its pace since the plan — the bar's "once B's pull moved a family A had measured" is not what discriminated.
+
+Guard wiring: `gs-admin re r run-now --id zz-r17-guard-probe` drew the ask, declined by Bradley, who pasted its text:
+"Hook PreToolUse:Bash requires confirmation for this command: Mutating Gainsight command: gs-admin rules-engine rules
+run-now. This workspace is read-only by default. Workspace manifests claim multiple tenants (prod (<prod host>);
+sandbox (<sandbox host>)) — confirm `gs-admin whoami` targets the intended one before approving. ⚠ At least one of
+these tenants is PRODUCTION (recorded at setup) — verify the target before approving. [plugin:gs-superadmin]" (hosts
+redacted here); no journal row (sandbox/changes/JOURNAL.md: 0 lines naming the probe).
+
+R4 (hb-20261021-01's Noticed item 3), on PRODUCTION on Bradley's word, reads only, after the sandbox arms. The CLI
+switched to the production tenant (a fresh login), one read: ao_failed_participants 1,629,156 rows with ModifiedAt
+since 2026-07-27, 67 programs. Two picks failed the set-up, not the arm: the first program is deleted on the tenant
+(the plan's programs.deleted 1, selection 0); the second (6 refusals in 90 days) had none in the plan's
+health-entry-window, which reads 2026-09-26..2026-10-26 (30 days: the derived lookback), so `participantFailures`
+{withFailures 0, planned 0} was right for it. The third, a program both in the kept dashboard's last snapshot (it
+sent) and in that 30-day entry window (2 refusals): one-program scratch zz-r17r, save-only, then its refresh
+(23:46:10-23:56:12, full, 96 calls). The plan's `health.samples.participantFailures` {withFailures 1, planned 1,
+family health-reasons-sample}, the family in estimate.full.byFamily; the last progress line before it landed `90 of
+about 96 calls made this run · 8 min elapsed · about 36 s left (16 s at this run's pace; the plan's 20 s for 2
+families not yet seen)`; then `pull health-reasons-sample-f39288d6bedc ok (2619 ms)`; exit 0; the scratch's pace.json
+and <kb>/engagement-pace.json each gained health-reasons-sample {calls 1, seconds 2.62, run dash-zz-r17r-…}. MET.
+
+Suites, run locally over c596dd9 beside the live arms (the judges of record the Fix notes name): test/doc-lib-fixtures
+310 checks passed; build/test-check-instance-data 108; build/test-pre-push-hook 67; test/dashboard 194 (556 s). CI on
+c596dd9, quoted per job: validate-plugin 40275557921 — changes success, validate (ubuntu-latest) success, manifests
+success; docs-drift 40275557938 — drift (full) success; GitGuardian pass.
+
+Clean-up: scratches zz-r17a, zz-r17b (sandbox) and zz-r17r (production) removed with every dash-zz-r17* run
+directory; both knowledge bases' engagement-pace.json removed (neither existed before this round's scratch pulls,
+and the production one would otherwise price the kept dashboard's next pull from a one-program scratch); no
+engagement-pull.lock left in either; the moved template doc restored; the CLI back on the sandbox tenant.

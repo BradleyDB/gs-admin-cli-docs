@@ -70,7 +70,7 @@
 import { appendFileSync, copyFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
-import { ROOT } from "./lib.mjs";
+import { ROOT, literalSpans, maskLocalPaths } from "./lib.mjs";
 import { spawnSync, execSync } from "node:child_process";
 
 const CHECKER = join(ROOT, "build", "check-instance-data.mjs");
@@ -98,6 +98,8 @@ const utf16be = (s) => Buffer.concat([Buffer.from([0xfe, 0xff]), Buffer.from(s, 
 // opts.env: environment variables for the checker run (case 12). The two the
 // checker reads are CLEARED from the inherited environment first, so a developer
 // shell or CI step that happens to carry them cannot change any other case.
+// opts.args: (rig) => extra argv for the checker (case 16: the hook's --extra,
+// --extra-private, --no-tree and --root), given the rig's path for file arguments.
 function runRig(files, opts = {}) {
   const rig = mkdtempSync(join(tmpdir(), "instance-data-test-"));
   try {
@@ -120,7 +122,7 @@ function runRig(files, opts = {}) {
     // either variable in any casing — drop every spelling, not just the canonical one.
     const env = { ...process.env };
     for (const k of Object.keys(env)) if (/^(private_instance_patterns|require_private_patterns)$/i.test(k)) delete env[k];
-    return spawnSync(process.execPath, [join(rig, "build", "check-instance-data.mjs")], {
+    return spawnSync(process.execPath, [join(rig, "build", "check-instance-data.mjs"), ...(opts.args ? opts.args(rig) : [])], {
       cwd: rig,
       encoding: "utf8",
       env: { ...env, ...(opts.env ?? {}) },
@@ -545,6 +547,122 @@ const ENV_SLUG = "omega" + "corp" + "-ws";
   // not echoed, nothing printed in clear.
   const look = runRig({ [`kb/${ENV_SLUG}/notes.md`]: `the ${ENV_SLUG} folder\n` }, { env: { PRIVATE_INSTANCE_PATTERNS: `(?=${ENV_SLUG})` } });
   ok("a lookaround-only private pattern is refused as matching zero characters", look.status === 1 && look.stderr.includes("matches zero characters at a tracked file's path") && absent(look));
+}
+
+// ── 15. One literal finder in lib.mjs (F-585): maskLocalPaths and the gate's learned
+// literals both call literalSpans ─────────────────────────────────────────────────
+{
+  // (a) The judge for the masker: the algorithm maskLocalPaths had before (longest path
+  // first, both slash spellings, case-folded on win32, replaced in place pass by pass),
+  // kept here as the reference, must agree with the span-based one over inputs that
+  // exercise every axis: nesting (a home folder inside a repo path), both slash
+  // spellings, mixed case, repeats, a token that could itself look like a path.
+  const oldMask = (text, pairs) => {
+    const ci = process.platform === "win32";
+    let out = text;
+    const sorted = [...pairs].filter(([p]) => p).sort((a, b) => b[0].length - a[0].length);
+    for (const [p, token] of sorted) {
+      for (const spelling of new Set([p, p.replace(/\\/g, "/"), p.replace(/\//g, "\\")])) {
+        const hay = ci ? out.toLowerCase() : out;
+        const needle = ci ? spelling.toLowerCase() : spelling;
+        let next = "";
+        let from = 0;
+        for (let at = hay.indexOf(needle); at !== -1; at = hay.indexOf(needle, from)) {
+          next += out.slice(from, at) + token;
+          from = at + needle.length;
+        }
+        out = next + out.slice(from);
+      }
+    }
+    return out;
+  };
+  // The paths are assembled from fragments (the real gate scans this file, and a user path
+  // spelled out on one line is exactly what it refuses).
+  const U = "Us" + "ers";
+  const home = ["C:", U, "pat"].join("\\");
+  const repo = [home, "work", "repo"].join("\\");
+  const wt = [home, "AppData", "Local", "Temp", "wt-abc"].join("\\");
+  /** @type {Array<[string, string]>} */
+  const pairs = [[wt, "<worktree>"], [repo, "<repo>"], [home, "<home>"], ["", "<empty>"]];
+  const texts = [
+    `cwd ${repo}\\build\\x.mjs and ${repo.replace(/\\/g, "/")}/lib.mjs`,
+    `${home}\\other ${home.toLowerCase()}\\other ${repo.toUpperCase()}\\Y`,
+    `${wt}/a ${wt}\\b ${repo} ${home} ${home}`,
+    `nothing to mask here /${"ho" + "me"}/pat/x c:/${U.toLowerCase()}/pat`,
+    `${repo}${repo}${home}`,
+    `mixed ${repo.replace(/\\/g, "/").replace("pat", "Pat").replace("repo", "REPO")}/z and ${home.replace(/\\/g, "/")}/`,
+  ];
+  const disagreements = texts.filter((t) => maskLocalPaths(t, pairs) !== oldMask(t, pairs)).map((t) => [t, maskLocalPaths(t, pairs), oldMask(t, pairs)]);
+  ok("F-585 maskLocalPaths on literalSpans agrees with the pass-by-pass reference over every axis (nesting, slashes, case, repeats)", disagreements.length === 0 && maskLocalPaths(texts[0], pairs).includes("<repo>\\build\\x.mjs") && !maskLocalPaths(texts[4], pairs).includes("Users"));
+  // (b) The finder itself: a nested literal takes the longer's token at one start; spans
+  // that overlap merge and spans that only touch stay apart; a case-folded search over a
+  // line whose folding changes its length (U+0130 lower-cases to two code units) lands on
+  // the right characters.
+  const spans = literalSpans("ab abc ABC x", /** @type {Array<[string, string]>} */ ([["ab", "A"], ["abc", "B"]]), { caseInsensitive: true });
+  ok("F-585 literalSpans: the longest literal at a start wins its token, and overlapping spans merge", spans.length === 3 && spans[0].token === "A" && spans[0].end === 2 && spans[1].token === "B" && spans[1].start === 3 && spans[1].end === 6 && spans[2].token === "B" && spans[2].start === 7 && spans[2].end === 10);
+  const dotted = `İİİ see ${ENV_SLUG} here`;
+  const sp = literalSpans(dotted, /** @type {Array<[string, string]>} */ ([[ENV_SLUG.toUpperCase(), ""]]), { caseInsensitive: true });
+  ok("F-585 literalSpans: a literal on a line whose lower-casing grows is found at its ORIGINAL index", sp.length === 1 && sp[0].start === dotted.indexOf(ENV_SLUG) && sp[0].end === dotted.indexOf(ENV_SLUG) + ENV_SLUG.length);
+  ok("F-585 literalSpans: case-sensitive by default, and an empty literal matches nothing", literalSpans("Ab ab", /** @type {Array<[string, string]>} */ ([["ab", ""]])).length === 1 && literalSpans("Ab ab", /** @type {Array<[string, string]>} */ ([["", ""]])).length === 0);
+}
+
+// ── 16. Beside the tree (F-588) and from outside it (F-589): --extra, --extra-private,
+// --no-tree, --root ─────────────────────────────────────────────────────────────────
+{
+  const LEAKY_MAIL = "ops@" + "leakycorp" + ".net";
+  // (a) An extra text is scanned with every check and named by its label; the private string
+  // in it is redacted and learned (it masks the tree's clean-line URL too).
+  const msg = runRig(
+    { "clean.md": "nothing sensitive\n" },
+    { untracked: { "msg.txt": `fix the --kb ${ENV_SLUG} folder\n` }, env: { PRIVATE_INSTANCE_PATTERNS: ENV_SLUG }, args: (rig) => ["--extra", "commit abc123 message", join(rig, "msg.txt")] },
+  );
+  ok("--extra: a private hit in an extra text is a finding named by its label, redacted", msg.status === 1 && msg.stderr.includes("commit abc123 message:1: private pattern (environment PRIVATE_INSTANCE_PATTERNS line 1): [match redacted]") && !(msg.stdout + msg.stderr).includes(ENV_SLUG));
+  const mail = runRig(
+    { "clean.md": "nothing sensitive\n" },
+    { untracked: { "msg.txt": `ping ${LEAKY_MAIL} about it\n` }, env: { PRIVATE_INSTANCE_PATTERNS: ENV_SLUG }, args: (rig) => ["--extra", "commit abc123 message", join(rig, "msg.txt")] },
+  );
+  ok("--extra: the generic checks run on an extra text too (a non-fictional email in a commit message is a finding)", mail.status === 1 && mail.stderr.includes(`commit abc123 message:1: email address: "${LEAKY_MAIL}"`));
+  // (b) --extra-private: the private patterns alone — an identity line carries an email by
+  // design and passes the generic email check; a private string in it still fails.
+  const ident = runRig(
+    { "clean.md": "nothing sensitive\n" },
+    { untracked: { "id.txt": `Pat Example <${LEAKY_MAIL}>\n` }, env: { PRIVATE_INSTANCE_PATTERNS: ENV_SLUG }, args: (rig) => ["--extra-private", "commit abc123 identities", join(rig, "id.txt")] },
+  );
+  ok("--extra-private: an identity with a non-fictional address passes (the private patterns alone run on it)", ident.status === 0 && ident.stdout.includes("1 extra text(s) scanned beside the tree"));
+  const identHit = runRig(
+    { "clean.md": "nothing sensitive\n" },
+    { untracked: { "id.txt": `Pat ${ENV_SLUG} <${LEAKY_MAIL}>\n` }, env: { PRIVATE_INSTANCE_PATTERNS: ENV_SLUG }, args: (rig) => ["--extra-private", "commit abc123 identities", join(rig, "id.txt")] },
+  );
+  ok("--extra-private: a private string in an identity is a finding, redacted", identHit.status === 1 && identHit.stderr.includes("commit abc123 identities:1: private pattern") && !(identHit.stdout + identHit.stderr).includes(ENV_SLUG));
+  // (c) --no-tree: the extras alone, no tree read, no coverage refusal on an empty index.
+  const nameOnly = runRig(
+    { "leak.md": `the ${ENV_SLUG} folder\n` },
+    { untracked: { "ref.txt": "refs/heads/clean-name\n" }, env: { PRIVATE_INSTANCE_PATTERNS: ENV_SLUG }, args: (rig) => ["--no-tree", "--extra", "ref name", join(rig, "ref.txt")] },
+  );
+  ok("--no-tree: only the extras are scanned (a leaking tree is not read; a clean name passes)", nameOnly.status === 0 && nameOnly.stdout.includes("0 of 0 tracked files scanned") && nameOnly.stdout.includes("1 extra text(s)"));
+  const nameHit = runRig(
+    { "clean.md": "nothing sensitive\n" },
+    { untracked: { "ref.txt": `refs/heads/zz-${ENV_SLUG}\n` }, env: { PRIVATE_INSTANCE_PATTERNS: ENV_SLUG }, args: (rig) => ["--no-tree", "--extra", "ref name", join(rig, "ref.txt")] },
+  );
+  ok("--no-tree: a ref name carrying a private string is a finding, the name redacted", nameHit.status === 1 && nameHit.stderr.includes("ref name:1: private pattern") && !(nameHit.stdout + nameHit.stderr).includes(ENV_SLUG));
+  // (d) An extra that cannot be read is a refusal, never a pass.
+  const gone = runRig({ "clean.md": "nothing sensitive\n" }, { env: { PRIVATE_INSTANCE_PATTERNS: ENV_SLUG }, args: (rig) => ["--extra", "commit abc123 message", join(rig, "no-such.txt")] });
+  ok("an extra text that cannot be read refuses the run", gone.status === 1 && gone.stderr.includes("cannot be read") && !gone.stdout.includes("Instance-data check passed"));
+  // (e) --root: the tree scanned is the one named, not the one the script sits in (F-589:
+  // the hook stages the checker outside the pushed tree). A second rig stands for the
+  // pushed tree; the checker copy in the first rig scans it and finds its plant.
+  const other = mkdtempSync(join(tmpdir(), "instance-data-root-"));
+  try {
+    writeFileSync(join(other, "notes.md"), `--kb ${ENV_SLUG}\n`);
+    execSync("git init -q", { cwd: other });
+    execSync("git -c core.autocrlf=false add -A", { cwd: other });
+    const rooted = runRig({ "clean.md": "nothing sensitive\n" }, { env: { PRIVATE_INSTANCE_PATTERNS: ENV_SLUG }, args: () => ["--root", other] });
+    ok("--root: the named tree is scanned (its plant found) while the script's own tree is not", rooted.status === 1 && rooted.stderr.includes("notes.md:1: private pattern") && !(rooted.stdout + rooted.stderr).includes(ENV_SLUG));
+    const rootedClean = runRig({ "leak.md": `the ${ENV_SLUG} folder\n` }, { env: { PRIVATE_INSTANCE_PATTERNS: ENV_SLUG }, args: (rig) => ["--root", rig] });
+    ok("--root naming the script's own tree is the bare run", rootedClean.status === 1 && rootedClean.stderr.includes("leak.md:1: private pattern"));
+  } finally {
+    rmSync(other, { recursive: true, force: true });
+  }
 }
 
 if (failures.length) {
