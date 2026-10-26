@@ -318,7 +318,10 @@ pace file, so they quote the plan's price until this run's own pace is measured.
 
 Read the summary JSON, never the snapshot file. By exit code:
 
-- `0` — the snapshot is written. Go to step R4.
+- `0` — the snapshot is written. Go to step R4. The summary may carry `bookkeepingLeft` (a
+  file the run keeps about itself could not be written: say each entry's `text` once;
+  nothing to do) and `kbLockLeft` (the knowledge base's pull lock could not be removed:
+  say its `text` once; the next pull takes it over).
 - `3` — the login expired during the pull. Ask the user to run `gs-admin login`, then
   re-issue the same command: answered calls are not made again.
 - `4` — a call failed. The summary's `failed` list names each call (its family, the
@@ -541,10 +544,11 @@ again is done by hand; on an edit, what the edit changes and what that costs) an
 `closing.options`. Ask ONE AskUserQuestion with `closing.ask` and those options verbatim;
 each option carries `answers`, the `answer` commands it stands for. `closing.selection`
 says what the settings select (`programs` of the `listed`, and `text`): say its `text`
-with the ask; when `programs` is 0 the ask itself says the selection holds no program and
-the pages would be empty — present it as written and expect the go-back option (widen the
-window, or name the programs) before any save. On the user's choice, issue each pair in
-order:
+once, before the ask, when `programs` is above 0; when it is 0 the ask itself already
+carries that sentence (the selection holds no program and the pages would be empty) — do
+not repeat it, present the ask as written and expect the go-back option (widen the window,
+or name the programs) before any save; when `closing.selection` is null (an edit with no
+pull to plan) say nothing of it. On the user's choice, issue each pair in order:
 
 ```
 node .gs-superadmin/plugin/scripts/dashboard.mjs answer <dash> <question id> <value> --kb <slug>

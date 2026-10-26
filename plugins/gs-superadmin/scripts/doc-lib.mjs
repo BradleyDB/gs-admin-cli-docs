@@ -2806,7 +2806,8 @@ export function removeFileSync(path) {
 // stopped mid-way (the progress record, F-575 (1)), a finished pull's snapshot
 // left unwritten (the pace files, F-575 (2)) — with every data write landed.
 // ONE home classifies a bookkeeping write's failure by what the file is for, and
-// no site keeps a try/catch of its own:
+// no site keeps a try/catch of its own around a WRITE (the one remove of a stale
+// progress record at a resume keeps one, and says why there):
 //   - progress, pace, any file a reader can live without: writeBookkeepingSync
 //     returns the failure as a record ({path, what, why, text}) and never throws;
 //     the caller says it ONCE (stderr, and the summary where one is written) and
@@ -2850,8 +2851,10 @@ export function writeBookkeepingSync(path, data, what) {
  * @param {string} text
  */
 export function sayLineSync(text) {
-  const line = text.endsWith("\n") ? text : `${text}\n`;
-  try { writeSync(2, line); } catch { process.stderr.write(line); }
+  const buf = Buffer.from(text.endsWith("\n") ? text : `${text}\n`);
+  let off = 0;
+  // A write to a non-blocking pipe can be partial: loop until every byte is out; what a throw leaves goes the slow way.
+  try { while (off < buf.length) off += writeSync(2, buf, off, buf.length - off); } catch { process.stderr.write(buf.subarray(off)); }
 }
 // ── The one advisory file lock (F-545, F-546; reopened at the 0.56.1 release gate) ──
 // Every lock a script takes on a file it shares with another process is this

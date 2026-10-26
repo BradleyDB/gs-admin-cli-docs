@@ -31,7 +31,7 @@
 // Run:  node plugins/gs-superadmin/test/dashboard.mjs
 // Zero dependencies — Node built-ins only.
 // ─────────────────────────────────────────────────────────────────────────────
-import { readFileSync, writeFileSync, existsSync, readdirSync, mkdirSync, rmSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync, readdirSync, mkdirSync, rmSync, renameSync } from "node:fs";
 import { join, dirname, resolve, isAbsolute, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { isDeepStrictEqual } from "node:util";
@@ -58,6 +58,8 @@ const SLUG = "acme-health";
 
 let failures = 0;
 let total = 0;
+/** Lifted before the rig is removed, however the suite ends: the icacls denies the lock arms lay (F-565's ride-along). */
+let lateCleanup = () => {};
 function check(label, cond, detail) {
   total++;
   console.log(`${cond ? "PASS" : "FAIL"}  ${label}`);
@@ -520,7 +522,7 @@ try {
   // F-576 (the second reopen): the writer's declaration is read BEFORE anything is parsed, so a one-item value that
   // happens to be JSON reaches a list setting as one item, never a scalar; `null` stays the writer's own empty.
   check("F-576 (second reopen) a one-item value that is valid JSON reaches a list setting as ONE item (a program named 2024 in selector.names, `true` in selector.ids, 7 in a page's statusDefault — refused later by the writer as a status, but a list), `null` is the writer's own empty for a page's statusDefault, a JSON array is handed over whole, a boolean kind still reads as one, and a text kind keeps JSON's reading of a quoted string",
-    isDeepStrictEqual(changeValue("sources.0.params.selector.names", "2024"), ["2024"]) && isDeepStrictEqual(changeValue("sources.0.params.selector.ids", "true"), ["true"]) && isDeepStrictEqual(changeValue("pages.0.statusDefault", "7"), ["7"]) && changeValue("pages.0.statusDefault", "null") === null && isDeepStrictEqual(changeValue("accounts.lists", '[{"kind":"most-bounced","n":2,"floor":0}]'), [{ kind: "most-bounced", n: 2, floor: 0 }]) && changeValue("accounts.pull", "true") === true && changeValue("pages.0.title", '"Admin view"') === "Admin view",
+    isDeepStrictEqual(changeValue("sources.0.params.selector.names", "2024"), ["2024"]) && isDeepStrictEqual(changeValue("sources.0.params.selector.ids", "true"), ["true"]) && isDeepStrictEqual(changeValue("pages.0.statusDefault", "7"), ["7"]) && changeValue("pages.0.statusDefault", "null") === null && isDeepStrictEqual(changeValue("accounts.lists", '[{"kind":"most-bounced","n":2,"floor":0}]'), [{ kind: "most-bounced", n: 2, floor: 0 }]) && changeValue("accounts.pull", "true") === true && changeValue("pages.0.title", '"Admin view"') === "Admin view" && isDeepStrictEqual(changeValue("sources.0.params.selector.names", '"Onboarding"'), ["Onboarding"]),
     [changeValue("sources.0.params.selector.names", "2024"), changeValue("sources.0.params.selector.ids", "true"), changeValue("pages.0.statusDefault", "7"), changeValue("accounts.lists", '[{"kind":"most-bounced","n":2,"floor":0}]'), changeValue("accounts.pull", "true"), changeValue("pages.0.title", '"Admin view"')]);
 
   // ══ --health-only, and the lock ═══════════════════════════════════════════
@@ -1631,7 +1633,7 @@ try {
     // under the deny (a rename over the lock needs DELETE on Windows), the progress record and the pace files as
     // FOLDERS at their paths (a rename over a folder fails on every platform) — and the run's exit and its one line or
     // summary read; against a control in which a DATA file (the run's status.json) is a folder and the run fails loudly.
-    process.on("exit", allowDelete); // the denies come off however this suite ends (F-565's test-hygiene ride-along)
+    lateCleanup = allowDelete; // the denies come off in the suite's finally, before the rig is removed (F-565's test-hygiene ride-along)
     // (a) the lock record: the deny lands on the preflight's whoami call, before the run's name is recorded.
     rmSync(join(STATE, "faults.json"), { force: true });
     const recordRun = run("refresh", [SLUG], { env: { FAKE_FAULTS: JSON.stringify([{ match: "whoami", kind: "deny-delete", path: lockPath }]) } });
@@ -1719,14 +1721,18 @@ try {
       kbStale.code === 0 && kbStale.json?.kbLockTakenOver?.by === "ben" && /took over a stale pull lock of the knowledge base held by ben since/.test(kbStale.stderr) && !existsSync(kbLockPath) && !existsSync(lockPath), kbStale.json?.kbLockTakenOver ?? kbStale.json?.error ?? kbStale.stderr?.slice(-300));
 
     // ══ F-564: a relative --bin given from another directory reaches the re-documentation child resolved ══
-    const relBin = relative(process.cwd(), FAKE);
-    const marked564 = runNode(join(HERE, "..", "scripts", "manifest.mjs"), ["mark", "--manifest", join(KB, "_manifest.json"), "--key", "journey/p-onboard", "--status", "stale"], { encoding: "utf8" });
-    const relRun = run("refresh", [SLUG], { flags: ["--workspace", WS, "--kb", KB, "--bin", relBin, "--today", TODAY, "--by", "ana"] });
+    // A program is put behind the way the tenant does it — its doc moved aside (a status mark does not put one behind:
+    // the R15 tester's note) — so the plan finds the knowledge base behind on a listed program and the batch runs.
     // The tell: handed the relative spelling raw, describe-batch (cwd the workspace) cannot find the CLI and the refresh
-    // refuses "describe-batch refused: --bin not found"; resolved, the batch runs (the program marked stale is behind,
-    // so the batch is reached) and the refresh finishes — whatever the fixture's gap holds at this point of the suite.
-    check("F-564 a --bin relative to the directory the admin runs from (this suite's cwd, not the workspace) reaches describe-batch, which runs FROM the workspace, resolved: the batch is reached (a program behind) and runs — no '--bin not found' refusal — and the refresh finishes; the folder passed is said workspace-relative on the summary",
-      !isAbsolute(relBin) && process.cwd() !== WS && marked564.status === 0 && relRun.code === 0 && !/describe-batch refused/.test(relRun.json?.error ?? "") && relRun.json?.redocumented?.programs?.behind >= 1 && relRun.json.redocumented.folder?.workspaceRelative === true && relRun.json.redocumented.folder.passed === "acme-prod/journey" && !("note" in relRun.json.redocumented.folder), [relBin, relRun.json?.redocumented ?? relRun.json?.error ?? relRun.stderr?.slice(-300)]);
+    // refuses "describe-batch refused: --bin not found"; resolved, the batch re-documents it and the refresh finishes.
+    const relBin = relative(process.cwd(), FAKE);
+    const onboardDoc = join(WS, "acme-prod", "journey", "p-onboard.md");
+    renameSync(onboardDoc, `${onboardDoc}.aside`);
+    const relRun = isAbsolute(relBin) ? null : run("refresh", [SLUG], { flags: ["--workspace", WS, "--kb", KB, "--bin", relBin, "--today", TODAY, "--by", "ana"] });
+    if (!existsSync(onboardDoc)) renameSync(`${onboardDoc}.aside`, onboardDoc); else rmSync(`${onboardDoc}.aside`, { force: true });
+    if (relRun) check("F-564 a --bin relative to the directory the admin runs from (this suite's cwd, not the workspace) reaches describe-batch, which runs FROM the workspace, resolved: the program whose doc was moved aside is re-documented through the child (documented at least 1, no '--bin not found' refusal) and the refresh finishes; the folder passed is said workspace-relative on the summary",
+      process.cwd() !== WS && relRun.code === 0 && !/describe-batch refused/.test(relRun.json?.error ?? "") && relRun.json?.redocumented?.programs?.documented >= 1 && existsSync(onboardDoc) && relRun.json.redocumented.folder?.workspaceRelative === true && relRun.json.redocumented.folder.passed === "acme-prod/journey" && !("note" in relRun.json.redocumented.folder), [relBin, relRun.json?.redocumented ?? relRun.json?.error ?? relRun.stderr?.slice(-300)]);
+    else console.log("SKIP  F-564 relative --bin: the fixture CLI sits on another drive than this suite's cwd, so no relative spelling of it exists here");
     if (process.platform === "win32") {
       const cross = kbFolderOf("D:\\ws", "E:\\kb\\acme-prod", "journey");
       const sameDrive = kbFolderOf("D:\\ws", "D:\\ws\\acme-prod", "journey");
@@ -1754,7 +1760,8 @@ try {
       exported558.code === 0 && imported558.code === 0 && snapshots(first).length === 0 && refused && publishSaid && changeSaid && readFileSync(firstLock, "utf8") === liveRecord,
       Object.fromEntries(Object.entries(during558).map(([v, r]) => [v, r.json?.error ?? r.json?.publish?.why ?? r.stderr?.slice(-200)])));
     // F-566: a refused export writes NOTHING — the --out file is absent after the refusal: refused as already running
-    // (above), refused for want of a snapshot (below, the dead holder), refused as a draft or an unknown dashboard.
+    // (above), refused for want of a snapshot (below, the dead holder), refused as an unknown dashboard (the store's
+    // own refusal, pinned by its wording: savedSpec's "no dashboard" line, before any write).
     const outDuring = join(ROOT, "r15", "first-x.json");
     const exportNone = run("export", ["zz-no-such", "--out", join(ROOT, "r15", "none-x.json")]);
     check("F-566 an export refused --with-snapshot while the first refresh runs has written nothing (no --out file, no .snapshot.json beside it), and an export of a dashboard that does not exist is refused before writing too", during558.export.code === 1 && !existsSync(outDuring) && !existsSync(outDuring.replace(/\.json$/, ".snapshot.json")) && exportNone.code === 1 && /no dashboard "zz-no-such"/.test(exportNone.json?.error ?? "") && !existsSync(join(ROOT, "r15", "none-x.json")), [existsSync(outDuring), exportNone.json?.error]);
@@ -1798,6 +1805,7 @@ try {
     [liveToken.code, liveToken.json?.status ?? liveToken.json?.error, liveToken.json?.pull?.calls, liveToken.stderr?.split("\n").filter((l) => /token/.test(l)).slice(0, 3)]);
   check("F-534 reopen's class: no output of any verb this suite ran (stdout or stderr) prints a structured value as \"[object …]\"", objectWords.length === 0, objectWords.slice(0, 5));
 } finally {
+  lateCleanup();
   removeTempDir(ROOT);
 }
 

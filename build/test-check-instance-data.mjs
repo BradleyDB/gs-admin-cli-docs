@@ -594,9 +594,10 @@ const ENV_SLUG = "omega" + "corp" + "-ws";
   ];
   const disagreements = texts.filter((t) => maskLocalPaths(t, pairs) !== oldMask(t, pairs)).map((t) => [t, maskLocalPaths(t, pairs), oldMask(t, pairs)]);
   ok("F-585 maskLocalPaths on literalSpans agrees with the pass-by-pass reference over every axis (nesting, slashes, case, repeats)", disagreements.length === 0 && maskLocalPaths(texts[0], pairs).includes("<repo>\\build\\x.mjs") && !maskLocalPaths(texts[4], pairs).includes("Users"));
-  // (b) The finder itself: a nested literal takes the longer's token at one start; touching
-  // spans merge; a case-folded search over a line whose folding changes its length (U+0130
-  // lower-cases to two code units) lands on the right characters.
+  // (b) The finder itself: a nested literal takes the longer's token at one start; spans
+  // that overlap merge and spans that only touch stay apart; a case-folded search over a
+  // line whose folding changes its length (U+0130 lower-cases to two code units) lands on
+  // the right characters.
   const spans = literalSpans("ab abc ABC x", /** @type {Array<[string, string]>} */ ([["ab", "A"], ["abc", "B"]]), { caseInsensitive: true });
   ok("F-585 literalSpans: the longest literal at a start wins its token, and overlapping spans merge", spans.length === 3 && spans[0].token === "A" && spans[0].end === 2 && spans[1].token === "B" && spans[1].start === 3 && spans[1].end === 6 && spans[2].token === "B" && spans[2].start === 7 && spans[2].end === 10);
   const dotted = `İİİ see ${ENV_SLUG} here`;

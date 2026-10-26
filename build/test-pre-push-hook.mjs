@@ -55,7 +55,7 @@
 // dev/hooks/pre-push ships nowhere (dev/ is stripped at release), so on a tree
 // without it this suite has nothing to test and says so, exit 0. Zero dependencies.
 
-import { chmodSync, copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync } from "node:fs";
+import { chmodSync, copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
@@ -342,11 +342,12 @@ try {
   gitOk(A, "switch", "-q", "trunk");
   r = push(["origin", `${c10}:refs/heads/t5`]);
   ok("5f a pushed tree whose own checker is a no-op is judged by the pushing checkout's checker and refused", r.status !== 0 && r.stderr.includes(`check-instance-data failed on refs/heads/t5 (tip) (${c10})`) && absent(r), out(r));
-  // The same push made FROM that tree is judged by its no-op and passes: the limit, pinned,
-  // so a reader of this suite sees what the hook does and does not promise.
+  // The same push made FROM that tree: the checker standing in that checkout predates the hook's gates (it knows
+  // none of the arguments — here a one-line no-op), so the hook refuses it by name before anything is gated — the
+  // stated limit 5, pinned as a refusal, never a pass under a checker that cannot judge (the review's item 6).
   gitOk(A, "switch", "-q", "t5");
   r = push(["origin", "t5"]);
-  ok("5g (the stated limit) the same push made from a checkout standing on the no-op checker is judged by it", r.status === 0 && gated(r.stderr).includes(c10) && !/Instance-data check passed/.test(r.stderr), out(r));
+  ok("5g (the stated limit) a push made from a checkout whose checker predates the gates is refused outright, naming the checker and the recovery, nothing gated", r.status !== 0 && r.stderr.includes("predates the hook's gates") && r.stderr.includes("pull dev into this branch") && gated(r.stderr).length === 0 && !/gating the/.test(r.stderr), out(r));
   gitOk(A, "switch", "-q", "trunk");
   clean("5");
 
@@ -407,15 +408,62 @@ try {
   clean("9d");
   gitOk(A, "tag", "-a", "-m", `release notes mention --kb ${PLANT}`, "v-planted", c3);
   r = push(["origin", "v-planted"]);
-  ok("9e an annotated tag whose message carries the plant is refused on the tag object, nothing gated", r.status !== 0 && r.stderr.includes("check-instance-data failed on the tag object of refs/tags/v-planted") && gated(r.stderr).length === 0 && gitOk(A, "cat-file", "-p", "v-planted").includes(PLANT) && absent(r), out(r));
+  ok("9e an annotated tag whose message carries the plant is refused on the tag object (its body), nothing gated", r.status !== 0 && /check-instance-data failed on the tag object [0-9a-f]{12} of refs\/tags\/v-planted/.test(r.stderr) && /tag [0-9a-f]{12} body:1: private pattern/.test(r.stderr) && gated(r.stderr).length === 0 && gitOk(A, "cat-file", "-p", "v-planted").includes(PLANT) && absent(r), out(r));
   gitOk(A, "-c", `user.name=Pat ${PLANT}`, "tag", "-a", "-m", "a clean message", "v-tagger", c3);
   r = push(["origin", "v-tagger"]);
-  ok("9f a plant in the tagger's name is refused on the tag object", r.status !== 0 && r.stderr.includes("check-instance-data failed on the tag object of refs/tags/v-tagger") && absent(r), out(r));
+  ok("9f a plant in the tagger's name is refused on the tag object (its header)", r.status !== 0 && /check-instance-data failed on the tag object [0-9a-f]{12} of refs\/tags\/v-tagger/.test(r.stderr) && /tag [0-9a-f]{12} header:\d+: private pattern/.test(r.stderr) && absent(r), out(r));
   clean("9f");
   r = push(["origin", `${c3}:refs/heads/zz-${PLANT}-x`]);
   const hookLines = r.stderr.split("\n").filter((l) => l.startsWith("pre-push:"));
   ok("9g a ref NAME carrying the plant is refused before the hook prints the name anywhere: no gating line, the hook's lines free of it", r.status !== 0 && hookLines.some((l) => l.includes("the name of a pushed ref carries text")) && !hookLines.some((l) => l.includes("gating the")) && hookLines.every((l) => !l.includes(PLANT)) && !r.stdout.includes(PLANT), out(r));
   clean("9g");
+  // The review's items 1 to 4: a tag message git accepts with a NUL byte, or beginning with the two bytes of a UTF-16
+  // mark, is decoded as UTF-8 and scanned (the tree's binary sniff would read an empty text or a wrong decoding); a
+  // tag of a tag is peeled and the inner object gated; the name STORED in a tag object is gated with its header,
+  // whatever ref name the push uses.
+  // (the file is not named nul.txt: on Windows that name is the NUL device, and nothing is written)
+  writeFiles(A, { "zero-byte-message.txt": Buffer.from(`release notes --kb ${PLANT}\0tail\n`, "utf8") });
+  gitOk(A, "tag", "-a", "-F", join(A, "zero-byte-message.txt"), "v-nul", c3);
+  r = push(["origin", "v-nul"]);
+  ok("9h a tag message carrying a NUL byte is still scanned (never read as a binary and skipped): refused on the tag object", r.status !== 0 && r.stderr.includes("check-instance-data failed on the tag object") && absent(r), out(r));
+  writeFiles(A, { "bom.txt": Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from(`--kb ${PLANT}\n`, "utf8")]) });
+  gitOk(A, "tag", "-a", "-F", join(A, "bom.txt"), "v-bom", c3);
+  r = push(["origin", "v-bom"]);
+  ok("9i a tag message beginning with the two bytes of a UTF-16 mark is decoded as UTF-8 and the plant found: refused on the tag object", r.status !== 0 && r.stderr.includes("check-instance-data failed on the tag object") && absent(r), out(r));
+  gitOk(A, "tag", "-a", "-m", `inner notes --kb ${PLANT}`, "v-inner", c3);
+  gitOk(A, "tag", "-a", "-m", "a clean outer tag", "v-outer", "v-inner");
+  r = push(["origin", "v-outer"]);
+  ok("9j a tag of a tag: the inner tag object the push carries is gated too (peeled object by object), refused on it", r.status !== 0 && r.stderr.includes("check-instance-data failed on the tag object") && gated(r.stderr).length === 0 && absent(r), out(r));
+  gitOk(A, "tag", "-a", "-m", "a clean message", `zz-${PLANT}-named`, c3);
+  gitOk(A, "tag", "v-alias", `refs/tags/zz-${PLANT}-named`);
+  r = push(["origin", "v-alias"]);
+  ok("9k the name STORED in a tag object (not the ref name the push uses) is gated with the object's header: refused, the stored name unprinted", r.status !== 0 && r.stderr.includes("check-instance-data failed on the tag object") && absent(r), out(r));
+  clean("9k");
+  // The review's item 5: the pushed tree cannot supply the checker's private list. The MAIN checkout's config
+  // (A's, untracked and excluded) holds the real pattern; the pushed tree force-adds a decoy config whose one
+  // pattern matches nothing, beside a plant; the push runs with NO environment pattern. The main config must judge.
+  writeFiles(A, { "gs-admin-explorer.config.json": JSON.stringify({ privateInstancePatterns: [PLANT] }) });
+  writeFiles(join(A, ".git", "info"), { exclude: "gs-admin-explorer.config.json\n" });
+  gitOk(A, "switch", "-q", "-c", "t10", c3);
+  writeFiles(A, { "notes.md": `--kb ${PLANT}\n` });
+  gitOk(A, "add", "-A");
+  gitOk(A, "add", "-f", "gs-admin-explorer.config.json");
+  gitOk(A, "-c", "core.autocrlf=false", "commit", "-q", "-m", "c17 a decoy config and a plant");
+  // The tracked copy is the decoy; the working copy stays the real one for the main checkout's lookup.
+  writeFiles(A, { "gs-admin-explorer.config.json": JSON.stringify({ privateInstancePatterns: ["zz-nothing-matches-anything"] }) });
+  gitOk(A, "add", "-f", "gs-admin-explorer.config.json");
+  gitOk(A, "commit", "-q", "--amend", "--no-edit");
+  writeFiles(A, { "gs-admin-explorer.config.json": JSON.stringify({ privateInstancePatterns: [PLANT] }) });
+  const c17 = gitOk(A, "rev-parse", "HEAD");
+  const noEnv = /** @type {Record<string, string>} */ (gitEnv());
+  delete noEnv.PRIVATE_INSTANCE_PATTERNS;
+  r = git(A, ["-c", `core.hooksPath=${hooksDir}`, "push", "--dry-run", "origin", "t10"], { env: noEnv });
+  ok("9l a pushed tree that force-adds a decoy config does not supply the checker's private list: the main checkout's config judges (the hit attributed to the local config's entry 1) and the plant is refused", r.status !== 0 && r.stderr.includes(`check-instance-data failed on refs/heads/t10 (tip) (${c17})`) && r.stderr.includes("private pattern (local gs-admin-explorer.config.json entry 1): [match redacted]") && absent(r), out(r));
+  gitOk(A, "checkout", "-q", "--", "gs-admin-explorer.config.json");
+  gitOk(A, "switch", "-q", "trunk");
+  rmSync(join(A, "gs-admin-explorer.config.json"), { force: true });
+  rmSync(join(A, ".git", "info", "exclude"), { force: true });
+  clean("9l");
 
   // ── 7. nothing reached the remote ──────────────────────────────────────────
   const heads = gitOk(bare, "for-each-ref", "--format=%(refname)").split("\n").sort();

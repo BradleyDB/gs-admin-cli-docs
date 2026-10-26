@@ -569,7 +569,7 @@ import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   makeCliHelpers, findWorkspaceDir, findWorkspaceCatalog, makeCommandResolver, assertReadOnlyCommand,
-  resolveCliArgv, isAuthDeath, readJsonFile, writeFileAtomicSync, writeBookkeepingSync, removeFileSync, acquireFileLock, isMainModule, stripBom, cmpKey, termKey,
+  resolveCliArgv, isAuthDeath, readJsonFile, writeFileAtomicSync, writeBookkeepingSync, removeFileSync, acquireFileLock, sayLineSync, isMainModule, stripBom, cmpKey, termKey,
   readKbIdentity,
 } from "./doc-lib.mjs";
 import { printable } from "./journal-lib.mjs";
@@ -2378,13 +2378,16 @@ export const callSecondsTable = (pace) => ({ ...CALL_SECONDS, ...Object.fromEntr
  * the knowledge base's pace may have moved since (another dashboard's pull over it). The full pull and this run are
  * re-priced family by family from the plan's own call counts (`byFamily`) at the table over `pace` now, and the switch
  * costs the plan keeps as totals alone (what customer lists, health and step detail add) scale by the full pull's
- * ratio. A plan from before `byFamily` was recorded is returned as it stands (`repriced` false). Null with no plan.
+ * ratio. A plan from before `byFamily` was recorded, or a quote with no pace file to price at, is returned as it
+ * stands (`repriced` false) — the plan's own figures, never the bare constants. Null with no plan. The switch costs'
+ * scaling by one ratio is an approximation the plan's totals allow; a switch whose families moved against the rest
+ * is priced afresh by the refresh it causes.
  * @param {?*} estimate plan.json's `estimate` @param {?Object<string, number>} pace the pace files as read now (readPaceFiles)
  * @returns {?*} the estimate with `full.seconds`, `thisRun.seconds` and the three `addsSeconds` re-priced, plus `repriced` and `ratio`
  */
 export function repriceEstimate(estimate, pace) {
   if (!estimate?.full) return null;
-  if (!estimate.full.byFamily) return { ...estimate, repriced: false, ratio: 1 };
+  if (!pace || !estimate.full.byFamily) return { ...estimate, repriced: false, ratio: 1 };
   const t = callSecondsTable(pace);
   const price = (byFamily) => Math.round(Object.entries(byFamily ?? {}).reduce((s, [f, n]) => s + Number(n) * (t[f] ?? 7), 0) * 100) / 100;
   const full = price(estimate.full.byFamily);
@@ -2459,7 +2462,9 @@ export const engagementRunsRoot = (wsDir) => join(wsDir, ".gs-superadmin", "tmp"
 // re-documentation, the pull and the pace write, and the engine's own `run` — takes this lock FIRST, through doc-lib's
 // one primitive (the same acquireFileLock as the dashboard's lock and the manifest's: an exclusive create, a dead
 // holder taken over, a live one named and refused up front — never waited on, a pull is minutes), and releases it once
-// the pace is merged. A plan is a read and takes none. A lock the release cannot remove is said the way the
+// the pace is merged. The engine's own plan mode takes it when it is free and merges its pace, and merges none when
+// another pull holds it (a plan is a read; its measured pace is a bonus, never worth a refusal); the dashboard holds
+// the lock through its own plan, inside its refresh. A lock the release cannot remove is said the way the
 // dashboard's own is (never swallowed, F-557): the caller carries it as `kbLockLeft`.
 export const KB_PULL_LOCK_FILE = "engagement-pull.lock";
 export const KB_PULL_LOCK_STALE_MS = 2 * 60 * 60 * 1000;
@@ -3114,8 +3119,9 @@ export function fetchEngagement(ctx) {
       remaining: priceRemaining(),
     },
     // The full pull's calls by family too, with the table the plan priced them at (`secondsPerCall`, the constants
-    // under the pace files as read now): a later quote of this plan — a change's price, a report's refresh offer —
-    // re-prices from these at the pace known THEN (repriceEstimate), never from this figure alone (F-575, the owed item).
+    // under the pace files as read now; the judge reads it back to reproduce this plan's own figure): a later quote of
+    // this plan — a change's price, a report's refresh offer, a re-selection's full-pull line — re-prices from the
+    // counts at the pace files as they stand when quoted (repriceEstimate), never from this figure alone (F-575).
     full: { calls: calls(fullUnits) + ownReads, seconds: seconds(fullUnits) + ownSampleSeconds, byFamily: { ...familyCounts(fullUnits, base, params.pageSize), ...(ownReads ? sampleFamilies : {}) } },
     secondsPerCall: table,
     stepDetail: { on: params.stepDetail, addsCalls: calls(withStep) - calls(without), addsSeconds: seconds(withStep) - seconds(without) },
@@ -5332,17 +5338,23 @@ async function main() {
   const kbDir = opt("--kb") ? resolve(opt("--kb")) : null;
   if (kbDir && !existsSync(kbDir)) fail(`--kb ${opt("--kb")}: directory not found`);
 
-  // A pull over a knowledge base takes its pull lock first (one pull at a time over it; a plan is a read and takes
-  // none), and releases it once its pace is merged; a lock the release cannot remove is said, never swallowed.
-  const kbLock = kbDir && mode !== "plan" ? takeKbPullLock(kbDir, { owner: { by: process.env.USERNAME ?? process.env.USER ?? "unknown", run: basename(runDir) } }) : null;
-  if (kbLock && !kbLock.taken) fail(kbLock.text ?? "another pull is running over the knowledge base");
+  // The transport first: a --bin that cannot be resolved fails here (fail exits), before any lock is taken.
+  const transport = cliTransport({ cliArgv: resolveCliArgv({ binOpt: opt("--bin"), fail }) });
+  // A pull over a knowledge base takes its pull lock (one pull at a time over it) and releases it once its pace is
+  // merged; a plan takes it when free and otherwise merges no pace (said, never a refusal: a plan is a read); a lock
+  // the release cannot remove is said, never swallowed — synchronously, since fail exits at once.
+  const kbLock = kbDir ? takeKbPullLock(kbDir, { owner: { by: process.env.USERNAME ?? process.env.USER ?? "unknown", run: basename(runDir) } }) : null;
+  if (kbLock && !kbLock.taken) {
+    if (mode !== "plan") fail(kbLock.text ?? "another pull is running over the knowledge base");
+    console.error(`engagement.mjs: ${kbLock.text ?? "another pull is running over the knowledge base"} — this plan reads the knowledge base and merges no pace into it`);
+  }
   if (kbLock?.taken && kbLock.takenOver) console.error(`engagement.mjs: took over a stale pull lock of the knowledge base held by ${kbLock.takenOver.by ?? "unknown"} since ${kbLock.takenOver.at}`);
   const releaseKb = () => (kbLock?.taken ? kbLock.release() : null);
   let summary;
   try {
     summary = fetchEngagement({
       params, runDir, kbDir, previous, previousStore, phase: mode === "plan" ? "plan" : "all",
-      transport: cliTransport({ cliArgv: resolveCliArgv({ binOpt: opt("--bin"), fail }) }),
+      transport,
       gate: makeGate({ catalog, hooksDir: join(here, "..", "hooks") }),
       // The knowledge base's measured pace prices this plan, and what this run measures goes back to it (F-575).
       pace: kbDir ? readPaceFiles([kbPacePath(kbDir)], (line) => console.error(`engagement.mjs: ${line}`)) : null,
@@ -5352,17 +5364,17 @@ async function main() {
     });
   } catch (e) {
     const left = releaseKb();
-    if (left) console.error(`engagement.mjs: ${kbLockLeftOf(left).text}`);
+    if (left) sayLineSync(`engagement.mjs: ${kbLockLeftOf(left).text}`);
     if (e instanceof EngagementRefusal) fail(e.message);
     throw e;
   }
   const bookkeepingLeft = [...(summary.bookkeepingLeft ?? [])];
-  if (kbDir && summary.measuredPace) {
+  if (kbDir && summary.measuredPace && kbLock?.taken) {
     const paced = writePaceFile(kbPacePath(kbDir), basename(runDir), summary.measuredPace);
     if (paced.left) { bookkeepingLeft.push(paced.left); console.error(`engagement.mjs: bookkeeping: ${paced.left.text}`); }
   }
   const kbLeft = releaseKb();
-  if (kbLeft) console.error(`engagement.mjs: ${kbLockLeftOf(kbLeft).text}`);
+  if (kbLeft) sayLineSync(`engagement.mjs: ${kbLockLeftOf(kbLeft).text}`);
   const out = { ok: summary.status === "ok", mode, runDir, ...summary, ...(bookkeepingLeft.length ? { bookkeepingLeft } : {}), ...(kbLeft ? { kbLockLeft: kbLockLeftOf(kbLeft) } : {}), whoami: summary.whoami ? { tokenState: summary.whoami.tokenState, expiresInSeconds: summary.whoami.expiresInSeconds, host: summary.whoami.host } : undefined };
   if (summary.status !== "ok" || mode !== "run") await finish(out, EXIT[summary.status] ?? EXIT.failed);
 

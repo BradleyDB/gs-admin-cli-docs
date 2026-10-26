@@ -4185,12 +4185,15 @@ reading the new prose. Every refusal below is ONE JSON line on stdout with `erro
 Tenant: sandbox. Login: needed (a pull starts). Minutes: about 2 for the refused run, then one refresh of about 5.
 Start when: a scratch is saved (save-only) and `gs-admin whoami` shows 10 minutes left. The arm as § R15 R2 made it:
 start `refresh <scratch>` and within its first second (before the plan makes a call) open `<scratch dir>/refresh.lock`
-in PowerShell with [IO.File]::Open($path, "Open", "Read", "ReadWrite") and hold it through the retry (about two
-seconds). FIXED: exit 1 with one JSON line — `error` reads `the refresh lock of "<scratch>" could not be recorded
-(EPERM): a handle on <path> forbids the write — run the line again once it is gone; the refresh lock could not be removed
-at the end (EPERM) and was left at <path>: …`, `lockRecord` {path, why EPERM} and `lockLeft` on the summary; nothing on
-stderr but the dashboard's own lines; release the handle and run the line again: exit 0, `lockTakenOver` naming the
-dead holder. BROKEN: a stack, exit 1 with no `lockRecord`, or the second run refused → REOPEN F-563 quoting stderr.
+in PowerShell with [IO.File]::Open($path, "Open", "Read", "ReadWrite") and hold it until the refusal has printed (the
+retry is about a second; the release runs right after it). FIXED: exit 1 with one JSON line — `error` reads `the
+refresh lock of "<scratch>" could not be recorded (EPERM): a handle on <path> (a scanner, a sync client, an editor)
+forbids the write — run the line again once it is gone; the refresh lock could not be removed at the end (EPERM) and
+was left at <path>: …`, `lockRecord` {path, why EPERM} and `lockLeft` on the summary; nothing on stderr but the
+dashboard's own lines; release the handle and run the line again: exit 0, `lockTakenOver` naming the dead holder. A
+handle let go between the retry and the release gives the record refusal with NO `lockLeft` and no takeover on the
+second run — that half is met then, and the arm is run once more holding longer for the `lockLeft` half. BROKEN: a
+stack, exit 1 with no `lockRecord`, or the second run refused → REOPEN F-563 quoting stderr.
 
 ### R2 (F-575 (1), under F-563; Windows) — the held handle on a running pull's progress.json
 

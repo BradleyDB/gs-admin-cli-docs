@@ -1013,7 +1013,10 @@ const lockLeftOf = (left) => ({ path: left.path, why: left.why, text: `the refre
 function attachSaid(out, key, said) {
   if (!said) return out;
   if (out instanceof DashboardRefusal) { out.message += `; ${said.text}`; out.details = { ...(out.details ?? {}), [key]: said }; return out; }
-  if (out instanceof Error || out === null || typeof out !== "object") { sayLineSync(`dashboard.mjs: ${said.text}`); return out; }
+  // Any other error: on its message too (an engine or spec refusal reaches the JSON line through its message), and
+  // on stderr at once for the crash that prints a stack and no JSON.
+  if (out instanceof Error) { out.message += `; ${said.text}`; sayLineSync(`dashboard.mjs: ${said.text}`); return out; }
+  if (out === null || typeof out !== "object") { sayLineSync(`dashboard.mjs: ${said.text}`); return out; }
   return /** @type {T} */ ({ ...out, [key]: said });
 }
 /**
@@ -2056,8 +2059,15 @@ function verbRefresh(ctx, slug, { full, healthOnly, planRun = null }) {
       ? { from: state.pullRun ?? runId, run: pulledIn, lookbackDays: { from: state.lookbackDays, to: planned.lookbackDays } }
       : null;
     if (planned.summary.status === "ok" && (planned.lookbackDays !== stateRecord.lookbackDays || stateRecord.pullRun !== pulledIn)) writeJson(join(dir, STATE_FILE), { ...stateRecord, lookbackDays: planned.lookbackDays, pullRun: pulledIn });
+    // What the pace write and the knowledge-base lock's release leave to say, set once the pull is over and carried
+    // by the summary AND by a stop's refusal (the review's item: a stopped pull said neither).
+    /** @type {import("./doc-lib.mjs").BookkeepingLeft[]} */
+    let paceLeft = [];
+    /** @type {{ kbLockLeft?: { path: string, why: string, text: string } }} */
+    let kbSaid = {};
     const stopped = (r, logins = null) => {
       const code = r.summary.status === "token-expired" ? "token-expired" : r.summary.status === "partial" ? "partial" : "failed";
+      const leftToSay = [...(r.summary.bookkeepingLeft ?? []), ...paceLeft];
       const made = r.summary.calls ? ` after ${plural(r.summary.calls.made, "call")} this run${r.summary.calls.reused ? ` (${r.summary.calls.reused} reused from before)` : ""}` : "";
       // The logins still needed, when known: none left means the next run only finishes (the reduce and the pages).
       const more = code !== "token-expired" || logins == null ? "" : logins === 0 ? " — every call is made: the next run finishes it" : ` — about ${plural(logins, "more login")} of an hour to finish`;
@@ -2066,7 +2076,7 @@ function verbRefresh(ctx, slug, { full, healthOnly, planRun = null }) {
       const why = code === "partial" ? failedText(r.summary.failed) : r.summary.stopped ?? r.summary.status;
       const again = refreshRemedy(ctx, slug, { full, healthOnly });
       const next = code === "failed" ? "" : ` — ${code === "token-expired" ? "run gs-admin login, then " : ""}run \`${again}\` again: it ${code === "partial" ? "retries what failed and " : ""}continues where it stopped; the last good pages are untouched`;
-      refuse(`the ${healthOnly ? "health-only " : ""}refresh stopped${made}: ${why}${next}${more}${lock.takenOver ? `; a stale lock held by ${lock.takenOver.by ?? "unknown"} since ${lock.takenOver.at} was taken over` : ""}${r.summary.bookkeepingLeft?.length ? `; ${r.summary.bookkeepingLeft.map((b) => b.text).join("; ")}` : ""}`, code, { ...takenOver, ...kbTakenOver, ...(abandoned ? { abandoned } : {}), ...(r.summary.bookkeepingLeft?.length ? { bookkeepingLeft: r.summary.bookkeepingLeft } : {}), ...(code === "failed" ? {} : remedyOf(again, code === "token-expired")) });
+      refuse(`the ${healthOnly ? "health-only " : ""}refresh stopped${made}: ${why}${next}${more}${lock.takenOver ? `; a stale lock held by ${lock.takenOver.by ?? "unknown"} since ${lock.takenOver.at} was taken over` : ""}${leftToSay.length ? `; ${leftToSay.map((b) => b.text).join("; ")}` : ""}${kbSaid.kbLockLeft ? `; ${kbSaid.kbLockLeft.text}` : ""}`, code, { ...takenOver, ...kbTakenOver, ...kbSaid, ...(abandoned ? { abandoned } : {}), ...(leftToSay.length ? { bookkeepingLeft: leftToSay } : {}), ...(code === "failed" ? {} : remedyOf(again, code === "token-expired")) });
     };
     if (planned.summary.status !== "ok") stopped(planned);
     const estimate = planned.summary.estimate;
@@ -2092,7 +2102,7 @@ function verbRefresh(ctx, slug, { full, healthOnly, planRun = null }) {
     const redocumented = redocument(ctx, { spec, estimate, runDir: planned.runDir });
     if (redocumented.aborted?.reason === "auth") {
       const again = refreshRemedy(ctx, slug, { full, healthOnly });
-      refuse(`the refresh stopped during re-documentation (${plural(redocumented.calls, "describe")} made): the login expired — run gs-admin login, then run \`${again}\` again: it continues where it stopped; the last good pages are untouched${lock.takenOver ? `; a stale lock held by ${lock.takenOver.by ?? "unknown"} since ${lock.takenOver.at} was taken over` : ""}`, "token-expired", { ...takenOver, ...(abandoned ? { abandoned } : {}), redocumented, ...remedyOf(again, true) });
+      refuse(`the refresh stopped during re-documentation (${plural(redocumented.calls, "describe")} made): the login expired — run gs-admin login, then run \`${again}\` again: it continues where it stopped; the last good pages are untouched${lock.takenOver ? `; a stale lock held by ${lock.takenOver.by ?? "unknown"} since ${lock.takenOver.at} was taken over` : ""}`, "token-expired", { ...takenOver, ...kbTakenOver, ...(abandoned ? { abandoned } : {}), redocumented, ...remedyOf(again, true) });
     }
     // The pull.
     const pulledRun = runAdapter(ctx, { spec, runId: basename(planned.runDir), phase: "all", previousPath, forceFull: full, healthOnly, lookbackDays: planned.lookbackDays, previousStore });
@@ -2101,12 +2111,14 @@ function verbRefresh(ctx, slug, { full, healthOnly, planRun = null }) {
     // pace file that cannot be written is said once here and on the summary, and the refresh goes on to its snapshot
     // and pages — a pull whose calls all landed is never failed by its bookkeeping.
     const paced = writePace(ctx, slug, basename(pulledRun.runDir), pulledRun.summary.measuredPace);
-    const bookkeepingLeft = [...(pulledRun.summary.bookkeepingLeft ?? []), ...paced.left];
-    for (const left of paced.left) ctx.log(`bookkeeping: ${left.text}`);
+    paceLeft = paced.left;
+    const bookkeepingLeft = [...(pulledRun.summary.bookkeepingLeft ?? []), ...paceLeft];
+    for (const left of paceLeft) ctx.log(`bookkeeping: ${left.text}`);
     const bookkeeping = bookkeepingLeft.length ? { bookkeepingLeft } : {};
-    // The knowledge base's pull lock is released here, the pace merged; what it leaves behind rides on the summary.
+    // The knowledge base's pull lock is released here, the pace merged; what it leaves behind rides on the summary,
+    // or on the stop's refusal below.
     const kbLeft = releaseKb();
-    const kbSaid = kbLeft ? { kbLockLeft: kbLeft } : {};
+    kbSaid = kbLeft ? { kbLockLeft: kbLeft } : {};
     // What the stop says is still needed is the adapter's remainder over the records as they stand (F-518), priced the
     // way the resume's opening line is; never the plan's calls less this run's counts, which count unforeseen cuts.
     if (pulledRun.summary.status !== "ok") {
@@ -2211,7 +2223,9 @@ function reselectFromStore(ctx, slug, spec) {
   if (!r.rank) {
     const line = refreshRemedy(ctx, slug);
     const plan = lastPlan(ctx, slug);
-    const fullMinutes = plan?.estimate?.full?.seconds != null ? minutesOf(plan.estimate.full.seconds) : null;
+    // The full pull's minutes at today's pace (F-575: the third quote of the last plan, beside change and report).
+    const est = plan?.estimate ? repriceEstimate(plan.estimate, readPace(ctx, slug)) : null;
+    const fullMinutes = est?.full?.seconds != null ? minutesOf(est.full.seconds) : null;
     return {
       done: false, ranked: false, rebuilt: !!rebuilt, why: r.why, fullRefreshMinutes: fullMinutes,
       text: `The change is saved. The customer lists were not ranked again: ${r.why}. They are ranked at the next refresh (a full pull this once, ${fullMinutes != null ? `about ${plural(fullMinutes, "minute")}` : "a full pull's time"}): \`${line}\`. ${rebuilt ? "The pages were rebuilt with the other changes." : "There are no pages to rebuild yet."}`,
@@ -2261,8 +2275,10 @@ export function changeValue(path, raw) {
   const kind = coversList(path) ? "list" : QUESTIONS.find((q) => q.path && coveredPath(q.path) === covered)?.kind ?? null;
   if (kind === "list") {
     // A JSON array (the object-valued lists, the customer lists) is handed over whole; a shell-stripped `[a,b]` and the
-    // bare comma form split on commas; `none` empties; a bare JSON scalar is ONE item, never a scalar.
+    // bare comma form split on commas; `none` empties; a bare JSON scalar is ONE item, never a scalar; a quoted single
+    // text whose quotes survived the shell (a double-quoted pair in bash or cmd) is ONE item without its quotes.
     if (s.startsWith("[")) { try { const v = JSON.parse(s); if (Array.isArray(v)) return v; } catch { /* the comma form below */ } }
+    if (/^"(?:[^"\\]|\\.)*"$/.test(s)) { try { return [JSON.parse(s)]; } catch { /* the text as it is */ } }
     const inner = /^\[.*\]$/.test(s) ? s.slice(1, -1) : s;
     return noneValue(inner) ? [] : listValue(inner);
   }
@@ -2355,7 +2371,7 @@ function perSegmentLeftOut(newlyKept, lists) {
  * @param {?*} plan the last plan's summary (plan.json) @param {?Object<string, number>} [pace] readPaceFiles' overlay; none keeps the plan's own figures
  */
 export function pullSecondsAfter(plan, before, after, pace = null) {
-  const e = pace ? repriceEstimate(plan?.estimate, pace) : plan?.estimate;
+  const e = plan?.estimate ? repriceEstimate(plan.estimate, pace) : null;
   if (!e?.full?.seconds) return null;
   let seconds = e.full.seconds;
   // The window's scale first, on the plan's own figure; then the flipped switches, each priced by the plan as it stands

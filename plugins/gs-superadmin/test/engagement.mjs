@@ -1248,6 +1248,20 @@ try {
     const before = readFileSync(join(state, "argv.jsonl"), "utf8").split("\n").filter(Boolean).length;
     const resumed = cli("run", ["--run", "golden", "--out", out], env);
     const lines = readFileSync(join(state, "argv.jsonl"), "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l));
+    // The pull lock per knowledge base, in the engine's own CLI (F-575 (3)): a live holder's lock refuses a run before
+    // any call and leaves a plan alone (it merges no pace); a dead holder's is taken over, said, and gone after.
+    const kbLockFile = join(KB_DIR, "engagement-pull.lock");
+    writeFileSync(kbLockFile, JSON.stringify({ by: "ben", dashboard: "other-dash", at: new Date().toISOString(), pid: process.pid }));
+    const callsBeforeLock = readFileSync(join(state, "argv.jsonl"), "utf8").split("\n").filter(Boolean).length;
+    const lockedRun = cli("run", ["--run", "golden-locked", "--out", join(ROOT, "locked.json")], env);
+    const callsAfterRefusal = readFileSync(join(state, "argv.jsonl"), "utf8").split("\n").filter(Boolean).length;
+    const lockedPlan = cli("plan", ["--run", "golden-locked-plan"], env);
+    check("the engine's run over a knowledge base is refused up front while another pull holds its lock (the holder named, no call made, no snapshot); a plan under the same lock runs and says it merges no pace",
+      lockedRun.code === 1 && /another pull is running over the knowledge base at .*: the pull of the dashboard "other-dash" started by ben at/.test(lockedRun.stderr) && !existsSync(join(ROOT, "locked.json")) && callsAfterRefusal === callsBeforeLock &&
+        lockedPlan.code === 0 && /merges no pace into it/.test(lockedPlan.stderr) && readFileSync(kbLockFile, "utf8").includes('"ben"'), [lockedRun.code, lockedRun.stderr?.slice(-200), lockedPlan.code, lockedPlan.stderr?.slice(0, 400), lockedPlan.json?.error ?? lockedPlan.stdout?.slice(0, 200)]);
+    writeFileSync(kbLockFile, JSON.stringify({ by: "ben", dashboard: "other-dash", at: new Date(Date.now() - 3 * 3600 * 1000).toISOString(), pid: 1 }));
+    const takenRun = cli("run", ["--run", "golden", "--out", out], env);
+    check("a stale knowledge-base pull lock is taken over by the engine's run (said on stderr) and gone after it", takenRun.code === 0 && /took over a stale pull lock of the knowledge base held by ben since/.test(takenRun.stderr) && !existsSync(kbLockFile), takenRun.stderr?.slice(-300));
     check("resume skips calls already done: the second invocation of the same --run makes only what was left, exits 0, and writes the snapshot",
       resumed.code === 0 && resumed.json?.ok === true && resumed.json.calls.reused >= 15 && lines.length - before === resumed.json.calls.made && existsSync(out) && resumed.json.reconciled === true, resumed.json ?? resumed.stderr);
     check("gs-admin calls run one at a time: across both invocations no call started while another was in flight", lines.length >= 30 && lines.every((l) => l.overlap === false), [lines.length, lines.filter((l) => l.overlap).length]);

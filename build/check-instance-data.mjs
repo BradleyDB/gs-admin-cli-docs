@@ -47,8 +47,11 @@ const args = { root: ROOT, extras: [], noTree: false };
   const argv = process.argv.slice(2);
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
-    if (a === "--root") args.root = resolve(argv[++i] ?? "");
-    else if (a === "--extra" || a === "--extra-private") {
+    if (a === "--root") {
+      const dir = argv[++i];
+      if (!dir || dir.startsWith("--")) { console.error("--root takes <dir>"); process.exit(1); }
+      args.root = resolve(dir);
+    } else if (a === "--extra" || a === "--extra-private") {
       const label = argv[++i];
       const file = argv[++i];
       if (!label || !file) { console.error(`${a} takes <label> <file>`); process.exit(1); }
@@ -146,11 +149,15 @@ const CHECKS = [
 // ROOT first, then from the main checkout that the worktree's common git dir
 // belongs to; and say on its own stderr line when no private pattern loaded
 // at all, so a weaker run never reads like a full one.
-const cfgCandidates = [join(TREE, "gs-admin-explorer.config.json")];
+// With --root the tree under judgment is NEVER a source of the private list (F-589's rule: nothing in the pushed
+// tree steers the staged checker — a force-added config carrying a decoy pattern would otherwise be picked before
+// the main checkout's and satisfy REQUIRE_PRIVATE_PATTERNS with a pattern that matches nothing); the list comes from
+// the main checkout the tree's common git dir belongs to, or the environment.
+const cfgCandidates = args.root === ROOT ? [join(TREE, "gs-admin-explorer.config.json")] : [];
 try {
   const common = execSync("git rev-parse --git-common-dir", { cwd: TREE, encoding: "utf8" }).trim();
   const mainRoot = join(resolve(TREE, common), "..");
-  if (resolve(mainRoot) !== resolve(TREE)) cfgCandidates.push(join(mainRoot, "gs-admin-explorer.config.json"));
+  if (resolve(mainRoot) !== resolve(TREE) || args.root !== ROOT) cfgCandidates.push(join(mainRoot, "gs-admin-explorer.config.json"));
 } catch { /* not a git checkout: the tree only */ }
 const cfgPath = cfgCandidates.find((p) => existsSync(p));
 let filePatterns = [];
@@ -381,14 +388,17 @@ for (const file of files) {
 // with every check, identities with the private patterns alone — read here and scanned by
 // the same line loop as a tracked file, named by their label. A text that cannot be read
 // is a refusal: the hook passes what git printed, and a gate that cannot read what it was
-// handed does not vouch for it.
+// handed does not vouch for it. An extra is decoded as UTF-8 ALWAYS, never through the
+// tree's binary sniff: a tag message can carry a NUL byte or begin with the two bytes a
+// UTF-16 mark is made of (git accepts both in a tag), and the sniff would scan an empty
+// text or decode an ASCII string past every pattern (the review's items 1 and 2).
 const extraTexts = args.extras.map((x) => {
   let buf;
   try { buf = readFileSync(x.path); } catch (e) {
     console.error(`ERROR: the extra text "${redact(x.label)}" cannot be read (${e.code ?? e.message}) — nothing vouches for it; push refused`);
     process.exit(1);
   }
-  return { file: x.label, text: decodeTracked(buf) ?? "", privateOnly: x.privateOnly };
+  return { file: x.label, text: buf.toString("utf8"), privateOnly: x.privateOnly };
 });
 const treeTexts = [];
 for (const file of files) {
