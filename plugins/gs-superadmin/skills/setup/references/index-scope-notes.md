@@ -118,10 +118,10 @@ never under a name already taken:
   field** `configId`; **describe command**
   `gs-admin --json dd d describe --config-id {id}`; the name and date fields are read
   off the rows as for any new domain.
-- **Sweep.** The list declares `--page` and `--page-size` and no `--limit`: use Phase
-  4's capture fence with `--page-flag page`, passing `--page-size 200` where the fence
-  passes `--limit 200` (confirm both spellings in `.gs-superadmin/cheatsheet.md`). The
-  paging rules hold as for any list: a sweep that does not exit 0 is not coverage.
+- **Sweep.** The list declares `--page`, and `--limit` as an alias of its own
+  `--page-size`: Phase 4's capture fence runs as written, with `--page-flag page` and
+  `--limit 200` (read from the 1.0.14 package's manifest). The paging rules hold as
+  for any list: a sweep that does not exit 0 is not coverage.
 - **What its docs do not carry yet.** Until a plugin version reads this domain, say two
   things plainly wherever its coverage is reported: its docs are summary rows (the
   design's header and one row per task, no field names — the three-level designer
