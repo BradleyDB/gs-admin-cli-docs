@@ -3745,7 +3745,7 @@ run; and because setup and the operating model say Data Designer designs have no
 command while that user's candidate gate lists one
 What: CLI 1.0.14 adds eight dd d commands for Data Designs and moves the template and
 rule describes onto shared code. No payload key the plugin reads changes (measured at dev
-cd1281d and at the shipped v0.58.0 alike), but two things the plugin relies on did.
+cd1281d and at the shipped [v]0.58.0 alike), but two things the plugin relies on did.
 (1) The template describe's --field refusal was reworded. Through 1.0.12 it reads: No
 field found on task "<t>" matching: "<label>". At 1.0.14 it reads: No field found on this
 task matching: "<label>". scripts/describe-batch.mjs FIELD_NOT_FOUND tests for the words
