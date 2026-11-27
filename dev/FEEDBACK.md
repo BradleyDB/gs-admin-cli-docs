@@ -3901,6 +3901,19 @@ expects it inside the scope section, so drift (full) went red on 00a5f52 and so 
 local battery at step 48. The section now follows the recovery section (the last in the
 file) and no check or fixture changed; the first battery pass (56/56 over d89f651)
 predates the review round, which is why it did not see it.
+First light, 2026-11-27 (builder, after hb-20261127-01 and before any tester arm, on the
+owner's go): the 1.0.14 package installed into a scratch folder and read, then three
+read-only checks on the sandbox with that binary (VALIDATION, F-593 / CP-5, first-light
+paragraph). Confirmed: the refusal sentence, on stderr, exit 1; both spellings of an
+aggregated field resolve; the per-task describe answers on every task tried; the doc-mode
+through the real script documents three templates in one pass. CORRECTED (1dd18d6): the
+recipe said dd d list declares no --limit, on the audit's flag list as the review round
+read it; the manifest declares --limit as an alias of --page-size and the sandbox accepted
+it, so Phase 4's fence runs as written. The review's fix for that finding was itself
+wrong: a finding resting on an unmeasured upstream claim. CP-5 is banked on this branch
+(session V1's item, written here with the first-light results). The docs changed after
+the battery over 658edec: the recipe's sweep bullet and its interim sentence, MAINTAINERS
+step 3's provenance clause, one CHANGELOG sentence.
 Ordering: no finding in the round removes an unreliable manual step, and no known-pending
 change re-arranges what is verified here (E2 and E3 are gated and start after this
 merges). Tester pickup: /reload-plugins; setup is slash-only, so its walk is the user's

@@ -4415,3 +4415,110 @@ R5 the fast path's empty selection, walked; R6 the re-price by hand), the hook's
 wiring line, the suites and CI quoted above; F-563, F-564, F-565, F-566, F-575, F-576, F-582, F-585, F-588, F-589,
 F-590 VERIFIED. Spent for 0.58.0. Standing arms, not spent: R6's Re-aim (owed at the next round touching F-575's
 pricing); R3's re-documenting set-up on A's side, owed with F-592 (DEFERRED past 0.58.0).
+
+## F-593 / CP-5 — live checks on CLI 1.0.14 (banked 2026-11-27, builder, branch designer-cli-1-0-14; plan: gs-fortress build-kickoffs-1.0.14.md CP-5, audit-1.0.14)
+
+Seven read-only checks on a CLI whose `--version` prints 1.0.14. The repo's pin stays 1.0.12, so
+1.0.14 is installed into a scratch folder and run by path, never over the global install:
+`npm install --prefix <scratch> --ignore-scripts` of the package at 1.0.14, then
+`node <scratch>/node_modules/@gainsight/gs-admin-cli/bin/gs-admin.js …` (written `gs1014` below),
+from the consumer workspace so the stored token is the workspace's. Every entry records the CLI
+version it ran on. (a) and (b) decide F-593's verdict and feed E2's grammar re-derivation; (c) to
+(e) fix the shape E3 builds its reader on; (f) and (g) are the audit's ledger items.
+
+Builder first light, 2026-11-27, CLI 1.0.14, the sandbox (not the verdict of record — the
+tester's read is; quoted so the bars below were written after seeing the shape they read): the
+1.0.14 package was read first (the refusal sentence in the shared task drilldown; `dd d list`
+declaring `--page`, `--page-size` and `--limit` as an alias of `--page-size`; `--config-id` on
+the design describe), which corrected the recipe (it had said the list takes no `--limit`).
+Then, live: the per-task describe answered on every task of three templates (nine calls, 1.9 to
+3.5 s each); a `--field` label that does not exist exited 1 with stderr
+`Error: No field found on this task matching: "<label>"` and nothing on stdout; an aggregated
+show field resolved under BOTH its full `"<label> (<AGG>)"` spelling and its stripped one (14
+`_taskFieldDetail` rows each); `dd d list --limit 200 --page 1` exited 0 with root keys
+`result, data, pageInfo`, row keys `configId, name, description, folderId, modifiedByName,
+modifiedDateStr`, `pageInfo` keys `pageNumber, pageSize, totalRecords, totalPages`, and the
+whole list in one page; and the designer doc-mode run through the real script with the 1.0.14
+binary (`--bin`) into a scratch workspace documented three templates in one pass (59 calls, 138
+s, 47 of 47 fields ok, none refused). Not seen live: a refusal met by the script itself (no
+sandbox template holds a field the CLI refuses), so the permanent path is the suite's.
+Noticed: at `--limit 2` the payload's `totalPages` read one fewer than rows / page size rounded
+up, on both pages asked; `modifiedDateStr` arrived as an epoch-millisecond number, not a string.
+
+### (a) the per-task GET behind every template drilldown
+
+Tenant: sandbox. Login: needed (a live read). Minutes: about 5 (first light: nine task calls
+about 25 s, one three-template doc-mode pass 138 s). Start when: a token with 10 minutes left.
+Steps: for every task of two templates the KB documents,
+`gs1014 --json dd t describe --template-id <id> --task-id <t>`, timed; compare each task's
+`_task*` tables with the composite doc captured at 1.0.12 (same keys, same labels); then one
+template end to end: describe-batch's designer doc-mode with `--bin` set to the 1.0.14 binary
+into a scratch out-dir, and tenant-deps' "docs yielding usages" column over that doc.
+FIXED: every call exits 0; the tables' keys and labels equal the 1.0.12 capture; the template
+documents complete; the doc yields usages. Record the seconds per call beside the 1.5 to 3 s
+the spawn budget assumes.
+BROKEN: any per-task call fails where the template-level call succeeds, or a table's keys or
+labels differ from the 1.0.12 capture (the labels are what the field work list keys on) —
+reopens F-593 and blocks E2's grammar re-derivation.
+
+### (b) the refusal sentence and the full-label spelling
+
+Tenant: sandbox. Login: needed. Minutes: 2. Start when: a template with one aggregated show
+field is known (a label ending in a parenthesised aggregation in `_taskShowFields`).
+Steps: `gs1014 --json dd t describe --template-id <id> --task-id <t> --field "zz no such field"`
+— record stderr, stdout and the exit code; then `--field "<label> (<AGG>)"` and
+`--field "<label>"` on the aggregated field.
+FIXED: the first prints exactly `No field found on this task matching: "zz no such field"`
+(after `Error: `) on stderr and exits 1 — the sentence `FIELD_NOT_FOUND`'s second row and
+the suite's `DD_FIELD_REFUSALS` hold; both spellings of the aggregated field return
+`_taskFieldDetail` rows.
+BROKEN: any other sentence (the matcher's row does not match what 1.0.14 prints: reopens
+F-593), the refusal on stdout only, or the full spelling refused (MAINTAINERS.md's step 3 is
+wrong for 1.0.14).
+
+### (c) `dd d list` — count, paging names, a paginated capture
+
+Tenant: sandbox, then any tenant whose designs exceed one page. Login: needed. Minutes: 5.
+Start when: the UI's Data Designs count is in hand (ask with the page open).
+Steps: `gs1014 --json dd d list --limit 200 --page 1`; compare the row count with the UI's
+count; read the root `pageInfo` names; then a paginated capture — the capture helper's
+paginate mode with `--page-flag page` and a small `--limit`, the CLI on PATH being 1.0.14 for
+that run (a scratch PATH entry; the helper spawns `gs-admin` by name).
+FIXED: rows equal the UI's count; `pageInfo` carries `pageNumber`, `pageSize`, `totalRecords`,
+`totalPages`; `--limit` is accepted; the sweep exits 0 `reconciled` across pages.
+BROKEN: `--limit` refused (the recipe's fence is wrong), a sweep verdict other than
+`reconciled` on a healthy list (first light's `totalPages` one short of the pages needed is
+the thing to watch: the reconciliation must rest on `totalRecords`), or rows short of the UI.
+
+### (d) `dd d describe --config-id <id>` at all three levels
+
+Tenant: sandbox. Login: needed. Minutes: 3. Start when: one design id from (c).
+Steps: the design level, `--task-id <t>`, and `--field <label>` on one design.
+FIXED: `_tasks[]` rows and `_task*` tables in the same shapes as a template's; record the root
+id key (`configId` expected) and WHETHER any header field names the design's output object.
+BROKEN: a different task-row or table shape than the template describe (E3's reader cannot
+reuse the template reader), or no readable task ids.
+
+### (e) `dd d dependencies --config-id <id>`
+
+Tenant: a tenant with a design a rule or report is known to read (ask which, with the UI
+open), and one unpublished design. Login: needed. Minutes: 3.
+Steps: the command on each; record the `_flatDependencies` row keys and the `eligible` value.
+FIXED: rows name the known dependent for the first; `eligible: false` for the unpublished one.
+BROKEN: the known dependent is absent, or the payload has no flat rows (E3's decision on
+reading inbound edges has nothing to read).
+
+### (f) KI-034 — `re r describe --criteria-name` with a fragment
+
+Tenant: sandbox. Login: needed. Minutes: 2. Start when: a rule with two criteria is known.
+Steps: `gs1014 --json re r describe --id <rule> --criteria-name "<a fragment of one name>"`.
+Record: refused, or a substring hit returned (the help text says exact; the audit read the
+handler as substring). Either outcome is a record for the ledger, not a plugin defect.
+
+### (g) `re r describe --task-name` — exact at 1.0.14
+
+Tenant: sandbox. Login: needed. Minutes: 2. Start when: a rule with a named task is known.
+Steps: the command with a fragment of the task's name, then with the whole name.
+FIXED: the fragment is refused with the task list; the whole name resolves.
+BROKEN: the fragment resolves (the audit's reading of the equality match is wrong), or the
+whole name is refused.
