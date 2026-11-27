@@ -3733,6 +3733,58 @@ Blind spots: no tenant pull was made with the new families (the two reads were c
      Carried forward (not in this release): F-448 verdict by the other role; the skipped-path arm
        (Blind spots above). -->
 
+## F-593 — OPEN
+Reported: 2026-11-23 (carried from gs-fortress ledger/reports/audit-1.0.14.md §1.4,
+§1.15 and §1.16 by the watch's kickoffs step; DECOUPLED from the adopt decision per that
+audit's §5)
+Severity: normal — shipped behaviour is wrong for a user whose installed CLI is 1.0.14
+(npm latest since 2026-11-19) because the designer doc-mode no longer recognises the
+CLI's field-not-found refusal: the alternate label spelling is never tried and a refused
+field never becomes a permanent gap, so the template's entry fails as retryable on every
+run; and because setup and the operating model say Data Designer designs have no list
+command while that user's candidate gate lists one
+What: CLI 1.0.14 adds eight dd d commands for Data Designs and moves the template and
+rule describes onto shared code. No payload key the plugin reads changes (measured at dev
+cd1281d and at the shipped v0.58.0 alike), but two things the plugin relies on did.
+(1) The template describe's --field refusal was reworded. Through 1.0.12 it reads: No
+field found on task "<t>" matching: "<label>". At 1.0.14 it reads: No field found on this
+task matching: "<label>". scripts/describe-batch.mjs FIELD_NOT_FOUND tests for the words
+"No field found on task", which the new sentence does not contain. The doc-mode uses that
+match to decide whether to spawn the alternate spelling and whether the gap is permanent;
+unmatched, the refusal is treated as a transport failure - one spelling tried, the field
+left failed and retryable, the entry never complete. (At 1.0.14 the CLI also resolves a
+show field by its full label with the aggregation suffix, so fewer first attempts are
+refused; MAINTAINERS.md's grammar note says the opposite.) (2) dd d list lists Data
+Designs (paged, with page totals at the payload root), so three sentences are false on
+1.0.14: skills/setup/references/index-scope-notes.md under "journey data-designer list",
+skills/setup/SKILL.md's scope-limited-domains bullet, and templates/operating-model.md's
+known-limitations bullet each say designs have no list command. The candidate gate derives
+its set from the workspace catalog, so a 1.0.14 workspace already shows data-designer
+designs list as undecided. Also changed and unmeasured: every template --task-id and
+--field drilldown at 1.0.14 makes one more request (a per-task GET) and fails when it
+does - a live check, banked below. Every current sentence stays right for 1.0.12 users,
+so the repair is version-conditional ("1.0.14 and later"), never a replacement.
+Repro (no tenant needed): make test/fixtures/fake-dd-cli.mjs print the 1.0.14 sentence
+for an unknown field and run the designer doc-mode over a task with one such field and a
+trailing-group label: the alternate spelling is not spawned and the field is recorded
+failed without permanent. Read index-scope-notes.md's "designs have no list command"
+beside the delta's first added command, data-designer:designs:list.
+Expected: CP-2 (the matcher recognises both sentences; the fake CLI prints either; the
+grammar note version-conditional), CP-3 (the three sentences scoped to 1.0.12 and
+earlier, with the interim instruction to index the list as data-designer-designs, id
+field configId, describe dd d describe --config-id {id}, and the plain statement that
+deps-report does not read the domain yet), CP-4 (bump + CHANGELOG); CP-5's live checks
+banked in dev/VALIDATION.md on the same branch, on a 1.0.14 CLI. Lock: a matcher that
+knows only one of the two sentences must produce a COUNTED, REPORTED miss in the
+describe-batch suite.
+Not in scope: adopting 1.0.14 (catalog regen, version prose and figures, the three
+check-stale-facts fact-carrier stamps, the drilldown-grammar re-derivation - the gated
+session E2 in gs-fortress ledger/reports/build-kickoffs-1.0.14.md, on Bradley's clock).
+Also not in scope: the Data Designs KB domain itself (designer doc-mode and tenant-deps
+for dd d describe - the gated session E3 in the same file).
+Plan: gs-fortress ledger/reports/build-kickoffs-1.0.14.md, session E1 (CP-2, CP-3, CP-4)
++ V1 (CP-5).
+
 ## F-592 — DEFERRED (past 0.58.0)
 Reported: 2026-10-25 (tester)
 Severity: polish — reachable only after a KB doc is deleted or moved by hand, which nothing in the plugin does; the pull and its figures are right, the template text is absent and the summary word is wrong
