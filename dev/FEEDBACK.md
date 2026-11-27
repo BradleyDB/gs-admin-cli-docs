@@ -3735,13 +3735,14 @@ Blind spots: no tenant pull was made with the new families (the two reads were c
      Carried forward (not in this release): F-448 verdict by the other role; the skipped-path arm
        (Blind spots above). -->
 
-## F-595 — OPEN
+## F-595 — DEFERRED (past 0.58.1)
 Reported: 2026-11-27 (builder)
 Severity: normal — skills read exact flags from the workspace catalog and cheatsheet, so a stale one gives a user wrong or missing commands, and the guard asks on every command added since; the safety property holds (unknown commands ask, mutating flags are read from the union with the bundled catalog)
 Source: owner's observation during the F-593 tester round, 2026-11-27 (hb-20261127-02); measured by the builder on the consumer workspace
 What: nothing but a prose rule keeps a workspace's catalog current: the consumer workspace's .gs-superadmin/catalog.json sat two CLI versions behind the installed CLI and the plugin's bundled catalog (1.0.10 against 1.0.12, generated 2026-09-26) through every session since, and the only symptom was the guard's ask reading Unrecognized gs-admin command (not in catalog [v]1.0.10) - which reads like a plugin fault
 Repro: in a workspace set up on an older CLI, upgrade the CLI and the plugin and do not re-run setup: node -p "require('./.gs-superadmin/catalog.json').meta.cliVersion" prints the old version while .gs-superadmin/plugin/reference/version.json and gs-admin --version print the new one; no session-start line, refresh step or guard message says the workspace catalog is behind (the guard's Catalog-version note fires only when a mutating flag is promoted; templates/operating-model.md's Drift guard asks each session to compare the two versions by hand, and no session did)
 Expected: the gap is said by a mechanism, not left to prose (AGENTS A-5): the SessionStart hook's line, which already reads the workspace, compares the workspace catalog's meta.cliVersion with the bundled catalog's (no spawn) and says once per session that the workspace catalog is behind and that /gs-superadmin:setup regenerates it; the unrecognized-command ask names the remedy when the workspace catalog is older than the bundled one; the operating model's Drift guard paragraph becomes the paraphrase of that. Not a 0.58.1 regression; the owner's own workspace is fixed today by re-running setup
+Defer: 2026-11-27 (owner) - past 0.58.1. Why not now: the owner's ruling in session, 2026-11-27: 0.58.1 carries the CLI 1.0.14 repair (F-593) now and this gets its own build, review and tester round; the gap is not a 0.58.1 regression and the safety property holds meanwhile. Reopen: the next round after 0.58.1 ships, as its own round (a session-start line comparing the workspace catalog's version with the bundled one); or the next release ceremony, whichever comes first.
 
 ## F-594 — OPEN
 Reported: 2026-11-27 (builder)
