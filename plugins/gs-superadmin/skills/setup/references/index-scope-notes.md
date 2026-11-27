@@ -75,10 +75,29 @@ Data Designer OUTPUT datasets keyed by `objectName`, every one of them also pres
 MEMBERSHIP SIGNAL over `data-management` for the status it filters on, not a domain of
 its own: decide it as a coverage exclusion over `data-management` through the
 evidence-bound verb (Phase 4 step 3), never as a separate domain (one workspace carried
-a `journey-data-designer` domain for exactly this and it was removed). Data Designer
-*designs* have no list command, and their output objects hide among `dm` objects where
+a `journey-data-designer` domain for exactly this and it was removed).
+
+**Data Designer *designs* — the installed CLI's version decides.** On CLI 1.0.12 and
+earlier, designs have no list command. On CLI 1.0.14 and later, `dd d list` lists them
+(paged, 50 a page by default, `--page` / `--page-size`, the totals in a `pageInfo`
+object at the payload root), and on a workspace whose catalog is at that version the
+candidate gate (Phase 4) shows `data-designer designs list` as undecided. Decide it
+there as **its own domain**, never as an exclusion and never under a name already
+taken: domain `data-designer-designs` (the name Phase 4's naming rule reserves), id
+field `configId`, describe command `gs-admin --json dd d describe --config-id {id}`,
+swept with `--page-flag page` and held to the paging rules like any other list (a
+sweep that does not exit 0 is not coverage). Until a plugin version reads this domain,
+say two things plainly wherever its coverage is reported: its docs are summary rows
+(the design's header and one row per task, no field names — the three-level designer
+doc-mode is keyed to the design *template* describe), and `/gs-superadmin:deps-report`
+does not include it. This instruction is interim and read from the 1.0.14 package, not
+yet confirmed on a live tenant: if the list or the describe behaves otherwise, record
+what it did (a block, Phase 4 step 1) rather than forcing the recipe.
+
+On every CLI version, design output objects hide among `dm` objects where
 `group=System` is a **superset** (some System objects are DD outputs, some are not; no
-1.0.4 describe field distinguishes them): beyond what this list returns, "which dm
+1.0.4 describe field distinguishes them, and whether a design's own describe names its
+output object is not yet measured): beyond what this list returns, "which dm
 objects are Data Designers" is not determinable from CLI data — never equate
 `group=System` with "the data designers" (`dataStore=REDSHIFT` and `copy`/`view`
 `dbName` prefixes are weak hints only).

@@ -355,7 +355,11 @@ commands and output are still in this session.
   HTML rendering is intentionally dropped and re-fetchable via `jo email template --id`. `jo surveys list` hardcodes
   `states:["PUBLISH"]` (closed surveys are invisible — a tenant whose surveys are all
   closed lists 0); `jo data-designer list` pins `ds=UNIVERSAL_DATA_SET`; Data Designer
-  *designs* have no list command at all (only `dd templates list`) — and their output
+  *designs* have no list command at all on CLI 1.0.12 and earlier (only `dd templates list`);
+  on CLI 1.0.14 and later `dd d list` lists them, and a workspace on that CLI indexes the
+  list as its own domain, `data-designer-designs`, at setup's candidate gate — until a
+  plugin version reads that domain its docs are summary rows (no field names) and
+  deps-report does not include it. On every version their output
   objects hide among `dm` objects where `group=System` is a **superset** (some System
   objects are DD outputs, some are not; no 1.0.4 describe field distinguishes them),
   so "which dm objects are Data Designers" is not determinable from CLI data — never
