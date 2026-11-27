@@ -3742,7 +3742,7 @@ What: the deprecate skill and the email-report provenance caveat say a Data Desi
 Repro: git grep -n -i 'design' plugins/gs-superadmin/skills/deprecate/SKILL.md plugins/gs-superadmin/scripts/jo-report-deps.mjs: SKILL.md step 2's Data Designer bullet (no live list command, and no describe command either) and step 6 (designs have no inventory entry to mark); jo-report-deps.mjs's header comment (DD designs have no CLI describe) and its where-resolution-stops caveat (a design has no describe surface)
 Expected: each sentence names the version it holds for (1.0.12 and earlier), and what deprecate and the report do on 1.0.14 and later is decided with the Data Designs domain work (gs-fortress build-kickoffs-1.0.14.md session E3, CP-7 d) rather than written ahead of a live read of dd d describe; proposed: carried to E3, or DEFERRED past 0.58.1 with that trigger
 
-## F-593 — FIXED
+## F-593 — VERIFIED
 Reported: 2026-11-23 (carried from gs-fortress ledger/reports/audit-1.0.14.md §1.4,
 §1.15 and §1.16 by the watch's kickoffs step; DECOUPLED from the adopt decision per that
 audit's §5)
@@ -3918,6 +3918,7 @@ Ordering: no finding in the round removes an unreliable manual step, and no know
 change re-arranges what is verified here (E2 and E3 are gated and start after this
 merges). Tester pickup: /reload-plugins; setup is slash-only, so its walk is the user's
 to type.
+Verified: 2026-11-27 (tester, designer-cli-1-0-14 @ hb-20261127-02) — suite 200/200 with 12 F-593 checks, each FIELD_NOT_FOUND row's deletion failing it by name (11 and 4 checks); CLI 1.0.14 on the sandbox: the refusal read live on stderr, exit 1, matched by the 1.0.14 row and not the 1.0.12 one; both spellings resolve; per-task tables equal 1.0.12's on 6 tasks; designer doc-mode documents a template complete and tenant-deps yields usages; dd d list 127 = the UI's 127, swept reconciled at two page sizes; the three sentences version-scoped, the gate names data-designer-designs on a 1.0.14 catalog, doc drift green; setup walked to its first ask (declined); guard ask declined (VALIDATION F-593 / CP-5, tester round) @ hb-20261127-02
 
 ## F-592 — DEFERRED (past 0.58.0)
 Reported: 2026-10-25 (tester)
