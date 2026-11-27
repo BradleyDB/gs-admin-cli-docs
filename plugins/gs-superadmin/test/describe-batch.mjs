@@ -195,7 +195,10 @@ writeFileSync(
     "  if (!task) finish(JSON.stringify({ result: true, data: { ...header, _tasks: t.tasks, ...empty() } }));",
     "  else if (task === 't-fail' || (t.failTasks || []).includes(task)) { console.error('boom: simulated drilldown failure'); process.exit(1); }",
     "  else if (!field) finish(JSON.stringify({ result: true, data: { ...header, _tasks: [], ...empty(), ...(t.details[task] || {}) } }));",
-    "  else { const rows = (t.fields[task] || {})[field]; if (!rows) { console.error('No field found on task \"' + task + '\" matching: \"' + field + '\"'); process.exit(1); }",
+    // The `--field` not-found sentence is the suite's choice (F-593: the CLI
+    // reworded it at 1.0.14): $FAKE_DD_REFUSAL is a template with {task} and
+    // {field} (DD_FIELD_REFUSALS below holds the wordings); unset, 1.0.12's.
+    "  else { const rows = (t.fields[task] || {})[field]; if (!rows) { console.error((process.env.FAKE_DD_REFUSAL ?? 'No field found on task \"{task}\" matching: \"{field}\"').replace('{task}', () => task).replace('{field}', () => field)); process.exit(1); }",
     "    finish(JSON.stringify({ result: true, data: { ...header, _tasks: [], ...empty(), _taskFieldDetail: rows, _hideHeaderFields: true } })); }",
     "}",
     "else if (a.includes('jo') && a.includes('describe')) {",
@@ -1284,6 +1287,71 @@ check(
   check("doc-lib stripBom: strips only ONE leading BOM (F-208)", stripBom(BOM + BOM + "a") === BOM + "a", null);
 }
 
+// ── F-593: the `--field` not-found refusal, per wording the CLI has shipped ──
+// The CLI reworded the sentence at 1.0.14, and the designer doc-mode reads it
+// two ways: a recognised refusal sends the alternate spelling, and a refusal
+// under EVERY spelling is a permanent gap. Each wording is driven through one
+// template whose labels cover the spelling orders (a known suffix, an unknown
+// trailing group, an alternate that resolves, a bare label). The wordings are
+// the CLI's own source text — 1.0.12's read from the installed package's
+// templates/describe handler, 1.0.14's as the CLI-watch audit of 1.0.14
+// quotes the shared task drilldown — never derived from the matcher under
+// test. A refusal in neither wording is the control: retryable, one spelling,
+// the alternate never spent (the split the doc-mode's contract freezes).
+const DD_FIELD_REFUSALS = [
+  { cli: "1.0.12 and earlier", template: 'No field found on task "{task}" matching: "{field}"' },
+  { cli: "1.0.14 and later", template: 'No field found on this task matching: "{field}"' },
+];
+const ddRefusalSaid = (template, task, field) => template.replace("{task}", () => task).replace("{field}", () => field);
+{
+  const detailRows = (kv) => Object.entries(kv).map(([k, v]) => ({ _key: k, _value: v }));
+  const FXR = join(ROOT, "dd-refusal-fixture.json");
+  writeFileSync(FXR, JSON.stringify({ templates: { "ddr-1": {
+    name: "Acme Refused",
+    tasks: [{ taskId: "t1", taskName: "A", taskType: "mdaExtract", _parents: "", _object: "company", _connType: "MDA", _fieldCount: 4, _filterCount: 0, _groupByCount: 0 }],
+    details: { t1: { _taskShowFields: [
+      { _index: 1, _field: "Gone (SUM)", _type: "NUMBER", _calc: "—" },
+      { _index: 2, _field: "Lost (new_fn)", _type: "NUMBER", _calc: "ƒ" },
+      { _index: 3, _field: "Total (SUM)", _type: "NUMBER", _calc: "—" },
+      { _index: 4, _field: "Plain", _type: "STRING", _calc: "—" },
+    ] } },
+    // Only the FULL spelling of Total resolves: its stripped first attempt is refused.
+    fields: { t1: { "Total (SUM)": detailRows({ "Display Name": "Total (SUM)", "Field Name": "Total__gc" }) } },
+  } } }));
+  const run = (n, template) => {
+    const domain = `dd-refusal-${n}`;
+    const list = join(ROOT, `${domain}.json`);
+    const log = join(ROOT, `${domain}-log.txt`);
+    const out = join(ROOT, "acme-sbx", domain);
+    writeFileSync(list, JSON.stringify({ data: [{ templateId: "ddr-1", name: "Acme Refused" }] }));
+    manifest("upsert-batch", ["--file", list, "--domain", domain, "--id-field", "templateId", "--name-field", "name"]);
+    const r = batch(["--domain", domain, "--out-dir", out, "--bin", FAKE, "--command", "gs-admin --json dd t describe --template-id {id}"], { FAKE_DD: FXR, FAKE_DD_LOG: log, FAKE_DD_REFUSAL: template });
+    const calls = (existsSync(log) ? readFileSync(log, "utf8").trim().split("\n").filter(Boolean).map((l) => JSON.parse(l)) : []).filter((a) => a.includes("--field")).map((a) => a[a.indexOf("--field") + 1]);
+    let kb = null;
+    try { kb = JSON.parse(/```json\n([\s\S]*?)\n```/.exec(readFileSync(join(out, "ddr-1.md"), "utf8"))[1]).data._kb; } catch { /* asserted by the checks */ }
+    return { r, calls, f: kb?.fields?.t1 ?? {}, entry: JSON.parse(readFileSync(M, "utf8")).inventory[`${domain}/ddr-1`] };
+  };
+  DD_FIELD_REFUSALS.forEach(({ cli, template }, n) => {
+    const { r, calls, f, entry } = run(n, template);
+    check(`F-593 refusal (${cli}): the fake printed THIS wording — the stored error of each refused field ends with the sentence for its last spelling`,
+      ["Gone", "Lost (new_fn)", "Plain"].every((k) => typeof f[k]?.error === "string") && f.Gone.error.endsWith(ddRefusalSaid(template, "t1", "Gone (SUM)")) && f["Lost (new_fn)"].error.endsWith(ddRefusalSaid(template, "t1", "Lost")) && f.Plain.error.endsWith(ddRefusalSaid(template, "t1", "Plain")), f);
+    check(`F-593 refusal (${cli}): a recognised refusal SPAWNS the alternate spelling, in the frozen order — stripped then whole for a known suffix, whole then stripped for an unknown group, once for a bare label`,
+      isDeepStrictEqual(calls, ["Gone", "Gone (SUM)", "Lost (new_fn)", "Lost", "Total", "Total (SUM)", "Plain"]), calls);
+    check(`F-593 refusal (${cli}): refused under EVERY spelling → recorded PERMANENT (3 unresolvable, 0 retryable); the alternate that resolves is ok with its spelling recorded; the entry is DOCUMENTED`,
+      f.Gone?.status === "failed" && f.Gone.permanent === true && f["Lost (new_fn)"]?.status === "failed" && f["Lost (new_fn)"].permanent === true && f.Plain?.status === "failed" && f.Plain.permanent === true && f.Total?.status === "ok" && f.Total.spelling === "Total (SUM)"
+        && r.json?.drilldowns?.thisRun?.fieldsUnresolvable === 3 && r.json?.drilldowns?.thisRun?.fieldsFailed === 0 && r.json?.drilldowns?.thisRun?.fieldsOk === 1 && entry?.status === "documented" && entry.depth === "full",
+      { f, thisRun: r.json?.drilldowns?.thisRun, entry });
+  });
+  {
+    const { r, calls, f, entry } = run("control", 'Field lookup failed for "{field}"');
+    check("F-593 control: a refusal in NEITHER wording is retryable — one spelling per field, the alternate never spent (Total's full spelling would have resolved and is not tried)",
+      isDeepStrictEqual(calls, ["Gone", "Lost (new_fn)", "Total", "Plain"]), calls);
+    check("F-593 control: nothing is marked permanent, all four fields count as retryable failures and the entry is FAILED naming them (doc kept)",
+      ["Gone", "Lost (new_fn)", "Total", "Plain"].every((k) => f[k]?.status === "failed" && f[k].permanent === undefined) && r.json?.drilldowns?.thisRun?.fieldsFailed === 4 && r.json?.drilldowns?.thisRun?.fieldsUnresolvable === 0 && entry?.status === "failed" && /4 of 5 drilldown\(s\) failed \(retryable\); doc kept/.test(entry.error ?? ""),
+      { f, thisRun: r.json?.drilldowns?.thisRun, entry });
+  }
+}
+
 // ── The corpus tenet, held for the drilldown reader (F-390 round 2 observation):
 // "the fixture a suite passes on IS the fixture the tracer measures". The W9
 // block above drives its own inline fake and payloads (they model failure arms
@@ -1310,6 +1378,25 @@ check(
     !!kb && taskIds.every((t) => kb.tasks?.[t]?.status === "ok" && kb.taskDetails?.[t]?._taskShowFields) && Object.entries(DD.fields).every(([t, m]) => Object.keys(m).every((f) => Array.isArray(kb.fieldDetails?.[t]?.[f]))), { tasks: kb?.tasks, fields: kb?.fields });
   check("corpus tenet: the provenance line counts the corpus's tasks and fields",
     new RegExp(`${taskIds.length}/${taskIds.length} task\\(s\\), ${fieldCount}/${fieldCount} field\\(s\\) drilled`).test(docText), docText.split("\n")[2]);
+  // F-593: the tracer's fake prints either refusal wording too. One corpus
+  // field is removed from the fake's answers (FAKE_DD_OVERRIDE), so the real
+  // script meets the refusal for a label the task still lists.
+  const [goneTask, goneFields] = Object.entries(DD.fields)[0];
+  const goneLabel = Object.keys(goneFields)[0];
+  const sparse = JSON.parse(JSON.stringify(DD));
+  delete sparse.fields[goneTask][goneLabel];
+  const sparsePath = join(ROOT, "dd-corpus-sparse.json");
+  writeFileSync(sparsePath, JSON.stringify(sparse));
+  DD_FIELD_REFUSALS.forEach(({ cli, template }, n) => {
+    const domain = `data-designer-corpus-r${n}`;
+    manifest("upsert-batch", ["--file", corpusList, "--domain", domain, "--id-field", "templateId", "--name-field", "name"]);
+    const out = join(ROOT, "acme-sbx", domain);
+    const rr = batch(["--domain", domain, "--out-dir", out, "--bin", FAKE_DD_CLI, "--command", "gs-admin --json dd t describe --template-id {id}"], { FAKE_DD_OVERRIDE: sparsePath, FAKE_DD_REFUSAL: template });
+    let f = null;
+    try { f = JSON.parse(readFileSync(join(out, `${DD.templateId}.md`), "utf8").split("```json")[1].split("```")[0]).data._kb.fields[goneTask][goneLabel]; } catch { /* asserted below */ }
+    check(`F-593 corpus fake (${cli}): the tracer's fake CLI prints this wording for a field it lacks, and the real doc-mode records the gap PERMANENT with the entry documented`,
+      rr.json?.documented === 1 && f?.status === "failed" && f.permanent === true && typeof f.error === "string" && f.error.includes(ddRefusalSaid(template.split("{field}")[0], goneTask, "")), { summary: rr.json, f });
+  });
 }
 
 rmSync(ROOT, { recursive: true, force: true });
