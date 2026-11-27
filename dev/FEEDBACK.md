@@ -3733,7 +3733,16 @@ Blind spots: no tenant pull was made with the new families (the two reads were c
      Carried forward (not in this release): F-448 verdict by the other role; the skipped-path arm
        (Blind spots above). -->
 
-## F-593 — OPEN
+## F-594 — OPEN
+Reported: 2026-11-27 (builder)
+Severity: polish — the advice each sentence supports still works on every version (the user supplies the design's values; the report never guesses a feeding system); what is wrong is the stated reason, and deprecate step 6 skips a stale mark on an entry only a 1.0.14 workspace can hold
+Source: F-593 fix round, sibling sweep and /code-review (prose finder), 2026-11-27
+Class: false-rationale
+What: the deprecate skill and the email-report provenance caveat say a Data Designer design has no list, no describe and no inventory entry, with no CLI version named - false on CLI 1.0.14 and later, where dd d list and dd d describe exist and setup may have indexed data-designer-designs (siblings of F-593 part 2 that the audit's three-site table did not list; found by F-593's sibling sweep and its review)
+Repro: git grep -n -i 'design' plugins/gs-superadmin/skills/deprecate/SKILL.md plugins/gs-superadmin/scripts/jo-report-deps.mjs: SKILL.md step 2's Data Designer bullet (no live list command, and no describe command either) and step 6 (designs have no inventory entry to mark); jo-report-deps.mjs's header comment (DD designs have no CLI describe) and its where-resolution-stops caveat (a design has no describe surface)
+Expected: each sentence names the version it holds for (1.0.12 and earlier), and what deprecate and the report do on 1.0.14 and later is decided with the Data Designs domain work (gs-fortress build-kickoffs-1.0.14.md session E3, CP-7 d) rather than written ahead of a live read of dd d describe; proposed: carried to E3, or DEFERRED past 0.58.1 with that trigger
+
+## F-593 — FIXED
 Reported: 2026-11-23 (carried from gs-fortress ledger/reports/audit-1.0.14.md §1.4,
 §1.15 and §1.16 by the watch's kickoffs step; DECOUPLED from the adopt decision per that
 audit's §5)
@@ -3784,6 +3793,111 @@ Also not in scope: the Data Designs KB domain itself (designer doc-mode and tena
 for dd d describe - the gated session E3 in the same file).
 Plan: gs-fortress ledger/reports/build-kickoffs-1.0.14.md, session E1 (CP-2, CP-3, CP-4)
 + V1 (CP-5).
+Fix: 2026-11-27 (builder, session E1; branch designer-cli-1-0-14, plugin 0.58.1; commits
+2f0c76a CP-2, 35e295a CP-3, d89f651 CP-4, 172d764 the review round). The class, in one
+sentence: a statement or a matcher that holds CLI behaviour as if every workspace ran the
+pinned CLI, when the installed CLI can be newer - so each is now stated or matched per
+wording the CLI has shipped, never keyed on a version.
+(1) CP-2. scripts/describe-batch.mjs FIELD_NOT_FOUND is a table, one row per wording
+("1.0.12 and earlier": the words No field found on task; "1.0.14 and later": the words No
+field found on this task matching:), read by one predicate, isFieldNotFound, at the one
+call site in drillSpawn. It matches the words on stderr or stdout and never reads the
+installed version. The two-spelling order and the permanent / retryable split are
+untouched (the frozen contract): the field loop below the call site is byte-identical. A
+wording the table does not hold reads as retryable - the entry stays failed, loudly -
+which is what 1.0.14 did to this code, and the comment and MAINTAINERS.md now say to
+re-read the sentence at every adoption. Both fake CLIs (the suite's inline one and
+test/fixtures/fake-dd-cli.mjs, the tracer's) print the sentence the suite hands them in
+FAKE_DD_REFUSAL (a template with {task} and {field}; unset, the 1.0.12 one), and
+test/describe-batch.mjs holds the wordings once, in DD_FIELD_REFUSALS. New checks, 200 in
+the suite (was 186): per wording - the stored error ends with that wording's sentence
+(the fake really printed it), the alternate spelling was spawned in the frozen order for
+a known suffix, an unknown trailing group and a bare label, a field refused under every
+spelling is permanent with the entry documented, and an alternate that resolves is
+recorded with its spelling; two controls that must stay retryable with one spelling each
+(an unrelated sentence, and the CLI's own neighbouring refusal No task found with id:,
+read from the 1.0.12 template describe handler); and the tracer's fake driven through
+the real script per wording. MAINTAINERS.md "Designer drilldown grammar" step 3 states
+per version which spelling resolves and which sentence the CLI prints, and says the
+1.0.14 halves are read from the package by the audit and not yet checked live.
+Where the fixture text comes from: the 1.0.12 sentence was read in this session from the
+installed 1.0.12 package (handlers/data-preparation/templates/describe/index.js); the
+1.0.14 sentence is the audit's quote of the 1.0.14 package (section 1.15), and the same
+words are in the installed 1.0.12 package's rules describe (rules-list-mapper.js), which
+the audit says the template describe now shares. No 1.0.14 package was read here (Blind
+spots).
+(2) CP-3. The three sentences name the version each half holds for. The recipe has ONE
+home, a new section "Data Designer designs (CLI 1.0.14 and later)" in
+skills/setup/references/index-scope-notes.md, outside "Scope-limited domains" (no ###
+heading added, renamed or removed there; check 23 green): the recommended decision to
+put to the user is the list as its own domain data-designer-designs, id field configId,
+describe gs-admin --json dd d describe --config-id {id}, swept with --page-flag page and
+--page-size where Phase 4's fence passes --limit (the list declares no --limit); its
+docs are summary rows and deps-report does not include it until a plugin version reads
+the domain; a list that fails at the gate is a block, a describe that fails in Phase 5
+leaves its entries failed with the adoption kept; and the recipe says it is read from
+the package and not yet confirmed live. The journey data-designer list subsection keeps
+the dm group=System superset caveat, scoped: not determinable on 1.0.12 and earlier,
+unmeasured on 1.0.14 and later (CP-5 d's question). setup's SKILL.md bullet and
+templates/operating-model.md carry a one-line paraphrase and the pointer; SKILL.md's
+naming rule ("a future designs list") names the command. Doc-vs-tree: the 1.0.14 half of
+each sentence is NOT mechanically checkable on this tree - the committed catalog is
+1.0.12 and holds no dd d command, so no check can lock the claim until the adoption
+(E2's regen), when check-stale-facts' flag-spelling pass reads the 1.0.14 catalog.
+(3) CP-4. plugin.json 0.58.0 -> 0.58.1; CHANGELOG entry (designer docs complete on CLI
+1.0.14; the Data Designs list acknowledged; what a 1.0.14 workspace with failed entries
+re-runs).
+Mutation (predictions written before each run; node build/mutate.mjs, copy-out):
+    sweep (source: decision points of plugins/gs-superadmin/scripts/describe-batch.mjs FIELD_NOT_FOUND + isFieldNotFound and its one call site in drillSpawn (code census, 2026-11-27): each table row, the quantifier, each stream conjunct, the call) — suite plugins/gs-superadmin/test/describe-batch.mjs — 6 mutants, predictions read from f593-mutants.json (sha256 6cb90e4005e8) before the control run
+    M1 KILLED pred:KILL — the 1.0.14 row deleted — FAIL  F-593 refusal (1.0.14 and later): the fake printed THIS wording
+    M2 KILLED pred:KILL — the 1.0.12 row deleted — FAIL  W9 failure (retryable): dd-2's TASK drilldown failed on transport (the permanently refused field)
+    M3 KILLED pred:KILL — FIELD_NOT_FOUND.some( -> FIELD_NOT_FOUND.every( — FAIL  W9 failure (retryable)
+    M4 KILLED pred:KILL — the stderr conjunct dropped — FAIL  W9 failure (retryable)
+    M5 SURVIVED pred:SURVIVE — the stdout conjunct dropped — suite exit 0 (no fake prints the refusal on stdout; the conjunct is carried unchanged from before this fix and is ledgered here, not pinned)
+    M6 KILLED pred:KILL — notFound: isFieldNotFound(r) -> notFound: true — FAIL  F-593 control: a refusal in NEITHER wording is retryable
+    mutate: 6 of 6 mutants run - 5 killed, 1 survived; 0 MISMATCH, 0 not applied
+    sweep (source: the review round's near-miss question on FIELD_NOT_FOUND, a row loosened past its own sentence; M1..M6 not re-run - only arms and comments were added since their run) — same suite — 1 mutant, predictions read from f593-mutants-2.json (sha256 9a1733ff91a9) before the control run
+    M7 KILLED pred:KILL — the 1.0.12 row loosened to any "No <word> found" — FAIL  F-593 near-miss: a refusal in NEITHER wording is retryable
+    mutate: 1 of 1 mutants run - 1 killed, 0 survived; 0 MISMATCH, 0 not applied
+The lock the finding asked for is M1 and M2: a matcher that knows only one of the two
+sentences fails the suite by name, either way.
+Sibling case the finding did not list, run against the fix: a third wording the CLI might
+ship is one more table row and no other code; the near-miss control and M7 show the
+table does not swallow a neighbouring refusal.
+Sibling sweep: searched, with counts - git grep -n "No field found" over plugins/, build/,
+reference/ and dev/VALIDATION.md: 1 matcher (describe-batch.mjs, fixed), 2 fakes (both
+now print either), 3 stored or asserted texts that read permanent and never the sentence
+(test/fixtures/reader-payloads.mjs, test/tenant-deps.mjs, test/doc-lib-fixtures.mjs), 1
+doc (MAINTAINERS.md, fixed); git grep "notFound" and "isFieldNotFound(" over scripts/: one
+file, one call site; skills/setup/references/document-domain-notes.md says "its own
+not-found sentence" without quoting it (wording-neutral, left). git grep -n -i "no list
+command\|have no list\|designs" over skills/, templates/, README.md, scripts/ and the
+cheatsheet renderer: the 3 sentences (fixed), SKILL.md's naming rule (fixed), 3 CHANGELOG
+history lines (frozen), and 4 statements that a design has no describe or inventory
+entry (skills/deprecate/SKILL.md step 2 and step 6; scripts/jo-report-deps.mjs's header
+comment and its report caveat) - logged as F-594 polish, not fixed here: what deprecate
+and the report should do on 1.0.14 is the Data Designs domain's design question (E3).
+Review: /code-review requested medium, the recipe loaded as high and inline; run as two
+cold finders (model opus) over the diff on disk, one on code and tests, one on prose -
+never from this session's context. 10 findings: 8 fixed in 172d764 (the recipe's fence
+passed --limit to a list without it; the block instruction could not apply to a Phase 5
+describe; "on every version not identifiable" was unmeasured on 1.0.14; MAINTAINERS
+claimed a banked live check; the operating model held a second full copy; the recipe sat
+under another command's scope subsection and decided the adoption for the user; the
+comment misdated the newer wording; no near-miss control), 1 logged as F-594, 1 no
+change (the 1.0.14 wording rests on the audit's quote - the live check, CP-5 b, is the
+gate). Angles briefed beyond correctness: removed behaviour, cross-file consumers, test
+vacuity, skill executability, cross-document agreement; the four file-beside-a-pull
+angles do not apply (the change writes no file and merges none).
+Judge: independent of the fixer's list - (a) the 1.0.12 sentence and the near-miss are
+the installed CLI's own source text, not the matcher's; (b) the tester's read of the
+1.0.14 package or a 1.0.14 CLI for the refusal sentence (CP-5 b, V1's arm) decides
+whether the second row matches what that CLI prints; (c) for CP-3, the tester's walk of
+setup's changed Phase 4 passage, and CP-5 c on a 1.0.14 tenant for the sweep's flags.
+Ordering: no finding in the round removes an unreliable manual step, and no known-pending
+change re-arranges what is verified here (E2 and E3 are gated and start after this
+merges). Tester pickup: /reload-plugins; setup is slash-only, so its walk is the user's
+to type.
 
 ## F-592 — DEFERRED (past 0.58.0)
 Reported: 2026-10-25 (tester)
