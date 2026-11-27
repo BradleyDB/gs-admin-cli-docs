@@ -3735,6 +3735,14 @@ Blind spots: no tenant pull was made with the new families (the two reads were c
      Carried forward (not in this release): F-448 verdict by the other role; the skipped-path arm
        (Blind spots above). -->
 
+## F-596 — OPEN
+Reported: 2026-11-27 (tester)
+Severity: polish — it warns about more tenants, never fewer, so nothing unsafe passes; the cost is a prompt naming production for a command that cannot reach it
+Source: hb-20261127-02 tester round, Noticed item 1 (VALIDATION F-593 / CP-5, tester round, guard wiring); logged by the builder on the owner's ruling, 2026-11-27: polish
+What: the guard's approval prompt names the tenants of the session's project folder, not of the folder the command runs in: a mutating command issued after a cd into a scratch folder holding one sandbox manifest drew an ask naming the session workspace's two manifests, production included
+Repro: from a session whose project folder is a workspace with a production and a sandbox manifest: cd into a scratch folder that holds .gs-superadmin and one sandbox tenant folder, then issue a catalog-mutating gs-admin command there (the round used re r run-now on a fake id) and read the ask's tenant line; decline it
+Expected: the tenant line is read from the workspace the command runs in (the cd target the tokenizer already records) and falls back to the session's project folder only when that cannot be resolved, saying which it used; at the next round touching the guard's tenant line
+
 ## F-595 — DEFERRED (past 0.58.1)
 Reported: 2026-11-27 (builder)
 Severity: normal — skills read exact flags from the workspace catalog and cheatsheet, so a stale one gives a user wrong or missing commands, and the guard asks on every command added since; the safety property holds (unknown commands ask, mutating flags are read from the union with the bundled catalog)
