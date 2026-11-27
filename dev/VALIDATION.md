@@ -4415,3 +4415,251 @@ R5 the fast path's empty selection, walked; R6 the re-price by hand), the hook's
 wiring line, the suites and CI quoted above; F-563, F-564, F-565, F-566, F-575, F-576, F-582, F-585, F-588, F-589,
 F-590 VERIFIED. Spent for 0.58.0. Standing arms, not spent: R6's Re-aim (owed at the next round touching F-575's
 pricing); R3's re-documenting set-up on A's side, owed with F-592 (DEFERRED past 0.58.0).
+
+## F-593 / CP-5 — live checks on CLI 1.0.14 (banked 2026-11-27, builder, branch designer-cli-1-0-14; plan: gs-fortress build-kickoffs-1.0.14.md CP-5, audit-1.0.14)
+
+Seven read-only checks on a CLI whose `--version` prints 1.0.14. The repo's pin stays 1.0.12, so
+1.0.14 is installed into a scratch folder and run by path, never over the global install:
+`npm install --prefix <scratch> --ignore-scripts` of the package at 1.0.14, then
+`node <scratch>/node_modules/@gainsight/gs-admin-cli/bin/gs-admin.js …` (written `gs1014` below),
+from the consumer workspace so the stored token is the workspace's. Every entry records the CLI
+version it ran on. (a) and (b) decide F-593's verdict and feed E2's grammar re-derivation; (c) to
+(e) fix the shape E3 builds its reader on; (f) and (g) are the audit's ledger items.
+
+Builder first light, 2026-11-27, CLI 1.0.14, the sandbox (not the verdict of record — the
+tester's read is; quoted so the bars below were written after seeing the shape they read): the
+1.0.14 package was read first (the refusal sentence in the shared task drilldown; `dd d list`
+declaring `--page`, `--page-size` and `--limit` as an alias of `--page-size`; `--config-id` on
+the design describe), which corrected the recipe (it had said the list takes no `--limit`).
+Then, live: the per-task describe answered on every task of three templates (nine calls, 1.9 to
+3.5 s each); a `--field` label that does not exist exited 1 with stderr
+`Error: No field found on this task matching: "<label>"` and nothing on stdout; an aggregated
+show field resolved under BOTH its full `"<label> (<AGG>)"` spelling and its stripped one (14
+`_taskFieldDetail` rows each); `dd d list --limit 200 --page 1` exited 0 with root keys
+`result, data, pageInfo`, row keys `configId, name, description, folderId, modifiedByName,
+modifiedDateStr`, `pageInfo` keys `pageNumber, pageSize, totalRecords, totalPages`, and the
+whole list in one page; and the designer doc-mode run through the real script with the 1.0.14
+binary (`--bin`) into a scratch workspace documented three templates in one pass (59 calls, 138
+s, 47 of 47 fields ok, none refused). Not seen live: a refusal met by the script itself (no
+sandbox template holds a field the CLI refuses), so the permanent path is the suite's.
+Noticed: at `--limit 2` the payload's `totalPages` read one fewer than rows / page size rounded
+up, on both pages asked; `modifiedDateStr` arrived as an epoch-millisecond number, not a string.
+
+### (a) the per-task GET behind every template drilldown
+
+Tenant: sandbox. Login: needed (a live read). Minutes: about 5 (first light: nine task calls
+about 25 s, one three-template doc-mode pass 138 s). Start when: a token with 10 minutes left.
+Steps: for every task of two templates the KB documents,
+`gs1014 --json dd t describe --template-id <id> --task-id <t>`, timed; compare each task's
+`_task*` tables with the composite doc captured at 1.0.12 (same keys, same labels); then one
+template end to end: describe-batch's designer doc-mode with `--bin` set to the 1.0.14 binary
+into a scratch out-dir, and tenant-deps' "docs yielding usages" column over that doc.
+FIXED: every call exits 0; the tables' keys and labels equal the 1.0.12 capture; the template
+documents complete; the doc yields usages. Record the seconds per call beside the 1.5 to 3 s
+the spawn budget assumes.
+BROKEN: any per-task call fails where the template-level call succeeds, or a table's keys or
+labels differ from the 1.0.12 capture (the labels are what the field work list keys on) —
+reopens F-593 and blocks E2's grammar re-derivation.
+
+### (b) the refusal sentence and the full-label spelling
+
+Tenant: sandbox. Login: needed. Minutes: 2. Start when: a template with one aggregated show
+field is known (a label ending in a parenthesised aggregation in `_taskShowFields`).
+Steps: `gs1014 --json dd t describe --template-id <id> --task-id <t> --field "zz no such field"`
+— record stderr, stdout and the exit code; then `--field "<label> (<AGG>)"` and
+`--field "<label>"` on the aggregated field.
+FIXED: the first prints exactly `No field found on this task matching: "zz no such field"`
+(after `Error: `) on stderr and exits 1 — the sentence `FIELD_NOT_FOUND`'s second row and
+the suite's `DD_FIELD_REFUSALS` hold; both spellings of the aggregated field return
+`_taskFieldDetail` rows.
+BROKEN: any other sentence (the matcher's row does not match what 1.0.14 prints: reopens
+F-593), the refusal on stdout only, or the full spelling refused (MAINTAINERS.md's step 3 is
+wrong for 1.0.14).
+
+### (c) `dd d list` — count, paging names, a paginated capture
+
+Tenant: sandbox, then any tenant whose designs exceed one page. Login: needed. Minutes: 5.
+Start when: the UI's Data Designs count is in hand (ask with the page open).
+Steps: `gs1014 --json dd d list --limit 200 --page 1`; compare the row count with the UI's
+count; read the root `pageInfo` names; then a paginated capture — the capture helper's
+paginate mode with `--page-flag page` and a small `--limit`, run from a scratch workspace whose
+catalog is generated from the 1.0.14 package and with the helper's `--bin` set to the 1.0.14
+binary. (Reworded 2026-11-27 after the tester round's Noticed item 2: what blocks the capture
+on this machine is the workspace catalog — capture.mjs refuses `dd d list` on a 1.0.12 catalog,
+fail-closed — not the name on PATH, as first banked; the helper takes `--bin`.)
+FIXED: rows equal the UI's count; `pageInfo` carries `pageNumber`, `pageSize`, `totalRecords`,
+`totalPages`; `--limit` is accepted; the sweep exits 0 `reconciled` across pages.
+BROKEN: `--limit` refused (the recipe's fence is wrong), a sweep verdict other than
+`reconciled` on a healthy list (first light's `totalPages` one short of the pages needed is
+the thing to watch: the reconciliation must rest on `totalRecords`), or rows short of the UI.
+
+### (d) `dd d describe --config-id <id>` at all three levels
+
+Tenant: sandbox. Login: needed. Minutes: 3. Start when: one design id from (c).
+Steps: the design level, `--task-id <t>`, and `--field <label>` on one design.
+FIXED: `_tasks[]` rows and `_task*` tables in the same shapes as a template's; record the root
+id key (`configId` expected) and WHETHER any header field names the design's output object.
+BROKEN: a different task-row or table shape than the template describe (E3's reader cannot
+reuse the template reader), or no readable task ids.
+
+### (e) `dd d dependencies --config-id <id>`
+
+Tenant: a tenant with a design a rule or report is known to read (ask which, with the UI
+open), and one unpublished design. Login: needed. Minutes: 3.
+Steps: the command on each; record the `_flatDependencies` row keys and the `eligible` value.
+FIXED: rows name the known dependent for the first; `eligible: false` for the unpublished one.
+BROKEN: the known dependent is absent, or the payload has no flat rows (E3's decision on
+reading inbound edges has nothing to read).
+
+### (f) KI-034 — `re r describe --criteria-name` with a fragment
+
+Tenant: sandbox. Login: needed. Minutes: 2. Start when: a rule with two criteria is known.
+Steps: `gs1014 --json re r describe --id <rule> --criteria-name "<a fragment of one name>"`.
+Record: refused, or a substring hit returned (the help text says exact; the audit read the
+handler as substring). Either outcome is a record for the ledger, not a plugin defect.
+
+### (g) `re r describe --task-name` — exact at 1.0.14
+
+Tenant: sandbox. Login: needed. Minutes: 2. Start when: a rule with a named task is known.
+Steps: the command with a fragment of the task's name, then with the whole name.
+FIXED: the fragment is refused with the task list; the whole name resolves.
+BROKEN: the fragment resolves (the audit's reading of the equality match is wrong), or the
+whole name is refused.
+
+### Tester round @ hb-20261127-02 (2026-11-27, re-verification of F-593)
+
+Pass bar, stated before measuring (the kickoff's): (1) the describe-batch suite green with
+its F-593 checks passing for both wordings, and deleting either FIELD_NOT_FOUND row fails it
+by name; (2) arms (a), (b), (c) above, on CLI 1.0.14 from a scratch install, the sandbox, the
+bars as written; (3) the three sentences name the version each half holds for, the recipe
+section reads as executable against Phase 4, check-doc-drift green; (4) setup walked by the
+owner's slash command (first ask recorded, declined); guard wiring, one catalog-mutating
+command, ask declined. Checkout: designer-cli-1-0-14 at 5a0c4b5, clean; canary
+hb-20261127-02 matches the Under test line. CLI: `npm install --prefix <scratchpad>/cli1014
+--ignore-scripts` of the package at 1.0.14, `--version` printed
+`@gainsight/gs-admin-cli/1.0.14 win32-x64 node-[v]24.16.0`; the global install stays 1.0.12.
+(Builder, 2026-11-27: two spellings in this paragraph reworded for check-stale-facts, which
+reads a package-at-version install spelling and a v-prefixed version as claims about the pin —
+the install command's package argument is described instead of spelled, and the quoted
+`--version` output carries the `[v]` marker; nothing else in the tester's text is touched.)
+
+Bar (1) PASS: `node plugins/gs-superadmin/test/describe-batch.mjs` exit 0, 200 PASS, 12 of
+them F-593 (refusal x3, corpus fake, per wording; control x2; near-miss x2). Row 1.0.12
+deleted (Edit): exit 1, 11 failed, among them the four `F-593 ... (1.0.12 and earlier)` checks
+and seven W9 checks. Row 1.0.14 deleted: exit 1, 4 failed, exactly the four `F-593 ... (1.0.14
+and later)` checks. Restored by Edit; `git status -s` empty; suite 200/200.
+
+Bar (3) PASS: index-scope-notes.md lines 80-89, SKILL.md lines 278-284, operating-model.md
+lines 357-366 each state the 1.0.12-and-earlier half and the 1.0.14-and-later half. The
+recipe (index-scope-notes.md "Data Designer designs (CLI 1.0.14 and later)") against Phase 4:
+the fence (`--page-flag page`, `--limit 200`) is Phase 4's own; domain name, id field and
+describe command fill upsert-batch's flags; the name is the one Phase 4's naming rule (SKILL.md
+line 366) reserves; the block/fail split matches step 1. Not checkable here: whether the
+gate's suggestedName for `data-designer designs list` derives `data-designer-designs`
+(domain-candidates.mjs line 449-450, needs a 1.0.14 catalog). `node build/check-doc-drift.mjs`
+exit 0.
+
+Arm (a) PASS. No KB doc holds a 1.0.12 three-level capture (the sandbox's data-designer docs
+are template-level), so the comparison was a live differential: the installed 1.0.12 binary
+and the 1.0.14 one, the same `dd t describe --template-id <id> --task-id <t>` per task, for
+every task of templates 07e87386 and 736f1186 (3 tasks each). 12 calls, every exit 0; per
+task, the `_task*` table set, each table's row keys and each row's first 80 JSON characters
+(`_index`, `_field`) equal at both versions: 0 differences. 1.0.14 seconds per task call:
+2.35, 3.36, 1.44, 3.23, 3.21, 1.37 (1.0.12: 1.30 to 1.80) - three of six above the 3 s the
+spawn budget assumes. End to end: describe-batch designer doc-mode, `--bin` the 1.0.14
+binary, a scratch copy of the sandbox manifest with d27bfd6e set pending: exit 0, documented
+1, failed 0, spawns 18 (template 1, task 3, field 14), fieldsOk 14, fieldsUnresolvable 0, 46 s.
+tenant-deps `--object activity_timeline` over that doc: Data designers docs yielding usages
+1/1, matching assets 1, usage rows 5.
+
+Arm (b) PASS. Template d27bfd6e, task t2 (its show field `Activity Date (MAX)`), 1.0.14:
+`--field "zz no such field"` exit 1, stdout 0 bytes, stderr
+`Error: No field found on this task matching: "zz no such field"` then
+`Suggested next steps:` / `Fields on this task: Activity Date, Company Name, Company GSID`.
+That stderr, captured to a file and tested against the two rows extracted from
+describe-batch.mjs's own FIELD_NOT_FOUND source text: row "1.0.12 and earlier" false, row
+"1.0.14 and later" true; the suite's DD_FIELD_REFUSALS 1.0.14 template is the same sentence.
+`--field "Activity Date (MAX)"` and `--field "Activity Date"`: both exit 0, 14
+`_taskFieldDetail` rows each.
+
+Arm (c), CLI side (the UI count is the owner's read, below). `dd d list --limit 200 --page 1`:
+exit 0, root keys `result, data, pageInfo`, 127 rows, `pageInfo` `{pageNumber 1, pageSize 200,
+totalRecords 127, totalPages 1}`, row keys `configId, name, description, folderId,
+modifiedByName, modifiedDateStr`; `--limit` accepted. The paginated capture as the step
+wrote it could not run: with `--out` under a workspace whose catalog is 1.0.12 (or none, so
+the bundled one), capture.mjs refuses `command "dd d list 50" is not in the catalog —
+refusing (fail-closed)` - the blocker is the catalog, not the name on PATH. Run instead as a
+1.0.14 user's workspace has it: extract-catalog.mjs with GS_ADMIN_PKG at the scratch 1.0.14
+package into a scratch workspace's `.gs-superadmin/catalog.json` (196 commands; it holds
+`data-designer designs list` and `describe`), and capture.mjs `--bin` the 1.0.14 binary (the
+helper's own flag, in place of a PATH entry). `--paginate --page-flag page ... --limit 50`:
+exit 0 `reconciled`, 3 pages (50, 50, 27), 127 rows, payload total 127 at
+`pageInfo.totalRecords`; `--limit 10`: exit 0 `reconciled`, 13 pages, 127 rows. Both sweeps 127
+unique configIds, the same set as the single fetch. `totalPages` reads floor, not ceiling (2 at
+size 50, 12 at size 10, for 3 and 13 pages served); the sweep stops on totalRecords, so it is
+harmless to the helper.
+Arm (c) PASS: the owner read 127 data designs on the sandbox's Data Designer page (filters
+cleared, asked without the CLI's figure) = the CLI's 127. The owner's caveat, kept: a CLI list
+that left out expired or otherwise filtered designs would not be wrong as such; on this
+sandbox no design is left out.
+
+Arm (d) PASS (run because the login allowed; feeds E3). Design 16411a0e (the list's first row):
+`dd d describe --config-id <id>` exit 0, root `result, data`, root id key `configId`, header
+`configId, name, description, folderId, modifiedByName, modifiedDateStr` - no header field
+names an output object. `_tasks` 5 rows (t1 mdaExtract `email_log_v2`, t2/t3 freeForm, t4
+mdaExtract `ao_advanced_outreach`, t5 join), row keys equal to the 1.0.14 template describe's
+`_tasks` rows (`taskId, taskName, taskType, _object, _connType, _parents, _fieldCount,
+_filterCount, _groupByCount, _index`; `_index` is new at 1.0.14 on the template rows too, the
+1.0.12 row has none); the `_task*` table set equals the template's. One value difference: the
+design's `_tasks` rows carry `_fieldCount` and `_filterCount` as the string `"?"` on every row
+read, where the template's carry numbers (6, 1, 8). `--task-id t1`: exit 0, `_taskShowFields` 9
+rows keyed `_index, _field, _type, _calc` (as a template's), `_taskCriteriaConditions` 6.
+`--task-id t1 --field "From Email Id"`: exit 0, 13 `_taskFieldDetail` rows keyed `_key, _value`.
+
+Arm (f), the ledger record: `re r describe --id 02f02449 --criteria-name "Gree"` (criteria
+Amber, Green, Red) exit 0 and returned `ruleDetails._configCriteria` = the one row
+`criteriaName "Green"`, `criteriaId c1` - a SUBSTRING hit (the audit's handler reading), not
+exact as the help text says.
+
+Arm (g) PASS. Rule 003baf5a (tasks t1 Account, t2 Company, t3 Merge): `--task-name "Compa"`
+exit 1, stderr `Error: No task found with name: "Compa"` with the available-tasks list;
+`--task-name "Company"` exit 0, `_rawTaskDetail` id `t2` name `Company`.
+
+Arm (e) not run: it needs the owner to name, with the UI open, a design a rule or report reads.
+
+Unwarned ask: during arms (a) to (c) an approval ask rendered on one of the session's commands
+and the owner approved it (the tester had not said in advance that one would come or what to
+do); its text was not kept, so which command drew it is unmeasured. Every command the session
+ran in those arms was read-only (an npm install into the scratchpad, describes and lists on
+the sandbox, local scripts). The owner ran /reload-plugins after the arms.
+
+Bar (4), walk: the owner typed `/gs-superadmin:setup` in this session; the tester ran it with an
+empty scratch folder as the working dir (not the real workspace). Phase 1: `gs-admin --version`
+1.0.12, `whoami` `Token: valid (expires in 704s)` beside `Auth mode: not configured` (read as
+not a failure, as the skill says). Phase 2: no `*/_manifest.json` there, so the first-run ask,
+relayed as written: "Tenant https://<the sandbox> — is this tenant production or sandbox?
+Workspace folder will be `<org>-prod/` or `<org>-sbx/` accordingly (or type a different folder
+name)", with the hostname-marker hint. Declined by the owner ("decline"); setup stopped; the
+folder still empty (0 entries). The changed Phase 4 passage is unreachable by this walk: Phase
+3 extracts the catalog from the installed CLI, 1.0.12 here. Measured instead, with no tenant
+call: in the arm (c) scratch workspace (the 1.0.14 catalog), `manifest.mjs init` then
+`domain-candidates.mjs diff`: exit 0, `pinFacts {stamped 1.0.12, catalogVersion 1.0.14, applied
+false}`, and `data-designer designs list` undecided with `suggestedName` `data-designer-designs`,
+`nameCollision` false, `likelyPerAsset` false - the name the recipe and Phase 4's naming rule
+reserve. Not walked: a model reading Phase 4 on a 1.0.14 workspace and choosing the recipe's
+adoption (banked: E2's adoption, when the committed catalog is 1.0.14).
+
+Guard wiring: warned first (what would appear, decline, copy the text), then, from the arm (c)
+scratch workspace (`cd <scratchpad>/ws-c &&`), `gs-admin re r run-now --id zz-f593-guard-probe`.
+The ask rendered (the owner's report; prompts are invisible to the session) and was declined;
+its text as pasted: "Hook PreToolUse:Bash requires confirmation for this command: Mutating
+Gainsight command: gs-admin rules-engine rules run-now. This workspace is read-only by default.
+Workspace manifests claim multiple tenants (prod (https://<prod>); sandbox (https://<the
+sandbox>)) — confirm `gs-admin whoami` targets the intended one before approving. ⚠ At least
+one of these tenants is PRODUCTION (recorded at setup) — verify the target before approving.
+[plugin:gs-superadmin]". The command did not run. Noticed: the tenants named are the session's
+project workspace's two manifests, not the scratch folder's one (sandbox) the command was run
+in - the guard reads the session's workspace, not the command's `cd` target (it warns more,
+never less).
+
+Verdict: F-593 VERIFIED @ hb-20261127-02 - bars (1) to (4) met as stated above.

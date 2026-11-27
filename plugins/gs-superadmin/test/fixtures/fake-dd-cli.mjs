@@ -17,6 +17,12 @@ import { DESIGNER_DRILLDOWN } from "./reader-payloads.mjs";
 // the corpus so the reader is measured against the sparse shape.
 const DD = process.env.FAKE_DD_OVERRIDE ? JSON.parse(readFileSync(process.env.FAKE_DD_OVERRIDE, "utf8")) : DESIGNER_DRILLDOWN;
 
+// FAKE_DD_REFUSAL (F-593): the `--field` not-found sentence to print, as a
+// template with {task} and {field} — the CLI reworded it at 1.0.14, so the
+// suite that drives this fake chooses the wording (its DD_FIELD_REFUSALS
+// table holds both, as the CLI's source spells them). Unset, the 1.0.12 one.
+const REFUSAL = process.env.FAKE_DD_REFUSAL ?? 'No field found on task "{task}" matching: "{field}"';
+
 const a = process.argv;
 const at = (f) => { const i = a.indexOf(f); return i > -1 ? a[i + 1] : undefined; };
 const finish = (s) => { process.stdout.write(s + "\n", () => process.exit(0)); };
@@ -34,6 +40,6 @@ else if (!field) {
   finish(JSON.stringify(t));
 } else {
   const rows = (DD.fields[task] ?? {})[field];
-  if (!rows) fail(`No field found on task "${task}" matching: "${field}"`);
+  if (!rows) fail(REFUSAL.replace("{task}", () => task).replace("{field}", () => field));
   finish(JSON.stringify(rows));
 }

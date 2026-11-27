@@ -118,12 +118,31 @@ a live tenant (GP-B5 W9, keys only). Follow the manifest's handler pointer for
    (the system name) · `Display Name` · `Field Alias (output header)` · `Source Object`
    (`"Label (name)"` or bare) · `Connection` (type or id) · type / flags rows
    (`DESIGNER_FIELD_DETAIL_KEYS` in tenant-deps names the five the reader consumes).
-   Resolves by label on extract, freeForm and join tasks; the SUFFIX-STRIPPED spelling
-   resolves and the full `"Label (MAX)"` spelling does not; the CLI's refusal is the
-   sentence `No field found on task "<t>" matching: "<label>"` — the script treats a
-   refusal in those words under every spelling as a PERMANENT gap (recorded on the
-   item, never retried until the template changes, never blocking), anything else as
-   retryable. Duplicate labels on one task reach only the first field's detail.
+   Resolves by label on extract, freeForm and join tasks. Two facts here depend on the
+   INSTALLED CLI, which can be newer than the pin, so each is stated per version
+   (F-593; the 1.0.14 halves are read from the 1.0.14 package and were seen on one
+   sandbox, 2026-11-27 — the sentence on stderr, both spellings of an aggregated field
+   resolving — and are re-derived with the rest of this section at that adoption):
+   - **Which spelling resolves.** On 1.0.12 and earlier the SUFFIX-STRIPPED spelling
+     resolves and the full `"Label (MAX)"` spelling does not. On 1.0.14 and later the
+     full `"Label (AGG)"` spelling resolves as well (the CLI's lookup also matches the
+     label with its aggregation suffix). The script's two-spelling order is the same on
+     every version; what changes on 1.0.14 is which attempt answers when the full
+     label is the one sent (a suffix the vocabulary does not know is sent whole first).
+   - **The refusal sentence.** On 1.0.12 and earlier:
+     `No field found on task "<t>" matching: "<label>"`. On 1.0.14 and later:
+     `No field found on this task matching: "<label>"` (the words the rules describe
+     already printed on 1.0.12 — the doc-mode spawns only the template describe).
+     `FIELD_NOT_FOUND` in
+     `describe-batch.mjs` holds one row per wording and matches the WORDS, never the
+     installed version.
+
+   The script treats a refusal in either wording under every spelling as a PERMANENT
+   gap (recorded on the item, never retried until the template changes, never
+   blocking), anything else as retryable — so a wording the table does not hold reads
+   as retryable and the entry stays failed, loudly: re-read the sentence in the
+   package at every adoption and add its row. Duplicate labels on one task reach only
+   the first field's detail.
 
 The script gates the flag spellings against the catalog and the task count against the
 payload before any spawn, so a changed grammar refuses loudly at the first designer

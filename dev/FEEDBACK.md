@@ -162,14 +162,16 @@ reopening verdict's `Verdict:` line says REOPENED (or "back to OPEN") — that v
 what the gate counts (F-444). The gate refuses both. Sections from F-360 on; the Class: key
 rule also reads the archive.
 
-Under test: dev · hb-20261026-01 · 2026-10-26
-Blind spots (hb-20261026-01): post-release re-stamp after 0.58.0 (main e373e4b, tag [v]0.58.0): no code changed on dev since the release cut; nothing measured beyond the release gates; F-592 stays DEFERRED (past 0.58.0), back at the next release ceremony; R17 R6's re-aim (VALIDATION § R17 R6) stays banked for the next round touching F-575's pricing.
-Checks (hb-20261026-01): battery pass (56/56 over 774a0f8, stripped 55/55) · review pass (release gate: low, no finding) · ci pass (PR #75, 3-OS matrix) · walk n/a (no skill changed since the cut)
-Walk (hb-20261025-02): 2026-10-26 (tester) — email-engagement (model-invocable) invoked by the session: D2 and the closing step on scratch zz-empty (fast path) - closing.selection programs 0 with the sentence carried in the ask, presented as written; Bradley asked what selection was meant (answered in chat), chose go back, then the last year in the programs question asked in chat as six numbered options; the closing step again said the selection text (145 of 1086) once with the ruled ask; not saved. Step P on zz-r17a: the bookkeepingLeft entry (the progress record, EPERM) relayed once, nothing to do; Bradley twice asked how long was left and the session quoted status progress as it stood (1 of about 39, about 5 min left, the plan price for 20 families; then zz-r17b 1 of about 39, about 3 min left priced from the knowledge base pace). R3: the knowledge-base refusal relayed and stopped, no retry of its own; the ad-hoc exit-1 line read, not walked. Guard wiring: gs-admin re r run-now --id zz-r17-guard-probe drew the ask, declined by Bradley, its text pasted (VALIDATION § R17); no journal row.
-Walk (hb-20261026-01): 2026-10-26 (builder) — post-release re-stamp after 0.58.0, closed by the builder: no skill or script changed since the release cut (the tree beyond main is dev/ and the dev-canary skill alone); no tester round is owed for this token.
-Noticed (hb-20261025-02): 2026-10-26 (tester) — (1) R17 R1's bar quotes the lock's removal as "(EPERM)"; Windows returned EBUSY for the unlink under the handle (the claim met) → builder, reword the bar if R1 is re-run; (2) R17 R6's bar cannot see another dashboard's pull: the dashboard's own pace.json named every family its plan priced, so B's moves to the knowledge base's file never entered A's quote — what discriminated was A's own second pull → builder, re-aim R6 (a sibling dashboard's FIRST plan priced from the knowledge base's pace) at the next round touching F-575's pricing; (3) R17 R3's set-up ("move a template doc aside") cannot make a refresh re-document: F-592, logged polish on the owner's ruling → builder, with F-592; (4) R17 R4's Start when needs a program that SENT in the window and was refused within the dashboard's derived health lookback (30 days on the production scratch); a refused program that sent nothing, or a deleted one, plans no sample (two picks fell through) → builder, add it to R4's Start when; (5) owner inputs surfaced mid-round (R4's tenant, the guard decline, a login) → dev-loop skill owner: a tester package line `Owner inputs:` listing every arm that waits on the owner, answered before the first arm; (6) this round's never-pushed probe commits and tags (arms A-G) stay unreachable in the local object store after their refs were deleted → owner, prune with the earlier sets (git gc --prune=now); (7) dev-utils flip failed once with OSError Errno 22 writing the bus, nothing written, the retry clean → dev-utils owner, only if it recurs. Full shape (what, where, owner, trigger, check): the tester's verdict comment on PR #74 @ hb-20261025-02.
+Under test: designer-cli-1-0-14 · hb-20261127-02 · 2026-11-27
+Blind spots (hb-20261127-02): the designer doc-mode met no refusal live (no sandbox template holds a field the CLI refuses), so the alternate-spelling and permanent path under the 1.0.14 sentence is the suite's - the sentence itself was read live once, by hand; the design describe (dd d describe) and dd d dependencies were not run (CP-5 d and e, banked); the paginated capture of dd d list through the capture helper was not run (the helper spawns gs-admin by name and the name is 1.0.12 here; CP-5 c), and the payload's totalPages read one short at a small page size, unexamined; first light is the builder's own read, not a verdict; the docs changed after the battery over 658edec (the recipe's sweep bullet and interim sentence, MAINTAINERS step 3's provenance clause, one CHANGELOG sentence) are covered by the doc gates, test-check-doc-drift, scaffold and describe-batch re-run by hand, not by a full battery; setup's changed Phase 4 passage and the recipe section are unwalked (slash-only; the gate names the designs list only on a 1.0.14 catalog); M5 survives by prediction; F-594 polish is OPEN and carried to the Data Designs domain work
+Checks (hb-20261127-02): battery pass (56/56 over 658edec; docs since, gates re-run) · review pass (8 fixed, 1 logged, requested medium, ran high) · ci owed · walk pass
 Blind spots (hb-20261016-02): 2026-10-16 (tester) — F-546's killed writer was never caught live inside a mark (two kills, a 2 ms poll, both after the release): the dead-pid lock was laid by hand in a killed mark's shape, so the kill-to-lock path itself is the suite's; the writers' SIGINT/SIGTERM release does not exist on Windows and was not exercised; the held-handle and kill arms ran on this Windows host alone; the four-process contention driver was not re-run. F-541 and F-542 are judged by the stand-in suite alone, F-542's base-directory variant by construction; no live refresh restarted, so the skill's restarted relay is read, not walked. F-552's display-change half is suite-only. F-553/F-554/F-555 by reading; of F-555's Judge only the dashboard and page suites were run. R4 and the walk ran through the session's own shell tools, not a human paste into a terminal; cmd was not run. setup's changed sentence is unwalkable at CLI 1.0.12. The guard ask's rendering is Bradley's report; prompts are invisible to the session.
 Blind spots (hb-20261015-10): 2026-10-16 (tester) — F-546's lock never met a second writer live: the production KB is current (both R2 plans: 0 programs behind, 0 undocumented, 0 templates), so neither refresh re-documented and the manifest stayed byte-equal — the lock is measured by test/manifest-ops.mjs alone; the natural live arm is any later refresh whose plan finds programs behind. F-541, F-542 and F-545 are judged by the suite alone (no tenant can produce their states, VALIDATION § R13 R3). F-536's three shells: Git Bash and Windows PowerShell 5.1 ran the line through the session's own shell tools, cmd from a .bat file run by `cmd /d /c` — none was a human paste into a terminal window. The guard ask's rendering is Bradley's report; prompts are invisible to the session.
+Walk (hb-20261127-02): 2026-11-27 (tester) — setup (slash-only) typed by the owner, run against an empty scratch folder: Phase 1 passed (CLI 1.0.12, token valid), Phase 2 put its first-run production-or-sandbox ask as written, declined, nothing written; the changed Phase 4 passage is unreachable on a 1.0.12 catalog, and its gate step was measured on a scratch 1.0.14 catalog instead (data-designer designs list undecided, suggestedName data-designer-designs). Guard wiring: gs-admin re r run-now on a fake id drew the ask, declined by the owner, text pasted (VALIDATION F-593 / CP-5, tester round)
+Walk (hb-20261025-02): 2026-10-26 (tester) — email-engagement (model-invocable) invoked by the session: D2 and the closing step on scratch zz-empty (fast path) - closing.selection programs 0 with the sentence carried in the ask, presented as written; Bradley asked what selection was meant (answered in chat), chose go back, then the last year in the programs question asked in chat as six numbered options; the closing step again said the selection text (145 of 1086) once with the ruled ask; not saved. Step P on zz-r17a: the bookkeepingLeft entry (the progress record, EPERM) relayed once, nothing to do; Bradley twice asked how long was left and the session quoted status progress as it stood (1 of about 39, about 5 min left, the plan price for 20 families; then zz-r17b 1 of about 39, about 3 min left priced from the knowledge base pace). R3: the knowledge-base refusal relayed and stopped, no retry of its own; the ad-hoc exit-1 line read, not walked. Guard wiring: gs-admin re r run-now --id zz-r17-guard-probe drew the ask, declined by Bradley, its text pasted (VALIDATION § R17); no journal row.
+Walk (hb-20261026-01): 2026-10-26 (builder) — post-release re-stamp after 0.58.0, closed by the builder: no skill or script changed since the release cut (the tree beyond main is dev/ and the dev-canary skill alone); no tester round is owed for this token.
+Noticed (hb-20261127-02): 2026-11-27 (tester) — (1) the guard's ask named the session workspace's two manifests (production and sandbox) while the command ran in a scratch folder holding one sandbox manifest: it reads the session's project dir, not the command's cd target (warns more, never less) → owner ruling: polish finding or WONTFIX, at the next round touching the guard's tenant line; (2) CP-5 (c)'s Steps name the PATH name as what blocks the paginated capture; the blocker is the workspace catalog (capture.mjs refuses dd d list on a 1.0.12 catalog, fail-closed) and capture.mjs takes --bin → builder, reword (c)'s Steps if re-run (E2 or E3); (3) dd d list's pageInfo.totalPages reads floor (2 for 127 rows at 50 a page), harmless to the helper, which stops on totalRecords → E3, for its reader; (4) the design describe's _tasks rows carry _fieldCount and _filterCount as the string "?" where a template's carry numbers → E3, before its reader trusts either count; (5) 1.0.14 adds an _index key to the template describe's _tasks rows (1.0.12's has none) → E2, at the adoption re-read; (6) 1.0.14 per-task describes ran 1.37 to 3.36 s, three of six above the 3 s the spawn budget assumes → E2, re-price the budget figures; (7) KI-034: re r describe --criteria-name matched the fragment "Gree" to the criterion Green (substring, the help says exact) → ledger, audit-1.0.14; (8) an ask rendered mid-arm without the tester's warning and was approved; its text was not kept (every command was read-only) → tester, warn before any command that can draw an ask. Full shape (what, where, owner, trigger, check): the tester's verdict comment on PR #76 @ hb-20261127-02.
+Noticed (hb-20261025-02): 2026-10-26 (tester) — (1) R17 R1's bar quotes the lock's removal as "(EPERM)"; Windows returned EBUSY for the unlink under the handle (the claim met) → builder, reword the bar if R1 is re-run; (2) R17 R6's bar cannot see another dashboard's pull: the dashboard's own pace.json named every family its plan priced, so B's moves to the knowledge base's file never entered A's quote — what discriminated was A's own second pull → builder, re-aim R6 (a sibling dashboard's FIRST plan priced from the knowledge base's pace) at the next round touching F-575's pricing; (3) R17 R3's set-up ("move a template doc aside") cannot make a refresh re-document: F-592, logged polish on the owner's ruling → builder, with F-592; (4) R17 R4's Start when needs a program that SENT in the window and was refused within the dashboard's derived health lookback (30 days on the production scratch); a refused program that sent nothing, or a deleted one, plans no sample (two picks fell through) → builder, add it to R4's Start when; (5) owner inputs surfaced mid-round (R4's tenant, the guard decline, a login) → dev-loop skill owner: a tester package line `Owner inputs:` listing every arm that waits on the owner, answered before the first arm; (6) this round's never-pushed probe commits and tags (arms A-G) stay unreachable in the local object store after their refs were deleted → owner, prune with the earlier sets (git gc --prune=now); (7) dev-utils flip failed once with OSError Errno 22 writing the bus, nothing written, the retry clean → dev-utils owner, only if it recurs. Full shape (what, where, owner, trigger, check): the tester's verdict comment on PR #74 @ hb-20261025-02.
 Noticed (hb-20261025-01): 2026-10-25 (tester) — (1) the kickoff's fictional PLANT is the pre-push suite's own committed constant (build/test-pre-push-hook.mjs line 66), so with PLANT as the pattern every tree from 03cfb73 on is refused and an arm's "refused on the planted commit" does not tell the planted file from the suite's line (this round added probe-only re-runs) → builder, polish: the next kickoff picks a string absent from the tree, or the suite assembles its constant from parts, at the next round touching the hook or its suite; (2) arm O's bar ("from Git Bash, no exclusion: the push PASSES") fails on the head tree because the converted acme example quoted at AGENTS.md:762 and dev/hooks/pre-push:67 is matched by the converted pattern itself; the documented limit holds (the probe was not hit; on a 03cfb73^ base the push passed counting 1 from PRIVATE_INSTANCE_PATTERNS) and a real slug is unaffected → builder, reword the bar or base the probe before 03cfb73 if arm O is re-run; (3) the hook printed the probe ref name in clear on 3 lines while its contents were masked: a sample of F-588 (stated limit 6), already in its What → F-588, the owner's call pending, no new number; (4) this round's never-pushed probe commits stay unreachable in the local object store after their branches were deleted → owner, prune with the hb-20261024-02 set (git gc --prune=now). Full shape (what, where, owner, trigger, check): the tester's verdict comment on PR #73 @ hb-20261025-01.
 Noticed (hb-20261024-02): 2026-10-25 (tester) — (1) Git Bash rewrites a PRIVATE_INSTANCE_PATTERNS value that begins with a URL scheme before node reads it (each escaped dot became slash-dot), so the pattern loads, is counted in the pass line, and never matches: a silent weaker run for anyone who sets the variable from Git Bash, the pre-push hook included (it inherits the shell's value) → builder, polish: AGENTS.md § Data hygiene names MSYS2_ENV_CONV_EXCL=PRIVATE_INSTANCE_PATTERNS (or the config file) for Git Bash, in F-584's next fix round; (2) the learned-literal limit (a string matched only joined to a suffix token, or shorter than four characters, is not masked where it recurs bare) is written only in check-instance-data.mjs's comment and F-583's Fix note, not in AGENTS.md § Data hygiene or the example config → builder, polish doc line in F-584's next fix round; owner, confirm the PRIVATE_INSTANCE_PATTERNS secret lists each org slug bare as well as any folder-name pattern; (3) arm K's interrupt was a SIGINT sent by a script, not a keyboard Ctrl-C → tester, re-run with a keyboard Ctrl-C when F-584's H to K are re-run; (4) this round's never-pushed probe commits (7bf15f0, c2b2156, c012689) stay unreachable in the local object store after their branches were deleted → owner, prune with the earlier e259cba (git gc --prune=now). Full shape (what, where, owner, trigger, check): the tester's verdict comment on PR #73 @ hb-20261024-02.
 Noticed (hb-20261024-01): 2026-10-24 (tester) — (1) arm D's bar reads "a line ending 'in the file path'", but the path finding goes on with the hint every finding carries (" — org-specific string — remove it before committing"); the mechanics met the bar → builder, reword the bar if arm D is re-run in F-583's next round; (2) with PRIVATE_INSTANCE_PATTERNS holding only "# only a comment" the refusal says "PRIVATE_INSTANCE_PATTERNS is empty" (it held a line, all of it comment) → builder, polish wording in F-583's next fix round (same file), not a reopen; (3) the kickoff's cited memory "verdict-bar-vs-expected-when-live-arm-clears" is not in this workspace's memory folder → owner, write it or drop the citation from the next kickoff. Full shape (what, where, owner, trigger, check): the tester's verdict comment on PR #73 @ hb-20261024-01.
@@ -3733,7 +3735,33 @@ Blind spots: no tenant pull was made with the new families (the two reads were c
      Carried forward (not in this release): F-448 verdict by the other role; the skipped-path arm
        (Blind spots above). -->
 
-## F-593 — OPEN
+## F-596 — OPEN
+Reported: 2026-11-27 (tester)
+Severity: polish — it warns about more tenants, never fewer, so nothing unsafe passes; the cost is a prompt naming production for a command that cannot reach it
+Source: hb-20261127-02 tester round, Noticed item 1 (VALIDATION F-593 / CP-5, tester round, guard wiring); logged by the builder on the owner's ruling, 2026-11-27: polish
+What: the guard's approval prompt names the tenants of the session's project folder, not of the folder the command runs in: a mutating command issued after a cd into a scratch folder holding one sandbox manifest drew an ask naming the session workspace's two manifests, production included
+Repro: from a session whose project folder is a workspace with a production and a sandbox manifest: cd into a scratch folder that holds .gs-superadmin and one sandbox tenant folder, then issue a catalog-mutating gs-admin command there (the round used re r run-now on a fake id) and read the ask's tenant line; decline it
+Expected: the tenant line is read from the workspace the command runs in (the cd target the tokenizer already records) and falls back to the session's project folder only when that cannot be resolved, saying which it used; at the next round touching the guard's tenant line
+
+## F-595 — DEFERRED (past 0.58.1)
+Reported: 2026-11-27 (builder)
+Severity: normal — skills read exact flags from the workspace catalog and cheatsheet, so a stale one gives a user wrong or missing commands, and the guard asks on every command added since; the safety property holds (unknown commands ask, mutating flags are read from the union with the bundled catalog)
+Source: owner's observation during the F-593 tester round, 2026-11-27 (hb-20261127-02); measured by the builder on the consumer workspace
+What: nothing but a prose rule keeps a workspace's catalog current: the consumer workspace's .gs-superadmin/catalog.json sat two CLI versions behind the installed CLI and the plugin's bundled catalog (1.0.10 against 1.0.12, generated 2026-09-26) through every session since, and the only symptom was the guard's ask reading Unrecognized gs-admin command (not in catalog [v]1.0.10) - which reads like a plugin fault
+Repro: in a workspace set up on an older CLI, upgrade the CLI and the plugin and do not re-run setup: node -p "require('./.gs-superadmin/catalog.json').meta.cliVersion" prints the old version while .gs-superadmin/plugin/reference/version.json and gs-admin --version print the new one; no session-start line, refresh step or guard message says the workspace catalog is behind (the guard's Catalog-version note fires only when a mutating flag is promoted; templates/operating-model.md's Drift guard asks each session to compare the two versions by hand, and no session did)
+Expected: the gap is said by a mechanism, not left to prose (AGENTS A-5): the SessionStart hook's line, which already reads the workspace, compares the workspace catalog's meta.cliVersion with the bundled catalog's (no spawn) and says once per session that the workspace catalog is behind and that /gs-superadmin:setup regenerates it; the unrecognized-command ask names the remedy when the workspace catalog is older than the bundled one; the operating model's Drift guard paragraph becomes the paraphrase of that. Not a 0.58.1 regression; the owner's own workspace is fixed today by re-running setup
+Defer: 2026-11-27 (owner) - past 0.58.1. Why not now: the owner's ruling in session, 2026-11-27: 0.58.1 carries the CLI 1.0.14 repair (F-593) now and this gets its own build, review and tester round; the gap is not a 0.58.1 regression and the safety property holds meanwhile. Reopen: the next round after 0.58.1 ships, as its own round (a session-start line comparing the workspace catalog's version with the bundled one); or the next release ceremony, whichever comes first.
+
+## F-594 — OPEN
+Reported: 2026-11-27 (builder)
+Severity: polish — the advice each sentence supports still works on every version (the user supplies the design's values; the report never guesses a feeding system); what is wrong is the stated reason, and deprecate step 6 skips a stale mark on an entry only a 1.0.14 workspace can hold
+Source: F-593 fix round, sibling sweep and /code-review (prose finder), 2026-11-27
+Class: false-rationale
+What: the deprecate skill and the email-report provenance caveat say a Data Designer design has no list, no describe and no inventory entry, with no CLI version named - false on CLI 1.0.14 and later, where dd d list and dd d describe exist and setup may have indexed data-designer-designs (siblings of F-593 part 2 that the audit's three-site table did not list; found by F-593's sibling sweep and its review)
+Repro: git grep -n -i 'design' plugins/gs-superadmin/skills/deprecate/SKILL.md plugins/gs-superadmin/scripts/jo-report-deps.mjs: SKILL.md step 2's Data Designer bullet (no live list command, and no describe command either) and step 6 (designs have no inventory entry to mark); jo-report-deps.mjs's header comment (DD designs have no CLI describe) and its where-resolution-stops caveat (a design has no describe surface)
+Expected: each sentence names the version it holds for (1.0.12 and earlier), and what deprecate and the report do on 1.0.14 and later is decided with the Data Designs domain work (gs-fortress build-kickoffs-1.0.14.md session E3, CP-7 d) rather than written ahead of a live read of dd d describe; proposed: carried to E3, or DEFERRED past 0.58.1 with that trigger
+
+## F-593 — VERIFIED
 Reported: 2026-11-23 (carried from gs-fortress ledger/reports/audit-1.0.14.md §1.4,
 §1.15 and §1.16 by the watch's kickoffs step; DECOUPLED from the adopt decision per that
 audit's §5)
@@ -3784,6 +3812,145 @@ Also not in scope: the Data Designs KB domain itself (designer doc-mode and tena
 for dd d describe - the gated session E3 in the same file).
 Plan: gs-fortress ledger/reports/build-kickoffs-1.0.14.md, session E1 (CP-2, CP-3, CP-4)
 + V1 (CP-5).
+Fix: 2026-11-27 (builder, session E1; branch designer-cli-1-0-14, plugin 0.58.1; commits
+2f0c76a CP-2, 35e295a CP-3, d89f651 CP-4, 172d764 the review round). The class, in one
+sentence: a statement or a matcher that holds CLI behaviour as if every workspace ran the
+pinned CLI, when the installed CLI can be newer - so each is now stated or matched per
+wording the CLI has shipped, never keyed on a version.
+(1) CP-2. scripts/describe-batch.mjs FIELD_NOT_FOUND is a table, one row per wording
+("1.0.12 and earlier": the words No field found on task; "1.0.14 and later": the words No
+field found on this task matching:), read by one predicate, isFieldNotFound, at the one
+call site in drillSpawn. It matches the words on stderr or stdout and never reads the
+installed version. The two-spelling order and the permanent / retryable split are
+untouched (the frozen contract): the field loop below the call site is byte-identical. A
+wording the table does not hold reads as retryable - the entry stays failed, loudly -
+which is what 1.0.14 did to this code, and the comment and MAINTAINERS.md now say to
+re-read the sentence at every adoption. Both fake CLIs (the suite's inline one and
+test/fixtures/fake-dd-cli.mjs, the tracer's) print the sentence the suite hands them in
+FAKE_DD_REFUSAL (a template with {task} and {field}; unset, the 1.0.12 one), and
+test/describe-batch.mjs holds the wordings once, in DD_FIELD_REFUSALS. New checks, 200 in
+the suite (was 186): per wording - the stored error ends with that wording's sentence
+(the fake really printed it), the alternate spelling was spawned in the frozen order for
+a known suffix, an unknown trailing group and a bare label, a field refused under every
+spelling is permanent with the entry documented, and an alternate that resolves is
+recorded with its spelling; two controls that must stay retryable with one spelling each
+(an unrelated sentence, and the CLI's own neighbouring refusal No task found with id:,
+read from the 1.0.12 template describe handler); and the tracer's fake driven through
+the real script per wording. MAINTAINERS.md "Designer drilldown grammar" step 3 states
+per version which spelling resolves and which sentence the CLI prints, and says the
+1.0.14 halves are read from the package by the audit and not yet checked live.
+Where the fixture text comes from: the 1.0.12 sentence was read in this session from the
+installed 1.0.12 package (handlers/data-preparation/templates/describe/index.js); the
+1.0.14 sentence is the audit's quote of the 1.0.14 package (section 1.15), and the same
+words are in the installed 1.0.12 package's rules describe (rules-list-mapper.js), which
+the audit says the template describe now shares. No 1.0.14 package was read here (Blind
+spots).
+(2) CP-3. The three sentences name the version each half holds for. The recipe has ONE
+home, a new section "Data Designer designs (CLI 1.0.14 and later)" in
+skills/setup/references/index-scope-notes.md, outside "Scope-limited domains" (no ###
+heading added, renamed or removed there; check 23 green): the recommended decision to
+put to the user is the list as its own domain data-designer-designs, id field configId,
+describe gs-admin --json dd d describe --config-id {id}, swept with --page-flag page and
+--page-size where Phase 4's fence passes --limit (the list declares no --limit); its
+docs are summary rows and deps-report does not include it until a plugin version reads
+the domain; a list that fails at the gate is a block, a describe that fails in Phase 5
+leaves its entries failed with the adoption kept; and the recipe says it is read from
+the package and not yet confirmed live. The journey data-designer list subsection keeps
+the dm group=System superset caveat, scoped: not determinable on 1.0.12 and earlier,
+unmeasured on 1.0.14 and later (CP-5 d's question). setup's SKILL.md bullet and
+templates/operating-model.md carry a one-line paraphrase and the pointer; SKILL.md's
+naming rule ("a future designs list") names the command. Doc-vs-tree: the 1.0.14 half of
+each sentence is NOT mechanically checkable on this tree - the committed catalog is
+1.0.12 and holds no dd d command, so no check can lock the claim until the adoption
+(E2's regen), when check-stale-facts' flag-spelling pass reads the 1.0.14 catalog.
+(3) CP-4. plugin.json 0.58.0 -> 0.58.1; CHANGELOG entry (designer docs complete on CLI
+1.0.14; the Data Designs list acknowledged; what a 1.0.14 workspace with failed entries
+re-runs).
+Mutation (predictions written before each run; node build/mutate.mjs, copy-out):
+    sweep (source: decision points of plugins/gs-superadmin/scripts/describe-batch.mjs FIELD_NOT_FOUND + isFieldNotFound and its one call site in drillSpawn (code census, 2026-11-27): each table row, the quantifier, each stream conjunct, the call) — suite plugins/gs-superadmin/test/describe-batch.mjs — 6 mutants, predictions read from f593-mutants.json (sha256 6cb90e4005e8) before the control run
+    M1 KILLED pred:KILL — the 1.0.14 row deleted — FAIL  F-593 refusal (1.0.14 and later): the fake printed THIS wording
+    M2 KILLED pred:KILL — the 1.0.12 row deleted — FAIL  W9 failure (retryable): dd-2's TASK drilldown failed on transport (the permanently refused field)
+    M3 KILLED pred:KILL — FIELD_NOT_FOUND.some( -> FIELD_NOT_FOUND.every( — FAIL  W9 failure (retryable)
+    M4 KILLED pred:KILL — the stderr conjunct dropped — FAIL  W9 failure (retryable)
+    M5 SURVIVED pred:SURVIVE — the stdout conjunct dropped — suite exit 0 (no fake prints the refusal on stdout; the conjunct is carried unchanged from before this fix and is ledgered here, not pinned)
+    M6 KILLED pred:KILL — notFound: isFieldNotFound(r) -> notFound: true — FAIL  F-593 control: a refusal in NEITHER wording is retryable
+    mutate: 6 of 6 mutants run - 5 killed, 1 survived; 0 MISMATCH, 0 not applied
+    sweep (source: the review round's near-miss question on FIELD_NOT_FOUND, a row loosened past its own sentence; M1..M6 not re-run - only arms and comments were added since their run) — same suite — 1 mutant, predictions read from f593-mutants-2.json (sha256 9a1733ff91a9) before the control run
+    M7 KILLED pred:KILL — the 1.0.12 row loosened to any "No <word> found" — FAIL  F-593 near-miss: a refusal in NEITHER wording is retryable
+    mutate: 1 of 1 mutants run - 1 killed, 0 survived; 0 MISMATCH, 0 not applied
+The lock the finding asked for is M1 and M2: a matcher that knows only one of the two
+sentences fails the suite by name, either way.
+Sibling case the finding did not list, run against the fix: a third wording the CLI might
+ship is one more table row and no other code; the near-miss control and M7 show the
+table does not swallow a neighbouring refusal.
+Sibling sweep: searched, with counts - git grep -n "No field found" over plugins/, build/,
+reference/ and dev/VALIDATION.md: 1 matcher (describe-batch.mjs, fixed), 2 fakes (both
+now print either), 3 stored or asserted texts that read permanent and never the sentence
+(test/fixtures/reader-payloads.mjs, test/tenant-deps.mjs, test/doc-lib-fixtures.mjs), 1
+doc (MAINTAINERS.md, fixed); git grep "notFound" and "isFieldNotFound(" over scripts/: one
+file, one call site; skills/setup/references/document-domain-notes.md says "its own
+not-found sentence" without quoting it (wording-neutral, left). git grep -n -i "no list
+command\|have no list\|designs" over skills/, templates/, README.md, scripts/ and the
+cheatsheet renderer: the 3 sentences (fixed), SKILL.md's naming rule (fixed), 3 CHANGELOG
+history lines (frozen), and 4 statements that a design has no describe or inventory
+entry (skills/deprecate/SKILL.md step 2 and step 6; scripts/jo-report-deps.mjs's header
+comment and its report caveat) - logged as F-594 polish, not fixed here: what deprecate
+and the report should do on 1.0.14 is the Data Designs domain's design question (E3).
+Review: /code-review requested medium, the recipe loaded as high and inline; run as two
+cold finders (model opus) over the diff on disk, one on code and tests, one on prose -
+never from this session's context. 10 findings: 8 fixed in 172d764 (the recipe's fence
+passed --limit to a list without it; the block instruction could not apply to a Phase 5
+describe; "on every version not identifiable" was unmeasured on 1.0.14; MAINTAINERS
+claimed a banked live check; the operating model held a second full copy; the recipe sat
+under another command's scope subsection and decided the adoption for the user; the
+comment misdated the newer wording; no near-miss control), 1 logged as F-594, 1 no
+change (the 1.0.14 wording rests on the audit's quote - the live check, CP-5 b, is the
+gate). Angles briefed beyond correctness: removed behaviour, cross-file consumers, test
+vacuity, skill executability, cross-document agreement; the four file-beside-a-pull
+angles do not apply (the change writes no file and merges none).
+Judge: independent of the fixer's list - (a) the 1.0.12 sentence and the near-miss are
+the installed CLI's own source text, not the matcher's; (b) the tester's read of the
+1.0.14 package or a 1.0.14 CLI for the refusal sentence (CP-5 b, V1's arm) decides
+whether the second row matches what that CLI prints; (c) for CP-3, the tester's walk of
+setup's changed Phase 4 passage, and CP-5 c on a 1.0.14 tenant for the sweep's flags.
+CI red, fixed in a4ef082: the review round placed the recipe's section between
+"Scope-limited domains" and "Recovering list-invisible email templates"; check 23's own
+fixture (test-check-doc-drift 23b) inserts a subsection before the recovery heading and
+expects it inside the scope section, so drift (full) went red on 00a5f52 and so did the
+local battery at step 48. The section now follows the recovery section (the last in the
+file) and no check or fixture changed; the first battery pass (56/56 over d89f651)
+predates the review round, which is why it did not see it.
+First light, 2026-11-27 (builder, after hb-20261127-01 and before any tester arm, on the
+owner's go): the 1.0.14 package installed into a scratch folder and read, then three
+read-only checks on the sandbox with that binary (VALIDATION, F-593 / CP-5, first-light
+paragraph). Confirmed: the refusal sentence, on stderr, exit 1; both spellings of an
+aggregated field resolve; the per-task describe answers on every task tried; the doc-mode
+through the real script documents three templates in one pass. CORRECTED (1dd18d6): the
+recipe said dd d list declares no --limit, on the audit's flag list as the review round
+read it; the manifest declares --limit as an alias of --page-size and the sandbox accepted
+it, so Phase 4's fence runs as written. The review's fix for that finding was itself
+wrong: a finding resting on an unmeasured upstream claim. CP-5 is banked on this branch
+(session V1's item, written here with the first-light results). The docs changed after
+the battery over 658edec: the recipe's sweep bullet and its interim sentence, MAINTAINERS
+step 3's provenance clause, one CHANGELOG sentence.
+Ordering: no finding in the round removes an unreliable manual step, and no known-pending
+change re-arranges what is verified here (E2 and E3 are gated and start after this
+merges). Tester pickup: /reload-plugins; setup is slash-only, so its walk is the user's
+to type.
+Verified: 2026-11-27 (tester, designer-cli-1-0-14 @ hb-20261127-02) — suite 200/200 with 12 F-593 checks, each FIELD_NOT_FOUND row's deletion failing it by name (11 and 4 checks); CLI 1.0.14 on the sandbox: the refusal read live on stderr, exit 1, matched by the 1.0.14 row and not the 1.0.12 one; both spellings resolve; per-task tables equal 1.0.12's on 6 tasks; designer doc-mode documents a template complete and tenant-deps yields usages; dd d list 127 = the UI's 127, swept reconciled at two page sizes; the three sentences version-scoped, the gate names data-designer-designs on a 1.0.14 catalog, doc drift green; setup walked to its first ask (declined); guard ask declined (VALIDATION F-593 / CP-5, tester round) @ hb-20261127-02
+Noticed (hb-20261127-02), dispositioned 2026-11-27 (builder): (1) the guard's tenant line
+reads the session's project dir, not the command's cd target - the owner's ruling, asked
+in session, not yet given; (2) CP-5 (c)'s Steps reworded in VALIDATION (the workspace
+catalog blocks the capture, and the helper takes --bin); (3) totalPages reads floor and
+(4) the design describe's task rows carry the string "?" for two counts - carried to E3
+(CP-7), which reads the tester round under VALIDATION F-593 / CP-5 before fixing its
+reader; (5) the _index key on the template describe's task rows and (6) the per-task
+call time against the 3 s the spawn budget assumes - carried to E2 (CP-6's two
+re-derivations), same record; (7) KI-034 measured as substring - the gs-fortress ledger's
+item, written by the watch, not here; (8) the unwarned ask - the tester's own practice.
+Also from this round: F-595 logged (a workspace catalog two CLI versions behind with no
+mechanism saying so; the owner's observation), and drift (full) went red on the tester's
+push (10cef92) for two spellings in its VALIDATION rig line - reworded at 2cfafdb.
 
 ## F-592 — DEFERRED (past 0.58.0)
 Reported: 2026-10-25 (tester)

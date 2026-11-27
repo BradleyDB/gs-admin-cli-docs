@@ -42,7 +42,7 @@ headed by the command's canonical path — a report row's `scope.path` names its
 subsection — and `build/check-doc-drift.mjs` holds these headings and that table to
 each other both ways. Index what the CLI returns; the Phase 4 relay names every
 scope-limited domain from `scope`, with its limit and the fact that the remainder can be
-added later (the recovery flow in the last section); and if the user reports a higher
+added later (the recovery flow, "Recovering list-invisible email templates" below); and if the user reports a higher
 UI count, record the gap (UI vs CLI-reachable, date, suspected cause) in
 `<slug>/overview.md` as a known limitation — do not chase it.
 
@@ -60,7 +60,7 @@ direct templates — KI-030). On every version it additionally hides some templa
 (residual `source=COMMS`/state filter, cause unconfirmed). The command fetches its
 whole already-scope-filtered result server-side and caps client-side at 50 by default,
 so pass a large `--limit` (Phase 4's paging bullets). Templates the list cannot see are
-recoverable by id — the last section.
+recoverable by id — "Recovering list-invisible email templates" below.
 
 ### journey surveys list
 
@@ -75,13 +75,18 @@ Data Designer OUTPUT datasets keyed by `objectName`, every one of them also pres
 MEMBERSHIP SIGNAL over `data-management` for the status it filters on, not a domain of
 its own: decide it as a coverage exclusion over `data-management` through the
 evidence-bound verb (Phase 4 step 3), never as a separate domain (one workspace carried
-a `journey-data-designer` domain for exactly this and it was removed). Data Designer
-*designs* have no list command, and their output objects hide among `dm` objects where
-`group=System` is a **superset** (some System objects are DD outputs, some are not; no
-1.0.4 describe field distinguishes them): beyond what this list returns, "which dm
-objects are Data Designers" is not determinable from CLI data — never equate
-`group=System` with "the data designers" (`dataStore=REDSHIFT` and `copy`/`view`
-`dbName` prefixes are weak hints only).
+a `journey-data-designer` domain for exactly this and it was removed).
+
+Data Designer *designs* have no list command on CLI 1.0.12 and earlier; on CLI 1.0.14
+and later they have one, `dd d list` — a list of its own, decided at the candidate
+gate as "Data Designer designs" below says, never through this subsection's
+exclusion. Design output objects hide among `dm` objects where `group=System` is a
+**superset** (some System objects are DD outputs, some are not; no 1.0.4 describe
+field distinguishes them): beyond what this list returns, "which dm objects are Data
+Designers" is not determinable from CLI data on CLI 1.0.12 and earlier, and on 1.0.14
+and later it is not yet measured whether a design's own describe names its output
+object — so on every version, never equate `group=System` with "the data designers"
+(`dataStore=REDSHIFT` and `copy`/`view` `dbName` prefixes are weak hints only).
 
 ## Recovering list-invisible email templates
 
@@ -98,3 +103,34 @@ stamping). Never hardcode `id`: registering under a field other than the recorde
 trips the re-index guard, and a key-scheme change is a full-list operation, not a
 recovery step. The standard Phase 5 describe loop then documents them like any other
 entry.
+
+## Data Designer designs (CLI 1.0.14 and later)
+
+On CLI 1.0.12 and earlier this section does not apply: designs have no list command
+and the candidate gate never names one. On CLI 1.0.14 and later `dd d list` lists them
+(paged, 50 a page by default; the totals in a `pageInfo` object at the payload root),
+and on a workspace whose catalog is at that version the candidate gate (Phase 4) shows
+`data-designer designs list` as undecided. Designs are tenant-built assets, so the
+recommended decision to put to the user is to adopt the list as **its own domain**,
+never under a name already taken:
+
+- **Domain** `data-designer-designs` (the name Phase 4's naming rule reserves); **id
+  field** `configId`; **describe command**
+  `gs-admin --json dd d describe --config-id {id}`; the name and date fields are read
+  off the rows as for any new domain.
+- **Sweep.** The list declares `--page`, and `--limit` as an alias of its own
+  `--page-size`: Phase 4's capture fence runs as written, with `--page-flag page` and
+  `--limit 200` (read from the 1.0.14 package's manifest). The paging rules hold as
+  for any list: a sweep that does not exit 0 is not coverage.
+- **What its docs do not carry yet.** Until a plugin version reads this domain, say two
+  things plainly wherever its coverage is reported: its docs are summary rows (the
+  design's header and one row per task, no field names — the three-level designer
+  doc-mode is keyed to the design *template* describe), and
+  `/gs-superadmin:deps-report` does not include it.
+
+This recipe is interim. The list's flags and paging names are read from the 1.0.14
+package and were seen on one sandbox (2026-11-27); the design describe is read from
+the package only. If the list itself fails at the gate, record a block (Phase 4 step 1) rather
+than an exclusion. If the list was adopted and the describe then fails in Phase 5, its
+entries stay failed with the CLI's error recorded: report that as written and leave
+the adoption in place — never block or exclude an adopted list for it.

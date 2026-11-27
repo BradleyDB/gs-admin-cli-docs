@@ -5,6 +5,33 @@ marketplace doesn't pin versions — users get main — so entries describe what
 user who updates, not internal refactors. Entries before 0.8.0 were reconstructed from git
 history when this file was introduced.
 
+## 0.58.1 — 2026-11-27
+
+For workspaces whose installed `gs-admin` is 1.0.14 or later (F-593). Nothing changes on
+CLI 1.0.12 and earlier, and the plugin's bundled catalog stays at 1.0.12.
+
+- **Designer docs complete on CLI 1.0.14.** The CLI reworded the sentence it prints
+  when `dd t describe --field` finds no such field. The designer doc-mode reads that
+  sentence to decide two things — whether to try the label's other spelling, and whether
+  the gap is permanent — and it knew only the older wording, so on 1.0.14 one refused
+  field left its template "failed (retryable)" on every run, the other spelling was never
+  tried, and deps-report kept the field label-only. Both wordings are recognised now: the
+  other spelling is tried, a field refused under every spelling is recorded once as a gap
+  the CLI cannot resolve, and the template's doc completes. A workspace on 1.0.14 that
+  holds such failed entries re-runs the domain's documentation once
+  (`/gs-superadmin:refresh`, or setup's Phase 5 loop); the entries resume from their docs.
+- **The Data Designs list acknowledged.** Setup and the operating model said Data Designer
+  *designs* have no list command. That holds on CLI 1.0.12 and earlier; on 1.0.14 and
+  later `dd d list` lists them, and setup's candidate gate already shows
+  `data-designer designs list` as undecided on such a workspace. The three statements now
+  say which version each half holds for, and setup's scope notes gain the recipe for the
+  gate: the recommended decision is the list as its own domain, `data-designer-designs`
+  (id field `configId`, describe `dd d describe --config-id {id}`, swept by `--page` /
+  `--page-size`). Until a plugin version reads that domain, its docs are summary rows
+  without field names and deps-report does not include it — the instructions say so. The
+  refusal sentence and the list were checked on a sandbox with CLI 1.0.14; the design
+  describe is read from the package only.
+
 ## 0.58.0 — 2026-10-25
 
 The next-release scope — every finding left open after 0.57.0, fixed at its root (F-563 with

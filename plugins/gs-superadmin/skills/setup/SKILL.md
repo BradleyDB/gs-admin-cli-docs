@@ -275,8 +275,13 @@ script cannot make:
 - **Scope-limited domains — paging cannot fix these.** Some list commands cannot see
   the whole tenant; which ones, at the pinned CLI, is shipped data (doc-lib's per-pin
   table), and `report` names each such domain's limit on its `domains.<domain>.scope`
-  row — never a list carried from memory. (Data Designer *designs* have no list command
-  at all, and are not identifiable among dm objects.) Before indexing a journey-side
+  row — never a list carried from memory. (Data Designer *designs*: on CLI 1.0.12 and
+  earlier they have no list command at all; on CLI 1.0.14 and later `dd d list` lists
+  them, and when the candidate gate below shows `data-designer designs list` undecided
+  the recommended decision is its own domain, `data-designer-designs` — the recipe, and
+  what that domain's docs do not yet carry, are in `references/index-scope-notes.md`
+  under "Data Designer designs". On 1.0.12 and earlier designs are not identifiable
+  among dm objects; on 1.0.14 and later that is unmeasured.) Before indexing a journey-side
   domain — or reasoning about its coverage, or recovering list-invisible templates from
   user-supplied ids — read `references/index-scope-notes.md`: the per-command limits
   (one subsection per limited command, the canon a `scope.path` points at), the
@@ -358,8 +363,8 @@ recording flag declares nothing and is taken as new, so always pass `--list-comm
 The name is per-workspace data: every reader that needs "the connections domain"
 (deps-report's lanes, the relationships builder's defaults) resolves it from
 `domains_indexed`'s recorded list command, never from the namespace spelling. New CLI lists get
-NEW names (a future Data Designer *designs* list → suggest `data-designer-designs`;
-`journey-data-designer` and `data-designer` are already taken).
+NEW names (the Data Designer *designs* list, `dd d list` on CLI 1.0.14 and later →
+`data-designer-designs`; `journey-data-designer` and `data-designer` are already taken).
 
 **Candidate gate — every list command decided, or Phase 4 does not report.** After all
 domains, derive the candidate set and diff it against the manifest:

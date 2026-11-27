@@ -573,13 +573,29 @@ const spawnCli = (args) => {
   }
   return { ok: true, why: null, stdout: res.stdout ?? "", stderr: res.stderr ?? "" };
 };
-// The CLI's own not-found sentence for a `--field` that resolves to nothing
-// (handlers/data-preparation/templates/describe/index.js at 1.0.8, byte-identical at 1.0.9 —
-// `No field found on task "<t>" matching: "<label>"`). A refusal in these
-// words is PERMANENT for this template content (the label came from the
-// task's own projection; no re-run changes what the resolver sees); anything
-// else — timeout, transport, exit without that sentence — is retryable.
-const FIELD_NOT_FOUND = /No field found on task/;
+// The CLI's own not-found sentence for a `--field` that resolves to nothing —
+// one row per wording the CLI has shipped, matched by its WORDS and never by
+// the installed version (a workspace's CLI is whatever the user installed):
+//   1.0.12 and earlier — `No field found on task "<t>" matching: "<label>"`
+//     (handlers/data-preparation/templates/describe/index.js, read at 1.0.8,
+//     1.0.9 and 1.0.12);
+//   1.0.14 and later — `No field found on this task matching: "<label>"`
+//     (the shared task drilldown; F-593, from the CLI-watch audit of 1.0.14 —
+//     the rules describe printed these words on 1.0.12 already, but this mode
+//     spawns only the template describe).
+// A refusal in either wording is PERMANENT for this template content (the
+// label came from the task's own projection; no re-run changes what the
+// resolver sees); anything else — timeout, transport, exit without one of
+// these sentences — is retryable. A reworded refusal therefore reads as
+// retryable until its row is added here: loud (the entry stays failed), never
+// a silent gap. Re-read at every CLI adoption (MAINTAINERS.md "Designer
+// drilldown grammar", step 3).
+const FIELD_NOT_FOUND = [
+  { cli: "1.0.12 and earlier", re: /No field found on task/ },
+  { cli: "1.0.14 and later", re: /No field found on this task matching:/ },
+];
+/** @param {{stdout: string, stderr: string}} r  a failed spawn's output */
+const isFieldNotFound = (r) => FIELD_NOT_FOUND.some((s) => s.re.test(r.stderr) || s.re.test(r.stdout));
 
 // ── Within-run abort (issue #13, F-458 — the header's contract) ─────────────
 // The auth classifier (the CLI's re-login sentence, version-stamped) is
@@ -649,7 +665,7 @@ function runDesignerEntry({ entry, payload, core, fp, base, args, prior }) {
     const r = spawnCli([...args, ...extra]);
     if (!r.ok) {
       if (isAuthDeath(r)) authDead = printable(r.why, 200);
-      return { value: null, why: printable(r.why, 200), notFound: FIELD_NOT_FOUND.test(r.stderr) || FIELD_NOT_FOUND.test(r.stdout) };
+      return { value: null, why: printable(r.why, 200), notFound: isFieldNotFound(r) };
     }
     let value = null;
     try { value = pick(unwrapOnce(JSON.parse(r.stdout))); } catch { /* non-JSON: reported below */ }
