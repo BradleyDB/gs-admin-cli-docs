@@ -4482,8 +4482,11 @@ Tenant: sandbox, then any tenant whose designs exceed one page. Login: needed. M
 Start when: the UI's Data Designs count is in hand (ask with the page open).
 Steps: `gs1014 --json dd d list --limit 200 --page 1`; compare the row count with the UI's
 count; read the root `pageInfo` names; then a paginated capture — the capture helper's
-paginate mode with `--page-flag page` and a small `--limit`, the CLI on PATH being 1.0.14 for
-that run (a scratch PATH entry; the helper spawns `gs-admin` by name).
+paginate mode with `--page-flag page` and a small `--limit`, run from a scratch workspace whose
+catalog is generated from the 1.0.14 package and with the helper's `--bin` set to the 1.0.14
+binary. (Reworded 2026-11-27 after the tester round's Noticed item 2: what blocks the capture
+on this machine is the workspace catalog — capture.mjs refuses `dd d list` on a 1.0.12 catalog,
+fail-closed — not the name on PATH, as first banked; the helper takes `--bin`.)
 FIXED: rows equal the UI's count; `pageInfo` carries `pageNumber`, `pageSize`, `totalRecords`,
 `totalPages`; `--limit` is accepted; the sweep exits 0 `reconciled` across pages.
 BROKEN: `--limit` refused (the recipe's fence is wrong), a sweep verdict other than

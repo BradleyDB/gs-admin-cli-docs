@@ -3735,6 +3735,14 @@ Blind spots: no tenant pull was made with the new families (the two reads were c
      Carried forward (not in this release): F-448 verdict by the other role; the skipped-path arm
        (Blind spots above). -->
 
+## F-595 — OPEN
+Reported: 2026-11-27 (builder)
+Severity: normal — skills read exact flags from the workspace catalog and cheatsheet, so a stale one gives a user wrong or missing commands, and the guard asks on every command added since; the safety property holds (unknown commands ask, mutating flags are read from the union with the bundled catalog)
+Source: owner's observation during the F-593 tester round, 2026-11-27 (hb-20261127-02); measured by the builder on the consumer workspace
+What: nothing but a prose rule keeps a workspace's catalog current: the consumer workspace's .gs-superadmin/catalog.json sat two CLI versions behind the installed CLI and the plugin's bundled catalog (1.0.10 against 1.0.12, generated 2026-09-26) through every session since, and the only symptom was the guard's ask reading Unrecognized gs-admin command (not in catalog [v]1.0.10) - which reads like a plugin fault
+Repro: in a workspace set up on an older CLI, upgrade the CLI and the plugin and do not re-run setup: node -p "require('./.gs-superadmin/catalog.json').meta.cliVersion" prints the old version while .gs-superadmin/plugin/reference/version.json and gs-admin --version print the new one; no session-start line, refresh step or guard message says the workspace catalog is behind (the guard's Catalog-version note fires only when a mutating flag is promoted; templates/operating-model.md's Drift guard asks each session to compare the two versions by hand, and no session did)
+Expected: the gap is said by a mechanism, not left to prose (AGENTS A-5): the SessionStart hook's line, which already reads the workspace, compares the workspace catalog's meta.cliVersion with the bundled catalog's (no spawn) and says once per session that the workspace catalog is behind and that /gs-superadmin:setup regenerates it; the unrecognized-command ask names the remedy when the workspace catalog is older than the bundled one; the operating model's Drift guard paragraph becomes the paraphrase of that. Not a 0.58.1 regression; the owner's own workspace is fixed today by re-running setup
+
 ## F-594 — OPEN
 Reported: 2026-11-27 (builder)
 Severity: polish — the advice each sentence supports still works on every version (the user supplies the design's values; the report never guesses a feeding system); what is wrong is the stated reason, and deprecate step 6 skips a stale mark on an entry only a 1.0.14 workspace can hold
@@ -3921,6 +3929,19 @@ change re-arranges what is verified here (E2 and E3 are gated and start after th
 merges). Tester pickup: /reload-plugins; setup is slash-only, so its walk is the user's
 to type.
 Verified: 2026-11-27 (tester, designer-cli-1-0-14 @ hb-20261127-02) — suite 200/200 with 12 F-593 checks, each FIELD_NOT_FOUND row's deletion failing it by name (11 and 4 checks); CLI 1.0.14 on the sandbox: the refusal read live on stderr, exit 1, matched by the 1.0.14 row and not the 1.0.12 one; both spellings resolve; per-task tables equal 1.0.12's on 6 tasks; designer doc-mode documents a template complete and tenant-deps yields usages; dd d list 127 = the UI's 127, swept reconciled at two page sizes; the three sentences version-scoped, the gate names data-designer-designs on a 1.0.14 catalog, doc drift green; setup walked to its first ask (declined); guard ask declined (VALIDATION F-593 / CP-5, tester round) @ hb-20261127-02
+Noticed (hb-20261127-02), dispositioned 2026-11-27 (builder): (1) the guard's tenant line
+reads the session's project dir, not the command's cd target - the owner's ruling, asked
+in session, not yet given; (2) CP-5 (c)'s Steps reworded in VALIDATION (the workspace
+catalog blocks the capture, and the helper takes --bin); (3) totalPages reads floor and
+(4) the design describe's task rows carry the string "?" for two counts - carried to E3
+(CP-7), which reads the tester round under VALIDATION F-593 / CP-5 before fixing its
+reader; (5) the _index key on the template describe's task rows and (6) the per-task
+call time against the 3 s the spawn budget assumes - carried to E2 (CP-6's two
+re-derivations), same record; (7) KI-034 measured as substring - the gs-fortress ledger's
+item, written by the watch, not here; (8) the unwarned ask - the tester's own practice.
+Also from this round: F-595 logged (a workspace catalog two CLI versions behind with no
+mechanism saying so; the owner's observation), and drift (full) went red on the tester's
+push (10cef92) for two spellings in its VALIDATION rig line - reworded at 2cfafdb.
 
 ## F-592 — DEFERRED (past 0.58.0)
 Reported: 2026-10-25 (tester)
