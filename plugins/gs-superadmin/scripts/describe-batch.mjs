@@ -580,7 +580,9 @@ const spawnCli = (args) => {
 //     (handlers/data-preparation/templates/describe/index.js, read at 1.0.8,
 //     1.0.9 and 1.0.12);
 //   1.0.14 and later — `No field found on this task matching: "<label>"`
-//     (the shared task drilldown; F-593, from the CLI-watch audit of 1.0.14).
+//     (the shared task drilldown; F-593, from the CLI-watch audit of 1.0.14 —
+//     the rules describe printed these words on 1.0.12 already, but this mode
+//     spawns only the template describe).
 // A refusal in either wording is PERMANENT for this template content (the
 // label came from the task's own projection; no re-run changes what the
 // resolver sees); anything else — timeout, transport, exit without one of

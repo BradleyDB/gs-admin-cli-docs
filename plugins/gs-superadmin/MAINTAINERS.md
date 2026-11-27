@@ -121,16 +121,19 @@ a live tenant (GP-B5 W9, keys only). Follow the manifest's handler pointer for
    Resolves by label on extract, freeForm and join tasks. Two facts here depend on the
    INSTALLED CLI, which can be newer than the pin, so each is stated per version
    (F-593; the 1.0.14 halves are read from the package by the CLI-watch audit of
-   1.0.14, with their live check on the dev branch's validation bank, and are
-   re-derived with the rest of this section at that adoption):
+   1.0.14, not yet checked on a live tenant, and are re-derived with the rest of this
+   section at that adoption):
    - **Which spelling resolves.** On 1.0.12 and earlier the SUFFIX-STRIPPED spelling
      resolves and the full `"Label (MAX)"` spelling does not. On 1.0.14 and later the
      full `"Label (AGG)"` spelling resolves as well (the CLI's lookup also matches the
      label with its aggregation suffix). The script's two-spelling order is the same on
-     every version; on 1.0.14 fewer first attempts are refused.
+     every version; what changes on 1.0.14 is which attempt answers when the full
+     label is the one sent (a suffix the vocabulary does not know is sent whole first).
    - **The refusal sentence.** On 1.0.12 and earlier:
      `No field found on task "<t>" matching: "<label>"`. On 1.0.14 and later:
-     `No field found on this task matching: "<label>"`. `FIELD_NOT_FOUND` in
+     `No field found on this task matching: "<label>"` (the words the rules describe
+     already printed on 1.0.12 — the doc-mode spawns only the template describe).
+     `FIELD_NOT_FOUND` in
      `describe-batch.mjs` holds one row per wording and matches the WORDS, never the
      installed version.
 

@@ -356,13 +356,14 @@ commands and output are still in this session.
   `states:["PUBLISH"]` (closed surveys are invisible — a tenant whose surveys are all
   closed lists 0); `jo data-designer list` pins `ds=UNIVERSAL_DATA_SET`; Data Designer
   *designs* have no list command at all on CLI 1.0.12 and earlier (only `dd templates list`);
-  on CLI 1.0.14 and later `dd d list` lists them, and a workspace on that CLI indexes the
-  list as its own domain, `data-designer-designs`, at setup's candidate gate — until a
-  plugin version reads that domain its docs are summary rows (no field names) and
-  deps-report does not include it. On every version their output
+  on CLI 1.0.14 and later `dd d list` lists them, and setup's candidate gate decides that
+  list (its own domain, `data-designer-designs`, whose docs carry no field names and are
+  not in deps-report yet — the recipe is "Data Designer designs" in
+  `.gs-superadmin/plugin/skills/setup/references/index-scope-notes.md`). Their output
   objects hide among `dm` objects where `group=System` is a **superset** (some System
   objects are DD outputs, some are not; no 1.0.4 describe field distinguishes them),
-  so "which dm objects are Data Designers" is not determinable from CLI data — never
+  so "which dm objects are Data Designers" is not determinable from CLI data on 1.0.12
+  and earlier (unmeasured on 1.0.14 and later) — never
   equate `group=System` with "the data designers" (`dataStore=REDSHIFT` and
   `copy`/`view` `dbName` prefixes are weak hints only). When a CLI count runs below the UI count in these areas,
   cite this limitation and record the gap — do not chase it with pagination or re-auth.

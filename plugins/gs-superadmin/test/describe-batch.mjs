@@ -1342,14 +1342,18 @@ const ddRefusalSaid = (template, task, field) => template.replace("{task}", () =
         && r.json?.drilldowns?.thisRun?.fieldsUnresolvable === 3 && r.json?.drilldowns?.thisRun?.fieldsFailed === 0 && r.json?.drilldowns?.thisRun?.fieldsOk === 1 && entry?.status === "documented" && entry.depth === "full",
       { f, thisRun: r.json?.drilldowns?.thisRun, entry });
   });
-  {
-    const { r, calls, f, entry } = run("control", 'Field lookup failed for "{field}"');
-    check("F-593 control: a refusal in NEITHER wording is retryable — one spelling per field, the alternate never spent (Total's full spelling would have resolved and is not tried)",
+  // Controls: an unrelated sentence, and a NEAR MISS — the CLI's own neighbouring
+  // refusal for an unknown task (`No task found with id: "<t>"`, the template
+  // describe handler at 1.0.12), which a matcher loosened to "No … found" would
+  // swallow.
+  [["control", 'Field lookup failed for "{field}"'], ["near-miss", 'No task found with id: "{task}"']].forEach(([name, template]) => {
+    const { r, calls, f, entry } = run(name, template);
+    check(`F-593 ${name}: a refusal in NEITHER wording is retryable — one spelling per field, the alternate never spent (Total's full spelling would have resolved and is not tried)`,
       isDeepStrictEqual(calls, ["Gone", "Lost (new_fn)", "Total", "Plain"]), calls);
-    check("F-593 control: nothing is marked permanent, all four fields count as retryable failures and the entry is FAILED naming them (doc kept)",
+    check(`F-593 ${name}: nothing is marked permanent, all four fields count as retryable failures and the entry is FAILED naming them (doc kept)`,
       ["Gone", "Lost (new_fn)", "Total", "Plain"].every((k) => f[k]?.status === "failed" && f[k].permanent === undefined) && r.json?.drilldowns?.thisRun?.fieldsFailed === 4 && r.json?.drilldowns?.thisRun?.fieldsUnresolvable === 0 && entry?.status === "failed" && /4 of 5 drilldown\(s\) failed \(retryable\); doc kept/.test(entry.error ?? ""),
       { f, thisRun: r.json?.drilldowns?.thisRun, entry });
-  }
+  });
 }
 
 // ── The corpus tenet, held for the drilldown reader (F-390 round 2 observation):

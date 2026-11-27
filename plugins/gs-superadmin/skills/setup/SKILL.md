@@ -278,10 +278,10 @@ script cannot make:
   row — never a list carried from memory. (Data Designer *designs*: on CLI 1.0.12 and
   earlier they have no list command at all; on CLI 1.0.14 and later `dd d list` lists
   them, and when the candidate gate below shows `data-designer designs list` undecided
-  it is indexed as its own domain, `data-designer-designs` — the recipe, and what that
-  domain's docs do not yet carry, are in `references/index-scope-notes.md` under
-  "journey data-designer list". On every version they are not identifiable among dm
-  objects.) Before indexing a journey-side
+  the recommended decision is its own domain, `data-designer-designs` — the recipe, and
+  what that domain's docs do not yet carry, are in `references/index-scope-notes.md`
+  under "Data Designer designs". On 1.0.12 and earlier designs are not identifiable
+  among dm objects; on 1.0.14 and later that is unmeasured.) Before indexing a journey-side
   domain — or reasoning about its coverage, or recovering list-invisible templates from
   user-supplied ids — read `references/index-scope-notes.md`: the per-command limits
   (one subsection per limited command, the canon a `scope.path` points at), the

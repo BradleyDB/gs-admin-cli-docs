@@ -10,7 +10,7 @@ history when this file was introduced.
 For workspaces whose installed `gs-admin` is 1.0.14 or later (F-593). Nothing changes on
 CLI 1.0.12 and earlier, and the plugin's bundled catalog stays at 1.0.12.
 
-- **Designer docs complete again on CLI 1.0.14.** The CLI reworded the sentence it prints
+- **Designer docs complete on CLI 1.0.14.** The CLI reworded the sentence it prints
   when `dd t describe --field` finds no such field. The designer doc-mode reads that
   sentence to decide two things — whether to try the label's other spelling, and whether
   the gap is permanent — and it knew only the older wording, so on 1.0.14 one refused
@@ -24,11 +24,12 @@ CLI 1.0.12 and earlier, and the plugin's bundled catalog stays at 1.0.12.
   *designs* have no list command. That holds on CLI 1.0.12 and earlier; on 1.0.14 and
   later `dd d list` lists them, and setup's candidate gate already shows
   `data-designer designs list` as undecided on such a workspace. The three statements now
-  say which version each half holds for, and what to do at the gate: index the list as
-  its own domain, `data-designer-designs` (id field `configId`, describe
-  `dd d describe --config-id {id}`). Until a plugin version reads that domain, its docs
-  are summary rows without field names and deps-report does not include it — the
-  instructions say so.
+  say which version each half holds for, and setup's scope notes gain the recipe for the
+  gate: the recommended decision is the list as its own domain, `data-designer-designs`
+  (id field `configId`, describe `dd d describe --config-id {id}`, swept by `--page` /
+  `--page-size`). Until a plugin version reads that domain, its docs are summary rows
+  without field names and deps-report does not include it — the instructions say so. The
+  recipe is read from the 1.0.14 package and not yet confirmed on a live tenant.
 
 ## 0.58.0 — 2026-10-25
 

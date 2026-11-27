@@ -77,30 +77,46 @@ its own: decide it as a coverage exclusion over `data-management` through the
 evidence-bound verb (Phase 4 step 3), never as a separate domain (one workspace carried
 a `journey-data-designer` domain for exactly this and it was removed).
 
-**Data Designer *designs* — the installed CLI's version decides.** On CLI 1.0.12 and
-earlier, designs have no list command. On CLI 1.0.14 and later, `dd d list` lists them
-(paged, 50 a page by default, `--page` / `--page-size`, the totals in a `pageInfo`
-object at the payload root), and on a workspace whose catalog is at that version the
-candidate gate (Phase 4) shows `data-designer designs list` as undecided. Decide it
-there as **its own domain**, never as an exclusion and never under a name already
-taken: domain `data-designer-designs` (the name Phase 4's naming rule reserves), id
-field `configId`, describe command `gs-admin --json dd d describe --config-id {id}`,
-swept with `--page-flag page` and held to the paging rules like any other list (a
-sweep that does not exit 0 is not coverage). Until a plugin version reads this domain,
-say two things plainly wherever its coverage is reported: its docs are summary rows
-(the design's header and one row per task, no field names — the three-level designer
-doc-mode is keyed to the design *template* describe), and `/gs-superadmin:deps-report`
-does not include it. This instruction is interim and read from the 1.0.14 package, not
-yet confirmed on a live tenant: if the list or the describe behaves otherwise, record
-what it did (a block, Phase 4 step 1) rather than forcing the recipe.
+Data Designer *designs* have no list command on CLI 1.0.12 and earlier; on CLI 1.0.14
+and later they have one, `dd d list` — a list of its own, decided at the candidate
+gate as "Data Designer designs" below says, never through this subsection's
+exclusion. Design output objects hide among `dm` objects where `group=System` is a
+**superset** (some System objects are DD outputs, some are not; no 1.0.4 describe
+field distinguishes them): beyond what this list returns, "which dm objects are Data
+Designers" is not determinable from CLI data on CLI 1.0.12 and earlier, and on 1.0.14
+and later it is not yet measured whether a design's own describe names its output
+object — so on every version, never equate `group=System` with "the data designers"
+(`dataStore=REDSHIFT` and `copy`/`view` `dbName` prefixes are weak hints only).
 
-On every CLI version, design output objects hide among `dm` objects where
-`group=System` is a **superset** (some System objects are DD outputs, some are not; no
-1.0.4 describe field distinguishes them, and whether a design's own describe names its
-output object is not yet measured): beyond what this list returns, "which dm
-objects are Data Designers" is not determinable from CLI data — never equate
-`group=System` with "the data designers" (`dataStore=REDSHIFT` and `copy`/`view`
-`dbName` prefixes are weak hints only).
+## Data Designer designs (CLI 1.0.14 and later)
+
+On CLI 1.0.12 and earlier this section does not apply: designs have no list command
+and the candidate gate never names one. On CLI 1.0.14 and later `dd d list` lists them
+(paged, 50 a page by default; the totals in a `pageInfo` object at the payload root),
+and on a workspace whose catalog is at that version the candidate gate (Phase 4) shows
+`data-designer designs list` as undecided. Designs are tenant-built assets, so the
+recommended decision to put to the user is to adopt the list as **its own domain**,
+never under a name already taken:
+
+- **Domain** `data-designer-designs` (the name Phase 4's naming rule reserves); **id
+  field** `configId`; **describe command**
+  `gs-admin --json dd d describe --config-id {id}`; the name and date fields are read
+  off the rows as for any new domain.
+- **Sweep.** The list declares `--page` and `--page-size` and no `--limit`: use Phase
+  4's capture fence with `--page-flag page`, passing `--page-size 200` where the fence
+  passes `--limit 200` (confirm both spellings in `.gs-superadmin/cheatsheet.md`). The
+  paging rules hold as for any list: a sweep that does not exit 0 is not coverage.
+- **What its docs do not carry yet.** Until a plugin version reads this domain, say two
+  things plainly wherever its coverage is reported: its docs are summary rows (the
+  design's header and one row per task, no field names — the three-level designer
+  doc-mode is keyed to the design *template* describe), and
+  `/gs-superadmin:deps-report` does not include it.
+
+This recipe is interim and read from the 1.0.14 package, not yet confirmed on a live
+tenant. If the list itself fails at the gate, record a block (Phase 4 step 1) rather
+than an exclusion. If the list was adopted and the describe then fails in Phase 5, its
+entries stay failed with the CLI's error recorded: report that as written and leave
+the adoption in place — never block or exclude an adopted list for it.
 
 ## Recovering list-invisible email templates
 
