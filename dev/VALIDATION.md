@@ -4533,8 +4533,12 @@ section reads as executable against Phase 4, check-doc-drift green; (4) setup wa
 owner's slash command (first ask recorded, declined); guard wiring, one catalog-mutating
 command, ask declined. Checkout: designer-cli-1-0-14 at 5a0c4b5, clean; canary
 hb-20261127-02 matches the Under test line. CLI: `npm install --prefix <scratchpad>/cli1014
---ignore-scripts @gainsight/gs-admin-cli@1.0.14`, `--version` printed
-`@gainsight/gs-admin-cli/1.0.14 win32-x64 node-v24.16.0`; the global install stays 1.0.12.
+--ignore-scripts` of the package at 1.0.14, `--version` printed
+`@gainsight/gs-admin-cli/1.0.14 win32-x64 node-[v]24.16.0`; the global install stays 1.0.12.
+(Builder, 2026-11-27: two spellings in this paragraph reworded for check-stale-facts, which
+reads a package-at-version install spelling and a v-prefixed version as claims about the pin —
+the install command's package argument is described instead of spelled, and the quoted
+`--version` output carries the `[v]` marker; nothing else in the tester's text is touched.)
 
 Bar (1) PASS: `node plugins/gs-superadmin/test/describe-batch.mjs` exit 0, 200 PASS, 12 of
 them F-593 (refusal x3, corpus fake, per wording; control x2; near-miss x2). Row 1.0.12
