@@ -3894,6 +3894,13 @@ the installed CLI's own source text, not the matcher's; (b) the tester's read of
 1.0.14 package or a 1.0.14 CLI for the refusal sentence (CP-5 b, V1's arm) decides
 whether the second row matches what that CLI prints; (c) for CP-3, the tester's walk of
 setup's changed Phase 4 passage, and CP-5 c on a 1.0.14 tenant for the sweep's flags.
+CI red, fixed in a4ef082: the review round placed the recipe's section between
+"Scope-limited domains" and "Recovering list-invisible email templates"; check 23's own
+fixture (test-check-doc-drift 23b) inserts a subsection before the recovery heading and
+expects it inside the scope section, so drift (full) went red on 00a5f52 and so did the
+local battery at step 48. The section now follows the recovery section (the last in the
+file) and no check or fixture changed; the first battery pass (56/56 over d89f651)
+predates the review round, which is why it did not see it.
 Ordering: no finding in the round removes an unreliable manual step, and no known-pending
 change re-arranges what is verified here (E2 and E3 are gated and start after this
 merges). Tester pickup: /reload-plugins; setup is slash-only, so its walk is the user's
