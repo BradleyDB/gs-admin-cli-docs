@@ -29,7 +29,8 @@ CLI 1.0.12 and earlier, and the plugin's bundled catalog stays at 1.0.12.
   (id field `configId`, describe `dd d describe --config-id {id}`, swept by `--page` /
   `--page-size`). Until a plugin version reads that domain, its docs are summary rows
   without field names and deps-report does not include it — the instructions say so. The
-  recipe is read from the 1.0.14 package and not yet confirmed on a live tenant.
+  refusal sentence and the list were checked on a sandbox with CLI 1.0.14; the design
+  describe is read from the package only.
 
 ## 0.58.0 — 2026-10-25
 

@@ -120,9 +120,9 @@ a live tenant (GP-B5 W9, keys only). Follow the manifest's handler pointer for
    (`DESIGNER_FIELD_DETAIL_KEYS` in tenant-deps names the five the reader consumes).
    Resolves by label on extract, freeForm and join tasks. Two facts here depend on the
    INSTALLED CLI, which can be newer than the pin, so each is stated per version
-   (F-593; the 1.0.14 halves are read from the package by the CLI-watch audit of
-   1.0.14, not yet checked on a live tenant, and are re-derived with the rest of this
-   section at that adoption):
+   (F-593; the 1.0.14 halves are read from the 1.0.14 package and were seen on one
+   sandbox, 2026-11-27 — the sentence on stderr, both spellings of an aggregated field
+   resolving — and are re-derived with the rest of this section at that adoption):
    - **Which spelling resolves.** On 1.0.12 and earlier the SUFFIX-STRIPPED spelling
      resolves and the full `"Label (MAX)"` spelling does not. On 1.0.14 and later the
      full `"Label (AGG)"` spelling resolves as well (the CLI's lookup also matches the

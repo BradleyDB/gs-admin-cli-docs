@@ -128,8 +128,9 @@ never under a name already taken:
   doc-mode is keyed to the design *template* describe), and
   `/gs-superadmin:deps-report` does not include it.
 
-This recipe is interim and read from the 1.0.14 package, not yet confirmed on a live
-tenant. If the list itself fails at the gate, record a block (Phase 4 step 1) rather
+This recipe is interim. The list's flags and paging names are read from the 1.0.14
+package and were seen on one sandbox (2026-11-27); the design describe is read from
+the package only. If the list itself fails at the gate, record a block (Phase 4 step 1) rather
 than an exclusion. If the list was adopted and the describe then fails in Phase 5, its
 entries stay failed with the CLI's error recorded: report that as written and leave
 the adoption in place — never block or exclude an adopted list for it.
