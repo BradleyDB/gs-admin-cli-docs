@@ -1682,6 +1682,14 @@ export function recordedDomainsByPath(domainsIndexed, resolveLine) {
 // handler descends subfolders — and records 1.0.11, never a pin, because
 // 1.0.11's dist is byte-identical to 1.0.12's: every entry re-verified
 // against the 1.0.12 package is verified against 1.0.11 by the same reading.
+// The 1.0.14 adoption (gs-fortress audit-1.0.14 §1.14) found no entry
+// changed, so nothing drops and 1.0.12 joins 1.0.11: every handler file that
+// carries one of the four rules-engine refusal sentences is byte-identical
+// from 1.0.12 (the rules-engine manifest differs only in two flag
+// descriptions of the rule describe, and still declares none of the four
+// flags required), and the three
+// journey entries' handler and manifest are byte-identical too — compared
+// file by file against the 1.0.14 package at that adoption.
 // test/domain-candidates.mjs holds every id to the bundled catalog and
 // refuses a notEnumerableBare entry the catalog has started to declare (a
 // dead entry).
@@ -1695,8 +1703,8 @@ export function recordedDomainsByPath(domainsIndexed, resolveLine) {
  */
 /** @type {Readonly<{ cliVersion: string, alsoVerifiedOn: ReadonlyArray<string>, commands: Readonly<Record<string, Readonly<GsPinFact>>> }>} */
 export const CLI_PIN_FACTS = Object.freeze({
-  cliVersion: "1.0.12",
-  alsoVerifiedOn: Object.freeze(["1.0.11"]),
+  cliVersion: "1.0.14",
+  alsoVerifiedOn: Object.freeze(["1.0.11", "1.0.12"]),
   commands: Object.freeze({
     "rules-engine:rules:events": Object.freeze({
       notEnumerableBare: "--topic <topic>",
@@ -1959,8 +1967,12 @@ export function indexedElsewhere(inventory, ids, excludeDomain = null) {
 // The catalog `mutating` flag alone is NOT read-only enforcement, even now
 // that upstream closed the mislabeled-writer class at CLI 1.0.8 (the counting
 // rule — catalog `mutating: false` AND a declared PUT/DELETE/PATCH endpoint —
-// went 29 → 0; counting POSTs too, 59 → 20, all 20 read-shaped fetches
-// reviewed upstream; check-stale-facts pins both counts here). Checks 4 and 5
+// went 29 → 0; counting POSTs too, 59 → 22, all 22 read-shaped fetches: the
+// 20 left at 1.0.8, reviewed upstream, plus `dd d list` and `dd d
+// dependencies`, which 1.0.14 added and whose handlers (designs/list/index.js,
+// common/design-dependencies.js) were read at that adoption — a list body and
+// the UI's dependency check, neither a write; check-stale-facts pins both
+// counts here). Checks 4 and 5
 // predate that fix and stay as the forward guard against a future mislabel.
 // `shapeNoun`/`runsNoun` parameterize the caller-specific message fragments
 // ("a describe-shaped read" / "read-only describes") so each script's refusals
@@ -1972,12 +1984,20 @@ export function indexedElsewhere(inventory, ids, excludeDomain = null) {
 // copy). The constraint is the action VERB, not "declares a GET endpoint":
 // `jo p describe` is POST-only and a legitimate, shipped describe, so a GET
 // requirement would refuse the whole journey lane. This set admits the
-// read actions in the v1.0.12 catalog beyond the describe/list name shapes — the
+// read actions in the v1.0.14 catalog beyond the describe/list name shapes — the
 // two per-item describes under other names (`jo e template`, `sc measures`),
 // `jo dd get`, `jo s get`, the two `list-and-describe` combos, and the six
 // scheduling/Events-Framework reads added at 1.0.6 — and is re-audited by
 // hand at each CLI adoption (check-stale-facts pins the version stamp in
-// this sentence). Callers COMPOSE on it through isDescribeRead below:
+// this sentence). The 1.0.14 re-audit (gs-fortress audit-1.0.14 §1.3), ruled
+// over the four read actions that release adds, changes nothing in the set:
+// `dd d list` is list-shaped and `dd d describe` is admitted by
+// DESCRIBE_SHAPE_RE on its verb and its actionKey (describe-design), so
+// neither needs an entry; `dd d preview` stays out, like `dd t preview` (it
+// starts a server-side preview job per task and polls it); `dd d
+// dependencies` stays out until a reader of the Data Designs domain consumes
+// it, and joins then with that reader's rationale. Every member still names a
+// non-mutating command of the 1.0.14 catalog. Callers COMPOSE on it through isDescribeRead below:
 // describe-batch uses that predicate as its whole policy; capture adds list
 // shapes and `check`.
 export const READ_VERB_EXACT = new Set([
@@ -2014,7 +2034,8 @@ export function isDescribeRead(verb, cmd) {
 }
 
 // The CLI's re-login instruction — the sentence every auth-path throw in the
-// v1.0.12 package's dist/core/auth/index.js ends with (F-458). Two literals,
+// v1.0.14 package's dist/core/auth/index.js ends with (F-458; the file is
+// byte-identical from 1.0.12, re-read at the 1.0.14 adoption). Two literals,
 // both session-wide (the CLI cannot obtain a bearer token; no command after
 // them succeeds until `gs-admin login`): "No stored token found. Run
 // `gs-admin login` to authenticate."; "Access token has expired. Run

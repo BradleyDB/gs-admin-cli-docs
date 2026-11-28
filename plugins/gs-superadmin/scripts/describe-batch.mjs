@@ -46,7 +46,10 @@
 // renamed task row would otherwise read as an empty, "complete" composite).
 // Cost is bounded per INVOCATION, not per template: `--spawn-budget N`
 // (default 30 — 40–75 s at the measured 1.35–2.5 s per spawn on two tenants
-// (the higher figure went through the capture helper's own node startup),
+// (the higher figure went through the capture helper's own node startup);
+// re-priced at the 1.0.14 adoption, where every drilldown makes one more
+// request: 2.3–2.6 s per spawn over two whole runs on one sandbox (59 spawns
+// in 138 s, 18 in 46 s), so 70–77 s for a full budget — still
 // under the harness's ~2-minute shell timeout; floor 2) counts every CLI spawn, template
 // describes included; the composite doc is REWRITTEN after every spawn, so
 // an interruption loses at most one call — the per-asset guarantee above,
@@ -123,7 +126,7 @@
 // read verb; and no PUT/DELETE/PATCH endpoint may be declared. The catalog's
 // `mutating` flag on its own is still NOT read-only enforcement: upstream
 // closed the mislabeled-writer class at CLI 1.0.8 (0 non-mutating commands
-// declare PUT/DELETE/PATCH; the 20 non-mutating POSTs are read-shaped), but
+// declare PUT/DELETE/PATCH; the 22 non-mutating POSTs are read-shaped), but
 // the verb and endpoint checks are kept as the forward guard — they refuse a
 // FUTURE mislabel independent of the catalog's word, and the override check
 // keeps working the moment the (currently empty) list gains an entry. Anything

@@ -27,7 +27,7 @@ plugin (created in the skill's Phase 2), relative to the working dir.
   "known CLI auth race (sc measures --id)"; on 1.0.11 or later a failure is not this
   race — record the actual error and report it.
 - **Scorecard output semantics (verified live on CLI 1.0.4; statically re-checked at
-  v1.0.12 — the scorecard handler is byte-identical from 1.0.8 through 1.0.12, and the 1.0.8 handler change only adds a `_total` count on the four
+  v1.0.14 — the scorecard handler is byte-identical from 1.0.8 through 1.0.14, and the 1.0.8 handler change only adds a `_total` count on the four
   list responses and touches nothing in the measures-tree shape, so the note stands
   as written; re-verify after the next CLI upgrade)**:
   the CLI flattens exactly one level of the measures tree, so the shape of
@@ -145,8 +145,13 @@ domain is named; same as passing `--doc-mode designer`) runs all three levels pe
 template and writes ONE composite doc: the template payload with every drilldown
 kept verbatim under its `_kb` key, so `/gs-superadmin:deps-report` can match
 designer fields by system name and attribute each field to its own source object.
-Observed on CLI 1.0.8: ~1.5–3 s per call (two tenants), and a template costs 1 + tasks +
-show-fields calls (a 3-task, 8-field template ≈ 12 calls ≈ 30 s).
+A template costs 1 + tasks + show-fields calls. Observed on CLI 1.0.8: ~1.5–3 s per
+call (two tenants), so a 3-task, 8-field template ≈ 12 calls ≈ 30 s. On CLI 1.0.14 and
+later every `--task-id` and `--field` call makes one more request (the task is fetched
+on its own), and the calls run slower: measured on one sandbox, a task call took
+1.4–3.4 s on 1.0.14 against 1.3–1.8 s on 1.0.12 the same day, and whole templates on
+1.0.14 ran at about 2.5 s per call (18 calls in 46 s; 59 calls in 138 s) — so price the
+same template at ≈ 30 s there.
 
 **Budget and resume — the setup loop one level down.** The cost is bounded per
 INVOCATION, not per template: `--spawn-budget N` (default 30 calls ≈ 75 s) counts

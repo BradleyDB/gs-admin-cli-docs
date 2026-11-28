@@ -2,7 +2,7 @@
 
 # gs-admin Cheatsheet
 
-> Generated from CLI v1.0.12 · 188 commands / 182 MCP tools
+> Generated from CLI v1.0.14 · 196 commands / 190 MCP tools
 > **Global flags go before the subcommand**: `gs-admin --json <ns> <cmd>`
 > **Single-quote every free-text value** — asset names carry `|` `&` spaces and other shell metacharacters (`;` `(` `)` `$`); single quotes neutralize all of them: `--search 'CS|Risk|Renewal|Alert'`
 > **Spell subcommands literally** — the guard can't inspect `gs-admin $cmd`; variables only in flag values/paths
@@ -177,13 +177,21 @@ _Data Management tools_
 
 ## Data Designer (alias: `dd`)
 
-_Data Designer — Design Templates (data preparation flows)_
+_Data Designer — Designs and Design Templates (data preparation flows)_
 
 | Command | Short form | MCP tool | Mutating |
 |---------|------------|----------|:--------:|
 | `gs-admin data-designer templates create` | `gs-admin dd t create` | `data_designer_create_template` | ⚠️ yes |
 | `gs-admin data-designer templates list` | `gs-admin dd t list` | `data_designer_list_templates` |  |
 | `gs-admin data-designer templates describe` | `gs-admin dd t describe` | `data_designer_describe_template` |  |
+| `gs-admin data-designer designs list` | `gs-admin dd d list` | `data_designer_list_designs` |  |
+| `gs-admin data-designer designs describe` | `gs-admin dd d describe` | `data_designer_describe_design` |  |
+| `gs-admin data-designer designs create` | `gs-admin dd d create` | `data_designer_create_design` | ⚠️ yes |
+| `gs-admin data-designer designs add-task` | `gs-admin dd d add-task` | `data_designer_add_design_task` | ⚠️ yes |
+| `gs-admin data-designer designs edit-task` | `gs-admin dd d edit-task` | `data_designer_edit_design_task` | ⚠️ yes |
+| `gs-admin data-designer designs preview` | `gs-admin dd d preview` | `data_designer_preview_design_task_outputs` |  |
+| `gs-admin data-designer designs delete` | `gs-admin dd d delete` | `data_designer_delete_design` | ⚠️ yes |
+| `gs-admin data-designer designs dependencies` | `gs-admin dd d dependencies` | `data_designer_check_design_dependencies` |  |
 | `gs-admin data-designer sources list` | `gs-admin dd sources list` | `data_designer_list_source_connections` |  |
 | `gs-admin data-designer sources objects` | `gs-admin dd sources objects` | `data_designer_list_source_objects` |  |
 | `gs-admin data-designer sources fields` | `gs-admin dd sources fields` | `data_designer_list_source_fields` |  |

@@ -1167,8 +1167,12 @@ check(
   // that adds, renames or drops a per-item read changes this list and is
   // named here — the delta question the upstream watcher asks cannot see a
   // baseline miss (F-456's provenance note); this list is the baseline.
+  // 1.0.14 adoption: the set gains `dd d describe` (actionKey describe-design,
+  // GET endpoints only) — the one per-item read that release adds; `dd d
+  // preview` and `dd d dependencies` are refused, as the READ_VERB_EXACT
+  // re-audit in doc-lib rules.
   const ADMITTED_AT_PIN = [
-    "cn chain", "dd t describe", "dm dd describe", "dm o describe", "dm o list-and-describe", "jo dd get", "jo e template",
+    "cn chain", "dd d describe", "dd t describe", "dm dd describe", "dm o describe", "dm o list-and-describe", "jo dd get", "jo e template",
     "jo p describe", "jo p src describe", "jo s get", "re c describe", "re c event-curl", "re r describe",
     "re r describe-external-action", "re r event-curl", "re r events", "re r execution", "re r list-and-describe",
     "re r s3-tasks", "re r schedules", "re r topics", "rp describe", "runtime describe-asset-schema",

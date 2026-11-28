@@ -2,16 +2,16 @@
   "meta": {
     "_generated": "GENERATED FILE — do not edit by hand. Regenerate with: npm run build:catalog (build/extract-catalog.mjs).",
     "cliPackage": "@gainsight/gs-admin-cli",
-    "cliVersion": "1.0.12",
-    "generatedAt": "2026-10-16T03:36:08.553Z",
+    "cliVersion": "1.0.14",
+    "generatedAt": "2026-11-28T00:18:52.594Z",
     "pkgResolvedVia": "npm root -g",
     "counts": {
       "domains": 10,
-      "artifactCommands": 170,
+      "artifactCommands": 178,
       "runtimeCommands": 12,
       "staticCommands": 6,
-      "totalCliCommands": 188,
-      "mcpTools": 182
+      "totalCliCommands": 196,
+      "mcpTools": 190
     }
   },
   "globalFlags": [
@@ -60,10 +60,14 @@
         "dd"
       ],
       "title": "Data Designer",
-      "description": "Data Designer — Design Templates (data preparation flows)",
+      "description": "Data Designer — Designs and Design Templates (data preparation flows)",
       "notes": null,
       "version": "1.0.0",
       "groups": [
+        {
+          "path": "designs",
+          "title": "Data Design operations"
+        },
         {
           "path": "sources",
           "title": "Source connection / object / field discovery (Data Designer)"
@@ -73,7 +77,7 @@
           "title": "Design Template operations"
         }
       ],
-      "commandCount": 10,
+      "commandCount": 18,
       "lane": "artifact"
     },
     {
@@ -1650,6 +1654,18 @@
           "cliExposed": true
         },
         {
+          "name": "taskName",
+          "flag": "--task-name",
+          "char": null,
+          "type": "string",
+          "required": false,
+          "default": null,
+          "enum": null,
+          "csv": false,
+          "description": "Scope output to a task by name — resolved to its task ID (case-insensitive exact match)",
+          "cliExposed": true
+        },
+        {
           "name": "pivotColumn",
           "flag": "--pivot-column",
           "char": null,
@@ -1688,6 +1704,1297 @@
           "name": "tasks",
           "method": "GET",
           "path": "/v1/bionicreporting/designTemplates/{{templateId}}/tasks"
+        },
+        {
+          "name": "task",
+          "method": "GET",
+          "path": "/v1/bionicreporting/designTemplates/{{templateId}}/task/{{taskId}}"
+        }
+      ]
+    },
+    {
+      "id": "data-designer:designs:list",
+      "lane": "artifact",
+      "domain": "data-designer",
+      "path": "data-designer designs list",
+      "shortPath": "dd d list",
+      "group": "designs",
+      "subGroup": null,
+      "subSubGroup": null,
+      "groupPath": "designs",
+      "groupTitles": [
+        "Data Design operations"
+      ],
+      "name": "list",
+      "actionKey": "list-designs",
+      "summary": "List Data Designs",
+      "description": "List pure Data Designs (config-ui recipes), not Design Templates. Supports --page / --page-size (alias --limit) and optional --name filter (case-insensitive contains; exact match preferred). Source: POST /v1/bionicreporting/config-ui/lite (same endpoint the DD Designs list UI uses).",
+      "mutating": false,
+      "cliHidden": false,
+      "mcpTool": "data_designer_list_designs",
+      "mcpHidden": false,
+      "outputFormat": "table",
+      "flags": [
+        {
+          "name": "name",
+          "flag": "--name",
+          "char": null,
+          "type": "string",
+          "required": false,
+          "default": null,
+          "enum": null,
+          "csv": false,
+          "description": "Filter by design name (case-insensitive contains; exact match preferred)",
+          "cliExposed": true
+        },
+        {
+          "name": "pageNumber",
+          "flag": "--page",
+          "char": null,
+          "type": "integer",
+          "required": false,
+          "default": 1,
+          "enum": null,
+          "csv": false,
+          "description": "Page number (1-based)",
+          "cliExposed": true
+        },
+        {
+          "name": "pageSize",
+          "flag": "--page-size",
+          "char": null,
+          "type": "integer",
+          "required": false,
+          "default": null,
+          "enum": null,
+          "csv": false,
+          "description": "Page size (rows per page)",
+          "cliExposed": true
+        },
+        {
+          "name": "limit",
+          "flag": "--limit",
+          "char": null,
+          "type": "integer",
+          "required": false,
+          "default": null,
+          "enum": null,
+          "csv": false,
+          "description": "Alias for --page-size (rows per page)",
+          "cliExposed": true
+        }
+      ],
+      "examples": [
+        "gs-admin dd d list"
+      ],
+      "afterHelpNotes": null,
+      "endpoints": [
+        {
+          "name": "list",
+          "method": "POST",
+          "path": "/v1/bionicreporting/config-ui/lite"
+        }
+      ]
+    },
+    {
+      "id": "data-designer:designs:describe",
+      "lane": "artifact",
+      "domain": "data-designer",
+      "path": "data-designer designs describe",
+      "shortPath": "dd d describe",
+      "group": "designs",
+      "subGroup": null,
+      "subSubGroup": null,
+      "groupPath": "designs",
+      "groupTitles": [
+        "Data Design operations"
+      ],
+      "name": "describe",
+      "actionKey": "describe-design",
+      "summary": "Describe a Data Design (header + tasks)",
+      "description": "Show a Data Design's metadata plus all its tasks (DAG nodes). Same task-config / drilldown shape as `dd t describe` — only the parent identity differs. Provide --config-id (from `dd d list`) or --config-name (case-insensitive exact match). Source of truth: gs-ui-datadesigner config-ui endpoints.",
+      "mutating": false,
+      "cliHidden": false,
+      "mcpTool": "data_designer_describe_design",
+      "mcpHidden": false,
+      "outputFormat": "detail",
+      "flags": [
+        {
+          "name": "configId",
+          "flag": "--config-id",
+          "char": null,
+          "type": "string",
+          "required": false,
+          "default": null,
+          "enum": null,
+          "csv": false,
+          "description": "Config ID (from list-designs)",
+          "cliExposed": true
+        },
+        {
+          "name": "configName",
+          "flag": "--config-name",
+          "char": null,
+          "type": "string",
+          "required": false,
+          "default": null,
+          "enum": null,
+          "csv": false,
+          "description": "Exact design name (case-insensitive). Alternative to --config-id.",
+          "cliExposed": true
+        },
+        {
+          "name": "taskId",
+          "flag": "--task-id",
+          "char": null,
+          "type": "string",
+          "required": false,
+          "default": null,
+          "enum": null,
+          "csv": false,
+          "description": "Drill into a specific task (e.g. t1) — shows type-aware Task Detail, join/pivot/union tables, task criteria, and Export-to-S3 config",
+          "cliExposed": true
+        },
+        {
+          "name": "taskName",
+          "flag": "--task-name",
+          "char": null,
+          "type": "string",
+          "required": false,
+          "default": null,
+          "enum": null,
+          "csv": false,
+          "description": "Scope output to a task by name — resolved to its task ID (case-insensitive exact match)",
+          "cliExposed": true
+        },
+        {
+          "name": "pivotColumn",
+          "flag": "--pivot-column",
+          "char": null,
+          "type": "string",
+          "required": false,
+          "default": null,
+          "enum": null,
+          "csv": false,
+          "description": "For a pivot task, expand one pivot column's conditions by name or # index (requires --task-id targeting a pivot task)",
+          "cliExposed": true
+        },
+        {
+          "name": "field",
+          "flag": "--field",
+          "char": null,
+          "type": "string",
+          "required": false,
+          "default": null,
+          "enum": null,
+          "csv": false,
+          "description": "Focus on ONE show field by name/alias/label — shows its metadata and, for a calculated field, the rendered formula. Requires --task-id.",
+          "cliExposed": true
+        }
+      ],
+      "examples": [
+        "gs-admin dd d describe"
+      ],
+      "afterHelpNotes": null,
+      "endpoints": [
+        {
+          "name": "header",
+          "method": "GET",
+          "path": "/v1/bionicreporting/config-ui/{{configId}}"
+        },
+        {
+          "name": "tasks",
+          "method": "GET",
+          "path": "/v1/bionicreporting/config-ui/{{configId}}/tasks"
+        },
+        {
+          "name": "task",
+          "method": "GET",
+          "path": "/v1/bionicreporting/config-ui/{{configId}}/task/{{taskId}}"
+        }
+      ]
+    },
+    {
+      "id": "data-designer:designs:create",
+      "lane": "artifact",
+      "domain": "data-designer",
+      "path": "data-designer designs create",
+      "shortPath": "dd d create",
+      "group": "designs",
+      "subGroup": null,
+      "subSubGroup": null,
+      "groupPath": "designs",
+      "groupTitles": [
+        "Data Design operations"
+      ],
+      "name": "create",
+      "actionKey": "create-design",
+      "summary": "Create a Data Design (Step 1 — basic details)",
+      "description": "Create a new Data Design shell. Returns the new configId, which subsequent steps (`dd d add-task`) thread through. Validates: name 3–120 chars, must not start with a digit. Description and folder are optional.",
+      "mutating": true,
+      "cliHidden": false,
+      "mcpTool": "data_designer_create_design",
+      "mcpHidden": false,
+      "outputFormat": "status",
+      "flags": [
+        {
+          "name": "configName",
+          "flag": "--name",
+          "char": null,
+          "type": "string",
+          "required": true,
+          "default": null,
+          "enum": null,
+          "csv": false,
+          "description": "Design name (3–120 chars; must not start with a digit)",
+          "cliExposed": true
+        },
+        {
+          "name": "description",
+          "flag": "--description",
+          "char": null,
+          "type": "string",
+          "required": false,
+          "default": null,
+          "enum": null,
+          "csv": false,
+          "description": "Template description (optional)",
+          "cliExposed": true
+        },
+        {
+          "name": "folderId",
+          "flag": "--folder-id",
+          "char": null,
+          "type": "string",
+          "required": false,
+          "default": null,
+          "enum": null,
+          "csv": false,
+          "description": "Folder ID (optional; empty when omitted)",
+          "cliExposed": true
+        }
+      ],
+      "examples": [
+        "gs-admin dd d create --name <config-name>"
+      ],
+      "afterHelpNotes": null,
+      "endpoints": [
+        {
+          "name": "create",
+          "method": "POST",
+          "path": "/v1/bionicreporting/config-ui"
+        }
+      ]
+    },
+    {
+      "id": "data-designer:designs:add-task",
+      "lane": "artifact",
+      "domain": "data-designer",
+      "path": "data-designer designs add-task",
+      "shortPath": "dd d add-task",
+      "group": "designs",
+      "subGroup": null,
+      "subSubGroup": null,
+      "groupPath": "designs",
+      "groupTitles": [
+        "Data Design operations"
+      ],
+      "name": "add-task",
+      "actionKey": "add-design-task",
+      "summary": "Add a task (extract or merge) to a Data Design",
+      "description": "Add a task to a Data Design via inline flags (preferred) OR a JSON spec file. INLINE mode: --type <type> + --name <name> + (extract: --object-name + --field … --filter …) or (merge: --left-task-id + --join … --field 'taskId:field'). FILE mode: --task-spec-file <path>. Pick one mode; passing both errors. Inline --field uses '<expr>[=<alias>]' for extract (expr can be a 'A -> B' lookup chain); '<taskId>:<field>[=<alias>]' for merge. Inline --join uses '<followerTaskId>:<joinType>:<l>=<r>,…' (use '~' for case-insensitive equality, '=' for case-sensitive). EXTRACT types fully wired: mdaExtract, sfdcExtract, s3Extract, snowflakeExtract. Aliases: MDA→mdaExtract, SFDC→sfdcExtract, S3→s3Extract, SNOWFLAKE→snowflakeExtract, merge→join. Per-type capability matrix gates which keys are allowed (e.g. s3Extract rejects groupBy/filters).",
+      "mutating": true,
+      "cliHidden": false,
+      "mcpTool": "data_designer_add_design_task",
+      "mcpHidden": false,
+      "outputFormat": "status",
+      "flags": [
+        {
+          "name": "configId",
+          "flag": "--config-id",
+          "char": null,
+          "type": "string",
+          "required": false,
+          "default": null,
+          "enum": null,
+          "csv": false,
+          "description": "Config ID",
+          "cliExposed": true
+        },
+        {
+          "name": "configName",
+          "flag": "--config-name",
+          "char": null,
+          "type": "string",
+          "required": false,
+          "default": null,
+          "enum": null,
+          "csv": false,
+          "description": "Exact design name (case-insensitive). Alternative to --config-id.",
+          "cliExposed": true
+        },
+        {
+          "name": "taskSpecFile",
+          "flag": "--task-spec-file",
+          "char": null,
+          "type": "string",
+          "required": false,
+          "default": null,
+          "enum": null,
+          "csv": false,
+          "description": "FILE MODE: path to a JSON spec file. Mutually exclusive with --type/--name/--field/etc.",
+          "cliExposed": true
+        },
+        {
+          "name": "type",
+          "flag": "--type",
+          "char": null,
+          "type": "string",
+          "required": false,
+          "default": null,
+          "enum": null,
+          "csv": false,
+          "description": "INLINE: task type (mda, sfdc, merge, …). Drives the capability matrix.",
+          "cliExposed": true
+        },
+        {
+          "name": "name",
+          "flag": "--name",
+          "char": null,
+          "type": "string",
+          "required": false,
+          "default": null,
+          "enum": null,
+          "csv": false,
+          "description": "INLINE: task name shown in the DAG (e.g. \"Company\").",
+          "cliExposed": true
+        },
+        {
+          "name": "taskId",
+          "flag": "--task-id",
+          "char": null,
+          "type": "string",
+          "required": false,
+          "default": null,
+          "enum": null,
+          "csv": false,
+          "description": "INLINE: explicit task ID like t5 (auto-assigned when omitted).",
+          "cliExposed": true
+        },
+        {
+          "name": "objectName",
+          "flag": "--object-name",
+          "char": null,
+          "type": "string",
+          "required": false,
+          "default": null,
+          "enum": null,
+          "csv": false,
+          "description": "INLINE (extract): source object name (e.g. company, Account). For S3, pass the S3 key — may include a folder prefix (e.g. \"folder1/2024/accounts.csv\"); the CLI splits the trailing filename from the folder path automatically.",
+          "cliExposed": true
+        },
+        {
+          "name": "connectionId",
+          "flag": "--connection-id",
+          "char": null,
+          "type": "string",
+          "required": false,
+          "default": null,
+          "enum": null,
+          "csv": false,
+          "description": "INLINE (extract): connection ID — for SFDC tenants with multiple connections.",
+          "cliExposed": true
+        },
+        {
+          "name": "connectionName",
+          "flag": "--connection-name",
+          "char": null,
+          "type": "string",
+          "required": false,
+          "default": null,
+          "enum": null,
+          "csv": false,
+          "description": "INLINE (extract): alternative to --connection-id; resolved against `dd sources list`.",
+          "cliExposed": true
+        },
+        {
+          "name": "leftTaskId",
+          "flag": "--left-task-id",
+          "char": null,
+          "type": "string",
+          "required": false,
+          "default": null,
+          "enum": null,
+          "csv": false,
+          "description": "INLINE (merge): driver task ID (e.g. t1).",
+          "cliExposed": true
+        },
+        {
+          "name": "field",
+          "flag": "--field",
+          "char": null,
+          "type": "array",
+          "required": false,
+          "default": null,
+          "enum": null,
+          "csv": false,
+          "description": "INLINE: repeatable. Extract: '<expr>[=<alias>][:<aggregation>]' (expr supports 'A -> B' lookup chains; aggregation is COUNT, COUNT_DISTINCT, SUM, AVG, MIN, MAX). Merge: '<taskId>:<field>[=<alias>][:<aggregation>]'. When --group-by is set, all non-grouped fields must declare an aggregation.",
+          "cliExposed": true
+        },
+        {
+          "name": "groupBy",
+          "flag": "--group-by",
+          "char": null,
+          "type": "array",
+          "required": false,
+          "default": null,
+          "enum": null,
+          "csv": false,
+          "description": "INLINE: repeatable. Each entry must also appear in --field.",
+          "cliExposed": true
+        },
+        {
+          "name": "filter",
+          "flag": "--filter",
+          "char": null,
+          "type": "array",
+          "required": false,
+          "default": null,
+          "enum": null,
+          "csv": false,
+          "description": "INLINE: repeatable. Format: 'alias:field:operator[:value]' (same as `re r add-criteria`).",
+          "cliExposed": true
+        },
+        {
+          "name": "filterExpression",
+          "flag": "--filter-expression",
+          "char": null,
+          "type": "string",
+          "required": false,
+          "default": null,
+          "enum": null,
+          "csv": false,
+          "description": "INLINE: required when 2+ --filter; e.g. 'A AND B'.",
+          "cliExposed": true
+        },
+        {
+          "name": "join",
+          "flag": "--join",
+          "char": null,
+          "type": "array",
+          "required": false,
+          "default": null,
+          "enum": null,
+          "csv": false,
+          "description": "INLINE (merge): repeatable. Format: '<followerTaskId>:<joinType>:<cond1>,<cond2>,…' where each cond is '<l>=<r>' (case-sensitive) or '<l>~<r>' (case-insensitive).",
+          "cliExposed": true
+        },
+        {
+          "name": "description",
+          "flag": "--task-description",
+          "char": null,
+          "type": "string",
+          "required": false,
+          "default": null,
+          "enum": null,
+          "csv": false,
+          "description": "INLINE: optional task description.",
+          "cliExposed": true
+        },
+        {
+          "name": "cascadeAdd",
+          "flag": "--cascade-add",
+          "char": null,
+          "type": "boolean",
+          "required": false,
+          "default": false,
+          "enum": null,
+          "csv": false,
+          "description": "Cascade newly-added fields to sibling tasks",
+          "cliExposed": true
+        },
+        {
+          "name": "cascadeDelete",
+          "flag": "--cascade-delete",
+          "char": null,
+          "type": "boolean",
+          "required": false,
+          "default": false,
+          "enum": null,
+          "csv": false,
+          "description": "Cascade field deletions to sibling tasks",
+          "cliExposed": true
+        },
+        {
+          "name": "cascadeLookups",
+          "flag": "--cascade-lookups",
+          "char": null,
+          "type": "boolean",
+          "required": false,
+          "default": true,
+          "enum": null,
+          "csv": false,
+          "description": "Expand lookup relationships across the DAG (default true)",
+          "cliExposed": true
+        },
+        {
+          "name": "positionX",
+          "flag": "--position-x",
+          "char": null,
+          "type": "integer",
+          "required": false,
+          "default": null,
+          "enum": null,
+          "csv": false,
+          "description": "DAG layout X position (auto-computed when omitted)",
+          "cliExposed": true
+        },
+        {
+          "name": "positionY",
+          "flag": "--position-y",
+          "char": null,
+          "type": "integer",
+          "required": false,
+          "default": null,
+          "enum": null,
+          "csv": false,
+          "description": "DAG layout Y position (auto-computed when omitted)",
+          "cliExposed": true
+        },
+        {
+          "name": "delimiter",
+          "flag": "--delimiter",
+          "char": null,
+          "type": "string",
+          "required": false,
+          "default": null,
+          "enum": null,
+          "csv": false,
+          "description": "INLINE (S3 only): CSV field delimiter (COMMA, TAB, PIPE, SEMICOLON). Default: COMMA.",
+          "cliExposed": true
+        },
+        {
+          "name": "encoding",
+          "flag": "--encoding",
+          "char": null,
+          "type": "string",
+          "required": false,
+          "default": null,
+          "enum": null,
+          "csv": false,
+          "description": "INLINE (S3 only): file encoding (UTF-8, ISO-8859-1, …). Default: UTF-8.",
+          "cliExposed": true
+        },
+        {
+          "name": "quoteChar",
+          "flag": "--quote-char",
+          "char": null,
+          "type": "string",
+          "required": false,
+          "default": null,
+          "enum": null,
+          "csv": false,
+          "description": "INLINE (S3 only): quote character (DOUBLE_QUOTE, SINGLE_QUOTE). Default: DOUBLE_QUOTE.",
+          "cliExposed": true
+        },
+        {
+          "name": "escapeChar",
+          "flag": "--escape-char",
+          "char": null,
+          "type": "string",
+          "required": false,
+          "default": null,
+          "enum": null,
+          "csv": false,
+          "description": "INLINE (S3 only): escape character (SINGLE_QUOTE, DOUBLE_QUOTE, BACKSLASH). Default: SINGLE_QUOTE.",
+          "cliExposed": true
+        },
+        {
+          "name": "dateFormat",
+          "flag": "--date-format",
+          "char": null,
+          "type": "string",
+          "required": false,
+          "default": null,
+          "enum": null,
+          "csv": false,
+          "description": "INLINE (S3 only): date format string (e.g. MM/dd/yyyy). Default: MM/dd/yyyy.",
+          "cliExposed": true
+        },
+        {
+          "name": "datetimeFormat",
+          "flag": "--datetime-format",
+          "char": null,
+          "type": "string",
+          "required": false,
+          "default": null,
+          "enum": null,
+          "csv": false,
+          "description": "INLINE (S3 only): datetime format string (e.g. MM/dd/yyyy HH:mm:ss). Default: MM/dd/yyyy HH:mm:ss.",
+          "cliExposed": true
+        },
+        {
+          "name": "timezone",
+          "flag": "--timezone",
+          "char": null,
+          "type": "string",
+          "required": false,
+          "default": null,
+          "enum": null,
+          "csv": false,
+          "description": "INLINE (S3 only): timezone ID (e.g. UTC, America/New_York). Default: UTC.",
+          "cliExposed": true
+        }
+      ],
+      "examples": [
+        "gs-admin dd d add-task"
+      ],
+      "afterHelpNotes": null,
+      "endpoints": [
+        {
+          "name": "update",
+          "method": "PUT",
+          "path": "/v1/bionicreporting/config-ui/{{configId}}/task"
+        },
+        {
+          "name": "tasks",
+          "method": "GET",
+          "path": "/v1/bionicreporting/config-ui/{{configId}}/tasks"
+        },
+        {
+          "name": "header",
+          "method": "GET",
+          "path": "/v1/bionicreporting/config-ui/{{configId}}"
+        },
+        {
+          "name": "describeSourceObject",
+          "method": "GET",
+          "path": "/v1/api/reporting/describe/{{type}}/{{objectName}}"
+        },
+        {
+          "name": "describeSourceObjectWarehouse",
+          "method": "GET",
+          "path": "/v1/bionicreporting/describe/{{type}}/{{objectName}}"
+        },
+        {
+          "name": "listS3Connections",
+          "method": "GET",
+          "path": "/v1/api/connector/connection/S3/all"
+        },
+        {
+          "name": "browseS3Files",
+          "method": "POST",
+          "path": "/v1/bionicreporting/file-browser/browse"
+        },
+        {
+          "name": "describeS3File",
+          "method": "POST",
+          "path": "/v1/bionicreporting/file-browser/describe"
+        },
+        {
+          "name": "task",
+          "method": "GET",
+          "path": "/v1/bionicreporting/config-ui/{{configId}}/task/{{taskId}}"
+        }
+      ]
+    },
+    {
+      "id": "data-designer:designs:edit-task",
+      "lane": "artifact",
+      "domain": "data-designer",
+      "path": "data-designer designs edit-task",
+      "shortPath": "dd d edit-task",
+      "group": "designs",
+      "subGroup": null,
+      "subSubGroup": null,
+      "groupPath": "designs",
+      "groupTitles": [
+        "Data Design operations"
+      ],
+      "name": "edit-task",
+      "actionKey": "edit-design-task",
+      "summary": "Edit an existing extract task on a Data Design",
+      "description": "Incrementally edit an extract task (MDA / SFDC / SNOWFLAKE / S3) in place — only what you pass changes; everything else is preserved. Identify the task with --task-id (or --task-name). Operations (all repeatable where noted): --add-field '<expr>[=<alias>][:<agg>]', --remove-field <fieldName|alias>, --rename-field '<fieldName|alias>=<newDisplayName>' (label only — fieldAlias is NEVER changed), --set-aggregation '<field>=<AGG|NONE>', --add-filter / --set-filter 'alias:field:op[:value]', --remove-filter <alias>, --clear-filters, --filter-expression 'A AND B', --add-group-by <field>, --clear-group-by, --description <text>. CRITICAL: fieldAlias is the child task's fieldName and is held stable across edits (identity = uiUniqueKey); renaming the display name does not change it. S3 tasks support remove/rename/description only (no add-field/filters/groupBy).",
+      "mutating": true,
+      "cliHidden": false,
+      "mcpTool": "data_designer_edit_design_task",
+      "mcpHidden": false,
+      "outputFormat": "status",
+      "flags": [
+        {
+          "name": "configId",
+          "flag": "--config-id",
+          "char": null,
+          "type": "string",
+          "required": false,
+          "default": null,
+          "enum": null,
+          "csv": false,
+          "description": "Config ID",
+          "cliExposed": true
+        },
+        {
+          "name": "configName",
+          "flag": "--config-name",
+          "char": null,
+          "type": "string",
+          "required": false,
+          "default": null,
+          "enum": null,
+          "csv": false,
+          "description": "Exact design name (case-insensitive). Alternative to --config-id.",
+          "cliExposed": true
+        },
+        {
+          "name": "taskId",
+          "flag": "--task-id",
+          "char": null,
+          "type": "string",
+          "required": false,
+          "default": null,
+          "enum": null,
+          "csv": false,
+          "description": "Task ID to edit (e.g. t1). Provide this OR --task-name.",
+          "cliExposed": true
+        },
+        {
+          "name": "taskName",
+          "flag": "--task-name",
+          "char": null,
+          "type": "string",
+          "required": false,
+          "default": null,
+          "enum": null,
+          "csv": false,
+          "description": "Exact task name to edit (case-insensitive). Provide this OR --task-id.",
+          "cliExposed": true
+        },
+        {
+          "name": "addField",
+          "flag": "--add-field",
+          "char": null,
+          "type": "array",
+          "required": false,
+          "default": null,
+          "enum": null,
+          "csv": false,
+          "description": "Repeatable. Add a field: '<expr>[=<alias>][:<aggregation>]' (expr supports 'A -> B' lookup chains on types that allow lookups). New fields get a freshly generated fieldAlias.",
+          "cliExposed": true
+        },
+        {
+          "name": "removeField",
+          "flag": "--remove-field",
+          "char": null,
+          "type": "array",
+          "required": false,
+          "default": null,
+          "enum": null,
+          "csv": false,
+          "description": "Repeatable. Remove a field by source fieldName or current alias/display name.",
+          "cliExposed": true
+        },
+        {
+          "name": "renameField",
+          "flag": "--rename-field",
+          "char": null,
+          "type": "array",
+          "required": false,
+          "default": null,
+          "enum": null,
+          "csv": false,
+          "description": "Repeatable. '<fieldName|alias>=<newDisplayName>'. Changes the display name only — the fieldAlias is preserved (child tasks stay intact).",
+          "cliExposed": true
+        },
+        {
+          "name": "setAggregation",
+          "flag": "--set-aggregation",
+          "char": null,
+          "type": "array",
+          "required": false,
+          "default": null,
+          "enum": null,
+          "csv": false,
+          "description": "Repeatable. '<field>=<AGG>' where AGG is COUNT, COUNT_DISTINCT, SUM, AVG, MIN, MAX (or NONE to clear). fieldAlias is preserved.",
+          "cliExposed": true
+        },
+        {
+          "name": "addFilter",
+          "flag": "--add-filter",
+          "char": null,
+          "type": "array",
+          "required": false,
+          "default": null,
+          "enum": null,
+          "csv": false,
+          "description": "Repeatable. Add a filter condition: 'alias:field:operator[:value]'. Errors if the alias already exists.",
+          "cliExposed": true
+        },
+        {
+          "name": "setFilter",
+          "flag": "--set-filter",
+          "char": null,
+          "type": "array",
+          "required": false,
+          "default": null,
+          "enum": null,
+          "csv": false,
+          "description": "Repeatable. Add or replace the condition with this alias: 'alias:field:operator[:value]'. Use this to change a filter value.",
+          "cliExposed": true
+        },
+        {
+          "name": "removeFilter",
+          "flag": "--remove-filter",
+          "char": null,
+          "type": "array",
+          "required": false,
+          "default": null,
+          "enum": null,
+          "csv": false,
+          "description": "Repeatable. Remove the filter condition with this alias.",
+          "cliExposed": true
+        },
+        {
+          "name": "clearFilters",
+          "flag": "--clear-filters",
+          "char": null,
+          "type": "boolean",
+          "required": false,
+          "default": false,
+          "enum": null,
+          "csv": false,
+          "description": "Remove all filter conditions from the task.",
+          "cliExposed": true
+        },
+        {
+          "name": "filterExpression",
+          "flag": "--filter-expression",
+          "char": null,
+          "type": "string",
+          "required": false,
+          "default": null,
+          "enum": null,
+          "csv": false,
+          "description": "Set the boolean filter expression (e.g. 'A AND B'). Required when 2+ conditions remain after edits.",
+          "cliExposed": true
+        },
+        {
+          "name": "addGroupBy",
+          "flag": "--add-group-by",
+          "char": null,
+          "type": "array",
+          "required": false,
+          "default": null,
+          "enum": null,
+          "csv": false,
+          "description": "Repeatable. Move a field into group-by. When group-by is active, every non-grouped field must be aggregated (use --set-aggregation).",
+          "cliExposed": true
+        },
+        {
+          "name": "clearGroupBy",
+          "flag": "--clear-group-by",
+          "char": null,
+          "type": "boolean",
+          "required": false,
+          "default": false,
+          "enum": null,
+          "csv": false,
+          "description": "Remove all group-by fields (moves them back into the output).",
+          "cliExposed": true
+        },
+        {
+          "name": "description",
+          "flag": "--description",
+          "char": null,
+          "type": "string",
+          "required": false,
+          "default": null,
+          "enum": null,
+          "csv": false,
+          "description": "Set the task description.",
+          "cliExposed": true
+        },
+        {
+          "name": "cascadeAdd",
+          "flag": "--cascade-add",
+          "char": null,
+          "type": "boolean",
+          "required": false,
+          "default": false,
+          "enum": null,
+          "csv": false,
+          "description": "Cascade newly-added fields to sibling tasks",
+          "cliExposed": true
+        },
+        {
+          "name": "cascadeDelete",
+          "flag": "--cascade-delete",
+          "char": null,
+          "type": "boolean",
+          "required": false,
+          "default": false,
+          "enum": null,
+          "csv": false,
+          "description": "Cascade field deletions to sibling tasks",
+          "cliExposed": true
+        },
+        {
+          "name": "cascadeLookups",
+          "flag": "--cascade-lookups",
+          "char": null,
+          "type": "boolean",
+          "required": false,
+          "default": true,
+          "enum": null,
+          "csv": false,
+          "description": "Expand lookup relationships across the DAG (default true)",
+          "cliExposed": true
+        },
+        {
+          "name": "positionX",
+          "flag": "--position-x",
+          "char": null,
+          "type": "integer",
+          "required": false,
+          "default": null,
+          "enum": null,
+          "csv": false,
+          "description": "DAG layout X position (preserved when omitted)",
+          "cliExposed": true
+        },
+        {
+          "name": "positionY",
+          "flag": "--position-y",
+          "char": null,
+          "type": "integer",
+          "required": false,
+          "default": null,
+          "enum": null,
+          "csv": false,
+          "description": "DAG layout Y position (preserved when omitted)",
+          "cliExposed": true
+        }
+      ],
+      "examples": [
+        "gs-admin dd d edit-task"
+      ],
+      "afterHelpNotes": null,
+      "endpoints": [
+        {
+          "name": "update",
+          "method": "PUT",
+          "path": "/v1/bionicreporting/config-ui/{{configId}}/task"
+        },
+        {
+          "name": "tasks",
+          "method": "GET",
+          "path": "/v1/bionicreporting/config-ui/{{configId}}/tasks"
+        },
+        {
+          "name": "header",
+          "method": "GET",
+          "path": "/v1/bionicreporting/config-ui/{{configId}}"
+        },
+        {
+          "name": "describeSourceObject",
+          "method": "GET",
+          "path": "/v1/api/reporting/describe/{{type}}/{{objectName}}"
+        },
+        {
+          "name": "describeSourceObjectWarehouse",
+          "method": "GET",
+          "path": "/v1/bionicreporting/describe/{{type}}/{{objectName}}"
+        },
+        {
+          "name": "task",
+          "method": "GET",
+          "path": "/v1/bionicreporting/config-ui/{{configId}}/task/{{taskId}}"
+        }
+      ]
+    },
+    {
+      "id": "data-designer:designs:preview",
+      "lane": "artifact",
+      "domain": "data-designer",
+      "path": "data-designer designs preview",
+      "shortPath": "dd d preview",
+      "group": "designs",
+      "subGroup": null,
+      "subSubGroup": null,
+      "groupPath": "designs",
+      "groupTitles": [
+        "Data Design operations"
+      ],
+      "name": "preview",
+      "actionKey": "preview-design-task-outputs",
+      "summary": "Preview sample output for one or more tasks",
+      "description": "Fetch sample data rows for one or more task IDs in a Data Design. Provide --config-id (or --config-name) and --task-id (repeatable; if omitted, all tasks on the design are previewed).",
+      "mutating": false,
+      "cliHidden": false,
+      "mcpTool": "data_designer_preview_design_task_outputs",
+      "mcpHidden": false,
+      "outputFormat": "json",
+      "flags": [
+        {
+          "name": "configId",
+          "flag": "--config-id",
+          "char": null,
+          "type": "string",
+          "required": false,
+          "default": null,
+          "enum": null,
+          "csv": false,
+          "description": "Config ID",
+          "cliExposed": true
+        },
+        {
+          "name": "configName",
+          "flag": "--config-name",
+          "char": null,
+          "type": "string",
+          "required": false,
+          "default": null,
+          "enum": null,
+          "csv": false,
+          "description": "Exact design name (case-insensitive). Alternative to --config-id.",
+          "cliExposed": true
+        },
+        {
+          "name": "taskId",
+          "flag": "--task-id",
+          "char": null,
+          "type": "array",
+          "required": false,
+          "default": null,
+          "enum": null,
+          "csv": false,
+          "description": "Task ID(s) to preview. Repeat --task-id for multiple. Omit to preview all tasks.",
+          "cliExposed": true
+        },
+        {
+          "name": "limit",
+          "flag": "--limit",
+          "char": null,
+          "type": "integer",
+          "required": false,
+          "default": 20,
+          "enum": null,
+          "csv": false,
+          "description": "Max sample rows to display per task",
+          "cliExposed": true
+        }
+      ],
+      "examples": [
+        "gs-admin dd d preview"
+      ],
+      "afterHelpNotes": null,
+      "endpoints": [
+        {
+          "name": "tasks",
+          "method": "GET",
+          "path": "/v1/bionicreporting/config-ui/{{configId}}/tasks"
+        },
+        {
+          "name": "header",
+          "method": "GET",
+          "path": "/v1/bionicreporting/config-ui/{{configId}}"
+        },
+        {
+          "name": "taskOutputs",
+          "method": "GET",
+          "path": "/v1/bionicreporting/config-ui/{{configId}}/taskOutputs"
+        },
+        {
+          "name": "task",
+          "method": "GET",
+          "path": "/v1/bionicreporting/config-ui/{{configId}}/task/{{taskId}}"
+        },
+        {
+          "name": "preview",
+          "method": "GET",
+          "path": "/v1/bionicreporting/config-ui/data/preview/{{configId}}/{{taskId}}"
+        }
+      ]
+    },
+    {
+      "id": "data-designer:designs:delete",
+      "lane": "artifact",
+      "domain": "data-designer",
+      "path": "data-designer designs delete",
+      "shortPath": "dd d delete",
+      "group": "designs",
+      "subGroup": null,
+      "subSubGroup": null,
+      "groupPath": "designs",
+      "groupTitles": [
+        "Data Design operations"
+      ],
+      "name": "delete",
+      "actionKey": "delete-design",
+      "summary": "Delete a Data Design",
+      "description": "Delete a Data Design by ID or name. Requires --yes to confirm (this CLI is non-interactive). Before deleting, runs the same dependency check as the DD Designs list UI (POST check-dependency-for-config). If dependents exist (rules, reports, JO, …), the delete is aborted unless --force is also passed (UI: Delete Anyway / Yes Delete). DESTRUCTIVE — deletes the design and all its tasks.",
+      "mutating": true,
+      "cliHidden": false,
+      "mcpTool": "data_designer_delete_design",
+      "mcpHidden": false,
+      "outputFormat": "status",
+      "flags": [
+        {
+          "name": "configId",
+          "flag": "--config-id",
+          "char": null,
+          "type": "string",
+          "required": false,
+          "default": null,
+          "enum": null,
+          "csv": false,
+          "description": "Config ID (from list-designs)",
+          "cliExposed": true
+        },
+        {
+          "name": "configName",
+          "flag": "--config-name",
+          "char": null,
+          "type": "string",
+          "required": false,
+          "default": null,
+          "enum": null,
+          "csv": false,
+          "description": "Exact design name (case-insensitive). Alternative to --config-id.",
+          "cliExposed": true
+        },
+        {
+          "name": "yes",
+          "flag": "--yes",
+          "char": null,
+          "type": "boolean",
+          "required": false,
+          "default": false,
+          "enum": null,
+          "csv": false,
+          "description": "Confirm the destructive delete",
+          "cliExposed": true
+        },
+        {
+          "name": "force",
+          "flag": "--force",
+          "char": null,
+          "type": "boolean",
+          "required": false,
+          "default": false,
+          "enum": null,
+          "csv": false,
+          "description": "Delete even when dependents exist (UI: Delete Anyway / Yes Delete)",
+          "cliExposed": true
+        },
+        {
+          "name": "areas",
+          "flag": "--areas",
+          "char": null,
+          "type": "array",
+          "required": false,
+          "default": null,
+          "enum": null,
+          "csv": true,
+          "description": "Optional subset of dependency areas to check (default: bootstrap DEPENDENCY_CHECK_ENTITY_REFERENCES)",
+          "cliExposed": true
+        }
+      ],
+      "examples": [
+        "gs-admin dd d delete"
+      ],
+      "afterHelpNotes": null,
+      "endpoints": [
+        {
+          "name": "bootstrap",
+          "method": "GET",
+          "path": "/v1/bionicreporting/config-ui/bootstrap"
+        },
+        {
+          "name": "checkDependencyForConfig",
+          "method": "POST",
+          "path": "/v1/bionicreporting/config-ui/check-dependency-for-config"
+        },
+        {
+          "name": "delete",
+          "method": "DELETE",
+          "path": "/v1/bionicreporting/config-ui/{{configId}}"
+        }
+      ]
+    },
+    {
+      "id": "data-designer:designs:dependencies",
+      "lane": "artifact",
+      "domain": "data-designer",
+      "path": "data-designer designs dependencies",
+      "shortPath": "dd d dependencies",
+      "group": "designs",
+      "subGroup": null,
+      "subSubGroup": null,
+      "groupPath": "designs",
+      "groupTitles": [
+        "Data Design operations"
+      ],
+      "name": "dependencies",
+      "actionKey": "check-design-dependencies",
+      "summary": "Check Data Design dependencies",
+      "description": "Show where a Data Design (dataspace) is used across product areas — same API and grouping as the DD Designs list UI \"Check Dependencies\" modal (POST /v1/bionicreporting/config-ui/check-dependency-for-config). Columns mirror the UI: Application Area (entityType), Dependency In (entityName), Fields Used. Non-materialized designs are not eligible for this check (backend returns eligible=false).",
+      "mutating": false,
+      "cliHidden": false,
+      "mcpTool": "data_designer_check_design_dependencies",
+      "mcpHidden": false,
+      "outputFormat": "table",
+      "flags": [
+        {
+          "name": "configId",
+          "flag": "--config-id",
+          "char": null,
+          "type": "string",
+          "required": false,
+          "default": null,
+          "enum": null,
+          "csv": false,
+          "description": "Config ID (from list-designs)",
+          "cliExposed": true
+        },
+        {
+          "name": "configName",
+          "flag": "--config-name",
+          "char": null,
+          "type": "string",
+          "required": false,
+          "default": null,
+          "enum": null,
+          "csv": false,
+          "description": "Exact design name (case-insensitive). Alternative to --config-id.",
+          "cliExposed": true
+        },
+        {
+          "name": "areas",
+          "flag": "--areas",
+          "char": null,
+          "type": "array",
+          "required": false,
+          "default": null,
+          "enum": null,
+          "csv": true,
+          "description": "Optional subset of dependency areas (e.g. RULE,REPORT). Default: bootstrap list.",
+          "cliExposed": true
+        }
+      ],
+      "examples": [
+        "gs-admin dd d dependencies"
+      ],
+      "afterHelpNotes": null,
+      "endpoints": [
+        {
+          "name": "bootstrap",
+          "method": "GET",
+          "path": "/v1/bionicreporting/config-ui/bootstrap"
+        },
+        {
+          "name": "checkDependencyForConfig",
+          "method": "POST",
+          "path": "/v1/bionicreporting/config-ui/check-dependency-for-config"
         }
       ]
     },
@@ -2472,7 +3779,7 @@
           "default": null,
           "enum": null,
           "csv": false,
-          "description": "Task name to edit (resolved against the template's tasks).",
+          "description": "Exact task name to edit (case-insensitive). Provide this OR --task-id.",
           "cliExposed": true
         },
         {
@@ -2709,6 +4016,11 @@
           "name": "describeSourceObjectWarehouse",
           "method": "GET",
           "path": "/v1/bionicreporting/describe/{{type}}/{{objectName}}"
+        },
+        {
+          "name": "task",
+          "method": "GET",
+          "path": "/v1/bionicreporting/designTemplates/{{templateId}}/task/{{taskId}}"
         }
       ]
     },
@@ -2798,6 +4110,11 @@
           "name": "header",
           "method": "GET",
           "path": "/v1/bionicreporting/designTemplates/{{templateId}}"
+        },
+        {
+          "name": "taskOutputs",
+          "method": "GET",
+          "path": "/v1/bionicreporting/designTemplates/{{templateId}}/taskOutputs"
         }
       ]
     },
@@ -16913,7 +18230,7 @@
           "default": null,
           "enum": null,
           "csv": false,
-          "description": "Scope output to a task by name — resolved to its task ID (case-insensitive substring match)",
+          "description": "Scope output to a task by name — resolved to its task ID (case-insensitive exact match)",
           "cliExposed": true
         },
         {
@@ -16937,7 +18254,7 @@
           "default": null,
           "enum": null,
           "csv": false,
-          "description": "Scope to a criteria by name — resolved to its criteria ID (case-insensitive substring match)",
+          "description": "Scope to a criteria by name — resolved to its criteria ID (case-insensitive exact match)",
           "cliExposed": true
         },
         {

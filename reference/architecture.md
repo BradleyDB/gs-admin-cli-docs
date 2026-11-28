@@ -43,12 +43,12 @@ to regenerate a complete catalog (`data/catalog.json`) any time the CLI is upgra
 - Handlers (the actual logic): `<pkg>/dist/artifacts/handlers/**`
 - Validators: `<pkg>/dist/artifacts/validators/**`
 
-### Counts (this install, v1.0.12)
+### Counts (this install, v1.0.14)
 
-- **170 artifact commands** across 8 domains, **all** also exposed as MCP tools.
+- **178 artifact commands** across 8 domains, **all** also exposed as MCP tools.
 - **12 Lane 2 runtime** verbs (CLI-hidden; MCP tools `runtime_*`).
 - **6 static** auth/config commands (`login`, `logout`, `config`, `whoami`, `tokens migrate`, `tokens backends`).
-- **= 188 CLI commands / 182 MCP tools.** (Count of record: `data/catalog.json`. Since 1.0.8 the package README matches — its tool count is generated from the manifests at build time.)
+- **= 196 CLI commands / 190 MCP tools.** (Count of record: `data/catalog.json`. Since 1.0.8 the package README matches — its tool count is generated from the manifests at build time.)
 
 **Upstream status.** 1.0.7 deleted the README's "Open Beta" section — the notice that
 command flags, output shapes and MCP tool names may change between releases, and that
