@@ -218,7 +218,7 @@ you at the spelling the guard understands. Use the installed `gs-admin` binary.
   are behind (or have a `.new` waiting for you) and points at setup; apart from the
   `plugin` link above, nothing under `.gs-superadmin/` is written outside a setup run.
 
-## Known CLI issues (observed live on 1.0.4; statically re-checked at v1.0.12 — the run-now catalog mislabel below was fixed upstream at 1.0.8; from 1.0.8 to 1.0.9 only the two connectors artifacts changed, and 1.0.10 changed only the auth module (token refresh removed, so the `sc measures --id` entry's stated mechanism is scoped to 1.0.9 and earlier); 1.0.11 changed the report, data-management and journey handlers, the error exits (no `process.exit()` on error paths) and the token-store loading, which resolved several entries below for 1.0.11 and later — each such entry says which version it holds for, and the rest still stand; from 1.0.11 to 1.0.12 nothing in the package's dist changed, only one dependency pin; two issues first observed live at 1.0.9 are listed below (`sc scheme list`, ledger KI-016; the libuv error-path abort, ledger KI-017) — recheck after CLI upgrades)
+## Known CLI issues (observed live on 1.0.4; statically re-checked at v1.0.14 — the run-now catalog mislabel below was fixed upstream at 1.0.8; from 1.0.8 to 1.0.9 only the two connectors artifacts changed, and 1.0.10 changed only the auth module (token refresh removed, so the `sc measures --id` entry's stated mechanism is scoped to 1.0.9 and earlier); 1.0.11 changed the report, data-management and journey handlers, the error exits (no `process.exit()` on error paths) and the token-store loading, which resolved several entries below for 1.0.11 and later — each such entry says which version it holds for, and the rest still stand; from 1.0.11 to 1.0.12 nothing in the package's dist changed, only one dependency pin; 1.0.14 (the next release published; there is no 1.0.13) added the eight `dd d` commands for Data Designs and moved the template and rule describes onto shared code — `--task-name` is an exact match there on 1.0.14 and later, where 1.0.12 and earlier matched a fragment (`re r describe --criteria-name` still matches a fragment on 1.0.14 although its help text says exact — pass the whole name; ledger KI-034), and a template's `--task-id` and `--field` calls make one more request — and changed nothing in the auth, journey, report, scorecard or connectors code, so every entry below stands as written for 1.0.14; two issues first observed live at 1.0.9 are listed below (`sc scheme list`, ledger KI-016; the libuv error-path abort, ledger KI-017) — recheck after CLI upgrades)
 
 When a `gs-admin` command misbehaves in a Known-CLI-issue-like way that this list does
 **not** cover (wrong/missing flag, false auth error, silent truncation, mislabeled
@@ -363,7 +363,8 @@ commands and output are still in this session.
   objects hide among `dm` objects where `group=System` is a **superset** (some System
   objects are DD outputs, some are not; no 1.0.4 describe field distinguishes them),
   so "which dm objects are Data Designers" is not determinable from CLI data on 1.0.12
-  and earlier (unmeasured on 1.0.14 and later) — never
+  and earlier, and on 1.0.14 and later a design's describe header names no output
+  object either (one design read) — never
   equate `group=System` with "the data designers" (`dataStore=REDSHIFT` and
   `copy`/`view` `dbName` prefixes are weak hints only). When a CLI count runs below the UI count in these areas,
   cite this limitation and record the gap — do not chase it with pagination or re-auth.

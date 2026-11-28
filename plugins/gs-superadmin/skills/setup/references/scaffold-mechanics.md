@@ -7,7 +7,7 @@ post-condition gate live in the skill itself, between §3 and §4 here — run t
 there before starting §4. Every `.gs-superadmin/plugin/…` path below is the
 workspace's link to the installed plugin (created in the skill's Phase 2), relative to
 the working dir.
-Facts here were verified against CLI v1.0.12 (this line is the stale-facts
+Facts here were verified against CLI v1.0.14 (this line is the stale-facts
 checker's per-upgrade tripwire for this file).
 
 ## §1 User-editable template files — scaffolded with a vintage (bus F-396)
@@ -156,8 +156,8 @@ file `.gs-superadmin/allow-rules-declined` exists. Otherwise ask the user once:
 > CLI 1.0.8 the catalog's `mutating` flag is a written upstream contract and the old
 > mislabeled-writer class is closed: every verified writer (the `re r` authoring
 > surface, `dd t` template edits, the scheduling writers) is catalog-mutating and
-> prompts. What you give up: genuine reads — including the ~20 non-mutating commands
-> whose POST endpoints are read-shaped fetches, upstream-reviewed — lose the harness's
+> prompts. What you give up: genuine reads — including the non-mutating commands
+> whose POST endpoints are read-shaped fetches (22 of them at CLI 1.0.14) — lose the harness's
 > generic shell prompt, and a FUTURE upstream mislabel would run without a prompt until
 > the adoption audit or the ask-override mechanism catches it. The skills that issue
 > writes (`audit`, `deprecate`, `change-request`) still get your explicit approval

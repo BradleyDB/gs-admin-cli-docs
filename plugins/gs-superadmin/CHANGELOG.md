@@ -5,6 +5,55 @@ marketplace doesn't pin versions — users get main — so entries describe what
 user who updates, not internal refactors. Entries before 0.8.0 were reconstructed from git
 history when this file was introduced.
 
+## 0.59.0 — 2026-11-27
+
+CLI pin 1.0.12 → 1.0.14 (gs-fortress audit-1.0.14, CP-1 and CP-6). There is no 1.0.13 to
+install: 1.0.14 is the first release published since 1.0.12. What a user gets by updating:
+
+- **Reference bundle regenerated from 1.0.14** (catalog, cheatsheet, ask-rules, version).
+  The command surface grows by the eight `dd d` commands for Data Designs — list,
+  describe, preview, dependencies, create, add-task, edit-task, delete — to 196 commands,
+  190 tools over MCP, the same 10 domains. Nothing is removed or renamed and no existing
+  command's `mutating` flag moves; the four new writers are labelled mutating, so the
+  guard asks on them from the catalog. Three existing commands change in the catalog:
+  `dd t describe` gains `--task-name`, and it, `dd t edit-task` and `dd t preview` each
+  declare one more endpoint. The non-mutating commands that carry a POST endpoint go from
+  20 to 22 — `dd d list` and `dd d dependencies`, both reads.
+- **A name that matched in part must now be whole, on CLI 1.0.14 and later.**
+  `--task-name` on `re r describe` and on `dd t edit-task` matched a fragment of the
+  task's name on 1.0.12 and earlier; on 1.0.14 and later it is an exact match
+  (case-insensitive) and a fragment is refused with the list of tasks. This is the CLI's
+  change, not the plugin's — no skill passes a fragment. `re r describe --criteria-name`
+  still matches a fragment on 1.0.14, though its help text now says exact.
+- **The per-pin CLI facts table is back for workspaces on 1.0.14.** It is stamped 1.0.14
+  and also verified on 1.0.11 and 1.0.12: every handler file its seven entries rest on is
+  unchanged, and the rules manifest changed only in two flag descriptions. On all three
+  versions, setup's candidate gate buckets the four `re rules` per-asset reads, and
+  `report` relays the scope limits. Until this version a workspace on 1.0.14 had the
+  table withdrawn with a "wait for a plugin update" note.
+- **The bundled catalog knows the Data Designs commands.** The guard reads the workspace's
+  own catalog, so a workspace set up on 1.0.14 already had them. This changes the
+  fallback: a workspace with no catalog of its own was asked about all eight as
+  unrecognized and is now asked only about the four that write. A workspace whose catalog
+  predates 1.0.14 is still asked about all eight until setup regenerates it.
+- **Designer documentation re-priced for 1.0.14.** There, every task and field call of a
+  design template makes one more request and runs slower: 1.4–3.4 s a task call against
+  1.3–1.8 s on 1.0.12 the same day, on one sandbox, and about 2.5 s a call over whole
+  templates. The default budget of 30 calls a run still fits. One cost to expect: on
+  1.0.14 the template describe carries one more key on each task row, so a template
+  documented on 1.0.12 or earlier reads as changed the first time it is described on
+  1.0.14. A workspace that moves to 1.0.14 re-documents every design template once (and
+  a doc left incomplete starts over); after that `--if-changed` skips as before. That
+  follows the installed CLI, not this plugin version.
+- **Version prose re-checked at 1.0.14** across the skills, setup references, operating
+  model and READMEs. The Known CLI issues header says what 1.0.14 changed and that every
+  entry below it stands; the read-verb allowlist is unchanged (the new describe and list
+  are admitted by their shapes; preview and dependencies stay out); the CLI's two
+  re-login sentences are unchanged; relationships-build's semantics basis records 1.0.14.
+
+Not in this version: the Data Designs knowledge-base domain. Setup's interim recipe (index
+the list as `data-designer-designs`; summary rows, not in deps-report) still applies.
+
 ## 0.58.1 — 2026-11-27
 
 For workspaces whose installed `gs-admin` is 1.0.14 or later (F-593). Nothing changes on
@@ -251,7 +300,7 @@ CLI pin 1.0.10 → 1.0.12 (gs-fortress audit-1.0.12, CP-1 and CP-7). The pin ski
 reads the same. What a user gets by updating:
 
 - **Reference bundle regenerated from 1.0.12** (catalog, cheatsheet, ask-rules, version).
-  The command surface did not move: 188 commands / 182 MCP tools / 10 domains, no mutating
+  The command surface did not move: 188 commands / 182 tools over MCP / 10 domains, no mutating
   flag moves, the guard untouched, the 20 non-mutating POST fetches the same list. The one
   catalog difference beyond the version stamps is `dm o list --sort-field`'s description,
   which now names the nine keys the server sorts on.
@@ -575,7 +624,7 @@ version-conditional. What a user gets by updating:
   email-report, deps-report, setup and describe-batch say the same.
 - **Reference bundle regenerated from 1.0.10** (catalog, cheatsheet, ask-rules, version).
   1.0.10 is an auth-only release: the catalog is unchanged apart from its version stamp —
-  188 commands / 182 MCP tools / 10 domains, no mutating flag moves, the guard untouched,
+  188 commands / 182 tools over MCP / 10 domains, no mutating flag moves, the guard untouched,
   the 20 non-mutating POST fetches the same list. Version prose across the skills,
   references and operating model re-checked at 1.0.10.
 - **Plugin README Quick start**: the first login carries `--base-url` (a first-time
@@ -876,7 +925,7 @@ CLI pin 1.0.8 → 1.0.9 (gs-fortress audit-1.0.9, kickoff E2: CP-1 + CP-5). What
 updating: the reference bundle (catalog, cheatsheet, ask-rules, version) regenerated from
 1.0.9. The only catalog change is the connectors list — `cn list` loses `--from`/`--to`
 (flags its handler never applied) and `cn list` / `cn jobs` name the v2 duct connections
-endpoint; counts unchanged (188 commands / 182 MCP tools / 10 domains), no mutating flag
+endpoint; counts unchanged (188 commands / 182 tools over MCP / 10 domains), no mutating flag
 moves, the guard untouched, the 20 non-mutating POST fetches the same list. The
 shape-tolerant connectors reading, refresh's migration note and setup's id-path guidance
 already shipped in 0.36.1 (F-388).
@@ -2281,7 +2330,7 @@ synthetic entry carried both keys, which is how the headline defect stayed green
 
 Adoption of gs-admin CLI 1.0.8 — the release where upstream fixed the catalog's
 `mutating` mislabel class this plugin has guarded against since 1.0.4. Counts are
-unchanged (188 commands / 182 MCP tools); what changes is who does the labeling.
+unchanged (188 commands / 182 tools over MCP); what changes is who does the labeling.
 
 **All 39 mislabeled writers now ask from the catalog itself.** Upstream flipped
 `mutating: false → true` on the entire class — the `re r` authoring surface
@@ -2859,7 +2908,7 @@ bundled-reference only — no behavior changes anywhere.
 structural moved: 1.0.7 is a metadata-only upstream release whose `dist/` is byte-identical
 to its predecessor, verified by hash-comparing the two installed trees — 171 files each,
 exactly two differing (the package version line and the README). The command surface is
-unchanged at 188 CLI commands / 182 MCP tools / 10 domains, and every `mutating` flag,
+unchanged at 188 commands on the CLI / 182 tools over MCP / 10 domains, and every `mutating` flag,
 endpoint and flag spelling is identical, so **no guard decision changes**. The upstream
 change is the removal of the README's open-beta notice; nothing replaced it, so the
 posture of pinning a version and diffing each release is unchanged.
@@ -2924,7 +2973,7 @@ of overwriting definition state until live-verified).
 ## 0.25.0 — 2026-07-28
 
 The documented CLI moves 1.0.4 → 1.0.6 (the "scheduling release": 15 new commands, no
-removals, no renames — 188 CLI commands / 182 MCP tools across the same 10 domains), and
+removals, no renames — 188 commands on the CLI / 182 tools over MCP across the same 10 domains), and
 the mutation guard's ask surface is extended to cover the new writers in the same
 release, so none of them lands in the guard's silent zone.
 

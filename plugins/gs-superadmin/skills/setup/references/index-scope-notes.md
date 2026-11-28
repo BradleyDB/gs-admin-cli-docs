@@ -5,7 +5,7 @@ the rest before indexing the journey-side domains (`jo email templates`,
 `jo surveys list`, `jo data-designer list`) or reasoning about Data Designer
 coverage. Pagination proves paging completeness only — the scope limits below are
 about what the CLI can SEE, and paging cannot fix them.
-Facts here were verified against CLI v1.0.12 (this line is the stale-facts
+Facts here were verified against CLI v1.0.14 (this line is the stale-facts
 checker's per-upgrade tripwire for this file; the bare versions below date the
 original observations).
 
@@ -84,8 +84,9 @@ exclusion. Design output objects hide among `dm` objects where `group=System` is
 **superset** (some System objects are DD outputs, some are not; no 1.0.4 describe
 field distinguishes them): beyond what this list returns, "which dm objects are Data
 Designers" is not determinable from CLI data on CLI 1.0.12 and earlier, and on 1.0.14
-and later it is not yet measured whether a design's own describe names its output
-object — so on every version, never equate `group=System` with "the data designers"
+and later a design's own describe does not say either: its header carries no field
+naming an output object (one design read on a sandbox at 1.0.14, 2026-11-27) — so on
+every version, never equate `group=System` with "the data designers"
 (`dataStore=REDSHIFT` and `copy`/`view` `dbName` prefixes are weak hints only).
 
 ## Recovering list-invisible email templates
@@ -129,8 +130,8 @@ never under a name already taken:
   `/gs-superadmin:deps-report` does not include it.
 
 This recipe is interim. The list's flags and paging names are read from the 1.0.14
-package and were seen on one sandbox (2026-11-27); the design describe is read from
-the package only. If the list itself fails at the gate, record a block (Phase 4 step 1) rather
+package and were seen on one sandbox (2026-11-27), and the design describe was read at
+its three levels on one design there. If the list itself fails at the gate, record a block (Phase 4 step 1) rather
 than an exclusion. If the list was adopted and the describe then fails in Phase 5, its
 entries stay failed with the CLI's error recorded: report that as written and leave
 the adoption in place — never block or exclude an adopted list for it.

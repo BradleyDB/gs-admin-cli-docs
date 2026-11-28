@@ -810,9 +810,9 @@ Get full details for a single Rules Engine rule: metadata, source object, action
 | `--id` | `string` |  | — | Rule GUID (ruleId field from list-rules) |
 | `--name` | `string` |  | — | Rule name — searches list and picks first match |
 | `--task-id` | `string` |  | — | Scope output to a specific task ID |
-| `--task-name` | `string` |  | — | Scope output to a task by name — resolved to its task ID (case-insensitive substring match) |
+| `--task-name` | `string` |  | — | Scope output to a task by name — resolved to its task ID (case-insensitive exact match) |
 | `--criteria-id` | `string` |  | — | Scope to a specific criteria ID — also shows filter conditions |
-| `--criteria-name` | `string` |  | — | Scope to a criteria by name — resolved to its criteria ID (case-insensitive substring match) |
+| `--criteria-name` | `string` |  | — | Scope to a criteria by name — resolved to its criteria ID (case-insensitive exact match) |
 | `--action-id` | `string` |  | — | Scope to a specific action ID — also shows field mappings |
 | `--pivot-column` | `string` |  | — | Expand conditions for a pivot column by name (only applies when --task-id targets a pivot task; ignored for all other task types) |
 | `--field` | `string` |  | — | Focus on ONE show field by name/alias/label — shows its metadata and, for a calculated field, the rendered formula. Requires --task-id. |

@@ -5,14 +5,14 @@ When launched over stdio it serves tools instead of parsing argv — no separate
 
 ## Tool inventory
 
-- **182 MCP tools** on this install: 170 artifact tools (every Lane-1 action) +
+- **190 MCP tools** on this install: 178 artifact tools (every Lane-1 action) +
   12 `runtime_*` Lane-2 tools. (Count of record: `data/catalog.json`
   `meta.counts.mcpTools`; since 1.0.8 the package README carries the same figure,
   generated from the manifests at build time.)
 - **Naming:** `<namespace>_<actionKey>` with dashes → underscores
   (e.g. `journey_create_program`, `data_management_list_objects`,
   `rules_engine_add_action_cta`). Lane-2 tools are `runtime_<verb>`.
-- Every artifact action is exposed (none are `mcp.hidden` in v1.0.12); the static
+- Every artifact action is exposed (none are `mcp.hidden` in v1.0.14); the static
   `login`/`config`/etc. commands are **CLI-only** (not MCP tools).
 
 The full tool list with input schemas is in [domains/index.md](domains/index.md) — the

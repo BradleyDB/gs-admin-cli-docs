@@ -21,8 +21,8 @@ installs two checker-only devDependencies; nothing runs from them).
 > are welcome, but this is not a support channel for Gainsight products: defects in the
 > CLI itself go to Gainsight, not here.
 >
-> **Currency.** This document was last updated on 2026-10-16 (against
-> `@gainsight/gs-admin-cli@1.0.12`) with reference to Gainsight's then-current pre-built and
+> **Currency.** This document was last updated on 2026-11-28 (against
+> `@gainsight/gs-admin-cli@1.0.14`) with reference to Gainsight's then-current pre-built and
 > generally available Admin CLI package. Gainsight may have updated its documentation and
 > available Admin CLI package since then. You can always find the latest version of
 > Gainsight's documentation and Admin CLI package at
@@ -36,7 +36,7 @@ installs two checker-only devDependencies; nothing runs from them).
 ## What's inside
 
 - **`wiki/index.html`** — a self-contained, offline, searchable explorer for all
-  **188 CLI commands / 182 MCP tools** across 10 domains, with per-command flags, examples,
+  **196 CLI commands / 190 MCP tools** across 10 domains, with per-command flags, examples,
   MCP tool names, REST endpoints, plus guide pages and end-to-end workflows.
 - **`reference/`** — the same knowledge as markdown: concept docs (architecture, auth, MCP,
   Lane 2 runtime, output formats), generated per-domain command references

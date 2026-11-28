@@ -95,14 +95,37 @@ a live tenant (GP-B5 W9, keys only). Follow the manifest's handler pointer for
 `data-designer templates describe` → the `handlers/data-designer.js` re-export →
 `handlers/data-preparation/templates/describe/index.js` and `common/task-detail.js`
 (`emptyTaskFields` / `projectTaskDetail` / `taskFieldLabel` / `buildJoinRows` /
-`buildFieldDetail`), and re-check each item when the pin moves:
+`buildFieldDetail`), and re-check each item when the pin moves. Last re-derived at
+the 1.0.14 adoption (2026-11-27) from the installed package and the sandbox reads of
+that day (six tasks of two templates, the same call on a 1.0.12 and a 1.0.14 binary;
+before that, nine task calls on three templates on 1.0.14 alone).
+At 1.0.14 the route gains two shared files, which the Data Designs describe
+(`dd d describe`) uses too: `common/describe-data-prep.js` (`loadDataPrepTasks`,
+`attachTaskDrilldown`) and, for the task body, `common/shared.js` (`requireTaskBody` →
+`fetchFullTask`); the drilldown itself is `applyTaskDrilldown` in `task-detail.js`.
+The bodies of the five functions named above are unchanged from 1.0.12; what
+`buildFieldDetail` resolves did change, through `findField` (item 3).
 
 1. **Template** `--template-id <id>`: `{result, data}`; `data` = the header scalars +
    `_taskCount` + `_tasks[]` (summary rows: `taskId taskName taskType _object _connType
-   _parents _fieldCount _filterCount _groupByCount`) + the 14 `_task*` tables EMPTY
+   _parents _fieldCount _filterCount _groupByCount`; on 1.0.14 and later each row also
+   carries `_index`, its 1-based position — `buildTaskOverviewRows` — which no reader
+   consumes, but which is part of the payload the script fingerprints: a template
+   documented on 1.0.12 reads as changed on its first describe on 1.0.14, so
+   `--if-changed` re-documents it once and a half-finished composite starts over)
+   + the 14 `_task*` tables EMPTY
    (`DESIGNER_TASK_TABLES` in doc-lib is that list as data; a closure fixture pins it).
    The script refuses the mode when `_taskCount` disagrees with the readable task ids.
-2. **Task** `+ --task-id <t>`: `_tasks: []`; the tables populated per kind — extract
+2. **Task** `+ --task-id <t>`: on 1.0.12 and earlier the drilldown reads the task entry
+   the template header already returned. On 1.0.14 and later it makes ONE MORE request,
+   a GET of that task alone (the catalog's `task` endpoint on the command), and the
+   command fails when that request fails or returns a body with no `id`, `taskId` or
+   `queryInfo` — a failure the script reads as retryable, like any transport failure.
+   Measured on the sandbox: the request answered on every task tried and the tables it
+   feeds were equal, key for key and label for label, to the 1.0.12 binary's; a task
+   call took 1.37 to 3.36 s on 1.0.14 against 1.3 to 1.8 s on 1.0.12 in that
+   comparison (up to 3.5 s in the nine earlier calls). Either
+   way the payload is `_tasks: []` and the tables populated per kind — extract
    (DetailRows incl. `Source` = `"<objectName> (<conn>)"`, ShowFields), join (DetailRows
    incl. `Fields (<srcTaskId>)` = `"<label>: f1, f2 (N)"`, JoinConditions,
    CriteriaConditions), freeForm (DetailRows incl. `Source Task`, ShowFields); pivot /
@@ -118,11 +141,15 @@ a live tenant (GP-B5 W9, keys only). Follow the manifest's handler pointer for
    (the system name) · `Display Name` · `Field Alias (output header)` · `Source Object`
    (`"Label (name)"` or bare) · `Connection` (type or id) · type / flags rows
    (`DESIGNER_FIELD_DETAIL_KEYS` in tenant-deps names the five the reader consumes).
-   Resolves by label on extract, freeForm and join tasks. Two facts here depend on the
-   INSTALLED CLI, which can be newer than the pin, so each is stated per version
-   (F-593; the 1.0.14 halves are read from the 1.0.14 package and were seen on one
-   sandbox, 2026-11-27 — the sentence on stderr, both spellings of an aggregated field
-   resolving — and are re-derived with the rest of this section at that adoption):
+   Resolves by label on extract, freeForm and join tasks. On 1.0.14 and later `--field`
+   without `--task-id` (or `--task-name`) is refused where 1.0.12 ignored it; the script
+   always sends the task id. Two facts here depend on the
+   INSTALLED CLI, which can be older or newer than the pin, so each is stated per version
+   (F-593; re-derived at the 1.0.14 adoption: the 1.0.14 halves are `findField` and
+   `applyTaskDrilldown` in that package's `task-detail.js`, and were read live on one
+   sandbox, 2026-11-27 — the sentence on stderr with exit 1, both spellings of an
+   aggregated field resolving; the 1.0.12 halves are that package's
+   `templates/describe/index.js`):
    - **Which spelling resolves.** On 1.0.12 and earlier the SUFFIX-STRIPPED spelling
      resolves and the full `"Label (MAX)"` spelling does not. On 1.0.14 and later the
      full `"Label (AGG)"` spelling resolves as well (the CLI's lookup also matches the

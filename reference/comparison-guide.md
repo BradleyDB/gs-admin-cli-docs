@@ -37,7 +37,7 @@ and handles every API call on the model's behalf.
 
 The action surface covers all eight Gainsight domains (Data Management, Journey
 Orchestrator, Rules Engine, Scorecards, and more), exposed two ways from the same
-handlers: **182 named operations** as MCP tools, and **188 CLI commands**. The AI knows
+handlers: **190 named operations** as MCP tools, and **196 CLI commands**. The AI knows
 exactly what each action does, what parameters it takes, and what it returns. In MCP
 mode it cannot call anything outside that defined set; when it drives the CLI through a
 shell instead, what constrains it is the AI host's permission model rather than a tool
@@ -97,8 +97,8 @@ pipelines, BI connectors — where no human is present at runtime.
 | **Who drives it** | An AI assistant interactively, with a human approving writes | A script, pipeline, or AI assistant with the token in context |
 | **Credentials to manage** | None persistent — PKCE has no client secret | Client secret (long-lived; must be stored securely and rotated) |
 | **Credential visible to the AI** | No — the CLI holds it internally | Potentially yes — the token may be in the model's context |
-| **Tool/endpoint surface** | 182 MCP tools with typed input schemas (188 CLI commands for the same actions) | Any Gainsight REST endpoint within the authorizing admin's permissions |
-| **Guardrails on writes** | With the plugin: every catalog-mutating command asks a human first and is journaled — but the catalog mislabels part of the write surface, and those commands do neither | None built in — whatever your program enforces |
+| **Tool/endpoint surface** | 190 MCP tools with typed input schemas (196 CLI commands for the same actions) | Any Gainsight REST endpoint within the authorizing admin's permissions |
+| **Guardrails on writes** | With the plugin: every catalog-mutating command asks a human first and is journaled — a command the catalog mislabelled as a read would do neither (none is known since CLI 1.0.8) | None built in — whatever your program enforces |
 | **Tenant context available to the AI** | With the plugin: a documented local KB of every asset, citable and grep-able | None — each call starts from zero |
 | **Bulk data extraction** | Limited — spot queries, 50-row default, manual pagination | Full control — stream, paginate, and land data wherever you need |
 | **Runs headless (no human)** | No — PKCE requires an initial human login; the plugin's write guard assumes a human | Yes — designed for service-to-service with no user present |
@@ -231,7 +231,7 @@ a prompt injection attack.
 
 This is a practical concern when AI assistants call APIs on your behalf.
 
-In **MCP mode**, the AI can only call the 182 MCP tools with their defined parameters. A
+In **MCP mode**, the AI can only call the 190 MCP tools with their defined parameters. A
 malicious prompt that tries to get the AI to "call this other endpoint" simply cannot
 succeed — that endpoint is not in the tool surface. That guarantee is real, and it is a
 property of the MCP transport.
@@ -255,9 +255,10 @@ flag. Since CLI 1.0.8 that flag is a written contract in the CLI's own artifact 
 and upstream closed the class this paragraph used to warn about: commands flagged
 non-mutating while declaring a PUT/DELETE/PATCH endpoint went 29 → 0 at 1.0.8, the
 `re r` rule-authoring and scheduling surface and `dd t` template edits all prompt from
-the catalog now, and at v1.0.12 the 20 non-mutating commands still carrying a POST
-endpoint are read-shaped fetches (list/describe/fetch-data/validate) reviewed
-command-by-command upstream. The residual risk is a future mislabel, not a standing population: the guard
+the catalog now, and at v1.0.14 the 22 non-mutating commands still carrying a POST
+endpoint are read-shaped fetches (list/describe/fetch-data/validate): the 20 of 1.0.12,
+reviewed command-by-command upstream, plus the two Data Designs reads 1.0.14 adds
+(`dd d list` and `dd d dependencies`). The residual risk is a future mislabel, not a standing population: the guard
 fail-closes on unknown commands, and a hand-maintained ask-override list (empty since
 1.0.8; the mechanism is kept) forces the prompt on any newly verified mislabel.
 The guard is a layer of risk reduction at the command-parsing level, not a boundary.
@@ -281,7 +282,7 @@ reach.
 | Persistent credential to protect | None | Client secret |
 | Token visible to the AI model | No | Potentially yes |
 | Blast radius of a leaked credential | None (no persistent secret) | Anyone can mint tokens until rotated |
-| Rogue AI behavior | In MCP mode, constrained to the 182 MCP tools; over a shell, constrained by the AI host's permission model. With the plugin, catalog-mutating commands additionally require per-command human approval and are journaled | Can reach any endpoint in scope |
+| Rogue AI behavior | In MCP mode, constrained to the 190 MCP tools; over a shell, constrained by the AI host's permission model. With the plugin, catalog-mutating commands additionally require per-command human approval and are journaled | Can reach any endpoint in scope |
 
 ---
 
@@ -359,8 +360,8 @@ It is still the better path to *adding write access safely* — a documented KB,
 approval step inside every write-capable skill, and a change journal beat an unguarded
 read-write surface. Its guard also got stronger at CLI 1.0.8: upstream fixed the
 mislabeled-writer class (29 strict cases → 0), so every verified writer now prompts
-from the catalog itself, and at v1.0.12 the 20 non-mutating commands still carrying
-POST endpoints are read-shaped fetches reviewed upstream. Adopt it knowing the guard is
+from the catalog itself, and at v1.0.14 the 22 non-mutating commands still carrying
+POST endpoints are read-shaped fetches. Adopt it knowing the guard is
 command-parsing risk reduction plus a fail-closed prompt on unknown commands, not a
 boundary — the skills that drive writes still make their own approval step the gate.
 The plugin README's "How the plugin protects your tenant" section has the details.

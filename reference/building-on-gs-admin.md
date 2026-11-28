@@ -68,7 +68,7 @@ safety lane before the packaging.
 ## Recommended sequence
 
 1. **Wire the MCP server** into *your* project (`.mcp.json`) and confirm `/mcp` lists
-   `gs-admin` — now Claude can actually call the 182 MCP tools. (Needs a tenant login.)
+   `gs-admin` — now Claude can actually call the 190 MCP tools. (Needs a tenant login.)
    This repo deliberately does not wire it: everything here is generated from the
    installed package's manifests on disk, so no live connection is needed to build or
    verify anything.

@@ -14,8 +14,8 @@ left off. In short:
   catalog-mutating commands ask (see [the gate you're relying on](#how-the-plugin-protects-your-tenant)
   for the commands the catalog mislabels).
 
-> **Currency.** This document was last updated on 2026-10-16 (against
-> `@gainsight/gs-admin-cli@1.0.12`) with reference to Gainsight's then-current pre-built and
+> **Currency.** This document was last updated on 2026-11-28 (against
+> `@gainsight/gs-admin-cli@1.0.14`) with reference to Gainsight's then-current pre-built and
 > generally available Admin CLI package. Gainsight may have updated its documentation and
 > available Admin CLI package since then. You can always find the latest version of
 > Gainsight's documentation and Admin CLI package at
@@ -600,9 +600,10 @@ the decision record, including for the retired entries.
 > since 1.0.4: commands flagged non-mutating while declaring a PUT/DELETE/PATCH
 > endpoint went **29 → 0** at 1.0.8 (39 commands flipped to mutating), so the whole
 > `re r` rule-authoring surface, the scheduling writers, and `dd t` template edits now
-> prompt from the catalog. At v1.0.12, the **20** commands still flagged non-mutating with
-> a POST endpoint are read-shaped fetches (list/describe/fetch-data/validate RPCs), reviewed
-> command-by-command upstream — the counting rule (catalog `mutating: false` plus a
+> prompt from the catalog. At v1.0.14, the **22** commands still flagged non-mutating with
+> a POST endpoint are read-shaped fetches (list/describe/fetch-data/validate RPCs) — the 20
+> of 1.0.12, reviewed command-by-command upstream, plus `dd d list` and `dd d dependencies`,
+> added at 1.0.14 and read from the package here — the counting rule (catalog `mutating: false` plus a
 > declared write-method endpoint) stays computable from the catalog if you want to
 > re-check. What still carries risk is not a standing population of mislabels: it is
 > the parsing boundary below, plus the possibility that a FUTURE action ships

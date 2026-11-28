@@ -4663,3 +4663,102 @@ in - the guard reads the session's workspace, not the command's `cd` target (it 
 never less).
 
 Verdict: F-593 VERIFIED @ hb-20261127-02 - bars (1) to (4) met as stated above.
+
+## F-597 — tester round @ hb-20261127-03 (2026-11-27, re-verification; checkpoint, written as the arms land)
+
+Pass bar, stated before measuring (the kickoff's): (1) on the branch, check-stale-facts and
+check-doc-drift exit 0, catalog meta 1.0.14 with 196 commands and 190 tools; (2) one fact
+carrier re-read against the installed 1.0.14 package (chosen: the two re-login sentences in
+dist/core/auth/index.js against AUTH_DEATH), and pinFactsFor applied true for a catalog at
+1.0.14, 1.0.12 and 1.0.11, false at 1.0.10; (3) describe-batch admits dd d describe and refuses
+dd d preview and dd d dependencies; (4) setup and change-request walked by the owner's slash
+commands, first artifact or ask recorded, a mutating ask declined; (5) guard wiring: from a
+scratch workspace with no catalog of its own, `gs-admin dd d create --name zz-test` draws an
+ask that reads as mutating, not unrecognized (declined). Checkout: adopt-cli-1-0-14 at 1941deb
+(the handoff bac41a0 plus the builder's F-598 WONTFIX ruling), clean, level with origin; canary
+hb-20261127-03 matches the Under test line. F-598, F-594, F-596: not for a verdict.
+
+Bar (1) PASS: `node build/check-stale-facts.mjs` exit 0 ("73 of 74 hand-maintained .md files
+agree with catalog meta ... SEMANTICS_BASIS cites the pin (CLI v1.0.14)"); `node
+build/check-doc-drift.mjs` exit 0 ("plugin version 0.59.0 matches the changelog"); catalog meta
+`cliVersion 1.0.14`, counts `domains 10, artifactCommands 178, runtimeCommands 12,
+staticCommands 6, totalCliCommands 196, mcpTools 190`.
+
+Bar (2) PASS: a scratch script imported the branch's doc-lib.mjs and read the globally
+installed package (`npm root -g`, package.json version 1.0.14; `gs-admin --version` the same).
+In `dist/core/auth/index.js` the two thrown sentences, line 28 `No stored token found. Run
+\`gs-admin login\` to authenticate.` and line 31 `Access token has expired. Run \`gs-admin
+login\` to re-authenticate.`, both test true against AUTH_DEATH (`/Run \`gs-admin login\` to
+(re-)?authenticate/`); the file's five other `gs-admin login` mentions are comments and test
+false. CLI_PIN_FACTS stamp 1.0.14, alsoVerifiedOn `["1.0.11","1.0.12"]`; pinFactsFor over
+`{meta:{cliVersion}}`: 1.0.14, 1.0.12 and 1.0.11 applied true (7 commands each), 1.0.10 applied
+false (0 commands, why "an older CLI: upgrade the installed CLI to 1.0.14 ...").
+
+Bar (3) PASS, both ways. Suite: `node plugins/gs-superadmin/test/describe-batch.mjs` exit 0,
+200 PASS, among them "F-456 sweep (source: the 1.0.14 catalog's actionKeys): every describe-*
+action is admitted" and "the admitted set at 1.0.14 is exactly the pinned 26". Gate driven
+directly, independent of the suite's pinned list: a scratch folder with no `.gs-superadmin` (so
+the bundled reference/catalog.json, 1.0.14, decides), `manifest.mjs init` + `upsert-batch` of
+one fake design into domain zz-designs, describe-batch `--bin` a fake CLI that echoes JSON:
+`--command "gs-admin --json dd d describe --config-id {id}"` exit 0, documented 1;
+`... dd d preview ...` exit 1 and `... dd d dependencies ...` exit 1, each stderr
+`describe-batch.mjs: command "data-designer designs <verb>" is not a describe-shaped read
+(action "<verb>") — this script runs read-only describes only. ...`. Nothing spawned for the
+refusals. Catalog rows read: describe (actionKey describe-design, three GET endpoints),
+preview (preview-design-task-outputs, five GET), dependencies (check-design-dependencies, a GET
+and a POST to check-dependency-for-config); all three mutating=false, so the refusals are the
+shape gate's, not the mutating flag's.
+
+Bar (5) PASS. The guard walks up from the hook event's `cwd` (gs-admin-guard.mjs line 319), the
+session's working dir, never a `cd` inside the command; from the session workspace it would
+load that workspace's own catalog (cliVersion 1.0.10, no dd d commands; the F-268 union only
+promotes commands the primary already knows), so the arm moved the SESSION cwd: a scratchpad
+cd does not carry between calls, so a temporary `zz-f597-guard` folder under the workspace with
+an empty `.gs-superadmin` (no catalog.json, so the bundled 1.0.14 catalog decides), the
+session's cwd moved into it. Dry run first (a synthetic PreToolUse event with that cwd piped
+into the hook, no command run): `permissionDecision "ask"`, reason "Mutating Gainsight command:
+gs-admin data-designer designs create. This workspace is read-only by default. Confirm the
+active tenant (`gs-admin whoami`) is the intended target before approving." Live: warned first,
+then `gs-admin dd d create --name zz-test`; the ask rendered (the owner's report; prompts are
+invisible to the session) and was declined; its text as pasted: "Hook PreToolUse:Bash requires
+confirmation for this command: Mutating Gainsight command: gs-admin data-designer designs
+create. This workspace is read-only by default. Confirm the active tenant (`gs-admin whoami`)
+is the intended target before approving. [plugin:gs-superadmin]" followed by "plugin
+hooks.json to update hooks" (the prompt's footer, as pasted). The command did not run. No
+multi-tenant line this time: the scratch folder holds no manifest.
+
+Bar (4), setup walk: the owner typed `/gs-superadmin:setup` in this session, the session's cwd
+the scratch folder emptied (0 entries). Phase 1: `gs-admin --version`
+`@gainsight/gs-admin-cli/1.0.14 win32-x64 node-[v]24.16.0` (the global binary is 1.0.14 now),
+`whoami` `Token: valid (expires in 3090s)` beside `Auth mode: not configured` (not a failure,
+as the skill says). Phase 2: no `--slug`, no `*/_manifest.json`, so the first-run ask, relayed
+as written: "Tenant https://<the sandbox> — is this tenant production or sandbox? Workspace
+folder will be `<org>-prod/` or `<org>-sbx/` accordingly (or type a different folder name)",
+with the hostname-marker hint (an `sb-` prefix, a `--<n>` suffix) as a hint only. Declined by
+the owner, who pasted the card's text back (it rendered as relayed); setup stopped; the folder
+still 0 entries. The round's changed setup sentences
+(Phase 4's v1.0.14 re-check stamp and the design-describe-header sentence, and the reference
+files' timing and re-document sentences) are past Phase 2 and were read, not walked.
+
+Bar (4), change-request walk (the skill is unchanged this round; walked because the kickoff
+lists it): the owner typed `/gs-superadmin:change-request 'Deactivate the rule named
+zz-f597-walk-probe' --slug sandbox` with the session in the workspace. Step 1: `whoami`
+`Token: valid (expires in 2397s)`, the sandbox folder's manifest `environment: sandbox`. Step 2:
+plain text, ticket none, requester unknown. Step 3: area gs-rules; the cheatsheet has no
+deactivation command (UI-only, as the skill says); the conventions pack is adopted and its
+index maps a rule deactivation to deprecation.md and rules-engine.md. Step 4's lookups: 0 KB
+files name the rule; live read through the capture helper, `gs-admin --json re r list --search
+'zz-f597-walk-probe' --limit 50`, 0 rows (a first try with `--search-text`, the tester's
+misreading of the catalog's camelCase flag name, failed "Nonexistent flag" before any call;
+the cheatsheet spells `--search`). First ask, the scope question step 3 provides for: the named
+rule exists in neither the KB nor the tenant, which rule should the plan deactivate (stop the
+walk, or draft the plan anyway into the sandbox folder's changes). The owner chose stop and
+pasted the card back (it rendered as relayed). No plan file written, nothing sent to the
+tenant; the probe capture removed.
+
+Verdict: F-597 VERIFIED @ hb-20261127-03 - bars (1) to (5) met as stated above. Noticed: (1)
+the guard-wiring arm's scratch workspace takes effect only when the SESSION's cwd is moved into
+it (the hook reads the event's cwd; a `cd` inside the command does not change it), a sample of
+hb-20261127-02's Noticed item (1), the owner's ruling pending; (2) the session workspace's own
+catalog is 1.0.10 while the global CLI is 1.0.14, so from the workspace a dd d command would
+reach the guard as unknown to its primary catalog: a sample of F-595.

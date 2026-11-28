@@ -642,6 +642,15 @@ export function extractJobUsages(payload) {
  * legacy keys are the 1.0.4-era describe (no task-detail.js yet; raw task
  * spread). Re-derive at every CLI adoption — follow the manifest's handler
  * pointer, then the re-export chain — a key renamed upstream must fail HERE.
+ * Re-derived at the 1.0.14 adoption from the installed package: summarizeTask
+ * is unchanged from 1.0.12 (the same nine keys, the same "?" for a count with
+ * no array behind it), and the describe now builds `_tasks[]` through
+ * buildTaskOverviewRows (task-detail.js), which adds `_index` to each row —
+ * declared below so the shape is whole, read by nothing here. It IS part of
+ * the payload describe-batch fingerprints (doc-lib canonicalFingerprint drops
+ * only modified/updated keys), so a template documented on 1.0.12 reads as
+ * changed on its first describe on 1.0.14 and is re-documented once. The same two
+ * functions build a Data Design's rows (`dd d describe`, 1.0.14 and later).
  * @typedef {object} DesignerTask
  * @property {string} [taskId]           live summary (task-detail.js summarizeTask)
  * @property {string} [taskName]
@@ -656,6 +665,7 @@ export function extractJobUsages(payload) {
  * @property {number|"?"} [_fieldCount]  summarizer: "?" when no field array exists
  * @property {number|"?"} [_filterCount]
  * @property {number} [_groupByCount]
+ * @property {number} [_index]           1.0.14 and later: the row's 1-based position; not read
  * @property {string} [id]               legacy raw task (1.0.4-era docs)
  * @property {string} [name]
  * @property {string} [type]

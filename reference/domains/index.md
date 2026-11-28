@@ -2,14 +2,14 @@
 
 # gs-admin — Domain Reference Map
 
-Generated from `@gainsight/gs-admin-cli@1.0.12` on 2026-10-16.
+Generated from `@gainsight/gs-admin-cli@1.0.14` on 2026-11-28.
 
-**188 CLI commands** · **182 MCP tools** · **10 domains**
+**196 CLI commands** · **190 MCP tools** · **10 domains**
 
 | Domain | Aliases | Commands | Reference |
 |--------|---------|---------:|-----------|
 | **Connectors** (`connectors`) | `cn` | 7 | [connectors.md](connectors.md) |
-| **Data Designer** (`data-designer`) | `dd` | 10 | [data-designer.md](data-designer.md) |
+| **Data Designer** (`data-designer`) | `dd` | 18 | [data-designer.md](data-designer.md) |
 | **Data Management** (`data-management`) | `dm` | 12 | [data-management.md](data-management.md) |
 | **Journey Orchestrator** (`journey`) | `jo` | 61 | [journey.md](journey.md) |
 | **Query** (`query`) | `q` | 1 | [query.md](query.md) |
