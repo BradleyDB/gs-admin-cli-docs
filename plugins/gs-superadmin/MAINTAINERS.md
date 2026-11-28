@@ -110,7 +110,10 @@ The bodies of the five functions named above are unchanged from 1.0.12; what
    `_taskCount` + `_tasks[]` (summary rows: `taskId taskName taskType _object _connType
    _parents _fieldCount _filterCount _groupByCount`; on 1.0.14 and later each row also
    carries `_index`, its 1-based position — `buildTaskOverviewRows` — which no reader
-   consumes) + the 14 `_task*` tables EMPTY
+   consumes, but which is part of the payload the script fingerprints: a template
+   documented on 1.0.12 reads as changed on its first describe on 1.0.14, so
+   `--if-changed` re-documents it once and a half-finished composite starts over)
+   + the 14 `_task*` tables EMPTY
    (`DESIGNER_TASK_TABLES` in doc-lib is that list as data; a closure fixture pins it).
    The script refuses the mode when `_taskCount` disagrees with the readable task ids.
 2. **Task** `+ --task-id <t>`: on 1.0.12 and earlier the drilldown reads the task entry

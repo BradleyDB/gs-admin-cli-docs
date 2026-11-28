@@ -175,7 +175,10 @@ PERMANENT gap — recorded on the item, never retried until the template changes
 never blocking (the template is marked documented and the deps report says which
 rows it left blind). `--if-changed` is safe on this domain: it skips a template
 only when its doc is already a COMPLETE composite of unchanged content, so
-summary-only docs written by earlier plugin versions upgrade on the next re-run —
+summary-only docs written by earlier plugin versions upgrade on the next re-run (and
+a workspace that moves from CLI 1.0.12 or earlier to 1.0.14 re-documents every
+template once: the template payload gained a key per task row there, so each reads
+as changed the first time, and a composite left incomplete starts over) —
 to upgrade an existing KB deliberately, run the domain once with `--statuses
 documented`. The mode verifies the drilldown flags and the template's task count
 against the catalog and payload before spawning anything and refuses if either no

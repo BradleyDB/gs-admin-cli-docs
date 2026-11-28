@@ -646,7 +646,10 @@ export function extractJobUsages(payload) {
  * is unchanged from 1.0.12 (the same nine keys, the same "?" for a count with
  * no array behind it), and the describe now builds `_tasks[]` through
  * buildTaskOverviewRows (task-detail.js), which adds `_index` to each row —
- * declared below so the shape is whole, read by nothing here. The same two
+ * declared below so the shape is whole, read by nothing here. It IS part of
+ * the payload describe-batch fingerprints (doc-lib canonicalFingerprint drops
+ * only modified/updated keys), so a template documented on 1.0.12 reads as
+ * changed on its first describe on 1.0.14 and is re-documented once. The same two
  * functions build a Data Design's rows (`dd d describe`, 1.0.14 and later).
  * @typedef {object} DesignerTask
  * @property {string} [taskId]           live summary (task-detail.js summarizeTask)

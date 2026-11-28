@@ -1967,9 +1967,9 @@ export function indexedElsewhere(inventory, ids, excludeDomain = null) {
 // The catalog `mutating` flag alone is NOT read-only enforcement, even now
 // that upstream closed the mislabeled-writer class at CLI 1.0.8 (the counting
 // rule — catalog `mutating: false` AND a declared PUT/DELETE/PATCH endpoint —
-// went 29 → 0; counting POSTs too, 59 → 22, all 22 read-shaped fetches: the
-// 20 left at 1.0.8, reviewed upstream, plus `dd d list` and `dd d
-// dependencies`, which 1.0.14 added and whose handlers (designs/list/index.js,
+// went 29 → 0; counting POSTs too, 59 → 22 as counted today, all 22
+// read-shaped fetches: 1.0.8 left 20, reviewed upstream, and 1.0.14 added
+// two, `dd d list` and `dd d dependencies`, whose handlers (designs/list/index.js,
 // common/design-dependencies.js) were read at that adoption — a list body and
 // the UI's dependency check, neither a write; check-stale-facts pins both
 // counts here). Checks 4 and 5

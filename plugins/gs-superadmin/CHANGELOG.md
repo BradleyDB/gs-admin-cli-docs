@@ -39,8 +39,12 @@ install: 1.0.14 is the first release published since 1.0.12. What a user gets by
 - **Designer documentation re-priced for 1.0.14.** There, every task and field call of a
   design template makes one more request and runs slower: 1.4–3.4 s a task call against
   1.3–1.8 s on 1.0.12 the same day, on one sandbox, and about 2.5 s a call over whole
-  templates. The default budget of 30 calls a run still fits, and the docs it writes are
-  the same.
+  templates. The default budget of 30 calls a run still fits. One cost to expect: on
+  1.0.14 the template describe carries one more key on each task row, so a template
+  documented on 1.0.12 or earlier reads as changed the first time it is described on
+  1.0.14. A workspace that moves to 1.0.14 re-documents every design template once (and
+  a doc left incomplete starts over); after that `--if-changed` skips as before. That
+  follows the installed CLI, not this plugin version.
 - **Version prose re-checked at 1.0.14** across the skills, setup references, operating
   model and READMEs. The Known CLI issues header says what 1.0.14 changed and that every
   entry below it stands; the read-verb allowlist is unchanged (the new describe and list
