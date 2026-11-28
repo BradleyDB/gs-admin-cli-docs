@@ -3735,6 +3735,14 @@ Blind spots: no tenant pull was made with the new families (the two reads were c
      Carried forward (not in this release): F-448 verdict by the other role; the skipped-path arm
        (Blind spots above). -->
 
+## F-597 — OPEN
+Reported: 2026-11-27 (builder)
+Severity: normal — a workspace on the current CLI gets the facts table withdrawn and a bundled catalog that does not know eight commands; nothing is unsafe meanwhile (unknown commands ask)
+Source: gs-fortress ledger/reports/build-kickoffs-1.0.14.md session E2 (CP-1 regen, CP-6 version prose, fact carriers and re-derivations); audit-1.0.14 sections 1.2, 1.3, 1.8, 1.9, 1.10, 1.14, 1.16
+What: the repo documents and pins CLI 1.0.12 while npm latest has been 1.0.14 since 2026-11-19: the bundled catalog lacks the eight dd d commands, and a workspace on 1.0.14 runs with the per-pin CLI facts table withdrawn (gs-fortress audit-1.0.14, adopt decision recorded 2026-11-27)
+Repro: node -p "require('./data/catalog.json').meta.cliVersion" prints 1.0.12 on dev; npm view of the package's dist-tags prints latest 1.0.14; pinFactsFor over a catalog whose meta.cliVersion is 1.0.14 returns applied false
+Expected: CP-1: the catalog, reference docs, wiki and plugin bundle regenerated at 1.0.14, differing from 1.0.12 only as gs-fortress delta-1.0.12-to-1.0.14.json lists; CP-6: every current-version claim, count and fact carrier moved by re-verification against the installed package, the designer drilldown grammar and the DesignerTask typedef re-derived, plugin bump and CHANGELOG
+
 ## F-596 — OPEN
 Reported: 2026-11-27 (tester)
 Severity: polish — it warns about more tenants, never fewer, so nothing unsafe passes; the cost is a prompt naming production for a command that cannot reach it
