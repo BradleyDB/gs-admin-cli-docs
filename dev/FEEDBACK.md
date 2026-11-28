@@ -3735,13 +3735,14 @@ Blind spots: no tenant pull was made with the new families (the two reads were c
      Carried forward (not in this release): F-448 verdict by the other role; the skipped-path arm
        (Blind spots above). -->
 
-## F-598 — OPEN
+## F-598 — WONTFIX
 Reported: 2026-11-27 (builder)
 Severity: polish — the docs come out right and the fingerprint errs in its declared safe direction (a needless re-document, never a missed change); the cost is one pass of 1 + tasks + fields calls per template, about 30 calls a run
 Source: F-597 review round, code finder (cold, 2026-11-27); not in gs-fortress audit-1.0.14, whose reader-shape walk (item 11) measures keys the readers dereference and cannot see a key the fingerprint hashes
 What: a workspace that moves its installed CLI from 1.0.12 or earlier to 1.0.14 re-documents every design template once, with no tenant change: the template describe gained a key (_index) on each task row, the content fingerprint hashes the whole payload, so --if-changed skips nothing on that domain the first time and a half-finished composite restarts from zero
 Repro: document a design template with describe-batch on a 1.0.12 binary, then run the same domain with --if-changed and --bin set to a 1.0.14 binary: the entry is re-documented and every drilldown re-spent although the template did not change (read from the code: doc-lib canonicalFingerprint drops only modified/updated keys; describe-batch compares kb.templateFingerprint; 1.0.14 buildTaskOverviewRows adds _index; not yet run live)
 Expected: the owner's ruling between two routes: leave it (0.59.0 states the one-time cost in the CHANGELOG, MAINTAINERS and the setup notes), or make a key that is pure position invisible to the fingerprint on this payload, with a fixture row carrying _index and the cost that every already-documented template then re-fingerprints once anyway; and a watch-skill note for gs-fortress that a payload key ADDED where the plugin fingerprints is an impact the reader-shape walk does not report
+Ruling: 2026-11-27 (builder) — the owner's ruling, asked in session 2026-11-27: leave as documented. The fingerprint errs in its declared safe direction (a needless re-document, never a missed change), plugin 0.59.0 states the one-time cost in the CHANGELOG, MAINTAINERS and the setup notes, and hiding the key now would make workspaces already documented on 1.0.14 re-document once instead. No fingerprint change and no fixture; the review's fixture item closes with it. Left for the gs-fortress watch, not this repo: a payload key ADDED where the plugin fingerprints is an impact its reader-shape walk does not report.
 
 ## F-597 — FIXED
 Reported: 2026-11-27 (builder)
